@@ -21,7 +21,7 @@
 	} from 'lucide-svelte';
 	import confetti from 'canvas-confetti';
 	import type { DaemonMode } from '../../types/base';
-	import { fillInstallArtifactsKey } from '../../types/base';
+	import { fillInstallArtifactsKey, osInstallCommand } from '../../types/base';
 	import {
 		useProvisionDaemonMutation,
 		useDaemonQuery,
@@ -117,10 +117,12 @@
 	const windowsDownloadUrl =
 		'https://github.com/scanopy/scanopy/releases/latest/download/scanopy-daemon-windows-amd64.exe';
 	let currentInstallCommand = $derived.by(() => {
-		// Docker is another install target keyed as `docker` in the commands list.
-		const platform = selectedOS === 'linux' && linuxMethod === 'docker' ? 'docker' : selectedOS;
-		// Prefer the server-assembled command for this platform (single source of truth).
-		const serverCmd = installArtifacts?.commands.find((c) => c.platform === platform)?.command;
+		// Prefer the server-assembled artifact for this method (single source of truth).
+		const serverCmd =
+			installArtifacts &&
+			(selectedOS === 'linux' && linuxMethod === 'docker'
+				? (installArtifacts.docker.compose ?? undefined)
+				: osInstallCommand(installArtifacts, selectedOS));
 		if (serverCmd) return serverCmd;
 		// Fallback (e.g. before provisioning completes) to the client-built command.
 		if (selectedOS === 'windows')
@@ -335,10 +337,6 @@
 			selectedOS,
 			integrationTokens
 		)
-	);
-	// Server-assembled, like the binary commands — docker rides in `commands` keyed as `docker`.
-	let dockerCompose = $derived(
-		installArtifacts?.commands.find((c) => c.platform === 'docker')?.command ?? ''
 	);
 
 	// Check for form validation errors (only visible fields)
@@ -774,14 +772,13 @@
 							{linuxMethod}
 							onLinuxMethodChange={(method) => (linuxMethod = method)}
 							{runCommand}
-							{dockerCompose}
 							{hasErrors}
 							isFirstDaemon={startedAsFirstDaemon}
 							{connectionStatus}
 							onViewDiscovery={handleViewDiscovery}
 							{hasEmailSupport}
 							onAdvanced={() => (showAdvanced = true)}
-							serverCommands={installArtifacts?.commands ?? []}
+							artifacts={installArtifacts}
 							daemonMode={(formValues.mode as DaemonMode) ?? 'daemon_poll'}
 							daemonName={String(formValues.name ?? 'scanopy-daemon')}
 							logFilePath={String(formValues.logFile ?? '')}

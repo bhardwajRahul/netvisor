@@ -7,6 +7,7 @@
 	import TroubleshootingChecklist from './TroubleshootingChecklist.svelte';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import type { DaemonOS } from '../../../utils';
+	import { osInstallCommand, type InstallArtifacts } from '../../../types/base';
 	import type { DaemonMode } from '../../../types/base';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { useTestReachabilityMutation, useRetryDaemonConnectionMutation } from '../../../queries';
@@ -52,9 +53,8 @@
 		linuxMethod?: LinuxMethod;
 		onLinuxMethodChange?: (method: LinuxMethod) => void;
 		runCommand: string;
-		/** Server-assembled per-platform install commands (single source of truth). */
-		serverCommands?: { platform: string; command: string }[];
-		dockerCompose: string;
+		/** Server-assembled install artifacts (single source of truth), key already filled. */
+		artifacts?: InstallArtifacts | null;
 		hasErrors: boolean;
 		isFirstDaemon?: boolean;
 		connectionStatus?: DaemonConnectionStatus;
@@ -79,8 +79,7 @@
 		linuxMethod = 'binary',
 		onLinuxMethodChange,
 		runCommand,
-		serverCommands = [],
-		dockerCompose,
+		artifacts = null,
 		hasErrors,
 		isFirstDaemon = false,
 		connectionStatus = 'idle',
@@ -110,14 +109,14 @@
 
 	// Combined install commands — prefer the server-assembled command for the platform
 	// (single source of truth), falling back to the client-built one.
-	let serverCommandForOs = $derived(
-		(os: string) => serverCommands.find((c) => c.platform === os)?.command
-	);
+	let dockerCompose = $derived(artifacts?.docker.compose ?? '');
 	let combinedLinuxMacCommand = $derived(
-		serverCommandForOs(selectedOS) ?? `${installScript} && ${runCommand}`
+		(artifacts ? osInstallCommand(artifacts, selectedOS) : '') ||
+			`${installScript} && ${runCommand}`
 	);
 	let combinedWindowsCommand = $derived(
-		serverCommandForOs('windows') ?? `${windowsInstallCommand}; ${runCommand}`
+		(artifacts ? osInstallCommand(artifacts, 'windows') : '') ||
+			`${windowsInstallCommand}; ${runCommand}`
 	);
 
 	// ServerPoll health check

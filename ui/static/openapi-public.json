@@ -11085,19 +11085,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-21T18:39:38.034810Z",
+              "created_at": "2026-07-21T19:24:37.429218Z",
               "first_discovery_id": null,
-              "id": "e1028156-f427-4d49-a9ee-880fe6ccf77f",
+              "id": "4554da2a-6519-4f9d-a90e-88209ac8feb9",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-21T18:39:38.034810Z",
+              "last_seen_at": "2026-07-21T19:24:37.429218Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-21T18:39:38.034810Z",
-              "valid_from": "2026-07-21T18:39:38.034810Z",
+              "updated_at": "2026-07-21T19:24:37.429218Z",
+              "valid_from": "2026-07-21T19:24:37.429218Z",
               "valid_to": null
             }
           },
@@ -12152,19 +12152,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-21T18:39:38.018874Z",
+                      "created_at": "2026-07-21T19:24:37.408592Z",
                       "first_discovery_id": null,
-                      "id": "c4989983-7967-4ce8-9366-d66c997c7ad0",
+                      "id": "bfc67e4f-b810-4d25-8a6d-ba9279381837",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-21T18:39:38.018874Z",
+                      "last_seen_at": "2026-07-21T19:24:37.408592Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-21T18:39:38.018874Z",
-                      "valid_from": "2026-07-21T18:39:38.018874Z",
+                      "updated_at": "2026-07-21T19:24:37.408592Z",
+                      "valid_from": "2026-07-21T19:24:37.408592Z",
                       "valid_to": null
                     }
                   ],
@@ -12178,7 +12178,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "UptimeKuma",
+                  "service_definition": "Fios Extender",
                   "source": {
                     "type": "Manual"
                   },
@@ -12333,30 +12333,33 @@
         "properties": {
           "data": {
             "type": "object",
-            "description": "Everything the UI needs to install a just-provisioned daemon.",
+            "description": "Everything the UI needs to install (or reconfigure) a daemon, one field per install method so\neach is a first-class peer with its own content — no method is a special case bolted onto a\nlist. The binary methods are ready-to-paste commands (any api key is the [`API_KEY_PLACEHOLDER`],\nfilled in client-side); docker and msi carry their own structured content.",
             "required": [
-              "commands",
-              "msi_filename",
-              "msi_omitted_config_keys"
+              "linux",
+              "macos",
+              "windows",
+              "freebsd",
+              "docker",
+              "msi"
             ],
             "properties": {
-              "commands": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/PlatformInstallCommand"
-                },
-                "description": "Per-platform binary install commands (the api key is embedded — shown once)."
+              "docker": {
+                "$ref": "#/components/schemas/DockerInstall"
               },
-              "msi_filename": {
-                "type": "string",
-                "description": "Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI\nto this name to pre-fill the installer — parse-filename.js decodes it. The api key is\nnever encoded. Renaming a signed MSI doesn't affect its signature."
+              "freebsd": {
+                "type": "string"
               },
-              "msi_omitted_config_keys": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Config keys that did not fit in `msi_filename` (a filename is capped at 255\ncharacters). Empty for any ordinary config. The MSI falls back to its built-in\ndefaults for these, so the UI should tell the user to set them in the installer —\nthe binary install commands are unaffected and carry the full config."
+              "linux": {
+                "type": "string"
+              },
+              "macos": {
+                "type": "string"
+              },
+              "msi": {
+                "$ref": "#/components/schemas/MsiInstall"
+              },
+              "windows": {
+                "type": "string"
               }
             }
           },
@@ -13237,19 +13240,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-21T18:39:38.029739Z",
+                  "created_at": "2026-07-21T19:24:37.422414Z",
                   "first_discovery_id": null,
-                  "id": "f23f8674-f3b9-4a40-b052-30f088d03f6d",
+                  "id": "6b4fcbda-3c66-4e1d-b5ce-d9246bc624a4",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-21T18:39:38.029739Z",
+                  "last_seen_at": "2026-07-21T19:24:37.422414Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-21T18:39:38.029739Z",
-                  "valid_from": "2026-07-21T18:39:38.029739Z",
+                  "updated_at": "2026-07-21T19:24:37.422414Z",
+                  "valid_from": "2026-07-21T19:24:37.422414Z",
                   "valid_to": null
                 }
               ],
@@ -13263,7 +13266,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "UptimeKuma",
+              "service_definition": "Fios Extender",
               "source": {
                 "type": "Manual"
               },
@@ -15133,19 +15136,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-21T18:39:38.019322Z",
+          "created_at": "2026-07-21T19:24:37.409044Z",
           "first_discovery_id": null,
-          "id": "6c4356b8-86d5-4c42-8b2f-46b61f96b28c",
+          "id": "1ecc73c5-b702-4351-b531-9caa6b2e81e0",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-21T18:39:38.019322Z",
+          "last_seen_at": "2026-07-21T19:24:37.409044Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-21T18:39:38.019322Z",
-          "valid_from": "2026-07-21T18:39:38.019322Z",
+          "updated_at": "2026-07-21T19:24:37.409044Z",
+          "valid_from": "2026-07-21T19:24:37.409044Z",
           "valid_to": null
         }
       },
@@ -15736,7 +15739,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "UptimeKuma",
+              "service_definition": "Fios Extender",
               "tags": [],
               "virtualization": null
             }
@@ -17384,6 +17387,29 @@
           }
         }
       },
+      "DockerInstall": {
+        "type": "object",
+        "description": "The docker install method.",
+        "required": [
+          "env"
+        ],
+        "properties": {
+          "compose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A ready-to-run `docker-compose.yml` for a first install. `None` for a reconfigure — the\noperator keeps their own compose and swaps in `env`, rather than replacing the whole file."
+          },
+          "env": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The `SCANOPY_*` environment variables (`KEY=value`) this daemon is configured with. For a\nreconfigure these are exactly the vars that changed, so the UI can show them as a swap-in."
+          }
+        }
+      },
       "DockerSubnetVirtualization": {
         "type": "object",
         "required": [
@@ -18603,19 +18629,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-21T18:39:38.018447Z",
+                  "created_at": "2026-07-21T19:24:37.408073Z",
                   "first_discovery_id": null,
-                  "id": "4a8cb8be-ef56-4ef8-b651-0904ea3a74ad",
+                  "id": "e8da9448-a7ef-4538-9e61-7c7b9da2d9b2",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-21T18:39:38.018447Z",
+                  "last_seen_at": "2026-07-21T19:24:37.408073Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-21T18:39:38.018447Z",
-                  "valid_from": "2026-07-21T18:39:38.018447Z",
+                  "updated_at": "2026-07-21T19:24:37.408073Z",
+                  "valid_from": "2026-07-21T19:24:37.408073Z",
                   "valid_to": null
                 }
               ],
@@ -18629,7 +18655,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "UptimeKuma",
+              "service_definition": "Fios Extender",
               "source": {
                 "type": "Manual"
               },
@@ -19123,30 +19149,33 @@
       },
       "InstallArtifacts": {
         "type": "object",
-        "description": "Everything the UI needs to install a just-provisioned daemon.",
+        "description": "Everything the UI needs to install (or reconfigure) a daemon, one field per install method so\neach is a first-class peer with its own content — no method is a special case bolted onto a\nlist. The binary methods are ready-to-paste commands (any api key is the [`API_KEY_PLACEHOLDER`],\nfilled in client-side); docker and msi carry their own structured content.",
         "required": [
-          "commands",
-          "msi_filename",
-          "msi_omitted_config_keys"
+          "linux",
+          "macos",
+          "windows",
+          "freebsd",
+          "docker",
+          "msi"
         ],
         "properties": {
-          "commands": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PlatformInstallCommand"
-            },
-            "description": "Per-platform binary install commands (the api key is embedded — shown once)."
+          "docker": {
+            "$ref": "#/components/schemas/DockerInstall"
           },
-          "msi_filename": {
-            "type": "string",
-            "description": "Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI\nto this name to pre-fill the installer — parse-filename.js decodes it. The api key is\nnever encoded. Renaming a signed MSI doesn't affect its signature."
+          "freebsd": {
+            "type": "string"
           },
-          "msi_omitted_config_keys": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Config keys that did not fit in `msi_filename` (a filename is capped at 255\ncharacters). Empty for any ordinary config. The MSI falls back to its built-in\ndefaults for these, so the UI should tell the user to set them in the installer —\nthe binary install commands are unaffected and carry the full config."
+          "linux": {
+            "type": "string"
+          },
+          "macos": {
+            "type": "string"
+          },
+          "msi": {
+            "$ref": "#/components/schemas/MsiInstall"
+          },
+          "windows": {
+            "type": "string"
           }
         }
       },
@@ -20065,6 +20094,27 @@
           }
         ],
         "description": "Match reason - either a simple reason string or a container with nested reasons"
+      },
+      "MsiInstall": {
+        "type": "object",
+        "description": "The Windows MSI install method. The MSI itself is a static release asset the UI links to; only\nthe per-daemon pre-fill data is tenant-specific.",
+        "required": [
+          "filename",
+          "omitted_config_keys"
+        ],
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI to\nthis name to pre-fill the installer — parse-filename.js decodes it. The api key is never\nencoded. Renaming a signed MSI doesn't affect its signature."
+          },
+          "omitted_config_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Config keys that did not fit in `filename` (a filename is capped at 255 characters). Empty\nfor any ordinary config. The MSI falls back to its built-in defaults for these, so the UI\nshould tell the user to set them in the installer — the other methods carry the full config."
+          }
+        }
       },
       "Neighbor": {
         "oneOf": [
@@ -21196,19 +21246,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-21T18:39:38.006241Z",
+                        "created_at": "2026-07-21T19:24:37.396237Z",
                         "first_discovery_id": null,
-                        "id": "f2dd32fc-de2a-4cc2-b759-d6b21a31a9b2",
+                        "id": "d8d5cc25-149e-4590-9a8e-7de5fa929b0f",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-21T18:39:38.006241Z",
+                        "last_seen_at": "2026-07-21T19:24:37.396237Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-21T18:39:38.006241Z",
-                        "valid_from": "2026-07-21T18:39:38.006241Z",
+                        "updated_at": "2026-07-21T19:24:37.396237Z",
+                        "valid_from": "2026-07-21T19:24:37.396237Z",
                         "valid_to": null
                       }
                     ],
@@ -21222,7 +21272,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "UptimeKuma",
+                    "service_definition": "Fios Extender",
                     "source": {
                       "type": "Manual"
                     },
@@ -21343,19 +21393,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-21T18:39:38.028844Z",
+                    "created_at": "2026-07-21T19:24:37.421153Z",
                     "first_discovery_id": null,
-                    "id": "d104bf87-6600-4be7-82fa-bc13e580c1ec",
+                    "id": "05b729f1-d6b7-49a5-b2b8-6b76a05c94ff",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-21T18:39:38.028844Z",
+                    "last_seen_at": "2026-07-21T19:24:37.421153Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-21T18:39:38.028844Z",
-                    "valid_from": "2026-07-21T18:39:38.028844Z",
+                    "updated_at": "2026-07-21T19:24:37.421153Z",
+                    "valid_from": "2026-07-21T19:24:37.421153Z",
                     "valid_to": null
                   }
                 ],
@@ -21369,7 +21419,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "UptimeKuma",
+                "service_definition": "Fios Extender",
                 "source": {
                   "type": "Manual"
                 },
@@ -22100,24 +22150,6 @@
             ],
             "format": "int64",
             "minimum": 0
-          }
-        }
-      },
-      "PlatformInstallCommand": {
-        "type": "object",
-        "description": "One ready-to-paste install command for a platform.",
-        "required": [
-          "platform",
-          "command"
-        ],
-        "properties": {
-          "command": {
-            "type": "string",
-            "description": "The full command, including fetching the binary."
-          },
-          "platform": {
-            "type": "string",
-            "description": "Platform key matching the UI's OS selector: `linux` | `macos` | `windows` | `freebsd`."
           }
         }
       },
@@ -23090,19 +23122,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-21T18:39:38.019210Z",
+              "created_at": "2026-07-21T19:24:37.408948Z",
               "first_discovery_id": null,
-              "id": "d94acfa2-a5b5-4363-88a2-1f2f12b7b3d3",
+              "id": "3366feb0-7cc6-4721-a7ec-2bb73f39c609",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-21T18:39:38.019210Z",
+              "last_seen_at": "2026-07-21T19:24:37.408948Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-21T18:39:38.019210Z",
-              "valid_from": "2026-07-21T18:39:38.019210Z",
+              "updated_at": "2026-07-21T19:24:37.408948Z",
+              "valid_from": "2026-07-21T19:24:37.408948Z",
               "valid_to": null
             }
           ],
@@ -23116,7 +23148,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "UptimeKuma",
+          "service_definition": "Fios Extender",
           "source": {
             "type": "Manual"
           },
@@ -24246,7 +24278,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "71dcdd98-1ce3-4d4f-a36b-2510c7c6c8e4",
+                  "id": "72a01cd8-61cc-4afe-8dfc-59c596469034",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24256,23 +24288,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "f991984e-efbd-4957-ac99-8678131aaa00",
+                  "id": "795b4410-5119-42bb-ad8a-8d9a509f128d",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "70b85a1d-a4ef-4133-9071-07838d21c31c",
+                  "id": "959ffb68-8b48-4b3c-9226-ede14f9c97b1",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "d03684ad-3a5c-4397-be21-4a7631b0b396",
+                  "id": "6c3af9ed-a89d-45ed-9cce-02c23e19db7a",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "f991984e-efbd-4957-ac99-8678131aaa00",
+                  "id": "795b4410-5119-42bb-ad8a-8d9a509f128d",
                   "rule": "ByHost"
                 }
               ]
@@ -24301,19 +24333,19 @@
             },
             "default": [
               {
-                "id": "daa8f3f6-8fa3-4d05-ac25-d672bde1ebed",
+                "id": "ab57f515-a079-455e-a637-0fbaa34f1d85",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "d58a4747-703c-46d9-96c9-cdb8b3080f39",
+                "id": "eb0c6228-8377-4936-98b0-1699a4a9b1b4",
                 "rule": "ByVLAN"
               },
               {
-                "id": "c5dbd7ba-830f-4fcd-9c15-b288b3fd4e3f",
+                "id": "db6fee5b-6645-42d0-98d8-7cd2e7233107",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "2ea14ff5-3d85-4ae8-8ef6-bb0eaf8c54a1",
+                "id": "83789f47-3044-41c1-946d-91fc565a0ab7",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24331,7 +24363,7 @@
                 }
               },
               {
-                "id": "535e4377-2476-460c-8b80-5dc626368d40",
+                "id": "a07b5d82-00be-47c4-96c5-ba4c4a714efc",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24340,15 +24372,15 @@
                 }
               },
               {
-                "id": "3f9d98ce-a185-428f-8373-89e6b2e61b64",
+                "id": "dc1df89d-7ba8-4d85-a5b4-5c86bbbf3e32",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "a3e4a375-779c-4ba4-be90-86329dbf55a7",
+                "id": "b84b4ef3-4af8-416e-8e40-a9f9fa5b0c15",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "8fcf7ccd-1c64-41fd-8902-dd75a6b15808",
+                "id": "fdc848bb-4d92-4bcc-9dd1-167526484340",
                 "rule": "ByStack"
               }
             ]

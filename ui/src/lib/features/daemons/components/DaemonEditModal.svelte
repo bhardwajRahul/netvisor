@@ -38,6 +38,7 @@
 	import { createApiKeyForm } from '$lib/features/daemon_api_keys/form';
 	import DaemonKeyAssociation from './DaemonKeyAssociation.svelte';
 	import { constructDaemonUrl, type DaemonOS } from '$lib/features/daemons/utils';
+	import { osInstallCommand } from '$lib/features/daemons/types/base';
 	import {
 		common_apiKey,
 		common_cancel,
@@ -56,6 +57,7 @@
 		daemons_config_modeImmutable,
 		daemons_config_portHelpServerPoll,
 		daemons_legacyNameFromDaemon,
+		daemons_reconfigureDockerHint,
 		daemons_reconfigureSectionHelp,
 		daemons_reconfigureSectionTitle,
 		common_maintainer,
@@ -112,16 +114,17 @@
 	);
 	let syncOs = $state<DaemonOS>('linux');
 	let syncLinuxMethod = $state<'binary' | 'docker'>('binary');
-	// Docker is another install target keyed as `docker` in the commands list.
-	let syncPlatform = $derived(
-		syncOs === 'linux' && syncLinuxMethod === 'docker' ? 'docker' : syncOs
-	);
-	let syncLanguage = $derived(
-		syncPlatform === 'docker' ? 'yaml' : syncOs === 'windows' ? 'powershell' : 'bash'
-	);
+	let syncIsDocker = $derived(syncOs === 'linux' && syncLinuxMethod === 'docker');
+	let hasReconfigure = $derived(installCommandQuery.data != null);
+	// Binary reconfigure is a command; docker is the env vars the operator swaps into their
+	// own compose (a reconfigure doesn't hand back a whole replacement compose).
 	let syncCommand = $derived(
-		installCommandQuery.data?.commands.find((c) => c.platform === syncPlatform)?.command ?? ''
+		installCommandQuery.data && !syncIsDocker
+			? osInstallCommand(installCommandQuery.data, syncOs)
+			: ''
 	);
+	let syncDockerEnv = $derived(installCommandQuery.data?.docker.env ?? []);
+	let syncLanguage = $derived(syncOs === 'windows' ? 'powershell' : 'bash');
 
 	const DEFAULT_DAEMON_PORT = 60073;
 
@@ -344,7 +347,7 @@
 					     ServerPoll port, which the server dials but the daemon must bind. The
 					     command carries no credential, so it is safe to show here and to run
 					     repeatedly. -->
-					{#if syncCommand}
+					{#if hasReconfigure}
 						<div class="space-y-3 card">
 							<p class="text-secondary text-sm">{daemons_reconfigureSectionTitle()}</p>
 							<p class="text-tertiary text-sm">{daemons_reconfigureSectionHelp()}</p>
@@ -354,13 +357,24 @@
 								linuxMethod={syncLinuxMethod}
 								onLinuxMethodChange={(method) => (syncLinuxMethod = method)}
 							>
-								<CodeContainer
-									language={syncLanguage}
-									expandable={false}
-									maxHeight=""
-									code={syncCommand}
-									preventSelect={true}
-								/>
+								{#if syncIsDocker}
+									<p class="text-secondary text-sm">{daemons_reconfigureDockerHint()}</p>
+									<CodeContainer
+										language="yaml"
+										expandable={false}
+										maxHeight=""
+										code={syncDockerEnv.join('\n')}
+										preventSelect={true}
+									/>
+								{:else}
+									<CodeContainer
+										language={syncLanguage}
+										expandable={false}
+										maxHeight=""
+										code={syncCommand}
+										preventSelect={true}
+									/>
+								{/if}
 							</OsSelector>
 						</div>
 					{/if}

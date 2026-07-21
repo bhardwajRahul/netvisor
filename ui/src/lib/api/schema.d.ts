@@ -3104,19 +3104,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-21T18:39:38.034822Z",
+             *       "created_at": "2026-07-21T19:24:37.429215Z",
              *       "first_discovery_id": null,
-             *       "id": "4b4a7397-e2d9-4b8d-84ef-2f3bb5eff7cc",
+             *       "id": "1405362a-f5fc-4205-ad60-8e4fbd517f7c",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-21T18:39:38.034822Z",
+             *       "last_seen_at": "2026-07-21T19:24:37.429215Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-21T18:39:38.034822Z",
-             *       "valid_from": "2026-07-21T18:39:38.034822Z",
+             *       "updated_at": "2026-07-21T19:24:37.429215Z",
+             *       "valid_from": "2026-07-21T19:24:37.429215Z",
              *       "valid_to": null
              *     }
              */
@@ -3481,19 +3481,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-21T18:39:38.017465Z",
+             *               "created_at": "2026-07-21T19:24:37.408604Z",
              *               "first_discovery_id": null,
-             *               "id": "dfc4fa8a-7669-4da0-8bb6-5cc7c2af3971",
+             *               "id": "6a3a61db-0d42-49ec-ac89-20d08403a15a",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-21T18:39:38.017465Z",
+             *               "last_seen_at": "2026-07-21T19:24:37.408604Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-21T18:39:38.017465Z",
-             *               "valid_from": "2026-07-21T18:39:38.017465Z",
+             *               "updated_at": "2026-07-21T19:24:37.408604Z",
+             *               "valid_from": "2026-07-21T19:24:37.408604Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3507,7 +3507,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "UptimeKuma",
+             *           "service_definition": "Fios Extender",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3605,23 +3605,19 @@ export interface components {
             success: boolean;
         };
         ApiResponse_InstallArtifacts: {
-            /** @description Everything the UI needs to install a just-provisioned daemon. */
+            /**
+             * @description Everything the UI needs to install (or reconfigure) a daemon, one field per install method so
+             *     each is a first-class peer with its own content — no method is a special case bolted onto a
+             *     list. The binary methods are ready-to-paste commands (any api key is the [`API_KEY_PLACEHOLDER`],
+             *     filled in client-side); docker and msi carry their own structured content.
+             */
             data?: {
-                /** @description Per-platform binary install commands (the api key is embedded — shown once). */
-                commands: components["schemas"]["PlatformInstallCommand"][];
-                /**
-                 * @description Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI
-                 *     to this name to pre-fill the installer — parse-filename.js decodes it. The api key is
-                 *     never encoded. Renaming a signed MSI doesn't affect its signature.
-                 */
-                msi_filename: string;
-                /**
-                 * @description Config keys that did not fit in `msi_filename` (a filename is capped at 255
-                 *     characters). Empty for any ordinary config. The MSI falls back to its built-in
-                 *     defaults for these, so the UI should tell the user to set them in the installer —
-                 *     the binary install commands are unaffected and carry the full config.
-                 */
-                msi_omitted_config_keys: string[];
+                docker: components["schemas"]["DockerInstall"];
+                freebsd: string;
+                linux: string;
+                macos: string;
+                msi: components["schemas"]["MsiInstall"];
+                windows: string;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3909,19 +3905,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-21T18:39:38.029876Z",
+             *           "created_at": "2026-07-21T19:24:37.422403Z",
              *           "first_discovery_id": null,
-             *           "id": "c91c8c05-7ce0-45c5-95b5-7d90cbb2af0a",
+             *           "id": "8594b0fe-fcf8-4f67-87c1-e682c123a6f9",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-21T18:39:38.029876Z",
+             *           "last_seen_at": "2026-07-21T19:24:37.422403Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-21T18:39:38.029876Z",
-             *           "valid_from": "2026-07-21T18:39:38.029876Z",
+             *           "updated_at": "2026-07-21T19:24:37.422403Z",
+             *           "valid_from": "2026-07-21T19:24:37.422403Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3935,7 +3931,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "UptimeKuma",
+             *       "service_definition": "Fios Extender",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4439,19 +4435,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-21T18:39:38.017993Z",
+         *       "created_at": "2026-07-21T19:24:37.409067Z",
          *       "first_discovery_id": null,
-         *       "id": "11246a2c-b743-4e05-a2e6-10903ba7c68b",
+         *       "id": "0702a420-f9bf-4612-91ab-6f69d1358422",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-21T18:39:38.017993Z",
+         *       "last_seen_at": "2026-07-21T19:24:37.409067Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-21T18:39:38.017993Z",
-         *       "valid_from": "2026-07-21T18:39:38.017993Z",
+         *       "updated_at": "2026-07-21T19:24:37.409067Z",
+         *       "valid_from": "2026-07-21T19:24:37.409067Z",
          *       "valid_to": null
          *     }
          */
@@ -4666,7 +4662,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "UptimeKuma",
+         *           "service_definition": "Fios Extender",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5296,6 +5292,19 @@ export interface components {
              */
             warnings?: string[];
         };
+        /** @description The docker install method. */
+        DockerInstall: {
+            /**
+             * @description A ready-to-run `docker-compose.yml` for a first install. `None` for a reconfigure — the
+             *     operator keeps their own compose and swaps in `env`, rather than replacing the whole file.
+             */
+            compose?: string | null;
+            /**
+             * @description The `SCANOPY_*` environment variables (`KEY=value`) this daemon is configured with. For a
+             *     reconfigure these are exactly the vars that changed, so the UI can show them as a swap-in.
+             */
+            env: string[];
+        };
         DockerSubnetVirtualization: {
             /**
              * Format: uuid
@@ -5725,19 +5734,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-21T18:39:38.016831Z",
+         *               "created_at": "2026-07-21T19:24:37.408085Z",
          *               "first_discovery_id": null,
-         *               "id": "65e1008c-2e78-4f0e-beca-08684f434bd2",
+         *               "id": "d58475a9-0fa5-4b18-bbf3-eeecb91df563",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-21T18:39:38.016831Z",
+         *               "last_seen_at": "2026-07-21T19:24:37.408085Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-21T18:39:38.016831Z",
-         *               "valid_from": "2026-07-21T18:39:38.016831Z",
+         *               "updated_at": "2026-07-21T19:24:37.408085Z",
+         *               "valid_from": "2026-07-21T19:24:37.408085Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5751,7 +5760,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "UptimeKuma",
+         *           "service_definition": "Fios Extender",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5963,23 +5972,19 @@ export interface components {
          * @enum {string}
          */
         InlineGroupRole: "Header" | "Member";
-        /** @description Everything the UI needs to install a just-provisioned daemon. */
+        /**
+         * @description Everything the UI needs to install (or reconfigure) a daemon, one field per install method so
+         *     each is a first-class peer with its own content — no method is a special case bolted onto a
+         *     list. The binary methods are ready-to-paste commands (any api key is the [`API_KEY_PLACEHOLDER`],
+         *     filled in client-side); docker and msi carry their own structured content.
+         */
         InstallArtifacts: {
-            /** @description Per-platform binary install commands (the api key is embedded — shown once). */
-            commands: components["schemas"]["PlatformInstallCommand"][];
-            /**
-             * @description Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI
-             *     to this name to pre-fill the installer — parse-filename.js decodes it. The api key is
-             *     never encoded. Renaming a signed MSI doesn't affect its signature.
-             */
-            msi_filename: string;
-            /**
-             * @description Config keys that did not fit in `msi_filename` (a filename is capped at 255
-             *     characters). Empty for any ordinary config. The MSI falls back to its built-in
-             *     defaults for these, so the UI should tell the user to set them in the installer —
-             *     the binary install commands are unaffected and carry the full config.
-             */
-            msi_omitted_config_keys: string[];
+            docker: components["schemas"]["DockerInstall"];
+            freebsd: string;
+            linux: string;
+            macos: string;
+            msi: components["schemas"]["MsiInstall"];
+            windows: string;
         };
         /**
          * @description What the caller wants the command to do — the one axis that actually varies.
@@ -6291,6 +6296,24 @@ export interface components {
             data: unknown[];
             /** @enum {string} */
             type: "container";
+        };
+        /**
+         * @description The Windows MSI install method. The MSI itself is a static release asset the UI links to; only
+         *     the per-daemon pre-fill data is tenant-specific.
+         */
+        MsiInstall: {
+            /**
+             * @description Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI to
+             *     this name to pre-fill the installer — parse-filename.js decodes it. The api key is never
+             *     encoded. Renaming a signed MSI doesn't affect its signature.
+             */
+            filename: string;
+            /**
+             * @description Config keys that did not fit in `filename` (a filename is capped at 255 characters). Empty
+             *     for any ordinary config. The MSI falls back to its built-in defaults for these, so the UI
+             *     should tell the user to set them in the installer — the other methods carry the full config.
+             */
+            omitted_config_keys: string[];
         };
         /**
          * @description Resolved LLDP/CDP neighbor connection.
@@ -6894,13 +6917,6 @@ export interface components {
             /** Format: int64 */
             seat_limit?: number | null;
         };
-        /** @description One ready-to-paste install command for a platform. */
-        PlatformInstallCommand: {
-            /** @description The full command, including fetching the binary. */
-            command: string;
-            /** @description Platform key matching the UI's OS selector: `linux` | `macos` | `windows` | `freebsd`. */
-            platform: string;
-        };
         PodmanSubnetVirtualization: {
             /**
              * Format: uuid
@@ -7333,19 +7349,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-21T18:39:38.017913Z",
+         *           "created_at": "2026-07-21T19:24:37.408969Z",
          *           "first_discovery_id": null,
-         *           "id": "3b8efd36-43c9-4c6a-bdab-987f257227c8",
+         *           "id": "2f8b1792-87f2-4aaf-869a-12554bd7816b",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-21T18:39:38.017913Z",
+         *           "last_seen_at": "2026-07-21T19:24:37.408969Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-21T18:39:38.017913Z",
-         *           "valid_from": "2026-07-21T18:39:38.017913Z",
+         *           "updated_at": "2026-07-21T19:24:37.408969Z",
+         *           "valid_from": "2026-07-21T19:24:37.408969Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7359,7 +7375,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "UptimeKuma",
+         *       "service_definition": "Fios Extender",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7782,7 +7798,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "2b8f63cd-5f43-4ae1-a8e0-98937519a158",
+             *           "id": "49d6fa04-ee10-42e4-9a39-f2b2cb7decd2",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7792,23 +7808,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "18ae1f36-8a7d-41c0-94ca-20c2c49ec8bc",
+             *           "id": "ba9bccd2-35e1-4140-b6f9-f9e1ed386e71",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "1f193d52-2501-4943-9cea-99ce916e3b16",
+             *           "id": "d1370ec5-b9c7-4ce0-bceb-1aa6db93cdc9",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "496d3335-9729-4171-a7dc-c2fc3743439b",
+             *           "id": "88557c7d-5cc5-4519-990d-af140417ecaa",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "18ae1f36-8a7d-41c0-94ca-20c2c49ec8bc",
+             *           "id": "ba9bccd2-35e1-4140-b6f9-f9e1ed386e71",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7820,19 +7836,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "0565b87a-3d84-49a3-ac0d-ed7f05b7060e",
+             *         "id": "0c9dd7a0-7cee-4e06-aec4-3845d1c2b589",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "6515b264-198a-4884-9a4d-6cfb8fa167aa",
+             *         "id": "a51df41e-db47-418f-9300-54001ba74183",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "8d279a7a-0d42-4bd8-826f-26817e163c3c",
+             *         "id": "466cf17e-a196-4d75-b3d9-1192dea92b4c",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "0f866aac-f372-47bc-947a-6b9040890bfc",
+             *         "id": "7e4e88eb-58df-4720-84de-f3819dbdc164",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7850,7 +7866,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "78ce19d0-b34d-4559-9bf1-e3ab37b25ac8",
+             *         "id": "37aa43fd-1594-4a22-8aca-ecca3a3e4509",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7859,15 +7875,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "206db1c9-2ccb-4f22-a838-1314d1713a9a",
+             *         "id": "3c5ee327-988d-462d-b125-3173bf69254a",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "cd350307-2242-4ae2-9be2-af18f110f63a",
+             *         "id": "ab1db72e-cea7-48a5-8e5c-8cb5540f4c30",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "345ede1c-28f4-4f63-8c0f-e97f092c328e",
+             *         "id": "7324efa8-8e6a-4603-b5a1-a72bccad6b9e",
              *         "rule": "ByStack"
              *       }
              *     ]
