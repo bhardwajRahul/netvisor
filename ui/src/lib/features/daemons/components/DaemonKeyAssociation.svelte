@@ -125,15 +125,9 @@
 		<h3 class="text-primary text-center text-lg font-medium">{daemons_bindKey()}</h3>
 
 		{#if isServerPoll}
-			<InlineWarning
-				title={daemons_bindKeyTitle()}
-				body={daemons_bindKeyServerPollWarning()}
-			/>
+			<InlineWarning title={daemons_bindKeyTitle()} body={daemons_bindKeyServerPollWarning()} />
 		{:else}
-			<InlineInfo
-				title={daemons_bindKeyTitle()}
-				body={daemons_bindKeyDaemonPollHelp()}
-			/>
+			<InlineInfo title={daemons_bindKeyTitle()} body={daemons_bindKeyDaemonPollHelp()} />
 		{/if}
 
 		<div class="text-center">

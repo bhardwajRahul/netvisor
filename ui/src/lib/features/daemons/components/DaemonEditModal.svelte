@@ -54,10 +54,8 @@
 		daemons_config_daemonUrl,
 		daemons_config_daemonUrlHelpNoPort,
 		daemons_config_mode,
-		daemons_config_modeImmutable,
 		daemons_config_portHelpServerPoll,
-		daemons_legacyNameFromDaemon,
-		daemons_nameReadOnlyHelp,
+		daemons_readOnlyFieldHelp,
 		daemons_reconfigureDockerHint,
 		daemons_reconfigureSectionHelp,
 		daemons_reconfigureSectionTitle,
@@ -90,11 +88,6 @@
 	]);
 
 	let isServerPoll = $derived(daemon?.mode === 'server_poll');
-	// A daemon with no bound key predates 1:1 provisioning. Until it has one, its own
-	// handshake is authoritative for name and mode (see daemons/service/processing.rs), so
-	// editing the name here would be silently overwritten on the next contact.
-	let isLegacy = $derived(daemon != null && !daemon.api_key_id);
-
 	// The daemon record already carries api_key_id, so the bound key resolves from the list
 	// the keys tab already loads — no per-daemon endpoint needed.
 	let daemonKey = $derived<ApiKey | null>(
@@ -271,7 +264,7 @@
 									id="daemon-name"
 									{field}
 									disabled
-									helpText={isLegacy ? daemons_legacyNameFromDaemon() : daemons_nameReadOnlyHelp()}
+									helpText={daemons_readOnlyFieldHelp()}
 								/>
 							{/snippet}
 						</detailsForm.Field>
@@ -284,7 +277,7 @@
 								<option value="daemon_poll">daemon_poll</option>
 								<option value="server_poll">server_poll</option>
 							</select>
-							<p class="text-tertiary text-xs">{daemons_config_modeImmutable()}</p>
+							<p class="text-tertiary text-xs">{daemons_readOnlyFieldHelp()}</p>
 						</div>
 					</div>
 
@@ -347,8 +340,8 @@
 					     command carries no credential, so it is safe to show here and to run
 					     repeatedly. -->
 					{#if hasReconfigure}
-						<div class="space-y-3 card">
-							<p class="text-secondary text-sm">{daemons_reconfigureSectionTitle()}</p>
+						<div class="card space-y-3">
+							<p class="text-primary text-sm">{daemons_reconfigureSectionTitle()}</p>
 							<p class="text-tertiary text-sm">{daemons_reconfigureSectionHelp()}</p>
 							<OsSelector
 								selectedOS={syncOs}
