@@ -19,7 +19,7 @@ use crate::server::credentials::r#impl::base::Credential;
 use crate::server::daemon_api_keys::r#impl::base::DaemonApiKey;
 use crate::server::daemons::handlers::DaemonOrderField;
 use crate::server::daemons::r#impl::base::Daemon;
-use crate::server::daemons::r#impl::install_artifacts::ArtifactPurpose;
+use crate::server::daemons::r#impl::install_artifacts::InstallCommandKind;
 use crate::server::dependencies::handlers::DependencyOrderField;
 use crate::server::dependencies::r#impl::base::Dependency;
 use crate::server::discovery::r#impl::base::Discovery;
@@ -70,7 +70,7 @@ pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
         CredentialOrderField,
         VlanOrderField,
         // Referenced by the install-command query parameter, so it needs a registered schema.
-        ArtifactPurpose
+        InstallCommandKind
     )),
     info(
         title = "Scanopy API",

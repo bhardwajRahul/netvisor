@@ -21,11 +21,13 @@
 	} from 'lucide-svelte';
 	import confetti from 'canvas-confetti';
 	import type { DaemonMode } from '../../types/base';
-	import type { components } from '$lib/api/schema';
+	import { fillInstallArtifactsKey } from '../../types/base';
 	import {
 		useProvisionDaemonMutation,
 		useDaemonQuery,
-		useEmailInstallCommandMutation
+		useDaemonInstallCommandQuery,
+		useEmailInstallCommandMutation,
+		type InstallCommandParams
 	} from '../../queries';
 	import { apiClient } from '$lib/api/client';
 	import { useConfigQuery, isCloud } from '$lib/shared/stores/config-query';
@@ -221,11 +223,26 @@
 	let serverPollReachabilityResult = $state<{ reachable: boolean; error?: string } | null>(null);
 	const testReachabilityMutation = useTestReachabilityMutation();
 
-	// Install commands assembled server-side (single source of truth), captured at provision.
-	let installArtifacts = $state<components['schemas']['InstallArtifacts'] | null>(null);
-
 	// Connection waiting state
 	let provisionedDaemonId = $state('');
+
+	// Advanced settings committed for the install-command builder. Set at provision and on
+	// leaving the Advanced panel — the builder is a pure read, so changing these re-fetches the
+	// command without re-minting the key.
+	let committedInstallParams = $state<InstallCommandParams | null>(null);
+
+	// Install commands come from the pure builder (with an <API_KEY> placeholder); the minted key
+	// is substituted in for display. Regenerating them never rotates the key.
+	const installCommandQuery = useDaemonInstallCommandQuery(
+		() => provisionedDaemonId || null,
+		() => committedInstallParams ?? { purpose: 'install' },
+		{ enabled: () => !!provisionedDaemonId && !!committedInstallParams }
+	);
+	let installArtifacts = $derived.by(() =>
+		installCommandQuery.data && keyState
+			? fillInstallArtifactsKey(installCommandQuery.data, keyState)
+			: null
+	);
 	let connectionStatus = $state<DaemonConnectionStatus>('idle');
 	let troubleTimeoutId = $state<ReturnType<typeof setTimeout> | null>(null);
 	let daemonIdsAtWaitStart = $state<Set<string>>(new Set());
@@ -378,50 +395,46 @@
 
 		// Both modes provision a record bound 1:1 to a fresh key. ServerPoll also
 		// captures the reachable URL the server dials; DaemonPoll dials out, so it
-		// has none.
+		// has none. Install commands are fetched separately from the builder.
 		const isServerPoll = mode === 'server_poll';
 		try {
 			const result = await provisionDaemonMutation.mutateAsync({
 				name: daemonName,
 				network_id: selectedNetworkId,
 				mode,
-				url: isServerPoll ? constructDaemonUrl(daemonUrlBase, daemonPort) : null,
-				install_config: buildInstallConfig(formValues)
+				url: isServerPoll ? constructDaemonUrl(daemonUrlBase, daemonPort) : null
 			});
 			keyState = result.daemon_api_key;
 			provisionedDaemonId = result.daemon.id;
-			installArtifacts = result.install_artifacts;
+			committedInstallParams = installCommandParams();
 		} catch {
 			pushError(common_failedGenerateApiKey());
 		}
+	}
+
+	/** The advanced settings the builder should fold into the install command. */
+	function installCommandParams(): InstallCommandParams {
+		const cfg = buildInstallConfig(formValues);
+		return {
+			purpose: 'install',
+			log_level: cfg.log_level ?? undefined,
+			log_file: cfg.log_file ?? undefined,
+			heartbeat_interval: cfg.heartbeat_interval ?? undefined,
+			bind_address: cfg.bind_address ?? undefined,
+			allow_self_signed_certs: cfg.allow_self_signed_certs ?? undefined,
+			accept_invalid_scan_certs: cfg.accept_invalid_scan_certs ?? undefined,
+			interfaces: cfg.interfaces?.length ? cfg.interfaces.join(',') : undefined,
+			credential_refs: integrationTokens.length ? integrationTokens.join(',') : undefined
+		};
 	}
 
 	/**
-	 * Re-issue the install artifacts after the user changes advanced settings.
-	 *
-	 * The command is assembled server-side and embeds the api key, which the server only
-	 * holds while provisioning — so refreshing it means re-provisioning. Passing `daemon_id`
-	 * reuses the existing record (no duplicate daemon), and the server mints a fresh key.
-	 * That is why this fires once, on leaving the Advanced panel, rather than per keystroke.
+	 * Leave the Advanced panel, folding any changes into the emitted install command. The
+	 * builder is a pure read, so this re-fetches the command — it never re-mints the key.
 	 */
-	async function refreshInstallArtifacts() {
-		if (!provisionedDaemonId) return;
-		try {
-			const result = await provisionDaemonMutation.mutateAsync({
-				daemon_id: provisionedDaemonId,
-				install_config: buildInstallConfig(formValues)
-			});
-			keyState = result.daemon_api_key;
-			installArtifacts = result.install_artifacts;
-		} catch {
-			pushError(common_failedGenerateApiKey());
-		}
-	}
-
-	/** Leave the Advanced panel, folding any changes into the emitted install artifacts. */
-	async function closeAdvanced() {
+	function closeAdvanced() {
 		showAdvanced = false;
-		await refreshInstallArtifacts();
+		committedInstallParams = installCommandParams();
 	}
 
 	// --- Navigation handlers ---

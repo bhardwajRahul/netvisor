@@ -1,5 +1,7 @@
 use crate::daemon::runtime::state::DaemonStatus;
+use crate::daemon::shared::config::{DaemonArgs, parse_integration_target_tokens};
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Viewer};
+use crate::server::credentials::r#impl::mapping::IntegrationTarget;
 use crate::server::daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase};
 use crate::server::daemons::r#impl::api::{
     DaemonDiscoveryRequest, DaemonHeartbeatPayload, ProvisionDaemonRequest,
@@ -29,7 +31,7 @@ use crate::server::{
             DaemonStartupRequest, LegacyCapabilities, ServerCapabilities,
         },
         base::{Daemon, DaemonBase, DaemonMode},
-        install_artifacts::ArtifactPurpose,
+        install_artifacts::InstallCommandKind,
         version::DaemonVersionPolicy,
     },
     hosts::r#impl::base::{Host, HostBase},
@@ -209,25 +211,71 @@ async fn update_daemon(
     update_handler::<Daemon>(State(state), auth, Path(id), Json(request)).await
 }
 
-/// Query for [`get_install_command`].
+/// Query for [`get_install_command`]. `purpose` is required; the rest are the client-settable
+/// advanced daemon settings, folded into an `install` command. Lists are comma-joined
+/// (`interfaces`, `credential_refs`).
 #[derive(Deserialize, Debug, Clone, IntoParams)]
 pub struct InstallCommandQuery {
-    /// Which command to generate. Only credential-free purposes can be served here — see
-    /// [`ArtifactPurpose::embeds_credential`].
-    pub purpose: ArtifactPurpose,
+    /// `install` (with the api-key placeholder) or `reconfigure` (credential-free).
+    pub purpose: InstallCommandKind,
+    pub log_level: Option<String>,
+    pub log_file: Option<String>,
+    pub heartbeat_interval: Option<u64>,
+    pub bind_address: Option<String>,
+    pub allow_self_signed_certs: Option<bool>,
+    pub accept_invalid_scan_certs: Option<bool>,
+    /// Comma-separated interface names.
+    pub interfaces: Option<String>,
+    /// Comma-separated credential/integration tokens (for the docker-compose env).
+    pub credential_refs: Option<String>,
+}
+
+impl InstallCommandQuery {
+    /// The advanced settings as a `DaemonArgs`. Only the client-settable fields are read; the
+    /// server-controlled ones stay `None` and are filled from the record by the builder.
+    fn install_config(&self) -> DaemonArgs {
+        DaemonArgs {
+            log_level: self.log_level.clone(),
+            log_file: self.log_file.clone(),
+            heartbeat_interval: self.heartbeat_interval,
+            bind_address: self.bind_address.clone(),
+            allow_self_signed_certs: self.allow_self_signed_certs,
+            accept_invalid_scan_certs: self.accept_invalid_scan_certs,
+            interfaces: self.interfaces.as_ref().map(|s| {
+                s.split(',')
+                    .map(|p| p.trim().to_string())
+                    .filter(|p| !p.is_empty())
+                    .collect()
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn credential_refs(&self) -> Vec<IntegrationTarget> {
+        self.credential_refs
+            .as_deref()
+            .map(|s| {
+                s.split(',')
+                    .map(|t| t.trim().to_string())
+                    .filter(|t| !t.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .and_then(|tokens| parse_integration_target_tokens(&tokens).ok())
+            .unwrap_or_default()
+    }
 }
 
 /// Generate a Daemon install command
 ///
-/// The single read path for daemon install artifacts, shaped by `purpose`.
+/// A pure, idempotent builder — it never mints or persists anything. The api key in an `install`
+/// command is a placeholder (`<API_KEY>`) the caller substitutes from the plaintext it holds; a
+/// `reconfigure` command carries no key at all. Minting is a separate mutation
+/// (`POST /provision`), so regenerating a command here (advanced-setting change, OS switch, the
+/// Details reconfigure view) never rotates the daemon's key.
 ///
-/// `sync` returns an idempotent command that re-asserts the server-held connectivity config on
-/// an already-installed daemon — the port the server dials for ServerPoll, the server url for
-/// DaemonPoll. It is safe to run repeatedly and safe to display persistently, because it
-/// carries no api key and so leaves the daemon's existing credential in place.
-///
-/// Purposes that embed the api key (`initial`, `rekey`) cannot be served here: the plaintext
-/// exists only at the moment it is minted, so those artifacts come back from `POST /provision`.
+/// The server derives the exact command shape from the record: DaemonPoll vs ServerPoll for the
+/// flags, and — for `install` — whether the daemon has checked in (`last_seen`) to decide between
+/// a first-install and a minimal re-key command.
 #[utoipa::path(
     get,
     path = "/{id}/install-command",
@@ -237,7 +285,6 @@ pub struct InstallCommandQuery {
     params(("id" = Uuid, Path, description = "daemon ID"), InstallCommandQuery),
     responses(
         (status = 200, description = "Install command", body = ApiResponse<crate::server::daemons::r#impl::install_artifacts::InstallArtifacts>),
-        (status = 400, description = "Purpose requires a credential", body = ApiErrorResponse),
         (status = 404, description = "daemon not found", body = ApiErrorResponse),
     ),
     security(("user_api_key" = []), ("session" = []))
@@ -251,12 +298,6 @@ async fn get_install_command(
 {
     let network_ids = auth.network_ids();
 
-    if query.purpose.embeds_credential() {
-        return Err(ApiError::bad_request(
-            "This purpose embeds the daemon's api key, which only exists when it is minted. Provision the daemon to obtain it.",
-        ));
-    }
-
     let daemon = Daemon::get_service(&state)
         .get_by_id(&id)
         .await?
@@ -268,13 +309,12 @@ async fn get_install_command(
         "get install command",
     )?;
 
+    let install_config = query.install_config();
     let artifacts = crate::server::daemons::r#impl::install_artifacts::build_install_artifacts(
         &state.config.public_url,
         &daemon,
-        // Guarded above: no credential-embedding purpose reaches here.
-        "",
-        None,
-        &[],
+        Some(&install_config),
+        &query.credential_refs(),
         query.purpose,
     );
 
@@ -975,15 +1015,6 @@ async fn provision_daemon(
         None => None,
     };
 
-    // A daemon that has already checked in is installed, so its command only needs to carry the
-    // new credential — `install` layers CLI over its existing config.json. One that hasn't (a
-    // fresh provision, or the create flow re-issuing artifacts after an advanced-settings
-    // change) still needs a full first-install command.
-    let purpose = match &existing_daemon {
-        Some(daemon) if daemon.base.last_seen.is_some() => ArtifactPurpose::Rekey,
-        _ => ArtifactPurpose::Initial,
-    };
-
     // Identity is server-owned. On the re-provision path it comes from the record — the
     // request's name/network/mode/url are ignored, since those are immutable post-provision
     // and the record already holds whatever the daemon last reported.
@@ -1165,18 +1196,9 @@ async fn provision_daemon(
     let policy = DaemonVersionPolicy::default();
     let version_status = policy.evaluate(created_daemon.base.version.as_ref());
 
-    // Assemble install artifacts server-side (single source of truth) while we still have
-    // the api-key plaintext. The command embeds it (shown once); the MSI link does not.
-    let install_artifacts =
-        crate::server::daemons::r#impl::install_artifacts::build_install_artifacts(
-            &state.config.public_url,
-            &created_daemon,
-            &plaintext,
-            request.install_config.as_ref(),
-            &request.seed_credential_refs,
-            purpose,
-        );
-
+    // Install commands are not built here — the caller fetches them from the install-command
+    // endpoint (which fills in the key returned below). That keeps a display-only regenerate
+    // from re-minting the key.
     Ok(Json(ApiResponse::success(ProvisionDaemonResponse {
         daemon: DaemonResponse {
             id: created_daemon.id,
@@ -1188,7 +1210,6 @@ async fn provision_daemon(
             interfaced_subnet_ids: Vec::new(),
         },
         daemon_api_key: plaintext,
-        install_artifacts,
     })))
 }
 

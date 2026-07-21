@@ -16,8 +16,11 @@
 	 */
 	import { KeyRound } from 'lucide-svelte';
 	import type { Daemon } from '$lib/features/daemons/types/base';
-	import { useProvisionDaemonMutation } from '$lib/features/daemons/queries';
-	import type { ProvisionDaemonResponse } from '$lib/features/daemons/types/base';
+	import {
+		useProvisionDaemonMutation,
+		useDaemonInstallCommandQuery
+	} from '$lib/features/daemons/queries';
+	import { fillInstallArtifactsKey } from '$lib/features/daemons/types/base';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import CodeContainer from '$lib/shared/components/data/CodeContainer.svelte';
@@ -44,17 +47,29 @@
 
 	let isServerPoll = $derived(daemon.mode === 'server_poll');
 	let associating = $state(false);
-	let result = $state<ProvisionDaemonResponse | null>(null);
 	let selectedOS = $state<DaemonOS>('linux');
 
-	let command = $derived(
-		result?.install_artifacts.commands.find((c) => c.platform === selectedOS)?.command ?? ''
+	// The minted key, held only after the user associates. The install command comes from the
+	// builder (with an <API_KEY> placeholder); we substitute this key into it for display.
+	let mintedKey = $state<string | null>(null);
+
+	const installCommandQuery = useDaemonInstallCommandQuery(
+		() => daemon.id,
+		() => ({ purpose: 'install' }),
+		{ enabled: () => mintedKey != null }
 	);
+
+	let command = $derived.by(() => {
+		if (!mintedKey || !installCommandQuery.data) return '';
+		const filled = fillInstallArtifactsKey(installCommandQuery.data, mintedKey);
+		return filled.commands.find((c) => c.platform === selectedOS)?.command ?? '';
+	});
 
 	async function associate() {
 		associating = true;
 		try {
-			result = await provisionMutation.mutateAsync({ daemon_id: daemon.id });
+			const result = await provisionMutation.mutateAsync({ daemon_id: daemon.id });
+			mintedKey = result.daemon_api_key;
 		} catch {
 			pushError(daemons_associateKeyFailed());
 		} finally {
@@ -63,7 +78,7 @@
 	}
 </script>
 
-{#if result}
+{#if mintedKey}
 	<div class="space-y-4">
 		<InlineInfo
 			title={daemons_reconfigureTitle()}

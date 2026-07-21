@@ -420,25 +420,26 @@ pub struct ProvisionDaemonRequest {
     /// discovery run. References only — never secret material. Empty by default.
     #[serde(default)]
     pub seed_credential_refs: Vec<IntegrationTarget>,
-    /// Re-provision this existing daemon instead of creating a new record: mint a fresh
-    /// 1:1 key for it and re-issue its install artifacts, keeping its host, discovery jobs
-    /// and history. Used to re-emit artifacts after install config changes, and to give a
-    /// legacy daemon (no bound key) a dedicated one. When set, `name`/`network_id`/`mode`/
-    /// `url` are ignored — those come from the existing record.
+    /// Mint a fresh 1:1 key for this existing daemon instead of creating a new record,
+    /// keeping its host, discovery jobs and history. Used to give a legacy daemon (no bound
+    /// key) a dedicated one. When set, `name`/`network_id`/`mode`/`url` are ignored — those
+    /// come from the existing record.
     ///
     /// Only accepted for a daemon that has never checked in or has no bound key; a live
     /// provisioned daemon is refused, since it has no way to learn the new key.
+    ///
+    /// Note: install commands are not generated here — call the install-command endpoint,
+    /// which builds them idempotently and fills in the key this response returns.
     #[serde(default)]
     pub daemon_id: Option<Uuid>,
-    /// Advanced daemon settings to bake into the emitted install artifacts (log level,
-    /// interfaces, connectivity, …). Server-controlled and secret fields on this type are
-    /// not deserializable, so only the advanced settings can be set here.
-    #[serde(default)]
-    pub install_config: Option<crate::daemon::shared::config::DaemonArgs>,
 }
 
 /// Response from provisioning a daemon.
 /// Contains the daemon record and the API key (shown only once).
+///
+/// Install commands are deliberately not here — fetch them from the install-command endpoint,
+/// which builds them idempotently and fills in this key. That keeps a display-only regenerate
+/// (advanced-setting change, OS switch) from re-minting the key.
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ProvisionDaemonResponse {
     /// The created daemon record (with version status).
@@ -446,8 +447,6 @@ pub struct ProvisionDaemonResponse {
     /// The API key (plaintext) for daemon authentication.
     /// This is shown only once - store it securely.
     pub daemon_api_key: String,
-    /// Ready-to-run install commands + MSI download link, assembled server-side.
-    pub install_artifacts: crate::server::daemons::r#impl::install_artifacts::InstallArtifacts,
 }
 
 /// Request to test reachability of a daemon URL.
