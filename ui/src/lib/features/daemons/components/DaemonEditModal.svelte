@@ -8,7 +8,7 @@
 	 */
 	import { createForm } from '@tanstack/svelte-form';
 	import { submitForm } from '$lib/shared/components/forms/form-context';
-	import { required, max } from '$lib/shared/components/forms/validators';
+	import { required } from '$lib/shared/components/forms/validators';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import type { ModalTab } from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
@@ -57,6 +57,7 @@
 		daemons_config_modeImmutable,
 		daemons_config_portHelpServerPoll,
 		daemons_legacyNameFromDaemon,
+		daemons_nameReadOnlyHelp,
 		daemons_reconfigureDockerHint,
 		daemons_reconfigureSectionHelp,
 		daemons_reconfigureSectionTitle,
@@ -258,35 +259,33 @@
 			<div class="min-h-0 flex-1 overflow-auto p-6">
 				<!-- Details -->
 				<div class="space-y-4" class:hidden={activeTab !== 'details'}>
-					<detailsForm.Field
-						name="name"
-						validators={{ onBlur: ({ value }) => required(value) || max(100)(value) }}
-					>
-						{#snippet children(field)}
-							<TextInput
-								label={common_name()}
-								id="daemon-name"
-								{field}
-								disabled={isLegacy}
-								helpText={isLegacy ? daemons_legacyNameFromDaemon() : ''}
-								required
-							/>
-						{/snippet}
-					</detailsForm.Field>
+					<!-- Name and mode are both read-only, so they share a row. Name is the
+					     server-authoritative label (reaches the daemon via its handshake, not a
+					     command); mode is fixed at install and decides how daemon and server reach
+					     each other. Neither is a form value the user can change here. -->
+					<div class="grid grid-cols-2 gap-4">
+						<detailsForm.Field name="name">
+							{#snippet children(field)}
+								<TextInput
+									label={common_name()}
+									id="daemon-name"
+									{field}
+									disabled
+									helpText={isLegacy ? daemons_legacyNameFromDaemon() : daemons_nameReadOnlyHelp()}
+								/>
+							{/snippet}
+						</detailsForm.Field>
 
-					<!-- Mode is fixed at install time: it decides how the daemon and server reach
-					     each other, and the daemon's own handshake would overwrite any change.
-					     Shown (not hidden) so the record reads completely, but never editable —
-					     it is not a form value, so it is a plain disabled control. -->
-					<div class="space-y-2">
-						<label for="daemon-mode" class="text-secondary block text-sm font-medium">
-							{daemons_config_mode()}
-						</label>
-						<select id="daemon-mode" class="input-field" disabled value={daemon.mode}>
-							<option value="daemon_poll">daemon_poll</option>
-							<option value="server_poll">server_poll</option>
-						</select>
-						<p class="text-tertiary text-xs">{daemons_config_modeImmutable()}</p>
+						<div class="space-y-2">
+							<label for="daemon-mode" class="text-secondary block text-sm font-medium">
+								{daemons_config_mode()}
+							</label>
+							<select id="daemon-mode" class="input-field" disabled value={daemon.mode}>
+								<option value="daemon_poll">daemon_poll</option>
+								<option value="server_poll">server_poll</option>
+							</select>
+							<p class="text-tertiary text-xs">{daemons_config_modeImmutable()}</p>
+						</div>
 					</div>
 
 					{#if isServerPoll}
