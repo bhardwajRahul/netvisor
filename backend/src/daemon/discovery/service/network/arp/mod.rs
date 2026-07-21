@@ -37,6 +37,7 @@ pub use types::ArpScanResult;
 ///
 /// # Returns
 /// Channel receiver that yields responsive hosts as they're discovered
+#[allow(clippy::too_many_arguments)]
 pub fn scan_subnet(
     interface: &NetworkInterface,
     source_ip: Ipv4Addr,
@@ -45,6 +46,7 @@ pub fn scan_subnet(
     use_npcap: bool,
     retries: u32,
     rate_pps: u32,
+    packets_sent: std::sync::Arc<std::sync::atomic::AtomicU64>,
 ) -> Result<std::sync::mpsc::Receiver<ArpScanResult>> {
     #[cfg(target_family = "windows")]
     {
@@ -56,6 +58,7 @@ pub fn scan_subnet(
                 targets.clone(),
                 retries,
                 rate_pps,
+                packets_sent,
             ) {
                 Ok(rx) => {
                     tracing::debug!("Npcap broadcast ARP scan started");
@@ -70,13 +73,24 @@ pub fn scan_subnet(
                 }
             }
         }
+        // SendARP path can't report per-packet progress; the caller falls back to its
+        // time-based ARP estimate when the counter stays at zero.
+        let _ = &packets_sent;
         return sendarp::scan_subnet_streaming(targets);
     }
 
     #[cfg(not(target_family = "windows"))]
     {
         let _ = use_npcap; // unused on non-Windows
-        broadcast::scan_subnet(interface, source_ip, source_mac, targets, retries, rate_pps)
+        broadcast::scan_subnet(
+            interface,
+            source_ip,
+            source_mac,
+            targets,
+            retries,
+            rate_pps,
+            packets_sent,
+        )
     }
 }
 
