@@ -26,7 +26,6 @@
 		useUpdateDaemonMutation,
 		useDaemonInstallCommandQuery
 	} from '$lib/features/daemons/queries';
-	import CollapsibleCard from '$lib/shared/components/data/CollapsibleCard.svelte';
 	import CodeContainer from '$lib/shared/components/data/CodeContainer.svelte';
 	import OsSelector from './OsSelector.svelte';
 	import {
@@ -112,8 +111,16 @@
 		{ enabled: () => isOpen && daemon?.last_seen != null }
 	);
 	let syncOs = $state<DaemonOS>('linux');
+	let syncLinuxMethod = $state<'binary' | 'docker'>('binary');
+	// Docker is another install target keyed as `docker` in the commands list.
+	let syncPlatform = $derived(
+		syncOs === 'linux' && syncLinuxMethod === 'docker' ? 'docker' : syncOs
+	);
+	let syncLanguage = $derived(
+		syncPlatform === 'docker' ? 'yaml' : syncOs === 'windows' ? 'powershell' : 'bash'
+	);
 	let syncCommand = $derived(
-		installCommandQuery.data?.commands.find((c) => c.platform === syncOs)?.command ?? ''
+		installCommandQuery.data?.commands.find((c) => c.platform === syncPlatform)?.command ?? ''
 	);
 
 	const DEFAULT_DAEMON_PORT = 60073;
@@ -341,9 +348,14 @@
 						<div class="space-y-3 card">
 							<p class="text-secondary text-sm">{daemons_reconfigureSectionTitle()}</p>
 							<p class="text-tertiary text-sm">{daemons_reconfigureSectionHelp()}</p>
-							<OsSelector selectedOS={syncOs} onOsSelect={(os) => (syncOs = os)}>
+							<OsSelector
+								selectedOS={syncOs}
+								onOsSelect={(os) => (syncOs = os)}
+								linuxMethod={syncLinuxMethod}
+								onLinuxMethodChange={(method) => (syncLinuxMethod = method)}
+							>
 								<CodeContainer
-									language={syncOs === 'windows' ? 'powershell' : 'bash'}
+									language={syncLanguage}
 									expandable={false}
 									maxHeight=""
 									code={syncCommand}
