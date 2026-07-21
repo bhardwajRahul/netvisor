@@ -1,6 +1,5 @@
 import { fieldDefs } from './config';
 import type { Daemon } from './types/base';
-import type { components } from '$lib/api/schema';
 import type { FormValue } from '$lib/shared/components/forms/validators';
 import type { TagProps } from '$lib/shared/components/data/types';
 import { toColor } from '$lib/shared/utils/styling';
@@ -110,19 +109,30 @@ export function buildDefaultValues(
 }
 
 /**
- * Collect the advanced daemon settings to send with a provision request, so the server can
- * bake them into the install command and the MSI pre-fill filename.
+ * The client-settable advanced daemon settings, keyed by their daemon config-field names. Fed to
+ * the install-command builder, which folds them into the emitted command + MSI filename.
+ */
+export interface AdvancedInstallConfig {
+	log_level?: string;
+	log_file?: string;
+	heartbeat_interval?: number;
+	bind_address?: string;
+	allow_self_signed_certs?: boolean;
+	accept_invalid_scan_certs?: boolean;
+	interfaces?: string[];
+}
+
+/**
+ * Collect the advanced daemon settings from the wizard form.
  *
- * Only advanced fields (those with a `section`) are included — everything else the server
- * owns and derives from the daemon record. Values equal to their default are skipped, which
- * matches `buildRunCommand` and matters more here: the whole MSI config has to fit inside a
- * 255-character filename.
- *
- * The key names are the Rust field names on `DaemonArgs`, which is the wire type.
+ * Only advanced fields (those with a `section`) are included — everything else the server owns
+ * and derives from the daemon record. Values equal to their default are skipped, which matches
+ * `buildRunCommand` and matters more here: the whole MSI config has to fit inside a 255-character
+ * filename.
  */
 export function buildInstallConfig(
 	values: Record<string, string | number | boolean>
-): components['schemas']['DaemonArgs'] {
+): AdvancedInstallConfig {
 	const config: Record<string, string | number | boolean | string[]> = {};
 
 	for (const def of fieldDefs) {
@@ -133,7 +143,7 @@ export function buildInstallConfig(
 		if (value === def.defaultValue) continue;
 		if (!fieldPassesValidation(def, value)) continue;
 
-		// `--interfaces` is comma-delimited on the CLI but a list on the wire.
+		// `--interfaces` is comma-delimited on the CLI but a list here.
 		if (def.id === 'interfaces') {
 			const list = String(value)
 				.split(',')
@@ -146,7 +156,7 @@ export function buildInstallConfig(
 		config[camelToSnake(def.id)] = value;
 	}
 
-	return config as components['schemas']['DaemonArgs'];
+	return config as AdvancedInstallConfig;
 }
 
 function camelToSnake(id: string): string {

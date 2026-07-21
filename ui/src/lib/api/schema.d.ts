@@ -1258,15 +1258,15 @@ export interface paths {
         };
         /**
          * Generate daemon install command
-         * @description The single read path for daemon install artifacts, shaped by `purpose`.
+         * @description A pure, idempotent builder — it never mints or persists anything. The api key in an `install`
+         *     command is a placeholder (`<API_KEY>`) the caller substitutes from the plaintext it holds; a
+         *     `reconfigure` command carries no key at all. Minting is a separate mutation
+         *     (`POST /provision`), so regenerating a command here (advanced-setting change, OS switch, the
+         *     Details reconfigure view) never rotates the daemon's key.
          *
-         *     `sync` returns an idempotent command that re-asserts the server-held connectivity config on
-         *     an already-installed daemon — the port the server dials for ServerPoll, the server url for
-         *     DaemonPoll. It is safe to run repeatedly and safe to display persistently, because it
-         *     carries no api key and so leaves the daemon's existing credential in place.
-         *
-         *     Purposes that embed the api key (`initial`, `rekey`) cannot be served here: the plaintext
-         *     exists only at the moment it is minted, so those artifacts come back from `POST /provision`.
+         *     The server derives the exact command shape from the record: DaemonPoll vs ServerPoll for the
+         *     flags, and — for `install` — whether the daemon has checked in (`last_seen`) to decide between
+         *     a first-install and a minimal re-key command.
          */
         get: operations["get_daemon_install_command"];
         put?: never;
@@ -3104,19 +3104,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-20T19:14:14.117051Z",
+             *       "created_at": "2026-07-21T17:56:50.585350Z",
              *       "first_discovery_id": null,
-             *       "id": "bf8c217e-a972-45ed-bf4f-1339c9aad7f9",
+             *       "id": "39f8cf2a-2aa7-486e-98a5-f0c3afbc0db6",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-20T19:14:14.117051Z",
+             *       "last_seen_at": "2026-07-21T17:56:50.585350Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-20T19:14:14.117051Z",
-             *       "valid_from": "2026-07-20T19:14:14.117051Z",
+             *       "updated_at": "2026-07-21T17:56:50.585350Z",
+             *       "valid_from": "2026-07-21T17:56:50.585350Z",
              *       "valid_to": null
              *     }
              */
@@ -3481,19 +3481,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-20T19:14:14.102162Z",
+             *               "created_at": "2026-07-21T17:56:50.563143Z",
              *               "first_discovery_id": null,
-             *               "id": "e3946374-5e75-46bb-bec5-44ed11e25902",
+             *               "id": "a0cd6405-878e-492a-a054-fa4d97c8e6dd",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-20T19:14:14.102162Z",
+             *               "last_seen_at": "2026-07-21T17:56:50.563143Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-20T19:14:14.102162Z",
-             *               "valid_from": "2026-07-20T19:14:14.102162Z",
+             *               "updated_at": "2026-07-21T17:56:50.563143Z",
+             *               "valid_from": "2026-07-21T17:56:50.563143Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3507,7 +3507,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Jitsi Meet",
+             *           "service_definition": "Workstation",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3788,6 +3788,10 @@ export interface components {
             /**
              * @description Response from provisioning a daemon.
              *     Contains the daemon record and the API key (shown only once).
+             *
+             *     Install commands are deliberately not here — fetch them from the install-command endpoint,
+             *     which builds them idempotently and fills in this key. That keeps a display-only regenerate
+             *     (advanced-setting change, OS switch) from re-minting the key.
              */
             data?: {
                 /** @description The created daemon record (with version status). */
@@ -3797,8 +3801,6 @@ export interface components {
                  *     This is shown only once - store it securely.
                  */
                 daemon_api_key: string;
-                /** @description Ready-to-run install commands + MSI download link, assembled server-side. */
-                install_artifacts: components["schemas"]["InstallArtifacts"];
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3912,19 +3914,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-20T19:14:14.112017Z",
+             *           "created_at": "2026-07-21T17:56:50.578363Z",
              *           "first_discovery_id": null,
-             *           "id": "51f0c823-3b9c-4c68-a280-312e10a53e70",
+             *           "id": "510c8fcb-6743-4577-97fb-7feb45b1a82a",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-20T19:14:14.112017Z",
+             *           "last_seen_at": "2026-07-21T17:56:50.578363Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-20T19:14:14.112017Z",
-             *           "valid_from": "2026-07-20T19:14:14.112017Z",
+             *           "updated_at": "2026-07-21T17:56:50.578363Z",
+             *           "valid_from": "2026-07-21T17:56:50.578363Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3938,7 +3940,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Jitsi Meet",
+             *       "service_definition": "Workstation",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4403,14 +4405,6 @@ export interface components {
             meta: components["schemas"]["ApiMeta"];
             success: boolean;
         };
-        /**
-         * @description What the emitted artifacts are *for*. A command's correct contents depend on whether the
-         *     daemon is being stood up from nothing or adjusted in place — `scanopy-daemon install` layers
-         *     CLI flags over the existing `config.json`, so anything omitted keeps its current value, and
-         *     an installed daemon should only be told what is actually changing.
-         * @enum {string}
-         */
-        ArtifactPurpose: "initial" | "rekey" | "sync";
         BillingPlan: (components["schemas"]["PlanConfig"] & {
             /** @enum {string} */
             type: "Community";
@@ -4450,19 +4444,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-20T19:14:14.102450Z",
+         *       "created_at": "2026-07-21T17:56:50.563654Z",
          *       "first_discovery_id": null,
-         *       "id": "3a8ed39c-753d-4ce4-8ad0-a567a2a77c2c",
+         *       "id": "e70c5d30-7b2f-42a7-a76b-7ac783e84e67",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-20T19:14:14.102450Z",
+         *       "last_seen_at": "2026-07-21T17:56:50.563654Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-20T19:14:14.102450Z",
-         *       "valid_from": "2026-07-20T19:14:14.102450Z",
+         *       "updated_at": "2026-07-21T17:56:50.563654Z",
+         *       "valid_from": "2026-07-21T17:56:50.563654Z",
          *       "valid_to": null
          *     }
          */
@@ -4677,7 +4671,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Jitsi Meet",
+         *           "service_definition": "Workstation",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4885,42 +4879,6 @@ export interface components {
         DaemonApiKeyResponse: {
             api_key: components["schemas"]["DaemonApiKey"];
             key: string;
-        };
-        /**
-         * @description Connection and identity flags shared by the bare-daemon run and the `install` subcommand.
-         *     This is the single input surface for daemon configuration — the installer feeds these same
-         *     flags to [`AppConfig::load`], so there is no second config path.
-         *
-         *     It doubles as the **API wire type** for install configuration: the server accepts one of these
-         *     on `POST /daemons/provision` and emits it into the install command and the MSI filename hash
-         *     (see [`DaemonArgs::install_config_pairs`]). Rather than mirroring these fields into a separate
-         *     request struct — which would be a third copy of a list already duplicated into
-         *     `ui/src/lib/features/daemons/config.ts` — the struct is reused directly.
-         *
-         *     Every field that the *server* controls (identity, mode, connection target) or that is a secret
-         *     is `#[serde(skip)]`, so it can never be set from the wire while remaining a normal CLI flag.
-         *     The deserializable set is therefore exactly the advanced daemon settings the UI exposes; the
-         *     server fills the rest in from the daemon record before emitting. `serde` and `clap` attributes
-         *     are independent, so this does not affect CLI parsing.
-         */
-        DaemonArgs: {
-            /** @description Accept invalid TLS certificates when scanning endpoints. Enabled by default since scanners probe arbitrary internal services. */
-            accept_invalid_scan_certs?: boolean | null;
-            /** @description Allow self-signed certs for daemon -> server connections */
-            allow_self_signed_certs?: boolean | null;
-            /** @description IP address to bind daemon to */
-            bind_address?: string | null;
-            /**
-             * Format: int64
-             * @description Seconds between heartbeat updates to the server
-             */
-            heartbeat_interval?: number | null;
-            /** @description Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces */
-            interfaces?: string[] | null;
-            /** @description Path to log file. Defaults to platform-specific path. Set to "none" to disable file logging. */
-            log_file?: string | null;
-            /** @description Logging verbosity */
-            log_level?: string | null;
         };
         DaemonBase: {
             /**
@@ -5772,19 +5730,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-20T19:14:14.101806Z",
+         *               "created_at": "2026-07-21T17:56:50.562265Z",
          *               "first_discovery_id": null,
-         *               "id": "50b66eb9-5c73-41d5-8467-ad7ca04c3853",
+         *               "id": "653d0d4a-05b7-4713-96e8-66419fd59872",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-20T19:14:14.101806Z",
+         *               "last_seen_at": "2026-07-21T17:56:50.562265Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-20T19:14:14.101806Z",
-         *               "valid_from": "2026-07-20T19:14:14.101806Z",
+         *               "updated_at": "2026-07-21T17:56:50.562265Z",
+         *               "valid_from": "2026-07-21T17:56:50.562265Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5798,7 +5756,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Jitsi Meet",
+         *           "service_definition": "Workstation",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6033,6 +5991,18 @@ export interface components {
              */
             msi_omitted_config_keys: string[];
         };
+        /**
+         * @description What the caller wants the command to do — the one axis that actually varies.
+         *
+         *     `install` brings a daemon up (or re-keys a legacy one): it carries the api-key placeholder,
+         *     fetches the binary, and spells out the connectivity + advanced config. `reconfigure` adjusts
+         *     an already-installed daemon in place: no key, no fetch, just the server-held connectivity —
+         *     `scanopy-daemon install` layers it over the existing `config.json`. There is no third case:
+         *     re-asserting the record's (correct) values on an installed daemon is harmless, so a first
+         *     install and a re-key are the same command.
+         * @enum {string}
+         */
+        InstallCommandKind: "install" | "reconfigure";
         /**
          * @description Per-daemon integration targeting, stored on the `Discovery` entity and delivered via the
          *     init command at registration. Each entry references exactly one stored credential and says
@@ -7042,17 +7012,18 @@ export interface components {
         ProvisionDaemonRequest: {
             /**
              * Format: uuid
-             * @description Re-provision this existing daemon instead of creating a new record: mint a fresh
-             *     1:1 key for it and re-issue its install artifacts, keeping its host, discovery jobs
-             *     and history. Used to re-emit artifacts after install config changes, and to give a
-             *     legacy daemon (no bound key) a dedicated one. When set, `name`/`network_id`/`mode`/
-             *     `url` are ignored — those come from the existing record.
+             * @description Mint a fresh 1:1 key for this existing daemon instead of creating a new record,
+             *     keeping its host, discovery jobs and history. Used to give a legacy daemon (no bound
+             *     key) a dedicated one. When set, `name`/`network_id`/`mode`/`url` are ignored — those
+             *     come from the existing record.
              *
              *     Only accepted for a daemon that has never checked in or has no bound key; a live
              *     provisioned daemon is refused, since it has no way to learn the new key.
+             *
+             *     Note: install commands are not generated here — call the install-command endpoint,
+             *     which builds them idempotently and fills in the key this response returns.
              */
             daemon_id?: string | null;
-            install_config?: null | components["schemas"]["DaemonArgs"];
             /**
              * @description How the daemon communicates with the server. Defaults to DaemonPoll
              *     (the daemon dials out) for forward-compat with older clients.
@@ -7083,6 +7054,10 @@ export interface components {
         /**
          * @description Response from provisioning a daemon.
          *     Contains the daemon record and the API key (shown only once).
+         *
+         *     Install commands are deliberately not here — fetch them from the install-command endpoint,
+         *     which builds them idempotently and fills in this key. That keeps a display-only regenerate
+         *     (advanced-setting change, OS switch) from re-minting the key.
          */
         ProvisionDaemonResponse: {
             /** @description The created daemon record (with version status). */
@@ -7092,8 +7067,6 @@ export interface components {
              *     This is shown only once - store it securely.
              */
             daemon_api_key: string;
-            /** @description Ready-to-run install commands + MSI download link, assembled server-side. */
-            install_artifacts: components["schemas"]["InstallArtifacts"];
         };
         ProxmoxVirtualization: {
             /** Format: uuid */
@@ -7370,19 +7343,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-20T19:14:14.102387Z",
+         *           "created_at": "2026-07-21T17:56:50.563537Z",
          *           "first_discovery_id": null,
-         *           "id": "10f32ebd-430e-4852-a5af-5e6bb5d7acab",
+         *           "id": "7163c208-ed2b-4f28-bfcf-fead75d0b01d",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-20T19:14:14.102387Z",
+         *           "last_seen_at": "2026-07-21T17:56:50.563537Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-20T19:14:14.102387Z",
-         *           "valid_from": "2026-07-20T19:14:14.102387Z",
+         *           "updated_at": "2026-07-21T17:56:50.563537Z",
+         *           "valid_from": "2026-07-21T17:56:50.563537Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7396,7 +7369,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Jitsi Meet",
+         *       "service_definition": "Workstation",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7819,7 +7792,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "2adf6a79-d92f-4f35-901f-23647e59a46d",
+             *           "id": "1e2dad67-4b50-4239-96f9-d87d9014b782",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7829,23 +7802,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "5d4f7fe5-97ce-4a19-abb6-a4dcd661d5f3",
+             *           "id": "9a70b9f5-595d-4862-a259-621fbc2f9c19",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "65c7a885-1a88-40e3-b8e7-b0b1f3a699df",
+             *           "id": "ead7a326-53e2-433d-9226-7bb768c7f467",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "a719841d-7b15-476c-87a8-11fbfbe84347",
+             *           "id": "4c4b3f24-ec4c-47bc-81c8-0bb766b00a82",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "5d4f7fe5-97ce-4a19-abb6-a4dcd661d5f3",
+             *           "id": "9a70b9f5-595d-4862-a259-621fbc2f9c19",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7857,19 +7830,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "561cc51c-98fa-474f-bf7e-8896e7a6c8fd",
+             *         "id": "74c07fa2-41a3-43f7-b29d-544ae085415e",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "13d664a8-7310-46f2-91ca-bfd222c54b6f",
+             *         "id": "16d8633b-7570-470e-90f2-de1fbaab53e7",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "f8396b12-548e-4395-8d70-bef0e636c689",
+             *         "id": "1e00bfce-f635-4758-980d-b81dd74559b6",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "050e9165-9658-411d-a99b-ea12d4d80595",
+             *         "id": "6ddc4d93-32ac-4a92-a8f8-404cc9778d37",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7887,7 +7860,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "acff5273-4a44-476d-9e19-77629033c183",
+             *         "id": "95909d27-ea4d-4919-b549-fbfbbb4208b6",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7896,15 +7869,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "93f634c4-1923-42c4-926e-d5cc6290c100",
+             *         "id": "6331f471-8eb0-4415-905d-c7f33b299541",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "3e284090-2c95-40e6-8d39-e1edc30501bd",
+             *         "id": "2d27e082-db45-41a6-b8ed-0f0cbbd13be7",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "a083384b-5872-4269-ba86-faac0add6f48",
+             *         "id": "89dd8d46-5433-4ab5-8b3d-968ec96d6491",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -10901,11 +10874,18 @@ export interface operations {
     get_daemon_install_command: {
         parameters: {
             query: {
-                /**
-                 * @description Which command to generate. Only credential-free purposes can be served here — see
-                 *     [`ArtifactPurpose::embeds_credential`].
-                 */
-                purpose: components["schemas"]["ArtifactPurpose"];
+                /** @description `install` (with the api-key placeholder) or `reconfigure` (credential-free). */
+                purpose: components["schemas"]["InstallCommandKind"];
+                log_level?: string | null;
+                log_file?: string | null;
+                heartbeat_interval?: number | null;
+                bind_address?: string | null;
+                allow_self_signed_certs?: boolean | null;
+                accept_invalid_scan_certs?: boolean | null;
+                /** @description Comma-separated interface names. */
+                interfaces?: string | null;
+                /** @description Comma-separated credential/integration tokens (for the docker-compose env). */
+                credential_refs?: string | null;
             };
             header?: never;
             path: {
@@ -10923,15 +10903,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_InstallArtifacts"];
-                };
-            };
-            /** @description Purpose requires a credential */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
             /** @description daemon not found */

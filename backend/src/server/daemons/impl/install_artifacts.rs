@@ -1,12 +1,12 @@
 //! Server-side assembly of daemon install artifacts.
 //!
-//! The server is the single source of truth for the install command (it knows its own
-//! public URL and the canonical two-flag format), so the provision response hands back
-//! ready-to-run commands instead of the UI/MCP/email each re-deriving them. Commands that
-//! embed the api key are built here at provision time (the plaintext is only available
-//! then, and never stored for DaemonPoll). The MSI itself is a static release asset the UI
-//! links to directly; only its per-daemon pre-fill filename ([`encode_msi_filename`], no
-//! secret) travels in the response.
+//! The server is the single source of truth for the install command — it knows its own public
+//! URL and the canonical flag format, so the UI/MCP/email don't each re-derive them. This is a
+//! pure builder: it never mints or persists anything. The daemon's api key is emitted as the
+//! [`API_KEY_PLACEHOLDER`] and the frontend substitutes the plaintext it holds from the
+//! provision response (the plaintext exists only at mint time, and is never stored for
+//! DaemonPoll). The MSI is a static release asset the UI links to directly; only its per-daemon
+//! pre-fill filename ([`encode_msi_filename`], no secret) is built here.
 
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::{Deserialize, Serialize};
@@ -56,37 +56,36 @@ pub struct InstallArtifacts {
     pub docker_compose: Option<String>,
 }
 
-/// What the emitted artifacts are *for*. A command's correct contents depend on whether the
-/// daemon is being stood up from nothing or adjusted in place — `scanopy-daemon install` layers
-/// CLI flags over the existing `config.json`, so anything omitted keeps its current value, and
-/// an installed daemon should only be told what is actually changing.
+/// What the caller wants the command to do — the one axis that actually varies.
+///
+/// `install` brings a daemon up (or re-keys a legacy one): it carries the api-key placeholder,
+/// fetches the binary, and spells out the connectivity + advanced config. `reconfigure` adjusts
+/// an already-installed daemon in place: no key, no fetch, just the server-held connectivity —
+/// `scanopy-daemon install` layers it over the existing `config.json`. There is no third case:
+/// re-asserting the record's (correct) values on an installed daemon is harmless, so a first
+/// install and a re-key are the same command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ArtifactPurpose {
-    /// First install: the command has to carry everything needed to bring the daemon up.
-    Initial,
-    /// Re-key an already-installed daemon. Only the credential — the canonical two-flag form.
-    /// Carrying config here would silently re-apply server-side edits the operator never asked
-    /// to push, which is what made a Details-tab port edit show up in a re-key command.
-    Rekey,
-    /// Re-assert the server-held connectivity config on an installed daemon, with no credential.
-    /// Safe to display persistently and to run repeatedly.
-    Sync,
+pub enum InstallCommandKind {
+    Install,
+    Reconfigure,
 }
 
-impl ArtifactPurpose {
-    /// Whether the emitted command embeds the daemon's api key.
+impl InstallCommandKind {
+    /// Whether the emitted command carries the daemon's api key.
     ///
-    /// The plaintext key exists only at the moment it is minted (it is never stored for
-    /// DaemonPoll), so a credential-embedding purpose can only be served from the provision
-    /// endpoint that mints it — never from a plain read.
-    pub fn embeds_credential(&self) -> bool {
-        match self {
-            Self::Initial | Self::Rekey => true,
-            Self::Sync => false,
-        }
+    /// The plaintext is never known here — the builder emits the [`API_KEY_PLACEHOLDER`] and the
+    /// frontend fills it from the key it minted.
+    pub fn embeds_key(&self) -> bool {
+        matches!(self, Self::Install)
     }
 }
+
+/// Stand-in for the daemon's api key in an emitted command. The builder never mints, so it
+/// cannot know the plaintext; it emits this token and the frontend substitutes the key it holds
+/// from the provision/associate response. Keeps command *format* server-authored while the one
+/// secret is handled exactly once, at mint time.
+pub const API_KEY_PLACEHOLDER: &str = "<API_KEY>";
 
 /// Resolve the daemon config to emit for a given purpose, with every server-controlled field
 /// taken from the daemon record.
@@ -98,26 +97,25 @@ impl ArtifactPurpose {
 fn install_args(
     public_url: &str,
     daemon: &Daemon,
-    api_key: &str,
     install_config: Option<&DaemonArgs>,
-    purpose: ArtifactPurpose,
+    kind: InstallCommandKind,
 ) -> DaemonArgs {
-    // Only a first install seeds from the caller's advanced settings; an installed daemon keeps
-    // whatever is already in its config.json.
-    let mut args = match purpose {
-        ArtifactPurpose::Initial => install_config.cloned().unwrap_or_default(),
-        ArtifactPurpose::Rekey | ArtifactPurpose::Sync => DaemonArgs::default(),
+    // Only an install seeds from the caller's advanced settings; a reconfigure keeps whatever is
+    // already in the daemon's config.json.
+    let mut args = match kind {
+        InstallCommandKind::Install => install_config.cloned().unwrap_or_default(),
+        InstallCommandKind::Reconfigure => DaemonArgs::default(),
     };
 
-    // Only DaemonPoll dials the server, so only it gets a server url. Its absence is also how
-    // the daemon infers ServerPoll, which is why no command needs `--mode`.
-    let server_url = match daemon.base.mode {
+    // Both kinds carry the server-held connectivity. Only DaemonPoll dials the server, so only
+    // it gets a server url; its absence is also how the daemon infers ServerPoll, which is why
+    // no command needs `--mode`. ServerPoll instead needs the port the server dials, taken from
+    // the record. `url` is empty for DaemonPoll.
+    args.server_url = match daemon.base.mode {
         DaemonMode::DaemonPoll if !public_url.is_empty() => Some(public_url.to_string()),
         _ => None,
     };
-    // ServerPoll daemons must listen on the port the server dials, so it comes from the record
-    // rather than the caller. `url` is empty for DaemonPoll.
-    let daemon_port = (daemon.base.mode == DaemonMode::ServerPoll)
+    args.daemon_port = (daemon.base.mode == DaemonMode::ServerPoll)
         .then(|| {
             url::Url::parse(&daemon.base.url)
                 .ok()
@@ -125,29 +123,16 @@ fn install_args(
         })
         .flatten();
 
-    match purpose {
-        ArtifactPurpose::Initial => {
-            args.name = Some(daemon.base.name.clone());
-            args.mode = Some(daemon.base.mode);
-            args.daemon_api_key = Some(api_key.to_string());
-            args.server_url = server_url;
-            args.daemon_port = daemon_port;
-        }
-        ArtifactPurpose::Rekey => {
-            args.daemon_api_key = Some(api_key.to_string());
-            args.server_url = server_url;
-        }
-        ArtifactPurpose::Sync => {
-            // No credential: this command is shown persistently rather than once, and omitting
-            // it leaves the daemon's existing key in place.
-            //
-            // No `--name` either: the daemon derives its service id from it
-            // (`scanopy-daemon-{name}`), so a server-side rename would make this register a
-            // *second* service instead of reconfiguring the existing one.
-            args.server_url = server_url;
-            args.daemon_port = daemon_port;
-        }
+    if kind == InstallCommandKind::Install {
+        // name/mode only reach the MSI pre-fill (both have no CLI flag), so the command still
+        // omits `--name`; the MSI needs them up front. The builder never mints, so the key flag
+        // carries the placeholder and the frontend fills it in.
+        args.name = Some(daemon.base.name.clone());
+        args.mode = Some(daemon.base.mode);
+        args.daemon_api_key = Some(API_KEY_PLACEHOLDER.to_string());
     }
+    // Reconfigure carries no credential (it is displayed persistently, and omitting it leaves
+    // the daemon's existing key in place) and no name/mode.
 
     args
 }
@@ -231,9 +216,8 @@ pub fn encode_msi_filename(
     let args = install_args(
         public_url,
         daemon,
-        "",
         install_config,
-        ArtifactPurpose::Initial,
+        InstallCommandKind::Install,
     );
     let (query, omitted) = msi_config_query(&args);
     let blob = Base64UrlUnpadded::encode_string(query.as_bytes());
@@ -269,13 +253,25 @@ fn is_shell_safe(value: &str) -> bool {
 }
 
 /// The `install` flags for a resolved config. DaemonPoll dials the server (so it carries
-/// `--server-url`), ServerPoll is dialed by the server (so it does not). Name and network both
-/// come from the provisioned record — the daemon learns its name via the handshake — so the
-/// command carries neither; everything else set on `args` is emitted.
+/// `--server-url`), ServerPoll is dialed by the server (so it does not). Name and network never
+/// reach the CLI — the daemon learns its name via the handshake — so the command carries
+/// neither; everything else set on `args` is emitted.
 fn install_flags(args: &DaemonArgs, quote: fn(&str) -> String) -> String {
     args.install_config_pairs()
         .iter()
-        .filter_map(|p| p.cli_flag.map(|flag| format!("{flag} {}", quote(&p.value))))
+        .filter_map(|p| {
+            p.cli_flag.map(|flag| {
+                // The key value is left bare: an api key is always shell-safe, and the
+                // placeholder must stay a clean find-and-replace target for the frontend —
+                // quoting `<API_KEY>` would leave stray quotes around the substituted key.
+                let value = if flag == "--daemon-api-key" {
+                    p.value.clone()
+                } else {
+                    quote(&p.value)
+                };
+                format!("{flag} {value}")
+            })
+        })
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -361,22 +357,24 @@ fn docker_compose(
 }
 
 /// Assemble the install artifacts for a daemon, shaped by what they are for.
+///
+/// This is a pure function of its inputs — it never mints or persists anything. Any api key in
+/// the emitted commands is the [`API_KEY_PLACEHOLDER`], filled in client-side.
 pub fn build_install_artifacts(
     public_url: &str,
     daemon: &Daemon,
-    api_key: &str,
     install_config: Option<&DaemonArgs>,
     seed_credential_refs: &[IntegrationTarget],
-    purpose: ArtifactPurpose,
+    kind: InstallCommandKind,
 ) -> InstallArtifacts {
     let public_url = public_url.trim_end_matches('/');
-    let args = install_args(public_url, daemon, api_key, install_config, purpose);
+    let args = install_args(public_url, daemon, install_config, kind);
 
-    // A Sync command runs against an already-installed daemon, so it must not re-fetch the
-    // binary — it only re-asserts config. Initial and Rekey both fetch: Rekey targets a legacy
-    // daemon, where picking up the current binary alongside the new key is desirable.
-    let (unix, windows) = match purpose {
-        ArtifactPurpose::Sync => (
+    // A reconfigure runs against an already-installed daemon, so it must not re-fetch the
+    // binary — it only re-asserts config. An install fetches: even re-keying a legacy daemon,
+    // picking up the current binary alongside the new key is desirable.
+    let (unix, windows) = match kind {
+        InstallCommandKind::Reconfigure => (
             format!(
                 "sudo scanopy-daemon install {}",
                 install_flags(&args, quote_posix)
@@ -387,7 +385,7 @@ pub fn build_install_artifacts(
                 install_flags(&args, quote_powershell)
             ),
         ),
-        ArtifactPurpose::Initial | ArtifactPurpose::Rekey => (
+        InstallCommandKind::Install => (
             // Unix binary platforms share the fetch-script + `install` shape.
             format!(
                 "{UNIX_INSTALL_SCRIPT} && sudo scanopy-daemon install {}",
@@ -426,7 +424,7 @@ pub fn build_install_artifacts(
         commands,
         msi_filename,
         msi_omitted_config_keys,
-        docker_compose: (purpose == ArtifactPurpose::Initial)
+        docker_compose: (kind == InstallCommandKind::Install)
             .then(|| docker_compose(&args, daemon, seed_credential_refs)),
     }
 }
@@ -518,44 +516,32 @@ mod tests {
     }
 
     /// Re-keying an installed daemon must change only its credential. Server-side record edits
-    /// (an adjusted ServerPoll port, say) must not ride along and get silently re-applied —
-    /// `install` layers CLI over the existing config.json, so anything omitted is preserved.
+    /// The builder never mints, so an install command carries the key *placeholder*, not a real
+    /// key — the frontend substitutes the plaintext it holds. It must never contain a literal
+    /// key value.
     #[test]
-    fn rekey_command_carries_only_the_credential() {
-        let config = DaemonArgs {
-            log_level: Some("trace".to_string()),
-            interfaces: Some(vec!["eth0".to_string()]),
-            ..Default::default()
-        };
+    fn install_command_carries_the_key_placeholder() {
         let args = parse_unix_install(&build_install_artifacts(
             "https://app.scanopy.net",
-            &daemon(DaemonMode::ServerPoll, "https://edge.corp:60074"),
-            "sk_rekey",
-            // Even if advanced config is supplied, a re-key must not emit it.
-            Some(&config),
+            &daemon(DaemonMode::DaemonPoll, ""),
+            None,
             &[],
-            ArtifactPurpose::Rekey,
+            InstallCommandKind::Install,
         ));
-
-        assert_eq!(args.daemon_api_key.as_deref(), Some("sk_rekey"));
-        assert_eq!(args.daemon_port, None);
-        assert_eq!(args.log_level, None);
-        assert_eq!(args.interfaces, None);
-        assert_eq!(args.name, None);
+        assert_eq!(args.daemon_api_key.as_deref(), Some(API_KEY_PLACEHOLDER));
     }
 
-    /// The sync command is displayed persistently rather than once, so it must never embed a
-    /// credential — and it must not carry `--name`, which would re-target the service id and
-    /// register a second service instead of reconfiguring the existing one.
+    /// The reconfigure command is displayed persistently, so it must never carry a credential —
+    /// not even the placeholder — leaving the daemon's existing key in place. It re-asserts the
+    /// ServerPoll port (which the server dials) and omits `--name`.
     #[test]
-    fn sync_command_reasserts_connectivity_without_a_credential() {
+    fn reconfigure_command_reasserts_connectivity_without_a_credential() {
         let sp = parse_unix_install(&build_install_artifacts(
             "https://app.scanopy.net",
             &daemon(DaemonMode::ServerPoll, "https://edge.corp:60074"),
-            "sk_should_not_appear",
             None,
             &[],
-            ArtifactPurpose::Sync,
+            InstallCommandKind::Reconfigure,
         ));
         assert_eq!(sp.daemon_api_key, None);
         assert_eq!(sp.name, None);
@@ -564,26 +550,24 @@ mod tests {
         let dp = parse_unix_install(&build_install_artifacts(
             "https://app.scanopy.net",
             &daemon(DaemonMode::DaemonPoll, ""),
-            "sk_should_not_appear",
             None,
             &[],
-            ArtifactPurpose::Sync,
+            InstallCommandKind::Reconfigure,
         ));
         assert_eq!(dp.daemon_api_key, None);
         assert_eq!(dp.server_url.as_deref(), Some("https://app.scanopy.net"));
         assert_eq!(dp.daemon_port, None);
     }
 
-    /// A sync command runs against an installed daemon, so it must not re-download the binary.
+    /// A reconfigure runs against an installed daemon, so it must not re-download the binary.
     #[test]
-    fn sync_command_does_not_refetch_the_binary() {
+    fn reconfigure_command_does_not_refetch_the_binary() {
         let artifacts = build_install_artifacts(
             "https://app.scanopy.net",
             &daemon(DaemonMode::ServerPoll, "https://edge.corp:60074"),
-            "",
             None,
             &[],
-            ArtifactPurpose::Sync,
+            InstallCommandKind::Reconfigure,
         );
         for command in &artifacts.commands {
             assert!(
@@ -610,16 +594,15 @@ mod tests {
         let compose = build_install_artifacts(
             "https://app.scanopy.net",
             &daemon(DaemonMode::DaemonPoll, ""),
-            "sk_test",
             Some(&config),
             &[],
-            ArtifactPurpose::Initial,
+            InstallCommandKind::Install,
         )
         .docker_compose
-        .expect("a first install yields a compose file");
+        .expect("an install yields a compose file");
 
         assert!(compose.contains("SCANOPY_SERVER_URL=https://app.scanopy.net"));
-        assert!(compose.contains("SCANOPY_DAEMON_API_KEY=sk_test"));
+        assert!(compose.contains(&format!("SCANOPY_DAEMON_API_KEY={API_KEY_PLACEHOLDER}")));
         assert!(compose.contains("SCANOPY_LOG_LEVEL=debug"));
         assert!(compose.contains("SCANOPY_HEARTBEAT_INTERVAL=45"));
         // Docker-only: logs must land on the mounted volume.
@@ -637,15 +620,14 @@ mod tests {
             );
         }
 
-        // Re-keying or syncing means editing an existing compose file, not running a new one.
+        // Reconfiguring means editing an existing compose file, not running a new one.
         assert!(
             build_install_artifacts(
                 "https://app.scanopy.net",
                 &daemon(DaemonMode::DaemonPoll, ""),
-                "sk",
                 None,
                 &[],
-                ArtifactPurpose::Rekey,
+                InstallCommandKind::Reconfigure,
             )
             .docker_compose
             .is_none()
@@ -674,10 +656,9 @@ mod tests {
         let artifacts = build_install_artifacts(
             "https://app.scanopy.net",
             &daemon(DaemonMode::DaemonPoll, ""),
-            "sk_test",
             Some(&config),
             &[],
-            ArtifactPurpose::Initial,
+            InstallCommandKind::Install,
         );
         let linux = artifacts
             .commands
@@ -703,7 +684,7 @@ mod tests {
         );
         assert_eq!(args.allow_self_signed_certs, Some(true));
         assert_eq!(args.accept_invalid_scan_certs, Some(false));
-        assert_eq!(args.daemon_api_key.as_deref(), Some("sk_test"));
+        assert_eq!(args.daemon_api_key.as_deref(), Some(API_KEY_PLACEHOLDER));
         assert_eq!(args.server_url.as_deref(), Some("https://app.scanopy.net"));
     }
 
@@ -730,17 +711,20 @@ mod tests {
         let artifacts = build_install_artifacts(
             "https://app.scanopy.net",
             &daemon(DaemonMode::DaemonPoll, ""),
-            "real-key",
             Some(&config),
             &[],
-            ArtifactPurpose::Initial,
+            InstallCommandKind::Install,
         );
         let linux = artifacts
             .commands
             .iter()
             .find(|c| c.platform == "linux")
             .unwrap();
-        assert!(linux.command.contains("--daemon-api-key real-key"));
+        assert!(
+            linux
+                .command
+                .contains(&format!("--daemon-api-key {API_KEY_PLACEHOLDER}"))
+        );
         assert!(linux.command.contains("--log-level trace"));
         assert!(!linux.command.contains("evil.example"));
         assert!(!linux.command.contains("attacker-key"));
@@ -835,10 +819,9 @@ mod tests {
         let dp = build_install_artifacts(
             "https://app.scanopy.net/",
             &daemon(DaemonMode::DaemonPoll, ""),
-            "sk_test",
             None,
             &[],
-            ArtifactPurpose::Initial,
+            InstallCommandKind::Install,
         );
         let linux = dp.commands.iter().find(|c| c.platform == "linux").unwrap();
         assert!(
@@ -846,19 +829,18 @@ mod tests {
                 .command
                 .contains("--server-url https://app.scanopy.net")
         );
-        assert!(linux.command.contains("--daemon-api-key sk_test"));
+        assert!(linux.command.contains("--daemon-api-key"));
 
         let sp = build_install_artifacts(
             "https://app.scanopy.net",
             &daemon(DaemonMode::ServerPoll, "https://edge.corp:60073"),
-            "sk_test",
             None,
             &[],
-            ArtifactPurpose::Initial,
+            InstallCommandKind::Install,
         );
         let sp_linux = sp.commands.iter().find(|c| c.platform == "linux").unwrap();
         assert!(!sp_linux.command.contains("--server-url"));
-        assert!(sp_linux.command.contains("--daemon-api-key sk_test"));
+        assert!(sp_linux.command.contains("--daemon-api-key"));
     }
 
     // Decode the filename the way parse-filename.js does (strip prefix, base64url-decode,
@@ -918,10 +900,9 @@ mod tests {
         let a = build_install_artifacts(
             "https://app.scanopy.net",
             &daemon(DaemonMode::ServerPoll, "https://edge.corp"),
-            "sk",
             None,
             &[],
-            ArtifactPurpose::Initial,
+            InstallCommandKind::Install,
         );
         // Filename carries the encoded values for a rename-to-prefill; the static MSI URL
         // is a UI-side const, not part of the per-tenant provision response.
@@ -934,10 +915,9 @@ mod tests {
         let a = build_install_artifacts(
             "https://app.scanopy.net",
             &daemon(DaemonMode::DaemonPoll, ""),
-            "sk",
             None,
             &[],
-            ArtifactPurpose::Initial,
+            InstallCommandKind::Install,
         );
         let linux = a.commands.iter().find(|c| c.platform == "linux").unwrap();
         assert!(!linux.command.contains("--name"));

@@ -5,6 +5,7 @@
 import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
+import type { paths } from '$lib/api/schema';
 import type { Daemon } from './types/base';
 import type { DiscoveryUpdatePayload } from '../discovery/types/api';
 import type { ProvisionDaemonRequest, ProvisionDaemonResponse } from './types/base';
@@ -50,28 +51,37 @@ export function useDaemonQuery(id: () => string | null, options?: { enabled?: ()
 }
 
 /**
- * Query hook for a daemon's reconfigure command — the idempotent, credential-free command that
- * re-asserts the server-held connectivity config on an already-installed daemon.
+ * Query hook for a daemon's install command — the pure, idempotent builder. `purpose: 'install'`
+ * returns a command with an `<API_KEY>` placeholder to fill in; `purpose: 'reconfigure'` returns
+ * a credential-free command that re-asserts the server-held connectivity config. Never mints.
  */
+export type InstallCommandParams = NonNullable<
+	paths['/api/v1/daemons/{id}/install-command']['get']['parameters']['query']
+>;
+
 export function useDaemonInstallCommandQuery(
 	id: () => string | null,
+	params: () => InstallCommandParams,
 	options?: { enabled?: () => boolean }
 ) {
-	return createQuery(() => ({
-		queryKey: [...queryKeys.daemons.detail(id() ?? ''), 'install-command', 'sync'],
-		queryFn: async () => {
-			const daemonId = id();
-			if (!daemonId) throw new Error('No daemon ID');
-			const { data } = await apiClient.GET('/api/v1/daemons/{id}/install-command', {
-				params: { path: { id: daemonId }, query: { purpose: 'sync' } }
-			});
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to fetch install command');
-			}
-			return data.data;
-		},
-		enabled: (options?.enabled?.() ?? true) && !!id()
-	}));
+	return createQuery(() => {
+		const query = params();
+		return {
+			queryKey: [...queryKeys.daemons.detail(id() ?? ''), 'install-command', query],
+			queryFn: async () => {
+				const daemonId = id();
+				if (!daemonId) throw new Error('No daemon ID');
+				const { data } = await apiClient.GET('/api/v1/daemons/{id}/install-command', {
+					params: { path: { id: daemonId }, query }
+				});
+				if (!data?.success || !data.data) {
+					throw new Error(data?.error || 'Failed to fetch install command');
+				}
+				return data.data;
+			},
+			enabled: (options?.enabled?.() ?? true) && !!id()
+		};
+	});
 }
 
 /**

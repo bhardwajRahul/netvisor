@@ -106,9 +106,11 @@
 	// Reconfigure command for the Details tab. Only fetched while the modal is open, and only
 	// meaningful for an installed daemon — one that has never checked in is still following its
 	// install command.
-	const installCommandQuery = useDaemonInstallCommandQuery(() => daemon?.id ?? null, {
-		enabled: () => isOpen && daemon?.last_seen != null
-	});
+	const installCommandQuery = useDaemonInstallCommandQuery(
+		() => daemon?.id ?? null,
+		() => ({ purpose: 'reconfigure' }),
+		{ enabled: () => isOpen && daemon?.last_seen != null }
+	);
 	let syncOs = $state<DaemonOS>('linux');
 	let syncCommand = $derived(
 		installCommandQuery.data?.commands.find((c) => c.platform === syncOs)?.command ?? ''
