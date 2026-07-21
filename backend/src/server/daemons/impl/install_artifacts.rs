@@ -28,29 +28,43 @@ const WINDOWS_EXE_URL: &str =
 pub const WINDOWS_MSI_URL: &str =
     "https://github.com/scanopy/scanopy/releases/latest/download/scanopy-daemon-windows-amd64.msi";
 
-/// One ready-to-paste install command for a platform.
+/// The docker install method.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct PlatformInstallCommand {
-    /// Platform key matching the UI's OS selector: `linux` | `macos` | `windows` | `freebsd`.
-    pub platform: String,
-    /// The full command, including fetching the binary.
-    pub command: String,
+pub struct DockerInstall {
+    /// A ready-to-run `docker-compose.yml` for a first install. `None` for a reconfigure — the
+    /// operator keeps their own compose and swaps in `env`, rather than replacing the whole file.
+    pub compose: Option<String>,
+    /// The `SCANOPY_*` environment variables (`KEY=value`) this daemon is configured with. For a
+    /// reconfigure these are exactly the vars that changed, so the UI can show them as a swap-in.
+    pub env: Vec<String>,
 }
 
-/// Everything the UI needs to install a just-provisioned daemon.
+/// The Windows MSI install method. The MSI itself is a static release asset the UI links to; only
+/// the per-daemon pre-fill data is tenant-specific.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MsiInstall {
+    /// Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI to
+    /// this name to pre-fill the installer — parse-filename.js decodes it. The api key is never
+    /// encoded. Renaming a signed MSI doesn't affect its signature.
+    pub filename: String,
+    /// Config keys that did not fit in `filename` (a filename is capped at 255 characters). Empty
+    /// for any ordinary config. The MSI falls back to its built-in defaults for these, so the UI
+    /// should tell the user to set them in the installer — the other methods carry the full config.
+    pub omitted_config_keys: Vec<String>,
+}
+
+/// Everything the UI needs to install (or reconfigure) a daemon, one field per install method so
+/// each is a first-class peer with its own content — no method is a special case bolted onto a
+/// list. The binary methods are ready-to-paste commands (any api key is the [`API_KEY_PLACEHOLDER`],
+/// filled in client-side); docker and msi carry their own structured content.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct InstallArtifacts {
-    /// Per-platform binary install commands (the api key is embedded — shown once).
-    pub commands: Vec<PlatformInstallCommand>,
-    /// Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI
-    /// to this name to pre-fill the installer — parse-filename.js decodes it. The api key is
-    /// never encoded. Renaming a signed MSI doesn't affect its signature.
-    pub msi_filename: String,
-    /// Config keys that did not fit in `msi_filename` (a filename is capped at 255
-    /// characters). Empty for any ordinary config. The MSI falls back to its built-in
-    /// defaults for these, so the UI should tell the user to set them in the installer —
-    /// the binary install commands are unaffected and carry the full config.
-    pub msi_omitted_config_keys: Vec<String>,
+    pub linux: String,
+    pub macos: String,
+    pub windows: String,
+    pub freebsd: String,
+    pub docker: DockerInstall,
+    pub msi: MsiInstall,
 }
 
 /// What the caller wants the command to do — the one axis that actually varies.
@@ -287,21 +301,21 @@ fn quote_yaml(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', r"\\").replace('"', "\\\""))
 }
 
-/// Build the `docker-compose.yml` for a first install.
+/// The `SCANOPY_*` environment variables the docker daemon is configured with, as `KEY=value`
+/// lines. This is the daemon's config expressed for compose.
 ///
-/// The env block comes from the same [`DaemonArgs::install_config_pairs`] table as the CLI and
-/// MSI artifacts, so the three cannot drift. Notably it emits no network id, user id, name or
-/// mode: those are `#[serde(skip)]` on [`DaemonArgs`] precisely because a client must not be
-/// able to assert them, and the binary install command dropped them for the same reason —
-/// identity comes from the 1:1 api-key binding and the handshake. A compose file that asserted
-/// them could disagree with the record its key is bound to.
-fn docker_compose(
-    args: &DaemonArgs,
-    daemon: &Daemon,
-    seed_credential_refs: &[IntegrationTarget],
-) -> String {
-    let pairs = args.install_config_pairs();
-    let mut env: Vec<String> = pairs
+/// The set comes from the same [`DaemonArgs::install_config_pairs`] table as the CLI and MSI
+/// artifacts, so they cannot drift. Notably no network id, user id, name or mode: those are
+/// `#[serde(skip)]` on [`DaemonArgs`] precisely because a client must not assert them, and the
+/// binary install command dropped them for the same reason — identity comes from the 1:1
+/// api-key binding and the handshake. A compose that asserted them could disagree with the
+/// record its key is bound to.
+///
+/// For a reconfigure these are exactly the vars that changed (connectivity), so the UI can show
+/// them as a swap-in for the operator's existing compose rather than a whole replacement file.
+fn docker_env_lines(args: &DaemonArgs, seed_credential_refs: &[IntegrationTarget]) -> Vec<String> {
+    let mut env: Vec<String> = args
+        .install_config_pairs()
         .iter()
         .filter_map(|p| {
             p.env_var
@@ -318,9 +332,16 @@ fn docker_compose(
         env.push(format!("SCANOPY_CREDENTIAL_IDS={}", quote_yaml(&tokens)));
     }
 
+    env
+}
+
+/// Build the full `docker-compose.yml` for a first install, from the config env lines.
+fn docker_compose(env_lines: &[String], daemon: &Daemon) -> String {
+    let mut env = env_lines.to_vec();
+
     // Docker-only: logs must land on the mounted volume to survive the container, so a log file
     // is always set even when the CLI install would leave the platform default in place.
-    if !pairs.iter().any(|p| p.env_var == Some("SCANOPY_LOG_FILE")) {
+    if !env.iter().any(|e| e.starts_with("SCANOPY_LOG_FILE=")) {
         env.push(format!(
             "SCANOPY_LOG_FILE=/var/log/scanopy/{}.log",
             daemon.base.name
@@ -395,42 +416,31 @@ pub fn build_install_artifacts(
         ),
     };
 
-    let mut commands = vec![
-        PlatformInstallCommand {
-            platform: "linux".to_string(),
-            command: unix.clone(),
-        },
-        PlatformInstallCommand {
-            platform: "macos".to_string(),
-            command: unix.clone(),
-        },
-        PlatformInstallCommand {
-            platform: "freebsd".to_string(),
-            command: unix,
-        },
-        PlatformInstallCommand {
-            platform: "windows".to_string(),
-            command: windows,
-        },
-    ];
-
-    // Docker is another install target, not an OS — it rides in the same list keyed as
-    // `docker`, so the UI selects it uniformly. Like the binary commands it is purpose-shaped:
-    // an install compose carries the key placeholder + advanced config; a reconfigure compose
-    // is keyless and connectivity-only, relying on the daemon-config volume (which persists the
-    // key + prior config) exactly as the binary reconfigure relies on the on-disk config.json.
-    commands.push(PlatformInstallCommand {
-        platform: "docker".to_string(),
-        command: docker_compose(&args, daemon, seed_credential_refs),
-    });
+    // Docker's config as env lines. An *install* also gets a ready-to-run compose; a
+    // *reconfigure* gets no compose — replacing a running container's whole compose would drop
+    // the operator's own settings — only the changed env vars, which the UI shows as a swap-in.
+    // The daemon reads its key + prior config from the persisted `daemon-config` volume either
+    // way, just as the binary reconfigure relies on the on-disk config.json.
+    let docker_env = docker_env_lines(&args, seed_credential_refs);
+    let compose =
+        (kind == InstallCommandKind::Install).then(|| docker_compose(&docker_env, daemon));
 
     let (msi_filename, msi_omitted_config_keys) =
         encode_msi_filename(public_url, daemon, install_config);
 
     InstallArtifacts {
-        commands,
-        msi_filename,
-        msi_omitted_config_keys,
+        linux: unix.clone(),
+        macos: unix.clone(),
+        freebsd: unix,
+        windows,
+        docker: DockerInstall {
+            compose,
+            env: docker_env,
+        },
+        msi: MsiInstall {
+            filename: msi_filename,
+            omitted_config_keys: msi_omitted_config_keys,
+        },
     }
 }
 
@@ -501,17 +511,12 @@ mod tests {
     fn parse_unix_install(artifacts: &InstallArtifacts) -> DaemonArgs {
         use clap::Parser;
 
-        let linux = artifacts
-            .commands
-            .iter()
-            .find(|c| c.platform == "linux")
-            .unwrap();
-        // Initial/Rekey prefix the bootstrap with `&& sudo `; Sync has no bootstrap at all.
-        let install = linux
-            .command
+        // An install prefixes the bootstrap with `&& sudo `; a reconfigure has no bootstrap.
+        let install = artifacts
+            .linux
             .split("&& sudo ")
             .nth(1)
-            .unwrap_or(&linux.command)
+            .unwrap_or(&artifacts.linux)
             .trim_start_matches("sudo ");
         let parsed = DaemonCli::parse_from(shell_split(install));
         let Some(DaemonCommand::Install(args)) = parsed.command else {
@@ -574,43 +579,42 @@ mod tests {
             &[],
             InstallCommandKind::Reconfigure,
         );
-        for command in &artifacts.commands {
+        for (platform, command) in [
+            ("linux", &artifacts.linux),
+            ("macos", &artifacts.macos),
+            ("windows", &artifacts.windows),
+            ("freebsd", &artifacts.freebsd),
+        ] {
             assert!(
-                !command.command.contains("install.sh")
-                    && !command.command.contains("Invoke-WebRequest"),
-                "{} command re-fetches the binary: {}",
-                command.platform,
-                command.command
+                !command.contains("install.sh") && !command.contains("Invoke-WebRequest"),
+                "{platform} command re-fetches the binary: {command}"
             );
         }
     }
 
-    /// Compose must not assert identity. Those fields are `#[serde(skip)]` on DaemonArgs
-    /// precisely so a client cannot set them, and the binary command dropped them for the same
-    /// reason — identity comes from the 1:1 key binding. A compose file that carried them could
-    /// disagree with the record its key is bound to.
+    /// The docker artifacts must not assert identity. Those fields are `#[serde(skip)]` on
+    /// DaemonArgs precisely so a client cannot set them, and the binary command dropped them for
+    /// the same reason — identity comes from the 1:1 key binding. A compose that carried them
+    /// could disagree with the record its key is bound to.
     #[test]
-    fn docker_compose_carries_config_but_never_identity() {
+    fn docker_install_yields_a_compose_carrying_config_but_never_identity() {
         let config = DaemonArgs {
             log_level: Some("debug".to_string()),
             heartbeat_interval: Some(45),
             ..Default::default()
         };
-        let docker_command = |kind| {
-            build_install_artifacts(
-                "https://app.scanopy.net",
-                &daemon(DaemonMode::DaemonPoll, ""),
-                Some(&config),
-                &[],
-                kind,
-            )
-            .commands
-            .into_iter()
-            .find(|c| c.platform == "docker")
-            .map(|c| c.command)
-        };
-        let compose =
-            docker_command(InstallCommandKind::Install).expect("an install yields a compose");
+        let artifacts = build_install_artifacts(
+            "https://app.scanopy.net",
+            &daemon(DaemonMode::DaemonPoll, ""),
+            Some(&config),
+            &[],
+            InstallCommandKind::Install,
+        );
+        let compose = artifacts
+            .docker
+            .compose
+            .as_deref()
+            .expect("an install yields a docker compose");
 
         assert!(compose.contains("SCANOPY_SERVER_URL=https://app.scanopy.net"));
         assert!(compose.contains(&format!("SCANOPY_DAEMON_API_KEY={API_KEY_PLACEHOLDER}")));
@@ -618,6 +622,14 @@ mod tests {
         assert!(compose.contains("SCANOPY_HEARTBEAT_INTERVAL=45"));
         // Docker-only: logs must land on the mounted volume.
         assert!(compose.contains("SCANOPY_LOG_FILE=/var/log/scanopy/edge-01.log"));
+        // The env lines are also exposed structurally.
+        assert!(
+            artifacts
+                .docker
+                .env
+                .iter()
+                .any(|e| e == "SCANOPY_LOG_LEVEL=debug")
+        );
 
         for identity in [
             "SCANOPY_NETWORK_ID",
@@ -630,13 +642,38 @@ mod tests {
                 "compose asserts {identity}, which the client must not be able to set"
             );
         }
+    }
 
-        // A reconfigure also yields a docker compose, but keyless — the daemon's persisted
-        // config volume holds the key, exactly as the binary reconfigure relies on config.json.
-        let reconfigure = docker_command(InstallCommandKind::Reconfigure)
-            .expect("a reconfigure yields a docker compose");
-        assert!(!reconfigure.contains("SCANOPY_DAEMON_API_KEY"));
-        assert!(!reconfigure.contains(API_KEY_PLACEHOLDER));
+    /// A reconfigure has no full compose — the operator keeps their own — only the changed env
+    /// vars to swap in. For a ServerPoll daemon that is the port the server dials; the key is
+    /// never among them (the persisted config volume holds it).
+    #[test]
+    fn docker_reconfigure_yields_env_vars_not_a_compose() {
+        let artifacts = build_install_artifacts(
+            "https://app.scanopy.net",
+            &daemon(DaemonMode::ServerPoll, "https://edge.corp:60074"),
+            None,
+            &[],
+            InstallCommandKind::Reconfigure,
+        );
+
+        assert!(
+            artifacts.docker.compose.is_none(),
+            "a reconfigure must not hand back a whole compose to replace"
+        );
+        assert!(
+            artifacts
+                .docker
+                .env
+                .contains(&"SCANOPY_DAEMON_PORT=60074".to_string())
+        );
+        assert!(
+            !artifacts
+                .docker
+                .env
+                .iter()
+                .any(|e| e.starts_with("SCANOPY_DAEMON_API_KEY"))
+        );
     }
 
     /// The command is only useful if the daemon can actually parse it. Emit a fully populated
@@ -665,14 +702,8 @@ mod tests {
             &[],
             InstallCommandKind::Install,
         );
-        let linux = artifacts
-            .commands
-            .iter()
-            .find(|c| c.platform == "linux")
-            .unwrap();
-
         // Take the `scanopy-daemon install ...` half of the `bootstrap && install` one-liner.
-        let install = linux.command.split("&& sudo ").nth(1).unwrap();
+        let install = artifacts.linux.split("&& sudo ").nth(1).unwrap();
         let parsed = DaemonCli::parse_from(shell_split(install));
         let Some(DaemonCommand::Install(install_args)) = parsed.command else {
             panic!("expected an install subcommand, got {install}");
@@ -720,19 +751,14 @@ mod tests {
             &[],
             InstallCommandKind::Install,
         );
-        let linux = artifacts
-            .commands
-            .iter()
-            .find(|c| c.platform == "linux")
-            .unwrap();
         assert!(
-            linux
-                .command
+            artifacts
+                .linux
                 .contains(&format!("--daemon-api-key {API_KEY_PLACEHOLDER}"))
         );
-        assert!(linux.command.contains("--log-level trace"));
-        assert!(!linux.command.contains("evil.example"));
-        assert!(!linux.command.contains("attacker-key"));
+        assert!(artifacts.linux.contains("--log-level trace"));
+        assert!(!artifacts.linux.contains("evil.example"));
+        assert!(!artifacts.linux.contains("attacker-key"));
     }
 
     /// An ordinary advanced config rides in the MSI filename intact — nothing is dropped, and
@@ -828,13 +854,8 @@ mod tests {
             &[],
             InstallCommandKind::Install,
         );
-        let linux = dp.commands.iter().find(|c| c.platform == "linux").unwrap();
-        assert!(
-            linux
-                .command
-                .contains("--server-url https://app.scanopy.net")
-        );
-        assert!(linux.command.contains("--daemon-api-key"));
+        assert!(dp.linux.contains("--server-url https://app.scanopy.net"));
+        assert!(dp.linux.contains("--daemon-api-key"));
 
         let sp = build_install_artifacts(
             "https://app.scanopy.net",
@@ -843,9 +864,8 @@ mod tests {
             &[],
             InstallCommandKind::Install,
         );
-        let sp_linux = sp.commands.iter().find(|c| c.platform == "linux").unwrap();
-        assert!(!sp_linux.command.contains("--server-url"));
-        assert!(sp_linux.command.contains("--daemon-api-key"));
+        assert!(!sp.linux.contains("--server-url"));
+        assert!(sp.linux.contains("--daemon-api-key"));
     }
 
     // Decode the filename the way parse-filename.js does (strip prefix, base64url-decode,
@@ -911,8 +931,8 @@ mod tests {
         );
         // Filename carries the encoded values for a rename-to-prefill; the static MSI URL
         // is a UI-side const, not part of the per-tenant provision response.
-        assert!(a.msi_filename.starts_with("scanopy-daemon-"));
-        assert!(a.msi_filename.ends_with(".msi"));
+        assert!(a.msi.filename.starts_with("scanopy-daemon-"));
+        assert!(a.msi.filename.ends_with(".msi"));
     }
 
     #[test]
@@ -924,7 +944,6 @@ mod tests {
             &[],
             InstallCommandKind::Install,
         );
-        let linux = a.commands.iter().find(|c| c.platform == "linux").unwrap();
-        assert!(!linux.command.contains("--name"));
+        assert!(!a.linux.contains("--name"));
     }
 }

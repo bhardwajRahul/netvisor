@@ -20,7 +20,11 @@
 		useProvisionDaemonMutation,
 		useDaemonInstallCommandQuery
 	} from '$lib/features/daemons/queries';
-	import { fillInstallArtifactsKey } from '$lib/features/daemons/types/base';
+	import {
+		fillInstallArtifactsKey,
+		osInstallCommand,
+		type OsInstallMethod
+	} from '$lib/features/daemons/types/base';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import CodeContainer from '$lib/shared/components/data/CodeContainer.svelte';
@@ -50,8 +54,8 @@
 	let selectedOS = $state<DaemonOS>('linux');
 	let linuxMethod = $state<'binary' | 'docker'>('binary');
 
-	// Docker is another install target keyed as `docker` in the commands list.
-	let selectedPlatform = $derived(
+	// Docker is another install target alongside the OS methods.
+	let selectedPlatform = $derived<OsInstallMethod | 'docker'>(
 		selectedOS === 'linux' && linuxMethod === 'docker' ? 'docker' : selectedOS
 	);
 	let language = $derived(
@@ -71,7 +75,10 @@
 	let command = $derived.by(() => {
 		if (!mintedKey || !installCommandQuery.data) return '';
 		const filled = fillInstallArtifactsKey(installCommandQuery.data, mintedKey);
-		return filled.commands.find((c) => c.platform === selectedPlatform)?.command ?? '';
+		// Docker is a first-install here, so it has a full compose.
+		return selectedPlatform === 'docker'
+			? (filled.docker.compose ?? '')
+			: osInstallCommand(filled, selectedPlatform);
 	});
 
 	async function associate() {

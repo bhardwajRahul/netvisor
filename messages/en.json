@@ -660,6 +660,7 @@
 	"daemons_promptTitle": "Start Discovering Your Network",
 	"daemons_reconfigureCommandDaemonPoll": "{name} now has its own API key. Run this on the daemon machine to switch it over — it keeps running on its current key until you do. This command is shown once.",
 	"daemons_reconfigureCommandServerPoll": "{name} now has its own API key, and the server is already using it. Run this on the daemon machine now to bring it back online. This command is shown once.",
+	"daemons_reconfigureDockerHint": "Update these environment variables on the daemon service in your docker-compose.yml, then run `docker compose up -d`. Your existing API key and other settings stay as they are.",
 	"daemons_reconfigureSectionHelp": "Run this on the daemon machine to bring its local configuration back in line with the settings above. It's safe to run more than once, and it leaves the daemon's API key untouched.",
 	"daemons_reconfigureSectionTitle": "Reconfigure command",
 	"daemons_reconfigureTitle": "Run this on the daemon machine",

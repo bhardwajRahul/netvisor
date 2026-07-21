@@ -20,6 +20,14 @@ export type ProvisionDaemonResponse = components['schemas']['ProvisionDaemonResp
 export type InstallArtifacts = components['schemas']['InstallArtifacts'];
 export type InstallCommandKind = components['schemas']['InstallCommandKind'];
 
+/** The OS install methods whose content is a ready-to-paste command string. */
+export type OsInstallMethod = 'linux' | 'macos' | 'windows' | 'freebsd';
+
+/** The binary install command for an OS. */
+export function osInstallCommand(artifacts: InstallArtifacts, os: OsInstallMethod): string {
+	return artifacts[os];
+}
+
 /**
  * Stand-in the server emits for the daemon api key (it never mints, so it doesn't know the
  * plaintext). The frontend substitutes the key it holds from the provision response. Must match
@@ -27,7 +35,7 @@ export type InstallCommandKind = components['schemas']['InstallCommandKind'];
  */
 export const API_KEY_PLACEHOLDER = '<API_KEY>';
 
-/** Fill the api-key placeholder in every emitted command (docker rides in `commands` too). */
+/** Fill the api-key placeholder in every install method that carries a command. */
 export function fillInstallArtifactsKey(
 	artifacts: InstallArtifacts,
 	apiKey: string
@@ -35,6 +43,13 @@ export function fillInstallArtifactsKey(
 	const sub = (s: string) => s.replaceAll(API_KEY_PLACEHOLDER, apiKey);
 	return {
 		...artifacts,
-		commands: artifacts.commands.map((c) => ({ ...c, command: sub(c.command) }))
+		linux: sub(artifacts.linux),
+		macos: sub(artifacts.macos),
+		windows: sub(artifacts.windows),
+		freebsd: sub(artifacts.freebsd),
+		docker: {
+			...artifacts.docker,
+			compose: artifacts.docker.compose ? sub(artifacts.docker.compose) : artifacts.docker.compose
+		}
 	};
 }
