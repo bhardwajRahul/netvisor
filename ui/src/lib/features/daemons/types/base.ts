@@ -27,7 +27,7 @@ export type InstallCommandKind = components['schemas']['InstallCommandKind'];
  */
 export const API_KEY_PLACEHOLDER = '<API_KEY>';
 
-/** Fill the api-key placeholder in every emitted command + the compose file. */
+/** Fill the api-key placeholder in every emitted command (docker rides in `commands` too). */
 export function fillInstallArtifactsKey(
 	artifacts: InstallArtifacts,
 	apiKey: string
@@ -35,9 +35,6 @@ export function fillInstallArtifactsKey(
 	const sub = (s: string) => s.replaceAll(API_KEY_PLACEHOLDER, apiKey);
 	return {
 		...artifacts,
-		commands: artifacts.commands.map((c) => ({ ...c, command: sub(c.command) })),
-		docker_compose: artifacts.docker_compose
-			? sub(artifacts.docker_compose)
-			: artifacts.docker_compose
+		commands: artifacts.commands.map((c) => ({ ...c, command: sub(c.command) }))
 	};
 }
