@@ -415,14 +415,14 @@ pub fn build_install_artifacts(
     ];
 
     // Docker is another install target, not an OS — it rides in the same list keyed as
-    // `docker`, so the UI selects it uniformly. Only an install yields a compose file; a
-    // reconfigure edits the container's existing one.
-    if kind == InstallCommandKind::Install {
-        commands.push(PlatformInstallCommand {
-            platform: "docker".to_string(),
-            command: docker_compose(&args, daemon, seed_credential_refs),
-        });
-    }
+    // `docker`, so the UI selects it uniformly. Like the binary commands it is purpose-shaped:
+    // an install compose carries the key placeholder + advanced config; a reconfigure compose
+    // is keyless and connectivity-only, relying on the daemon-config volume (which persists the
+    // key + prior config) exactly as the binary reconfigure relies on the on-disk config.json.
+    commands.push(PlatformInstallCommand {
+        platform: "docker".to_string(),
+        command: docker_compose(&args, daemon, seed_credential_refs),
+    });
 
     let (msi_filename, msi_omitted_config_keys) =
         encode_msi_filename(public_url, daemon, install_config);
@@ -631,9 +631,12 @@ mod tests {
             );
         }
 
-        // Reconfiguring means editing an existing compose file, not running a new one, so no
-        // docker entry is emitted.
-        assert!(docker_command(InstallCommandKind::Reconfigure).is_none());
+        // A reconfigure also yields a docker compose, but keyless — the daemon's persisted
+        // config volume holds the key, exactly as the binary reconfigure relies on config.json.
+        let reconfigure = docker_command(InstallCommandKind::Reconfigure)
+            .expect("a reconfigure yields a docker compose");
+        assert!(!reconfigure.contains("SCANOPY_DAEMON_API_KEY"));
+        assert!(!reconfigure.contains(API_KEY_PLACEHOLDER));
     }
 
     /// The command is only useful if the daemon can actually parse it. Emit a fully populated

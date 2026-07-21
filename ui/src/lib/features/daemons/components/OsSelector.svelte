@@ -89,9 +89,8 @@
 	{/if}
 </div>
 
-{#if selectedOS === 'linux' && onLinuxMethodChange}
-	<!-- Linux: Install method sub-toggle. Only shown where the parent handles the change —
-	     a toggle that can't do anything (no handler wired) shouldn't appear. -->
+{#if selectedOS === 'linux'}
+	<!-- Linux: Install method sub-toggle (binary vs docker) -->
 	<div class="flex gap-1 sm:w-[calc((100%-3*0.5rem)/4)]">
 		{#each linuxMethodOptions as option (option.id)}
 			<button
