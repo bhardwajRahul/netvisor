@@ -48,6 +48,15 @@
 	let isServerPoll = $derived(daemon.mode === 'server_poll');
 	let associating = $state(false);
 	let selectedOS = $state<DaemonOS>('linux');
+	let linuxMethod = $state<'binary' | 'docker'>('binary');
+
+	// Docker is another install target keyed as `docker` in the commands list.
+	let selectedPlatform = $derived(
+		selectedOS === 'linux' && linuxMethod === 'docker' ? 'docker' : selectedOS
+	);
+	let language = $derived(
+		selectedPlatform === 'docker' ? 'yaml' : selectedOS === 'windows' ? 'powershell' : 'bash'
+	);
 
 	// The minted key, held only after the user associates. The install command comes from the
 	// builder (with an <API_KEY> placeholder); we substitute this key into it for display.
@@ -62,7 +71,7 @@
 	let command = $derived.by(() => {
 		if (!mintedKey || !installCommandQuery.data) return '';
 		const filled = fillInstallArtifactsKey(installCommandQuery.data, mintedKey);
-		return filled.commands.find((c) => c.platform === selectedOS)?.command ?? '';
+		return filled.commands.find((c) => c.platform === selectedPlatform)?.command ?? '';
 	});
 
 	async function associate() {
@@ -87,9 +96,14 @@
 				: daemons_reconfigureCommandDaemonPoll({ name: daemon.name })}
 		/>
 
-		<OsSelector {selectedOS} onOsSelect={(os) => (selectedOS = os)}>
+		<OsSelector
+			{selectedOS}
+			onOsSelect={(os) => (selectedOS = os)}
+			{linuxMethod}
+			onLinuxMethodChange={(method) => (linuxMethod = method)}
+		>
 			<CodeContainer
-				language={selectedOS === 'windows' ? 'powershell' : 'bash'}
+				{language}
 				expandable={false}
 				maxHeight=""
 				code={command}
