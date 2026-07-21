@@ -18,7 +18,7 @@
 		common_no,
 		common_tags,
 		common_yes,
-		common_legacy,
+		common_unbound,
 		daemons_legacyKeyHelp
 	} from '$lib/paraglide/messages';
 
@@ -43,14 +43,14 @@
 	// Build card data
 	// Keys not bound 1:1 to a daemon predate server-provisioned identity. Since new
 	// keys are only minted through provisioning, an unbound key is a legacy one.
-	let isLegacy = $derived(!apiKey.daemon_id);
+	let isUnbound = $derived(!apiKey.daemon_id);
 
 	let cardData = $derived({
 		title: apiKey.name,
-		// Mark legacy (unbound) keys with a tag + hover helptext, mirroring the daemon
+		// Mark unbound keys with a tag + hover helptext, mirroring the daemon
 		// card's status tags. Bound 1:1 keys get no tag.
-		status: isLegacy
-			? { label: common_legacy(), color: toColor('gray'), title: daemons_legacyKeyHelp() }
+		status: isUnbound
+			? { label: common_unbound(), color: toColor('gray'), title: daemons_legacyKeyHelp() }
 			: undefined,
 		iconColor: entities.getColorHelper('DaemonApiKey').icon,
 		Icon: entities.getIconComponent('DaemonApiKey'),

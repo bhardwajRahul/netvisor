@@ -34,6 +34,12 @@
 		onRotate: () => void;
 		/** Hide the network selector where the network is fixed by the owning entity. */
 		showNetwork?: boolean;
+		/** Hide the name field where it is owned by another entity (e.g. a daemon's key). */
+		showName?: boolean;
+		/** Hide the tag picker where tags aren't meaningful for the key. */
+		showTags?: boolean;
+		/** Hide the "Key Details" heading when the surrounding tab already labels the section. */
+		showHeading?: boolean;
 	}
 
 	let {
@@ -43,7 +49,10 @@
 		loading,
 		onGenerate,
 		onRotate,
-		showNetwork = true
+		showNetwork = true,
+		showName = true,
+		showTags = true,
+		showHeading = true
 	}: Props = $props();
 
 	// Minimum selectable expiry (now), in the local format datetime-local expects.
@@ -57,25 +66,29 @@
 
 <div class="space-y-6">
 	<div class="space-y-4">
-		<h3 class="text-primary text-lg font-medium">{common_keyDetails()}</h3>
+		{#if showHeading}
+			<h3 class="text-primary text-lg font-medium">{common_keyDetails()}</h3>
+		{/if}
 
-		<form.Field
-			name="name"
-			validators={{
-				onBlur: ({ value }: { value: string }) => required(value) || max(100)(value)
-			}}
-		>
-			{#snippet children(field)}
-				<TextInput
-					label={common_name()}
-					id="name"
-					{field}
-					placeholder={daemonApiKeys_namePlaceholder()}
-					helpText={common_apiKeyNameHelp()}
-					required
-				/>
-			{/snippet}
-		</form.Field>
+		{#if showName}
+			<form.Field
+				name="name"
+				validators={{
+					onBlur: ({ value }: { value: string }) => required(value) || max(100)(value)
+				}}
+			>
+				{#snippet children(field)}
+					<TextInput
+						label={common_name()}
+						id="name"
+						{field}
+						placeholder={daemonApiKeys_namePlaceholder()}
+						helpText={common_apiKeyNameHelp()}
+						required
+					/>
+				{/snippet}
+			</form.Field>
+		{/if}
 
 		{#if showNetwork}
 			<form.Field name="network_id">
@@ -89,14 +102,16 @@
 			</form.Field>
 		{/if}
 
-		<form.Field name="tags">
-			{#snippet children(field)}
-				<TagPicker
-					selectedTagIds={field.state.value || []}
-					onChange={(tags) => field.handleChange(tags)}
-				/>
-			{/snippet}
-		</form.Field>
+		{#if showTags}
+			<form.Field name="tags">
+				{#snippet children(field)}
+					<TagPicker
+						selectedTagIds={field.state.value || []}
+						onChange={(tags) => field.handleChange(tags)}
+					/>
+				{/snippet}
+			</form.Field>
+		{/if}
 
 		<form.Field name="expires_at">
 			{#snippet children(field)}

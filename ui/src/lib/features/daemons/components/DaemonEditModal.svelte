@@ -280,29 +280,33 @@
 					</div>
 
 					{#if isServerPoll}
-						<detailsForm.Field name="url" validators={{ onBlur: ({ value }) => required(value) }}>
-							{#snippet children(field)}
-								<TextInput
-									label={daemons_config_daemonUrl()}
-									id="daemon-url"
-									{field}
-									helpText={daemons_config_daemonUrlHelpNoPort()}
-									required
-								/>
-							{/snippet}
-						</detailsForm.Field>
+						<div class="grid grid-cols-[1fr_auto] gap-4">
+							<detailsForm.Field name="url" validators={{ onBlur: ({ value }) => required(value) }}>
+								{#snippet children(field)}
+									<TextInput
+										label={daemons_config_daemonUrl()}
+										id="daemon-url"
+										{field}
+										helpText={daemons_config_daemonUrlHelpNoPort()}
+										required
+									/>
+								{/snippet}
+							</detailsForm.Field>
 
-						<detailsForm.Field name="port">
-							{#snippet children(field)}
-								<TextInput
-									label={common_port()}
-									id="daemon-port"
-									type="number"
-									{field}
-									helpText={daemons_config_portHelpServerPoll()}
-								/>
-							{/snippet}
-						</detailsForm.Field>
+							<div class="w-48">
+								<detailsForm.Field name="port">
+									{#snippet children(field)}
+										<TextInput
+											label={common_port()}
+											id="daemon-port"
+											type="number"
+											{field}
+											helpText={daemons_config_portHelpServerPoll()}
+										/>
+									{/snippet}
+								</detailsForm.Field>
+							</div>
+						</div>
 					{/if}
 
 					<detailsForm.Field name="user_id">
@@ -357,6 +361,8 @@
 				<!-- API key -->
 				<div class:hidden={activeTab !== 'apiKey'}>
 					{#if daemonKey}
+						<!-- The key belongs to this daemon, so its name/tags aren't user-managed
+						     here, and the tab already labels the section. -->
 						<ApiKeyFormFields
 							form={keyForm}
 							isEditing={true}
@@ -365,6 +371,9 @@
 							onGenerate={() => {}}
 							onRotate={handleRotateKey}
 							showNetwork={false}
+							showName={false}
+							showTags={false}
+							showHeading={false}
 						/>
 					{:else}
 						<DaemonKeyAssociation {daemon} />

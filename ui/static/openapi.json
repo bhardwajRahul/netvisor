@@ -13753,19 +13753,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-21T17:56:50.585350Z",
+              "created_at": "2026-07-21T18:39:38.034822Z",
               "first_discovery_id": null,
-              "id": "39f8cf2a-2aa7-486e-98a5-f0c3afbc0db6",
+              "id": "4b4a7397-e2d9-4b8d-84ef-2f3bb5eff7cc",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-21T17:56:50.585350Z",
+              "last_seen_at": "2026-07-21T18:39:38.034822Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-21T17:56:50.585350Z",
-              "valid_from": "2026-07-21T17:56:50.585350Z",
+              "updated_at": "2026-07-21T18:39:38.034822Z",
+              "valid_from": "2026-07-21T18:39:38.034822Z",
               "valid_to": null
             }
           },
@@ -14820,19 +14820,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-21T17:56:50.563143Z",
+                      "created_at": "2026-07-21T18:39:38.017465Z",
                       "first_discovery_id": null,
-                      "id": "a0cd6405-878e-492a-a054-fa4d97c8e6dd",
+                      "id": "dfc4fa8a-7669-4da0-8bb6-5cc7c2af3971",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-21T17:56:50.563143Z",
+                      "last_seen_at": "2026-07-21T18:39:38.017465Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-21T17:56:50.563143Z",
-                      "valid_from": "2026-07-21T17:56:50.563143Z",
+                      "updated_at": "2026-07-21T18:39:38.017465Z",
+                      "valid_from": "2026-07-21T18:39:38.017465Z",
                       "valid_to": null
                     }
                   ],
@@ -14846,7 +14846,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Workstation",
+                  "service_definition": "UptimeKuma",
                   "source": {
                     "type": "Manual"
                   },
@@ -15014,13 +15014,6 @@
                   "$ref": "#/components/schemas/PlatformInstallCommand"
                 },
                 "description": "Per-platform binary install commands (the api key is embedded — shown once)."
-              },
-              "docker_compose": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "A ready-to-run `docker-compose.yml`. Only present for a first install: re-keying or\nre-syncing a container means editing its existing compose file, not running a new one."
               },
               "msi_filename": {
                 "type": "string",
@@ -15912,19 +15905,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-21T17:56:50.578363Z",
+                  "created_at": "2026-07-21T18:39:38.029876Z",
                   "first_discovery_id": null,
-                  "id": "510c8fcb-6743-4577-97fb-7feb45b1a82a",
+                  "id": "c91c8c05-7ce0-45c5-95b5-7d90cbb2af0a",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-21T17:56:50.578363Z",
+                  "last_seen_at": "2026-07-21T18:39:38.029876Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-21T17:56:50.578363Z",
-                  "valid_from": "2026-07-21T17:56:50.578363Z",
+                  "updated_at": "2026-07-21T18:39:38.029876Z",
+                  "valid_from": "2026-07-21T18:39:38.029876Z",
                   "valid_to": null
                 }
               ],
@@ -15938,7 +15931,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Workstation",
+              "service_definition": "UptimeKuma",
               "source": {
                 "type": "Manual"
               },
@@ -17808,19 +17801,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-21T17:56:50.563654Z",
+          "created_at": "2026-07-21T18:39:38.017993Z",
           "first_discovery_id": null,
-          "id": "e70c5d30-7b2f-42a7-a76b-7ac783e84e67",
+          "id": "11246a2c-b743-4e05-a2e6-10903ba7c68b",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-21T17:56:50.563654Z",
+          "last_seen_at": "2026-07-21T18:39:38.017993Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-21T17:56:50.563654Z",
-          "valid_from": "2026-07-21T17:56:50.563654Z",
+          "updated_at": "2026-07-21T18:39:38.017993Z",
+          "valid_from": "2026-07-21T18:39:38.017993Z",
           "valid_to": null
         }
       },
@@ -18411,7 +18404,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Workstation",
+              "service_definition": "UptimeKuma",
               "tags": [],
               "virtualization": null
             }
@@ -21278,19 +21271,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-21T17:56:50.562265Z",
+                  "created_at": "2026-07-21T18:39:38.016831Z",
                   "first_discovery_id": null,
-                  "id": "653d0d4a-05b7-4713-96e8-66419fd59872",
+                  "id": "65e1008c-2e78-4f0e-beca-08684f434bd2",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-21T17:56:50.562265Z",
+                  "last_seen_at": "2026-07-21T18:39:38.016831Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-21T17:56:50.562265Z",
-                  "valid_from": "2026-07-21T17:56:50.562265Z",
+                  "updated_at": "2026-07-21T18:39:38.016831Z",
+                  "valid_from": "2026-07-21T18:39:38.016831Z",
                   "valid_to": null
                 }
               ],
@@ -21304,7 +21297,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Workstation",
+              "service_definition": "UptimeKuma",
               "source": {
                 "type": "Manual"
               },
@@ -21811,13 +21804,6 @@
               "$ref": "#/components/schemas/PlatformInstallCommand"
             },
             "description": "Per-platform binary install commands (the api key is embedded — shown once)."
-          },
-          "docker_compose": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "A ready-to-run `docker-compose.yml`. Only present for a first install: re-keying or\nre-syncing a container means editing its existing compose file, not running a new one."
           },
           "msi_filename": {
             "type": "string",
@@ -23878,19 +23864,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-21T17:56:50.549202Z",
+                        "created_at": "2026-07-21T18:39:38.006246Z",
                         "first_discovery_id": null,
-                        "id": "733240f4-475f-48e9-bd56-2dae270e76df",
+                        "id": "78cbc763-6a23-4f9b-97b2-53f208df0adf",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-21T17:56:50.549202Z",
+                        "last_seen_at": "2026-07-21T18:39:38.006246Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-21T17:56:50.549202Z",
-                        "valid_from": "2026-07-21T17:56:50.549202Z",
+                        "updated_at": "2026-07-21T18:39:38.006246Z",
+                        "valid_from": "2026-07-21T18:39:38.006246Z",
                         "valid_to": null
                       }
                     ],
@@ -23904,7 +23890,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Workstation",
+                    "service_definition": "UptimeKuma",
                     "source": {
                       "type": "Manual"
                     },
@@ -24025,19 +24011,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-21T17:56:50.576877Z",
+                    "created_at": "2026-07-21T18:39:38.028958Z",
                     "first_discovery_id": null,
-                    "id": "98f56b4a-78f2-4cfe-8ba9-3a0ad12372bf",
+                    "id": "eb934d07-6f04-4464-aa7b-fed2c9d2eb5b",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-21T17:56:50.576877Z",
+                    "last_seen_at": "2026-07-21T18:39:38.028958Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-21T17:56:50.576877Z",
-                    "valid_from": "2026-07-21T17:56:50.576877Z",
+                    "updated_at": "2026-07-21T18:39:38.028958Z",
+                    "valid_from": "2026-07-21T18:39:38.028958Z",
                     "valid_to": null
                   }
                 ],
@@ -24051,7 +24037,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Workstation",
+                "service_definition": "UptimeKuma",
                 "source": {
                   "type": "Manual"
                 },
@@ -25772,19 +25758,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-21T17:56:50.563537Z",
+              "created_at": "2026-07-21T18:39:38.017913Z",
               "first_discovery_id": null,
-              "id": "7163c208-ed2b-4f28-bfcf-fead75d0b01d",
+              "id": "3b8efd36-43c9-4c6a-bdab-987f257227c8",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-21T17:56:50.563537Z",
+              "last_seen_at": "2026-07-21T18:39:38.017913Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-21T17:56:50.563537Z",
-              "valid_from": "2026-07-21T17:56:50.563537Z",
+              "updated_at": "2026-07-21T18:39:38.017913Z",
+              "valid_from": "2026-07-21T18:39:38.017913Z",
               "valid_to": null
             }
           ],
@@ -25798,7 +25784,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Workstation",
+          "service_definition": "UptimeKuma",
           "source": {
             "type": "Manual"
           },
@@ -26928,7 +26914,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "1e2dad67-4b50-4239-96f9-d87d9014b782",
+                  "id": "2b8f63cd-5f43-4ae1-a8e0-98937519a158",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -26938,23 +26924,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "9a70b9f5-595d-4862-a259-621fbc2f9c19",
+                  "id": "18ae1f36-8a7d-41c0-94ca-20c2c49ec8bc",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "ead7a326-53e2-433d-9226-7bb768c7f467",
+                  "id": "1f193d52-2501-4943-9cea-99ce916e3b16",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "4c4b3f24-ec4c-47bc-81c8-0bb766b00a82",
+                  "id": "496d3335-9729-4171-a7dc-c2fc3743439b",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "9a70b9f5-595d-4862-a259-621fbc2f9c19",
+                  "id": "18ae1f36-8a7d-41c0-94ca-20c2c49ec8bc",
                   "rule": "ByHost"
                 }
               ]
@@ -26983,19 +26969,19 @@
             },
             "default": [
               {
-                "id": "74c07fa2-41a3-43f7-b29d-544ae085415e",
+                "id": "0565b87a-3d84-49a3-ac0d-ed7f05b7060e",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "16d8633b-7570-470e-90f2-de1fbaab53e7",
+                "id": "6515b264-198a-4884-9a4d-6cfb8fa167aa",
                 "rule": "ByVLAN"
               },
               {
-                "id": "1e00bfce-f635-4758-980d-b81dd74559b6",
+                "id": "8d279a7a-0d42-4bd8-826f-26817e163c3c",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "6ddc4d93-32ac-4a92-a8f8-404cc9778d37",
+                "id": "0f866aac-f372-47bc-947a-6b9040890bfc",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -27013,7 +26999,7 @@
                 }
               },
               {
-                "id": "95909d27-ea4d-4919-b549-fbfbbb4208b6",
+                "id": "78ce19d0-b34d-4559-9bf1-e3ab37b25ac8",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -27022,15 +27008,15 @@
                 }
               },
               {
-                "id": "6331f471-8eb0-4415-905d-c7f33b299541",
+                "id": "206db1c9-2ccb-4f22-a838-1314d1713a9a",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "2d27e082-db45-41a6-b8ed-0f0cbbd13be7",
+                "id": "cd350307-2242-4ae2-9be2-af18f110f63a",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "89dd8d46-5433-4ab5-8b3d-968ec96d6491",
+                "id": "345ede1c-28f4-4f63-8c0f-e97f092c328e",
                 "rule": "ByStack"
               }
             ]

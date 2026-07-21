@@ -51,9 +51,6 @@ pub struct InstallArtifacts {
     /// defaults for these, so the UI should tell the user to set them in the installer —
     /// the binary install commands are unaffected and carry the full config.
     pub msi_omitted_config_keys: Vec<String>,
-    /// A ready-to-run `docker-compose.yml`. Only present for a first install: re-keying or
-    /// re-syncing a container means editing its existing compose file, not running a new one.
-    pub docker_compose: Option<String>,
 }
 
 /// What the caller wants the command to do — the one axis that actually varies.
@@ -398,7 +395,7 @@ pub fn build_install_artifacts(
         ),
     };
 
-    let commands = vec![
+    let mut commands = vec![
         PlatformInstallCommand {
             platform: "linux".to_string(),
             command: unix.clone(),
@@ -417,6 +414,16 @@ pub fn build_install_artifacts(
         },
     ];
 
+    // Docker is another install target, not an OS — it rides in the same list keyed as
+    // `docker`, so the UI selects it uniformly. Only an install yields a compose file; a
+    // reconfigure edits the container's existing one.
+    if kind == InstallCommandKind::Install {
+        commands.push(PlatformInstallCommand {
+            platform: "docker".to_string(),
+            command: docker_compose(&args, daemon, seed_credential_refs),
+        });
+    }
+
     let (msi_filename, msi_omitted_config_keys) =
         encode_msi_filename(public_url, daemon, install_config);
 
@@ -424,8 +431,6 @@ pub fn build_install_artifacts(
         commands,
         msi_filename,
         msi_omitted_config_keys,
-        docker_compose: (kind == InstallCommandKind::Install)
-            .then(|| docker_compose(&args, daemon, seed_credential_refs)),
     }
 }
 
@@ -591,15 +596,21 @@ mod tests {
             heartbeat_interval: Some(45),
             ..Default::default()
         };
-        let compose = build_install_artifacts(
-            "https://app.scanopy.net",
-            &daemon(DaemonMode::DaemonPoll, ""),
-            Some(&config),
-            &[],
-            InstallCommandKind::Install,
-        )
-        .docker_compose
-        .expect("an install yields a compose file");
+        let docker_command = |kind| {
+            build_install_artifacts(
+                "https://app.scanopy.net",
+                &daemon(DaemonMode::DaemonPoll, ""),
+                Some(&config),
+                &[],
+                kind,
+            )
+            .commands
+            .into_iter()
+            .find(|c| c.platform == "docker")
+            .map(|c| c.command)
+        };
+        let compose =
+            docker_command(InstallCommandKind::Install).expect("an install yields a compose");
 
         assert!(compose.contains("SCANOPY_SERVER_URL=https://app.scanopy.net"));
         assert!(compose.contains(&format!("SCANOPY_DAEMON_API_KEY={API_KEY_PLACEHOLDER}")));
@@ -620,18 +631,9 @@ mod tests {
             );
         }
 
-        // Reconfiguring means editing an existing compose file, not running a new one.
-        assert!(
-            build_install_artifacts(
-                "https://app.scanopy.net",
-                &daemon(DaemonMode::DaemonPoll, ""),
-                None,
-                &[],
-                InstallCommandKind::Reconfigure,
-            )
-            .docker_compose
-            .is_none()
-        );
+        // Reconfiguring means editing an existing compose file, not running a new one, so no
+        // docker entry is emitted.
+        assert!(docker_command(InstallCommandKind::Reconfigure).is_none());
     }
 
     /// The command is only useful if the daemon can actually parse it. Emit a fully populated

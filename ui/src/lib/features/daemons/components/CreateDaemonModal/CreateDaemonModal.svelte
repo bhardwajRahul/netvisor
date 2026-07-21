@@ -117,9 +117,10 @@
 	const windowsDownloadUrl =
 		'https://github.com/scanopy/scanopy/releases/latest/download/scanopy-daemon-windows-amd64.exe';
 	let currentInstallCommand = $derived.by(() => {
-		if (selectedOS === 'linux' && linuxMethod === 'docker' && dockerCompose) return dockerCompose;
+		// Docker is another install target keyed as `docker` in the commands list.
+		const platform = selectedOS === 'linux' && linuxMethod === 'docker' ? 'docker' : selectedOS;
 		// Prefer the server-assembled command for this platform (single source of truth).
-		const serverCmd = installArtifacts?.commands.find((c) => c.platform === selectedOS)?.command;
+		const serverCmd = installArtifacts?.commands.find((c) => c.platform === platform)?.command;
 		if (serverCmd) return serverCmd;
 		// Fallback (e.g. before provisioning completes) to the client-built command.
 		if (selectedOS === 'windows')
@@ -335,8 +336,10 @@
 			integrationTokens
 		)
 	);
-	// Server-assembled, like the binary commands — one source of truth for install artifacts.
-	let dockerCompose = $derived(installArtifacts?.docker_compose ?? '');
+	// Server-assembled, like the binary commands — docker rides in `commands` keyed as `docker`.
+	let dockerCompose = $derived(
+		installArtifacts?.commands.find((c) => c.platform === 'docker')?.command ?? ''
+	);
 
 	// Check for form validation errors (only visible fields)
 	let visibleFields = $derived(getVisibleFieldIds(formValues));
