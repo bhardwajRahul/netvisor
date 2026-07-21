@@ -29,13 +29,12 @@
 	import { pushError } from '$lib/shared/stores/feedback';
 	import {
 		common_associating,
-		daemons_associateKey,
-		daemons_associateKeyCta,
-		daemons_associateKeyDaemonPollHelp,
-		daemons_associateKeyFailed,
-		daemons_associateKeyNoDowntimeTitle,
-		daemons_associateKeyOfflineTitle,
-		daemons_associateKeyServerPollWarning,
+		daemons_bindKey,
+		daemons_bindKeyCta,
+		daemons_bindKeyDaemonPollHelp,
+		daemons_bindKeyFailed,
+		daemons_bindKeyTitle,
+		daemons_bindKeyServerPollWarning,
 		daemons_reconfigureCommandDaemonPoll,
 		daemons_reconfigureCommandServerPoll,
 		daemons_reconfigureTitle
@@ -71,7 +70,7 @@
 			const result = await provisionMutation.mutateAsync({ daemon_id: daemon.id });
 			mintedKey = result.daemon_api_key;
 		} catch {
-			pushError(daemons_associateKeyFailed());
+			pushError(daemons_bindKeyFailed());
 		} finally {
 			associating = false;
 		}
@@ -80,7 +79,7 @@
 
 {#if mintedKey}
 	<div class="space-y-4">
-		<InlineInfo
+		<InlineWarning
 			title={daemons_reconfigureTitle()}
 			body={isServerPoll
 				? daemons_reconfigureCommandServerPoll({ name: daemon.name })
@@ -102,23 +101,23 @@
 	     left-aligned, since centred prose reads badly. -->
 	<div class="space-y-4 py-4">
 		<KeyRound class="text-tertiary mx-auto h-10 w-10" />
-		<h3 class="text-primary text-center text-lg font-medium">{daemons_associateKey()}</h3>
+		<h3 class="text-primary text-center text-lg font-medium">{daemons_bindKey()}</h3>
 
 		{#if isServerPoll}
 			<InlineWarning
-				title={daemons_associateKeyOfflineTitle()}
-				body={daemons_associateKeyServerPollWarning()}
+				title={daemons_bindKeyTitle()}
+				body={daemons_bindKeyServerPollWarning()}
 			/>
 		{:else}
 			<InlineInfo
-				title={daemons_associateKeyNoDowntimeTitle()}
-				body={daemons_associateKeyDaemonPollHelp()}
+				title={daemons_bindKeyTitle()}
+				body={daemons_bindKeyDaemonPollHelp()}
 			/>
 		{/if}
 
 		<div class="text-center">
 			<button type="button" class="btn-primary" disabled={associating} onclick={associate}>
-				{associating ? common_associating() : daemons_associateKeyCta()}
+				{associating ? common_associating() : daemons_bindKeyCta()}
 			</button>
 		</div>
 	</div>

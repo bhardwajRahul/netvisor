@@ -334,23 +334,19 @@
 					     command carries no credential, so it is safe to show here and to run
 					     repeatedly. -->
 					{#if syncCommand}
-						<CollapsibleCard
-							title={daemons_reconfigureSectionTitle()}
-							description={daemons_reconfigureSectionHelp()}
-							expanded={false}
-						>
-							<div class="space-y-3">
-								<OsSelector selectedOS={syncOs} onOsSelect={(os) => (syncOs = os)}>
-									<CodeContainer
-										language={syncOs === 'windows' ? 'powershell' : 'bash'}
-										expandable={false}
-										maxHeight=""
-										code={syncCommand}
-										preventSelect={true}
-									/>
-								</OsSelector>
-							</div>
-						</CollapsibleCard>
+						<div class="space-y-3 card">
+							<p class="text-secondary text-sm">{daemons_reconfigureSectionTitle()}</p>
+							<p class="text-tertiary text-sm">{daemons_reconfigureSectionHelp()}</p>
+							<OsSelector selectedOS={syncOs} onOsSelect={(os) => (syncOs = os)}>
+								<CodeContainer
+									language={syncOs === 'windows' ? 'powershell' : 'bash'}
+									expandable={false}
+									maxHeight=""
+									code={syncCommand}
+									preventSelect={true}
+								/>
+							</OsSelector>
+						</div>
 					{/if}
 				</div>
 
