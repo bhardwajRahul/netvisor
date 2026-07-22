@@ -190,6 +190,16 @@ export interface SubnetTypeMetadata {
 	hide_from_subnet_list: boolean;
 }
 
+/**
+ * What a click on an edge highlights. An edge is one segment of a relation — a dependency's
+ * chain, a host's addresses, a runtime's bridges — and a click either lights up the whole
+ * relation (following `relation_field`, the payload field holding that relation's id) or only
+ * the clicked segment.
+ */
+export type EdgeSelectionScope =
+	| { type: 'connected_nodes'; relation_field: string }
+	| { type: 'segment' };
+
 export interface EdgeTypeMetadata {
 	has_start_marker: boolean;
 	has_end_marker: boolean;
@@ -197,6 +207,7 @@ export interface EdgeTypeMetadata {
 	is_dependency_edge: boolean;
 	is_host_edge: boolean;
 	is_physical_edge: boolean;
+	selection_scope: EdgeSelectionScope;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

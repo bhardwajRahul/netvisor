@@ -5375,6 +5375,12 @@ export interface components {
             /** Format: uuid */
             hypervisor_service_id: string;
         } | {
+            /**
+             * @description The containerized services this edge stands for — the ones reachable at the
+             *     bridge subnet(s) it connects. Resolved here rather than in the inspector, which
+             *     cannot tell which subnet an elevated edge landed on.
+             */
+            containerized_service_ids: string[];
             /** @enum {string} */
             edge_type: "ContainerRuntime";
             /** Format: uuid */

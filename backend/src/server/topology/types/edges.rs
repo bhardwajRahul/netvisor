@@ -58,6 +58,23 @@ pub enum EdgeHighlightBehavior {
     Never,
 }
 
+/// What a click on an edge highlights.
+///
+/// An edge is one segment of a relation — a dependency's chain, a host's addresses, a
+/// container's addresses, a runtime's bridges — and a click either lights up the whole
+/// relation or only the segment that was clicked. Generic: any current or future edge type
+/// picks one, and the selection code reads the property rather than branching on edge type.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash, Default)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum EdgeSelectionScope {
+    /// Highlight every node connected by any segment of the same relation. `relation_field`
+    /// names the edge payload field holding that relation's id.
+    ConnectedNodes { relation_field: &'static str },
+    /// Highlight only this edge's own two endpoints.
+    #[default]
+    Segment,
+}
+
 /// Per-view configuration for an edge: disabled (not in this view) or active with properties
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -170,6 +187,10 @@ pub enum EdgeType {
     ContainerRuntime {
         host_id: Uuid,
         service_id: Uuid,
+        /// The containerized services this edge stands for — the ones reachable at the
+        /// bridge subnet(s) it connects. Resolved here rather than in the inspector, which
+        /// cannot tell which subnet an elevated edge landed on.
+        containerized_service_ids: Vec<Uuid>,
     },
     /// One container reachable at several of its host's container-bridge subnets. Ties the
     /// container's addresses together so a multi-attached container reads as one thing rather
@@ -198,6 +219,39 @@ pub enum EdgeType {
 impl HasId for EdgeType {
     fn id(&self) -> &'static str {
         self.into()
+    }
+}
+
+impl EdgeType {
+    /// What a click on this edge highlights. Edges that stand for one segment of a wider
+    /// relation light up the whole relation; edges that are a relationship in their own
+    /// right light up their endpoints.
+    pub fn selection_scope(&self) -> EdgeSelectionScope {
+        use EdgeSelectionScope::*;
+        match self {
+            // Every segment of the dependency's chain.
+            EdgeType::RequestPath { .. } | EdgeType::HubAndSpoke { .. } => ConnectedNodes {
+                relation_field: "dependency_id",
+            },
+            // Every address of the host.
+            EdgeType::SameHost { .. } => ConnectedNodes {
+                relation_field: "host_id",
+            },
+            // Every address of the container.
+            EdgeType::SameContainer { .. } => ConnectedNodes {
+                relation_field: "service_id",
+            },
+            // Every bridge the runtime reaches its containers on.
+            EdgeType::ContainerRuntime { .. } => ConnectedNodes {
+                relation_field: "service_id",
+            },
+            // Every host the hypervisor virtualizes.
+            EdgeType::Hypervisor { .. } => ConnectedNodes {
+                relation_field: "hypervisor_service_id",
+            },
+            // A physical link is the relationship, not a segment of one.
+            EdgeType::PhysicalLink { .. } => Segment,
+        }
     }
 }
 
@@ -279,7 +333,8 @@ impl TypeMetadataProvider for EdgeType {
             "edge_style": edge_style,
             "is_host_edge": is_host_edge,
             "is_dependency_edge": is_dependency_edge,
-            "is_physical_edge": is_physical_edge
+            "is_physical_edge": is_physical_edge,
+            "selection_scope": self.selection_scope()
         })
     }
 }
@@ -339,5 +394,23 @@ mod tests {
     #[test]
     fn view_config_default_is_disabled() {
         assert_eq!(EdgeViewConfig::default(), EdgeViewConfig::Disabled);
+    }
+
+    /// The relation-scoped edges point the selection code at one of their own payload fields
+    /// by name. Renaming or dropping that field would silently degrade every click on the
+    /// edge to "highlight my two endpoints", so hold the two in step here.
+    #[test]
+    fn relation_scoped_edges_carry_the_field_they_name() {
+        for edge_type in EdgeType::iter() {
+            let EdgeSelectionScope::ConnectedNodes { relation_field } = edge_type.selection_scope()
+            else {
+                continue;
+            };
+            let payload = serde_json::to_value(&edge_type).unwrap();
+            assert!(
+                payload.get(relation_field).is_some_and(|v| v.is_string()),
+                "{edge_type:?} says it groups by `{relation_field}`, but serializes {payload}"
+            );
+        }
     }
 }
