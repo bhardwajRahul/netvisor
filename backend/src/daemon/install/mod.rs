@@ -104,6 +104,9 @@ pub struct Installed {
     pub daemon_id: Option<Uuid>,
     /// The api key this install holds, used to recognise a re-install of the same daemon.
     pub api_key: Option<String>,
+    /// The port this install's daemon listens on. Every daemon runs an HTTP listener, so two on
+    /// one host must not share a port.
+    pub daemon_port: Option<u16>,
 }
 
 /// The fields of a daemon `config.json` the installer needs to identify an install. Deliberately
@@ -118,6 +121,8 @@ struct InstalledConfig {
     id: Option<Uuid>,
     #[serde(default)]
     daemon_api_key: Option<String>,
+    #[serde(default)]
+    daemon_port: Option<u16>,
 }
 
 impl Installed {
@@ -125,9 +130,14 @@ impl Installed {
         let parsed = std::fs::read_to_string(&config_path)
             .ok()
             .and_then(|c| serde_json::from_str::<InstalledConfig>(&c).ok());
-        let (name, daemon_id, api_key) = match parsed {
-            Some(c) => (c.name, c.id.filter(|id| !id.is_nil()), c.daemon_api_key),
-            None => (None, None, None),
+        let (name, daemon_id, api_key, daemon_port) = match parsed {
+            Some(c) => (
+                c.name,
+                c.id.filter(|id| !id.is_nil()),
+                c.daemon_api_key,
+                c.daemon_port,
+            ),
+            None => (None, None, None, None),
         };
         Self {
             slot,
@@ -135,6 +145,7 @@ impl Installed {
             name,
             daemon_id,
             api_key,
+            daemon_port,
         }
     }
 
@@ -143,10 +154,15 @@ impl Installed {
     }
 
     /// What to call this daemon in output: its server-assigned name once it has connected.
+    ///
+    /// Keyed on the cached id rather than the name, because an install that has not completed a
+    /// handshake yet still carries the *default* name — reporting that would name a daemon the
+    /// operator never chose, and read as though the wrong install were being touched.
     fn label(&self) -> String {
-        self.name
-            .clone()
-            .unwrap_or_else(|| format!("{} (not yet connected)", self.slot))
+        match (&self.name, self.daemon_id) {
+            (Some(name), Some(_)) => name.clone(),
+            _ => format!("{} (not yet connected)", self.slot),
+        }
     }
 
     /// Whether `selector` — a daemon name, slot, service id, or daemon id — names this install.
@@ -192,16 +208,13 @@ fn resolve_install_target(
     name: Option<&str>,
     api_key: Option<&str>,
 ) -> Result<Resolution> {
-    if let Some(selector) = selector {
-        let index = installed
-            .iter()
-            .position(|i| i.matches(selector))
-            .with_context(|| {
-                format!(
-                    "No daemon matching '{selector}' is installed on this host.{}",
-                    describe_installed(installed)
-                )
-            })?;
+    // A selector names the install to act on *if it is here*. It is not an assertion that it is:
+    // the same command reinstalls a daemon onto a rebuilt host, where nothing matches yet and
+    // refusing would leave the operator with a command they cannot run. So an unmatched selector
+    // falls through to the ordinary resolution below (the caller reports it) rather than failing.
+    if let Some(selector) = selector
+        && let Some(index) = installed.iter().position(|i| i.matches(selector))
+    {
         return Ok(Resolution::Resolved(InstallTarget::Existing(index)));
     }
 
@@ -243,6 +256,26 @@ fn next_free_slot(installed: &[Installed]) -> String {
         .map(|n| format!("{DEFAULT_NAME}-{n}"))
         .find(|slot| !taken(slot))
         .expect("an unused slot always exists")
+}
+
+/// The port another install on this host has already claimed, if any.
+///
+/// Every daemon runs an HTTP listener, and the default bind is `0.0.0.0`, so the first daemon on a
+/// host claims its port on every address — a second one binding the same port exits with "Address
+/// already in use" and its service crash-loops. The install itself succeeds, so the failure only
+/// shows up as a daemon that never connects.
+fn port_conflict(installed: &[Installed], slot: &str, port: u16) -> bool {
+    installed
+        .iter()
+        .any(|i| i.slot != slot && i.daemon_port == Some(port))
+}
+
+/// The lowest port at or above the daemon default that no other install has claimed.
+fn next_free_port(installed: &[Installed], slot: &str) -> u16 {
+    let default = AppConfig::default().daemon_port;
+    (default..)
+        .find(|port| !port_conflict(installed, slot, *port))
+        .expect("a free port always exists below u16::MAX")
 }
 
 /// A trailing summary of what is installed, for error messages. Empty when nothing is.
@@ -307,6 +340,14 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     // since every path below hangs off the answer.
     let selector = daemon_args.instance.take();
     let installed = installed_daemons();
+    if let Some(selector) = selector.as_deref()
+        && !installed.iter().any(|i| i.matches(selector))
+    {
+        println!(
+            "No daemon matching '{selector}' is installed here yet — continuing as a fresh install.{}",
+            describe_installed(&installed)
+        );
+    }
     let slot = match resolve_install_target(
         &installed,
         selector.as_deref(),
@@ -317,6 +358,10 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         Resolution::Resolved(InstallTarget::New(slot)) => slot,
         Resolution::Ambiguous => choose_ambiguous_target(&installed)?,
     };
+
+    // Whether the operator pinned a port. A ServerPoll command always carries one (the server
+    // dials that exact port), so it must never be second-guessed below.
+    let port_was_requested = daemon_args.daemon_port.is_some();
 
     // Point the config load at the slot's own config.json, so re-running install against an
     // existing daemon (the reconfigure command) layers over what is already there instead of
@@ -335,7 +380,21 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         .expect("config_dir was just set");
 
     // Same config layering the daemon itself uses — single source of truth.
-    let config = AppConfig::load(daemon_args)?;
+    let mut config = AppConfig::load(daemon_args)?;
+
+    // Keep this daemon off a port another one on this host already listens on. The install command
+    // carries no port (identity and connectivity come from the key and the server url), so without
+    // this a second daemon installs cleanly and then crash-loops on "Address already in use",
+    // visible only as a daemon that never connects. A port the operator asked for is left alone —
+    // for ServerPoll it is the port the server dials, so moving it would break reachability.
+    if !port_was_requested && port_conflict(&installed, &slot, config.daemon_port) {
+        config.daemon_port = next_free_port(&installed, &slot);
+        println!(
+            "Port {} is already used by another daemon on this host; this one will listen on {}.",
+            AppConfig::default().daemon_port,
+            config.daemon_port
+        );
+    }
 
     // Only DaemonPoll dials out and needs a server URL. ServerPoll is dialed by the
     // server (installed with just --daemon-api-key), so it must not require one. Mode is
@@ -480,12 +539,31 @@ async fn run_uninstall(args: UninstallArgs) -> Result<()> {
     // `found_anything`: an artifact was present (even if kept). These drive the
     // final summary so a plain uninstall that only finds a kept binary/log
     // doesn't claim "no install found".
+    // A selector naming nothing discoverable still gets its paths swept (a half-removed install,
+    // service registered but config already gone, is only reachable that way). But if that turns
+    // up nothing either, the operator named a daemon that simply isn't here — say so, and say what
+    // is, rather than letting the generic summary below suggest `--purge` at them.
+    let unmatched_selector = args
+        .name
+        .as_deref()
+        .filter(|s| !installed.iter().any(|i| i.matches(s)));
+
     let mut removed_anything = false;
     let mut found_anything = false;
     for slot in &targets {
         let (removed, found) = remove_slot(slot, args.purge)?;
         removed_anything |= removed;
         found_anything |= found;
+    }
+
+    if let Some(selector) = unmatched_selector
+        && !found_anything
+    {
+        println!(
+            "No daemon matching '{selector}' is installed on this host.{}",
+            describe_installed(&installed)
+        );
+        return Ok(());
     }
 
     // The binary is shared by every daemon on the host, so it can only go once nothing is left to
@@ -495,10 +573,38 @@ async fn run_uninstall(args: UninstallArgs) -> Result<()> {
         found_anything = true;
         let remaining = installed_daemons();
         if args.purge && remaining.is_empty() {
-            std::fs::remove_file(&bin_path)
-                .with_context(|| format!("Failed to delete binary {}", bin_path.display()))?;
-            removed_anything = true;
-            report_disposition(&format!("Binary at {}", bin_path.display()), true);
+            let retired = bin_path.with_extension("old");
+            match remove_file_when_released(&bin_path) {
+                Ok(()) => {
+                    removed_anything = true;
+                    report_disposition(&format!("Binary at {}", bin_path.display()), true);
+                }
+                // Windows cannot delete the image a process is executing — and on Windows that
+                // process is usually this uninstaller, run from the very path being purged. It
+                // does allow the file to be *renamed*, so retire it instead of failing an
+                // uninstall that has already removed the service and config. `place_binary` and
+                // the sweep below clear a retired binary once nothing holds it.
+                Err(_) => {
+                    let _ = remove_file_when_released(&retired);
+                    std::fs::rename(&bin_path, &retired).with_context(|| {
+                        format!("Failed to delete binary {}", bin_path.display())
+                    })?;
+                    removed_anything = true;
+                    println!(
+                        "Binary at {}: Removed (retired to {}, which this running uninstaller \
+                         cannot delete; the next install clears it)",
+                        bin_path.display(),
+                        retired.display()
+                    );
+                }
+            }
+            // A binary retired by an earlier install goes too, once nothing runs it.
+            if retired.exists() && remove_file_when_released(&retired).is_err() {
+                println!(
+                    "Retired binary at {}: still in use — safe to delete once that process exits.",
+                    retired.display()
+                );
+            }
         } else if args.purge {
             println!(
                 "Binary at {}: Kept ({} other daemon(s) still installed)",
@@ -625,6 +731,13 @@ fn remove_slot(slot: &str, purge: bool) -> Result<(bool, bool)> {
             removed_anything = true;
             found_anything = true;
             report_disposition(&format!("Config at {}", config_path.display()), true);
+            // Take the slot directory with it once it holds nothing else, so removing a daemon
+            // doesn't leave its slot behind as an empty husk. `remove_dir` only succeeds on an
+            // empty directory, which is exactly the condition wanted — anything the operator put
+            // there keeps the directory.
+            if let Some(slot_dir) = config_path.parent() {
+                let _ = std::fs::remove_dir(slot_dir);
+            }
         }
     }
 
@@ -654,7 +767,36 @@ fn remove_slot(slot: &str, purge: bool) -> Result<(bool, bool)> {
     Ok((removed_anything, found_anything))
 }
 
+/// Delete a file that a service may only just have released.
+///
+/// Deregistering a service asks the platform to stop it and returns before it necessarily has:
+/// `sc stop` is asynchronous. Windows refuses to delete an image while a process still runs it, so
+/// removing the binary immediately after can fail purely on timing — a race that would otherwise
+/// fail the whole uninstall. Retry briefly rather than reporting a failure the user can fix by
+/// running the same command again a second later. A file that is already gone is a success.
+fn remove_file_when_released(path: &Path) -> std::io::Result<()> {
+    const ATTEMPTS: u32 = 10;
+    for attempt in 0..ATTEMPTS {
+        match std::fs::remove_file(path) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(_) if attempt + 1 < ATTEMPTS => {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    unreachable!("the loop returns on its final attempt")
+}
+
 /// Copy the running executable to `dest`, with an already-in-place fast path. Idempotent.
+///
+/// The binary is staged beside `dest` and renamed into place rather than copied over it. Every
+/// daemon on a host shares one binary, so by the time a second one is installed — or an existing
+/// one is upgraded from a freshly downloaded copy — `dest` is the image a running service is
+/// executing. Writing to it directly fails there: `ETXTBSY` on Unix, a sharing violation on
+/// Windows. Renaming swaps the directory entry instead, which both platforms allow: the running
+/// daemon keeps the inode it started from and picks the new binary up when it next restarts.
 fn place_binary(dest: &Path) -> Result<()> {
     let src = std::env::current_exe().context("Failed to locate the running executable")?;
 
@@ -669,15 +811,41 @@ fn place_binary(dest: &Path) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create {}", parent.display()))?;
     }
-    std::fs::copy(&src, dest)
-        .with_context(|| format!("Failed to copy binary to {}", dest.display()))?;
+
+    // Stage in the destination directory, so the rename below is same-filesystem (and therefore
+    // atomic) rather than a cross-device copy.
+    let staged = dest.with_extension("new");
+    std::fs::copy(&src, &staged)
+        .with_context(|| format!("Failed to copy binary to {}", staged.display()))?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755))
-            .with_context(|| format!("Failed to set permissions on {}", dest.display()))?;
+        std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755))
+            .with_context(|| format!("Failed to set permissions on {}", staged.display()))?;
     }
+
+    // Windows refuses to *replace* a file that is currently executing, but it will let it be
+    // renamed out of the way first. The retired copy can only be deleted once nothing is running
+    // it, so both the removal here and the one below are best-effort.
+    #[cfg(target_family = "windows")]
+    let retired = dest.with_extension("old");
+    #[cfg(target_family = "windows")]
+    if dest.exists() {
+        let _ = std::fs::remove_file(&retired);
+        std::fs::rename(dest, &retired).with_context(|| {
+            format!(
+                "Failed to move the running binary aside at {}",
+                dest.display()
+            )
+        })?;
+    }
+
+    std::fs::rename(&staged, dest)
+        .with_context(|| format!("Failed to move binary into place at {}", dest.display()))?;
+
+    #[cfg(target_family = "windows")]
+    let _ = std::fs::remove_file(&retired);
 
     println!("Installed binary to {}.", dest.display());
     Ok(())

@@ -15,6 +15,7 @@ fn write_install(base: &Path, slot: &str, name: Option<&str>, key: &str) -> Uuid
         "name": name,
         "id": name.map(|_| id.to_string()),
         "daemon_api_key": key,
+        "daemon_port": AppConfig::default().daemon_port,
     });
     std::fs::write(
         dir.join("config.json"),
@@ -142,18 +143,27 @@ fn a_first_install_takes_the_default_slot() {
     );
 }
 
+/// The server puts `--instance <daemon id>` on the install command of any daemon that has checked
+/// in, so that command is also what you run to rebuild a dead host — where nothing matches it yet.
+/// Refusing there would leave the operator holding a command they cannot run, so an unmatched
+/// selector falls through to the ordinary resolution instead of failing.
 #[test]
-fn an_unknown_selector_is_an_error_that_names_what_is_installed() {
+fn a_selector_for_a_daemon_that_is_not_installed_here_still_installs() {
+    let fresh_host = resolve_install_target(&[], Some("edge-99"), None, Some("key-a")).unwrap();
+    assert_eq!(
+        fresh_host,
+        Resolution::Resolved(InstallTarget::New(DEFAULT_NAME.to_string())),
+        "reinstalling onto a rebuilt host must proceed, not error"
+    );
+
+    // On a host that *does* run daemons, an unmatched selector must still not silently land on one
+    // of them — that decision stays with the operator.
     let base = tempfile::tempdir().unwrap();
     write_install(base.path(), DEFAULT_NAME, Some("edge-01"), "key-a");
     let installed = installed_in(base.path());
-
-    let error = resolve_install_target(&installed, Some("edge-99"), None, Some("key-a"))
-        .expect_err("an unknown selector cannot resolve");
-
-    let message = format!("{error:#}");
-    assert!(message.contains("edge-99"), "{message}");
-    assert!(message.contains("edge-01"), "{message}");
+    let busy_host =
+        resolve_install_target(&installed, Some("edge-99"), None, Some("other-key")).unwrap();
+    assert_eq!(busy_host, Resolution::Ambiguous);
 }
 
 /// The regression check: a second daemon installed on a host that already runs one must get its
@@ -190,6 +200,26 @@ fn installs_predating_slots_keep_the_service_id_they_were_registered_under() {
     );
     // …while an allocated slot is its own service id rather than doubling the prefix.
     assert_eq!(service_id("scanopy-daemon-2"), "scanopy-daemon-2");
+}
+
+/// Every daemon runs an HTTP listener and binds 0.0.0.0 by default, so two on one host cannot
+/// share a port — the second exits with "Address already in use" and its service crash-loops. The
+/// install command carries no port, so the installer has to keep them apart itself.
+#[test]
+fn a_second_daemon_is_moved_off_the_port_the_first_one_listens_on() {
+    let base = tempfile::tempdir().unwrap();
+    write_install(base.path(), DEFAULT_NAME, Some("edge-01"), "key-a");
+    let installed = installed_in(base.path());
+    let default_port = AppConfig::default().daemon_port;
+
+    assert!(port_conflict(&installed, "scanopy-daemon-2", default_port));
+    let second = next_free_port(&installed, "scanopy-daemon-2");
+    assert_ne!(second, default_port);
+
+    // Re-running an install against the daemon that already owns the port is not a conflict with
+    // itself, so a reconfigure must not shunt a working daemon onto a new port.
+    assert!(!port_conflict(&installed, DEFAULT_NAME, default_port));
+    assert_eq!(next_free_port(&installed, DEFAULT_NAME), default_port);
 }
 
 fn uninstall_args(name: Option<&str>, all: bool) -> UninstallArgs {
