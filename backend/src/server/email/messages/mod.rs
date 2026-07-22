@@ -501,12 +501,13 @@ mod tests {
             network_name: "Home".to_string(),
             started_at: chrono::Utc::now(),
             finished_at: chrono::Utc::now(),
+            stale_after_hours: 168,
             subnets_scanned: vec![],
             hosts_added: vec![],
-            hosts_vanished: vec![],
+            hosts_stale: vec![],
             hosts_changed: vec![],
             vlans_added: vec![],
-            vlans_removed: vec![],
+            vlans_stale: vec![],
             recipients: vec![],
         };
         assert_fully_rendered(&DiscoveryDigest {
@@ -750,12 +751,13 @@ mod tests {
             network_name: "Home".to_string(),
             started_at: chrono::Utc::now(),
             finished_at: chrono::Utc::now(),
+            stale_after_hours: 168,
             subnets_scanned: vec![],
             hosts_added: vec![],
-            hosts_vanished: vec![],
+            hosts_stale: vec![],
             hosts_changed: vec![],
             vlans_added: vec![],
-            vlans_removed: vec![],
+            vlans_stale: vec![],
             recipients: vec![],
         };
         f(

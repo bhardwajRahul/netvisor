@@ -3104,19 +3104,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-21T19:24:37.429215Z",
+             *       "created_at": "2026-07-22T17:45:11.290967Z",
              *       "first_discovery_id": null,
-             *       "id": "1405362a-f5fc-4205-ad60-8e4fbd517f7c",
+             *       "id": "afb6c69f-8ded-41ad-b2bb-be591498a2c0",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-21T19:24:37.429215Z",
+             *       "last_seen_at": "2026-07-22T17:45:11.290967Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-21T19:24:37.429215Z",
-             *       "valid_from": "2026-07-21T19:24:37.429215Z",
+             *       "updated_at": "2026-07-22T17:45:11.290967Z",
+             *       "valid_from": "2026-07-22T17:45:11.290967Z",
              *       "valid_to": null
              *     }
              */
@@ -3481,19 +3481,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-21T19:24:37.408604Z",
+             *               "created_at": "2026-07-22T17:45:11.273245Z",
              *               "first_discovery_id": null,
-             *               "id": "6a3a61db-0d42-49ec-ac89-20d08403a15a",
+             *               "id": "9847e39b-a068-4c67-b9dc-4ee2bb2cffd4",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-21T19:24:37.408604Z",
+             *               "last_seen_at": "2026-07-22T17:45:11.273245Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-21T19:24:37.408604Z",
-             *               "valid_from": "2026-07-21T19:24:37.408604Z",
+             *               "updated_at": "2026-07-22T17:45:11.273245Z",
+             *               "valid_from": "2026-07-22T17:45:11.273245Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3507,7 +3507,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Fios Extender",
+             *           "service_definition": "Kerberos",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3666,9 +3666,11 @@ export interface components {
              * @example {
              *       "created_at": "2026-01-15T10:30:00Z",
              *       "credential_ids": [],
+             *       "effective_stale_after_hours": 168,
              *       "id": "550e8400-e29b-41d4-a716-446655440002",
              *       "name": "Home Network",
              *       "organization_id": "550e8400-e29b-41d4-a716-446655440001",
+             *       "stale_after_hours": null,
              *       "tags": [],
              *       "updated_at": "2026-01-15T10:30:00Z"
              *     }
@@ -3676,6 +3678,16 @@ export interface components {
             data?: components["schemas"]["NetworkBase"] & {
                 /** Format: date-time */
                 readonly created_at: string;
+                /**
+                 * Format: int64
+                 * @description `stale_after_hours` with the server's default already applied.
+                 *
+                 *     Computed, never stored (excluded from `to_params`). Published so the
+                 *     frontend derives staleness from the *same* number the digest uses rather
+                 *     than re-declaring the default in TypeScript, where the two could drift
+                 *     and a host could read stale in the app but current in the digest email.
+                 */
+                readonly effective_stale_after_hours?: number;
                 /** Format: uuid */
                 readonly id: string;
                 /** Format: date-time */
@@ -3905,19 +3917,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-21T19:24:37.422403Z",
+             *           "created_at": "2026-07-22T17:45:11.285090Z",
              *           "first_discovery_id": null,
-             *           "id": "8594b0fe-fcf8-4f67-87c1-e682c123a6f9",
+             *           "id": "c6a2b2e1-b8f7-4fd6-b485-23b1e9aad8db",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-21T19:24:37.422403Z",
+             *           "last_seen_at": "2026-07-22T17:45:11.285090Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-21T19:24:37.422403Z",
-             *           "valid_from": "2026-07-21T19:24:37.422403Z",
+             *           "updated_at": "2026-07-22T17:45:11.285090Z",
+             *           "valid_from": "2026-07-22T17:45:11.285090Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3931,7 +3943,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Fios Extender",
+             *       "service_definition": "Kerberos",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4435,19 +4447,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-21T19:24:37.409067Z",
+         *       "created_at": "2026-07-22T17:45:11.273611Z",
          *       "first_discovery_id": null,
-         *       "id": "0702a420-f9bf-4612-91ab-6f69d1358422",
+         *       "id": "e9af73b4-de32-4bd3-a5f3-0af458ec8e21",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-21T19:24:37.409067Z",
+         *       "last_seen_at": "2026-07-22T17:45:11.273611Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-21T19:24:37.409067Z",
-         *       "valid_from": "2026-07-21T19:24:37.409067Z",
+         *       "updated_at": "2026-07-22T17:45:11.273611Z",
+         *       "valid_from": "2026-07-22T17:45:11.273611Z",
          *       "valid_to": null
          *     }
          */
@@ -4662,7 +4674,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Fios Extender",
+         *           "service_definition": "Kerberos",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5484,6 +5496,22 @@ export interface components {
         };
         /** @enum {string} */
         EntityDiscriminants: "Organization" | "Invite" | "Share" | "Network" | "DaemonApiKey" | "UserApiKey" | "User" | "Tag" | "Discovery" | "Daemon" | "Host" | "Service" | "Port" | "Binding" | "IPAddress" | "Interface" | "Credential" | "Subnet" | "Vlan" | "Dependency" | "Topology" | "Snapshot" | "Unknown";
+        /**
+         * @description How recently discovery last observed an entity.
+         *
+         *     Derived, never persisted — computed from `last_seen_at` against the
+         *     entity's network staleness window (`Network::stale_cutoff`). Shared by the
+         *     discovery digest email and the UI so a host reported stale in the digest is
+         *     the same host badged stale in the inventory and topology; running two
+         *     different measures let them disagree (a scan-count measure calls an entity
+         *     missing after 3 scans, which is 45 minutes on one network and 3 months on
+         *     another).
+         *
+         *     Only discovery-managed entities can be `Stale` — see
+         *     [`DiscoveryTracked::is_discovery_managed`](crate::server::shared::storage::snapshot::DiscoveryTracked::is_discovery_managed).
+         * @enum {string}
+         */
+        EntityFreshness: "new" | "current" | "stale";
         EntitySource: {
             /** @enum {string} */
             type: "Manual";
@@ -5643,7 +5671,7 @@ export interface components {
          * @description Fields that hosts can be ordered/grouped by.
          * @enum {string}
          */
-        HostOrderField: "created_at" | "name" | "hostname" | "updated_at" | "virtualized_by" | "network_id" | "interface_ip";
+        HostOrderField: "created_at" | "name" | "hostname" | "updated_at" | "virtualized_by" | "network_id" | "interface_ip" | "last_seen_at";
         /**
          * @description Response type for host endpoints.
          *     Includes children (ip_addresses, ports, services, interfaces).
@@ -5734,19 +5762,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-21T19:24:37.408085Z",
+         *               "created_at": "2026-07-22T17:45:11.272806Z",
          *               "first_discovery_id": null,
-         *               "id": "d58475a9-0fa5-4b18-bbf3-eeecb91df563",
+         *               "id": "93cc4159-ffb7-4b27-a4d2-f68b2a3d1ef2",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-21T19:24:37.408085Z",
+         *               "last_seen_at": "2026-07-22T17:45:11.272806Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-21T19:24:37.408085Z",
-         *               "valid_from": "2026-07-21T19:24:37.408085Z",
+         *               "updated_at": "2026-07-22T17:45:11.272806Z",
+         *               "valid_from": "2026-07-22T17:45:11.272806Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5760,7 +5788,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Fios Extender",
+         *           "service_definition": "Kerberos",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6342,9 +6370,11 @@ export interface components {
          * @example {
          *       "created_at": "2026-01-15T10:30:00Z",
          *       "credential_ids": [],
+         *       "effective_stale_after_hours": 168,
          *       "id": "550e8400-e29b-41d4-a716-446655440002",
          *       "name": "Home Network",
          *       "organization_id": "550e8400-e29b-41d4-a716-446655440001",
+         *       "stale_after_hours": null,
          *       "tags": [],
          *       "updated_at": "2026-01-15T10:30:00Z"
          *     }
@@ -6352,6 +6382,16 @@ export interface components {
         Network: components["schemas"]["NetworkBase"] & {
             /** Format: date-time */
             readonly created_at: string;
+            /**
+             * Format: int64
+             * @description `stale_after_hours` with the server's default already applied.
+             *
+             *     Computed, never stored (excluded from `to_params`). Published so the
+             *     frontend derives staleness from the *same* number the digest uses rather
+             *     than re-declaring the default in TypeScript, where the two could drift
+             *     and a host could read stale in the app but current in the digest email.
+             */
+            readonly effective_stale_after_hours?: number;
             /** Format: uuid */
             readonly id: string;
             /** Format: date-time */
@@ -6363,6 +6403,16 @@ export interface components {
             name: string;
             /** Format: uuid */
             organization_id: string;
+            /**
+             * Format: int64
+             * @description How long a discovery-managed entity on this network may go unobserved
+             *     before it reads as stale. `None` = unset; callers resolve the effective
+             *     value through [`Network::stale_after`], never by reading this directly.
+             *
+             *     Network-scoped because staleness is only meaningful relative to scan
+             *     cadence, and cadence is a property of a network's discoveries.
+             */
+            stale_after_hours: number | null;
             tags: string[];
         };
         /** @description Network configuration for setup */
@@ -7349,19 +7399,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-21T19:24:37.408969Z",
+         *           "created_at": "2026-07-22T17:45:11.273531Z",
          *           "first_discovery_id": null,
-         *           "id": "2f8b1792-87f2-4aaf-869a-12554bd7816b",
+         *           "id": "e063ff1a-f7a9-419e-b126-272713599df6",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-21T19:24:37.408969Z",
+         *           "last_seen_at": "2026-07-22T17:45:11.273531Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-21T19:24:37.408969Z",
-         *           "valid_from": "2026-07-21T19:24:37.408969Z",
+         *           "updated_at": "2026-07-22T17:45:11.273531Z",
+         *           "valid_from": "2026-07-22T17:45:11.273531Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7375,7 +7425,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Fios Extender",
+         *       "service_definition": "Kerberos",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7459,7 +7509,7 @@ export interface components {
          * @description Fields that services can be ordered/grouped by.
          * @enum {string}
          */
-        ServiceOrderField: "created_at" | "name" | "updated_at" | "host" | "network_id" | "position";
+        ServiceOrderField: "created_at" | "name" | "updated_at" | "host" | "network_id" | "position" | "last_seen_at";
         /** ServiceVirtualization */
         ServiceVirtualization: {
             details: components["schemas"]["DockerVirtualization"];
@@ -7639,7 +7689,7 @@ export interface components {
          * @description Fields that subnets can be ordered/grouped by.
          * @enum {string}
          */
-        SubnetOrderField: "created_at" | "name" | "cidr" | "subnet_type" | "updated_at" | "network_id";
+        SubnetOrderField: "created_at" | "name" | "cidr" | "subnet_type" | "updated_at" | "network_id" | "last_seen_at";
         /** @enum {string} */
         SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "Unknown";
         /**
@@ -7798,7 +7848,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "49d6fa04-ee10-42e4-9a39-f2b2cb7decd2",
+             *           "id": "73f2ec09-1629-40cf-8a9f-18731a047a4d",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7808,23 +7858,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "ba9bccd2-35e1-4140-b6f9-f9e1ed386e71",
+             *           "id": "0bb6e728-7b11-4331-92c5-50f5474718db",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "d1370ec5-b9c7-4ce0-bceb-1aa6db93cdc9",
+             *           "id": "3af8d803-8a0f-49ef-97cd-b411ca09783e",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "88557c7d-5cc5-4519-990d-af140417ecaa",
+             *           "id": "da2acb29-45b4-4821-acbd-57349278afa4",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "ba9bccd2-35e1-4140-b6f9-f9e1ed386e71",
+             *           "id": "0bb6e728-7b11-4331-92c5-50f5474718db",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7836,19 +7886,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "0c9dd7a0-7cee-4e06-aec4-3845d1c2b589",
+             *         "id": "089101c3-f118-491e-950a-0429c7186b30",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "a51df41e-db47-418f-9300-54001ba74183",
+             *         "id": "a386774f-17bb-4f92-8678-d7c4f9ccb2d1",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "466cf17e-a196-4d75-b3d9-1192dea92b4c",
+             *         "id": "c02f1ad3-759c-43da-bea7-37b1ec9ee8f4",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "7e4e88eb-58df-4720-84de-f3819dbdc164",
+             *         "id": "0ae512c0-cbfe-4c2d-8654-d38cd882f04d",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7866,7 +7916,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "37aa43fd-1594-4a22-8aca-ecca3a3e4509",
+             *         "id": "c52166f0-dfb8-4c4a-bd20-2cb88192e512",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7875,15 +7925,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "3c5ee327-988d-462d-b125-3173bf69254a",
+             *         "id": "0364e008-530a-4960-81ca-b9729b03a734",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "ab1db72e-cea7-48a5-8e5c-8cb5540f4c30",
+             *         "id": "71d1ec59-c86e-4a64-a37e-467fa9f7eec3",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "7324efa8-8e6a-4603-b5a1-a72bccad6b9e",
+             *         "id": "a5e99c4b-fc92-4906-84da-e7d99d77d2bb",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -11601,6 +11651,12 @@ export interface operations {
                  *     instant (snapshot view) instead of live state.
                  */
                 at?: string | null;
+                /**
+                 * @description `true` returns only hosts discovery hasn't observed within their
+                 *     network's staleness window; `false` returns only those it has. Omit for
+                 *     both. Evaluated per row against the host's own network's window.
+                 */
+                stale?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -11752,6 +11808,12 @@ export interface operations {
                  *     instant (snapshot view) instead of live state.
                  */
                 at?: string | null;
+                /**
+                 * @description `true` returns only hosts discovery hasn't observed within their
+                 *     network's staleness window; `false` returns only those it has. Omit for
+                 *     both. Evaluated per row against the host's own network's window.
+                 */
+                stale?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -11794,6 +11856,12 @@ export interface operations {
                  *     instant (snapshot view) instead of live state.
                  */
                 at?: string | null;
+                /**
+                 * @description `true` returns only hosts discovery hasn't observed within their
+                 *     network's staleness window; `false` returns only those it has. Omit for
+                 *     both. Evaluated per row against the host's own network's window.
+                 */
+                stale?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -12628,6 +12696,16 @@ export interface operations {
                         data: (components["schemas"]["NetworkBase"] & {
                             /** Format: date-time */
                             readonly created_at: string;
+                            /**
+                             * Format: int64
+                             * @description `stale_after_hours` with the server's default already applied.
+                             *
+                             *     Computed, never stored (excluded from `to_params`). Published so the
+                             *     frontend derives staleness from the *same* number the digest uses rather
+                             *     than re-declaring the default in TypeScript, where the two could drift
+                             *     and a host could read stale in the app but current in the digest email.
+                             */
+                            readonly effective_stale_after_hours?: number;
                             /** Format: uuid */
                             readonly id: string;
                             /** Format: date-time */
@@ -13383,6 +13461,12 @@ export interface operations {
                  *     instant (snapshot view) instead of live state.
                  */
                 at?: string | null;
+                /**
+                 * @description `true` returns only services discovery hasn't observed within their
+                 *     network's staleness window; `false` returns only those it has. Omit for
+                 *     both. Evaluated per row against the service's own network's window.
+                 */
+                stale?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -13487,6 +13571,12 @@ export interface operations {
                  *     instant (snapshot view) instead of live state.
                  */
                 at?: string | null;
+                /**
+                 * @description `true` returns only services discovery hasn't observed within their
+                 *     network's staleness window; `false` returns only those it has. Omit for
+                 *     both. Evaluated per row against the service's own network's window.
+                 */
+                stale?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -14072,6 +14162,12 @@ export interface operations {
                  *     instant (snapshot view) instead of live state.
                  */
                 at?: string | null;
+                /**
+                 * @description `true` returns only subnets discovery hasn't observed within their
+                 *     network's staleness window; `false` returns only those it has. Omit for
+                 *     both. Evaluated per row against the subnet's own network's window.
+                 */
+                stale?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -14168,6 +14264,12 @@ export interface operations {
                  *     instant (snapshot view) instead of live state.
                  */
                 at?: string | null;
+                /**
+                 * @description `true` returns only subnets discovery hasn't observed within their
+                 *     network's staleness window; `false` returns only those it has. Omit for
+                 *     both. Evaluated per row against the subnet's own network's window.
+                 */
+                stale?: boolean | null;
             };
             header?: never;
             path?: never;

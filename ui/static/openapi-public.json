@@ -4179,6 +4179,18 @@
               ],
               "format": "date-time"
             }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only hosts discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the host's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -4462,6 +4474,18 @@
               ],
               "format": "date-time"
             }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only hosts discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the host's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -4624,6 +4648,18 @@
                 "null"
               ],
               "format": "date-time"
+            }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only hosts discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the host's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           }
         ],
@@ -6199,6 +6235,12 @@
                                 "format": "date-time",
                                 "readOnly": true
                               },
+                              "effective_stale_after_hours": {
+                                "type": "integer",
+                                "format": "int64",
+                                "description": "`stale_after_hours` with the server's default already applied.\n\nComputed, never stored (excluded from `to_params`). Published so the\nfrontend derives staleness from the *same* number the digest uses rather\nthan re-declaring the default in TypeScript, where the two could drift\nand a host could read stale in the app but current in the digest email.",
+                                "readOnly": true
+                              },
                               "id": {
                                 "type": "string",
                                 "format": "uuid",
@@ -6215,9 +6257,11 @@
                         "example": {
                           "created_at": "2026-01-15T10:30:00Z",
                           "credential_ids": [],
+                          "effective_stale_after_hours": 168,
                           "id": "550e8400-e29b-41d4-a716-446655440002",
                           "name": "Home Network",
                           "organization_id": "550e8400-e29b-41d4-a716-446655440001",
+                          "stale_after_hours": null,
                           "tags": [],
                           "updated_at": "2026-01-15T10:30:00Z"
                         }
@@ -7462,6 +7506,18 @@
               ],
               "format": "date-time"
             }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only services discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the service's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -7748,6 +7804,18 @@
                 "null"
               ],
               "format": "date-time"
+            }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only services discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the service's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           }
         ],
@@ -8811,6 +8879,18 @@
               ],
               "format": "date-time"
             }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only subnets discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the subnet's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -9042,6 +9122,18 @@
                 "null"
               ],
               "format": "date-time"
+            }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only subnets discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the subnet's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           }
         ],
@@ -11085,19 +11177,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-21T19:24:37.429218Z",
+              "created_at": "2026-07-22T17:45:11.290964Z",
               "first_discovery_id": null,
-              "id": "4554da2a-6519-4f9d-a90e-88209ac8feb9",
+              "id": "fcdc873d-3b21-403c-a5c3-846966b56182",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-21T19:24:37.429218Z",
+              "last_seen_at": "2026-07-22T17:45:11.290964Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-21T19:24:37.429218Z",
-              "valid_from": "2026-07-21T19:24:37.429218Z",
+              "updated_at": "2026-07-22T17:45:11.290964Z",
+              "valid_from": "2026-07-22T17:45:11.290964Z",
               "valid_to": null
             }
           },
@@ -12152,19 +12244,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-21T19:24:37.408592Z",
+                      "created_at": "2026-07-22T17:45:11.273257Z",
                       "first_discovery_id": null,
-                      "id": "bfc67e4f-b810-4d25-8a6d-ba9279381837",
+                      "id": "cac88102-fbf1-4ee2-b3bb-fbef1aa43535",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-21T19:24:37.408592Z",
+                      "last_seen_at": "2026-07-22T17:45:11.273257Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-21T19:24:37.408592Z",
-                      "valid_from": "2026-07-21T19:24:37.408592Z",
+                      "updated_at": "2026-07-22T17:45:11.273257Z",
+                      "valid_from": "2026-07-22T17:45:11.273257Z",
                       "valid_to": null
                     }
                   ],
@@ -12178,7 +12270,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Fios Extender",
+                  "service_definition": "Kerberos",
                   "source": {
                     "type": "Manual"
                   },
@@ -12550,6 +12642,12 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "effective_stale_after_hours": {
+                    "type": "integer",
+                    "format": "int64",
+                    "description": "`stale_after_hours` with the server's default already applied.\n\nComputed, never stored (excluded from `to_params`). Published so the\nfrontend derives staleness from the *same* number the digest uses rather\nthan re-declaring the default in TypeScript, where the two could drift\nand a host could read stale in the app but current in the digest email.",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
@@ -12566,9 +12664,11 @@
             "example": {
               "created_at": "2026-01-15T10:30:00Z",
               "credential_ids": [],
+              "effective_stale_after_hours": 168,
               "id": "550e8400-e29b-41d4-a716-446655440002",
               "name": "Home Network",
               "organization_id": "550e8400-e29b-41d4-a716-446655440001",
+              "stale_after_hours": null,
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z"
             }
@@ -13240,19 +13340,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-21T19:24:37.422414Z",
+                  "created_at": "2026-07-22T17:45:11.285098Z",
                   "first_discovery_id": null,
-                  "id": "6b4fcbda-3c66-4e1d-b5ce-d9246bc624a4",
+                  "id": "7ef13470-254e-4fbe-ad95-48c1beb8e1c5",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-21T19:24:37.422414Z",
+                  "last_seen_at": "2026-07-22T17:45:11.285098Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-21T19:24:37.422414Z",
-                  "valid_from": "2026-07-21T19:24:37.422414Z",
+                  "updated_at": "2026-07-22T17:45:11.285098Z",
+                  "valid_from": "2026-07-22T17:45:11.285098Z",
                   "valid_to": null
                 }
               ],
@@ -13266,7 +13366,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Fios Extender",
+              "service_definition": "Kerberos",
               "source": {
                 "type": "Manual"
               },
@@ -15136,19 +15236,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-21T19:24:37.409044Z",
+          "created_at": "2026-07-22T17:45:11.273617Z",
           "first_discovery_id": null,
-          "id": "1ecc73c5-b702-4351-b531-9caa6b2e81e0",
+          "id": "0d4d9fb3-632c-41a1-b501-43da61aa9113",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-21T19:24:37.409044Z",
+          "last_seen_at": "2026-07-22T17:45:11.273617Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-21T19:24:37.409044Z",
-          "valid_from": "2026-07-21T19:24:37.409044Z",
+          "updated_at": "2026-07-22T17:45:11.273617Z",
+          "valid_from": "2026-07-22T17:45:11.273617Z",
           "valid_to": null
         }
       },
@@ -15739,7 +15839,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Fios Extender",
+              "service_definition": "Kerberos",
               "tags": [],
               "virtualization": null
             }
@@ -17972,6 +18072,15 @@
           "Unknown"
         ]
       },
+      "EntityFreshness": {
+        "type": "string",
+        "description": "How recently discovery last observed an entity.\n\nDerived, never persisted — computed from `last_seen_at` against the\nentity's network staleness window (`Network::stale_cutoff`). Shared by the\ndiscovery digest email and the UI so a host reported stale in the digest is\nthe same host badged stale in the inventory and topology; running two\ndifferent measures let them disagree (a scan-count measure calls an entity\nmissing after 3 scans, which is 45 minutes on one network and 3 months on\nanother).\n\nOnly discovery-managed entities can be `Stale` — see\n[`DiscoveryTracked::is_discovery_managed`](crate::server::shared::storage::snapshot::DiscoveryTracked::is_discovery_managed).",
+        "enum": [
+          "new",
+          "current",
+          "stale"
+        ]
+      },
       "EntitySource": {
         "oneOf": [
           {
@@ -18399,7 +18508,8 @@
           "updated_at",
           "virtualized_by",
           "network_id",
-          "interface_ip"
+          "interface_ip",
+          "last_seen_at"
         ]
       },
       "HostResponse": {
@@ -18629,19 +18739,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-21T19:24:37.408073Z",
+                  "created_at": "2026-07-22T17:45:11.272836Z",
                   "first_discovery_id": null,
-                  "id": "e8da9448-a7ef-4538-9e61-7c7b9da2d9b2",
+                  "id": "e7038633-8848-47aa-af9a-70d665ed94fa",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-21T19:24:37.408073Z",
+                  "last_seen_at": "2026-07-22T17:45:11.272836Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-21T19:24:37.408073Z",
-                  "valid_from": "2026-07-21T19:24:37.408073Z",
+                  "updated_at": "2026-07-22T17:45:11.272836Z",
+                  "valid_from": "2026-07-22T17:45:11.272836Z",
                   "valid_to": null
                 }
               ],
@@ -18655,7 +18765,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Fios Extender",
+              "service_definition": "Kerberos",
               "source": {
                 "type": "Manual"
               },
@@ -20181,6 +20291,12 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "effective_stale_after_hours": {
+                "type": "integer",
+                "format": "int64",
+                "description": "`stale_after_hours` with the server's default already applied.\n\nComputed, never stored (excluded from `to_params`). Published so the\nfrontend derives staleness from the *same* number the digest uses rather\nthan re-declaring the default in TypeScript, where the two could drift\nand a host could read stale in the app but current in the digest email.",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
@@ -20197,9 +20313,11 @@
         "example": {
           "created_at": "2026-01-15T10:30:00Z",
           "credential_ids": [],
+          "effective_stale_after_hours": 168,
           "id": "550e8400-e29b-41d4-a716-446655440002",
           "name": "Home Network",
           "organization_id": "550e8400-e29b-41d4-a716-446655440001",
+          "stale_after_hours": null,
           "tags": [],
           "updated_at": "2026-01-15T10:30:00Z"
         }
@@ -20210,7 +20328,8 @@
           "name",
           "organization_id",
           "tags",
-          "credential_ids"
+          "credential_ids",
+          "stale_after_hours"
         ],
         "properties": {
           "credential_ids": {
@@ -20227,6 +20346,14 @@
           "organization_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "stale_after_hours": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long a discovery-managed entity on this network may go unobserved\nbefore it reads as stale. `None` = unset; callers resolve the effective\nvalue through [`Network::stale_after`], never by reading this directly.\n\nNetwork-scoped because staleness is only meaningful relative to scan\ncadence, and cadence is a property of a network's discoveries."
           },
           "tags": {
             "type": "array",
@@ -21246,19 +21373,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-21T19:24:37.396237Z",
+                        "created_at": "2026-07-22T17:45:11.262576Z",
                         "first_discovery_id": null,
-                        "id": "d8d5cc25-149e-4590-9a8e-7de5fa929b0f",
+                        "id": "93014c12-f011-4034-bf1f-1215711c05ab",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-21T19:24:37.396237Z",
+                        "last_seen_at": "2026-07-22T17:45:11.262576Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-21T19:24:37.396237Z",
-                        "valid_from": "2026-07-21T19:24:37.396237Z",
+                        "updated_at": "2026-07-22T17:45:11.262576Z",
+                        "valid_from": "2026-07-22T17:45:11.262576Z",
                         "valid_to": null
                       }
                     ],
@@ -21272,7 +21399,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Fios Extender",
+                    "service_definition": "Kerberos",
                     "source": {
                       "type": "Manual"
                     },
@@ -21393,19 +21520,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-21T19:24:37.421153Z",
+                    "created_at": "2026-07-22T17:45:11.283950Z",
                     "first_discovery_id": null,
-                    "id": "05b729f1-d6b7-49a5-b2b8-6b76a05c94ff",
+                    "id": "631dc3a8-02a0-405b-af53-e0d6d45c7d48",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-21T19:24:37.421153Z",
+                    "last_seen_at": "2026-07-22T17:45:11.283950Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-21T19:24:37.421153Z",
-                    "valid_from": "2026-07-21T19:24:37.421153Z",
+                    "updated_at": "2026-07-22T17:45:11.283950Z",
+                    "valid_from": "2026-07-22T17:45:11.283950Z",
                     "valid_to": null
                   }
                 ],
@@ -21419,7 +21546,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Fios Extender",
+                "service_definition": "Kerberos",
                 "source": {
                   "type": "Manual"
                 },
@@ -23122,19 +23249,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-21T19:24:37.408948Z",
+              "created_at": "2026-07-22T17:45:11.273540Z",
               "first_discovery_id": null,
-              "id": "3366feb0-7cc6-4721-a7ec-2bb73f39c609",
+              "id": "880330b4-a98b-4e99-a4c6-e898b300f88b",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-21T19:24:37.408948Z",
+              "last_seen_at": "2026-07-22T17:45:11.273540Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-21T19:24:37.408948Z",
-              "valid_from": "2026-07-21T19:24:37.408948Z",
+              "updated_at": "2026-07-22T17:45:11.273540Z",
+              "valid_from": "2026-07-22T17:45:11.273540Z",
               "valid_to": null
             }
           ],
@@ -23148,7 +23275,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Fios Extender",
+          "service_definition": "Kerberos",
           "source": {
             "type": "Manual"
           },
@@ -23330,7 +23457,8 @@
           "updated_at",
           "host",
           "network_id",
-          "position"
+          "position",
+          "last_seen_at"
         ]
       },
       "ServiceVirtualization": {
@@ -23817,7 +23945,8 @@
           "cidr",
           "subnet_type",
           "updated_at",
-          "network_id"
+          "network_id",
+          "last_seen_at"
         ]
       },
       "SubnetType": {
@@ -24278,7 +24407,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "72a01cd8-61cc-4afe-8dfc-59c596469034",
+                  "id": "202eb20c-2725-4aad-8c21-b732ce111180",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24288,23 +24417,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "795b4410-5119-42bb-ad8a-8d9a509f128d",
+                  "id": "1489d942-a1c4-4d42-82f1-f04f33a67ce0",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "959ffb68-8b48-4b3c-9226-ede14f9c97b1",
+                  "id": "34e3874a-38b0-493a-b15d-0e754a3b58cf",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "6c3af9ed-a89d-45ed-9cce-02c23e19db7a",
+                  "id": "b0516beb-3fbb-41cb-91f1-ea811794dd41",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "795b4410-5119-42bb-ad8a-8d9a509f128d",
+                  "id": "1489d942-a1c4-4d42-82f1-f04f33a67ce0",
                   "rule": "ByHost"
                 }
               ]
@@ -24333,19 +24462,19 @@
             },
             "default": [
               {
-                "id": "ab57f515-a079-455e-a637-0fbaa34f1d85",
+                "id": "828d9b5e-185f-41a0-99e4-59bfe1dbb261",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "eb0c6228-8377-4936-98b0-1699a4a9b1b4",
+                "id": "5e74b888-798f-4ebc-bd7e-67e60f48e212",
                 "rule": "ByVLAN"
               },
               {
-                "id": "db6fee5b-6645-42d0-98d8-7cd2e7233107",
+                "id": "cf2f16d5-eef4-4372-a6f7-4079595ab817",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "83789f47-3044-41c1-946d-91fc565a0ab7",
+                "id": "75e90ae6-26d5-4a20-a393-7bfb6018ace2",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24363,7 +24492,7 @@
                 }
               },
               {
-                "id": "a07b5d82-00be-47c4-96c5-ba4c4a714efc",
+                "id": "77d88e37-6c19-4023-a5ce-b04de93c74ef",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24372,15 +24501,15 @@
                 }
               },
               {
-                "id": "dc1df89d-7ba8-4d85-a5b4-5c86bbbf3e32",
+                "id": "9308d2fc-b06d-4b7d-ad23-56310d39e005",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "b84b4ef3-4af8-416e-8e40-a9f9fa5b0c15",
+                "id": "0eedfc14-7d68-4197-9c60-819e457bfc6f",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "fdc848bb-4d92-4bcc-9dd1-167526484340",
+                "id": "c1344242-4929-45b0-91ae-629a3eaa4629",
                 "rule": "ByStack"
               }
             ]

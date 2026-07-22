@@ -38,6 +38,8 @@
 		networks_credentialHelp,
 		networks_credentialHelpLinkText,
 		networks_networkNamePlaceholder,
+		networks_staleAfterHours,
+		networks_staleAfterHoursHelp,
 		networks_noCredentialsAssigned
 	} from '$lib/paraglide/messages';
 
@@ -220,6 +222,19 @@
 								{field}
 								placeholder={networks_networkNamePlaceholder()}
 								required
+							/>
+						{/snippet}
+					</form.Field>
+
+					<form.Field name="stale_after_hours">
+						{#snippet children(field)}
+							<TextInput
+								label={networks_staleAfterHours()}
+								id="stale_after_hours"
+								{field}
+								type="number"
+								placeholder={network ? String(network.effective_stale_after_hours) : ''}
+								helpText={networks_staleAfterHoursHelp()}
 							/>
 						{/snippet}
 					</form.Field>

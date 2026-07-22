@@ -18,6 +18,8 @@
 		common_hide,
 		common_interfaces,
 		common_ipAddresses,
+		common_lastSeen,
+		common_never,
 		common_service,
 		common_services,
 		common_tags,
@@ -30,6 +32,9 @@
 	} from '$lib/paraglide/messages';
 	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
+	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import { getFreshnessTag } from '$lib/shared/utils/freshness';
+	import { formatRelativeTime } from '$lib/shared/utils/formatting';
 
 	// Queries
 	const servicesQuery = useServicesCacheQuery();
@@ -37,6 +42,7 @@
 	const interfacesQuery = useInterfacesQuery();
 	const subnetsQuery = useSubnetsQuery();
 	const credentialsQuery = useCredentialsQuery();
+	const networksQuery = useNetworksQuery();
 
 	// Derived data
 	let servicesData = $derived(servicesQuery.data ?? []);
@@ -115,6 +121,12 @@
 
 		return {
 			title: host.name,
+			// Staleness is judged against this host's own network's window.
+			// Occupies the same slot DaemonCard uses for daemon health.
+			status: getFreshnessTag(
+				host,
+				(networksQuery.data ?? []).find((n) => n.id === host.network_id)
+			),
 			...(host.virtualization !== null && virtualizationService
 				? {
 						subtitle: hosts_vmManagedBy({
@@ -185,6 +197,10 @@
 						color: entities.getColorHelper('Interface').color,
 						entityRef: entityRef('Interface', i.id, i)
 					}))
+				},
+				{
+					label: common_lastSeen(),
+					value: host.last_seen_at ? formatRelativeTime(host.last_seen_at) : common_never()
 				},
 				{ label: common_tags(), snippet: tagsSnippet }
 			],

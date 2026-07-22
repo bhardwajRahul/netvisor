@@ -148,6 +148,8 @@ export function createEmptyNetworkFormData(): Network {
 		updated_at: utcTimeZoneSentinel,
 		organization_id: uuidv4Sentinel,
 		tags: [],
-		credential_ids: []
+		credential_ids: [],
+		// null = unset; the server applies its default staleness window.
+		stale_after_hours: null
 	};
 }

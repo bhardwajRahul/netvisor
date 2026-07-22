@@ -3,7 +3,7 @@ use uuid::Uuid;
 use super::{Email, EmailCategory, EmailPreference, PausableCategory};
 use crate::server::{
     digest::payload::{
-        AffectedHostCard, DiscoveryDigestPayload, EntityDigestStatus, InterfaceSummary,
+        AffectedHostCard, DiscoveryDigestPayload, EntityFreshness, InterfaceSummary,
         IpAddressSummary, PortSummary, ServiceSummary, SubnetSummary, VlanSummary,
     },
     shared::{
@@ -52,30 +52,29 @@ impl Email for DiscoveryDigest<'_> {
         let settings_url = self.with_utm(&format!("{base}/?modal=settings&tab=email"));
 
         let summary_section = render_summary_banner(payload);
-        let legend_section = render_legend();
+        let legend_section = render_legend(payload.stale_after_hours);
         let subnets_section = render_subnets_section(&payload.subnets_scanned, base, self);
         let hosts_added_section =
             render_host_cards_section("New hosts discovered", &payload.hosts_added, base, self);
-        let hosts_vanished_section =
-            render_host_cards_section("Missing hosts", &payload.hosts_vanished, base, self);
+        let hosts_stale_section =
+            render_host_cards_section("Stale hosts", &payload.hosts_stale, base, self);
         let hosts_changed_section =
             render_host_cards_section("Hosts with changes", &payload.hosts_changed, base, self);
         let vlans_added_section = render_vlan_list_section("VLANs detected", &payload.vlans_added);
-        let vlans_removed_section =
-            render_vlan_list_section("VLANs no longer detected", &payload.vlans_removed);
+        let vlans_stale_section = render_vlan_list_section("Stale VLANs", &payload.vlans_stale);
 
         BODY.replace("{network_name}", &html_escape(&payload.network_name))
             .replace("{started_at}", &started)
             .replace("{finished_at}", &finished)
             .replace("{settings_url}", &settings_url)
             .replace("{summary_section}", &summary_section)
-            .replace("{legend_section}", legend_section)
+            .replace("{legend_section}", &legend_section)
             .replace("{subnets_section}", &subnets_section)
             .replace("{hosts_added_section}", &hosts_added_section)
-            .replace("{hosts_vanished_section}", &hosts_vanished_section)
+            .replace("{hosts_stale_section}", &hosts_stale_section)
             .replace("{hosts_changed_section}", &hosts_changed_section)
             .replace("{vlans_added_section}", &vlans_added_section)
-            .replace("{vlans_removed_section}", &vlans_removed_section)
+            .replace("{vlans_stale_section}", &vlans_stale_section)
     }
 }
 
@@ -91,10 +90,10 @@ const BODY: &str = r#"                    <!-- Main Content -->
                             {legend_section}
                             {subnets_section}
                             {hosts_added_section}
-                            {hosts_vanished_section}
+                            {hosts_stale_section}
                             {hosts_changed_section}
                             {vlans_added_section}
-                            {vlans_removed_section}
+                            {vlans_stale_section}
                         </td>
                     </tr>
 
@@ -117,7 +116,7 @@ const MAX_HOST_CARDS_INLINE: usize = 5;
 struct TagItem {
     label: String,
     color: Color,
-    status: EntityDigestStatus,
+    status: EntityFreshness,
     href: Option<String>,
     /// Already-absolute URL (relative `/logos/...` paths rewritten by the
     /// caller against `public_url`).
@@ -130,11 +129,13 @@ struct TagItem {
 /// clickable anchor that opens the corresponding modal in the app.
 fn render_tag(tag: &TagItem) -> String {
     let (bg, fg) = tag.color.email_tag_hex();
+    // No strikethrough for stale: it reads as "removed", and the only claim we
+    // make is "not observed within this network's window". Italic carries the
+    // softer meaning and survives every mail client.
     let (prefix, label_style) = match tag.status {
-        EntityDigestStatus::New => ("+ ", ""),
-        EntityDigestStatus::Missing => ("− ", "text-decoration: line-through;"),
-        EntityDigestStatus::PossiblyMissing => ("? ", "font-style: italic;"),
-        EntityDigestStatus::Unchanged => ("", ""),
+        EntityFreshness::New => ("+ ", ""),
+        EntityFreshness::Stale => ("◷ ", "font-style: italic;"),
+        EntityFreshness::Current => ("", ""),
     };
     let logo = tag.logo_url.as_deref().filter(|u| !u.is_empty()).map_or_else(
         String::new,
@@ -217,8 +218,31 @@ fn render_section(heading: &str, body_html: &str) -> String {
 /// Glyph legend explaining the per-tag status encoding. No colour — colour
 /// stays bound to the entity type. Placed at the top of the body just
 /// below the summary banner.
-fn render_legend() -> &'static str {
-    r#"<div style="margin: 0 0 16px 0; padding: 10px 14px; background-color: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563; line-height: 1.5;"><div style="margin: 0 0 6px 0;"><span style="margin-right: 14px;">(<strong>+</strong> new)</span><span style="margin-right: 14px;">(unchanged)</span><span style="margin-right: 14px;">(<strong>?</strong> <em>possibly missing</em>)</span><span>(<strong>−</strong> <span style="text-decoration: line-through;">missing)</span></span></div><div style="font-size: 12px; color: #6b7280;"><strong>?</strong> means we expected to see this entity but didn't this scan, usually due to transient network conditions. We mark it <strong>−</strong> missing only after it's been missing for 3 consecutive scans.</div></div>"#
+///
+/// The staleness window is per-network, so the legend states this network's
+/// effective value rather than a fixed rule. Wording matches the app's badge
+/// ("Stale") so the same entity reads the same way in both places.
+fn render_legend(stale_after_hours: i64) -> String {
+    let window = humanize_hours(stale_after_hours);
+    format!(
+        r#"<div style="margin: 0 0 16px 0; padding: 10px 14px; background-color: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563; line-height: 1.5;"><div style="margin: 0 0 6px 0;"><span style="margin-right: 14px;">(<strong>+</strong> new)</span><span style="margin-right: 14px;">(current)</span><span>(<strong>◷</strong> <em>stale</em>)</span></div><div style="font-size: 12px; color: #6b7280;"><strong>◷</strong> means discovery hasn't observed this entity for {window}, this network's staleness window. It doesn't mean the entity was removed — it may simply be powered off or out of reach. Entities this scan didn't cover aren't listed at all.</div></div>"#,
+    )
+}
+
+/// "168" → "7 days". Whole days when it divides evenly, hours otherwise.
+fn humanize_hours(hours: i64) -> String {
+    let plural = |n: i64, unit: &str| {
+        if n == 1 {
+            format!("1 {unit}")
+        } else {
+            format!("{n} {unit}s")
+        }
+    };
+    if hours >= 24 && hours % 24 == 0 {
+        plural(hours / 24, "day")
+    } else {
+        plural(hours, "hour")
+    }
 }
 
 fn render_subnets_section(subnets: &[SubnetSummary], base: &str, email: &dyn Email) -> String {
@@ -270,10 +294,10 @@ fn render_vlan_list_section(heading: &str, vlans: &[VlanSummary]) -> String {
 fn render_summary_banner(payload: &DiscoveryDigestPayload) -> String {
     let cells: Vec<(usize, &str)> = vec![
         (payload.hosts_added.len(), "new hosts"),
-        (payload.hosts_vanished.len(), "missing hosts"),
+        (payload.hosts_stale.len(), "stale hosts"),
         (payload.hosts_changed.len(), "changed hosts"),
         (payload.vlans_added.len(), "VLANs detected"),
-        (payload.vlans_removed.len(), "VLANs no longer detected"),
+        (payload.vlans_stale.len(), "stale VLANs"),
         (payload.subnets_scanned.len(), "subnets scanned"),
     ];
     let inner: String = cells
@@ -332,23 +356,14 @@ fn render_host_card(card: &AffectedHostCard, base: &str, email: &dyn Email) -> S
     // Badge mirrors the per-tag glyph convention: a host that's listed
     // because its children changed has `Unchanged` status — the surrounding
     // section header carries the context, so no badge is shown.
+    // Amber, not red: stale means "behind", not "broken" — the same split the
+    // app's daemon status tags use (red = unreachable, amber = outdated). The
+    // word carries the meaning unaided so the badge survives an image-blocking
+    // client with no colour perception required.
     let badge = match card.status {
-        EntityDigestStatus::New => Some(("+", "New", "#dcfce7", "#166534", "")),
-        EntityDigestStatus::PossiblyMissing => Some((
-            "?",
-            "Possibly missing",
-            "#fef9c3",
-            "#854d0e",
-            "font-style: italic;",
-        )),
-        EntityDigestStatus::Missing => Some((
-            "−",
-            "Missing",
-            "#fee2e2",
-            "#991b1b",
-            "text-decoration: line-through;",
-        )),
-        EntityDigestStatus::Unchanged => None,
+        EntityFreshness::New => Some(("+", "New", "#dcfce7", "#166534", "")),
+        EntityFreshness::Stale => Some(("◷", "Stale", "#fef9c3", "#854d0e", "")),
+        EntityFreshness::Current => None,
     }
     .map(|(glyph, title, bg, fg, extra)| {
         format!(

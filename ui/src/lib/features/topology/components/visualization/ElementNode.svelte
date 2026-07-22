@@ -10,6 +10,11 @@
 		activeView
 	} from '../../queries';
 	import { useTopology, selectedTopologyId } from '../../context';
+	import { Clock } from 'lucide-svelte';
+	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import { entityFreshness, lastSeenLabel } from '$lib/shared/utils/freshness';
+
+	const networksQuery = useNetworksQuery();
 	import type { TopologyNode, ElementRenderData, RenderableTopology } from '../../types/base';
 	import { resolveElementNode } from '../../resolvers';
 	import { type Writable, get } from 'svelte/store';
@@ -107,6 +112,23 @@
 
 	let resolved = $derived(topology ? resolveElementNode(id, data as TopologyNode, topology) : null);
 	let host = $derived(resolved?.host);
+
+	// Staleness marker. Deliberately additive rather than an opacity change:
+	// node opacity is already the filter/search dimming channel (see
+	// `nodeOpacity`), so fading stale nodes would make "stale" and "filtered
+	// out" indistinguishable — and a node that is both, invisible as either.
+	// A Service element speaks for its own service; any other element speaks
+	// for its host.
+	let freshnessSubject = $derived(
+		resolved?.elementType === 'Service' ? resolved.services[0] : host
+	);
+	let staleNetwork = $derived(
+		(networksQuery.data ?? []).find((n) => n.id === freshnessSubject?.network_id)
+	);
+	let isStale = $derived(
+		!!freshnessSubject && entityFreshness(freshnessSubject, staleNetwork) === 'stale'
+	);
+	let staleTitle = $derived(freshnessSubject ? lastSeenLabel(freshnessSubject) : '');
 	let servicesForHost = $derived(resolved?.services ?? []);
 	let ipAddress = $derived(resolved?.ipAddress ?? null);
 
@@ -645,6 +667,18 @@
 		class={`${cardClass} ${isNewNode ? 'animate-pulse-highlight' : ''} ${serviceHoverShadowStyle ? 'animate-pulse-highlight-once' : ''} ${isEntityTypeHover ? 'entity-type-hover-active' : ''}`}
 		style={`width: ${effectiveWidth}px; height: 100%; display: flex; flex-direction: column; padding: 0; opacity: ${nodeOpacity}; transition: opacity 0.2s ease-in-out, box-shadow 0.15s ease-in-out; ${isNewNode ? `--pulse-color: ${discoveryColorHelper.rgb};` : ''} ${serviceHoverShadowStyle} ${tagHoverRingStyle}`}
 	>
+		<!-- Staleness marker: same clock + amber the inventory card badge and
+		     the digest email use, so one entity reads the same way everywhere. -->
+		{#if isStale}
+			<div
+				class="absolute right-1 top-1 z-10 text-amber-600 dark:text-amber-400"
+				title={staleTitle}
+				aria-label={staleTitle}
+			>
+				<Clock size={12} strokeWidth={2.5} />
+			</div>
+		{/if}
+
 		<!-- Rest of component stays the same -->
 		<!-- Header section with gradient transition to body -->
 		{#if nodeRenderData.headerText}

@@ -24,6 +24,7 @@ use uuid::Uuid;
 
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::storage::traits::Storable;
+use crate::server::shared::types::entities::EntityFreshness;
 
 /// SCD2 row lifecycle accessors. Shared by entities (Host, Service, …) and
 /// junction tables (subnet_vlans, dependency_members, entity_tags) that
@@ -111,6 +112,33 @@ pub trait DiscoveryTracked: Snapshotable + crate::server::shared::storage::trait
     fn originate_scan_timestamps(&mut self, scan_time: DateTime<Utc>) {
         self.set_created_at(scan_time);
         self.set_valid_from(scan_time);
+    }
+
+    /// Whether discovery is expected to keep this entity's `last_seen_at`
+    /// advancing. Manually- and system-created entities are never re-observed
+    /// by a scan, so their `last_seen_at` is frozen at creation and a freshness
+    /// verdict on them would be meaningless — every hand-curated host would
+    /// read as stale once it aged past the window.
+    ///
+    /// Defaults to `true` for the types that carry no `EntitySource` (Port,
+    /// IPAddress, Interface, Binding — always created by discovery). Host,
+    /// Service, Subnet and Vlan override it with `source.is_from_discovery()`.
+    fn is_discovery_managed(&self) -> bool {
+        true
+    }
+
+    /// Freshness of this entity as of `cutoff` — the instant before which
+    /// `last_seen_at` counts as stale, from `Network::stale_cutoff`.
+    ///
+    /// The single definition of staleness. Both the digest and the read path
+    /// call this so they cannot drift apart; the equivalent SQL predicate lives
+    /// in `StorableFilter::stale_by_network` and must be kept in step with it.
+    fn freshness(&self, cutoff: DateTime<Utc>) -> EntityFreshness {
+        if !self.is_discovery_managed() || self.last_seen_at() >= cutoff {
+            EntityFreshness::Current
+        } else {
+            EntityFreshness::Stale
+        }
     }
 
     /// Returns a filter for "which of my rows did this discovery scan?"

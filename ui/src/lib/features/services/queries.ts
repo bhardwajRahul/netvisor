@@ -36,6 +36,9 @@ export interface ServicesQueryParams {
 	order_direction?: components['schemas']['OrderDirection'];
 	/** Filter by tag IDs (returns services that have ANY of the specified tags). */
 	tag_ids?: string[];
+	/** `true` returns only services discovery hasn't observed within their
+	 * network's staleness window; omit for no staleness constraint. */
+	stale?: boolean;
 	/** Exclude services belonging to these categories. */
 	exclude_categories?: components['schemas']['ServiceCategory'][];
 }
@@ -79,6 +82,7 @@ export function useServicesQuery(
 			order_by,
 			order_direction,
 			tag_ids,
+			stale,
 			exclude_categories
 		} = params;
 
@@ -94,6 +98,7 @@ export function useServicesQuery(
 					order_by,
 					order_direction,
 					tag_ids,
+					stale,
 					exclude_categories
 				}
 			],
@@ -109,6 +114,7 @@ export function useServicesQuery(
 							order_by,
 							order_direction,
 							tag_ids,
+							stale,
 							exclude_categories
 						}
 					}
