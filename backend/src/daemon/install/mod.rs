@@ -233,11 +233,15 @@ async fn run_uninstall(args: UninstallArgs) -> Result<()> {
     //    (`--log-file`, always `default_system_log_path` == `spec.log_file`);
     //    macOS also has the launchd stdout/stderr capture. Kept by default
     //    (useful for a post-mortem), deleted only under --purge.
-    let mut log_files = vec![spec.log_file.clone()];
-    #[cfg(target_os = "macos")]
-    log_files.push(
+    let log_files: Vec<std::path::PathBuf> = [
+        spec.log_file.clone(),
+        // macOS also captures the launchd stdout log; cfg'd on the element so the
+        // list is single-entry on other platforms without an unused `mut`/`vec!`.
+        #[cfg(target_os = "macos")]
         std::path::PathBuf::from("/var/log/scanopy").join(format!("{}.out.log", spec.service_id)),
-    );
+    ]
+    .into_iter()
+    .collect();
     for log_path in log_files.iter().filter(|p| p.exists()) {
         found_anything = true;
         if args.purge {
