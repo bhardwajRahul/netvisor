@@ -315,6 +315,7 @@ pub const FOOTER_LEGAL_SELF_HOSTED: &str = r#"                            <p sty
 mod tests {
     use super::*;
     use crate::server::digest::payload::DiscoveryDigestPayload;
+    use crate::server::networks::r#impl::DEFAULT_STALE_AFTER_HOURS;
     use uuid::Uuid;
 
     /// True if `s` still contains a `{snake_case}` placeholder — i.e. an
@@ -501,7 +502,7 @@ mod tests {
             network_name: "Home".to_string(),
             started_at: chrono::Utc::now(),
             finished_at: chrono::Utc::now(),
-            stale_after_hours: 168,
+            stale_after_hours: DEFAULT_STALE_AFTER_HOURS,
             subnets_scanned: vec![],
             hosts_added: vec![],
             hosts_stale: vec![],
@@ -751,7 +752,7 @@ mod tests {
             network_name: "Home".to_string(),
             started_at: chrono::Utc::now(),
             finished_at: chrono::Utc::now(),
-            stale_after_hours: 168,
+            stale_after_hours: DEFAULT_STALE_AFTER_HOURS,
             subnets_scanned: vec![],
             hosts_added: vec![],
             hosts_stale: vec![],
