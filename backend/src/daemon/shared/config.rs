@@ -110,8 +110,8 @@ pub struct DaemonCli {
     pub service: bool,
 }
 
-/// Install/uninstall subcommands. Both reuse the daemon's own connection flags so there is a
-/// single source of truth for configuration (see [`DaemonArgs`]).
+/// Install/uninstall/list subcommands. Install and uninstall reuse the daemon's own connection
+/// flags so there is a single source of truth for configuration (see [`DaemonArgs`]).
 // `Install` flattens the full `DaemonArgs` and so dwarfs `Uninstall`; boxing the variant (the usual
 // large_enum_variant remedy) is incompatible with clap's Subcommand derive, and this enum is only
 // ever constructed once at CLI parse time, so the size gap is harmless.
@@ -124,6 +124,8 @@ pub enum DaemonCommand {
     Install(InstallArgs),
     /// Stop and remove the daemon's system service and delete its `config.json`.
     Uninstall(UninstallArgs),
+    /// List the Scanopy daemons installed on this host, with the selector to use for each.
+    List,
 }
 
 /// Flags for `scanopy-daemon install`: the shared daemon flags plus install-only options.
@@ -145,10 +147,14 @@ pub struct InstallArgs {
 /// Flags for `scanopy-daemon uninstall`.
 #[derive(Args)]
 pub struct UninstallArgs {
-    /// Name of the daemon instance to remove (must match the `--name` used at install time;
-    /// defaults to the standard install).
+    /// Which installed daemon to remove: its name, its slot, or its service id (see
+    /// `scanopy-daemon list`). Optional when the host has only one daemon installed.
     #[arg(long)]
     pub name: Option<String>,
+
+    /// Remove every daemon installed on this host.
+    #[arg(long)]
+    pub all: bool,
 
     /// Also delete the installed binary from disk (by default the binary is left in place).
     #[arg(long)]
@@ -313,6 +319,15 @@ pub struct DaemonArgs {
     #[serde(skip)]
     #[arg(long)]
     pub config_dir: Option<PathBuf>,
+
+    /// Which daemon already installed on this host the `install` command targets: its name, its
+    /// slot, its service id, or its daemon id (see `scanopy-daemon list`). Only needed on a host
+    /// running several daemons; otherwise the installer resolves the target on its own.
+    // Install-time selector, not a config value — `AppConfig::load` never merges it. Server-set on
+    // the reconfigure command so it targets exactly the daemon it was generated for.
+    #[serde(skip)]
+    #[arg(long)]
+    pub instance: Option<String>,
 }
 
 /// One emittable install-config value, paired with the key it takes in each install artifact.
@@ -387,6 +402,7 @@ impl DaemonArgs {
             port_scan_batch_size: _,
             interfaces,
             config_dir: _, // Install-time locator, baked into the service definition
+            instance,
         } = self;
 
         let mut pairs = Vec::new();
@@ -402,9 +418,11 @@ impl DaemonArgs {
             render_mode(mode.as_ref()),
         );
         // The daemon learns its name via the handshake, so the CLI command and compose env both
-        // omit it; the MSI needs it up front because the service id is derived from it at
-        // install time.
+        // omit it; the MSI needs it up front to label the install it creates.
         push(&mut pairs, None, Some("name"), None, name.clone());
+        // Which already-installed daemon to act on, for the rare host running several. Nothing to
+        // select on a fresh MSI install, and a docker daemon is one container per compose file.
+        push(&mut pairs, Some("--instance"), None, None, instance.clone());
         push(
             &mut pairs,
             Some("--server-url"),
@@ -1283,6 +1301,54 @@ mod tests {
         }
     }
 
+    /// The `install` subcommand doubles as reconfigure: it is re-run against an already-installed
+    /// daemon with only the settings that changed, and layers them over that daemon's existing
+    /// `config.json` before writing it back. The reconfigure command deliberately carries no
+    /// credential, so anything it does *not* carry has to survive the round trip — a load that
+    /// rebuilt from defaults would write back a config with no api key and no cached identity,
+    /// leaving the daemon unable to authenticate.
+    #[test]
+    #[serial]
+    fn a_reconfigure_load_keeps_the_settings_it_does_not_carry() {
+        use crate::daemon::shared::config::DaemonArgs;
+
+        let dir = tempfile::tempdir().unwrap();
+        let daemon_id = Uuid::new_v4();
+        std::fs::write(
+            dir.path().join("config.json"),
+            serde_json::json!({
+                "name": "edge-01",
+                "id": daemon_id,
+                "daemon_api_key": "the-key-it-already-has",
+                "server_url": "https://old.example",
+                "daemon_port": 60073,
+                "log_level": "info",
+                "heartbeat_interval": 30,
+                "bind_address": "0.0.0.0",
+                "server_target": null,
+                "server_port": null,
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let config = AppConfig::load(DaemonArgs {
+            config_dir: Some(dir.path().to_path_buf()),
+            server_url: Some("https://new.example".to_string()),
+            ..Default::default()
+        })
+        .expect("config loads from the directory it will be written back to");
+
+        assert_eq!(
+            config.daemon_api_key.as_deref(),
+            Some("the-key-it-already-has")
+        );
+        assert_eq!(config.id, daemon_id);
+        assert_eq!(config.name, "edge-01");
+        // …while what the command did carry still wins.
+        assert_eq!(config.server_url.as_deref(), Some("https://new.example"));
+    }
+
     #[derive(Debug)]
     struct FieldInfo {
         cli_flag: String,
@@ -1290,12 +1356,15 @@ mod tests {
         help_text: String,
     }
 
-    const EXCLUDED_FIELDS: [&str; 18] = [
+    const EXCLUDED_FIELDS: [&str; 19] = [
         "daemon_api_key",
         "network_id",
         "server_url",
         // Locator baked into system services by `install`, not a user-facing config field
         "config_dir",
+        // Selects which already-installed daemon an install command acts on; resolved by the
+        // installer, never persisted, and meaningless to a fresh MSI install
+        "instance",
         // Internal marker baked into the Windows service binPath so the daemon runs under the
         // SCM dispatcher; not a user-facing config field
         "service",

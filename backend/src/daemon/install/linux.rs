@@ -37,7 +37,7 @@ fn unit_contents(spec: &ServiceSpec) -> String {
          \n\
          [Service]\n\
          Type=simple\n\
-         ExecStart={bin} --name {name} --config-dir {config_dir} --log-file {log_file}\n\
+         ExecStart={bin} --config-dir {config_dir} --log-file {log_file}\n\
          Restart=always\n\
          RestartSec=10\n\
          User=root\n\
@@ -49,7 +49,6 @@ fn unit_contents(spec: &ServiceSpec) -> String {
          WantedBy=multi-user.target\n",
         desc = spec.display_name,
         bin = spec.bin_path.display(),
-        name = spec.daemon_name,
         config_dir = spec.config_dir.display(),
         log_file = spec.log_file.display(),
         id = spec.service_id,

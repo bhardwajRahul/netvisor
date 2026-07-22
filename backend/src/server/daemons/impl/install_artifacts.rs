@@ -145,6 +145,19 @@ fn install_args(
     // Reconfigure carries no credential (it is displayed persistently, and omitting it leaves
     // the daemon's existing key in place) and no name/mode.
 
+    // Which daemon on the target host the command acts on. A host can run several, and the
+    // command carries no identity, so the installer would otherwise have to ask. The daemon id is
+    // the right selector: non-secret, immutable, and cached in each install's config.json from the
+    // handshake — so it resolves exactly, unlike a name the operator can change in the UI. It is
+    // not an identity *assertion*: the server takes a provisioned daemon's identity from the 1:1
+    // key binding and ignores what the client claims.
+    //
+    // Only emitted when this daemon has connected before, i.e. an install command that is really a
+    // re-key of a live daemon, and every reconfigure. A first install has nothing to select and
+    // stays a two-flag command.
+    args.instance = (kind == InstallCommandKind::Reconfigure || daemon.base.last_seen.is_some())
+        .then(|| daemon.id.to_string());
+
     args
 }
 
@@ -266,7 +279,8 @@ fn is_shell_safe(value: &str) -> bool {
 /// The `install` flags for a resolved config. DaemonPoll dials the server (so it carries
 /// `--server-url`), ServerPoll is dialed by the server (so it does not). Name and network never
 /// reach the CLI — the daemon learns its name via the handshake — so the command carries
-/// neither; everything else set on `args` is emitted.
+/// neither; everything else set on `args` is emitted, including the `--instance` selector that
+/// tells a multi-daemon host which install the command is for.
 fn install_flags(args: &DaemonArgs, quote: fn(&str) -> String) -> String {
     args.install_config_pairs()
         .iter()
@@ -567,6 +581,43 @@ mod tests {
         assert_eq!(dp.daemon_api_key, None);
         assert_eq!(dp.server_url.as_deref(), Some("https://app.scanopy.net"));
         assert_eq!(dp.daemon_port, None);
+    }
+
+    /// A host can run several daemons, and no command carries a name, so a command that acts on an
+    /// *existing* install has to say which one — by daemon id, the one selector that is neither
+    /// secret nor editable. A first install has nothing to select and stays a two-flag command;
+    /// a reconfigure, and an install command re-keying a daemon that has already connected, both
+    /// resolve to exactly one install.
+    #[test]
+    fn commands_targeting_an_existing_install_carry_a_selector_for_it() {
+        let fresh = daemon(DaemonMode::DaemonPoll, "");
+        let mut connected = daemon(DaemonMode::DaemonPoll, "");
+        connected.base.last_seen = Some(chrono::Utc::now());
+
+        let target = |d: &Daemon, kind| {
+            parse_unix_install(&build_install_artifacts(
+                "https://app.scanopy.net",
+                d,
+                None,
+                &[],
+                kind,
+            ))
+            .instance
+        };
+
+        assert_eq!(
+            target(&fresh, InstallCommandKind::Install),
+            None,
+            "a daemon that has never connected has no install to target"
+        );
+        assert_eq!(
+            target(&connected, InstallCommandKind::Install),
+            Some(connected.id.to_string())
+        );
+        assert_eq!(
+            target(&fresh, InstallCommandKind::Reconfigure),
+            Some(fresh.id.to_string())
+        );
     }
 
     /// A reconfigure runs against an installed daemon, so it must not re-download the binary.

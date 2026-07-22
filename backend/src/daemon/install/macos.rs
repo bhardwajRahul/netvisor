@@ -25,12 +25,13 @@ pub fn default_bin_dir() -> PathBuf {
     PathBuf::from("/usr/local/bin")
 }
 
-/// launchd label (reverse-DNS). Default daemon keeps the bare label; custom names are suffixed.
+/// launchd label (reverse-DNS). The default slot keeps the bare label; every other slot is
+/// suffixed with it.
 fn label(spec: &ServiceSpec) -> String {
-    if spec.daemon_name == super::DEFAULT_NAME {
+    if spec.slot == super::DEFAULT_NAME {
         "com.scanopy.daemon".to_string()
     } else {
-        format!("com.scanopy.daemon.{}", spec.daemon_name)
+        format!("com.scanopy.daemon.{}", spec.slot)
     }
 }
 
@@ -49,8 +50,6 @@ fn plist_contents(spec: &ServiceSpec, log_file: &str) -> String {
     <key>ProgramArguments</key>
     <array>
         <string>{bin}</string>
-        <string>--name</string>
-        <string>{name}</string>
         <string>--config-dir</string>
         <string>{config_dir}</string>
         <string>--log-file</string>
@@ -69,7 +68,6 @@ fn plist_contents(spec: &ServiceSpec, log_file: &str) -> String {
 "#,
         label = label(spec),
         bin = spec.bin_path.display(),
-        name = spec.daemon_name,
         config_dir = spec.config_dir.display(),
         daemon_log = spec.log_file.display(),
         log = log_file,
