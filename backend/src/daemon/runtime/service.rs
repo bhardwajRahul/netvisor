@@ -119,9 +119,6 @@ impl DaemonRuntimeService {
     pub async fn request_work(&self) -> Result<()> {
         let interval_secs = self.config.get_heartbeat_interval().await?;
         let interval = Duration::from_secs(interval_secs);
-        let daemon_id = self.config.get_id().await?;
-        let name = self.config.get_name().await?;
-        let mode = self.config.get_mode().await?;
 
         let mut interval_timer = tokio::time::interval(interval);
         interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -134,6 +131,23 @@ impl DaemonRuntimeService {
 
             if self.config.get_network_id().await?.is_none() {
                 tracing::warn!(target: LOG_TARGET, "Work request skipped - network_id not configured");
+                continue;
+            }
+
+            // Re-read identity every tick rather than caching it before the loop. This poll
+            // starts as soon as the daemon does — which, for a daemon that is configured later
+            // over /api/initialize, is before it has any identity at all. The register /
+            // first-contact handshake is what assigns the id (and may rewrite the name), so a
+            // value captured up front is the placeholder, not the daemon.
+            let daemon_id = self.config.get_id().await?;
+            let name = self.config.get_name().await?;
+            let mode = self.config.get_mode().await?;
+
+            // Nil means the handshake has not happened yet. Polling with it would 404 and be
+            // read as "record deleted", tipping a daemon that is merely still starting up into
+            // standby. Wait for the identity instead.
+            if daemon_id.is_nil() {
+                tracing::debug!(target: LOG_TARGET, "Work request skipped - awaiting server-assigned daemon id");
                 continue;
             }
 

@@ -511,6 +511,11 @@ fn render_mode(mode: Option<&DaemonMode>) -> Option<String> {
         .map(|v| v.get_name().to_string())
 }
 
+/// The name a daemon carries when nothing else names it. Also the name the server provisions
+/// the integrated daemon under, so a self-host install's record and the daemon's own default
+/// agree without either side having to remember the literal.
+pub const DEFAULT_DAEMON_NAME: &str = "scanopy-daemon";
+
 /// Unified configuration struct that handles both startup and runtime config
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
@@ -620,7 +625,7 @@ impl Default for AppConfig {
             network_id: None,
             daemon_port: 60073,
             bind_address: "0.0.0.0".to_string(),
-            name: "scanopy-daemon".to_string(),
+            name: DEFAULT_DAEMON_NAME.to_string(),
             log_level: "info".to_string(),
             log_file: None,
             heartbeat_interval: 30,
@@ -676,7 +681,7 @@ impl AppConfig {
                 .ok_or_else(|| anyhow::anyhow!("Unable to determine config directory"))?;
             match name {
                 // Use namespaced path for custom daemon names
-                Some(n) if n != "scanopy-daemon" => {
+                Some(n) if n != DEFAULT_DAEMON_NAME => {
                     proj_dirs.config_dir().join(n).join("config.json")
                 }
                 // Legacy path for default name or None

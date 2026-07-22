@@ -72,6 +72,20 @@ impl ContainerManager {
             .current_dir("..")
             .output();
 
+        // Reset the two places daemon identity is persisted — the database and the daemons'
+        // own config files — together. They are a matched pair: a daemon record without the
+        // matching local api key (or the reverse) leaves the daemon unable to register, and
+        // the daemon's once-only `/api/initialize` guard means a stale config silently
+        // refuses the new credentials. The named volume is dropped by name rather than with
+        // `down -v` so the cargo/target caches, which make repeat runs bearable, survive.
+        println!("  Resetting database and persisted daemon configs...");
+        let _ = Command::new("docker")
+            .args(["volume", "rm", "scanopy_postgres_data"])
+            .output();
+        for dir in ["data/daemon_config", "data/daemon_serverpoll_config"] {
+            let _ = std::fs::remove_dir_all(format!("../{}", dir));
+        }
+
         let status = Command::new("docker")
             .args([
                 "compose",
@@ -510,11 +524,21 @@ pub async fn wait_for_daemon(client: &TestClient) -> Result<Daemon, String> {
             return Err("No daemons registered yet".to_string());
         }
 
-        // Find the DaemonPoll daemon (the one that self-registered)
-        daemons
+        // Find the DaemonPoll daemon. Its record is created up front by the integrated-daemon
+        // provisioning that runs during setup, so the record's mere existence proves nothing —
+        // `last_seen` is what proves the daemon actually reached the server and registered.
+        let daemon = daemons
             .into_iter()
             .find(|d| d.base.name == "scanopy-daemon")
-            .ok_or_else(|| "DaemonPoll daemon not found".to_string())
+            .ok_or_else(|| "DaemonPoll daemon not found".to_string())?;
+
+        if daemon.base.last_seen.is_none() {
+            return Err(
+                "DaemonPoll daemon provisioned but has not contacted the server yet".to_string(),
+            );
+        }
+
+        Ok(daemon)
     })
     .await
 }
@@ -540,6 +564,10 @@ pub async fn provision_serverpoll_daemon(
             &serde_json::json!({
                 "name": "scanopy-daemon-serverpoll",
                 "network_id": network_id,
+                // Must be explicit: provisioning covers both modes and defaults to DaemonPoll,
+                // so omitting this provisions a DaemonPoll record that the server's ServerPoll
+                // poller never picks up — the daemon then sits idle and discovery stalls.
+                "mode": "server_poll",
                 "url": SERVERPOLL_DAEMON_URL_INTERNAL
             }),
         )
