@@ -12,7 +12,10 @@ pub struct LoginRequest {
     #[schema(value_type = String, format = "email")]
     pub email: EmailAddress,
 
-    #[validate(length(min = 10, message = "Password must be at least 10 characters"))]
+    // No password-policy validation on login. Login must not reveal the policy
+    // (e.g. the minimum length) to unauthenticated callers — that leaks a
+    // password-spraying hint. A too-short/wrong password just fails auth
+    // generically. The policy is enforced on register / update / reset instead.
     pub password: String,
 }
 
