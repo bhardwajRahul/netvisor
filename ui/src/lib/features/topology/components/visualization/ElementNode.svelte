@@ -12,7 +12,7 @@
 	import { useTopology, selectedTopologyId } from '../../context';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { getFreshnessTag, lastSeenLabel } from '$lib/shared/utils/freshness';
+	import { freshnessSubjectOf, getFreshnessTag } from '$lib/shared/utils/freshness';
 
 	const networksQuery = useNetworksQuery();
 	import type { TopologyNode, ElementRenderData, RenderableTopology } from '../../types/base';
@@ -117,18 +117,46 @@
 	// node opacity is already the filter/search dimming channel (see
 	// `nodeOpacity`), so fading stale nodes would make "stale" and "filtered
 	// out" indistinguishable — and a node that is both, invisible as either.
-	// A Service element speaks for its own service; any other element speaks
-	// for its host.
-	let freshnessSubject = $derived(
-		resolved?.elementType === 'Service' ? resolved.services[0] : host
+	let networksData = $derived(networksQuery.data ?? []);
+	const networkFor = (entity: { network_id?: string } | undefined | null) =>
+		networksData.find((n) => n.id === entity?.network_id);
+
+	// The entity this node actually depicts.
+	let elementEntity = $derived.by(() => {
+		switch (resolved?.elementType) {
+			case 'Service':
+				return resolved.services[0];
+			case 'IPAddress':
+				return resolved.ipAddress;
+			case 'Interface':
+				return resolved.snmpInterface;
+			default:
+				return host;
+		}
+	});
+
+	// The verdict applies the digest's parent/child rule via `resolvedFreshness`,
+	// so a child of a stale host inherits rather than claiming its own decay.
+	let subject = $derived(elementEntity ?? host);
+	// The tooltip names the entity the verdict actually rests on — the host when
+	// inheriting, this node's own entity otherwise. Cards of different types sit
+	// side by side in topology, so "IP Address last seen 4d ago" says something
+	// "Last seen 4d ago" doesn't. The type name comes from the entity metadata
+	// fixture, so it stays localized and in step with the backend.
+	let staleSubject = $derived(
+		subject ? freshnessSubjectOf(subject, host, networkFor(subject)) : undefined
 	);
-	let staleNetwork = $derived(
-		(networksQuery.data ?? []).find((n) => n.id === freshnessSubject?.network_id)
+	let staleSubjectType = $derived(
+		staleSubject && staleSubject === host ? 'Host' : (resolved?.elementType ?? 'Host')
 	);
 	let staleTag = $derived(
-		freshnessSubject ? getFreshnessTag(freshnessSubject, staleNetwork) : null
+		subject
+			? getFreshnessTag(subject, networkFor(subject), {
+					host,
+					entityTypeLabel: entities.getName(staleSubjectType) || undefined
+				})
+			: null
 	);
-	let staleTitle = $derived(freshnessSubject ? lastSeenLabel(freshnessSubject) : '');
 	let servicesForHost = $derived(resolved?.services ?? []);
 	let ipAddress = $derived(resolved?.ipAddress ?? null);
 
@@ -541,13 +569,17 @@
 			} else if (entityType === 'Host' && (elType === 'IPAddress' || elType === 'Interface')) {
 				cardEntity = resolved.host ?? null;
 			}
-			if (cardEntity && extractor(cardEntity, { network: staleNetwork }) === valueId) {
+			if (
+				cardEntity &&
+				extractor(cardEntity, { network: networkFor(cardEntity as { network_id?: string }) }) ===
+					valueId
+			) {
 				return { mode: 'element', color };
 			}
 
 			if (entityType === 'Service' && nodeRenderData?.services?.length) {
 				for (const service of nodeRenderData.services) {
-					if (extractor(service, { network: staleNetwork }) === valueId)
+					if (extractor(service, { network: networkFor(service) }) === valueId)
 						return { mode: 'inline', color };
 				}
 			}
@@ -673,41 +705,53 @@
 		     entity reads identically in the list, the map and the digest.
 		     Additive rather than an opacity change — opacity is already the
 		     filter/search dimming channel. -->
-		{#if staleTag}
-			<!-- In flow rather than absolutely positioned: the card is a
-			     fixed-height flex column, so an absolute tag escapes its bounds
-			     and a tag placed inside them would sit on top of the centred
-			     title. As a shrink-0 row the body (flex-1) simply absorbs the
-			     space, keeping the tag inside the card and clear of the text. -->
-			<div class="flex flex-shrink-0 justify-end px-1 pt-1" title={staleTitle}>
-				<div class="origin-top-right scale-90">
+
+		<!-- Rides in the card's title row rather than a row of its own, so it
+		     costs no height and the title truncates against it instead of
+		     running underneath. Which row is the "title" varies by element
+		     type: IPAddress cards carry a subtitle, Service and Host cards
+		     only a header. -->
+		{#snippet staleMark()}
+			{#if staleTag}
+				<div class="flex-shrink-0 scale-90">
 					<Tag {...staleTag} pill />
 				</div>
-			</div>
-		{/if}
+			{/if}
+		{/snippet}
 
 		<!-- Rest of component stays the same -->
 		<!-- Header section with gradient transition to body -->
 		{#if nodeRenderData.headerText}
-			<div class="relative flex-shrink-0 px-2 pt-2 text-center">
+			<div class="relative flex flex-shrink-0 items-center gap-1 px-2 pt-2">
 				<div
 					data-entity-header
-					class={`truncate text-xs font-medium leading-none ${nodeRenderData.isVirtualized ? virtualizationColorHelper.text : nodeRenderData.isContainerized ? containerizationColorHelper.text : 'text-tertiary'}`}
+					class={`min-w-0 flex-1 truncate text-center text-xs font-medium leading-none ${nodeRenderData.isVirtualized ? virtualizationColorHelper.text : nodeRenderData.isContainerized ? containerizationColorHelper.text : 'text-tertiary'}`}
 				>
 					{nodeRenderData.headerText}
 				</div>
+				{#if !nodeRenderData.subtitleText}{@render staleMark()}{/if}
 			</div>
+		{/if}
+
+		{#if !nodeRenderData.headerText && !nodeRenderData.subtitleText}
+			<!-- Neither title row exists; keep the mark rather than dropping it. -->
+			<div class="flex flex-shrink-0 justify-end px-2 pt-2">{@render staleMark()}</div>
 		{/if}
 
 		{#if nodeRenderData.subtitleText}
 			<div
-				data-entity-header
-				class="text-primary truncate px-2 pt-2 text-center text-sm font-medium {!nodeRenderData.headerText &&
+				class="flex items-center gap-1 px-2 pt-2 {!nodeRenderData.headerText &&
 				!nodeRenderData.showServices
 					? 'pb-2'
 					: ''}"
 			>
-				{nodeRenderData.subtitleText}
+				<div
+					data-entity-header
+					class="text-primary min-w-0 flex-1 truncate text-center text-sm font-medium"
+				>
+					{nodeRenderData.subtitleText}
+				</div>
+				{@render staleMark()}
 			</div>
 		{/if}
 
@@ -727,7 +771,10 @@
 						const extractor =
 							FILTER_VALUE_EXTRACTORS['Service']?.[currentHoveredMetadata.filterType];
 						if (!extractor) return '';
-						if (extractor(service, { network: staleNetwork }) !== currentHoveredMetadata.valueId)
+						if (
+							extractor(service, { network: networkFor(service) }) !==
+							currentHoveredMetadata.valueId
+						)
 							return '';
 						const ch = createColorHelper(
 							currentHoveredMetadata.color as Parameters<typeof createColorHelper>[0]

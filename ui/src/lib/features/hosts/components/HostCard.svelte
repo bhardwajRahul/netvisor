@@ -125,7 +125,8 @@
 			// Occupies the same slot DaemonCard uses for daemon health.
 			status: getFreshnessTag(
 				host,
-				(networksQuery.data ?? []).find((n) => n.id === host.network_id)
+				(networksQuery.data ?? []).find((n) => n.id === host.network_id),
+				{ entityTypeLabel: entities.getName('Host') || undefined }
 			),
 			...(host.virtualization !== null && virtualizationService
 				? {

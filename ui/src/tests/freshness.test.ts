@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { entityFreshness } from '$lib/shared/utils/freshness';
+import { entityFreshness, resolvedFreshness } from '$lib/shared/utils/freshness';
 import type { Network } from '$lib/features/networks/types';
 import type { components } from '$lib/api/schema';
 
@@ -68,6 +68,18 @@ describe('entityFreshness', () => {
 		).toBe('stale');
 	});
 
+	// IPAddress, Port, Interface and Binding carry no `source` column because
+	// they cannot be created any other way. The backend trait defaults
+	// `is_discovery_managed` to true for exactly these; treating an absent
+	// source as unmanaged here would make them permanently Current in the UI
+	// while the digest judged them normally.
+	it('treats an entity with no source column as discovery-managed', () => {
+		freezeClock();
+		const net = network(1);
+		const ipWithNoSourceField = { last_seen_at: new Date(NOW - 100 * HOUR_MS).toISOString() };
+		expect(entityFreshness(ipWithNoSourceField, net)).toBe('stale');
+	});
+
 	it('treats a never-observed entity as current rather than guessing', () => {
 		freezeClock();
 		expect(entityFreshness({ source: { type: 'Discovery' } }, network(1))).toBe('current');
@@ -82,5 +94,38 @@ describe('entityFreshness', () => {
 
 		expect(entityFreshness(entity(23.9), net)).toBe('current');
 		expect(entityFreshness(entity(24.1), net)).toBe('stale');
+	});
+});
+
+// Mirrors `ChildPolicy` in the digest: when the host itself wasn't reached,
+// nothing was observed about its children, so they inherit rather than each
+// asserting their own decay.
+describe('resolvedFreshness — parent/child rule', () => {
+	it('makes children of a stale host inherit, however recently they were seen', () => {
+		freezeClock();
+		const net = network(24);
+		const staleHost = entity(100);
+		const freshChild = entity(1);
+
+		expect(entityFreshness(freshChild, net)).toBe('current');
+		expect(resolvedFreshness(freshChild, staleHost, net)).toBe('stale');
+	});
+
+	// The case that motivated deriving the L3 tag from host-then-IP: a host
+	// that drops one of two addresses is real signal and must stay visible.
+	it('lets a child speak for itself while its host is still being seen', () => {
+		freezeClock();
+		const net = network(24);
+		const currentHost = entity(1);
+
+		expect(resolvedFreshness(entity(100), currentHost, net)).toBe('stale');
+		expect(resolvedFreshness(entity(2), currentHost, net)).toBe('current');
+	});
+
+	it('judges an entity with no parent on its own', () => {
+		freezeClock();
+		const net = network(24);
+		expect(resolvedFreshness(entity(100), undefined, net)).toBe('stale');
+		expect(resolvedFreshness(entity(1), undefined, net)).toBe('current');
 	});
 });

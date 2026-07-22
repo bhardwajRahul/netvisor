@@ -19,7 +19,7 @@ import { elevateEdgesToContainers } from './layout/edge-elevation';
 import { getContainerContents, buildEntityNodeIndex, type EntityNodeIndex } from './resolvers';
 import { getHostFromIPAddressIdFromCache } from '../hosts/queries';
 import type { Network } from '$lib/features/networks/types';
-import { entityFreshness, type FreshnessSubject } from '$lib/shared/utils/freshness';
+import { resolvedFreshness, type FreshnessSubject } from '$lib/shared/utils/freshness';
 import {
 	getIPAddressesForHostFromCache,
 	getIPAddressesForSubnetFromCache
@@ -197,6 +197,8 @@ function hideContainersAndDescendants(
  */
 export interface FilterValueContext {
 	network?: Network;
+	/** Parent lookup for the staleness rule — a child of a stale host inherits. */
+	hostById?: Map<string, FreshnessSubject>;
 }
 
 export type FilterValueExtractor = (entity: unknown, ctx: FilterValueContext) => string | null;
@@ -205,16 +207,22 @@ export const FILTER_VALUE_EXTRACTORS: Record<string, Record<string, FilterValueE
 		Category: (s) =>
 			serviceDefinitions.getCategory((s as { service_definition: string }).service_definition) ??
 			null,
-		// Delegates to the same helper the card badge and the node tag use, so
-		// the filter cannot disagree with what the user sees marked as stale.
-		Staleness: (s, ctx) => entityFreshness(s as FreshnessSubject, ctx.network)
+		// Delegates to the same helper the card badge and the node tag use —
+		// including the parent/child inheritance — so the filter cannot
+		// disagree with what the user sees marked as stale.
+		Staleness: (s, ctx) => {
+			const service = s as FreshnessSubject & { host_id?: string };
+			const host = service.host_id ? ctx.hostById?.get(service.host_id) : undefined;
+			return resolvedFreshness(service, host, ctx.network);
+		}
 	},
 	Host: {
 		Virtualization: (h) =>
 			(h as { virtualization?: unknown | null }).virtualization != null
 				? 'Virtualized'
 				: 'BareMetal',
-		Staleness: (h, ctx) => entityFreshness(h as FreshnessSubject, ctx.network)
+		// A host has no parent, so this is its own verdict.
+		Staleness: (h, ctx) => resolvedFreshness(h as FreshnessSubject, undefined, ctx.network)
 	}
 };
 
@@ -349,6 +357,10 @@ export function updateTagFilter(
 	// add matching IDs to the hidden sets. Orphaned hide entries (value ids
 	// no longer declared by the current filter) silently match nothing.
 	if (hasMetadataFilter && hiddenMetadataValues) {
+		// Parent lookup for the staleness rule; built once rather than per entity.
+		const hostById = new Map<string, FreshnessSubject>(
+			(topology.hosts as Array<FreshnessSubject & { id: string }>).map((h) => [h.id, h])
+		);
 		for (const [entityType, byFilter] of Object.entries(hiddenMetadataValues)) {
 			const extractors = FILTER_VALUE_EXTRACTORS[entityType];
 			if (!extractors) continue;
@@ -359,7 +371,7 @@ export function updateTagFilter(
 					if (!hiddenValues.length) continue;
 					const extract = extractors[filterType];
 					if (!extract) continue;
-					const value = extract(entity, { network });
+					const value = extract(entity, { network, hostById });
 					if (value && hiddenValues.includes(value)) {
 						if (entityType === 'Service') {
 							hiddenServiceIds.add(entity.id);

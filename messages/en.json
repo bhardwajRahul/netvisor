@@ -249,6 +249,7 @@
 	"common_enable": "Enable",
 	"common_enableApiKey": "Enable API Key",
 	"common_enabled": "Enabled",
+	"common_entityLastSeenAgo": "{entity} last seen {time}",
 	"common_enterValue": "Enter value",
 	"common_entityName": "{entity} name",
 	"common_error": "Error",

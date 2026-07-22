@@ -121,7 +121,8 @@
 		// Judged against this service's own network's staleness window.
 		status: getFreshnessTag(
 			service,
-			(networksQuery.data ?? []).find((n) => n.id === service.network_id)
+			(networksQuery.data ?? []).find((n) => n.id === service.network_id),
+			{ entityTypeLabel: entities.getName('Service') || undefined }
 		),
 		iconColor: serviceDefinitions.getColorHelper(service.service_definition).icon,
 		Icon: serviceDefinitions.getIconComponent(service.service_definition),
