@@ -7,7 +7,8 @@ import {
 } from '$lib/features/topology/layout/elk-layout';
 import {
 	isDisabledEdge,
-	isDashedEdge,
+	isDottedEdge,
+	isOverlayEdge,
 	affectsLayout,
 	isHiddenByDefault,
 	getDefaultHiddenEdgeTypes
@@ -18,6 +19,7 @@ import type { components } from '$lib/api/schema';
 type TopologyNode = components['schemas']['Node'];
 type TopologyEdge = components['schemas']['Edge'];
 type Subnet = components['schemas']['Subnet'];
+type EdgeStroke = components['schemas']['EdgeStroke'];
 type SubnetType = components['schemas']['SubnetType'];
 
 // --- Test Helpers ---
@@ -65,7 +67,7 @@ function makeEdge(
 	viewConfig?: {
 		affects_layout: boolean;
 		default_visibility?: 'visible' | 'hidden';
-		stroke?: 'solid' | 'dashed';
+		stroke?: EdgeStroke;
 	}
 ): TopologyEdge {
 	return {
@@ -191,12 +193,26 @@ describe('edge view config helpers', () => {
 		expect(affectsLayout(makeEdge('a', 'b', 'SameHost'))).toBe(false); // disabled
 	});
 
-	it('isDashedEdge reads stroke from view config', () => {
+	it('isOverlayEdge treats any non-solid stroke as an overlay', () => {
+		// Overlay styling (thinner, dimmed) applies to every non-solid stroke, so adding a stroke
+		// must not require touching the width/opacity logic.
+		for (const stroke of ['dashed', 'dotted'] as const) {
+			expect(isOverlayEdge(makeEdge('a', 'b', 'SameHost', { affects_layout: true, stroke }))).toBe(
+				true
+			);
+		}
 		expect(
-			isDashedEdge(makeEdge('a', 'b', 'SameHost', { affects_layout: true, stroke: 'dashed' }))
+			isOverlayEdge(makeEdge('a', 'b', 'SameHost', { affects_layout: true, stroke: 'solid' }))
+		).toBe(false);
+	});
+
+	it('isDottedEdge distinguishes dotted from other overlay strokes', () => {
+		// Only the dash pattern branches on the specific stroke.
+		expect(
+			isDottedEdge(makeEdge('a', 'b', 'SameContainer', { affects_layout: false, stroke: 'dotted' }))
 		).toBe(true);
 		expect(
-			isDashedEdge(makeEdge('a', 'b', 'SameHost', { affects_layout: true, stroke: 'solid' }))
+			isDottedEdge(makeEdge('a', 'b', 'SameHost', { affects_layout: true, stroke: 'dashed' }))
 		).toBe(false);
 	});
 

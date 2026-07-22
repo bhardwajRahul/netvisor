@@ -11085,19 +11085,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-21T19:24:37.429218Z",
+              "created_at": "2026-07-22T18:45:31.515451Z",
               "first_discovery_id": null,
-              "id": "4554da2a-6519-4f9d-a90e-88209ac8feb9",
+              "id": "9c468e3d-1f5a-481c-9ebb-07ffb4eafb2b",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-21T19:24:37.429218Z",
+              "last_seen_at": "2026-07-22T18:45:31.515451Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-21T19:24:37.429218Z",
-              "valid_from": "2026-07-21T19:24:37.429218Z",
+              "updated_at": "2026-07-22T18:45:31.515451Z",
+              "valid_from": "2026-07-22T18:45:31.515451Z",
               "valid_to": null
             }
           },
@@ -12152,19 +12152,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-21T19:24:37.408592Z",
+                      "created_at": "2026-07-22T18:45:31.497924Z",
                       "first_discovery_id": null,
-                      "id": "bfc67e4f-b810-4d25-8a6d-ba9279381837",
+                      "id": "1c449663-377f-4170-bb6b-ce34c944430a",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-21T19:24:37.408592Z",
+                      "last_seen_at": "2026-07-22T18:45:31.497924Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-21T19:24:37.408592Z",
-                      "valid_from": "2026-07-21T19:24:37.408592Z",
+                      "updated_at": "2026-07-22T18:45:31.497924Z",
+                      "valid_from": "2026-07-22T18:45:31.497924Z",
                       "valid_to": null
                     }
                   ],
@@ -12178,7 +12178,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Fios Extender",
+                  "service_definition": "Termix",
                   "source": {
                     "type": "Manual"
                   },
@@ -13240,19 +13240,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-21T19:24:37.422414Z",
+                  "created_at": "2026-07-22T18:45:31.509578Z",
                   "first_discovery_id": null,
-                  "id": "6b4fcbda-3c66-4e1d-b5ce-d9246bc624a4",
+                  "id": "8c6c0168-b488-4968-8323-dc7e36258ca9",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-21T19:24:37.422414Z",
+                  "last_seen_at": "2026-07-22T18:45:31.509578Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-21T19:24:37.422414Z",
-                  "valid_from": "2026-07-21T19:24:37.422414Z",
+                  "updated_at": "2026-07-22T18:45:31.509578Z",
+                  "valid_from": "2026-07-22T18:45:31.509578Z",
                   "valid_to": null
                 }
               ],
@@ -13266,7 +13266,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Fios Extender",
+              "service_definition": "Termix",
               "source": {
                 "type": "Manual"
               },
@@ -15136,19 +15136,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-21T19:24:37.409044Z",
+          "created_at": "2026-07-22T18:45:31.498281Z",
           "first_discovery_id": null,
-          "id": "1ecc73c5-b702-4351-b531-9caa6b2e81e0",
+          "id": "b364d2d5-89d9-47b0-bcef-3119fa40f116",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-21T19:24:37.409044Z",
+          "last_seen_at": "2026-07-22T18:45:31.498281Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-21T19:24:37.409044Z",
-          "valid_from": "2026-07-21T19:24:37.409044Z",
+          "updated_at": "2026-07-22T18:45:31.498281Z",
+          "valid_from": "2026-07-22T18:45:31.498281Z",
           "valid_to": null
         }
       },
@@ -15739,7 +15739,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Fios Extender",
+              "service_definition": "Termix",
               "tags": [],
               "virtualization": null
             }
@@ -17535,7 +17535,8 @@
         "description": "Visual stroke style for an edge",
         "enum": [
           "solid",
-          "dashed"
+          "dashed",
+          "dotted"
         ]
       },
       "EdgeStyle": {
@@ -17603,6 +17604,26 @@
               "host_id": {
                 "type": "string",
                 "format": "uuid"
+              },
+              "service_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "One container reachable at several of its host's container-bridge subnets. Ties the\ncontainer's addresses together so a multi-attached container reads as one thing rather\nthan as unrelated cards in separate subnet boxes.",
+            "required": [
+              "service_id",
+              "edge_type"
+            ],
+            "properties": {
+              "edge_type": {
+                "type": "string",
+                "enum": [
+                  "SameContainer"
+                ]
               },
               "service_id": {
                 "type": "string",
@@ -17705,6 +17726,7 @@
           "SameHost",
           "Hypervisor",
           "ContainerRuntime",
+          "SameContainer",
           "RequestPath",
           "HubAndSpoke",
           "PhysicalLink"
@@ -18629,19 +18651,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-21T19:24:37.408073Z",
+                  "created_at": "2026-07-22T18:45:31.497518Z",
                   "first_discovery_id": null,
-                  "id": "e8da9448-a7ef-4538-9e61-7c7b9da2d9b2",
+                  "id": "122a782c-d268-4210-a260-9cdef837a691",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-21T19:24:37.408073Z",
+                  "last_seen_at": "2026-07-22T18:45:31.497518Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-21T19:24:37.408073Z",
-                  "valid_from": "2026-07-21T19:24:37.408073Z",
+                  "updated_at": "2026-07-22T18:45:31.497518Z",
+                  "valid_from": "2026-07-22T18:45:31.497518Z",
                   "valid_to": null
                 }
               ],
@@ -18655,7 +18677,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Fios Extender",
+              "service_definition": "Termix",
               "source": {
                 "type": "Manual"
               },
@@ -21246,19 +21268,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-21T19:24:37.396237Z",
+                        "created_at": "2026-07-22T18:45:31.487682Z",
                         "first_discovery_id": null,
-                        "id": "d8d5cc25-149e-4590-9a8e-7de5fa929b0f",
+                        "id": "13e1a4bc-44f7-4a7b-9746-cb792abde059",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-21T19:24:37.396237Z",
+                        "last_seen_at": "2026-07-22T18:45:31.487682Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-21T19:24:37.396237Z",
-                        "valid_from": "2026-07-21T19:24:37.396237Z",
+                        "updated_at": "2026-07-22T18:45:31.487682Z",
+                        "valid_from": "2026-07-22T18:45:31.487682Z",
                         "valid_to": null
                       }
                     ],
@@ -21272,7 +21294,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Fios Extender",
+                    "service_definition": "Termix",
                     "source": {
                       "type": "Manual"
                     },
@@ -21393,19 +21415,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-21T19:24:37.421153Z",
+                    "created_at": "2026-07-22T18:45:31.508494Z",
                     "first_discovery_id": null,
-                    "id": "05b729f1-d6b7-49a5-b2b8-6b76a05c94ff",
+                    "id": "c35a75a1-5a39-4042-8096-874be744262a",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-21T19:24:37.421153Z",
+                    "last_seen_at": "2026-07-22T18:45:31.508494Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-21T19:24:37.421153Z",
-                    "valid_from": "2026-07-21T19:24:37.421153Z",
+                    "updated_at": "2026-07-22T18:45:31.508494Z",
+                    "valid_from": "2026-07-22T18:45:31.508494Z",
                     "valid_to": null
                   }
                 ],
@@ -21419,7 +21441,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Fios Extender",
+                "service_definition": "Termix",
                 "source": {
                   "type": "Manual"
                 },
@@ -23122,19 +23144,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-21T19:24:37.408948Z",
+              "created_at": "2026-07-22T18:45:31.498205Z",
               "first_discovery_id": null,
-              "id": "3366feb0-7cc6-4721-a7ec-2bb73f39c609",
+              "id": "79c2c15f-46af-4f70-aef5-6f2ff4d0550d",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-21T19:24:37.408948Z",
+              "last_seen_at": "2026-07-22T18:45:31.498205Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-21T19:24:37.408948Z",
-              "valid_from": "2026-07-21T19:24:37.408948Z",
+              "updated_at": "2026-07-22T18:45:31.498205Z",
+              "valid_from": "2026-07-22T18:45:31.498205Z",
               "valid_to": null
             }
           ],
@@ -23148,7 +23170,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Fios Extender",
+          "service_definition": "Termix",
           "source": {
             "type": "Manual"
           },
@@ -24278,7 +24300,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "72a01cd8-61cc-4afe-8dfc-59c596469034",
+                  "id": "a78bf9b8-15e4-4d15-8854-ba43f8ae18fb",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24288,23 +24310,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "795b4410-5119-42bb-ad8a-8d9a509f128d",
+                  "id": "1c717808-cb9b-4601-8a41-62ee1a764e8c",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "959ffb68-8b48-4b3c-9226-ede14f9c97b1",
+                  "id": "5c862061-30b1-4652-bf95-693a5d8cd7f1",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "6c3af9ed-a89d-45ed-9cce-02c23e19db7a",
+                  "id": "eeb4be6e-a789-41aa-b442-d5bf4c5dbf3d",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "795b4410-5119-42bb-ad8a-8d9a509f128d",
+                  "id": "1c717808-cb9b-4601-8a41-62ee1a764e8c",
                   "rule": "ByHost"
                 }
               ]
@@ -24333,19 +24355,19 @@
             },
             "default": [
               {
-                "id": "ab57f515-a079-455e-a637-0fbaa34f1d85",
+                "id": "de9435e5-6d0f-4177-9748-9c627b36139d",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "eb0c6228-8377-4936-98b0-1699a4a9b1b4",
+                "id": "d4d49746-38c0-453d-81e0-9cdd1cc6e2cd",
                 "rule": "ByVLAN"
               },
               {
-                "id": "db6fee5b-6645-42d0-98d8-7cd2e7233107",
+                "id": "95da10b0-ec1d-4ed8-9078-b965b460281b",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "83789f47-3044-41c1-946d-91fc565a0ab7",
+                "id": "0ab0faa5-f1f1-44a1-ab9c-84e8905c24b9",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24363,7 +24385,7 @@
                 }
               },
               {
-                "id": "a07b5d82-00be-47c4-96c5-ba4c4a714efc",
+                "id": "dce8a286-aca3-42a4-bb6e-5497cb214b8a",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24372,15 +24394,15 @@
                 }
               },
               {
-                "id": "dc1df89d-7ba8-4d85-a5b4-5c86bbbf3e32",
+                "id": "aeab114e-565d-4bb8-8b36-36436e4af34e",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "b84b4ef3-4af8-416e-8e40-a9f9fa5b0c15",
+                "id": "f3c536a2-7650-4a29-823f-a292f20d6a1f",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "fdc848bb-4d92-4bcc-9dd1-167526484340",
+                "id": "4cfee01e-93ed-46bd-aff4-cc26c51d7915",
                 "rule": "ByStack"
               }
             ]

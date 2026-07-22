@@ -3104,19 +3104,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-21T19:24:37.429215Z",
+             *       "created_at": "2026-07-22T18:45:31.515449Z",
              *       "first_discovery_id": null,
-             *       "id": "1405362a-f5fc-4205-ad60-8e4fbd517f7c",
+             *       "id": "edf62994-78fb-41b9-9c26-77dc2b307015",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-21T19:24:37.429215Z",
+             *       "last_seen_at": "2026-07-22T18:45:31.515449Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-21T19:24:37.429215Z",
-             *       "valid_from": "2026-07-21T19:24:37.429215Z",
+             *       "updated_at": "2026-07-22T18:45:31.515449Z",
+             *       "valid_from": "2026-07-22T18:45:31.515449Z",
              *       "valid_to": null
              *     }
              */
@@ -3481,19 +3481,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-21T19:24:37.408604Z",
+             *               "created_at": "2026-07-22T18:45:31.497911Z",
              *               "first_discovery_id": null,
-             *               "id": "6a3a61db-0d42-49ec-ac89-20d08403a15a",
+             *               "id": "27d172b0-005b-44dc-87d7-d93263200b67",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-21T19:24:37.408604Z",
+             *               "last_seen_at": "2026-07-22T18:45:31.497911Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-21T19:24:37.408604Z",
-             *               "valid_from": "2026-07-21T19:24:37.408604Z",
+             *               "updated_at": "2026-07-22T18:45:31.497911Z",
+             *               "valid_from": "2026-07-22T18:45:31.497911Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3507,7 +3507,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Fios Extender",
+             *           "service_definition": "Termix",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3905,19 +3905,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-21T19:24:37.422403Z",
+             *           "created_at": "2026-07-22T18:45:31.509591Z",
              *           "first_discovery_id": null,
-             *           "id": "8594b0fe-fcf8-4f67-87c1-e682c123a6f9",
+             *           "id": "b35c0829-4847-487f-a538-cac8c9ecc698",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-21T19:24:37.422403Z",
+             *           "last_seen_at": "2026-07-22T18:45:31.509591Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-21T19:24:37.422403Z",
-             *           "valid_from": "2026-07-21T19:24:37.422403Z",
+             *           "updated_at": "2026-07-22T18:45:31.509591Z",
+             *           "valid_from": "2026-07-22T18:45:31.509591Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3931,7 +3931,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Fios Extender",
+             *       "service_definition": "Termix",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4435,19 +4435,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-21T19:24:37.409067Z",
+         *       "created_at": "2026-07-22T18:45:31.498266Z",
          *       "first_discovery_id": null,
-         *       "id": "0702a420-f9bf-4612-91ab-6f69d1358422",
+         *       "id": "e843eb00-107c-41c3-b091-33d07ae7e38a",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-21T19:24:37.409067Z",
+         *       "last_seen_at": "2026-07-22T18:45:31.498266Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-21T19:24:37.409067Z",
-         *       "valid_from": "2026-07-21T19:24:37.409067Z",
+         *       "updated_at": "2026-07-22T18:45:31.498266Z",
+         *       "valid_from": "2026-07-22T18:45:31.498266Z",
          *       "valid_to": null
          *     }
          */
@@ -4662,7 +4662,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Fios Extender",
+         *           "service_definition": "Termix",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5349,7 +5349,7 @@ export interface components {
          * @description Visual stroke style for an edge
          * @enum {string}
          */
-        EdgeStroke: "solid" | "dashed";
+        EdgeStroke: "solid" | "dashed" | "dotted";
         /** @enum {string} */
         EdgeStyle: "Straight" | "SmoothStep" | "Bezier";
         EdgeType: {
@@ -5367,6 +5367,11 @@ export interface components {
             edge_type: "ContainerRuntime";
             /** Format: uuid */
             host_id: string;
+            /** Format: uuid */
+            service_id: string;
+        } | {
+            /** @enum {string} */
+            edge_type: "SameContainer";
             /** Format: uuid */
             service_id: string;
         } | {
@@ -5397,7 +5402,7 @@ export interface components {
             target_entity_id: string;
         };
         /** @enum {string} */
-        EdgeTypeDiscriminants: "SameHost" | "Hypervisor" | "ContainerRuntime" | "RequestPath" | "HubAndSpoke" | "PhysicalLink";
+        EdgeTypeDiscriminants: "SameHost" | "Hypervisor" | "ContainerRuntime" | "SameContainer" | "RequestPath" | "HubAndSpoke" | "PhysicalLink";
         /** @description Per-view configuration for an edge: disabled (not in this view) or active with properties */
         EdgeViewConfig: {
             /** @enum {string} */
@@ -5734,19 +5739,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-21T19:24:37.408085Z",
+         *               "created_at": "2026-07-22T18:45:31.497513Z",
          *               "first_discovery_id": null,
-         *               "id": "d58475a9-0fa5-4b18-bbf3-eeecb91df563",
+         *               "id": "ede4932b-4e02-4132-9cbc-e351d2ea7270",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-21T19:24:37.408085Z",
+         *               "last_seen_at": "2026-07-22T18:45:31.497513Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-21T19:24:37.408085Z",
-         *               "valid_from": "2026-07-21T19:24:37.408085Z",
+         *               "updated_at": "2026-07-22T18:45:31.497513Z",
+         *               "valid_from": "2026-07-22T18:45:31.497513Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5760,7 +5765,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Fios Extender",
+         *           "service_definition": "Termix",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -7349,19 +7354,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-21T19:24:37.408969Z",
+         *           "created_at": "2026-07-22T18:45:31.498192Z",
          *           "first_discovery_id": null,
-         *           "id": "2f8b1792-87f2-4aaf-869a-12554bd7816b",
+         *           "id": "ad39215d-ec76-4158-8f1b-0e47a90d3a9e",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-21T19:24:37.408969Z",
+         *           "last_seen_at": "2026-07-22T18:45:31.498192Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-21T19:24:37.408969Z",
-         *           "valid_from": "2026-07-21T19:24:37.408969Z",
+         *           "updated_at": "2026-07-22T18:45:31.498192Z",
+         *           "valid_from": "2026-07-22T18:45:31.498192Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7375,7 +7380,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Fios Extender",
+         *       "service_definition": "Termix",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7798,7 +7803,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "49d6fa04-ee10-42e4-9a39-f2b2cb7decd2",
+             *           "id": "7753608a-e752-4d34-b284-47bf0d21f63f",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7808,23 +7813,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "ba9bccd2-35e1-4140-b6f9-f9e1ed386e71",
+             *           "id": "4295d0a9-db68-4b55-8bc3-9abfc886451d",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "d1370ec5-b9c7-4ce0-bceb-1aa6db93cdc9",
+             *           "id": "7114b71d-f329-46c1-960c-a983ca03f881",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "88557c7d-5cc5-4519-990d-af140417ecaa",
+             *           "id": "f421dfec-63e9-4d19-9deb-9dfafb99c23d",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "ba9bccd2-35e1-4140-b6f9-f9e1ed386e71",
+             *           "id": "4295d0a9-db68-4b55-8bc3-9abfc886451d",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7836,19 +7841,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "0c9dd7a0-7cee-4e06-aec4-3845d1c2b589",
+             *         "id": "b477cbfc-84aa-406c-8594-bd24fd38e9c1",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "a51df41e-db47-418f-9300-54001ba74183",
+             *         "id": "b47fa226-54b8-48b6-a423-762cd9623daf",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "466cf17e-a196-4d75-b3d9-1192dea92b4c",
+             *         "id": "c985caa2-fffc-4bb7-a8f9-19bf1028c9dd",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "7e4e88eb-58df-4720-84de-f3819dbdc164",
+             *         "id": "531c39ff-1b2b-488b-b688-560171054c76",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7866,7 +7871,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "37aa43fd-1594-4a22-8aca-ecca3a3e4509",
+             *         "id": "2759c8aa-6f5e-45e0-ba9c-cedc4de4c926",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7875,15 +7880,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "3c5ee327-988d-462d-b125-3173bf69254a",
+             *         "id": "d2b01518-aa47-47c3-900c-55c4a5af8808",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "ab1db72e-cea7-48a5-8e5c-8cb5540f4c30",
+             *         "id": "551dde1b-2d3f-41bc-92db-458bfe74fcc3",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "7324efa8-8e6a-4603-b5a1-a72bccad6b9e",
+             *         "id": "efbeb3e4-d399-44da-96bf-cc6fa7818bb9",
              *         "rule": "ByStack"
              *       }
              *     ]

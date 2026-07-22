@@ -22,6 +22,7 @@ fn edge_type_name(edge_type: &EdgeType) -> &'static str {
         EdgeType::SameHost { .. } => "Same Host",
         EdgeType::Hypervisor { .. } => "Hypervisor",
         EdgeType::ContainerRuntime { .. } => "Container Runtime",
+        EdgeType::SameContainer { .. } => "Same Container",
         EdgeType::RequestPath { .. } => "Request Path",
         EdgeType::HubAndSpoke { .. } => "Hub & Spoke",
         EdgeType::PhysicalLink { .. } => "Physical Link",
@@ -107,7 +108,9 @@ pub fn topology_to_mermaid(nodes: &[Node], edges: &[Edge], data: &TopologyData) 
     for edge in edges {
         let arrow = match &edge.edge_type {
             EdgeType::RequestPath { .. } | EdgeType::HubAndSpoke { .. } => "-->",
-            EdgeType::SameHost { .. } | EdgeType::PhysicalLink { .. } => "---",
+            EdgeType::SameHost { .. }
+            | EdgeType::PhysicalLink { .. }
+            | EdgeType::SameContainer { .. } => "---",
             EdgeType::Hypervisor { .. } | EdgeType::ContainerRuntime { .. } => "-.->",
         };
 

@@ -48,6 +48,22 @@
     }
   },
   {
+    "id": "SameContainer",
+    "name": "Same Container",
+    "description": null,
+    "category": null,
+    "icon": "box",
+    "color": "Blue",
+    "metadata": {
+      "edge_style": "Bezier",
+      "has_end_marker": false,
+      "has_start_marker": false,
+      "is_dependency_edge": false,
+      "is_host_edge": false,
+      "is_physical_edge": false
+    }
+  },
+  {
     "id": "RequestPath",
     "name": "Request Path",
     "description": null,

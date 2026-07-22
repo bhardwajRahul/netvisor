@@ -29,6 +29,9 @@
         "RequestPath": {
           "type": "disabled"
         },
+        "SameContainer": {
+          "type": "disabled"
+        },
         "SameHost": {
           "affects_layout": false,
           "default_visibility": "hidden",
@@ -113,6 +116,15 @@
           "highlight_behavior": "when_visible",
           "show_directionality": true,
           "stroke": "dashed",
+          "type": "active",
+          "will_target_container": false
+        },
+        "SameContainer": {
+          "affects_layout": false,
+          "default_visibility": "hidden",
+          "highlight_behavior": "when_visible",
+          "show_directionality": false,
+          "stroke": "dotted",
           "type": "active",
           "will_target_container": false
         },
@@ -434,6 +446,9 @@
           "stroke": "dashed",
           "type": "active",
           "will_target_container": false
+        },
+        "SameContainer": {
+          "type": "disabled"
         },
         "SameHost": {
           "type": "disabled"
@@ -771,6 +786,9 @@
           "stroke": "solid",
           "type": "active",
           "will_target_container": false
+        },
+        "SameContainer": {
+          "type": "disabled"
         },
         "SameHost": {
           "type": "disabled"
