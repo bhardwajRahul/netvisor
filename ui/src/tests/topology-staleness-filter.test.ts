@@ -1,0 +1,192 @@
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { get } from 'svelte/store';
+import {
+	updateTagFilter,
+	tagHiddenNodeIds,
+	tagHiddenServiceIds,
+	presentFilterValues
+} from '$lib/features/topology/interactions';
+import type { RenderableTopology } from '$lib/features/topology/types/base';
+import type { Network } from '$lib/features/networks/types';
+
+const HOUR_MS = 60 * 60 * 1000;
+const NOW = new Date('2026-07-22T12:00:00Z').getTime();
+const NETWORK_ID = 'net-1';
+
+const network = { id: NETWORK_ID, effective_stale_after_hours: 24 * 28 } as Network;
+
+function seenHoursAgo(h: number) {
+	return new Date(NOW - h * HOUR_MS).toISOString();
+}
+
+/**
+ * Two hosts, each with one service:
+ *  - stale-host: the HOST is past the window while its service was seen
+ *    recently — the case that must NOT drag the service down with it.
+ *  - fresh-host: the host is current but its service is past the window.
+ */
+function buildTopology(): RenderableTopology {
+	const discovery = { type: 'Discovery' };
+	return {
+		id: 'topo-1',
+		network_id: NETWORK_ID,
+		hosts: [
+			{
+				id: 'stale-host',
+				network_id: NETWORK_ID,
+				last_seen_at: seenHoursAgo(24 * 45),
+				source: discovery,
+				tags: []
+			},
+			{
+				id: 'fresh-host',
+				network_id: NETWORK_ID,
+				last_seen_at: seenHoursAgo(1),
+				source: discovery,
+				tags: []
+			}
+		],
+		services: [
+			{
+				id: 'svc-on-stale-host',
+				host_id: 'stale-host',
+				network_id: NETWORK_ID,
+				last_seen_at: seenHoursAgo(1),
+				source: discovery,
+				tags: []
+			},
+			{
+				id: 'svc-itself-stale',
+				host_id: 'fresh-host',
+				network_id: NETWORK_ID,
+				last_seen_at: seenHoursAgo(24 * 45),
+				source: discovery,
+				tags: []
+			}
+		],
+		nodes: [
+			{
+				id: 'svc-on-stale-host',
+				node_type: 'Element',
+				element_type: 'Service',
+				host_id: 'stale-host'
+			},
+			{
+				id: 'svc-itself-stale',
+				node_type: 'Element',
+				element_type: 'Service',
+				host_id: 'fresh-host'
+			},
+			{ id: 'stale-host', node_type: 'Element', element_type: 'Host', host_id: 'stale-host' },
+			{ id: 'fresh-host', node_type: 'Element', element_type: 'Host', host_id: 'fresh-host' }
+		],
+		edges: [],
+		subnets: [],
+		ip_addresses: [],
+		ports: [],
+		bindings: [],
+		interfaces: [],
+		dependencies: [],
+		vlans: [],
+		entity_tags: []
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	} as any;
+}
+
+beforeEach(() => {
+	vi.useFakeTimers();
+	vi.setSystemTime(NOW);
+	tagHiddenNodeIds.set(new Set());
+	tagHiddenServiceIds.set(new Set());
+});
+afterEach(() => vi.useRealTimers());
+
+describe('topology staleness filter', () => {
+	it('hides a service that is stale on its own merits', () => {
+		updateTagFilter(
+			buildTopology(),
+			undefined,
+			'Workloads',
+			{ Service: { Staleness: ['stale'] } },
+			[],
+			network
+		);
+		expect(get(tagHiddenNodeIds).has('svc-itself-stale')).toBe(true);
+	});
+
+	// No inheritance in the UI: a service seen recently stays visible even when
+	// its host is long stale, matching what the inventory shows for it.
+	it('leaves a recently-seen service visible under a stale host', () => {
+		updateTagFilter(
+			buildTopology(),
+			undefined,
+			'Workloads',
+			{ Service: { Staleness: ['stale'] } },
+			[],
+			network
+		);
+		expect(get(tagHiddenNodeIds).has('svc-on-stale-host')).toBe(false);
+	});
+
+	// Hiding Current is the mirror image, and confirms the two values partition
+	// the set rather than both keying off "stale".
+	it('hides exactly the current services when Current is the hidden value', () => {
+		updateTagFilter(
+			buildTopology(),
+			undefined,
+			'Workloads',
+			{ Service: { Staleness: ['current'] } },
+			[],
+			network
+		);
+		const hidden = get(tagHiddenNodeIds);
+		expect(hidden.has('svc-on-stale-host')).toBe(true);
+		expect(hidden.has('svc-itself-stale')).toBe(false);
+	});
+
+	it('hides stale host element nodes', () => {
+		updateTagFilter(
+			buildTopology(),
+			undefined,
+			'Workloads',
+			{ Host: { Staleness: ['stale'] } },
+			[],
+			network
+		);
+		const hidden = get(tagHiddenNodeIds);
+		expect(hidden.has('stale-host')).toBe(true);
+		expect(hidden.has('fresh-host')).toBe(false);
+	});
+
+	// A filter whose entities all share one value can only show everything or
+	// hide everything, so the panel drops the group. Both values present here.
+	it('reports both staleness values as present when the set is mixed', () => {
+		updateTagFilter(buildTopology(), undefined, 'Workloads', {}, [], network);
+		const present = get(presentFilterValues).Service?.Staleness ?? [];
+		expect([...present].sort()).toEqual(['current', 'stale']);
+	});
+
+	it('reports a single value when every entity of the type agrees', () => {
+		const topo = buildTopology();
+		// Make both services stale, so the filter offers no discrimination.
+		topo.services.forEach((s) => {
+			(s as { last_seen_at: string }).last_seen_at = seenHoursAgo(24 * 45);
+		});
+		updateTagFilter(topo, undefined, 'Workloads', {}, [], network);
+		expect(get(presentFilterValues).Service?.Staleness).toEqual(['stale']);
+	});
+
+	// Without the network the window is unknown, so nothing can be judged —
+	// the filter must not silently hide (or keep) everything.
+	it('hides nothing when the network is not supplied', () => {
+		updateTagFilter(
+			buildTopology(),
+			undefined,
+			'Workloads',
+			{ Service: { Staleness: ['stale'] } },
+			[],
+			undefined
+		);
+		expect(get(tagHiddenNodeIds).size).toBe(0);
+	});
+});

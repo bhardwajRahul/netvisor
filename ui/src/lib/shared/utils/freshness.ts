@@ -8,6 +8,14 @@
  * inputs (`last_seen_at` and the entity's network `stale_after_hours`), so a
  * host reported stale in the digest is the host badged stale in the app.
  * Change one, change all three.
+ *
+ * Every entity is judged on its OWN `last_seen_at`, with no inheritance from a
+ * parent host. The digest applies a parent/child rule (`ChildPolicy`) because
+ * it reports one scan's events, where "nothing was observed about this host's
+ * children" is meaningful. A persistent badge answers a different question —
+ * "when was this last seen?" — and inheriting there produced a node marked
+ * Stale whose tooltip read "last seen 2 hours ago", and made topology disagree
+ * with the inventory, which never inherited.
  */
 
 import { Clock } from 'lucide-svelte';
@@ -72,26 +80,6 @@ export function entityFreshness(
 }
 
 /**
- * Freshness of a child entity under the parent/child rule the digest applies
- * (`ChildPolicy` in `digest/service.rs`): when the HOST is stale nothing was
- * observed about its children, so they inherit its verdict rather than each
- * claiming its own decay — an offline host must not read as though its
- * addresses and services were removed one by one. Only while the host is still
- * being seen does a child speak for itself, which is what surfaces a genuinely
- * dropped IP or closed service on an otherwise-healthy host.
- *
- * Pass `host: undefined` for an entity that IS the host, or has no parent.
- */
-export function resolvedFreshness(
-	entity: FreshnessSubject,
-	host: FreshnessSubject | undefined,
-	network: Network | undefined
-): EntityFreshness {
-	if (host && host !== entity && entityFreshness(host, network) === 'stale') return 'stale';
-	return entityFreshness(entity, network);
-}
-
-/**
  * Status tag for an entity card, or `null` when there is nothing to say.
  *
  * Amber rather than red, matching `getDaemonStatusTag`'s split: red means
@@ -103,8 +91,6 @@ export function getFreshnessTag(
 	entity: FreshnessSubject,
 	network: Network | undefined,
 	opts: {
-		/** Parent host, when this entity is a child — applies the inheritance rule. */
-		host?: FreshnessSubject;
 		/**
 		 * Display name of the entity's type ("IP Address", "Service", …), from
 		 * `entities.getName()`. Names the thing the verdict is about, which
@@ -113,17 +99,12 @@ export function getFreshnessTag(
 		entityTypeLabel?: string;
 	} = {}
 ): TagProps | null {
-	const { host, entityTypeLabel } = opts;
-	if (resolvedFreshness(entity, host, network) !== 'stale') return null;
+	if (entityFreshness(entity, network) !== 'stale') return null;
 	return {
 		label: common_stale(),
 		color: toColor('amber'),
 		icon: Clock,
-		// Describes the entity being displayed, not whichever entity the verdict
-		// was inherited from — hovering a node should say what that node is. In
-		// practice the timestamps agree anyway: a host that goes unscanned stops
-		// refreshing its children too, so their `last_seen_at` tracks its own.
-		title: lastSeenLabel(entity, entityTypeLabel)
+		title: lastSeenLabel(entity, opts.entityTypeLabel)
 	};
 }
 
