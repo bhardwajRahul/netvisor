@@ -8,7 +8,7 @@
 		selectedTopologyId,
 		useTopologiesQuery
 	} from '../../../queries';
-	import { hoveredEdgeType } from '../../../interactions';
+	import { hoveredEdgeType, presentFilterValues } from '../../../interactions';
 	import { isDisabledEdge } from '../../../layout/edge-classification';
 	import { useTopology } from '../../../context';
 	import { getTopologyEditState, getOptionDisabledTooltip } from '../../../state';
@@ -191,6 +191,17 @@
 		(viewMetaObj?.element_config as { metadata_filters?: Record<string, MetadataFilterDef[]> })
 			?.metadata_filters ?? {}
 	);
+
+	/**
+	 * Drop a filter group whose entities all share one value — every toggle
+	 * would either show everything or hide everything. Undefined means the
+	 * present-value scan hasn't run yet (no topology loaded), in which case the
+	 * group is shown rather than flickering out.
+	 */
+	function filterOffersAChoice(entityType: string, filterType: string): boolean {
+		const present = $presentFilterValues[entityType]?.[filterType];
+		return present === undefined || present.length > 1;
+	}
 	let hiddenMetadataForView = $derived(
 		(
 			($topologyOptions.request.hide_metadata_values ?? {}) as Record<
@@ -697,7 +708,7 @@
 								hasUntagged={tagBundle.hasUntagged}
 							/>
 						{/if}
-						{#each metadataFilters as filter (filter.filter_type)}
+						{#each metadataFilters.filter( (f) => filterOffersAChoice(section.entityType, f.filter_type) ) as filter (filter.filter_type)}
 							<CategoryFilterGroup
 								entityType={section.entityType}
 								filterType={filter.filter_type}

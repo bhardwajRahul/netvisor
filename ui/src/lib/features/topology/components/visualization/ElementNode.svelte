@@ -137,18 +137,15 @@
 
 	// The verdict applies the digest's parent/child rule via `resolvedFreshness`,
 	// so a child of a stale host inherits rather than claiming its own decay.
+	// Judged on the node's own entity, with no inheritance from its host — the
+	// same rule the inventory cards apply, so the two surfaces agree and the
+	// tooltip's timestamp can never contradict the tag. Type names come from
+	// the entity metadata fixture, so they stay localized and in step with the
+	// backend.
 	let subject = $derived(elementEntity ?? host);
-	// The tooltip names what THIS node depicts — an IPAddress node reads
-	// "IP Address last seen …" even when its verdict was inherited from a stale
-	// host, because that is the thing being hovered. Naming the inherited-from
-	// entity instead made L3 read "Host" everywhere, and made two Workloads
-	// service nodes disagree purely on whether their host happened to be stale.
-	// Type names come from the entity metadata fixture, so they stay localized
-	// and in step with the backend.
 	let staleTag = $derived(
 		subject
 			? getFreshnessTag(subject, networkFor(subject), {
-					host,
 					entityTypeLabel: entities.getName(resolved?.elementType ?? 'Host') || undefined
 				})
 			: null

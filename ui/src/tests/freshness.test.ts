@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { entityFreshness, resolvedFreshness } from '$lib/shared/utils/freshness';
+import { entityFreshness } from '$lib/shared/utils/freshness';
 import type { Network } from '$lib/features/networks/types';
 import type { components } from '$lib/api/schema';
 
@@ -97,35 +97,19 @@ describe('entityFreshness', () => {
 	});
 });
 
-// Mirrors `ChildPolicy` in the digest: when the host itself wasn't reached,
-// nothing was observed about its children, so they inherit rather than each
-// asserting their own decay.
-describe('resolvedFreshness — parent/child rule', () => {
-	it('makes children of a stale host inherit, however recently they were seen', () => {
+// The UI judges every entity on its own last_seen_at, with no inheritance from
+// a parent host. The digest inherits (`ChildPolicy`) because it reports one
+// scan's events; a persistent badge answers "when was this last seen?", where
+// inheriting produced a node marked Stale whose tooltip read "last seen 2 hours
+// ago" and made topology disagree with the inventory.
+describe('no parent inheritance in the UI', () => {
+	it('leaves a recently-seen child current even when its host is stale', () => {
 		freezeClock();
 		const net = network(24);
-		const staleHost = entity(100);
 		const freshChild = entity(1);
 
 		expect(entityFreshness(freshChild, net)).toBe('current');
-		expect(resolvedFreshness(freshChild, staleHost, net)).toBe('stale');
-	});
-
-	// The case that motivated deriving the L3 tag from host-then-IP: a host
-	// that drops one of two addresses is real signal and must stay visible.
-	it('lets a child speak for itself while its host is still being seen', () => {
-		freezeClock();
-		const net = network(24);
-		const currentHost = entity(1);
-
-		expect(resolvedFreshness(entity(100), currentHost, net)).toBe('stale');
-		expect(resolvedFreshness(entity(2), currentHost, net)).toBe('current');
-	});
-
-	it('judges an entity with no parent on its own', () => {
-		freezeClock();
-		const net = network(24);
-		expect(resolvedFreshness(entity(100), undefined, net)).toBe('stale');
-		expect(resolvedFreshness(entity(1), undefined, net)).toBe('current');
+		// The host being stale is irrelevant to the child's own verdict.
+		expect(entityFreshness(entity(100), net)).toBe('stale');
 	});
 });
