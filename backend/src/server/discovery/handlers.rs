@@ -225,7 +225,7 @@ pub async fn update_discovery(
     state: State<Arc<AppState>>,
     auth: Authorized<Member>,
     id: Path<Uuid>,
-    mut discovery: Json<Discovery>,
+    discovery: Json<Discovery>,
 ) -> ApiResult<Json<ApiResponse<Discovery>>> {
     if let RunType::Historical { .. } = discovery.base.run_type {
         return Err(ApiError::discovery_historical_read_only());
@@ -293,17 +293,9 @@ pub async fn update_discovery(
             )));
         }
 
-        // Apply credential targeting through the shared path: daemon-host creds (sockets /
-        // loopback) merge into the host_credentials junction; Network/Hosts targets stay on the
-        // Discovery. Same logic as daemon registration, so both modals behave identically.
-        discovery.integration_targets = state
-            .services
-            .credential_service
-            .apply_integration_targets(
-                daemon.base.host_id,
-                std::mem::take(&mut discovery.integration_targets),
-            )
-            .await?;
+        // Targets stay on the Discovery — including daemon-host ones. They're offered on each
+        // scan and assigned to a host only once they probe successfully, so saving a target here
+        // never assigns a credential on its own.
     }
 
     update_handler::<Discovery>(state, auth, id, discovery).await

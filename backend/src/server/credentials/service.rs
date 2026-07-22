@@ -31,7 +31,7 @@ use crate::server::{
 use anyhow::Error;
 use async_trait::async_trait;
 use std::collections::HashSet;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, OnceLock};
 use strum::IntoDiscriminant;
 use uuid::Uuid;
@@ -322,81 +322,6 @@ impl CredentialService {
         merged.extend(incoming.iter().cloned());
 
         self.set_host_credentials(host_id, &merged).await
-    }
-
-    /// Whether an integration target addresses the daemon's own host — a `DaemonHost`-scoped
-    /// target, or a `Hosts` target naming a loopback IP. Such targets are junction-managed.
-    fn targets_daemon_host(target: &IntegrationTarget) -> bool {
-        match target {
-            IntegrationTarget::DaemonHost { .. } => true,
-            IntegrationTarget::Hosts { ips, .. } => ips.iter().any(|ip| ip.is_loopback()),
-            IntegrationTarget::Network { .. } => false,
-        }
-    }
-
-    /// Apply a discovery's integration targets, returning the targets that remain on the Discovery.
-    ///
-    /// Daemon-host targets (see [`Self::targets_daemon_host`]) are MERGED into the daemon host's
-    /// `host_credentials` junction (additive — a no-op update can't wipe an existing assignment),
-    /// because the scan-time mapping builder (`apply_integration_target`) is junction-sourced for
-    /// them. The remaining Network / non-loopback Hosts targets are returned to persist on the
-    /// Discovery row. Shared by daemon registration and the discovery-update handler so both apply
-    /// credential targeting through identical logic.
-    pub async fn apply_integration_targets(
-        &self,
-        daemon_host_id: Uuid,
-        targets: Vec<IntegrationTarget>,
-    ) -> Result<Vec<IntegrationTarget>, Error> {
-        if targets.iter().any(Self::targets_daemon_host) {
-            // Daemon-host credentials (local sockets, localhost proxies) connect over the
-            // loopback, so scope them to the daemon host's loopback IP — not `None`, which
-            // fans the credential out to every interface on the host (LAN, docker/podman
-            // bridges, …). `seed_loopback` guarantees the loopback IP exists by this point.
-            let loopback_ids = self.host_loopback_ip_ids(&daemon_host_id).await;
-            if loopback_ids.is_empty() {
-                tracing::warn!(
-                    daemon_host_id = %daemon_host_id,
-                    "No loopback IP on daemon host; daemon-host credentials will not be IP-scoped",
-                );
-            }
-            let ip_address_ids = (!loopback_ids.is_empty()).then_some(loopback_ids);
-
-            let assignments: Vec<CredentialAssignment> = targets
-                .iter()
-                .filter(|t| Self::targets_daemon_host(t))
-                .map(|t| CredentialAssignment {
-                    credential_id: t.credential_id(),
-                    ip_address_ids: ip_address_ids.clone(),
-                })
-                .collect();
-            self.merge_host_credentials(&daemon_host_id, &assignments)
-                .await?;
-        }
-
-        Ok(targets
-            .into_iter()
-            .filter(|t| !Self::targets_daemon_host(t))
-            .collect())
-    }
-
-    /// Loopback IP-address ids for a host (empty if none / unresolved). Daemon-host
-    /// credentials are scoped to these so a local socket/proxy only targets 127.0.0.1
-    /// instead of every interface on the daemon host.
-    async fn host_loopback_ip_ids(&self, host_id: &Uuid) -> Vec<Uuid> {
-        let Some(host_service) = self.host_service.get() else {
-            return Vec::new();
-        };
-        match host_service.get_ip_addresses_for_host(host_id).await {
-            Ok(ips) => ips
-                .into_iter()
-                .filter(|ip| ip.base.ip_address.is_loopback())
-                .map(|ip| ip.id)
-                .collect(),
-            Err(e) => {
-                tracing::warn!(host_id = %host_id, error = ?e, "Failed to resolve daemon host loopback IP");
-                Vec::new()
-            }
-        }
     }
 
     /// Get the network IDs a credential is assigned to (reverse lookup).
@@ -856,19 +781,15 @@ pub(crate) fn apply_integration_target(
         return;
     }
 
-    // Daemon-host targeting (DaemonHost scope, or only loopback Hosts IPs) is sourced
-    // from the `host_credentials` junction — managed via the host/credential modals.
-    // Skip it here (without even creating an empty mapping) so integration_targets
-    // never double-sources a daemon-host credential or re-injects one the user removed
-    // via those modals.
-    let non_loopback_ips: Vec<IpAddr> = match target {
-        IntegrationTarget::DaemonHost { .. } => return,
-        IntegrationTarget::Hosts { ips, .. } => {
-            ips.iter().copied().filter(|ip| !ip.is_loopback()).collect()
-        }
+    // Every target is offered to the daemon and earns its host assignment only by probing
+    // successfully — nothing is assigned up front. A daemon-host target is reached over the
+    // loopback, so it becomes a 127.0.0.1 override like any other IP target.
+    let target_ips: Vec<IpAddr> = match target {
+        IntegrationTarget::DaemonHost { .. } => vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+        IntegrationTarget::Hosts { ips, .. } => ips.clone(),
         IntegrationTarget::Network { .. } => Vec::new(),
     };
-    if matches!(target, IntegrationTarget::Hosts { .. }) && non_loopback_ips.is_empty() {
+    if matches!(target, IntegrationTarget::Hosts { .. }) && target_ips.is_empty() {
         return;
     }
 
@@ -888,12 +809,11 @@ pub(crate) fn apply_integration_target(
                 mapping.default_credential = Some(payload);
             }
         }
-        IntegrationTarget::Hosts { .. } => {
-            for ip in non_loopback_ips {
+        IntegrationTarget::Hosts { .. } | IntegrationTarget::DaemonHost { .. } => {
+            for ip in target_ips {
                 push_unique_override(mapping, ip, payload.clone(), credential_id);
             }
         }
-        IntegrationTarget::DaemonHost { .. } => unreachable!("returned above"),
     }
 }
 
@@ -1051,12 +971,11 @@ mod integration_target_tests {
         IpAddr::V4(Ipv4Addr::LOCALHOST)
     }
 
-    /// Daemon-host targeting is sourced from the `host_credentials` junction (managed via the
-    /// host/credential modals), so `apply_integration_target` produces NO override for a
-    /// `DaemonHost` target — avoiding a double-source with the junction and letting modal
-    /// removal fully clear a daemon-host credential. The shared target is left untouched.
+    /// A `DaemonHost` target is reached over the loopback, so it becomes a 127.0.0.1 override —
+    /// the daemon probes it during discovery and it earns its host assignment only if that probe
+    /// succeeds. Producing no override would leave the credential unreachable and silently unused.
     #[test]
-    fn daemon_host_target_produces_no_override_junction_sourced() {
+    fn daemon_host_target_is_probed_over_loopback() {
         let cred_id = Uuid::new_v4();
         let target = IntegrationTarget::DaemonHost {
             credential_id: cred_id,
@@ -1067,37 +986,36 @@ mod integration_target_tests {
         ] {
             let mut map: Mappings = HashMap::new();
             apply_integration_target(&mut map, &target, &disc.to_credential_type());
-            assert!(
-                map.is_empty(),
-                "DaemonHost targets are junction-sourced, not integration_targets overrides"
-            );
+            let mapping = map.get(&disc).expect("daemon-host target must be offered");
+            assert_eq!(mapping.ip_overrides.len(), 1);
+            assert_eq!(mapping.ip_overrides[0].ip, localhost());
+            assert_eq!(mapping.ip_overrides[0].credential_id, cred_id);
+            // Reached over loopback, not fanned out across every interface on the host.
+            assert!(mapping.default_credential.is_none());
         }
-        // No consumption/clear: the shared target is untouched and still usable.
-        assert_eq!(
-            target,
-            IntegrationTarget::DaemonHost {
-                credential_id: cred_id
-            }
-        );
     }
 
-    /// A loopback `Hosts` IP is also daemon-host targeting → junction-sourced, so it's skipped;
-    /// non-loopback IPs in the same target still produce overrides.
+    /// A `Hosts` target keeps every IP it names, loopback included — targeting the daemon host by
+    /// its loopback address is the same thing as a `DaemonHost` target and is probed identically.
     #[test]
-    fn loopback_hosts_ip_skipped_non_loopback_kept() {
+    fn hosts_target_keeps_loopback_ip() {
         let cred_id = Uuid::new_v4();
         let cred_type = CredentialTypeDiscriminants::DockerProxy.to_credential_type();
+        let remote: IpAddr = "10.0.0.7".parse().unwrap();
         let target = IntegrationTarget::Hosts {
             credential_id: cred_id,
-            ips: vec![localhost(), "10.0.0.7".parse::<IpAddr>().unwrap()],
+            ips: vec![localhost(), remote],
         };
         let mut map: Mappings = HashMap::new();
         apply_integration_target(&mut map, &target, &cred_type);
         let mapping = map.get(&CredentialTypeDiscriminants::DockerProxy).unwrap();
-        assert_eq!(mapping.ip_overrides.len(), 1, "loopback IP must be skipped");
         assert_eq!(
-            mapping.ip_overrides[0].ip,
-            "10.0.0.7".parse::<IpAddr>().unwrap()
+            mapping
+                .ip_overrides
+                .iter()
+                .map(|o| o.ip)
+                .collect::<Vec<_>>(),
+            vec![localhost(), remote]
         );
     }
 
