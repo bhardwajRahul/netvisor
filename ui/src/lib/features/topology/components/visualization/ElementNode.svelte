@@ -674,8 +674,15 @@
 		     Additive rather than an opacity change — opacity is already the
 		     filter/search dimming channel. -->
 		{#if staleTag}
-			<div class="absolute -top-2 right-1 z-10" title={staleTitle}>
-				<Tag {...staleTag} pill />
+			<!-- In flow rather than absolutely positioned: the card is a
+			     fixed-height flex column, so an absolute tag escapes its bounds
+			     and a tag placed inside them would sit on top of the centred
+			     title. As a shrink-0 row the body (flex-1) simply absorbs the
+			     space, keeping the tag inside the card and clear of the text. -->
+			<div class="flex flex-shrink-0 justify-end px-1 pt-1" title={staleTitle}>
+				<div class="origin-top-right scale-90">
+					<Tag {...staleTag} pill />
+				</div>
 			</div>
 		{/if}
 
