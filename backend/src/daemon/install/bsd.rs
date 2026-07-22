@@ -56,14 +56,13 @@ fn script_contents(spec: &ServiceSpec) -> String {
          \n\
          pidfile=\"/var/run/{svc}.pid\"\n\
          command=\"/usr/sbin/daemon\"\n\
-         command_args=\"-P ${{pidfile}} -r -t \\\"{desc}\\\" {bin} --name {daemon_name} --config-dir {config_dir} --log-file {log_file}\"\n\
+         command_args=\"-P ${{pidfile}} -r -t \\\"{desc}\\\" {bin} --config-dir {config_dir} --log-file {log_file}\"\n\
          \n\
          run_rc_command \"$1\"\n",
         name = name,
         svc = spec.service_id,
         desc = spec.display_name,
         bin = spec.bin_path.display(),
-        daemon_name = spec.daemon_name,
         config_dir = spec.config_dir.display(),
         log_file = spec.log_file.display(),
     )

@@ -40,9 +40,8 @@ pub fn register_service(spec: &ServiceSpec) -> Result<()> {
     // control dispatcher (reports RUNNING/STOPPED) instead of as a plain console process — without
     // it, `sc start` times out with error 1053.
     let bin_path_value = format!(
-        "\"{}\" --service --name {} --config-dir \"{}\" --log-file \"{}\"",
+        "\"{}\" --service --config-dir \"{}\" --log-file \"{}\"",
         spec.bin_path.display(),
-        spec.daemon_name,
         spec.config_dir.display(),
         spec.log_file.display(),
     );
