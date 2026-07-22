@@ -161,38 +161,43 @@ impl EdgeBuilder {
                 // box, so the per-subnet edges would stack into identical overlapping lines on
                 // it. Collapse them into the one edge the user actually sees, carrying the
                 // union of what those subnets hold.
-                let per_edge: Vec<(Uuid, Vec<Uuid>)> = if grouping.should_group_container_bridges()
-                {
-                    let Some((_, target)) = target_by_subnet.values().min().copied() else {
-                        return Vec::new();
-                    };
-                    let mut containers: Vec<Uuid> = Vec::new();
-                    for subnet_containers in containers_by_subnet.values() {
-                        for id in subnet_containers {
-                            if !containers.contains(id) {
-                                containers.push(*id);
+                let per_edge: Vec<(Uuid, Vec<Uuid>, Vec<Uuid>)> =
+                    if grouping.should_group_container_bridges() {
+                        let Some((_, target)) = target_by_subnet.values().min().copied() else {
+                            return Vec::new();
+                        };
+                        let mut containers: Vec<Uuid> = Vec::new();
+                        for subnet_containers in containers_by_subnet.values() {
+                            for id in subnet_containers {
+                                if !containers.contains(id) {
+                                    containers.push(*id);
+                                }
                             }
                         }
-                    }
-                    vec![(target, containers)]
-                } else {
-                    target_by_subnet
-                        .iter()
-                        .map(|(subnet_id, (_, target))| {
-                            (
-                                *target,
-                                containers_by_subnet
-                                    .get(subnet_id)
-                                    .cloned()
-                                    .unwrap_or_default(),
-                            )
-                        })
-                        .collect()
-                };
+                        vec![(
+                            target,
+                            target_by_subnet.keys().copied().collect(),
+                            containers,
+                        )]
+                    } else {
+                        target_by_subnet
+                            .iter()
+                            .map(|(subnet_id, (_, target))| {
+                                (
+                                    *target,
+                                    vec![*subnet_id],
+                                    containers_by_subnet
+                                        .get(subnet_id)
+                                        .cloned()
+                                        .unwrap_or_default(),
+                                )
+                            })
+                            .collect()
+                    };
 
                 per_edge
                     .into_iter()
-                    .map(|(target, containerized_service_ids)| {
+                    .map(|(target, subnet_ids, containerized_service_ids)| {
                         let is_multi_hop = ctx.edge_is_multi_hop(&origin_ip_address.id, &target);
 
                         Edge {
@@ -202,6 +207,7 @@ impl EdgeBuilder {
                             edge_type: EdgeType::ContainerRuntime {
                                 service_id: s.id,
                                 host_id: host.id,
+                                subnet_ids,
                                 containerized_service_ids,
                             },
                             label: Some(format!("{} on {}", s.base.name, host.base.name)),
@@ -634,6 +640,14 @@ mod tests {
         }
     }
 
+    /// The bridge subnets an edge says it reaches.
+    fn subnet_ids(edge: &Edge) -> Vec<Uuid> {
+        match &edge.edge_type {
+            EdgeType::ContainerRuntime { subnet_ids, .. } => subnet_ids.clone(),
+            other => panic!("expected a ContainerRuntime edge, got {other:?}"),
+        }
+    }
+
     fn subnet(network_id: Uuid, name: &str, third_octet: u8, subnet_type: SubnetType) -> Subnet {
         Subnet {
             id: Uuid::new_v4(),
@@ -1043,6 +1057,8 @@ mod tests {
         let lan = subnet(network_id, "lan", 30, SubnetType::Lan);
         let db_net = subnet(network_id, "db-net", 20, SubnetType::DockerBridge);
         let web_net = subnet(network_id, "web-net", 21, SubnetType::DockerBridge);
+        let db_net_id = db_net.id;
+        let web_net_id = web_net.id;
 
         let host_ip = ip(network_id, host_id, lan.id, Ipv4Addr::new(172, 30, 0, 5));
         let db_ip = ip(network_id, host_id, db_net.id, Ipv4Addr::new(172, 20, 0, 2));
@@ -1117,20 +1133,34 @@ mod tests {
         );
 
         let edges = EdgeBuilder::create_containerized_service_edges(&ctx, &ungrouped());
-        let by_target: HashMap<Uuid, Vec<Uuid>> = edges
+        let by_target: HashMap<Uuid, (Vec<Uuid>, Vec<Uuid>)> = edges
             .iter()
-            .map(|e| (e.target, containerized_ids(e)))
+            .map(|e| (e.target, (subnet_ids(e), containerized_ids(e))))
             .collect();
-        assert_eq!(by_target.get(&db_ip.id), Some(&vec![postgres_id]));
-        assert_eq!(by_target.get(&web_ip.id), Some(&vec![nginx_id]));
+        assert_eq!(
+            by_target.get(&db_ip.id),
+            Some(&(vec![db_net_id], vec![postgres_id]))
+        );
+        assert_eq!(
+            by_target.get(&web_ip.id),
+            Some(&(vec![web_net_id], vec![nginx_id]))
+        );
 
         // Merged, the two boxes become one and its edge stands for everything inside it.
         let merged_edges = EdgeBuilder::create_containerized_service_edges(&ctx, &merged());
         assert_eq!(merged_edges.len(), 1);
-        let mut merged_set = containerized_ids(&merged_edges[0]);
-        merged_set.sort();
-        let mut expected = vec![postgres_id, nginx_id];
-        expected.sort();
-        assert_eq!(merged_set, expected);
+        let sorted = |mut ids: Vec<Uuid>| {
+            ids.sort();
+            ids
+        };
+        assert_eq!(
+            sorted(containerized_ids(&merged_edges[0])),
+            sorted(vec![postgres_id, nginx_id])
+        );
+        assert_eq!(
+            sorted(subnet_ids(&merged_edges[0])),
+            sorted(vec![db_net_id, web_net_id]),
+            "the merged edge reaches every bridge in the box"
+        );
     }
 }

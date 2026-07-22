@@ -187,9 +187,11 @@ pub enum EdgeType {
     ContainerRuntime {
         host_id: Uuid,
         service_id: Uuid,
-        /// The containerized services this edge stands for — the ones reachable at the
-        /// bridge subnet(s) it connects. Resolved here rather than in the inspector, which
-        /// cannot tell which subnet an elevated edge landed on.
+        /// The bridge subnet(s) this edge reaches: one when they render as their own boxes,
+        /// all of them when merged into a single box. Resolved here rather than in the
+        /// inspector, which cannot tell which subnet an elevated edge landed on.
+        subnet_ids: Vec<Uuid>,
+        /// The containerized services this edge stands for — the ones on those subnets.
         containerized_service_ids: Vec<Uuid>,
     },
     /// One container reachable at several of its host's container-bridge subnets. Ties the
@@ -241,16 +243,13 @@ impl EdgeType {
             EdgeType::SameContainer { .. } => ConnectedNodes {
                 relation_field: "service_id",
             },
-            // Every bridge the runtime reaches its containers on.
-            EdgeType::ContainerRuntime { .. } => ConnectedNodes {
-                relation_field: "service_id",
-            },
-            // Every host the hypervisor virtualizes.
-            EdgeType::Hypervisor { .. } => ConnectedNodes {
-                relation_field: "hypervisor_service_id",
-            },
-            // A physical link is the relationship, not a segment of one.
-            EdgeType::PhysicalLink { .. } => Segment,
+            // A runtime's edges each reach a different bridge, and a hypervisor's each reach a
+            // different VM — they are separate connections that happen to share an origin, not
+            // segments of one thing, so a click stays on the one that was clicked. A physical
+            // link is likewise the whole relationship, not a segment of one.
+            EdgeType::ContainerRuntime { .. }
+            | EdgeType::Hypervisor { .. }
+            | EdgeType::PhysicalLink { .. } => Segment,
         }
     }
 }

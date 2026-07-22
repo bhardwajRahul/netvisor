@@ -5375,11 +5375,7 @@ export interface components {
             /** Format: uuid */
             hypervisor_service_id: string;
         } | {
-            /**
-             * @description The containerized services this edge stands for — the ones reachable at the
-             *     bridge subnet(s) it connects. Resolved here rather than in the inspector, which
-             *     cannot tell which subnet an elevated edge landed on.
-             */
+            /** @description The containerized services this edge stands for — the ones on those subnets. */
             containerized_service_ids: string[];
             /** @enum {string} */
             edge_type: "ContainerRuntime";
@@ -5387,6 +5383,12 @@ export interface components {
             host_id: string;
             /** Format: uuid */
             service_id: string;
+            /**
+             * @description The bridge subnet(s) this edge reaches: one when they render as their own boxes,
+             *     all of them when merged into a single box. Resolved here rather than in the
+             *     inspector, which cannot tell which subnet an elevated edge landed on.
+             */
+            subnet_ids: string[];
         } | {
             /** @enum {string} */
             edge_type: "SameContainer";
