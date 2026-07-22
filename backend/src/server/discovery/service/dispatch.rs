@@ -34,24 +34,32 @@ impl DiscoveryService {
             .map(|(did, _)| *did)
     }
 
-    /// Top-N historical Discovery row IDs for a network, ordered by
-    /// `updated_at DESC` (which equals the session's finished-at timestamp
-    /// for historical records). Used by the digest service to decide
-    /// whether a missing child is "possibly missing" (one of the recent N
-    /// discoveries still references it) or fully "removed."
-    pub async fn get_recent_historical_ids(
+    /// When the most recent historical discovery on `network_id` that finished
+    /// strictly before `before` completed. `None` when there was none — a
+    /// network's first-ever scan.
+    ///
+    /// For historical rows `updated_at` is the session's finished-at timestamp.
+    /// Filtering on `before` rather than skipping the first row keeps this
+    /// correct when the caller's own session row is already persisted (it is,
+    /// by the time the digest runs) and when rows share a timestamp.
+    ///
+    /// The digest uses it to anchor "was this entity still inside its staleness
+    /// window as of the previous scan?", which is what distinguishes an entity
+    /// that just went stale from one that has been stale for weeks.
+    pub async fn previous_historical_finished_at(
         &self,
         network_id: Uuid,
-        limit: usize,
-    ) -> Result<Vec<Uuid>, anyhow::Error> {
+        before: chrono::DateTime<Utc>,
+    ) -> Result<Option<chrono::DateTime<Utc>>, anyhow::Error> {
         let filter = StorableFilter::<Discovery>::new_from_network_ids(&[network_id])
             .historical_discovery()
-            .limit(limit as u32);
+            .updated_before(before)
+            .limit(1);
         let discoveries = self
             .discovery_storage
             .get_all_ordered(filter, "updated_at DESC")
             .await?;
-        Ok(discoveries.into_iter().map(|d| d.id).collect())
+        Ok(discoveries.first().map(|d| d.updated_at))
     }
 
     /// Build a DaemonDiscoveryRequest with all credential mappings resolved.

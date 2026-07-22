@@ -323,6 +323,13 @@ impl Snapshotable for Host {
 }
 
 impl DiscoveryTracked for Host {
+    // Overrides the trait default: this type carries `EntitySource`, so a
+    // manually- or system-created row must never read as stale (discovery
+    // never refreshes its `last_seen_at`).
+    fn is_discovery_managed(&self) -> bool {
+        self.base.source.is_from_discovery()
+    }
+
     fn last_seen_at(&self) -> DateTime<Utc> {
         self.last_seen_at
     }

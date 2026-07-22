@@ -518,6 +518,58 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// SQL form of the staleness verdict, evaluated per row against **its own**
+    /// network's cutoff.
+    ///
+    /// The entity lists span every network the caller can reach and are
+    /// server-paginated, so a single cutoff would be wrong (each network
+    /// configures its own window) and a client-side filter would only filter
+    /// the current page. `cutoffs` is `(network_id, cutoff_instant)`, resolved
+    /// by the handler from each network's `stale_after_hours`.
+    ///
+    /// Emits one parenthesised OR-of-ANDs, in the same shape as
+    /// [`Self::id_or_lineage_in`], plus the discovery-managed guard: an entity
+    /// discovery never refreshes (manual, system) has a frozen `last_seen_at`
+    /// and must never be reported stale. This mirrors
+    /// [`DiscoveryTracked::freshness`](crate::server::shared::storage::snapshot::DiscoveryTracked::freshness)
+    /// — the two must be changed together.
+    ///
+    /// `stale = false` inverts to "fresh or not discovery-managed". An empty
+    /// `cutoffs` pushes `FALSE`, matching `id_or_lineage_in`'s precedent for an
+    /// empty input rather than silently matching everything.
+    pub fn stale_by_network(mut self, cutoffs: &[(Uuid, DateTime<Utc>)], stale: bool) -> Self {
+        if cutoffs.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+        let network_col = self.qualify_column("network_id");
+        let seen_col = self.qualify_column("last_seen_at");
+        let source_col = self.qualify_column("source");
+        // Only entities discovery actually refreshes can go stale.
+        let managed = format!("{source_col}->>'type' IN ('Discovery', 'DiscoveryWithMatch')");
+        let comparison = if stale { "<" } else { ">=" };
+
+        let mut clauses = Vec::with_capacity(cutoffs.len());
+        for (network_id, cutoff) in cutoffs {
+            let net_idx = self.values.len() + 1;
+            let cutoff_idx = self.values.len() + 2;
+            clauses.push(format!(
+                "({network_col} = ${net_idx} AND {seen_col} {comparison} ${cutoff_idx})"
+            ));
+            self.values.push(SqlValue::Uuid(*network_id));
+            self.values.push(SqlValue::Timestamp(*cutoff));
+        }
+        let per_network = clauses.join(" OR ");
+
+        self.conditions.push(if stale {
+            format!("({managed} AND ({per_network}))")
+        } else {
+            // Not stale = inside its window, or not discovery-managed at all.
+            format!("(NOT ({managed}) OR ({per_network}))")
+        });
+        self
+    }
+
     pub fn updated_before(mut self, timestamp: DateTime<Utc>) -> Self {
         let col = self.qualify_column("updated_at");
         self.conditions

@@ -67,6 +67,8 @@ pub enum HostOrderField {
     NetworkId,
     /// Sort by primary interface IP address. Requires JOIN to ip_addresses table.
     InterfaceIp,
+    /// Sort by when discovery last observed the host. Surfaces stale assets.
+    LastSeenAt,
 }
 
 impl OrderField for HostOrderField {
@@ -77,6 +79,7 @@ impl OrderField for HostOrderField {
             Self::Hostname => "hosts.hostname",
             Self::UpdatedAt => "hosts.updated_at",
             Self::NetworkId => "hosts.network_id",
+            Self::LastSeenAt => "hosts.last_seen_at",
             Self::VirtualizedBy => "COALESCE(virt_service.name, '')",
             Self::InterfaceIp => "primary_interface.ip_address",
         }
@@ -128,6 +131,10 @@ pub struct HostFilterQuery {
     /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
     /// instant (snapshot view) instead of live state.
     pub at: Option<chrono::DateTime<chrono::Utc>>,
+    /// `true` returns only hosts discovery hasn't observed within their
+    /// network's staleness window; `false` returns only those it has. Omit for
+    /// both. Evaluated per row against the host's own network's window.
+    pub stale: Option<bool>,
 }
 
 impl HostFilterQuery {
@@ -229,6 +236,20 @@ async fn get_all_hosts(
             filter.has_any_tags(tag_ids, EntityDiscriminants::Host)
         }
         _ => filter,
+    };
+
+    // Staleness is per-network, so resolve each accessible network's cutoff and
+    // let the filter compare every row against its own.
+    let filter = match query.stale {
+        Some(stale) => {
+            let cutoffs = state
+                .services
+                .network_service
+                .stale_cutoffs(&network_ids)
+                .await?;
+            filter.stale_by_network(&cutoffs, stale)
+        }
+        None => filter,
     };
 
     // Apply pagination
@@ -916,6 +937,20 @@ async fn export_hosts_zip(
             filter.has_any_tags(tag_ids, EntityDiscriminants::Host)
         }
         _ => filter,
+    };
+
+    // Honour the same staleness filter as the list view so an export mirrors
+    // exactly what the user was looking at when they triggered it.
+    let filter = match query.stale {
+        Some(stale) => {
+            let cutoffs = state
+                .services
+                .network_service
+                .stale_cutoffs(&network_ids)
+                .await?;
+            filter.stale_by_network(&cutoffs, stale)
+        }
+        None => filter,
     };
 
     // Get all hosts (no pagination for export)

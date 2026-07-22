@@ -31,7 +31,7 @@ use crate::server::{
     },
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
-    networks::r#impl::{Network, NetworkBase},
+    networks::r#impl::{DEFAULT_STALE_AFTER_HOURS, Network, NetworkBase},
     ports::r#impl::base::{Port, PortType},
     services::{
         definitions::ServiceDefinitionRegistry,
@@ -476,7 +476,9 @@ fn generate_networks(
                 organization_id,
                 tags: production_tag.into_iter().collect(),
                 credential_ids: vec![],
+                stale_after_hours: None,
             },
+            effective_stale_after_hours: DEFAULT_STALE_AFTER_HOURS,
         },
         Network {
             id: Uuid::new_v4(),
@@ -487,7 +489,9 @@ fn generate_networks(
                 organization_id,
                 tags: production_tag.into_iter().collect(),
                 credential_ids: vec![],
+                stale_after_hours: None,
             },
+            effective_stale_after_hours: DEFAULT_STALE_AFTER_HOURS,
         },
     ]
 }

@@ -63,6 +63,33 @@ impl NetworkService {
         }
     }
 
+    /// Per-network staleness cutoffs for `network_ids`, as
+    /// `(network_id, instant_before_which_last_seen_at_is_stale)`.
+    ///
+    /// Feeds `StorableFilter::stale_by_network`. Resolved per network because
+    /// each configures its own window, and the entity lists span every network
+    /// the caller can reach. Networks that no longer exist are simply absent —
+    /// their rows then match neither the stale nor the fresh branch, which is
+    /// the safe direction for an orphaned FK.
+    pub async fn stale_cutoffs(
+        &self,
+        network_ids: &[Uuid],
+    ) -> Result<Vec<(Uuid, chrono::DateTime<chrono::Utc>)>> {
+        if network_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let now = chrono::Utc::now();
+        let networks = self
+            .get_all(crate::server::shared::storage::filter::StorableFilter::<
+                Network,
+            >::new_from_entity_ids(network_ids))
+            .await?;
+        Ok(networks
+            .iter()
+            .map(|n| (n.id, n.stale_cutoff(now)))
+            .collect())
+    }
+
     pub async fn create_organizational_subnets(
         &self,
         network_id: Uuid,

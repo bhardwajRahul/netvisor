@@ -3,6 +3,32 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{EnumDiscriminants, VariantNames};
 use utoipa::ToSchema;
 
+/// How recently discovery last observed an entity.
+///
+/// Derived, never persisted — computed from `last_seen_at` against the
+/// entity's network staleness window (`Network::stale_cutoff`). Shared by the
+/// discovery digest email and the UI so a host reported stale in the digest is
+/// the same host badged stale in the inventory and topology; running two
+/// different measures let them disagree (a scan-count measure calls an entity
+/// missing after 3 scans, which is 45 minutes on one network and 3 months on
+/// another).
+///
+/// Only discovery-managed entities can be `Stale` — see
+/// [`DiscoveryTracked::is_discovery_managed`](crate::server::shared::storage::snapshot::DiscoveryTracked::is_discovery_managed).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EntityFreshness {
+    /// First observed during the scan window being reported on. Only the
+    /// digest distinguishes this; the inventory surfaces `created_at` directly.
+    New,
+    /// Observed within the network's staleness window, or not discovery-managed.
+    #[default]
+    Current,
+    /// Discovery-managed and not observed within the network's staleness
+    /// window. Asserts only "not seen recently" — never "removed".
+    Stale,
+}
+
 #[derive(
     Debug,
     Clone,

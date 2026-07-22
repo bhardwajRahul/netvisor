@@ -43,6 +43,8 @@ pub enum ServiceOrderField {
     Host,
     NetworkId,
     Position,
+    /// Sort by when discovery last observed the service. Surfaces stale assets.
+    LastSeenAt,
 }
 
 impl OrderField for ServiceOrderField {
@@ -53,6 +55,7 @@ impl OrderField for ServiceOrderField {
             Self::UpdatedAt => "services.updated_at",
             Self::NetworkId => "services.network_id",
             Self::Position => "services.position",
+            Self::LastSeenAt => "services.last_seen_at",
             Self::Host => "COALESCE(service_host.name, '')",
         }
     }
@@ -99,6 +102,10 @@ pub struct ServiceFilterQuery {
     /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
     /// instant (snapshot view) instead of live state.
     pub at: Option<chrono::DateTime<chrono::Utc>>,
+    /// `true` returns only services discovery hasn't observed within their
+    /// network's staleness window; `false` returns only those it has. Omit for
+    /// both. Evaluated per row against the service's own network's window.
+    pub stale: Option<bool>,
 }
 
 impl ServiceFilterQuery {
@@ -230,6 +237,20 @@ async fn get_all_services(
             }
         }
         _ => filter,
+    };
+
+    // Staleness is per-network, so resolve each accessible network's cutoff and
+    // let the filter compare every row against its own.
+    let filter = match query.stale {
+        Some(stale) => {
+            let cutoffs = state
+                .services
+                .network_service
+                .stale_cutoffs(&network_ids)
+                .await?;
+            filter.stale_by_network(&cutoffs, stale)
+        }
+        None => filter,
     };
 
     // Apply pagination

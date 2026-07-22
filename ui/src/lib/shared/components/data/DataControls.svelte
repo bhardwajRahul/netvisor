@@ -32,6 +32,8 @@
 		common_deleteSelected,
 		common_deselectAll,
 		common_filters,
+		common_lastSeen,
+		common_staleOnly,
 		common_group,
 		common_groupByLabel,
 		common_groups,
@@ -96,6 +98,9 @@
 		// Server-side exclude filter callback (optional)
 		// Called when an exclude-mode filter changes, with field key and excluded values
 		onExcludeFilterChange = null,
+		// Server-side staleness filtering callback (optional)
+		// Called when the "Stale only" toggle changes
+		onStaleFilterChange = null,
 		// CSV export callback (optional, default behavior)
 		// Called when user clicks export button; parent handles the actual export
 		onCsvExport = null,
@@ -127,6 +132,11 @@
 		// Server-side exclude filter: called when exclude-mode filter changes
 		// Args: (fieldKey, array of excluded values)
 		onExcludeFilterChange?: ((fieldKey: string, values: string[]) => void) | null;
+		// Server-side staleness filtering: called when the "Stale only" toggle
+		// changes. `true` = only stale, `null` = no staleness constraint.
+		// Server-side because these lists are server-paginated — a client-side
+		// filter would only ever filter the page currently loaded.
+		onStaleFilterChange?: ((stale: boolean | null) => void) | null;
 		// CSV export: default behavior when user clicks export button
 		onCsvExport?: (() => void | Promise<void>) | null;
 		// Export button click override: if provided, replaces onCsvExport entirely
@@ -156,6 +166,9 @@
 
 	let filterState = $state<FilterState>({});
 	let showFilters = $state(false);
+	// Staleness lives outside `filterState`: it's a server-side constraint
+	// rather than a set of values matched against loaded rows.
+	let staleOnly = $state(false);
 
 	// Sort state
 	interface SortState {
@@ -691,6 +704,11 @@
 
 		filterState = newFilterState;
 
+		if (staleOnly) {
+			staleOnly = false;
+			onStaleFilterChange?.(null);
+		}
+
 		// Notify parent that exclude filters were cleared
 		if (onExcludeFilterChange) {
 			fields.forEach((field) => {
@@ -699,6 +717,13 @@
 				}
 			});
 		}
+	}
+
+	function toggleStaleFilter() {
+		staleOnly = !staleOnly;
+		// `null` rather than `false` — unchecking means "no staleness
+		// constraint", not "show me only fresh entities".
+		onStaleFilterChange?.(staleOnly ? true : null);
 	}
 
 	// Clear search
@@ -787,17 +812,18 @@
 
 	// Check if any filters are active
 	let hasActiveFilters = $derived(
-		fields.some((field) => {
-			if (!field.filterable) return false;
-			const filter = filterState[getFieldKey(field)];
-			if (!filter) return false;
+		staleOnly ||
+			fields.some((field) => {
+				if (!field.filterable) return false;
+				const filter = filterState[getFieldKey(field)];
+				if (!filter) return false;
 
-			if (field.type === 'boolean') {
-				return !filter.showTrue || !filter.showFalse;
-			} else {
-				return filter.values.size > 0;
-			}
-		})
+				if (field.type === 'boolean') {
+					return !filter.showTrue || !filter.showFalse;
+				} else {
+					return filter.values.size > 0;
+				}
+			})
 	);
 
 	let hasActiveSearch = $derived(searchQuery.trim().length > 0);
@@ -1194,6 +1220,24 @@
 				</div>
 
 				<div class="mt-4 grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-2 lg:grid-cols-3">
+					{#if onStaleFilterChange}
+						<!-- Server-side: the list is server-paginated, so filtering
+						     client-side would only filter the loaded page. -->
+						<div class="space-y-2">
+							<div class="text-secondary text-sm font-medium">{common_lastSeen()}</div>
+							<div class="space-y-1.5">
+								<label class="flex cursor-pointer items-center gap-2">
+									<input
+										type="checkbox"
+										checked={staleOnly}
+										onchange={toggleStaleFilter}
+										class="checkbox-card h-4 w-4 rounded"
+									/>
+									<span class="text-secondary text-sm">{common_staleOnly()}</span>
+								</label>
+							</div>
+						</div>
+					{/if}
 					{#each fields.filter((f) => f.filterable) as field (getFieldKey(field))}
 						{@const fieldKey = getFieldKey(field)}
 						<div class="space-y-2">

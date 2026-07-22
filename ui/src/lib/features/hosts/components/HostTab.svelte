@@ -27,6 +27,7 @@
 		common_hidden,
 		common_hostname,
 		common_hosts,
+		common_lastSeen,
 		common_confirmBulkDelete,
 		common_name,
 		common_network,
@@ -76,6 +77,8 @@
 
 	// Tag filter state (for server-side filtering)
 	let tagIds = $state<string[]>([]);
+	// Staleness filter state (server-side: the list is server-paginated)
+	let stale = $state<boolean | null>(null);
 
 	// Queries
 	const organizationQuery = useOrganizationQuery();
@@ -95,7 +98,8 @@
 			group_by: groupBy,
 			order_by: orderBy,
 			order_direction: orderDirection,
-			tag_ids: tagIds.length > 0 ? tagIds : undefined
+			tag_ids: tagIds.length > 0 ? tagIds : undefined,
+			stale: stale ?? undefined
 		})
 	);
 	const networksQuery = useNetworksQuery();
@@ -164,6 +168,10 @@
 	function handleTagFilterChange(selectedTagIds: string[]) {
 		tagIds = selectedTagIds;
 		// Reset to page 1 is handled by DataControls
+	}
+
+	function handleStaleFilterChange(next: boolean | null) {
+		stale = next;
 	}
 
 	// Export modal state
@@ -253,7 +261,8 @@
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
 				},
 				created_at: { label: common_created(), type: 'date' },
-				updated_at: { label: common_updated(), type: 'date' }
+				updated_at: { label: common_updated(), type: 'date' },
+				last_seen_at: { label: common_lastSeen(), type: 'date' }
 			},
 			[
 				{
@@ -428,6 +437,7 @@
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
 			onTagFilterChange={handleTagFilterChange}
+			onStaleFilterChange={handleStaleFilterChange}
 			onExportClick={() => {
 				showExportModal = true;
 			}}

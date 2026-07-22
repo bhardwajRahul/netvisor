@@ -18,27 +18,15 @@ pub struct HostSummary {
     pub label: String,
 }
 
-/// Shared digest status for any `DiscoveryTracked` entity (hosts AND their
-/// children). Status is encoded visually with glyph + strikethrough on tags,
-/// or a badge on host cards — never via colour. Colour stays bound to the
-/// entity type per `EntityDiscriminants::color()`.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum EntityDigestStatus {
-    /// Created during this scan window.
-    New,
-    /// Live and re-reported in this scan (steady state).
-    #[default]
-    Unchanged,
-    /// Not reported in this scan, but the entity's `last_discovery_id`
-    /// points at one of the most recent N successful scans on the
-    /// network — could be transient. Doesn't graduate to `Missing` until
-    /// it's been missing across multiple consecutive scans.
-    PossiblyMissing,
-    /// Not reported this scan, and last seen so long ago we're confident
-    /// it's gone.
-    Missing,
-}
+/// Status for any `DiscoveryTracked` entity in the digest (hosts AND their
+/// children) is [`EntityFreshness`] — the same derived, time-based verdict the
+/// inventory and topology render, so a host reported stale here is the same host
+/// badged stale in the app.
+///
+/// Status is encoded visually with a glyph or badge — never by recolouring the
+/// entity. Colour stays bound to the entity type per
+/// `EntityDiscriminants::color()`.
+pub use crate::server::shared::types::entities::EntityFreshness;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PortSummary {
@@ -48,7 +36,7 @@ pub struct PortSummary {
     /// includes UUIDs.
     pub label: String,
     #[serde(default)]
-    pub status: EntityDigestStatus,
+    pub status: EntityFreshness,
     /// True when `status` was acquired this scan (a transition just
     /// happened). Stably-stale entities have `is_fresh = false` and
     /// don't trigger the host card's inclusion in the digest.
@@ -71,7 +59,7 @@ pub struct ServiceSummary {
     #[serde(default)]
     pub logo_url: Option<String>,
     #[serde(default)]
-    pub status: EntityDigestStatus,
+    pub status: EntityFreshness,
     #[serde(default)]
     pub is_fresh: bool,
 }
@@ -82,7 +70,7 @@ pub struct IpAddressSummary {
     pub host_id: Uuid,
     pub address: String,
     #[serde(default)]
-    pub status: EntityDigestStatus,
+    pub status: EntityFreshness,
     #[serde(default)]
     pub is_fresh: bool,
 }
@@ -93,7 +81,7 @@ pub struct InterfaceSummary {
     pub host_id: Uuid,
     pub label: String,
     #[serde(default)]
-    pub status: EntityDigestStatus,
+    pub status: EntityFreshness,
     #[serde(default)]
     pub is_fresh: bool,
 }
@@ -113,9 +101,9 @@ pub struct VlanSummary {
 
 /// Rich host representation for the digest email — mirrors the UI's
 /// `HostCard.svelte` so a recipient sees the same shape they'd see in-app.
-/// `status` uses the same `EntityDigestStatus` enum as its children, so the
+/// `status` uses the same `EntityFreshness` enum as its children, so the
 /// digest's vocabulary stays consistent. A host that's listed because its
-/// CHILDREN changed (rather than the host itself) carries `Unchanged`; the
+/// CHILDREN changed (rather than the host itself) carries `Current`; the
 /// surrounding section header ("Hosts with changes") provides the context
 /// and the host's badge is hidden in that case. Children reflect live state
 /// at `finished_at`. Bindings are intentionally not included — they're the
@@ -123,7 +111,7 @@ pub struct VlanSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AffectedHostCard {
     pub host: HostSummary,
-    pub status: EntityDigestStatus,
+    pub status: EntityFreshness,
     pub services: Vec<ServiceSummary>,
     pub ip_addresses: Vec<IpAddressSummary>,
     pub interfaces: Vec<InterfaceSummary>,
@@ -164,13 +152,21 @@ pub struct DiscoveryDigestPayload {
     pub network_name: String,
     pub started_at: DateTime<Utc>,
     pub finished_at: DateTime<Utc>,
+    /// The network's *effective* staleness window in hours (its configured
+    /// value, or the default). Carried so the email can state what "stale"
+    /// meant for this network instead of asserting it without a definition —
+    /// the threshold is per-network, so the legend cannot be static.
+    pub stale_after_hours: i64,
 
     pub subnets_scanned: Vec<SubnetSummary>,
     pub hosts_added: Vec<AffectedHostCard>,
-    pub hosts_vanished: Vec<AffectedHostCard>,
+    /// Hosts that crossed into `Stale` during this session. Named for the
+    /// claim we actually make — "not observed within this network's window" —
+    /// rather than "vanished", which asserted a removal we cannot detect.
+    pub hosts_stale: Vec<AffectedHostCard>,
     pub hosts_changed: Vec<AffectedHostCard>,
     pub vlans_added: Vec<VlanSummary>,
-    pub vlans_removed: Vec<VlanSummary>,
+    pub vlans_stale: Vec<VlanSummary>,
 
     pub recipients: Vec<DigestRecipient>,
 }
@@ -181,10 +177,10 @@ impl DiscoveryDigestPayload {
     /// suppressed regardless of recipient settings.
     pub fn has_changes(&self) -> bool {
         !self.hosts_added.is_empty()
-            || !self.hosts_vanished.is_empty()
+            || !self.hosts_stale.is_empty()
             || !self.hosts_changed.is_empty()
             || !self.vlans_added.is_empty()
-            || !self.vlans_removed.is_empty()
+            || !self.vlans_stale.is_empty()
     }
 }
 

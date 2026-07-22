@@ -28,6 +28,7 @@
 	import {
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
+		common_lastSeen,
 		common_noEntityYet,
 		common_services,
 		daemons_installPromptServices,
@@ -62,6 +63,9 @@
 	// Exclude categories state (for server-side filtering)
 	let excludeCategories = $state<string[]>(['OpenPorts']);
 
+	// Staleness filter state (server-side: the list is server-paginated)
+	let stale = $state<boolean | null>(null);
+
 	// Queries
 	const tagsQuery = useTagsQuery();
 	// Paginated services with server-side pagination, ordering, and tag filtering
@@ -73,6 +77,7 @@
 			order_by: orderBy,
 			order_direction: orderDirection,
 			tag_ids: tagIds.length > 0 ? tagIds : undefined,
+			stale: stale ?? undefined,
 			exclude_categories:
 				excludeCategories.length > 0
 					? (excludeCategories as components['schemas']['ServiceCategory'][])
@@ -140,6 +145,10 @@
 		if (fieldKey === 'category') {
 			excludeCategories = values;
 		}
+	}
+
+	function handleStaleFilterChange(next: boolean | null) {
+		stale = next;
 	}
 
 	// CSV export handler
@@ -263,7 +272,8 @@
 				},
 				position: { label: 'Position', type: 'string' },
 				created_at: { label: 'Created', type: 'date' },
-				updated_at: { label: 'Updated', type: 'date' }
+				updated_at: { label: 'Updated', type: 'date' },
+				last_seen_at: { label: common_lastSeen(), type: 'date' }
 			},
 			[
 				{
@@ -338,6 +348,7 @@
 			onOrderChange={handleOrderChange}
 			onTagFilterChange={handleTagFilterChange}
 			onExcludeFilterChange={handleExcludeFilterChange}
+			onStaleFilterChange={handleStaleFilterChange}
 			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(

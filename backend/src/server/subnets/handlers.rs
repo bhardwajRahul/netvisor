@@ -38,6 +38,8 @@ pub enum SubnetOrderField {
     SubnetType,
     UpdatedAt,
     NetworkId,
+    /// Sort by when discovery last observed the subnet. Surfaces stale assets.
+    LastSeenAt,
 }
 
 impl OrderField for SubnetOrderField {
@@ -49,6 +51,7 @@ impl OrderField for SubnetOrderField {
             Self::SubnetType => "subnets.subnet_type",
             Self::UpdatedAt => "subnets.updated_at",
             Self::NetworkId => "subnets.network_id",
+            Self::LastSeenAt => "subnets.last_seen_at",
         }
     }
 }
@@ -77,6 +80,10 @@ pub struct SubnetFilterQuery {
     /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
     /// instant (snapshot view) instead of live state.
     pub at: Option<chrono::DateTime<chrono::Utc>>,
+    /// `true` returns only subnets discovery hasn't observed within their
+    /// network's staleness window; `false` returns only those it has. Omit for
+    /// both. Evaluated per row against the subnet's own network's window.
+    pub stale: Option<bool>,
 }
 
 impl SubnetFilterQuery {
@@ -195,6 +202,20 @@ async fn get_all_subnets(
             let filter = query
                 .apply_to_filter(base_filter, &network_ids, org_id)
                 .live_or_as_of(query.at);
+
+            // Staleness is per-network, so resolve each accessible network's
+            // cutoff and let the filter compare every row against its own.
+            let filter = match query.stale {
+                Some(stale) => {
+                    let cutoffs = state
+                        .services
+                        .network_service
+                        .stale_cutoffs(&network_ids)
+                        .await?;
+                    filter.stale_by_network(&cutoffs, stale)
+                }
+                None => filter,
+            };
 
             // Apply pagination
             let pagination = query.pagination();
