@@ -609,6 +609,25 @@ impl<'a> ContainerScanner<'a> {
                     .map(|(i, _)| i.id)
                     .collect();
 
+                // DIAGNOSTIC (temporary): pair endpoint ids with their IPs/subnets so the
+                // spread log below is readable.
+                tracing::info!(
+                    container = ?container.name,
+                    primary_ip = %ip_address.base.ip_address,
+                    primary_endpoint = %ip_address.id,
+                    all_endpoints = ?container_interfaces_and_subnets
+                        .iter()
+                        .map(|(i, s)| format!(
+                            "{}|{}|{}|bridge={}",
+                            i.base.ip_address,
+                            i.id,
+                            s.base.name,
+                            s.is_container_bridge_subnet()
+                        ))
+                        .collect::<Vec<_>>(),
+                    "spread_bindings: endpoints"
+                );
+
                 spread_bindings_across_endpoints(
                     &mut host_data.services,
                     &bridge_endpoint_ids,
@@ -1351,6 +1370,23 @@ fn spread_bindings_across_endpoints(
             .copied()
             .collect();
 
+        // DIAGNOSTIC (temporary): a container exposing ports isn't getting its bindings spread
+        // while a portless one is. Records what the spread actually sees per service.
+        tracing::info!(
+            service = %service.base.name,
+            primary_endpoint = %primary_endpoint_id,
+            endpoints = ?endpoint_ids,
+            others = ?other_endpoint_ids,
+            bindings_before = ?service
+                .base
+                .bindings
+                .iter()
+                .map(|b| format!("{:?}:{:?}", b.base.binding_type.discriminant(), b.ip_address_id()))
+                .collect::<Vec<_>>(),
+            primary_matched = primary_bindings.len(),
+            "spread_bindings: before"
+        );
+
         for endpoint_id in &other_endpoint_ids {
             for binding in &primary_bindings {
                 let mirrored = binding.rebound_to_ip_address(*endpoint_id);
@@ -1359,6 +1395,17 @@ fn spread_bindings_across_endpoints(
                 }
             }
         }
+
+        tracing::info!(
+            service = %service.base.name,
+            bindings_after = ?service
+                .base
+                .bindings
+                .iter()
+                .map(|b| format!("{:?}:{:?}", b.base.binding_type.discriminant(), b.ip_address_id()))
+                .collect::<Vec<_>>(),
+            "spread_bindings: after"
+        );
     }
 }
 
