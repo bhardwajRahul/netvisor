@@ -242,7 +242,7 @@ test:
 	cd ui && npm test
 	@echo "Running backend tests..."
 	make dev-down
-	rm -rf ./data/daemon_config/*
+	rm -rf ./data/daemon_config/* ./data/daemon_serverpoll_config/*
 	@export DATABASE_URL="postgresql://postgres:password@localhost:5432/scanopy_test" && \
 	cd backend && cargo test -- --nocapture --test-threads=1
 
