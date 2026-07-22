@@ -29,10 +29,20 @@ export function isHiddenByDefault(edge: TopologyEdge): boolean {
 	return vc.type === 'active' && vc.default_visibility === 'hidden';
 }
 
-/** Whether this edge uses dashed stroke in the current view. */
-export function isDashedEdge(edge: TopologyEdge): boolean {
+/** Whether this edge uses dotted stroke in the current view. */
+export function isDottedEdge(edge: TopologyEdge): boolean {
 	const vc = getViewConfig(edge);
-	return vc.type === 'active' && vc.stroke === 'dashed';
+	return vc.type === 'active' && vc.stroke === 'dotted';
+}
+
+/**
+ * Whether this edge annotates the graph rather than structuring it — any non-solid stroke.
+ * Drives the shared overlay treatment (thinner, dimmed until highlighted); the specific stroke
+ * only decides the dash pattern.
+ */
+export function isOverlayEdge(edge: TopologyEdge): boolean {
+	const vc = getViewConfig(edge);
+	return vc.type === 'active' && vc.stroke !== 'solid';
 }
 
 /** Get the highlight behavior for an edge. Defaults to 'when_visible'. */

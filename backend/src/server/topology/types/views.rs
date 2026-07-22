@@ -477,11 +477,15 @@ impl TopologyView {
                 HubAndSpoke => active(false, Visible, Dashed, WhenVisible, false, true),
                 Hypervisor => active(false, Hidden, Dashed, WhenVisible, true, false),
                 PhysicalLink => active(false, Hidden, Dashed, WhenVisible, false, false),
+                // Annotates the graph rather than structuring it: no layout influence, off by
+                // default, and never elevated to the subnet box — the point is that one
+                // container spans them, which is lost if the edge targets the boxes.
+                SameContainer => active(false, Hidden, Dotted, WhenVisible, false, false),
             },
             Self::L2Physical => match edge_type {
                 PhysicalLink => active(true, Visible, Solid, WhenVisible, false, false),
                 SameHost => active(false, Hidden, Dashed, WhenVisible, false, false),
-                Hypervisor | ContainerRuntime | RequestPath | HubAndSpoke => {
+                Hypervisor | ContainerRuntime | RequestPath | HubAndSpoke | SameContainer => {
                     EdgeViewConfig::Disabled
                 }
             },
@@ -490,13 +494,15 @@ impl TopologyView {
                 RequestPath | HubAndSpoke => {
                     active(false, Hidden, Dashed, WhenVisible, false, true)
                 }
-                Hypervisor | ContainerRuntime | SameHost => EdgeViewConfig::Disabled,
+                Hypervisor | ContainerRuntime | SameHost | SameContainer => {
+                    EdgeViewConfig::Disabled
+                }
             },
             Self::Application => match edge_type {
                 RequestPath => active(true, Visible, Solid, WhenVisible, false, true),
                 HubAndSpoke => active(true, Visible, Solid, WhenVisible, false, true),
                 ContainerRuntime => active(true, Hidden, Dashed, Always, true, false),
-                SameHost | Hypervisor | PhysicalLink => EdgeViewConfig::Disabled,
+                SameHost | Hypervisor | PhysicalLink | SameContainer => EdgeViewConfig::Disabled,
             },
         }
     }

@@ -23,6 +23,7 @@ impl ViewBuilder for L3Builder {
         all_edges.extend(EdgeBuilder::create_dependency_edges(ctx));
         all_edges.extend(EdgeBuilder::create_vm_host_edges(ctx));
         all_edges.extend(EdgeBuilder::create_containerized_service_edges(ctx));
+        all_edges.extend(EdgeBuilder::create_same_container_edges(ctx));
         all_edges.extend(EdgeBuilder::create_physical_link_edges(ctx));
 
         // Create nodes (positions zeroed — frontend computes layout via elkjs)

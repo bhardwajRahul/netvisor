@@ -40,6 +40,9 @@ pub enum EdgeStroke {
     #[default]
     Solid,
     Dashed,
+    /// Finer break-up than `Dashed`, for edges that annotate the graph rather than
+    /// structure it (see `SameContainer`).
+    Dotted,
 }
 
 /// Controls when an edge contributes to node highlighting on selection
@@ -168,6 +171,12 @@ pub enum EdgeType {
         host_id: Uuid,
         service_id: Uuid,
     },
+    /// One container reachable at several of its host's container-bridge subnets. Ties the
+    /// container's addresses together so a multi-attached container reads as one thing rather
+    /// than as unrelated cards in separate subnet boxes.
+    SameContainer {
+        service_id: Uuid,
+    },
     RequestPath {
         dependency_id: Uuid,
         source_id: Uuid,
@@ -200,6 +209,7 @@ impl EntityMetadataProvider for EdgeType {
             EdgeType::SameHost { .. } => EntityDiscriminants::Host.color(),
             EdgeType::Hypervisor { .. } => Concept::Virtualization.color(),
             EdgeType::ContainerRuntime { .. } => Concept::Containerization.color(),
+            EdgeType::SameContainer { .. } => Concept::Containerization.color(),
             EdgeType::PhysicalLink { .. } => EntityDiscriminants::Interface.color(),
         }
     }
@@ -211,6 +221,7 @@ impl EntityMetadataProvider for EdgeType {
             EdgeType::SameHost { .. } => EntityDiscriminants::Host.icon(),
             EdgeType::Hypervisor { .. } => Concept::Virtualization.icon(),
             EdgeType::ContainerRuntime { .. } => Concept::Containerization.icon(),
+            EdgeType::SameContainer { .. } => Concept::Containerization.icon(),
             EdgeType::PhysicalLink { .. } => EntityDiscriminants::Interface.icon(),
         }
     }
@@ -224,6 +235,7 @@ impl TypeMetadataProvider for EdgeType {
             EdgeType::SameHost { .. } => "Same Host",
             EdgeType::Hypervisor { .. } => "Hypervisor",
             EdgeType::ContainerRuntime { .. } => "Container Runtime",
+            EdgeType::SameContainer { .. } => "Same Container",
             EdgeType::PhysicalLink { .. } => "Physical Link",
         }
     }
@@ -235,6 +247,7 @@ impl TypeMetadataProvider for EdgeType {
             EdgeType::SameHost { .. } => EdgeStyle::Bezier.into(),
             EdgeType::Hypervisor { .. } => EdgeStyle::Bezier.into(),
             EdgeType::ContainerRuntime { .. } => EdgeStyle::Bezier.into(),
+            EdgeType::SameContainer { .. } => EdgeStyle::Bezier.into(),
             EdgeType::PhysicalLink { .. } => EdgeStyle::Bezier.into(),
         };
 
@@ -246,6 +259,7 @@ impl TypeMetadataProvider for EdgeType {
             EdgeType::SameHost { .. } => false,
             EdgeType::Hypervisor { .. } => false,
             EdgeType::ContainerRuntime { .. } => false,
+            EdgeType::SameContainer { .. } => false,
             EdgeType::PhysicalLink { .. } => false, // No markers - bidirectional link
         };
 

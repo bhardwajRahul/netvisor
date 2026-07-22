@@ -168,6 +168,63 @@ impl EdgeBuilder {
             .collect()
     }
 
+    /// Tie together the addresses of a container that sits on several of its host's
+    /// container-bridge subnets, so a multi-attached container reads as one thing rather than as
+    /// unrelated cards in separate subnet boxes.
+    ///
+    /// Hub-and-spoke from the container's lowest address rather than a mesh: a container on N
+    /// subnets produces N-1 edges instead of N(N-1)/2, and anchoring on the lowest address keeps
+    /// the shape stable across renders.
+    pub fn create_same_container_edges(ctx: &TopologyContext) -> Vec<Edge> {
+        ctx.services
+            .iter()
+            .filter(|s| s.base.virtualization.is_some())
+            .flat_map(|containerized| {
+                // Addresses of this container that sit on one of its host's bridge subnets.
+                let mut bridge_addresses: Vec<(IpAddr, Uuid)> = containerized
+                    .base
+                    .bindings
+                    .iter()
+                    .filter_map(|b| b.ip_address_id())
+                    .unique()
+                    .filter_map(|ip_address_id| {
+                        let ip_address = ctx.get_ip_address_by_id(Some(ip_address_id))?;
+                        let subnet = ctx.get_subnet_by_id(ip_address.base.subnet_id)?;
+                        subnet
+                            .base
+                            .subnet_type
+                            .is_container_bridge()
+                            .then_some((ip_address.base.ip_address, ip_address_id))
+                    })
+                    .collect();
+
+                // Nothing to tie together unless it spans more than one.
+                if bridge_addresses.len() < 2 {
+                    return Vec::new();
+                }
+                bridge_addresses.sort();
+
+                let (_, anchor) = bridge_addresses[0];
+                bridge_addresses[1..]
+                    .iter()
+                    .map(|(_, target)| Edge {
+                        id: Uuid::new_v4(),
+                        source: anchor,
+                        target: *target,
+                        edge_type: EdgeType::SameContainer {
+                            service_id: containerized.id,
+                        },
+                        label: Some(containerized.base.name.clone()),
+                        source_handle: EdgeHandle::Bottom,
+                        target_handle: EdgeHandle::Top,
+                        is_multi_hop: ctx.edge_is_multi_hop(&anchor, target),
+                        view_config: EdgeViewConfig::default(),
+                    })
+                    .collect::<Vec<Edge>>()
+            })
+            .collect()
+    }
+
     // Create edges to connect a host that virtualizes other hosts as VMs
     pub fn create_vm_host_edges(ctx: &TopologyContext) -> Vec<Edge> {
         // Proxmox service interface binding that is present for a given subnet.
@@ -626,6 +683,173 @@ mod tests {
             edges.iter().all(|e| e.source == host_ip.id),
             "edges originate from the host's non-bridge address"
         );
+    }
+
+    /// A container on several bridge subnets gets its addresses tied together, hub-and-spoke from
+    /// the lowest — N-1 edges, not a mesh — so the same container reads as one thing across boxes.
+    #[test]
+    fn same_container_ties_a_containers_addresses_together() {
+        let network_id = Uuid::new_v4();
+        let host_id = Uuid::new_v4();
+
+        let lan = subnet(network_id, "lan", 30, SubnetType::Lan);
+        let db_net = subnet(network_id, "db-net", 20, SubnetType::DockerBridge);
+        let mgmt_net = subnet(network_id, "mgmt-net", 21, SubnetType::DockerBridge);
+        let proxy_net = subnet(network_id, "proxy-net", 19, SubnetType::DockerBridge);
+
+        // Lowest address is on proxy-net (172.19.x), so that is the anchor.
+        let proxy_ip = ip(
+            network_id,
+            host_id,
+            proxy_net.id,
+            Ipv4Addr::new(172, 19, 0, 3),
+        );
+        let db_ip = ip(network_id, host_id, db_net.id, Ipv4Addr::new(172, 20, 0, 3));
+        let mgmt_ip = ip(
+            network_id,
+            host_id,
+            mgmt_net.id,
+            Ipv4Addr::new(172, 21, 0, 2),
+        );
+        // A non-bridge address on the same host must not be tied in.
+        let host_ip = ip(network_id, host_id, lan.id, Ipv4Addr::new(172, 30, 0, 5));
+
+        let host = Host {
+            id: host_id,
+            base: HostBase {
+                name: "docker-host".to_string(),
+                network_id,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let runtime_id = Uuid::new_v4();
+        let container = Service {
+            id: Uuid::new_v4(),
+            base: ServiceBase {
+                host_id,
+                network_id,
+                name: "multi-attached".to_string(),
+                virtualization: Some(ServiceVirtualization::Docker(DockerVirtualization {
+                    container_name: Some("multi-attached".to_string()),
+                    container_id: Some("abc123".to_string()),
+                    service_id: runtime_id,
+                    compose_project: None,
+                })),
+                bindings: vec![
+                    Binding::new_ip_address_serviceless(db_ip.id),
+                    Binding::new_ip_address_serviceless(mgmt_ip.id),
+                    Binding::new_ip_address_serviceless(proxy_ip.id),
+                    Binding::new_ip_address_serviceless(host_ip.id),
+                ],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let hosts = vec![host];
+        let ip_addresses = vec![
+            host_ip.clone(),
+            proxy_ip.clone(),
+            db_ip.clone(),
+            mgmt_ip.clone(),
+        ];
+        let subnets = vec![lan, db_net, mgmt_net, proxy_net];
+        let services = vec![container];
+        let options = TopologyOptions::default();
+
+        let ctx = TopologyContext::new(
+            &hosts,
+            &ip_addresses,
+            &subnets,
+            &services,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &options,
+            TopologyView::L3Logical,
+        );
+
+        let edges = EdgeBuilder::create_same_container_edges(&ctx);
+
+        assert_eq!(edges.len(), 2, "three subnets means two edges, not a mesh");
+        assert!(
+            edges.iter().all(|e| e.source == proxy_ip.id),
+            "all edges anchor on the container's lowest address"
+        );
+        assert_eq!(
+            edges.iter().map(|e| e.target).collect::<HashSet<_>>(),
+            HashSet::from([db_ip.id, mgmt_ip.id])
+        );
+        assert!(
+            !edges
+                .iter()
+                .any(|e| e.target == host_ip.id || e.source == host_ip.id),
+            "the host's own non-bridge address is not part of the container"
+        );
+    }
+
+    /// A container on a single bridge subnet has nothing to tie together.
+    #[test]
+    fn same_container_needs_more_than_one_subnet() {
+        let network_id = Uuid::new_v4();
+        let host_id = Uuid::new_v4();
+
+        let only = subnet(network_id, "only", 20, SubnetType::DockerBridge);
+        let only_ip = ip(network_id, host_id, only.id, Ipv4Addr::new(172, 20, 0, 2));
+
+        let host = Host {
+            id: host_id,
+            base: HostBase {
+                name: "docker-host".to_string(),
+                network_id,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let container = Service {
+            id: Uuid::new_v4(),
+            base: ServiceBase {
+                host_id,
+                network_id,
+                name: "single".to_string(),
+                virtualization: Some(ServiceVirtualization::Docker(DockerVirtualization {
+                    container_name: Some("single".to_string()),
+                    container_id: Some("def456".to_string()),
+                    service_id: Uuid::new_v4(),
+                    compose_project: None,
+                })),
+                bindings: vec![Binding::new_ip_address_serviceless(only_ip.id)],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let hosts = vec![host];
+        let ip_addresses = vec![only_ip];
+        let subnets = vec![only];
+        let services = vec![container];
+        let options = TopologyOptions::default();
+
+        let ctx = TopologyContext::new(
+            &hosts,
+            &ip_addresses,
+            &subnets,
+            &services,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &options,
+            TopologyView::L3Logical,
+        );
+
+        assert!(EdgeBuilder::create_same_container_edges(&ctx).is_empty());
     }
 
     /// Several containers sharing a subnet collapse to a single edge for it, so edge count tracks

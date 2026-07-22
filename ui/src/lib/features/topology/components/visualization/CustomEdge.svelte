@@ -14,7 +14,7 @@
 	import { createColorHelper, type Color } from '$lib/shared/utils/styling';
 	import type { TopologyEdge, RenderableTopology } from '../../types/base';
 	import { isExporting, hoveredEdgeType } from '../../interactions';
-	import { isDashedEdge } from '../../layout/edge-classification';
+	import { isDottedEdge, isOverlayEdge } from '../../layout/edge-classification';
 
 	let {
 		id,
@@ -78,7 +78,10 @@
 			: false
 	);
 
-	let isDashed = $derived(isBundle ? bundleIsOverlay : edgeData ? isDashedEdge(edgeData) : false);
+	// Any non-solid stroke gets the overlay treatment (thinner, dimmed until highlighted); the
+	// specific stroke only picks the dash pattern below.
+	let isOverlay = $derived(isBundle ? bundleIsOverlay : edgeData ? isOverlayEdge(edgeData) : false);
+	let isDotted = $derived(!isBundle && edgeData ? isDottedEdge(edgeData) : false);
 
 	// Display state is passed as edge data from BaseTopologyViewer, which computes it
 	// from selection/hover stores. This avoids store subscription issues inside SvelteFlow's
@@ -128,7 +131,7 @@
 		if (isBundle) return bundleStrokeWidth;
 		if (isEdgeTypeHovered) return 3;
 		if (!$topologyOptions.local.no_fade_edges && (shouldShowFull || isPreview)) return 3;
-		if (isDashed) return 1.5;
+		if (isOverlay) return 1.5;
 		return 2;
 	});
 	let baseOpacity = $derived.by(() => {
@@ -142,7 +145,7 @@
 		if (isEndpointHiddenByTagFilter) return 0.4;
 		if (isEndpointHiddenBySearch) return 0.4;
 		// Overlay edges: reduced opacity unless highlighted
-		if (isDashed && !shouldShowFull) return 0.5;
+		if (isOverlay && !shouldShowFull) return 0.5;
 		// Fade based on selection state
 		if (!$topologyOptions.local.no_fade_edges && !shouldShowFull) return 0.4;
 		return 1;
@@ -174,8 +177,8 @@
 		} else if (useMultiColorDash && !isSelected) {
 			// Other group edges, subtler highlight
 			strokeColor = isDark ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.4)';
-		} else if (!isGroupEdge && isDashed) {
-			dashArray = 'stroke-dasharray: 6 3;';
+		} else if (!isGroupEdge && isOverlay) {
+			dashArray = isDotted ? 'stroke-dasharray: 1 4;' : 'stroke-dasharray: 6 3;';
 		}
 
 		return `stroke: ${strokeColor}; stroke-width: ${baseStrokeWidth}px; opacity: ${baseOpacity}; ${dashArray} transition: opacity 0.2s ease-in-out, stroke-width 0.2s ease-in-out;`;
