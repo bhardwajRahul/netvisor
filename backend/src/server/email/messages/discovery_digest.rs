@@ -229,7 +229,7 @@ fn render_legend(stale_after_hours: i64) -> String {
     )
 }
 
-/// "168" → "7 days". Whole days when it divides evenly, hours otherwise.
+/// "672" → "28 days". Whole days when it divides evenly, hours otherwise.
 fn humanize_hours(hours: i64) -> String {
     let plural = |n: i64, unit: &str| {
         if n == 1 {

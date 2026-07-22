@@ -55,12 +55,17 @@ pub struct NetworkBase {
     pub stale_after_hours: Option<i64>,
 }
 
-/// Effective staleness threshold when a network has not set one: 7 days.
+/// Effective staleness threshold when a network has not set one: 28 days.
+///
+/// Deliberately generous — a laptop away for a few weeks, a seasonally-powered
+/// lab box or a host behind a scan that has been failing quietly should not be
+/// declared stale before a human would agree. Networks that scan aggressively
+/// can tighten it per-network.
 ///
 /// Lives here rather than as a DDL default so it can change without a
-/// migration, and so `NULL` keeps meaning "unset" rather than "explicitly 7
+/// migration, and so `NULL` keeps meaning "unset" rather than "explicitly 28
 /// days" — the distinction a future per-org or per-use-case default needs.
-pub const DEFAULT_STALE_AFTER_HOURS: i64 = 24 * 7;
+pub const DEFAULT_STALE_AFTER_HOURS: i64 = 24 * 28;
 
 impl NetworkBase {
     pub fn new(organization_id: Uuid) -> Self {

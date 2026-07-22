@@ -12,6 +12,7 @@
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
+	import DurationInput from '$lib/shared/components/forms/input/DurationInput.svelte';
 	import TagPicker from '$lib/features/tags/components/TagPicker.svelte';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import type { Credential } from '$lib/features/credentials/types/base';
@@ -228,12 +229,12 @@
 
 					<form.Field name="stale_after_hours">
 						{#snippet children(field)}
-							<TextInput
+							<DurationInput
 								label={networks_staleAfterHours()}
 								id="stale_after_hours"
 								{field}
-								type="number"
-								placeholder={network ? String(network.effective_stale_after_hours) : ''}
+								initialHours={network?.stale_after_hours ?? null}
+								placeholderHours={network?.effective_stale_after_hours ?? null}
 								helpText={networks_staleAfterHoursHelp()}
 							/>
 						{/snippet}
