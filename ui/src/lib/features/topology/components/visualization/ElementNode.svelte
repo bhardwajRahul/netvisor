@@ -12,7 +12,7 @@
 	import { useTopology, selectedTopologyId } from '../../context';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { freshnessSubjectOf, getFreshnessTag } from '$lib/shared/utils/freshness';
+	import { getFreshnessTag } from '$lib/shared/utils/freshness';
 
 	const networksQuery = useNetworksQuery();
 	import type { TopologyNode, ElementRenderData, RenderableTopology } from '../../types/base';
@@ -138,22 +138,18 @@
 	// The verdict applies the digest's parent/child rule via `resolvedFreshness`,
 	// so a child of a stale host inherits rather than claiming its own decay.
 	let subject = $derived(elementEntity ?? host);
-	// The tooltip names the entity the verdict actually rests on — the host when
-	// inheriting, this node's own entity otherwise. Cards of different types sit
-	// side by side in topology, so "IP Address last seen 4d ago" says something
-	// "Last seen 4d ago" doesn't. The type name comes from the entity metadata
-	// fixture, so it stays localized and in step with the backend.
-	let staleSubject = $derived(
-		subject ? freshnessSubjectOf(subject, host, networkFor(subject)) : undefined
-	);
-	let staleSubjectType = $derived(
-		staleSubject && staleSubject === host ? 'Host' : (resolved?.elementType ?? 'Host')
-	);
+	// The tooltip names what THIS node depicts — an IPAddress node reads
+	// "IP Address last seen …" even when its verdict was inherited from a stale
+	// host, because that is the thing being hovered. Naming the inherited-from
+	// entity instead made L3 read "Host" everywhere, and made two Workloads
+	// service nodes disagree purely on whether their host happened to be stale.
+	// Type names come from the entity metadata fixture, so they stay localized
+	// and in step with the backend.
 	let staleTag = $derived(
 		subject
 			? getFreshnessTag(subject, networkFor(subject), {
 					host,
-					entityTypeLabel: entities.getName(staleSubjectType) || undefined
+					entityTypeLabel: entities.getName(resolved?.elementType ?? 'Host') || undefined
 				})
 			: null
 	);
@@ -706,52 +702,41 @@
 		     Additive rather than an opacity change — opacity is already the
 		     filter/search dimming channel. -->
 
-		<!-- Rides in the card's title row rather than a row of its own, so it
-		     costs no height and the title truncates against it instead of
-		     running underneath. Which row is the "title" varies by element
-		     type: IPAddress cards carry a subtitle, Service and Host cards
-		     only a header. -->
-		{#snippet staleMark()}
-			{#if staleTag}
-				<div class="flex-shrink-0 scale-90">
+		<!-- Topmost element of the card, centred: one placement that reads the
+		     same on every element type, rather than depending on which title row
+		     a given card happens to have. In flow so it stays inside the card
+		     bounds and never overlaps the title; node heights are DOM-measured
+		     (pipeline/measure.ts), so layout absorbs the row. -->
+		{#if staleTag}
+			<div class="flex flex-shrink-0 justify-center px-2 pt-2">
+				<div class="scale-90">
 					<Tag {...staleTag} pill />
 				</div>
-			{/if}
-		{/snippet}
+			</div>
+		{/if}
 
 		<!-- Rest of component stays the same -->
 		<!-- Header section with gradient transition to body -->
 		{#if nodeRenderData.headerText}
-			<div class="relative flex flex-shrink-0 items-center gap-1 px-2 pt-2">
+			<div class="relative flex-shrink-0 px-2 pt-2 text-center">
 				<div
 					data-entity-header
-					class={`min-w-0 flex-1 truncate text-center text-xs font-medium leading-none ${nodeRenderData.isVirtualized ? virtualizationColorHelper.text : nodeRenderData.isContainerized ? containerizationColorHelper.text : 'text-tertiary'}`}
+					class={`truncate text-xs font-medium leading-none ${nodeRenderData.isVirtualized ? virtualizationColorHelper.text : nodeRenderData.isContainerized ? containerizationColorHelper.text : 'text-tertiary'}`}
 				>
 					{nodeRenderData.headerText}
 				</div>
-				{#if !nodeRenderData.subtitleText}{@render staleMark()}{/if}
 			</div>
-		{/if}
-
-		{#if !nodeRenderData.headerText && !nodeRenderData.subtitleText}
-			<!-- Neither title row exists; keep the mark rather than dropping it. -->
-			<div class="flex flex-shrink-0 justify-end px-2 pt-2">{@render staleMark()}</div>
 		{/if}
 
 		{#if nodeRenderData.subtitleText}
 			<div
-				class="flex items-center gap-1 px-2 pt-2 {!nodeRenderData.headerText &&
+				data-entity-header
+				class="text-primary truncate px-2 pt-2 text-center text-sm font-medium {!nodeRenderData.headerText &&
 				!nodeRenderData.showServices
 					? 'pb-2'
 					: ''}"
 			>
-				<div
-					data-entity-header
-					class="text-primary min-w-0 flex-1 truncate text-center text-sm font-medium"
-				>
-					{nodeRenderData.subtitleText}
-				</div>
-				{@render staleMark()}
+				{nodeRenderData.subtitleText}
 			</div>
 		{/if}
 

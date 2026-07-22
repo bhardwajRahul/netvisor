@@ -119,23 +119,12 @@ export function getFreshnessTag(
 		label: common_stale(),
 		color: toColor('amber'),
 		icon: Clock,
-		title: lastSeenLabel(freshnessSubjectOf(entity, host, network), entityTypeLabel)
+		// Describes the entity being displayed, not whichever entity the verdict
+		// was inherited from — hovering a node should say what that node is. In
+		// practice the timestamps agree anyway: a host that goes unscanned stops
+		// refreshing its children too, so their `last_seen_at` tracks its own.
+		title: lastSeenLabel(entity, entityTypeLabel)
 	};
-}
-
-/**
- * Which entity a freshness verdict actually rests on: the host when the child
- * is inheriting (nothing was observed about the child itself), otherwise the
- * entity. Callers use it to label the tooltip with the right type and to show
- * the timestamp the verdict was drawn from.
- */
-export function freshnessSubjectOf(
-	entity: FreshnessSubject,
-	host: FreshnessSubject | undefined,
-	network: Network | undefined
-): FreshnessSubject {
-	const inherited = !!host && host !== entity && entityFreshness(host, network) === 'stale';
-	return inherited ? host : entity;
 }
 
 /**
