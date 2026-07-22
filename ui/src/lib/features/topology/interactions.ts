@@ -18,6 +18,8 @@ import {
 import { elevateEdgesToContainers } from './layout/edge-elevation';
 import { getContainerContents, buildEntityNodeIndex, type EntityNodeIndex } from './resolvers';
 import { getHostFromIPAddressIdFromCache } from '../hosts/queries';
+import type { Network } from '$lib/features/networks/types';
+import { entityFreshness, type FreshnessSubject } from '$lib/shared/utils/freshness';
 import {
 	getIPAddressesForHostFromCache,
 	getIPAddressesForSubnetFromCache
@@ -188,18 +190,31 @@ function hideContainersAndDescendants(
  * matches these values against the user's hide set to decide whether to
  * hide each entity. Adding a new filter = one line here + a backend impl.
  */
-export type FilterValueExtractor = (entity: unknown) => string | null;
+/**
+ * Context for extractors whose value isn't intrinsic to the entity. Staleness
+ * is the first such filter: it depends on the entity's network staleness
+ * window and the current time, so the network has to be threaded in.
+ */
+export interface FilterValueContext {
+	network?: Network;
+}
+
+export type FilterValueExtractor = (entity: unknown, ctx: FilterValueContext) => string | null;
 export const FILTER_VALUE_EXTRACTORS: Record<string, Record<string, FilterValueExtractor>> = {
 	Service: {
 		Category: (s) =>
 			serviceDefinitions.getCategory((s as { service_definition: string }).service_definition) ??
-			null
+			null,
+		// Delegates to the same helper the card badge and the node tag use, so
+		// the filter cannot disagree with what the user sees marked as stale.
+		Staleness: (s, ctx) => entityFreshness(s as FreshnessSubject, ctx.network)
 	},
 	Host: {
 		Virtualization: (h) =>
 			(h as { virtualization?: unknown | null }).virtualization != null
 				? 'Virtualized'
-				: 'BareMetal'
+				: 'BareMetal',
+		Staleness: (h, ctx) => entityFreshness(h as FreshnessSubject, ctx.network)
 	}
 };
 
@@ -229,7 +244,9 @@ export function updateTagFilter(
 	view?: string,
 	/** hide_metadata_values[activeView] — a nested map keyed by entity type, then filter type, to hidden value ids. */
 	hiddenMetadataValues?: Record<string, Record<string, string[]>>,
-	hiddenEntityTypes?: string[]
+	hiddenEntityTypes?: string[],
+	/** The topology's network — supplies the staleness window to extractors. */
+	network?: Network
 ) {
 	if (!topology) {
 		tagHiddenNodeIds.set(new Set());
@@ -342,7 +359,7 @@ export function updateTagFilter(
 					if (!hiddenValues.length) continue;
 					const extract = extractors[filterType];
 					if (!extract) continue;
-					const value = extract(entity);
+					const value = extract(entity, { network });
 					if (value && hiddenValues.includes(value)) {
 						if (entityType === 'Service') {
 							hiddenServiceIds.add(entity.id);
