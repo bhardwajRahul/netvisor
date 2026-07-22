@@ -25,6 +25,23 @@ function sameHost(source: string, target: string, hostId: string): TopologyEdge 
 	} as unknown as TopologyEdge;
 }
 
+function containerRuntime(source: string, target: string, runtimeId: string): TopologyEdge {
+	return {
+		id: `${source}-${target}`,
+		source,
+		target,
+		edge_type: 'ContainerRuntime',
+		service_id: runtimeId,
+		host_id: HOST_A,
+		subnet_ids: [target],
+		containerized_service_ids: [],
+		label: null,
+		source_handle: 'Bottom',
+		target_handle: 'Top',
+		is_multi_hop: false
+	} as unknown as TopologyEdge;
+}
+
 function physicalLink(source: string, target: string): TopologyEdge {
 	return {
 		id: `${source}-${target}`,
@@ -54,6 +71,16 @@ describe('nodesConnectedByEdge', () => {
 		const edges = [sameHost('ip-1', 'ip-2', HOST_A), other];
 
 		expect(nodesConnectedByEdge(other, edges)).toEqual(new Set(['ip-9', 'ip-8']));
+	});
+
+	it('keeps a runtime’s other bridges dark when one of its edges is clicked', () => {
+		// One runtime reaches several bridge boxes, but each edge is its own connection —
+		// clicking the edge into one box must not light up the others.
+		const runtime = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+		const toDbNet = containerRuntime('host-ip', 'db-net', runtime);
+		const edges = [toDbNet, containerRuntime('host-ip', 'web-net', runtime)];
+
+		expect(nodesConnectedByEdge(toDbNet, edges)).toEqual(new Set(['host-ip', 'db-net']));
 	});
 
 	it('lights up only its own endpoints for a segment-scoped edge', () => {

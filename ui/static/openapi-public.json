@@ -17692,6 +17692,7 @@
             "required": [
               "host_id",
               "service_id",
+              "subnet_ids",
               "containerized_service_ids",
               "edge_type"
             ],
@@ -17702,7 +17703,7 @@
                   "type": "string",
                   "format": "uuid"
                 },
-                "description": "The containerized services this edge stands for — the ones reachable at the\nbridge subnet(s) it connects. Resolved here rather than in the inspector, which\ncannot tell which subnet an elevated edge landed on."
+                "description": "The containerized services this edge stands for — the ones on those subnets."
               },
               "edge_type": {
                 "type": "string",
@@ -17717,6 +17718,14 @@
               "service_id": {
                 "type": "string",
                 "format": "uuid"
+              },
+              "subnet_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "description": "The bridge subnet(s) this edge reaches: one when they render as their own boxes,\nall of them when merged into a single box. Resolved here rather than in the\ninspector, which cannot tell which subnet an elevated edge landed on."
               }
             }
           },
