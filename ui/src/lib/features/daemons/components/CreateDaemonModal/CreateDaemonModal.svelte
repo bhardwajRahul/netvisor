@@ -337,18 +337,6 @@
 				: [{ credential_id, scope: 'Network' }];
 		})
 	);
-	// The same targeting in the daemon's compact token grammar, for the install-command builder
-	// (it renders them into the Docker compose env; binary installs get them from the discovery
-	// row instead).
-	let integrationTokens = $derived(
-		seedCredentialRefs.map((ref) =>
-			ref.scope === 'DaemonHost'
-				? `${ref.credential_id}@127.0.0.1`
-				: ref.scope === 'Hosts'
-					? `${ref.credential_id}@${ref.ips.join('+')}`
-					: ref.credential_id
-		)
-	);
 	let runCommand = $derived(
 		buildRunCommand(serverUrl, selectedNetworkId, key, formValues, null, currentUserId, selectedOS)
 	);
@@ -484,8 +472,9 @@
 			bind_address: cfg.bind_address ?? undefined,
 			allow_self_signed_certs: cfg.allow_self_signed_certs ?? undefined,
 			accept_invalid_scan_certs: cfg.accept_invalid_scan_certs ?? undefined,
-			interfaces: cfg.interfaces?.length ? cfg.interfaces.join(',') : undefined,
-			credential_refs: integrationTokens.length ? integrationTokens.join(',') : undefined
+			interfaces: cfg.interfaces?.length ? cfg.interfaces.join(',') : undefined
+			// No credential_refs: the install command never carries targeting. That param is for
+			// manual seeding only; UI installs get their targeting from the daemon's discovery row.
 		};
 	}
 
