@@ -58,7 +58,7 @@ pub fn scan_subnet(
                 targets.clone(),
                 retries,
                 rate_pps,
-                packets_sent,
+                packets_sent.clone(),
             ) {
                 Ok(rx) => {
                     tracing::debug!("Npcap broadcast ARP scan started");
