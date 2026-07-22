@@ -23,6 +23,7 @@ erDiagram
 "public.discovery" }o--|| "public.networks" : "FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE"
 "public.discovery" }o--|| "public.daemons" : "FOREIGN KEY (daemon_id) REFERENCES daemons(id) ON DELETE CASCADE"
 "public.api_keys" }o--|| "public.networks" : "FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE"
+"public.api_keys" }o--o| "public.daemons" : "FOREIGN KEY (daemon_id) REFERENCES daemons(id) ON DELETE CASCADE"
 "public.topologies" }o--|| "public.networks" : "FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE"
 "public.tags" }o--|| "public.organizations" : "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE"
 "public.tags" }o--o| "public.snapshots" : "FOREIGN KEY (snapshot_id) REFERENCES snapshots(id) ON DELETE CASCADE"
@@ -250,6 +251,7 @@ erDiagram
   timestamp_with_time_zone expires_at
   boolean is_enabled
   text plaintext
+  uuid daemon_id FK
 }
 "public.organizations" {
   uuid id
