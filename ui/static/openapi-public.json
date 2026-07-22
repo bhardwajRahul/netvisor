@@ -11177,19 +11177,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-22T18:38:10.344022Z",
+              "created_at": "2026-07-22T18:58:51.216655Z",
               "first_discovery_id": null,
-              "id": "e528a656-7a82-4218-80fc-2f6b99fee363",
+              "id": "a74f523b-7793-4074-85c3-5f03cc821559",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-22T18:38:10.344022Z",
+              "last_seen_at": "2026-07-22T18:58:51.216655Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-22T18:38:10.344022Z",
-              "valid_from": "2026-07-22T18:38:10.344022Z",
+              "updated_at": "2026-07-22T18:58:51.216655Z",
+              "valid_from": "2026-07-22T18:58:51.216655Z",
               "valid_to": null
             }
           },
@@ -12244,19 +12244,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-22T18:38:10.329950Z",
+                      "created_at": "2026-07-22T18:58:51.198601Z",
                       "first_discovery_id": null,
-                      "id": "13459e89-59bb-487b-9257-3bd9d0549ef9",
+                      "id": "c47d9f5e-60cb-47e5-8415-a025c635e4d1",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-22T18:38:10.329950Z",
+                      "last_seen_at": "2026-07-22T18:58:51.198601Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-22T18:38:10.329950Z",
-                      "valid_from": "2026-07-22T18:38:10.329950Z",
+                      "updated_at": "2026-07-22T18:58:51.198601Z",
+                      "valid_from": "2026-07-22T18:58:51.198601Z",
                       "valid_to": null
                     }
                   ],
@@ -12270,7 +12270,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Kerberos",
+                  "service_definition": "Proxmox Datacenter Manager",
                   "source": {
                     "type": "Manual"
                   },
@@ -13340,19 +13340,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-22T18:38:10.339250Z",
+                  "created_at": "2026-07-22T18:58:51.210744Z",
                   "first_discovery_id": null,
-                  "id": "666b2737-652e-400f-a802-beccf84fcf94",
+                  "id": "a2f452c4-bf39-42f6-9e26-3e24130c9fe2",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-22T18:38:10.339250Z",
+                  "last_seen_at": "2026-07-22T18:58:51.210744Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-22T18:38:10.339250Z",
-                  "valid_from": "2026-07-22T18:38:10.339250Z",
+                  "updated_at": "2026-07-22T18:58:51.210744Z",
+                  "valid_from": "2026-07-22T18:58:51.210744Z",
                   "valid_to": null
                 }
               ],
@@ -13366,7 +13366,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Kerberos",
+              "service_definition": "Proxmox Datacenter Manager",
               "source": {
                 "type": "Manual"
               },
@@ -15236,19 +15236,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-22T18:38:10.330221Z",
+          "created_at": "2026-07-22T18:58:51.198982Z",
           "first_discovery_id": null,
-          "id": "6577bed9-7cf9-4794-863c-871ae9fffce3",
+          "id": "a2797f32-2a6e-4c91-b48d-d5ac929a26f1",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-22T18:38:10.330221Z",
+          "last_seen_at": "2026-07-22T18:58:51.198982Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-22T18:38:10.330221Z",
-          "valid_from": "2026-07-22T18:38:10.330221Z",
+          "updated_at": "2026-07-22T18:58:51.198982Z",
+          "valid_from": "2026-07-22T18:58:51.198982Z",
           "valid_to": null
         }
       },
@@ -15839,7 +15839,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Kerberos",
+              "service_definition": "Proxmox Datacenter Manager",
               "tags": [],
               "virtualization": null
             }
@@ -17635,7 +17635,8 @@
         "description": "Visual stroke style for an edge",
         "enum": [
           "solid",
-          "dashed"
+          "dashed",
+          "dotted"
         ]
       },
       "EdgeStyle": {
@@ -17703,6 +17704,26 @@
               "host_id": {
                 "type": "string",
                 "format": "uuid"
+              },
+              "service_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "One container reachable at several of its host's container-bridge subnets. Ties the\ncontainer's addresses together so a multi-attached container reads as one thing rather\nthan as unrelated cards in separate subnet boxes.",
+            "required": [
+              "service_id",
+              "edge_type"
+            ],
+            "properties": {
+              "edge_type": {
+                "type": "string",
+                "enum": [
+                  "SameContainer"
+                ]
               },
               "service_id": {
                 "type": "string",
@@ -17805,6 +17826,7 @@
           "SameHost",
           "Hypervisor",
           "ContainerRuntime",
+          "SameContainer",
           "RequestPath",
           "HubAndSpoke",
           "PhysicalLink"
@@ -18739,19 +18761,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-22T18:38:10.329635Z",
+                  "created_at": "2026-07-22T18:58:51.198162Z",
                   "first_discovery_id": null,
-                  "id": "b087db8c-bffc-445e-928d-60aef2f78f3b",
+                  "id": "16d4f394-d07f-424c-9e58-8f81385ee3dc",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-22T18:38:10.329635Z",
+                  "last_seen_at": "2026-07-22T18:58:51.198162Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-22T18:38:10.329635Z",
-                  "valid_from": "2026-07-22T18:38:10.329635Z",
+                  "updated_at": "2026-07-22T18:58:51.198162Z",
+                  "valid_from": "2026-07-22T18:58:51.198162Z",
                   "valid_to": null
                 }
               ],
@@ -18765,7 +18787,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Kerberos",
+              "service_definition": "Proxmox Datacenter Manager",
               "source": {
                 "type": "Manual"
               },
@@ -21373,19 +21395,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-22T18:38:10.322442Z",
+                        "created_at": "2026-07-22T18:58:51.187567Z",
                         "first_discovery_id": null,
-                        "id": "c4da5b65-44d2-49ff-ab7f-39adad545f7b",
+                        "id": "eceed8ac-b1e1-4368-ae9a-e92e193f5d1c",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-22T18:38:10.322442Z",
+                        "last_seen_at": "2026-07-22T18:58:51.187567Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-22T18:38:10.322442Z",
-                        "valid_from": "2026-07-22T18:38:10.322442Z",
+                        "updated_at": "2026-07-22T18:58:51.187567Z",
+                        "valid_from": "2026-07-22T18:58:51.187567Z",
                         "valid_to": null
                       }
                     ],
@@ -21399,7 +21421,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Kerberos",
+                    "service_definition": "Proxmox Datacenter Manager",
                     "source": {
                       "type": "Manual"
                     },
@@ -21520,19 +21542,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-22T18:38:10.338397Z",
+                    "created_at": "2026-07-22T18:58:51.209610Z",
                     "first_discovery_id": null,
-                    "id": "4ebd84fa-1156-4c79-b345-8d68b70f5e52",
+                    "id": "2bcac8fa-a2a7-49f7-8186-f3d023eb8bcc",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-22T18:38:10.338397Z",
+                    "last_seen_at": "2026-07-22T18:58:51.209610Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-22T18:38:10.338397Z",
-                    "valid_from": "2026-07-22T18:38:10.338397Z",
+                    "updated_at": "2026-07-22T18:58:51.209610Z",
+                    "valid_from": "2026-07-22T18:58:51.209610Z",
                     "valid_to": null
                   }
                 ],
@@ -21546,7 +21568,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Kerberos",
+                "service_definition": "Proxmox Datacenter Manager",
                 "source": {
                   "type": "Manual"
                 },
@@ -23249,19 +23271,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-22T18:38:10.330162Z",
+              "created_at": "2026-07-22T18:58:51.198897Z",
               "first_discovery_id": null,
-              "id": "19ee70fc-7d10-4c5f-b897-0909bb677150",
+              "id": "3a37d9e6-39b9-4894-a48a-fa1bdae53477",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-22T18:38:10.330162Z",
+              "last_seen_at": "2026-07-22T18:58:51.198897Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-22T18:38:10.330162Z",
-              "valid_from": "2026-07-22T18:38:10.330162Z",
+              "updated_at": "2026-07-22T18:58:51.198897Z",
+              "valid_from": "2026-07-22T18:58:51.198897Z",
               "valid_to": null
             }
           ],
@@ -23275,7 +23297,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Kerberos",
+          "service_definition": "Proxmox Datacenter Manager",
           "source": {
             "type": "Manual"
           },
@@ -24407,7 +24429,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "91723c46-a56f-4afe-8d55-ab533dbb467a",
+                  "id": "6ad8ac61-1ec0-4d0f-b487-c2b24003e274",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24417,23 +24439,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "53d832f3-26c2-4249-b9b4-e438d47c0683",
+                  "id": "f4521ed8-af41-4e71-9424-fd58d16c92cd",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "41852e76-d18a-4331-84ff-2a2ec7edb522",
+                  "id": "102e6ed6-f80f-4816-99a4-a13e3ff57309",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "33233da8-b650-49b5-bb9c-c659ca4bb40d",
+                  "id": "a6e55f78-4a93-4c82-b948-48271f08a73a",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "53d832f3-26c2-4249-b9b4-e438d47c0683",
+                  "id": "f4521ed8-af41-4e71-9424-fd58d16c92cd",
                   "rule": "ByHost"
                 }
               ]
@@ -24462,19 +24484,19 @@
             },
             "default": [
               {
-                "id": "be814ef6-8fbe-4307-b849-2c9845976e30",
+                "id": "5962e9d5-77f1-4740-ae17-3c40a6a2de07",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "566002b0-3684-45f9-89a4-aa9d633ffc08",
+                "id": "22ee2610-f428-4720-93b2-61461839ea1f",
                 "rule": "ByVLAN"
               },
               {
-                "id": "715762ec-b8a4-471e-bf34-fc4f3fec4445",
+                "id": "6ee38b1b-eba3-4178-a2c7-44f6f743b44d",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "eb734de0-fea7-4065-843f-24cc5f1da808",
+                "id": "571c14da-e052-46d0-83cb-4e9e45624892",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24492,7 +24514,7 @@
                 }
               },
               {
-                "id": "75fc5526-e70d-4b43-b9c3-2885d38f198c",
+                "id": "6ba9679a-d437-4770-8652-348f2c0822e1",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24501,15 +24523,15 @@
                 }
               },
               {
-                "id": "70fc3d5d-3bfa-4071-bfe1-0007ec1fcfef",
+                "id": "89be9dd3-e827-47ec-9133-9a0815547897",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "78c50cc0-ac78-43cb-8766-fbf9157da1e6",
+                "id": "989e0944-d805-46bb-8b00-11e9dba542d3",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "aebcf872-3c99-4d40-bd7c-c14829b76134",
+                "id": "204d6ef7-988c-4d79-9e34-7c7d9b7f4952",
                 "rule": "ByStack"
               }
             ]
