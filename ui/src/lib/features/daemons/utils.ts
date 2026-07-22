@@ -170,8 +170,7 @@ export function buildRunCommand(
 	values: Record<string, string | number | boolean>,
 	daemon: Daemon | null,
 	userId: string | null,
-	os: DaemonOS = 'linux',
-	integrationTokens?: string[]
+	os: DaemonOS = 'linux'
 ): string {
 	const isWindows = os === 'windows';
 	const binary = isWindows ? '.\\scanopy-daemon-windows-amd64.exe' : 'scanopy-daemon';
@@ -235,13 +234,8 @@ export function buildRunCommand(
 		}
 	}
 
-	// Integration targeting tokens: <uuid>, <uuid>@<ip>[+<ip>], docker-socket, podman-socket.
-	// Local sockets are explicit opt-in tokens — there are no enable/disable flags.
-	if (integrationTokens) {
-		for (const token of integrationTokens) {
-			cmd += ` --credential-id ${token}`;
-		}
-	}
+	// Integration targeting is not carried in the command: it's seeded onto the daemon's
+	// discovery row at provision (`seed_credential_refs`) and applied server-side every scan.
 
 	return cmd;
 }
