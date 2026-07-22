@@ -201,22 +201,186 @@ fn bindings_overlap(claim_iface: &Option<Uuid>, op_iface: &Option<Uuid>) -> bool
     }
 }
 
-/// Detect VRRP/HSRP virtual router MAC addresses by their well-known prefixes.
+/// Detect VRRP/CARP/HSRP virtual router MAC addresses by their well-known prefixes.
 ///
 /// Virtual router protocols assign deterministic MACs shared across physical router peers.
-/// These must be excluded from host identity matching to prevent different physical routers
-/// in the same redundancy group from being deduped into a single host.
+/// These must never anchor *MAC-based* host identity, or two physical routers in the same
+/// redundancy group would dedup into a single host. They remain usable for address-based
+/// identity — see `select_matching_host`.
 ///
 /// The VRRP/HSRP group ID is encoded in the last byte(s) of the MAC itself, so detection
 /// requires only the MAC prefix — no SNMP MIB query needed.
+///
+/// Widening this predicate also widens the MAC exclusion in pass 1 of `select_matching_host`,
+/// so a newly covered range must always ship together with the pass-2 address fallback —
+/// otherwise hosts wearing that range lose MAC matching without gaining anything back.
 fn is_virtual_router_mac(mac: &MacAddress) -> bool {
     let bytes = mac.bytes();
-    // VRRP (RFC 5798): 00:00:5e:00:01:XX where XX = VRRP group ID (0-255)
+    // VRRP IPv4 (RFC 5798 §7.3): 00:00:5e:00:01:XX where XX = VRID (0-255).
+    // FreeBSD/OPNsense CARP reuses this range, keyed by vhid.
     (bytes[0..5] == [0x00, 0x00, 0x5e, 0x00, 0x01])
+    // VRRP IPv6 (RFC 5798 §7.3): 00:00:5e:00:02:XX where XX = VRID (0-255)
+    || (bytes[0..5] == [0x00, 0x00, 0x5e, 0x00, 0x02])
     // HSRP v1 (Cisco): 00:00:0c:07:ac:XX where XX = HSRP group ID (0-255)
     || (bytes[0..5] == [0x00, 0x00, 0x0c, 0x07, 0xac])
     // HSRP v2 (Cisco): 00:00:0c:9f:fX:XX where X:XX = HSRP group ID (0-4095)
     || (bytes[0..4] == [0x00, 0x00, 0x0c, 0x9f] && (bytes[4] & 0xf0) == 0xf0)
+}
+
+/// True when this row's MAC is a shared virtual-router MAC (VRRP/CARP/HSRP).
+fn has_virtual_router_mac(ip: &IPAddress) -> bool {
+    ip.base
+        .mac_address
+        .map(|m| is_virtual_router_mac(&m))
+        .unwrap_or(false)
+}
+
+/// True when this row pins identity to physical hardware: a MAC that is present and is
+/// *not* a shared virtual-router MAC. A row with no MAC is not physical evidence.
+fn has_real_mac(ip: &IPAddress) -> bool {
+    ip.base
+        .mac_address
+        .map(|m| !is_virtual_router_mac(&m))
+        .unwrap_or(false)
+}
+
+/// Rows excluded from pass-1 (physical device) matching, on both the incoming and the
+/// existing side.
+///
+/// - Loopbacks: every host has 127.0.0.1, so they would falsely match all hosts.
+/// - Virtual router MACs: shared across physical routers, would falsely merge peers.
+fn should_skip_for_matching(ip: &IPAddress) -> bool {
+    ip.base.ip_address.is_loopback() || has_virtual_router_mac(ip)
+}
+
+/// Count IP addresses per MAC within a *single incoming payload*, to detect VLAN
+/// sub-interfaces. Shared MAC (count > 1) means VLAN/bridge/bond sub-interfaces that must
+/// not trigger MAC-based host matching. Unique MAC (count == 1) means a standalone IP
+/// address safe for MAC matching (e.g., a Docker container whose IP changed via DHCP).
+fn mac_counts_for_payload<'a>(
+    payload: impl IntoIterator<Item = &'a IPAddress>,
+) -> HashMap<MacAddress, usize> {
+    payload
+        .into_iter()
+        .filter_map(|i| i.base.mac_address)
+        .fold(HashMap::new(), |mut acc, mac| {
+            *acc.entry(mac).or_insert(0) += 1;
+            acc
+        })
+}
+
+/// Decide which existing host — if any — an incoming payload's IP addresses identify.
+///
+/// `candidates` is `(host_id, all live IP rows for that host)` ordered **oldest-first**;
+/// the caller owns that ordering. Pure so the HA topologies below are unit-testable.
+///
+/// Two passes, only ever one of which runs:
+///
+/// **Pass 1 — the payload has a physical identity** (at least one non-loopback row whose MAC
+/// is absent or real). Matches those rows against existing rows via `ip_addresses_match`,
+/// skipping virtual-router and loopback rows on both sides. This is the long-standing
+/// behavior and is deliberately untouched: it is what keeps the two physical peers of an
+/// HA pair apart, since a peer that reports the shared VIP can never match on that row.
+///
+/// **Pass 2 — the payload is *only* a floating virtual IP** (issue #661). An ARP-discovered
+/// CARP/VRRP VIP is a single row carrying the shared virtual MAC, so pass 1 has nothing to
+/// work with and the VIP was recreated as a new host on every scan. Here the address itself
+/// is the identity: match on IP + subnet only, never MAC.
+///
+/// A candidate qualifies for pass 2 only if **no** non-loopback row of that host carries a
+/// real MAC. The qualification is host-level, not row-level, because `create_with_children`
+/// attaches every incoming row to the matched host — so a peer host can itself accumulate a
+/// virtual-MAC VIP row, and a row-level test would let the VIP submission be absorbed into
+/// that peer. Requiring the whole host to be MAC-less-or-virtual excludes every peer (they
+/// always carry a real-MAC management row) while still matching a VIP host whose row was
+/// first seen off-L2 with no MAC at all (MACs are immutable once set).
+///
+/// Pass 2 walks candidates newest-first: in steady state exactly one host qualifies, but
+/// where duplicates already accumulated this makes the freshest one canonical.
+///
+/// **Known limitation.** Two devices sharing an IP+subnet where the daemon reports no real
+/// MAC for either are indistinguishable and will match. That is the same address-collision
+/// exposure pass 1 has always had.
+fn select_matching_host(
+    incoming: &[IPAddress],
+    candidates: &[(Uuid, Vec<IPAddress>)],
+) -> Option<Uuid> {
+    if incoming.is_empty() || candidates.is_empty() {
+        return None;
+    }
+
+    // Pass 1: physical identity.
+    let physical_incoming: Vec<&IPAddress> = incoming
+        .iter()
+        .filter(|i| !should_skip_for_matching(i))
+        .collect();
+
+    if !physical_incoming.is_empty() {
+        let incoming_mac_counts = mac_counts_for_payload(physical_incoming.iter().copied());
+
+        for (host_id, host_ip_addresses) in candidates {
+            for incoming_ip in &physical_incoming {
+                for existing_ip in host_ip_addresses {
+                    if should_skip_for_matching(existing_ip) {
+                        continue;
+                    }
+                    if ip_addresses_match(incoming_ip, existing_ip, &incoming_mac_counts) {
+                        tracing::debug!(
+                            incoming_ip = %incoming_ip.base.ip_address,
+                            existing_ip = %existing_ip.base.ip_address,
+                            existing_host_id = %host_id,
+                            "Found matching host via IP-address comparison"
+                        );
+                        return Some(*host_id);
+                    }
+                }
+            }
+        }
+
+        return None;
+    }
+
+    // Pass 2: floating virtual IP.
+    let virtual_incoming: Vec<&IPAddress> = incoming
+        .iter()
+        .filter(|i| !i.base.ip_address.is_loopback() && has_virtual_router_mac(i))
+        .collect();
+
+    if virtual_incoming.is_empty() {
+        return None;
+    }
+
+    for (host_id, host_ip_addresses) in candidates.iter().rev() {
+        let host_is_physical = host_ip_addresses
+            .iter()
+            .any(|ip| !ip.base.ip_address.is_loopback() && has_real_mac(ip));
+        if host_is_physical {
+            continue;
+        }
+
+        for incoming_ip in &virtual_incoming {
+            for existing_ip in host_ip_addresses {
+                if existing_ip.base.ip_address.is_loopback() {
+                    continue;
+                }
+                if ip_addresses_share_address(incoming_ip, existing_ip) {
+                    tracing::debug!(
+                        virtual_ip = %incoming_ip.base.ip_address,
+                        existing_host_id = %host_id,
+                        "Found matching host for virtual router IP via address comparison"
+                    );
+                    return Some(*host_id);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Same IP on the same subnet — the same logical interface.
+fn ip_addresses_share_address(a: &IPAddress, b: &IPAddress) -> bool {
+    a.base.ip_address == b.base.ip_address && a.base.subnet_id == b.base.subnet_id
 }
 
 /// Compare two ip_addresses for host dedup matching.
@@ -235,8 +399,7 @@ fn ip_addresses_match(
     incoming_mac_counts: &HashMap<MacAddress, usize>,
 ) -> bool {
     // Primary: same IP on same subnet
-    (incoming.base.ip_address == existing.base.ip_address
-        && incoming.base.subnet_id == existing.base.subnet_id)
+    ip_addresses_share_address(incoming, existing)
     // Secondary: same non-nil ID
     || (incoming.id == existing.id
         && incoming.id != Uuid::nil()
@@ -360,18 +523,6 @@ mod tests {
     // not a fix: they pin down what the current heuristic does so we can tell whether
     // the reported "tied to lowest IP" behavior is a real defect or expected dedup.
 
-    /// Mirror how `find_matching_host_by_ip_addresses` builds `incoming_mac_counts`:
-    /// the count is computed from the IP addresses of a *single incoming payload*.
-    fn mac_counts_for_payload(payload: &[IPAddress]) -> HashMap<MacAddress, usize> {
-        payload
-            .iter()
-            .filter_map(|i| i.base.mac_address)
-            .fold(HashMap::new(), |mut acc, mac| {
-                *acc.entry(mac).or_insert(0) += 1;
-                acc
-            })
-    }
-
     #[test]
     fn mac_match_same_subnet_when_unique_in_batch() {
         // Multi-homed / IP-alias case: two IPs on the SAME subnet sharing one MAC.
@@ -427,5 +578,276 @@ mod tests {
             !ip_addresses_match(&a, &b, &counts),
             "Two same-MAC IPs in one payload must not MAC-merge (VLAN sub-interface guard)"
         );
+    }
+
+    // --- #661: CARP/VRRP virtual IPs in an OPNsense HA pair ---
+    //
+    // Topology under test: two physical firewalls, each with its own management IP on a
+    // real NIC MAC, plus a floating CARP VIP that the scanner also sees standalone via ARP
+    // (a single row carrying the shared virtual MAC). Both peers may additionally report
+    // the VIP themselves. The VIP must re-match its own host across scans; the two peers
+    // must never collapse into one.
+
+    /// The shared virtual MAC an HA pair advertises for VRID/vhid 10.
+    fn vrrp_mac() -> MacAddress {
+        MacAddress::new([0x00, 0x00, 0x5e, 0x00, 0x01, 0x0a])
+    }
+
+    fn candidate(host_id: Uuid, ip_addresses: Vec<IPAddress>) -> (Uuid, Vec<IPAddress>) {
+        (host_id, ip_addresses)
+    }
+
+    #[test]
+    fn vip_only_payload_rematches_existing_vip_host() {
+        // #661: the standalone ARP view of the VIP is nothing but a virtual-MAC row, so it
+        // had no matchable identity at all and was recreated on every scan.
+        let subnet = Uuid::new_v4();
+        let vip: IpAddr = "192.168.1.1".parse().unwrap();
+        let vip_host = Uuid::new_v4();
+
+        let candidates = vec![candidate(
+            vip_host,
+            vec![make_interface(vip, subnet, Some(vrrp_mac()))],
+        )];
+        let incoming = vec![make_interface(vip, subnet, Some(vrrp_mac()))];
+
+        assert_eq!(
+            select_matching_host(&incoming, &candidates),
+            Some(vip_host),
+            "A rediscovered CARP/VRRP VIP must update its existing host, not create a new one"
+        );
+    }
+
+    #[test]
+    fn ha_peers_reporting_the_shared_vip_stay_separate() {
+        // Peer B's first-ever payload: its own management IP on its own NIC, plus the VIP
+        // it advertises. Peer A already exists and reports the same VIP. Matching on the
+        // shared virtual MAC or on the shared VIP address would merge the two firewalls.
+        let subnet = Uuid::new_v4();
+        let vip: IpAddr = "192.168.1.1".parse().unwrap();
+        let peer_a = Uuid::new_v4();
+
+        let candidates = vec![candidate(
+            peer_a,
+            vec![
+                make_interface(
+                    "192.168.1.2".parse().unwrap(),
+                    subnet,
+                    Some(MacAddress::new([0xAA, 0xBB, 0xCC, 0x00, 0x00, 0x01])),
+                ),
+                make_interface(vip, subnet, Some(vrrp_mac())),
+            ],
+        )];
+        let incoming = vec![
+            make_interface(
+                "192.168.1.3".parse().unwrap(),
+                subnet,
+                Some(MacAddress::new([0xAA, 0xBB, 0xCC, 0x00, 0x00, 0x02])),
+            ),
+            make_interface(vip, subnet, Some(vrrp_mac())),
+        ];
+
+        assert_eq!(
+            select_matching_host(&incoming, &candidates),
+            None,
+            "Two physical HA peers advertising the same VIP must remain separate hosts"
+        );
+    }
+
+    #[test]
+    fn vip_payload_does_not_absorb_a_physical_peer() {
+        // The VIP arrives before its own host exists and both peers are already known,
+        // each carrying a VIP row. Matching either would hand the peer's identity and
+        // services to the floating address.
+        let subnet = Uuid::new_v4();
+        let vip: IpAddr = "192.168.1.1".parse().unwrap();
+
+        let peer = |mgmt: &str, mac: u8| {
+            candidate(
+                Uuid::new_v4(),
+                vec![
+                    make_interface(
+                        mgmt.parse().unwrap(),
+                        subnet,
+                        Some(MacAddress::new([0xAA, 0xBB, 0xCC, 0x00, 0x00, mac])),
+                    ),
+                    make_interface(vip, subnet, Some(vrrp_mac())),
+                ],
+            )
+        };
+        let candidates = vec![peer("192.168.1.2", 0x01), peer("192.168.1.3", 0x02)];
+        let incoming = vec![make_interface(vip, subnet, Some(vrrp_mac()))];
+
+        assert_eq!(
+            select_matching_host(&incoming, &candidates),
+            None,
+            "A VIP payload must not match a host that has real-MAC hardware identity"
+        );
+    }
+
+    #[test]
+    fn vip_prefers_its_own_host_over_a_peer_advertising_it() {
+        // Both a peer and the standalone VIP host hold a row at the VIP address. The peer
+        // is older, so an order-driven match would pick it; hardware identity must win out.
+        let subnet = Uuid::new_v4();
+        let vip: IpAddr = "192.168.1.1".parse().unwrap();
+        let peer_a = Uuid::new_v4();
+        let vip_host = Uuid::new_v4();
+
+        let candidates = vec![
+            candidate(
+                peer_a,
+                vec![
+                    make_interface(
+                        "192.168.1.2".parse().unwrap(),
+                        subnet,
+                        Some(MacAddress::new([0xAA, 0xBB, 0xCC, 0x00, 0x00, 0x01])),
+                    ),
+                    make_interface(vip, subnet, Some(vrrp_mac())),
+                ],
+            ),
+            candidate(
+                vip_host,
+                vec![make_interface(vip, subnet, Some(vrrp_mac()))],
+            ),
+        ];
+        let incoming = vec![make_interface(vip, subnet, Some(vrrp_mac()))];
+
+        assert_eq!(
+            select_matching_host(&incoming, &candidates),
+            Some(vip_host),
+            "The VIP must resolve to its own host, not to a peer that advertises it"
+        );
+    }
+
+    #[test]
+    fn vip_host_first_seen_without_a_mac_still_rematches() {
+        // First sighting was off-L2 (SNMP/port scan, no ARP), so the stored row has no MAC
+        // at all — and MACs are immutable once set, so it never gains one. A later on-L2
+        // sighting carrying the virtual MAC must still land on that host.
+        let subnet = Uuid::new_v4();
+        let vip: IpAddr = "192.168.1.1".parse().unwrap();
+        let vip_host = Uuid::new_v4();
+
+        let candidates = vec![candidate(vip_host, vec![make_interface(vip, subnet, None)])];
+        let incoming = vec![make_interface(vip, subnet, Some(vrrp_mac()))];
+
+        assert_eq!(
+            select_matching_host(&incoming, &candidates),
+            Some(vip_host),
+            "A VIP host first recorded without a MAC must still be re-found"
+        );
+    }
+
+    #[test]
+    fn two_vips_in_one_group_stay_distinct() {
+        // Several VIPs can share one VRID, hence one virtual MAC. Only the address
+        // distinguishes them, so the shared MAC must never carry a match.
+        let subnet = Uuid::new_v4();
+        let first_vip = Uuid::new_v4();
+
+        let candidates = vec![candidate(
+            first_vip,
+            vec![make_interface(
+                "192.168.1.1".parse().unwrap(),
+                subnet,
+                Some(vrrp_mac()),
+            )],
+        )];
+        let incoming = vec![make_interface(
+            "192.168.1.4".parse().unwrap(),
+            subnet,
+            Some(vrrp_mac()),
+        )];
+
+        assert_eq!(
+            select_matching_host(&incoming, &candidates),
+            None,
+            "Distinct VIPs sharing a VRID must not collapse via their shared MAC"
+        );
+    }
+
+    #[test]
+    fn ipv6_vrrp_vip_rematches_existing_host() {
+        // RFC 5798 §7.3 gives IPv6 VRRP its own MAC range (00:00:5e:00:02:XX); it gets the
+        // same treatment as the IPv4 range rather than being read as real hardware.
+        let subnet = Uuid::new_v4();
+        let vip: IpAddr = "2001:db8::1".parse().unwrap();
+        let ipv6_mac = MacAddress::new([0x00, 0x00, 0x5e, 0x00, 0x02, 0x0a]);
+        let vip_host = Uuid::new_v4();
+
+        let candidates = vec![candidate(
+            vip_host,
+            vec![make_interface(vip, subnet, Some(ipv6_mac))],
+        )];
+        let incoming = vec![make_interface(vip, subnet, Some(ipv6_mac))];
+
+        assert_eq!(
+            select_matching_host(&incoming, &candidates),
+            Some(vip_host),
+            "An IPv6 VRRP VIP must re-match like its IPv4 counterpart"
+        );
+    }
+
+    #[test]
+    fn loopback_only_payload_matches_nothing() {
+        // Every host has 127.0.0.1; a payload with nothing else must not fall through into
+        // the virtual-IP pass and match on it.
+        let subnet = Uuid::new_v4();
+        let loopback: IpAddr = "127.0.0.1".parse().unwrap();
+
+        let candidates = vec![candidate(
+            Uuid::new_v4(),
+            vec![make_interface(loopback, subnet, None)],
+        )];
+        let incoming = vec![make_interface(loopback, subnet, None)];
+
+        assert_eq!(select_matching_host(&incoming, &candidates), None);
+    }
+
+    #[test]
+    fn newest_duplicate_vip_host_wins() {
+        // Hosts arrive oldest-first. Where #661 already minted duplicates, the freshest one
+        // carries the most recent services and last_seen_at, so it becomes canonical.
+        let subnet = Uuid::new_v4();
+        let vip: IpAddr = "192.168.1.1".parse().unwrap();
+        let oldest = Uuid::new_v4();
+        let newest = Uuid::new_v4();
+
+        let candidates = vec![
+            candidate(oldest, vec![make_interface(vip, subnet, Some(vrrp_mac()))]),
+            candidate(newest, vec![make_interface(vip, subnet, Some(vrrp_mac()))]),
+        ];
+        let incoming = vec![make_interface(vip, subnet, Some(vrrp_mac()))];
+
+        assert_eq!(
+            select_matching_host(&incoming, &candidates),
+            Some(newest),
+            "Pre-existing VIP duplicates must collapse onto the most recently created host"
+        );
+    }
+
+    #[test]
+    fn physical_host_rematches_by_unique_mac_after_ip_change() {
+        // Pass-1 parity: an ordinary host whose IP moved (DHCP) is still found by its MAC,
+        // and a virtual-MAC row sitting on the candidate host doesn't disturb that.
+        let mac = MacAddress::new([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x11]);
+        let host = Uuid::new_v4();
+
+        let candidates = vec![candidate(
+            host,
+            vec![make_interface(
+                "10.0.0.5".parse().unwrap(),
+                Uuid::new_v4(),
+                Some(mac),
+            )],
+        )];
+        let incoming = vec![make_interface(
+            "10.0.0.9".parse().unwrap(),
+            Uuid::new_v4(),
+            Some(mac),
+        )];
+
+        assert_eq!(select_matching_host(&incoming, &candidates), Some(host));
     }
 }
