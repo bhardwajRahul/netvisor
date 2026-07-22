@@ -1,6 +1,11 @@
 import type { TopologyEdge } from '../types/base';
 import type { components } from '$lib/api/schema';
-import { views } from '$lib/shared/stores/metadata';
+import {
+	edgeTypes,
+	views,
+	type EdgeSelectionScope,
+	type EdgeTypeMetadata
+} from '$lib/shared/stores/metadata';
 
 type EdgeTypeDiscriminants = components['schemas']['EdgeTypeDiscriminants'];
 type EdgeViewConfig = components['schemas']['EdgeViewConfig'];
@@ -62,6 +67,25 @@ export function getHighlightBehavior(edge: TopologyEdge): 'when_visible' | 'alwa
 export function showDirectionality(edge: TopologyEdge): boolean {
 	const vc = getViewConfig(edge);
 	return vc.type === 'active' && vc.show_directionality;
+}
+
+/** What a click on this edge type highlights. Defaults to the clicked segment alone. */
+export function getSelectionScope(edgeType: string): EdgeSelectionScope {
+	// getMetadata falls back to an empty object for unknown ids, so treat the field as optional.
+	const meta = edgeTypes.getMetadata(edgeType) as Partial<EdgeTypeMetadata>;
+	return meta.selection_scope ?? { type: 'segment' };
+}
+
+/**
+ * Identity of the relation this edge is a segment of, or null when the edge stands alone
+ * (segment scope, or a relation-scoped edge whose id is missing). Edges sharing a key are
+ * segments of the same thing, so a click on one highlights all of them.
+ */
+export function getRelationKey(edge: TopologyEdge): string | null {
+	const scope = getSelectionScope(edge.edge_type);
+	if (scope.type !== 'connected_nodes') return null;
+	const relationId = (edge as unknown as Record<string, unknown>)[scope.relation_field];
+	return typeof relationId === 'string' ? `${edge.edge_type}:${relationId}` : null;
 }
 
 /** Whether this edge should be elevated to target an accepting container. */

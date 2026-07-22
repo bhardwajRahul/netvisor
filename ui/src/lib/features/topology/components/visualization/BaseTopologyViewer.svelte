@@ -67,7 +67,6 @@
 		type SelectionStores
 	} from '../../selection';
 	import { onMount, tick, setContext, getContext } from 'svelte';
-	import { useQueryClient } from '@tanstack/svelte-query';
 	import { writable as svelteWritable } from 'svelte/store';
 	import { themeStore } from '$lib/shared/stores/theme.svelte';
 	import { containerTypes } from '$lib/shared/stores/metadata';
@@ -143,7 +142,6 @@
 	let viewportMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const { fitView, getNodes } = useSvelteFlow();
-	const queryClient = useQueryClient();
 	let containerElement: HTMLDivElement;
 
 	/**
@@ -393,7 +391,6 @@
 				curSelectedEdge,
 				currentBaseEdges,
 				currentNodes,
-				queryClient,
 				topology,
 				multiSelected,
 				opts.local.hide_edge_types ?? []

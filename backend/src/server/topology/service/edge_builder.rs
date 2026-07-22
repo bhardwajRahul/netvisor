@@ -11,6 +11,7 @@ use crate::server::{
         service::context::TopologyContext,
         types::{
             edges::{DiscoveryProtocol, Edge, EdgeHandle, EdgeType, EdgeViewConfig},
+            grouping::GroupingConfig,
             nodes::Node,
         },
     },
@@ -59,7 +60,14 @@ impl EdgeBuilder {
 
     /// Create edges to connect a host that virtualizes containers via Docker
     /// to the containerized services on Docker bridge subnets.
-    pub fn create_containerized_service_edges(ctx: &TopologyContext) -> Vec<Edge> {
+    ///
+    /// Each edge names the containerized services it stands for, so the inspector lists
+    /// exactly that set rather than re-deriving it from an endpoint the frontend may have
+    /// elevated onto a subnet box.
+    pub fn create_containerized_service_edges(
+        ctx: &TopologyContext,
+        grouping: &GroupingConfig,
+    ) -> Vec<Edge> {
         let mut docker_service_to_containerized_service_ids: HashMap<Uuid, Vec<Uuid>> =
             HashMap::new();
 
@@ -115,6 +123,8 @@ impl EdgeBuilder {
                 // The lowest address in each subnet is the representative, so the target is
                 // stable across renders instead of following binding order.
                 let mut target_by_subnet: BTreeMap<Uuid, (IpAddr, Uuid)> = BTreeMap::new();
+                // The containers reachable on each of those subnets — what the edge represents.
+                let mut containers_by_subnet: BTreeMap<Uuid, Vec<Uuid>> = BTreeMap::new();
                 for containerized_id in docker_service_to_containerized_service_ids
                     .get(&s.id)
                     .unwrap_or(&Vec::new())
@@ -140,12 +150,49 @@ impl EdgeBuilder {
                                 }
                             })
                             .or_insert(candidate);
+                        let containers = containers_by_subnet.entry(*subnet_id).or_default();
+                        if !containers.contains(containerized_id) {
+                            containers.push(*containerized_id);
+                        }
                     }
                 }
 
-                target_by_subnet
-                    .into_values()
-                    .map(|(_, target)| {
+                // With bridges merged, every one of this runtime's subnets renders as a single
+                // box, so the per-subnet edges would stack into identical overlapping lines on
+                // it. Collapse them into the one edge the user actually sees, carrying the
+                // union of what those subnets hold.
+                let per_edge: Vec<(Uuid, Vec<Uuid>)> = if grouping.should_group_container_bridges()
+                {
+                    let Some((_, target)) = target_by_subnet.values().min().copied() else {
+                        return Vec::new();
+                    };
+                    let mut containers: Vec<Uuid> = Vec::new();
+                    for subnet_containers in containers_by_subnet.values() {
+                        for id in subnet_containers {
+                            if !containers.contains(id) {
+                                containers.push(*id);
+                            }
+                        }
+                    }
+                    vec![(target, containers)]
+                } else {
+                    target_by_subnet
+                        .iter()
+                        .map(|(subnet_id, (_, target))| {
+                            (
+                                *target,
+                                containers_by_subnet
+                                    .get(subnet_id)
+                                    .cloned()
+                                    .unwrap_or_default(),
+                            )
+                        })
+                        .collect()
+                };
+
+                per_edge
+                    .into_iter()
+                    .map(|(target, containerized_service_ids)| {
                         let is_multi_hop = ctx.edge_is_multi_hop(&origin_ip_address.id, &target);
 
                         Edge {
@@ -155,6 +202,7 @@ impl EdgeBuilder {
                             edge_type: EdgeType::ContainerRuntime {
                                 service_id: s.id,
                                 host_id: host.id,
+                                containerized_service_ids,
                             },
                             label: Some(format!("{} on {}", s.base.name, host.base.name)),
                             source_handle: EdgeHandle::Bottom,
@@ -554,9 +602,37 @@ mod tests {
     use crate::server::subnets::r#impl::types::SubnetType;
     use crate::server::topology::service::context::TopologyContext;
     use crate::server::topology::types::base::TopologyOptions;
+    use crate::server::topology::types::grouping::{ContainerRule, IdentifiedRule};
     use crate::server::topology::types::views::TopologyView;
     use cidr::{IpCidr, Ipv4Cidr};
     use std::net::Ipv4Addr;
+
+    /// Bridges rendered as their own boxes — one runtime edge per bridge subnet.
+    fn ungrouped() -> GroupingConfig {
+        GroupingConfig {
+            container_rules: vec![],
+            element_rules: vec![],
+        }
+    }
+
+    /// Bridges merged into one box — one runtime edge for the box.
+    fn merged() -> GroupingConfig {
+        GroupingConfig {
+            container_rules: vec![IdentifiedRule::new(ContainerRule::MergeContainerBridges)],
+            element_rules: vec![],
+        }
+    }
+
+    /// The containerized services an edge says it stands for.
+    fn containerized_ids(edge: &Edge) -> Vec<Uuid> {
+        match &edge.edge_type {
+            EdgeType::ContainerRuntime {
+                containerized_service_ids,
+                ..
+            } => containerized_service_ids.clone(),
+            other => panic!("expected a ContainerRuntime edge, got {other:?}"),
+        }
+    }
 
     fn subnet(network_id: Uuid, name: &str, third_octet: u8, subnet_type: SubnetType) -> Subnet {
         Subnet {
@@ -650,6 +726,7 @@ mod tests {
             ..Default::default()
         };
 
+        let container_id = container.id;
         let hosts = vec![host];
         let ip_addresses = vec![host_ip.clone(), db_ip.clone(), mgmt_ip.clone()];
         let subnets = vec![lan, db_net.clone(), mgmt_net.clone()];
@@ -671,7 +748,7 @@ mod tests {
             TopologyView::L3Logical,
         );
 
-        let edges = EdgeBuilder::create_containerized_service_edges(&ctx);
+        let edges = EdgeBuilder::create_containerized_service_edges(&ctx, &ungrouped());
 
         let targets: HashSet<Uuid> = edges.iter().map(|e| e.target).collect();
         assert_eq!(
@@ -683,6 +760,21 @@ mod tests {
             edges.iter().all(|e| e.source == host_ip.id),
             "edges originate from the host's non-bridge address"
         );
+        assert!(
+            edges
+                .iter()
+                .all(|e| containerized_ids(e) == vec![container_id]),
+            "the container sits in both subnets, so both edges stand for it"
+        );
+
+        // Merging the bridges into one box leaves one edge for it, standing for the same set.
+        let merged_edges = EdgeBuilder::create_containerized_service_edges(&ctx, &merged());
+        assert_eq!(
+            merged_edges.len(),
+            1,
+            "merged bridges render as one box, so they get one edge"
+        );
+        assert_eq!(containerized_ids(&merged_edges[0]), vec![container_id]);
     }
 
     /// A container on several bridge subnets gets its addresses tied together, hub-and-spoke from
@@ -929,9 +1021,116 @@ mod tests {
             TopologyView::L3Logical,
         );
 
-        let edges = EdgeBuilder::create_containerized_service_edges(&ctx);
+        let edges = EdgeBuilder::create_containerized_service_edges(&ctx, &ungrouped());
         assert_eq!(edges.len(), 1, "one edge per subnet, not per container");
         // Lowest address in the subnet is the stable representative.
         assert_eq!(edges[0].target, first.id);
+        assert_eq!(
+            containerized_ids(&edges[0]).len(),
+            2,
+            "the subnet's edge stands for both containers on it"
+        );
+    }
+
+    /// The set an edge stands for is scoped to the bridge subnet it reaches, not to everything
+    /// the runtime hosts. Clicking the edge into one bridge box listed the whole host's
+    /// containers, so a box holding one container claimed to hold all of them.
+    #[test]
+    fn each_edge_names_only_the_containers_on_its_own_subnet() {
+        let network_id = Uuid::new_v4();
+        let host_id = Uuid::new_v4();
+
+        let lan = subnet(network_id, "lan", 30, SubnetType::Lan);
+        let db_net = subnet(network_id, "db-net", 20, SubnetType::DockerBridge);
+        let web_net = subnet(network_id, "web-net", 21, SubnetType::DockerBridge);
+
+        let host_ip = ip(network_id, host_id, lan.id, Ipv4Addr::new(172, 30, 0, 5));
+        let db_ip = ip(network_id, host_id, db_net.id, Ipv4Addr::new(172, 20, 0, 2));
+        let web_ip = ip(
+            network_id,
+            host_id,
+            web_net.id,
+            Ipv4Addr::new(172, 21, 0, 2),
+        );
+
+        let host = Host {
+            id: host_id,
+            base: HostBase {
+                name: "docker-host".to_string(),
+                network_id,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let runtime = Service {
+            id: Uuid::new_v4(),
+            base: ServiceBase {
+                host_id,
+                network_id,
+                name: "Docker".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let runtime_id = runtime.id;
+        let container = |name: &str, ip_id: Uuid| Service {
+            id: Uuid::new_v4(),
+            base: ServiceBase {
+                host_id,
+                network_id,
+                name: name.to_string(),
+                virtualization: Some(ServiceVirtualization::Docker(DockerVirtualization {
+                    container_name: Some(name.to_string()),
+                    container_id: Some(name.to_string()),
+                    service_id: runtime_id,
+                    compose_project: None,
+                })),
+                bindings: vec![Binding::new_ip_address_serviceless(ip_id)],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let postgres = container("postgres", db_ip.id);
+        let nginx = container("nginx", web_ip.id);
+        let postgres_id = postgres.id;
+        let nginx_id = nginx.id;
+
+        let hosts = vec![host];
+        let ip_addresses = vec![host_ip.clone(), db_ip.clone(), web_ip.clone()];
+        let subnets = vec![lan, db_net, web_net];
+        let services = vec![runtime, postgres, nginx];
+        let options = TopologyOptions::default();
+
+        let ctx = TopologyContext::new(
+            &hosts,
+            &ip_addresses,
+            &subnets,
+            &services,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &options,
+            TopologyView::L3Logical,
+        );
+
+        let edges = EdgeBuilder::create_containerized_service_edges(&ctx, &ungrouped());
+        let by_target: HashMap<Uuid, Vec<Uuid>> = edges
+            .iter()
+            .map(|e| (e.target, containerized_ids(e)))
+            .collect();
+        assert_eq!(by_target.get(&db_ip.id), Some(&vec![postgres_id]));
+        assert_eq!(by_target.get(&web_ip.id), Some(&vec![nginx_id]));
+
+        // Merged, the two boxes become one and its edge stands for everything inside it.
+        let merged_edges = EdgeBuilder::create_containerized_service_edges(&ctx, &merged());
+        assert_eq!(merged_edges.len(), 1);
+        let mut merged_set = containerized_ids(&merged_edges[0]);
+        merged_set.sort();
+        let mut expected = vec![postgres_id, nginx_id];
+        expected.sort();
+        assert_eq!(merged_set, expected);
     }
 }

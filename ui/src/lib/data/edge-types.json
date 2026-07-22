@@ -12,7 +12,11 @@
       "has_start_marker": false,
       "is_dependency_edge": false,
       "is_host_edge": true,
-      "is_physical_edge": false
+      "is_physical_edge": false,
+      "selection_scope": {
+        "relation_field": "host_id",
+        "type": "connected_nodes"
+      }
     }
   },
   {
@@ -28,7 +32,11 @@
       "has_start_marker": false,
       "is_dependency_edge": false,
       "is_host_edge": false,
-      "is_physical_edge": false
+      "is_physical_edge": false,
+      "selection_scope": {
+        "relation_field": "hypervisor_service_id",
+        "type": "connected_nodes"
+      }
     }
   },
   {
@@ -44,7 +52,11 @@
       "has_start_marker": false,
       "is_dependency_edge": false,
       "is_host_edge": true,
-      "is_physical_edge": false
+      "is_physical_edge": false,
+      "selection_scope": {
+        "relation_field": "service_id",
+        "type": "connected_nodes"
+      }
     }
   },
   {
@@ -60,7 +72,11 @@
       "has_start_marker": false,
       "is_dependency_edge": false,
       "is_host_edge": false,
-      "is_physical_edge": false
+      "is_physical_edge": false,
+      "selection_scope": {
+        "relation_field": "service_id",
+        "type": "connected_nodes"
+      }
     }
   },
   {
@@ -76,7 +92,11 @@
       "has_start_marker": false,
       "is_dependency_edge": true,
       "is_host_edge": false,
-      "is_physical_edge": false
+      "is_physical_edge": false,
+      "selection_scope": {
+        "relation_field": "dependency_id",
+        "type": "connected_nodes"
+      }
     }
   },
   {
@@ -92,7 +112,11 @@
       "has_start_marker": false,
       "is_dependency_edge": true,
       "is_host_edge": false,
-      "is_physical_edge": false
+      "is_physical_edge": false,
+      "selection_scope": {
+        "relation_field": "dependency_id",
+        "type": "connected_nodes"
+      }
     }
   },
   {
@@ -108,7 +132,10 @@
       "has_start_marker": false,
       "is_dependency_edge": false,
       "is_host_edge": false,
-      "is_physical_edge": true
+      "is_physical_edge": true,
+      "selection_scope": {
+        "type": "segment"
+      }
     }
   }
 ]

@@ -17692,9 +17692,18 @@
             "required": [
               "host_id",
               "service_id",
+              "containerized_service_ids",
               "edge_type"
             ],
             "properties": {
+              "containerized_service_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "description": "The containerized services this edge stands for — the ones reachable at the\nbridge subnet(s) it connects. Resolved here rather than in the inspector, which\ncannot tell which subnet an elevated edge landed on."
+              },
               "edge_type": {
                 "type": "string",
                 "enum": [

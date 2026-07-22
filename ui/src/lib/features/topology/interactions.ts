@@ -1,30 +1,18 @@
 import { writable, get } from 'svelte/store';
 import type { Edge } from '@xyflow/svelte';
 import type { Node } from '@xyflow/svelte';
-import type { QueryClient } from '@tanstack/svelte-query';
-import {
-	edgeTypes,
-	entities,
-	views,
-	serviceDefinitions,
-	subnetTypes
-} from '$lib/shared/stores/metadata';
+import { edgeTypes, entities, views, serviceDefinitions } from '$lib/shared/stores/metadata';
 import type { TopologyEdge, TopologyNode, RenderableTopology } from './types/base';
 import {
 	isDisabledEdge,
 	getHighlightBehavior,
+	getRelationKey,
 	showDirectionality
 } from './layout/edge-classification';
 import { elevateEdgesToContainers } from './layout/edge-elevation';
 import { getContainerContents, buildEntityNodeIndex, type EntityNodeIndex } from './resolvers';
-import { getHostFromIPAddressIdFromCache } from '../hosts/queries';
 import type { Network } from '$lib/features/networks/types';
 import { resolvedFreshness, type FreshnessSubject } from '$lib/shared/utils/freshness';
-import {
-	getIPAddressesForHostFromCache,
-	getIPAddressesForSubnetFromCache
-} from '../ip-addresses/queries';
-import { getSubnetByIdFromCache } from '../subnets/queries';
 import { buildFullParentMap, resolveCollapsedAncestor } from './collapse';
 
 // Shared stores for hover state across all component instances
@@ -462,65 +450,30 @@ function relatesToEntity(node: TopologyNode, entityType: string, entityId: strin
 }
 
 /**
- * Helper function to get all virtualized container interface IDs for a ContainerRuntime edge
- * Returns the set of interface IDs for all containers on Docker bridge subnets
- * Uses topology data directly if provided, otherwise falls back to query cache
+ * Node ids a click on an edge should light up.
+ *
+ * Each edge type declares its own scope (`selection_scope` in edge-type metadata). An edge
+ * that is one segment of a wider relation — a dependency's chain, a host's addresses, a
+ * container's addresses, a runtime's bridges — lights up every segment of that relation;
+ * anything else lights up its own two endpoints. No edge type is named here.
  */
-function getVirtualizedContainerNodes(
-	dockerHostInterfaceId: string,
-	queryClient: QueryClient,
-	topology?: RenderableTopology
+export function nodesConnectedByEdge(
+	edge: TopologyEdge,
+	candidateEdges: TopologyEdge[]
 ): Set<string> {
 	const connected = new Set<string>();
 
-	// Try to use topology data directly (for share views where cache is empty)
-	if (topology) {
-		const iface = topology.ip_addresses.find((i) => i.id === dockerHostInterfaceId);
-		if (!iface) return connected;
+	// The clicked edge's own endpoints always count — and for an aggregated edge those are
+	// the collapsed containers standing in for what is inside them.
+	connected.add(edge.source as string);
+	connected.add(edge.target as string);
 
-		const dockerHost = topology.hosts.find((h) => h.id === iface.host_id);
-		if (!dockerHost) return connected;
-
-		// Get all interfaces for this host
-		const hostInterfaces = topology.ip_addresses.filter((i) => i.host_id === dockerHost.id);
-		const hostInterfaceSubnetIds = hostInterfaces.map((i) => i.subnet_id);
-
-		// Find container subnets
-		const dockerBridgeSubnets = hostInterfaceSubnetIds
-			.map((subnetId) => topology.subnets.find((s) => s.id === subnetId))
-			.filter((s) => s !== undefined)
-			.filter((s) => subnetTypes.getMetadata(s.subnet_type).is_for_containers);
-
-		// Get all interfaces on those container subnets
-		const interfacesOnDockerSubnets = dockerBridgeSubnets.flatMap((s) =>
-			topology.ip_addresses.filter((i) => i.subnet_id === s.id)
-		);
-
-		for (const iface of interfacesOnDockerSubnets) {
-			connected.add(iface.id);
-		}
-
-		return connected;
-	}
-
-	// Fall back to query cache
-	const dockerHost = getHostFromIPAddressIdFromCache(queryClient, dockerHostInterfaceId);
-	if (dockerHost) {
-		// Get all interfaces for this host from the cache
-		const hostInterfaces = getIPAddressesForHostFromCache(queryClient, dockerHost.id);
-		const hostInterfaceSubnetIds = hostInterfaces.map((i) => i.subnet_id);
-
-		const dockerBridgeSubnets = hostInterfaceSubnetIds
-			.map((s) => getSubnetByIdFromCache(queryClient, s))
-			.filter((s) => s !== null)
-			.filter((s) => subnetTypes.getMetadata(s.subnet_type).is_for_containers);
-
-		const interfacesOnDockerSubnets = dockerBridgeSubnets.flatMap((s) =>
-			getIPAddressesForSubnetFromCache(queryClient, s.id)
-		);
-
-		for (const iface of interfacesOnDockerSubnets) {
-			connected.add(iface.id);
+	const relationKey = getRelationKey(edge);
+	if (relationKey) {
+		for (const other of candidateEdges) {
+			if (getRelationKey(other) !== relationKey) continue;
+			connected.add(other.source as string);
+			connected.add(other.target as string);
 		}
 	}
 
@@ -571,7 +524,6 @@ export function updateConnectedNodes(
 	selectedEdge: Edge | null,
 	allEdges: Edge[],
 	allNodes: Node[],
-	queryClient: QueryClient,
 	topology?: RenderableTopology,
 	multiSelectedNodes?: Node[],
 	hiddenEdgeTypes?: string[]
@@ -639,20 +591,14 @@ export function updateConnectedNodes(
 			if (behavior === 'never') continue;
 			if (behavior === 'when_visible' && hiddenEdgeTypes?.includes(edge.edge_type)) continue;
 
-			// Add directly connected nodes
+			// Add directly connected nodes. Container-runtime edges land on the bridge box
+			// itself (they target containers), and addContainerHighlights below expands that
+			// box to the container cards inside it.
 			if (edge.source === selectedNode.id) {
 				connected.add(edge.target);
 			}
 			if (edge.target === selectedNode.id) {
 				connected.add(edge.source);
-			}
-
-			// For virtualization edges, also add virtualized container nodes
-			if (edge.edge_type === 'ContainerRuntime') {
-				if (edge.source === selectedNode.id || edge.target === selectedNode.id) {
-					const virtualizedNodes = getVirtualizedContainerNodes(edge.source, queryClient, topology);
-					virtualizedNodes.forEach((nodeId) => connected.add(nodeId));
-				}
 			}
 		}
 
@@ -670,59 +616,25 @@ export function updateConnectedNodes(
 			return;
 		}
 
-		// Bundle edge: highlight all bundled edges' source/target nodes
+		// A bundle is drawn as one line standing for several edges, so a click on it counts as
+		// a click on each of them.
 		const anyData = selectedEdge.data as Record<string, unknown> | undefined;
-		if (anyData?.isBundle && Array.isArray(anyData.bundleEdges)) {
-			for (const bundledEdge of anyData.bundleEdges as TopologyEdge[]) {
-				connected.add(bundledEdge.source as string);
-				connected.add(bundledEdge.target as string);
-			}
-			addContainerHighlights(connected, allNodes, topology);
-			connectedNodeIds.set(connected);
-			return;
-		}
+		const clickedEdges =
+			anyData?.isBundle && Array.isArray(anyData.bundleEdges)
+				? (anyData.bundleEdges as TopologyEdge[])
+				: [edgeData];
 
-		const edgeTypeMetadata = edgeTypes.getMetadata(edgeData.edge_type);
+		// Elevated topology edges, matching the endpoints the selected edge itself carries —
+		// and unlike the rendered flow edges, they still include every member of a bundle.
+		const rawEdges = topology?.edges ?? [];
+		const candidateEdges = rawEdges.length
+			? elevateEdgesToContainers(rawEdges, topology?.nodes ?? [])
+			: allEdges
+					.map((e) => e.data as TopologyEdge | undefined)
+					.filter((e): e is TopologyEdge => !!e);
 
-		// For group edges
-		if (edgeTypeMetadata.is_dependency_edge && 'dependency_id' in edgeData) {
-			const dependencyId = edgeData.dependency_id as string;
-
-			// Find all edges in this dependency and add their connected nodes
-			for (const edge of allEdges) {
-				const eData = edge.data as TopologyEdge | undefined;
-				if (!eData) continue;
-				const eMetadata = edgeTypes.getMetadata(eData.edge_type);
-
-				if (
-					eMetadata.is_dependency_edge &&
-					'dependency_id' in eData &&
-					eData.dependency_id === dependencyId
-				) {
-					connected.add(eData.source as string);
-					connected.add(eData.target as string);
-				}
-			}
-		} else if (edgeData.edge_type === 'ContainerRuntime') {
-			// For ContainerRuntime edges, add source, target, and all virtualized containers
-			connected.add(edgeData.source as string);
-			connected.add(edgeData.target as string);
-
-			// Add all virtualized container nodes
-			const virtualizedNodes = getVirtualizedContainerNodes(
-				edgeData.source as string,
-				queryClient,
-				topology
-			);
-			virtualizedNodes.forEach((nodeId) => connected.add(nodeId));
-		} else if (edgeData.edge_type === 'Hypervisor') {
-			// For Hypervisor edges, add source and target
-			connected.add(edgeData.source as string);
-			connected.add(edgeData.target as string);
-		} else {
-			// For other non-group edges, just add source and target
-			connected.add(edgeData.source as string);
-			connected.add(edgeData.target as string);
+		for (const clicked of clickedEdges) {
+			for (const id of nodesConnectedByEdge(clicked, candidateEdges)) connected.add(id);
 		}
 
 		addContainerHighlights(connected, allNodes, topology);
