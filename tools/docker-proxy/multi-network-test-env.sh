@@ -58,6 +58,13 @@ cmd_up() {
 
     printf "\n${BOLD}Starting containers...${NC}\n"
 
+    # Recreate from a known state — re-running `up` should be safe.
+    for name in "${CONTAINERS[@]}"; do
+        if docker container inspect "$name" &>/dev/null; then
+            docker rm -f "$name" >/dev/null
+        fi
+    done
+
     # Multi-attach with exposed ports — the core case. nginx exposes 80 in its image, so the
     # container reports a private port on every endpoint it holds.
     docker run -d --name sc-test-api --network scanopy-test-proxy nginx:alpine >/dev/null
