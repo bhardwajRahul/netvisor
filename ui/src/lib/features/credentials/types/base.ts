@@ -6,6 +6,8 @@ export type Credential = components['schemas']['Credential'];
 export type CredentialBase = components['schemas']['CredentialBase'];
 export type CredentialType = components['schemas']['CredentialType'];
 export type CredentialOrderField = components['schemas']['CredentialOrderField'];
+/** Which integrations run on a daemon, and against which hosts. */
+export type IntegrationTarget = components['schemas']['IntegrationTarget'];
 
 // Re-export SNMP types still used by other features (Interface display, etc.)
 export type Interface = components['schemas']['Interface'];

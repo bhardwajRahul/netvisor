@@ -35,7 +35,8 @@
 		selectedNetworkId: string;
 		onNetworkChange: (id: string) => void;
 		onNameInput?: () => void;
-		keySet: boolean;
+		/** Daemon identity is frozen once Configure is left — the record is provisioned from it. */
+		identityLocked: boolean;
 		isFirstDaemon?: boolean;
 		onReachabilityChange?: (reachable: boolean | null) => void;
 		reachabilityResult?: { reachable: boolean; error?: string } | null;
@@ -47,7 +48,7 @@
 		selectedNetworkId,
 		onNetworkChange,
 		onNameInput,
-		keySet,
+		identityLocked,
 		isFirstDaemon = false,
 		onReachabilityChange,
 		reachabilityResult = $bindable(null)
@@ -109,7 +110,7 @@
 		<SelectNetwork
 			{selectedNetworkId}
 			onNetworkChange={(id) => onNetworkChange(id)}
-			disabled={keySet}
+			disabled={identityLocked}
 			disabledReason={daemons_networkCannotChange()}
 		/>
 	{/if}
@@ -148,7 +149,7 @@
 						helpText: daemons_config_modeServerPollHelp()
 					}
 				]}
-				disabled={keySet}
+				disabled={identityLocked}
 			/>
 		{/snippet}
 	</form.Field>
