@@ -430,9 +430,16 @@ impl SubnetGraphBuilder {
                         None
                     };
 
+                // Container-runtime edges target the container box rather than each
+                // container's individual IP address. That holds for a merged bridge group,
+                // and equally for a lone bridge subnet when merging is switched off —
+                // otherwise un-merging trades one edge per host for one per container.
                 let will_accept_edges = self
                     .consolidated_container_bridge_subnets
-                    .contains_key(subnet_id);
+                    .contains_key(subnet_id)
+                    || ctx
+                        .get_subnet_by_id(*subnet_id)
+                        .is_some_and(|s| s.base.subnet_type.is_container_bridge());
                 Node {
                     id: *subnet_id,
                     node_type: NodeType::Container {

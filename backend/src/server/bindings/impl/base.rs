@@ -268,6 +268,28 @@ impl Binding {
         }
     }
 
+    /// A copy of this binding anchored to a different IP address, with its own identity.
+    ///
+    /// For services reachable at several of their host's IP addresses: a container attached
+    /// to more than one bridge subnet reports an endpoint on each, and the bindings resolved
+    /// against one endpoint apply equally to the others. An all-IP-addresses port binding
+    /// (`ip_address_id: None`) already covers every address, so rebinding narrows it to the
+    /// given address rather than leaving it unanchored.
+    pub fn rebound_to_ip_address(&self, ip_address_id: Uuid) -> Self {
+        let binding_type = match self.base.binding_type {
+            BindingType::IPAddress { .. } => BindingType::IPAddress { ip_address_id },
+            BindingType::Port { port_id, .. } => BindingType::Port {
+                port_id,
+                ip_address_id: Some(ip_address_id),
+            },
+        };
+
+        Self::new(BindingBase {
+            binding_type,
+            ..self.base
+        })
+    }
+
     /// Set the service_id and network_id (for serviceless bindings that get resolved later)
     pub fn with_service(mut self, service_id: Uuid, network_id: Uuid) -> Self {
         self.base.service_id = service_id;
