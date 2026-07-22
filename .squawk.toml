@@ -1,6 +1,4 @@
 # squawk — Postgres migration linter
-# Rules map to the guidelines in /Users/maya/dev/infra/docs/migration-guidelines.md.
-# The pre-20260501 cutoff is enforced by backend/scripts/lint-migrations.sh, not here.
 
 # sqlx wraps each migration in a transaction by default (unless the file starts
 # with the `-- no-transaction` header). Without this, squawk false-positives on
