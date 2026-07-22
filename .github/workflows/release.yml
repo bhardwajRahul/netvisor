@@ -445,8 +445,10 @@ jobs:
         run: |
           VERSION="${{ github.event.release.tag_name }}"
           VERSION="${VERSION#v}"
+          # cargo-wix has no --ext flag; it already links WixUtilExtension
+          # (candle+light) and WixUIExtension (light) by default, which is what
+          # main.wxs needs (util namespace + WixUI_InstallDir dialog set).
           cargo wix --no-build --nocapture \
-            --ext WixUtilExtension --ext WixUIExtension \
             --install-version "$VERSION" \
             --output "../scanopy-daemon-windows-amd64.msi"
 
