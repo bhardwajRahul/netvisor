@@ -26,6 +26,13 @@ describe('duration split/combine', () => {
 		expect(splitHours(0)).toEqual({ days: null, hours: null });
 	});
 
+	// An hours-only duration must be expressible: 6 hours is 6 hours, not
+	// "the 28-day default plus 6 hours".
+	it('supports an hours-only duration with no days component', () => {
+		expect(combineToHours(null, 6)).toBe(6);
+		expect(splitHours(6)).toEqual({ days: null, hours: 6 });
+	});
+
 	it('ignores negative input rather than shortening the window', () => {
 		expect(combineToHours(-5, 3)).toBe(3);
 		expect(combineToHours(2, -10)).toBe(48);

@@ -11177,19 +11177,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-22T18:38:10.344022Z",
+              "created_at": "2026-07-22T19:37:30.106912Z",
               "first_discovery_id": null,
-              "id": "e528a656-7a82-4218-80fc-2f6b99fee363",
+              "id": "d4bb038f-8d53-404f-89f6-211f2b86f452",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-22T18:38:10.344022Z",
+              "last_seen_at": "2026-07-22T19:37:30.106912Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-22T18:38:10.344022Z",
-              "valid_from": "2026-07-22T18:38:10.344022Z",
+              "updated_at": "2026-07-22T19:37:30.106912Z",
+              "valid_from": "2026-07-22T19:37:30.106912Z",
               "valid_to": null
             }
           },
@@ -12024,6 +12024,7 @@
               "id",
               "created_at",
               "updated_at",
+              "last_seen_at",
               "name",
               "network_id",
               "source",
@@ -12082,6 +12083,11 @@
                 "items": {
                   "$ref": "#/components/schemas/IPAddress"
                 }
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Last time discovery observed this host. User-facing (drives the \"Last\nseen\" column and the stale badge), which is why it is carried here while\nthe rest of the SCD2/audit columns are not."
               },
               "management_url": {
                 "type": [
@@ -12220,6 +12226,7 @@
                   "valid_to": null
                 }
               ],
+              "last_seen_at": "2026-01-15T10:30:00Z",
               "name": "web-server-01",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "ports": [
@@ -12244,19 +12251,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-22T18:38:10.329950Z",
+                      "created_at": "2026-07-22T19:37:30.088187Z",
                       "first_discovery_id": null,
-                      "id": "13459e89-59bb-487b-9257-3bd9d0549ef9",
+                      "id": "8e24c4f1-f5f0-4a39-aa4e-e659727c8f5f",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-22T18:38:10.329950Z",
+                      "last_seen_at": "2026-07-22T19:37:30.088187Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-22T18:38:10.329950Z",
-                      "valid_from": "2026-07-22T18:38:10.329950Z",
+                      "updated_at": "2026-07-22T19:37:30.088187Z",
+                      "valid_from": "2026-07-22T19:37:30.088187Z",
                       "valid_to": null
                     }
                   ],
@@ -12270,7 +12277,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Kerberos",
+                  "service_definition": "Gatus",
                   "source": {
                     "type": "Manual"
                   },
@@ -13340,19 +13347,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-22T18:38:10.339250Z",
+                  "created_at": "2026-07-22T19:37:30.098351Z",
                   "first_discovery_id": null,
-                  "id": "666b2737-652e-400f-a802-beccf84fcf94",
+                  "id": "b0795587-ca6a-4f9e-b492-0b2ba1dcdf65",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-22T18:38:10.339250Z",
+                  "last_seen_at": "2026-07-22T19:37:30.098351Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-22T18:38:10.339250Z",
-                  "valid_from": "2026-07-22T18:38:10.339250Z",
+                  "updated_at": "2026-07-22T19:37:30.098351Z",
+                  "valid_from": "2026-07-22T19:37:30.098351Z",
                   "valid_to": null
                 }
               ],
@@ -13366,7 +13373,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Kerberos",
+              "service_definition": "Gatus",
               "source": {
                 "type": "Manual"
               },
@@ -15236,19 +15243,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-22T18:38:10.330221Z",
+          "created_at": "2026-07-22T19:37:30.088444Z",
           "first_discovery_id": null,
-          "id": "6577bed9-7cf9-4794-863c-871ae9fffce3",
+          "id": "c6e7760f-a70c-4498-b787-3766442e50c3",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-22T18:38:10.330221Z",
+          "last_seen_at": "2026-07-22T19:37:30.088444Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-22T18:38:10.330221Z",
-          "valid_from": "2026-07-22T18:38:10.330221Z",
+          "updated_at": "2026-07-22T19:37:30.088444Z",
+          "valid_from": "2026-07-22T19:37:30.088444Z",
           "valid_to": null
         }
       },
@@ -15839,7 +15846,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Kerberos",
+              "service_definition": "Gatus",
               "tags": [],
               "virtualization": null
             }
@@ -18519,6 +18526,7 @@
           "id",
           "created_at",
           "updated_at",
+          "last_seen_at",
           "name",
           "network_id",
           "source",
@@ -18577,6 +18585,11 @@
             "items": {
               "$ref": "#/components/schemas/IPAddress"
             }
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last time discovery observed this host. User-facing (drives the \"Last\nseen\" column and the stale badge), which is why it is carried here while\nthe rest of the SCD2/audit columns are not."
           },
           "management_url": {
             "type": [
@@ -18715,6 +18728,7 @@
               "valid_to": null
             }
           ],
+          "last_seen_at": "2026-01-15T10:30:00Z",
           "name": "web-server-01",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "ports": [
@@ -18739,19 +18753,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-22T18:38:10.329635Z",
+                  "created_at": "2026-07-22T19:37:30.087887Z",
                   "first_discovery_id": null,
-                  "id": "b087db8c-bffc-445e-928d-60aef2f78f3b",
+                  "id": "4699ea1e-08fd-44f5-ad94-1cca3576f314",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-22T18:38:10.329635Z",
+                  "last_seen_at": "2026-07-22T19:37:30.087887Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-22T18:38:10.329635Z",
-                  "valid_from": "2026-07-22T18:38:10.329635Z",
+                  "updated_at": "2026-07-22T19:37:30.087887Z",
+                  "valid_from": "2026-07-22T19:37:30.087887Z",
                   "valid_to": null
                 }
               ],
@@ -18765,7 +18779,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Kerberos",
+              "service_definition": "Gatus",
               "source": {
                 "type": "Manual"
               },
@@ -21153,6 +21167,7 @@
                 "id",
                 "created_at",
                 "updated_at",
+                "last_seen_at",
                 "name",
                 "network_id",
                 "source",
@@ -21211,6 +21226,11 @@
                   "items": {
                     "$ref": "#/components/schemas/IPAddress"
                   }
+                },
+                "last_seen_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Last time discovery observed this host. User-facing (drives the \"Last\nseen\" column and the stale badge), which is why it is carried here while\nthe rest of the SCD2/audit columns are not."
                 },
                 "management_url": {
                   "type": [
@@ -21349,6 +21369,7 @@
                     "valid_to": null
                   }
                 ],
+                "last_seen_at": "2026-01-15T10:30:00Z",
                 "name": "web-server-01",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "ports": [
@@ -21373,19 +21394,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-22T18:38:10.322442Z",
+                        "created_at": "2026-07-22T19:37:30.081830Z",
                         "first_discovery_id": null,
-                        "id": "c4da5b65-44d2-49ff-ab7f-39adad545f7b",
+                        "id": "45f65948-68a3-4b9e-abee-b31dd3e64ddd",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-22T18:38:10.322442Z",
+                        "last_seen_at": "2026-07-22T19:37:30.081830Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-22T18:38:10.322442Z",
-                        "valid_from": "2026-07-22T18:38:10.322442Z",
+                        "updated_at": "2026-07-22T19:37:30.081830Z",
+                        "valid_from": "2026-07-22T19:37:30.081830Z",
                         "valid_to": null
                       }
                     ],
@@ -21399,7 +21420,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Kerberos",
+                    "service_definition": "Gatus",
                     "source": {
                       "type": "Manual"
                     },
@@ -21520,19 +21541,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-22T18:38:10.338397Z",
+                    "created_at": "2026-07-22T19:37:30.097421Z",
                     "first_discovery_id": null,
-                    "id": "4ebd84fa-1156-4c79-b345-8d68b70f5e52",
+                    "id": "0645387f-147f-4455-a813-50a5e0c27cad",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-22T18:38:10.338397Z",
+                    "last_seen_at": "2026-07-22T19:37:30.097421Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-22T18:38:10.338397Z",
-                    "valid_from": "2026-07-22T18:38:10.338397Z",
+                    "updated_at": "2026-07-22T19:37:30.097421Z",
+                    "valid_from": "2026-07-22T19:37:30.097421Z",
                     "valid_to": null
                   }
                 ],
@@ -21546,7 +21567,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Kerberos",
+                "service_definition": "Gatus",
                 "source": {
                   "type": "Manual"
                 },
@@ -23249,19 +23270,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-22T18:38:10.330162Z",
+              "created_at": "2026-07-22T19:37:30.088381Z",
               "first_discovery_id": null,
-              "id": "19ee70fc-7d10-4c5f-b897-0909bb677150",
+              "id": "94d96134-5f9e-4b86-812a-74754e1a3b68",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-22T18:38:10.330162Z",
+              "last_seen_at": "2026-07-22T19:37:30.088381Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-22T18:38:10.330162Z",
-              "valid_from": "2026-07-22T18:38:10.330162Z",
+              "updated_at": "2026-07-22T19:37:30.088381Z",
+              "valid_from": "2026-07-22T19:37:30.088381Z",
               "valid_to": null
             }
           ],
@@ -23275,7 +23296,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Kerberos",
+          "service_definition": "Gatus",
           "source": {
             "type": "Manual"
           },
@@ -24407,7 +24428,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "91723c46-a56f-4afe-8d55-ab533dbb467a",
+                  "id": "b7498872-8ea3-4dfd-8e84-bfa7c5e60098",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24417,23 +24438,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "53d832f3-26c2-4249-b9b4-e438d47c0683",
+                  "id": "acbae986-5fd9-40d6-8ee2-13d08b40fcb2",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "41852e76-d18a-4331-84ff-2a2ec7edb522",
+                  "id": "9e28a308-af40-4d8a-b8f5-f82ba0c59661",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "33233da8-b650-49b5-bb9c-c659ca4bb40d",
+                  "id": "d40e785b-d01c-4076-bf26-efc5707177ca",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "53d832f3-26c2-4249-b9b4-e438d47c0683",
+                  "id": "acbae986-5fd9-40d6-8ee2-13d08b40fcb2",
                   "rule": "ByHost"
                 }
               ]
@@ -24462,19 +24483,19 @@
             },
             "default": [
               {
-                "id": "be814ef6-8fbe-4307-b849-2c9845976e30",
+                "id": "785ad67b-4da3-4bd3-9ae1-67383189067b",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "566002b0-3684-45f9-89a4-aa9d633ffc08",
+                "id": "b8fe443d-ff92-444f-be93-11ffa204f69e",
                 "rule": "ByVLAN"
               },
               {
-                "id": "715762ec-b8a4-471e-bf34-fc4f3fec4445",
+                "id": "e08bd121-2188-40d8-a9b0-b0262d06b582",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "eb734de0-fea7-4065-843f-24cc5f1da808",
+                "id": "e10fdd01-ca2f-4f34-b709-fac195f7539b",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24492,7 +24513,7 @@
                 }
               },
               {
-                "id": "75fc5526-e70d-4b43-b9c3-2885d38f198c",
+                "id": "48716fb3-795e-4581-a57a-2cba65ab9972",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24501,15 +24522,15 @@
                 }
               },
               {
-                "id": "70fc3d5d-3bfa-4071-bfe1-0007ec1fcfef",
+                "id": "555ef6ae-c149-401d-a1a3-fc137fd975fe",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "78c50cc0-ac78-43cb-8766-fbf9157da1e6",
+                "id": "117fcd20-fa4c-4c6d-98e1-01a521275a9a",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "aebcf872-3c99-4d40-bd7c-c14829b76134",
+                "id": "4deec61c-0556-4c65-80b6-fad4decbdd67",
                 "rule": "ByStack"
               }
             ]
@@ -24583,7 +24604,8 @@
                   "description": "The kind of metadata filter. One variant per conceptually-distinct filter\nacross the app — Category (on Service), Virtualization (on Host), and so\non. Kept narrow on purpose: adding a new filter means adding a variant\nhere + a `HasFilterValues` impl on the relevant entity.",
                   "enum": [
                     "Category",
-                    "Virtualization"
+                    "Virtualization",
+                    "Staleness"
                   ]
                 }
               },

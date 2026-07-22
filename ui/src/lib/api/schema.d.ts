@@ -3104,19 +3104,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-22T18:38:10.344024Z",
+             *       "created_at": "2026-07-22T19:37:30.106901Z",
              *       "first_discovery_id": null,
-             *       "id": "ab218d10-9d19-4a70-b45b-b8fafb5e77bb",
+             *       "id": "6feef248-864d-47b1-b20b-7d223ccb4cef",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-22T18:38:10.344024Z",
+             *       "last_seen_at": "2026-07-22T19:37:30.106901Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-22T18:38:10.344024Z",
-             *       "valid_from": "2026-07-22T18:38:10.344024Z",
+             *       "updated_at": "2026-07-22T19:37:30.106901Z",
+             *       "valid_from": "2026-07-22T19:37:30.106901Z",
              *       "valid_to": null
              *     }
              */
@@ -3457,6 +3457,7 @@ export interface components {
              *           "valid_to": null
              *         }
              *       ],
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
              *       "name": "web-server-01",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "ports": [
@@ -3481,19 +3482,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-22T18:38:10.329979Z",
+             *               "created_at": "2026-07-22T19:37:30.088157Z",
              *               "first_discovery_id": null,
-             *               "id": "a990494b-da0c-45e4-9dd2-5306c1c72425",
+             *               "id": "2d97a2e4-4879-48c8-ae22-cb698f886e61",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-22T18:38:10.329979Z",
+             *               "last_seen_at": "2026-07-22T19:37:30.088157Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-22T18:38:10.329979Z",
-             *               "valid_from": "2026-07-22T18:38:10.329979Z",
+             *               "updated_at": "2026-07-22T19:37:30.088157Z",
+             *               "valid_from": "2026-07-22T19:37:30.088157Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3507,7 +3508,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Kerberos",
+             *           "service_definition": "Gatus",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3539,6 +3540,13 @@ export interface components {
                 /** @description SNMP ifTable entries */
                 interfaces: components["schemas"]["Interface"][];
                 ip_addresses: components["schemas"]["IPAddress"][];
+                /**
+                 * Format: date-time
+                 * @description Last time discovery observed this host. User-facing (drives the "Last
+                 *     seen" column and the stale badge), which is why it is carried here while
+                 *     the rest of the SCD2/audit columns are not.
+                 */
+                last_seen_at: string;
                 management_url?: string | null;
                 name: string;
                 /** Format: uuid */
@@ -3917,19 +3925,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-22T18:38:10.339196Z",
+             *           "created_at": "2026-07-22T19:37:30.098348Z",
              *           "first_discovery_id": null,
-             *           "id": "f3bcb1ef-9378-45b5-9410-01d995e3c88e",
+             *           "id": "81d00d1b-d54e-4715-ab6a-7a52c9fa02a5",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-22T18:38:10.339196Z",
+             *           "last_seen_at": "2026-07-22T19:37:30.098348Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-22T18:38:10.339196Z",
-             *           "valid_from": "2026-07-22T18:38:10.339196Z",
+             *           "updated_at": "2026-07-22T19:37:30.098348Z",
+             *           "valid_from": "2026-07-22T19:37:30.098348Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3943,7 +3951,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Kerberos",
+             *       "service_definition": "Gatus",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4447,19 +4455,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-22T18:38:10.330255Z",
+         *       "created_at": "2026-07-22T19:37:30.088394Z",
          *       "first_discovery_id": null,
-         *       "id": "7ff7c879-ad4e-42d7-8ef4-6adff4b54449",
+         *       "id": "9a4ad2f9-ee82-4bdb-80d1-f45cab26c42a",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-22T18:38:10.330255Z",
+         *       "last_seen_at": "2026-07-22T19:37:30.088394Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-22T18:38:10.330255Z",
-         *       "valid_from": "2026-07-22T18:38:10.330255Z",
+         *       "updated_at": "2026-07-22T19:37:30.088394Z",
+         *       "valid_from": "2026-07-22T19:37:30.088394Z",
          *       "valid_to": null
          *     }
          */
@@ -4674,7 +4682,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Kerberos",
+         *           "service_definition": "Gatus",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5738,6 +5746,7 @@ export interface components {
          *           "valid_to": null
          *         }
          *       ],
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
          *       "name": "web-server-01",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "ports": [
@@ -5762,19 +5771,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-22T18:38:10.329639Z",
+         *               "created_at": "2026-07-22T19:37:30.087879Z",
          *               "first_discovery_id": null,
-         *               "id": "c033cbc0-a3eb-4135-a2b9-ce4e16800021",
+         *               "id": "efc492f1-11d5-4eeb-8406-ee9d29622f52",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-22T18:38:10.329639Z",
+         *               "last_seen_at": "2026-07-22T19:37:30.087879Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-22T18:38:10.329639Z",
-         *               "valid_from": "2026-07-22T18:38:10.329639Z",
+         *               "updated_at": "2026-07-22T19:37:30.087879Z",
+         *               "valid_from": "2026-07-22T19:37:30.087879Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5788,7 +5797,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Kerberos",
+         *           "service_definition": "Gatus",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5820,6 +5829,13 @@ export interface components {
             /** @description SNMP ifTable entries */
             interfaces: components["schemas"]["Interface"][];
             ip_addresses: components["schemas"]["IPAddress"][];
+            /**
+             * Format: date-time
+             * @description Last time discovery observed this host. User-facing (drives the "Last
+             *     seen" column and the stale badge), which is why it is carried here while
+             *     the rest of the SCD2/audit columns are not.
+             */
+            last_seen_at: string;
             management_url?: string | null;
             name: string;
             /** Format: uuid */
@@ -6691,6 +6707,13 @@ export interface components {
                 /** @description SNMP ifTable entries */
                 interfaces: components["schemas"]["Interface"][];
                 ip_addresses: components["schemas"]["IPAddress"][];
+                /**
+                 * Format: date-time
+                 * @description Last time discovery observed this host. User-facing (drives the "Last
+                 *     seen" column and the stale badge), which is why it is carried here while
+                 *     the rest of the SCD2/audit columns are not.
+                 */
+                last_seen_at: string;
                 management_url?: string | null;
                 name: string;
                 /** Format: uuid */
@@ -7399,19 +7422,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-22T18:38:10.330193Z",
+         *           "created_at": "2026-07-22T19:37:30.088342Z",
          *           "first_discovery_id": null,
-         *           "id": "a84c230f-9b22-4005-9af6-d595b415ebe2",
+         *           "id": "0c335194-6d64-4467-ac22-f240d0010176",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-22T18:38:10.330193Z",
+         *           "last_seen_at": "2026-07-22T19:37:30.088342Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-22T18:38:10.330193Z",
-         *           "valid_from": "2026-07-22T18:38:10.330193Z",
+         *           "updated_at": "2026-07-22T19:37:30.088342Z",
+         *           "valid_from": "2026-07-22T19:37:30.088342Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7425,7 +7448,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Kerberos",
+         *       "service_definition": "Gatus",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7848,7 +7871,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "f6a64970-26dc-49ad-96c8-7763be711801",
+             *           "id": "3e7ac4e2-e865-4d7e-b078-a28517d76940",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7858,23 +7881,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "8db5ea75-ab4c-4a80-95ab-5a5876db5e97",
+             *           "id": "bb359382-1048-4b70-9fd0-f699dfd602c1",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "4ad63ccd-9c94-4bea-97e5-b18d6d9b5f7d",
+             *           "id": "1f2df5b0-aebe-4101-806e-f20f18de1ed9",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "669fb76d-0ed0-419c-8b67-d8417965a855",
+             *           "id": "62db402d-4b98-46ea-adf3-1176c4374bf1",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "8db5ea75-ab4c-4a80-95ab-5a5876db5e97",
+             *           "id": "bb359382-1048-4b70-9fd0-f699dfd602c1",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7886,19 +7909,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "b61f1d54-78d9-4a42-99bf-9ebd3d132a81",
+             *         "id": "0390fdbf-7ef4-42b7-a2eb-ec7fd8da7b06",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "fdaaa9b7-2a7c-46b5-97fb-6a72013b9e3e",
+             *         "id": "25ee70fe-e6f1-4892-a22f-d07248d4420c",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "b4f5d679-162f-45ed-94a1-de810d9ef51a",
+             *         "id": "18f3a9b7-4beb-4d20-8e6e-ad2057a60ab0",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "11c27240-0383-49d1-9ec9-8f04ed2ec813",
+             *         "id": "44c7fb2d-bac5-4d20-b316-028262957f60",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7916,7 +7939,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "d96da2e3-8226-46d7-aff2-deb9b71f31dd",
+             *         "id": "599b70ec-70f7-430f-a52b-faab95982b43",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7925,15 +7948,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "6377cfeb-2d75-4349-a87c-26e12717302c",
+             *         "id": "ae8b6b09-68a1-4f9d-8d69-d03dd0c63d67",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "4b025a32-75bd-4f8f-a389-25f2fc8a5be0",
+             *         "id": "3ad9c459-0bac-4cf1-a52d-5fbff39a6068",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "bd688fed-55e5-42de-b362-cecec621b964",
+             *         "id": "6b8f05d1-e511-4657-b928-5ff8598a759a",
              *         "rule": "ByStack"
              *       }
              *     ]

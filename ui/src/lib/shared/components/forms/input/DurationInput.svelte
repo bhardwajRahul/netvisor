@@ -70,9 +70,15 @@
 		sync();
 	}
 
-	// Split the placeholder the same way so the empty state reads as the
-	// default duration rather than a raw hour count.
-	let placeholder = $derived(splitHours(placeholderHours));
+	// The default is only a meaningful suggestion while the whole field is
+	// empty. Once either box has a value the pair reads as one duration, so the
+	// other box must show 0 — otherwise entering "6" in hours renders as
+	// "[28] days [6] hours" and implies 28d 6h when the value is 6 hours.
+	let hasAnyValue = $derived(days !== null || hours !== null);
+	let defaultSplit = $derived(splitHours(placeholderHours));
+	let placeholder = $derived(
+		hasAnyValue ? { days: 0, hours: 0 } : { days: defaultSplit.days, hours: defaultSplit.hours }
+	);
 </script>
 
 <FormField {label} {field} {required} {helpText} {id}>

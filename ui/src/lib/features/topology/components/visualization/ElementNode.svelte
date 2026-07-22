@@ -10,9 +10,9 @@
 		activeView
 	} from '../../queries';
 	import { useTopology, selectedTopologyId } from '../../context';
-	import { Clock } from 'lucide-svelte';
+	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { entityFreshness, lastSeenLabel } from '$lib/shared/utils/freshness';
+	import { getFreshnessTag, lastSeenLabel } from '$lib/shared/utils/freshness';
 
 	const networksQuery = useNetworksQuery();
 	import type { TopologyNode, ElementRenderData, RenderableTopology } from '../../types/base';
@@ -125,8 +125,8 @@
 	let staleNetwork = $derived(
 		(networksQuery.data ?? []).find((n) => n.id === freshnessSubject?.network_id)
 	);
-	let isStale = $derived(
-		!!freshnessSubject && entityFreshness(freshnessSubject, staleNetwork) === 'stale'
+	let staleTag = $derived(
+		freshnessSubject ? getFreshnessTag(freshnessSubject, staleNetwork) : null
 	);
 	let staleTitle = $derived(freshnessSubject ? lastSeenLabel(freshnessSubject) : '');
 	let servicesForHost = $derived(resolved?.services ?? []);
@@ -541,13 +541,14 @@
 			} else if (entityType === 'Host' && (elType === 'IPAddress' || elType === 'Interface')) {
 				cardEntity = resolved.host ?? null;
 			}
-			if (cardEntity && extractor(cardEntity) === valueId) {
+			if (cardEntity && extractor(cardEntity, { network: staleNetwork }) === valueId) {
 				return { mode: 'element', color };
 			}
 
 			if (entityType === 'Service' && nodeRenderData?.services?.length) {
 				for (const service of nodeRenderData.services) {
-					if (extractor(service) === valueId) return { mode: 'inline', color };
+					if (extractor(service, { network: staleNetwork }) === valueId)
+						return { mode: 'inline', color };
 				}
 			}
 			return null;
@@ -667,15 +668,14 @@
 		class={`${cardClass} ${isNewNode ? 'animate-pulse-highlight' : ''} ${serviceHoverShadowStyle ? 'animate-pulse-highlight-once' : ''} ${isEntityTypeHover ? 'entity-type-hover-active' : ''}`}
 		style={`width: ${effectiveWidth}px; height: 100%; display: flex; flex-direction: column; padding: 0; opacity: ${nodeOpacity}; transition: opacity 0.2s ease-in-out, box-shadow 0.15s ease-in-out; ${isNewNode ? `--pulse-color: ${discoveryColorHelper.rgb};` : ''} ${serviceHoverShadowStyle} ${tagHoverRingStyle}`}
 	>
-		<!-- Staleness marker: same clock + amber the inventory card badge and
-		     the digest email use, so one entity reads the same way everywhere. -->
-		{#if isStale}
-			<div
-				class="absolute right-1 top-1 z-10 text-amber-600 dark:text-amber-400"
-				title={staleTitle}
-				aria-label={staleTitle}
-			>
-				<Clock size={12} strokeWidth={2.5} />
+		<!-- Staleness tag: the same Tag component, label, colour and icon the
+		     inventory card badge uses (both come from `getFreshnessTag`), so one
+		     entity reads identically in the list, the map and the digest.
+		     Additive rather than an opacity change — opacity is already the
+		     filter/search dimming channel. -->
+		{#if staleTag}
+			<div class="absolute -top-2 right-1 z-10" title={staleTitle}>
+				<Tag {...staleTag} pill />
 			</div>
 		{/if}
 
@@ -720,7 +720,8 @@
 						const extractor =
 							FILTER_VALUE_EXTRACTORS['Service']?.[currentHoveredMetadata.filterType];
 						if (!extractor) return '';
-						if (extractor(service) !== currentHoveredMetadata.valueId) return '';
+						if (extractor(service, { network: staleNetwork }) !== currentHoveredMetadata.valueId)
+							return '';
 						const ch = createColorHelper(
 							currentHoveredMetadata.color as Parameters<typeof createColorHelper>[0]
 						);

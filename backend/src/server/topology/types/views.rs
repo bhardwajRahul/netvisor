@@ -6,6 +6,7 @@ use crate::server::{
     shared::{
         concepts::Concept,
         entities::EntityDiscriminants,
+        types::entities::EntityFreshness,
         types::{
             Color, Icon,
             metadata::{
@@ -124,6 +125,59 @@ pub struct ViewElementConfig {
     pub collective_noun: Option<String>,
 }
 
+impl ViewElementConfig {
+    /// Attach the staleness filter to every entity in this view that both
+    /// carries a freshness verdict and can actually be hidden by one.
+    ///
+    /// Derived from the view's own hierarchy rather than hand-written per view,
+    /// so a new view — or a view that gains a Host/Service slot — picks the
+    /// filter up automatically and cannot forget it.
+    ///
+    /// Scope: Host and Service only. They are the two entities with a
+    /// `source` (so a freshness verdict is meaningful — see
+    /// `DiscoveryTracked::is_discovery_managed`) and the two the inventory
+    /// already badges. Restricted to entities in an element or inline role
+    /// because the generic hide path only removes element nodes and inline
+    /// services; declaring it for a container-role Host would render a filter
+    /// that silently does nothing.
+    fn add_staleness_filters(&mut self) {
+        let is_element = |entity: EntityDiscriminants| {
+            self.element_entities
+                .iter()
+                .any(|e| e.entity_type == entity)
+        };
+        let is_inline = |entity: EntityDiscriminants| {
+            self.element_entities
+                .iter()
+                .any(|e| e.inline_entities.contains(&entity))
+        };
+
+        for entity in [EntityDiscriminants::Host, EntityDiscriminants::Service] {
+            if !is_element(entity) && !is_inline(entity) {
+                continue;
+            }
+            self.metadata_filters
+                .entry(entity)
+                .or_default()
+                .push(MetadataFilter {
+                    filter_type: MetadataFilterType::Staleness,
+                    label: "By staleness".to_string(),
+                    // `New` is a digest-only bucket — it means "created during
+                    // the scan window being reported on" and has no meaning in
+                    // a live topology — so the values are enumerated rather
+                    // than taken from the whole enum.
+                    values: [EntityFreshness::Current, EntityFreshness::Stale]
+                        .into_iter()
+                        .map(|f| {
+                            <EntityFreshness as MetadataProvider<TypeMetadata>>::to_metadata(&f)
+                                .into()
+                        })
+                        .collect(),
+                });
+        }
+    }
+}
+
 /// An element-entity slot inside a view, plus the set of entity types that
 /// render inline on that element's card. Card rendering (what services/ports
 /// show up inside an element) and layout re-trigger fingerprinting both read
@@ -161,6 +215,11 @@ pub struct ViewElementEntityConfig {
 pub enum MetadataFilterType {
     Category,
     Virtualization,
+    /// How recently discovery observed the entity. Unlike the others, this
+    /// value is not intrinsic to the entity — it depends on the entity's
+    /// network staleness window and the current time — so the frontend
+    /// extractor for it takes the network as context.
+    Staleness,
 }
 
 impl HasId for MetadataFilterType {
@@ -357,6 +416,13 @@ impl TypeMetadataProvider for TopologyView {
 impl TopologyView {
     /// The entity hierarchy for this view: parent → element → inline
     pub fn element_config(&self) -> ViewElementConfig {
+        let mut config = self.base_element_config();
+        config.add_staleness_filters();
+        config
+    }
+
+    /// Per-view hierarchy without the filters that are derived from it.
+    fn base_element_config(&self) -> ViewElementConfig {
         match self {
             Self::L3Logical => ViewElementConfig {
                 container_entity: Some(EntityDiscriminants::Subnet),

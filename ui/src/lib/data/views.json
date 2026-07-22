@@ -372,6 +372,24 @@
                   "label": "Open Ports"
                 }
               ]
+            },
+            {
+              "filter_type": "Staleness",
+              "label": "By staleness",
+              "values": [
+                {
+                  "color": "Green",
+                  "icon": "check",
+                  "id": "current",
+                  "label": "Current"
+                },
+                {
+                  "color": "Amber",
+                  "icon": "clock",
+                  "id": "stale",
+                  "label": "Stale"
+                }
+              ]
             }
           ]
         }
@@ -471,6 +489,24 @@
                   "icon": "server",
                   "id": "BareMetal",
                   "label": "Bare metal"
+                }
+              ]
+            },
+            {
+              "filter_type": "Staleness",
+              "label": "By staleness",
+              "values": [
+                {
+                  "color": "Green",
+                  "icon": "check",
+                  "id": "current",
+                  "label": "Current"
+                },
+                {
+                  "color": "Amber",
+                  "icon": "clock",
+                  "id": "stale",
+                  "label": "Stale"
                 }
               ]
             }
@@ -707,6 +743,24 @@
                   "icon": "binary",
                   "id": "OpenPorts",
                   "label": "Open Ports"
+                }
+              ]
+            },
+            {
+              "filter_type": "Staleness",
+              "label": "By staleness",
+              "values": [
+                {
+                  "color": "Green",
+                  "icon": "check",
+                  "id": "current",
+                  "label": "Current"
+                },
+                {
+                  "color": "Amber",
+                  "icon": "clock",
+                  "id": "stale",
+                  "label": "Stale"
                 }
               ]
             }
@@ -1017,6 +1071,24 @@
                   "icon": "binary",
                   "id": "OpenPorts",
                   "label": "Open Ports"
+                }
+              ]
+            },
+            {
+              "filter_type": "Staleness",
+              "label": "By staleness",
+              "values": [
+                {
+                  "color": "Green",
+                  "icon": "check",
+                  "id": "current",
+                  "label": "Current"
+                },
+                {
+                  "color": "Amber",
+                  "icon": "clock",
+                  "id": "stale",
+                  "label": "Stale"
                 }
               ]
             }
