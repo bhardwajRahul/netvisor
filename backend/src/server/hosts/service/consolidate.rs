@@ -4,11 +4,14 @@ use super::*;
 impl HostService {
     /// Find an existing host that matches based on IP-address data (subnet+IP or MAC address).
     ///
-    /// **Known limitation — VRRP/HSRP:** Routers sharing a virtual IP+subnet via VRRP or HSRP
-    /// could false-match on the IP+subnet branch. Virtual router MAC addresses are filtered
-    /// out (see `is_virtual_router_mac`), but the shared virtual IP on a real interface could
-    /// still cause incorrect dedup. Full VRRP awareness would require tracking group membership.
-    pub async fn find_matching_host_by_ip_addresses(
+    /// This assembles the candidate set; the decision itself lives in `select_matching_host`,
+    /// which is pure and carries the matching rules (including the VRRP/CARP/HSRP handling)
+    /// plus their unit tests.
+    ///
+    /// Returns the matched host together with its **full, unfiltered** live IP rows —
+    /// discovery derives `previous_subnets` from them for subnet↔VLAN reconciliation, so
+    /// loopback and virtual-router rows must stay in.
+    pub(crate) async fn find_matching_host_by_ip_addresses(
         &self,
         network_id: &Uuid,
         incoming_ip_addresses: &[IPAddress],
@@ -20,78 +23,49 @@ impl HostService {
         // SCD2: only match against live rows. Closed historical copies
         // (set when a snapshot fires) must not influence reconciliation.
         let filter = StorableFilter::<Host>::new_from_network_ids(&[*network_id]).live();
-        let all_hosts = self.get_all(filter).await?;
+        let mut all_hosts = self.get_all(filter).await?;
 
         if all_hosts.is_empty() {
             return Ok(None);
         }
 
+        // Oldest-first, with an id tiebreak: storage orders by `created_at ASC` only, and
+        // every host created in one daemon batch shares the batch's scan_time, so without
+        // the tiebreak "first match wins" would be resolved arbitrarily by the database.
+        all_hosts.sort_by_key(|h| (h.created_at, h.id));
+
         let host_ids: Vec<Uuid> = all_hosts.iter().map(|h| h.id).collect();
-        let ip_addresses_by_host = self
+        let mut ip_addresses_by_host = self
             .ip_address_service
             .get_for_hosts(&host_ids, None)
             .await?;
 
-        // Exclude loopback and virtual router (VRRP/HSRP) IP addresses from matching.
-        // Loopbacks: every host has 127.0.0.1, so they would falsely match all hosts.
-        // Virtual router MACs: shared across physical routers, would falsely merge peers.
-        let should_skip_for_matching = |ip: &IPAddress| {
-            ip.base.ip_address.is_loopback()
-                || ip
-                    .base
-                    .mac_address
-                    .map(|m| is_virtual_router_mac(&m))
-                    .unwrap_or(false)
-        };
-
-        let matchable_incoming: Vec<_> = incoming_ip_addresses
+        let candidates: Vec<(Uuid, Vec<IPAddress>)> = all_hosts
             .iter()
-            .filter(|i| !should_skip_for_matching(i))
+            .map(|h| (h.id, ip_addresses_by_host.remove(&h.id).unwrap_or_default()))
             .collect();
 
-        if matchable_incoming.is_empty() {
+        let Some(matched_id) = select_matching_host(incoming_ip_addresses, &candidates) else {
             return Ok(None);
-        }
+        };
 
-        // Count incoming IP addresses per MAC to detect VLAN sub-interfaces.
-        // Same approach as the upsert MAC fallback — shared MAC (count > 1) means
-        // VLAN/bridge/bond sub-interfaces that must not trigger MAC-based host matching.
-        // Unique MAC (count == 1) means a standalone IP address safe for MAC matching
-        // (e.g., Docker container whose IP changed via DHCP).
-        let incoming_mac_counts: HashMap<MacAddress, usize> = matchable_incoming
-            .iter()
-            .filter_map(|i| i.base.mac_address)
-            .fold(HashMap::new(), |mut acc, mac| {
-                *acc.entry(mac).or_insert(0) += 1;
-                acc
-            });
+        let host_ip_addresses = candidates
+            .into_iter()
+            .find(|(id, _)| *id == matched_id)
+            .map(|(_, ip_addresses)| ip_addresses)
+            .unwrap_or_default();
 
-        for host in all_hosts {
-            let host_interfaces = ip_addresses_by_host
-                .get(&host.id)
-                .cloned()
-                .unwrap_or_default();
-
-            for incoming_iface in &matchable_incoming {
-                for existing_iface in &host_interfaces {
-                    if should_skip_for_matching(existing_iface) {
-                        continue;
-                    }
-                    if ip_addresses_match(incoming_iface, existing_iface, &incoming_mac_counts) {
-                        tracing::debug!(
-                            incoming_ip = %incoming_iface.base.ip_address,
-                            existing_ip = %existing_iface.base.ip_address,
-                            existing_host_id = %host.id,
-                            existing_host_name = %host.base.name,
-                            "Found matching host via IP-address comparison"
-                        );
-                        return Ok(Some((host, host_interfaces)));
-                    }
-                }
-            }
-        }
-
-        Ok(None)
+        Ok(all_hosts
+            .into_iter()
+            .find(|h| h.id == matched_id)
+            .map(|host| {
+                tracing::debug!(
+                    existing_host_id = %host.id,
+                    existing_host_name = %host.base.name,
+                    "Matched incoming IP addresses to existing host"
+                );
+                (host, host_ip_addresses)
+            }))
     }
 
     /// Merge new discovery data with existing host
