@@ -7,7 +7,7 @@ use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     dependencies::{
-        dependency_members::DependencyMemberStorage,
+        dependency_members::{DependencyMemberRecord, DependencyMemberStorage},
         r#impl::base::{Dependency, DependencyMembers},
     },
     shared::{
@@ -282,5 +282,12 @@ impl DependencyService {
         self.member_storage
             .save_for_dependency(dependency_id, members)
             .await
+    }
+
+    /// Bulk-insert pre-built member records for many dependencies at once,
+    /// skipping the per-dependency lock/delete. For seed paths on a freshly
+    /// reset org. See [`DependencyMemberStorage::create_many`].
+    pub async fn create_members(&self, records: &[DependencyMemberRecord]) -> Result<()> {
+        self.member_storage.create_many(records).await
     }
 }

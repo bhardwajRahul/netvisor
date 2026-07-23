@@ -3,7 +3,7 @@ use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     credentials::r#impl::{
         base::Credential,
-        junction::{HostCredentialStorage, NetworkCredentialStorage},
+        junction::{HostCredentialStorage, NetworkCredential, NetworkCredentialStorage},
         mapping::{
             CredentialMapping, CredentialQueryPayload, IntegrationTarget, IpOverride,
             SnmpCredentialMapping, SnmpQueryCredential,
@@ -282,6 +282,20 @@ impl CredentialService {
         self.network_credential_storage
             .save_for_network(network_id, credential_ids)
             .await
+    }
+
+    /// Bulk-insert many network↔credential assignments at once, skipping the
+    /// per-network lock/delete. For seed paths on a freshly reset org. Each
+    /// pair is `(network_id, credential_id)`.
+    pub async fn create_network_credentials(&self, pairs: &[(Uuid, Uuid)]) -> Result<(), Error> {
+        let records: Vec<NetworkCredential> = pairs
+            .iter()
+            .map(|&(network_id, credential_id)| NetworkCredential {
+                network_id,
+                credential_id,
+            })
+            .collect();
+        self.network_credential_storage.create_many(&records).await
     }
 
     /// Replace all credential assignments for a host (atomic).
