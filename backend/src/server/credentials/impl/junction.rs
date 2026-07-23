@@ -196,6 +196,17 @@ impl NetworkCredentialStorage {
     }
 
     /// Replace all credentials for a network (atomic).
+    /// Bulk-insert network↔credential rows in a single INSERT, with no
+    /// per-network lock or delete-first pass. For seed paths (demo populate) on
+    /// a freshly reset org where there are no existing rows to replace.
+    pub async fn create_many(&self, records: &[NetworkCredential]) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        self.storage.create_many(records).await?;
+        Ok(())
+    }
+
     pub async fn save_for_network(&self, network_id: &Uuid, credential_ids: &[Uuid]) -> Result<()> {
         let mut tx = self.storage.begin_transaction().await?;
         // Serialize concurrent delete-all + re-insert syncs for one network.

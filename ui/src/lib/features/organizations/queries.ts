@@ -185,26 +185,39 @@ export function useDeleteOrganizationMutation() {
 }
 
 /**
- * Mutation hook for populating demo data
+ * Mutation hook that kicks off demo-data population. The backend runs the work
+ * in the background and returns `202` immediately with a `Running` status;
+ * callers poll {@link fetchDemoPopulateStatus} for completion (and invalidate
+ * queries then, not here).
  */
 export function usePopulateDemoDataMutation() {
-	const queryClient = useQueryClient();
-
 	return createMutation(() => ({
 		mutationFn: async (orgId: string) => {
 			const { data } = await apiClient.POST('/api/v1/organizations/{id}/populate-demo', {
 				params: { path: { id: orgId } }
 			});
-			if (!data?.success) {
-				throw new Error(data?.error || 'Failed to populate demo data');
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to start demo data population');
 			}
-			return data;
-		},
-		onSuccess: () => {
-			// Invalidate all data queries after populating demo data
-			queryClient.invalidateQueries();
+			return data.data;
 		}
 	}));
+}
+
+/**
+ * Fetch the current status of an org's background demo-populate task.
+ * Throws on transport/API error.
+ */
+export async function fetchDemoPopulateStatus(
+	orgId: string
+): Promise<components['schemas']['DemoPopulateStatus']> {
+	const { data } = await apiClient.GET('/api/v1/organizations/{id}/populate-demo/status', {
+		params: { path: { id: orgId } }
+	});
+	if (!data?.success || !data.data) {
+		throw new Error(data?.error || 'Failed to fetch demo populate status');
+	}
+	return data.data;
 }
 
 /**

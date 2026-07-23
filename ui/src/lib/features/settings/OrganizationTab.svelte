@@ -9,8 +9,10 @@
 		useUpdateOrganizationMutation,
 		useResetOrganizationDataMutation,
 		usePopulateDemoDataMutation,
-		useDeleteOrganizationMutation
+		useDeleteOrganizationMutation,
+		fetchDemoPopulateStatus
 	} from '$lib/features/organizations/queries';
+	import { queryClient } from '$lib/api/query-client';
 	import ConfirmationDialog from '$lib/shared/components/feedback/ConfirmationDialog.svelte';
 	import { billingPlans } from '$lib/shared/stores/metadata';
 	import { goto } from '$app/navigation';
@@ -88,7 +90,10 @@
 
 	let saving = $derived(updateOrganizationMutation.isPending);
 	let resetting = $derived(resetOrganizationDataMutation.isPending);
-	let populating = $derived(populateDemoDataMutation.isPending);
+	// Populate runs in the background: the POST resolves at the 202, so the
+	// button must stay busy across the status poll, tracked separately.
+	let demoPolling = $state(false);
+	let populating = $derived(populateDemoDataMutation.isPending || demoPolling);
 	let deleting = $derived(deleteOrganizationMutation.isPending);
 	let showDeleteConfirm = $state(false);
 
@@ -175,11 +180,35 @@
 			return;
 		}
 
+		const orgId = org.id;
+		demoPolling = true;
 		try {
-			await populateDemoDataMutation.mutateAsync(org.id);
-			pushSuccess(settings_org_populateSuccess());
+			// 202 kicks off the background task; poll its status until terminal.
+			await populateDemoDataMutation.mutateAsync(orgId);
+
+			// Poll every 1.5s, capped at ~5 minutes so a stuck task can't spin
+			// the button forever.
+			const maxAttempts = 200;
+			let terminal: 'complete' | 'failed' | null = null;
+			for (let attempt = 0; attempt < maxAttempts; attempt++) {
+				await new Promise((resolve) => setTimeout(resolve, 1500));
+				const status = await fetchDemoPopulateStatus(orgId);
+				if (status.state !== 'running') {
+					terminal = status.state;
+					break;
+				}
+			}
+
+			if (terminal === 'complete') {
+				await queryClient.invalidateQueries();
+				pushSuccess(settings_org_populateSuccess());
+			} else {
+				pushError(settings_org_populateFailed());
+			}
 		} catch {
 			pushError(settings_org_populateFailed());
+		} finally {
+			demoPolling = false;
 		}
 	}
 

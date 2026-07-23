@@ -2125,8 +2125,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Populate demo data (only available for demo organizations) */
+        /**
+         * Populate demo data (only available for demo organizations).
+         * @description Runs the population off the request thread (a `tokio::spawn`) and returns
+         *     `202` immediately — the work is a few hundred sequential DB round-trips and
+         *     would otherwise exceed the reverse-proxy request timeout against a remote
+         *     database. Poll `GET /{id}/populate-demo/status` for completion/failure.
+         */
         post: operations["populate_demo_data"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{id}/populate-demo/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Poll the status of an org's background demo-populate task. */
+        get: operations["populate_demo_status"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3104,19 +3127,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-22T18:58:51.216657Z",
+             *       "created_at": "2026-07-23T16:42:02.495254Z",
              *       "first_discovery_id": null,
-             *       "id": "5b5a34e0-493f-4b12-a260-1cef006aa089",
+             *       "id": "9b3d4d1d-b41c-42c0-b811-a1b83111e9da",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-22T18:58:51.216657Z",
+             *       "last_seen_at": "2026-07-23T16:42:02.495254Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-22T18:58:51.216657Z",
-             *       "valid_from": "2026-07-22T18:58:51.216657Z",
+             *       "updated_at": "2026-07-23T16:42:02.495254Z",
+             *       "valid_from": "2026-07-23T16:42:02.495254Z",
              *       "valid_to": null
              *     }
              */
@@ -3274,6 +3297,33 @@ export interface components {
                 networks: components["schemas"]["NetworkSummary"][];
                 plan_usage: components["schemas"]["PlanUsage"];
                 recent_discoveries: components["schemas"]["Discovery"][];
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_DemoPopulateStatus: {
+            /**
+             * @description Lifecycle of a demo-populate task. `Running` is set synchronously in the
+             *     POST handler (before the `202`), then flipped to a terminal variant by the
+             *     spawned task. `Failed` carries the error string so the UI can show why.
+             */
+            data?: {
+                /** Format: date-time */
+                started_at: string;
+                /** @enum {string} */
+                state: "running";
+            } | {
+                /** Format: date-time */
+                finished_at: string;
+                /** @enum {string} */
+                state: "complete";
+            } | {
+                error: string;
+                /** Format: date-time */
+                finished_at: string;
+                /** @enum {string} */
+                state: "failed";
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3457,6 +3507,7 @@ export interface components {
              *           "valid_to": null
              *         }
              *       ],
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
              *       "name": "web-server-01",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "ports": [
@@ -3481,19 +3532,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-22T18:58:51.198634Z",
+             *               "created_at": "2026-07-23T16:42:02.472802Z",
              *               "first_discovery_id": null,
-             *               "id": "43113784-e98c-45c7-af76-0451de6b4d77",
+             *               "id": "5cb0e447-879f-4506-ad95-cf72fb7c5804",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-22T18:58:51.198634Z",
+             *               "last_seen_at": "2026-07-23T16:42:02.472802Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-22T18:58:51.198634Z",
-             *               "valid_from": "2026-07-22T18:58:51.198634Z",
+             *               "updated_at": "2026-07-23T16:42:02.472802Z",
+             *               "valid_from": "2026-07-23T16:42:02.472802Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3507,7 +3558,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Proxmox Datacenter Manager",
+             *           "service_definition": "Zigbee2MQTT",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3539,6 +3590,13 @@ export interface components {
                 /** @description SNMP ifTable entries */
                 interfaces: components["schemas"]["Interface"][];
                 ip_addresses: components["schemas"]["IPAddress"][];
+                /**
+                 * Format: date-time
+                 * @description Last time discovery observed this host. User-facing (drives the "Last
+                 *     seen" column and the stale badge), which is why it is carried here while
+                 *     the rest of the SCD2/audit columns are not.
+                 */
+                last_seen_at: string;
                 management_url?: string | null;
                 name: string;
                 /** Format: uuid */
@@ -3917,19 +3975,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-22T18:58:51.210748Z",
+             *           "created_at": "2026-07-23T16:42:02.487945Z",
              *           "first_discovery_id": null,
-             *           "id": "a2e0560c-9bea-43a4-a9bd-416abc35ee72",
+             *           "id": "bb435bf7-e9c4-49ca-817e-5f14e7371d99",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-22T18:58:51.210748Z",
+             *           "last_seen_at": "2026-07-23T16:42:02.487945Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-22T18:58:51.210748Z",
-             *           "valid_from": "2026-07-22T18:58:51.210748Z",
+             *           "updated_at": "2026-07-23T16:42:02.487945Z",
+             *           "valid_from": "2026-07-23T16:42:02.487945Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3943,7 +4001,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Proxmox Datacenter Manager",
+             *       "service_definition": "Zigbee2MQTT",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4447,19 +4505,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-22T18:58:51.199026Z",
+         *       "created_at": "2026-07-23T16:42:02.473307Z",
          *       "first_discovery_id": null,
-         *       "id": "e7aca420-b75a-4608-8777-dcfe4cf89bda",
+         *       "id": "865e937c-d163-4317-a28c-8376d7de8ae1",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-22T18:58:51.199026Z",
+         *       "last_seen_at": "2026-07-23T16:42:02.473307Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-22T18:58:51.199026Z",
-         *       "valid_from": "2026-07-22T18:58:51.199026Z",
+         *       "updated_at": "2026-07-23T16:42:02.473307Z",
+         *       "valid_from": "2026-07-23T16:42:02.473307Z",
          *       "valid_to": null
          *     }
          */
@@ -4674,7 +4732,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Proxmox Datacenter Manager",
+         *           "service_definition": "Zigbee2MQTT",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5072,6 +5130,28 @@ export interface components {
             networks: components["schemas"]["NetworkSummary"][];
             plan_usage: components["schemas"]["PlanUsage"];
             recent_discoveries: components["schemas"]["Discovery"][];
+        };
+        /**
+         * @description Lifecycle of a demo-populate task. `Running` is set synchronously in the
+         *     POST handler (before the `202`), then flipped to a terminal variant by the
+         *     spawned task. `Failed` carries the error string so the UI can show why.
+         */
+        DemoPopulateStatus: {
+            /** Format: date-time */
+            started_at: string;
+            /** @enum {string} */
+            state: "running";
+        } | {
+            /** Format: date-time */
+            finished_at: string;
+            /** @enum {string} */
+            state: "complete";
+        } | {
+            error: string;
+            /** Format: date-time */
+            finished_at: string;
+            /** @enum {string} */
+            state: "failed";
         };
         /**
          * @example {
@@ -5751,6 +5831,7 @@ export interface components {
          *           "valid_to": null
          *         }
          *       ],
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
          *       "name": "web-server-01",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "ports": [
@@ -5775,19 +5856,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-22T18:58:51.198174Z",
+         *               "created_at": "2026-07-23T16:42:02.472207Z",
          *               "first_discovery_id": null,
-         *               "id": "0e418f70-f489-4a05-897f-e7387d8835dc",
+         *               "id": "39cdb8b2-3d9e-4711-871a-a4fb3e21e679",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-22T18:58:51.198174Z",
+         *               "last_seen_at": "2026-07-23T16:42:02.472207Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-22T18:58:51.198174Z",
-         *               "valid_from": "2026-07-22T18:58:51.198174Z",
+         *               "updated_at": "2026-07-23T16:42:02.472207Z",
+         *               "valid_from": "2026-07-23T16:42:02.472207Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5801,7 +5882,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Proxmox Datacenter Manager",
+         *           "service_definition": "Zigbee2MQTT",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5833,6 +5914,13 @@ export interface components {
             /** @description SNMP ifTable entries */
             interfaces: components["schemas"]["Interface"][];
             ip_addresses: components["schemas"]["IPAddress"][];
+            /**
+             * Format: date-time
+             * @description Last time discovery observed this host. User-facing (drives the "Last
+             *     seen" column and the stale badge), which is why it is carried here while
+             *     the rest of the SCD2/audit columns are not.
+             */
+            last_seen_at: string;
             management_url?: string | null;
             name: string;
             /** Format: uuid */
@@ -6704,6 +6792,13 @@ export interface components {
                 /** @description SNMP ifTable entries */
                 interfaces: components["schemas"]["Interface"][];
                 ip_addresses: components["schemas"]["IPAddress"][];
+                /**
+                 * Format: date-time
+                 * @description Last time discovery observed this host. User-facing (drives the "Last
+                 *     seen" column and the stale badge), which is why it is carried here while
+                 *     the rest of the SCD2/audit columns are not.
+                 */
+                last_seen_at: string;
                 management_url?: string | null;
                 name: string;
                 /** Format: uuid */
@@ -7412,19 +7507,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-22T18:58:51.198941Z",
+         *           "created_at": "2026-07-23T16:42:02.473192Z",
          *           "first_discovery_id": null,
-         *           "id": "d1bfd1fd-cc6c-4233-b784-b7a0bc5de20d",
+         *           "id": "a8529d83-7ca2-4ba2-8f13-59f64235153a",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-22T18:58:51.198941Z",
+         *           "last_seen_at": "2026-07-23T16:42:02.473192Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-22T18:58:51.198941Z",
-         *           "valid_from": "2026-07-22T18:58:51.198941Z",
+         *           "updated_at": "2026-07-23T16:42:02.473192Z",
+         *           "valid_from": "2026-07-23T16:42:02.473192Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7438,7 +7533,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Proxmox Datacenter Manager",
+         *       "service_definition": "Zigbee2MQTT",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7861,7 +7956,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "10b02d38-a519-4c27-a680-fe04e85a6553",
+             *           "id": "a8f37e45-b92c-44a0-a7f7-eaed64a47cf7",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7871,23 +7966,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "9c4332aa-9c70-42c8-a040-2fc50417c3e2",
+             *           "id": "f966c31b-9cdf-4bfa-b3db-afb874cec370",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "fa2e26ab-9be1-498b-96b6-5ba76e1dc1f4",
+             *           "id": "6c4de0ee-a067-43bd-ac23-d4160686e69c",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "a9c04512-8e08-43aa-9c99-b3a42212c214",
+             *           "id": "46fc0834-f904-4dbd-8383-dfdad740b316",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "9c4332aa-9c70-42c8-a040-2fc50417c3e2",
+             *           "id": "f966c31b-9cdf-4bfa-b3db-afb874cec370",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7899,19 +7994,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "b768e641-adf5-4d6c-bcbb-74d9b17f6452",
+             *         "id": "41d85be3-c2f5-4e61-9179-59c20279d60c",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "8be65a89-95ae-4098-bf9e-d7ce91ea4b95",
+             *         "id": "d680ddeb-942d-4374-832e-1f36922f4633",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "241724e8-8b1a-4512-8b7a-28a971c02b36",
+             *         "id": "09824926-7c07-441c-93c4-648aac0a3cc7",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "74b9a6a6-c982-4a09-84cd-17116c0e4a6d",
+             *         "id": "0a4e7b12-f5a2-4c2f-a407-d2cf06c2fa40",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7929,7 +8024,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "c726e21e-35c1-4e72-adec-f47211886d28",
+             *         "id": "95af47b2-2823-4aaf-953c-6dc80f1ced65",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7938,15 +8033,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "4d25d181-511a-42dd-a153-1cb69d25c1ae",
+             *         "id": "acf506ed-08b4-4c22-aa2e-49d713114c50",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "e211fcdd-db05-4f26-8cee-5b77d5b0dc1f",
+             *         "id": "9ece7557-7915-4222-8671-64dc9bec059e",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "ee9f3f19-74d9-4d8a-8b9c-7b314d5b0c75",
+             *         "id": "b1453f48-ab53-4d95-b28e-0f501c307647",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -13132,13 +13227,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Demo data populated */
-            200: {
+            /** @description Demo data population started */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse"];
+                    "application/json": components["schemas"]["ApiResponse_DemoPopulateStatus"];
                 };
             };
             /** @description Only available for demo organizations */
@@ -13151,6 +13246,47 @@ export interface operations {
                 };
             };
             /** @description Organization not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Population already in progress */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    populate_demo_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Demo populate status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DemoPopulateStatus"];
+                };
+            };
+            /** @description No demo-populate task for this organization */
             404: {
                 headers: {
                     [name: string]: unknown;

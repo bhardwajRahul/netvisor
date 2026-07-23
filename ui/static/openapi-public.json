@@ -11177,19 +11177,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-22T18:58:51.216655Z",
+              "created_at": "2026-07-23T16:42:02.495267Z",
               "first_discovery_id": null,
-              "id": "a74f523b-7793-4074-85c3-5f03cc821559",
+              "id": "b9999c23-5038-42f4-9766-1717543713b3",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-22T18:58:51.216655Z",
+              "last_seen_at": "2026-07-23T16:42:02.495267Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-22T18:58:51.216655Z",
-              "valid_from": "2026-07-22T18:58:51.216655Z",
+              "updated_at": "2026-07-23T16:42:02.495267Z",
+              "valid_from": "2026-07-23T16:42:02.495267Z",
               "valid_to": null
             }
           },
@@ -11722,6 +11722,93 @@
           }
         }
       },
+      "ApiResponse_DemoPopulateStatus": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "started_at",
+                  "state"
+                ],
+                "properties": {
+                  "started_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "running"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "finished_at",
+                  "state"
+                ],
+                "properties": {
+                  "finished_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "complete"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "error",
+                  "finished_at",
+                  "state"
+                ],
+                "properties": {
+                  "error": {
+                    "type": "string"
+                  },
+                  "finished_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "failed"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Lifecycle of a demo-populate task. `Running` is set synchronously in the\nPOST handler (before the `202`), then flipped to a terminal variant by the\nspawned task. `Failed` carries the error string so the UI can show why."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
       "ApiResponse_Dependency": {
         "type": "object",
         "required": [
@@ -12024,6 +12111,7 @@
               "id",
               "created_at",
               "updated_at",
+              "last_seen_at",
               "name",
               "network_id",
               "source",
@@ -12082,6 +12170,11 @@
                 "items": {
                   "$ref": "#/components/schemas/IPAddress"
                 }
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Last time discovery observed this host. User-facing (drives the \"Last\nseen\" column and the stale badge), which is why it is carried here while\nthe rest of the SCD2/audit columns are not."
               },
               "management_url": {
                 "type": [
@@ -12220,6 +12313,7 @@
                   "valid_to": null
                 }
               ],
+              "last_seen_at": "2026-01-15T10:30:00Z",
               "name": "web-server-01",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "ports": [
@@ -12244,19 +12338,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-22T18:58:51.198601Z",
+                      "created_at": "2026-07-23T16:42:02.472812Z",
                       "first_discovery_id": null,
-                      "id": "c47d9f5e-60cb-47e5-8415-a025c635e4d1",
+                      "id": "36844472-8e18-4892-81a8-e4e988f5aa92",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-22T18:58:51.198601Z",
+                      "last_seen_at": "2026-07-23T16:42:02.472812Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-22T18:58:51.198601Z",
-                      "valid_from": "2026-07-22T18:58:51.198601Z",
+                      "updated_at": "2026-07-23T16:42:02.472812Z",
+                      "valid_from": "2026-07-23T16:42:02.472812Z",
                       "valid_to": null
                     }
                   ],
@@ -12270,7 +12364,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Proxmox Datacenter Manager",
+                  "service_definition": "Zigbee2MQTT",
                   "source": {
                     "type": "Manual"
                   },
@@ -13340,19 +13434,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-22T18:58:51.210744Z",
+                  "created_at": "2026-07-23T16:42:02.487955Z",
                   "first_discovery_id": null,
-                  "id": "a2f452c4-bf39-42f6-9e26-3e24130c9fe2",
+                  "id": "98e517a4-dcea-4827-b00b-feee8b17c633",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-22T18:58:51.210744Z",
+                  "last_seen_at": "2026-07-23T16:42:02.487955Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-22T18:58:51.210744Z",
-                  "valid_from": "2026-07-22T18:58:51.210744Z",
+                  "updated_at": "2026-07-23T16:42:02.487955Z",
+                  "valid_from": "2026-07-23T16:42:02.487955Z",
                   "valid_to": null
                 }
               ],
@@ -13366,7 +13460,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Proxmox Datacenter Manager",
+              "service_definition": "Zigbee2MQTT",
               "source": {
                 "type": "Manual"
               },
@@ -15236,19 +15330,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-22T18:58:51.198982Z",
+          "created_at": "2026-07-23T16:42:02.473313Z",
           "first_discovery_id": null,
-          "id": "a2797f32-2a6e-4c91-b48d-d5ac929a26f1",
+          "id": "29df7c7b-a114-4a13-a1a9-b88086a1fe72",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-22T18:58:51.198982Z",
+          "last_seen_at": "2026-07-23T16:42:02.473313Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-22T18:58:51.198982Z",
-          "valid_from": "2026-07-22T18:58:51.198982Z",
+          "updated_at": "2026-07-23T16:42:02.473313Z",
+          "valid_from": "2026-07-23T16:42:02.473313Z",
           "valid_to": null
         }
       },
@@ -15839,7 +15933,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Proxmox Datacenter Manager",
+              "service_definition": "Zigbee2MQTT",
               "tags": [],
               "virtualization": null
             }
@@ -16867,6 +16961,72 @@
             }
           }
         }
+      },
+      "DemoPopulateStatus": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "started_at",
+              "state"
+            ],
+            "properties": {
+              "started_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "running"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "finished_at",
+              "state"
+            ],
+            "properties": {
+              "finished_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "complete"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "error",
+              "finished_at",
+              "state"
+            ],
+            "properties": {
+              "error": {
+                "type": "string"
+              },
+              "finished_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "failed"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Lifecycle of a demo-populate task. `Running` is set synchronously in the\nPOST handler (before the `202`), then flipped to a terminal variant by the\nspawned task. `Failed` carries the error string so the UI can show why."
       },
       "Dependency": {
         "allOf": [
@@ -18559,6 +18719,7 @@
           "id",
           "created_at",
           "updated_at",
+          "last_seen_at",
           "name",
           "network_id",
           "source",
@@ -18617,6 +18778,11 @@
             "items": {
               "$ref": "#/components/schemas/IPAddress"
             }
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last time discovery observed this host. User-facing (drives the \"Last\nseen\" column and the stale badge), which is why it is carried here while\nthe rest of the SCD2/audit columns are not."
           },
           "management_url": {
             "type": [
@@ -18755,6 +18921,7 @@
               "valid_to": null
             }
           ],
+          "last_seen_at": "2026-01-15T10:30:00Z",
           "name": "web-server-01",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "ports": [
@@ -18779,19 +18946,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-22T18:58:51.198162Z",
+                  "created_at": "2026-07-23T16:42:02.472216Z",
                   "first_discovery_id": null,
-                  "id": "16d4f394-d07f-424c-9e58-8f81385ee3dc",
+                  "id": "c22fc438-38ac-4ae3-b861-fc8c75682d1f",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-22T18:58:51.198162Z",
+                  "last_seen_at": "2026-07-23T16:42:02.472216Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-22T18:58:51.198162Z",
-                  "valid_from": "2026-07-22T18:58:51.198162Z",
+                  "updated_at": "2026-07-23T16:42:02.472216Z",
+                  "valid_from": "2026-07-23T16:42:02.472216Z",
                   "valid_to": null
                 }
               ],
@@ -18805,7 +18972,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Proxmox Datacenter Manager",
+              "service_definition": "Zigbee2MQTT",
               "source": {
                 "type": "Manual"
               },
@@ -21193,6 +21360,7 @@
                 "id",
                 "created_at",
                 "updated_at",
+                "last_seen_at",
                 "name",
                 "network_id",
                 "source",
@@ -21251,6 +21419,11 @@
                   "items": {
                     "$ref": "#/components/schemas/IPAddress"
                   }
+                },
+                "last_seen_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Last time discovery observed this host. User-facing (drives the \"Last\nseen\" column and the stale badge), which is why it is carried here while\nthe rest of the SCD2/audit columns are not."
                 },
                 "management_url": {
                   "type": [
@@ -21389,6 +21562,7 @@
                     "valid_to": null
                   }
                 ],
+                "last_seen_at": "2026-01-15T10:30:00Z",
                 "name": "web-server-01",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "ports": [
@@ -21413,19 +21587,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-22T18:58:51.187567Z",
+                        "created_at": "2026-07-23T16:42:02.459876Z",
                         "first_discovery_id": null,
-                        "id": "eceed8ac-b1e1-4368-ae9a-e92e193f5d1c",
+                        "id": "9f6c699c-80ab-4e54-b5fa-4511c330d44a",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-22T18:58:51.187567Z",
+                        "last_seen_at": "2026-07-23T16:42:02.459876Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-22T18:58:51.187567Z",
-                        "valid_from": "2026-07-22T18:58:51.187567Z",
+                        "updated_at": "2026-07-23T16:42:02.459876Z",
+                        "valid_from": "2026-07-23T16:42:02.459876Z",
                         "valid_to": null
                       }
                     ],
@@ -21439,7 +21613,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Proxmox Datacenter Manager",
+                    "service_definition": "Zigbee2MQTT",
                     "source": {
                       "type": "Manual"
                     },
@@ -21560,19 +21734,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-22T18:58:51.209610Z",
+                    "created_at": "2026-07-23T16:42:02.486536Z",
                     "first_discovery_id": null,
-                    "id": "2bcac8fa-a2a7-49f7-8186-f3d023eb8bcc",
+                    "id": "e53b392c-0745-4d3b-9a89-53ae2e03ba4d",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-22T18:58:51.209610Z",
+                    "last_seen_at": "2026-07-23T16:42:02.486536Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-22T18:58:51.209610Z",
-                    "valid_from": "2026-07-22T18:58:51.209610Z",
+                    "updated_at": "2026-07-23T16:42:02.486536Z",
+                    "valid_from": "2026-07-23T16:42:02.486536Z",
                     "valid_to": null
                   }
                 ],
@@ -21586,7 +21760,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Proxmox Datacenter Manager",
+                "service_definition": "Zigbee2MQTT",
                 "source": {
                   "type": "Manual"
                 },
@@ -23289,19 +23463,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-22T18:58:51.198897Z",
+              "created_at": "2026-07-23T16:42:02.473201Z",
               "first_discovery_id": null,
-              "id": "3a37d9e6-39b9-4894-a48a-fa1bdae53477",
+              "id": "36cfb754-e2c0-4d30-9ede-4351ed877aa9",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-22T18:58:51.198897Z",
+              "last_seen_at": "2026-07-23T16:42:02.473201Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-22T18:58:51.198897Z",
-              "valid_from": "2026-07-22T18:58:51.198897Z",
+              "updated_at": "2026-07-23T16:42:02.473201Z",
+              "valid_from": "2026-07-23T16:42:02.473201Z",
               "valid_to": null
             }
           ],
@@ -23315,7 +23489,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Proxmox Datacenter Manager",
+          "service_definition": "Zigbee2MQTT",
           "source": {
             "type": "Manual"
           },
@@ -24447,7 +24621,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "6ad8ac61-1ec0-4d0f-b487-c2b24003e274",
+                  "id": "b9b92452-15bf-46b7-9e7b-d2c22e509f37",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24457,23 +24631,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "f4521ed8-af41-4e71-9424-fd58d16c92cd",
+                  "id": "e3eb230f-95cc-48b4-b722-dca73ea9d4e4",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "102e6ed6-f80f-4816-99a4-a13e3ff57309",
+                  "id": "1b46cf46-373f-4185-98a5-33c544768e9c",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "a6e55f78-4a93-4c82-b948-48271f08a73a",
+                  "id": "da74c65d-8cdd-4967-b6c3-50eb954fbc98",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "f4521ed8-af41-4e71-9424-fd58d16c92cd",
+                  "id": "e3eb230f-95cc-48b4-b722-dca73ea9d4e4",
                   "rule": "ByHost"
                 }
               ]
@@ -24502,19 +24676,19 @@
             },
             "default": [
               {
-                "id": "5962e9d5-77f1-4740-ae17-3c40a6a2de07",
+                "id": "7ab910ea-bd72-447b-8cb0-826cfd51b3d9",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "22ee2610-f428-4720-93b2-61461839ea1f",
+                "id": "aa5f5020-9655-4e70-af02-d571546df252",
                 "rule": "ByVLAN"
               },
               {
-                "id": "6ee38b1b-eba3-4178-a2c7-44f6f743b44d",
+                "id": "0150972e-81b1-49f2-8810-a6121b008fde",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "571c14da-e052-46d0-83cb-4e9e45624892",
+                "id": "76f5e025-350b-43b7-afc9-1c72358a7246",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24532,7 +24706,7 @@
                 }
               },
               {
-                "id": "6ba9679a-d437-4770-8652-348f2c0822e1",
+                "id": "f6de35c9-aa90-47f0-8216-c0bf338f65ca",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24541,15 +24715,15 @@
                 }
               },
               {
-                "id": "89be9dd3-e827-47ec-9133-9a0815547897",
+                "id": "2a4d6971-d96a-4929-a6f1-a785ba185320",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "989e0944-d805-46bb-8b00-11e9dba542d3",
+                "id": "772110d0-168c-486c-8fdb-d9db051a4b9b",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "204d6ef7-988c-4d79-9e34-7c7d9b7f4952",
+                "id": "13539dfd-689a-429d-8d23-880e94bff1b1",
                 "rule": "ByStack"
               }
             ]
@@ -24623,7 +24797,8 @@
                   "description": "The kind of metadata filter. One variant per conceptually-distinct filter\nacross the app — Category (on Service), Virtualization (on Host), and so\non. Kept narrow on purpose: adding a new filter means adding a variant\nhere + a `HasFilterValues` impl on the relevant entity.",
                   "enum": [
                     "Category",
-                    "Virtualization"
+                    "Virtualization",
+                    "Staleness"
                   ]
                 }
               },

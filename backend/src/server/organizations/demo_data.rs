@@ -9,6 +9,7 @@ use crate::server::{
     bindings::r#impl::base::Binding,
     credentials::r#impl::{
         base::{Credential, CredentialBase},
+        mapping::IntegrationTarget,
         types::{CredentialAssignment, CredentialType, SecretValue},
     },
     daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase},
@@ -49,6 +50,7 @@ use crate::server::{
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
         types::SubnetType,
+        virtualization::{DockerSubnetVirtualization, SubnetVirtualization},
     },
     tags::r#impl::base::{Tag, TagBase},
     topology::types::{
@@ -123,6 +125,9 @@ struct DependencyServiceIds {
     minio_dc: Uuid,
     ceph_dc: Uuid,
     elasticsearch_dc: Uuid,
+    // Docker daemon service IDs: shared with the DockerBridge subnets' virtualization
+    docker_hq: Uuid,
+    docker_dc: Uuid,
 }
 
 /// Container for all demo data entities
@@ -133,6 +138,10 @@ pub struct DemoData {
     pub networks: Vec<Network>,
     pub subnets: Vec<Subnet>,
     pub hosts_with_services: Vec<HostWithServices>,
+    /// "Recently discovered" hosts created AFTER the per-network snapshot, so
+    /// the snapshot captures an earlier state than the live view. See
+    /// [`generate_recent_hosts`].
+    pub recent_hosts_with_services: Vec<HostWithServices>,
     pub vlans: Vec<Vlan>,
     pub interfaces: Vec<Interface>,
     pub neighbor_updates: Vec<NeighborUpdate>,
@@ -168,13 +177,21 @@ impl DemoData {
             minio_dc: Uuid::new_v4(),
             ceph_dc: Uuid::new_v4(),
             elasticsearch_dc: Uuid::new_v4(),
+            docker_hq: Uuid::new_v4(),
+            docker_dc: Uuid::new_v4(),
         };
 
         // Generate all entities in dependency order
         let tags = generate_tags(organization_id, now);
         let credentials = generate_credentials(organization_id, now);
         let networks = generate_networks(organization_id, &tags, &credentials, now);
-        let subnets = generate_subnets(&networks, &tags, now);
+        let subnets = generate_subnets(
+            &networks,
+            &tags,
+            dep_svc_ids.docker_hq,
+            dep_svc_ids.docker_dc,
+            now,
+        );
         let network_credential_assignments =
             generate_network_credential_assignments(&networks, &credentials);
         let hosts_with_services = generate_hosts_and_services(
@@ -185,6 +202,7 @@ impl DemoData {
             &dep_svc_ids,
             now,
         );
+        let recent_hosts_with_services = generate_recent_hosts(&networks, &subnets, now);
 
         // Collect hosts for daemon generation and interface generation
         let hosts: Vec<&Host> = hosts_with_services.iter().map(|h| &h.host).collect();
@@ -214,6 +232,7 @@ impl DemoData {
             subnets,
             vlans,
             hosts_with_services,
+            recent_hosts_with_services,
             interfaces,
             neighbor_updates,
             daemons,
@@ -476,9 +495,9 @@ fn generate_networks(
                 organization_id,
                 tags: production_tag.into_iter().collect(),
                 credential_ids: vec![],
-                stale_after_hours: None,
+                stale_after_hours: Some(48),
             },
-            effective_stale_after_hours: DEFAULT_STALE_AFTER_HOURS,
+            effective_stale_after_hours: 48,
         },
         Network {
             id: Uuid::new_v4(),
@@ -500,7 +519,13 @@ fn generate_networks(
 // Subnets
 // ============================================================================
 
-fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> Vec<Subnet> {
+fn generate_subnets(
+    networks: &[Network],
+    tags: &[Tag],
+    docker_hq_svc_id: Uuid,
+    docker_dc_svc_id: Uuid,
+    now: DateTime<Utc>,
+) -> Vec<Subnet> {
     let hq = networks
         .iter()
         .find(|n| n.base.name == "Headquarters")
@@ -638,7 +663,9 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
                 name: "HQ Docker Bridge".to_string(),
                 description: Some("Docker container network".to_string()),
                 subnet_type: SubnetType::DockerBridge,
-                virtualization: None,
+                virtualization: Some(SubnetVirtualization::Docker(DockerSubnetVirtualization {
+                    service_id: docker_hq_svc_id,
+                })),
                 source: EntitySource::Manual,
                 tags: vec![],
             },
@@ -765,7 +792,9 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
                 name: "DC Docker Bridge".to_string(),
                 description: Some("Docker container network".to_string()),
                 subnet_type: SubnetType::DockerBridge,
-                virtualization: None,
+                virtualization: Some(SubnetVirtualization::Docker(DockerSubnetVirtualization {
+                    service_id: docker_dc_svc_id,
+                })),
                 source: EntitySource::Manual,
                 tags: vec![],
             },
@@ -871,6 +900,7 @@ fn create_host(
 }
 
 /// Wraps a `create_host()` result to add SNMP system information fields.
+#[allow(clippy::too_many_arguments)]
 fn with_snmp(
     (mut host, ip_address): (Host, IPAddress),
     sys_descr: Option<&str>,
@@ -878,12 +908,20 @@ fn with_snmp(
     sys_location: Option<&str>,
     sys_contact: Option<&str>,
     chassis_id: Option<&str>,
+    manufacturer: Option<&str>,
+    model: Option<&str>,
+    serial_number: Option<&str>,
 ) -> (Host, IPAddress) {
     host.base.sys_descr = sys_descr.map(String::from);
     host.base.sys_object_id = sys_object_id.map(String::from);
     host.base.sys_location = sys_location.map(String::from);
     host.base.sys_contact = sys_contact.map(String::from);
     host.base.chassis_id = chassis_id.map(String::from);
+    // SNMP sysName conventionally mirrors the device hostname.
+    host.base.sys_name = Some(host.base.name.clone());
+    host.base.manufacturer = manufacturer.map(str::to_string);
+    host.base.model = model.map(str::to_string);
+    host.base.serial_number = serial_number.map(str::to_string);
     (host, ip_address)
 }
 
@@ -1074,6 +1112,104 @@ macro_rules! host_with_services {
     }};
 }
 
+/// A small set of "recently discovered" hosts, created AFTER the per-network
+/// snapshot in the populate handler so the snapshot captures an earlier state
+/// and the live view visibly differs (these hosts/services appear only in
+/// live). Kept fully self-contained — no dependencies, neighbor links, or
+/// interfaces — so they can be inserted after the main batch without
+/// FK-ordering concerns. Uses only service-definition ids already proven in the
+/// main demo set.
+fn generate_recent_hosts(
+    networks: &[Network],
+    subnets: &[Subnet],
+    now: DateTime<Utc>,
+) -> Vec<HostWithServices> {
+    let find_network = |name: &str| {
+        networks
+            .iter()
+            .find(|n| n.base.name.contains(name))
+            .unwrap()
+    };
+    let find_subnet = |name: &str| subnets.iter().find(|s| s.base.name.contains(name)).unwrap();
+
+    let hq = find_network("Headquarters");
+    let dc = find_network("Data Center");
+
+    vec![
+        // HQ: a new employee workstation on the office LAN.
+        host_with_services!(
+            create_host(
+                "hq-ws-jmartin",
+                Some("jmartin-pc.acme.local"),
+                Some("Workstation — J. Martin (new hire)"),
+                hq,
+                find_subnet("HQ Office LAN"),
+                Ipv4Addr::new(10, 0, 10, 201),
+                vec![],
+                None,
+                None,
+                now,
+            ),
+            now,
+            ("Workstation", "Remote Desktop", Some(PortType::Rdp), vec![]),
+            ("SSH", "SSH", Some(PortType::Ssh), vec![]),
+        ),
+        // HQ: a newly stood-up secondary DNS resolver.
+        host_with_services!(
+            create_host(
+                "hq-dns-secondary",
+                Some("dns2.acme.local"),
+                Some("Secondary DNS resolver (recently added)"),
+                hq,
+                find_subnet("HQ Servers"),
+                Ipv4Addr::new(10, 0, 20, 201),
+                vec![],
+                None,
+                None,
+                now,
+            ),
+            now,
+            ("Bind9", "BIND DNS", Some(PortType::DnsUdp), vec![]),
+            ("SSH", "SSH", Some(PortType::Ssh), vec![]),
+        ),
+        // DC: a new VPN gateway.
+        host_with_services!(
+            create_host(
+                "dc-vpn-gw02",
+                Some("vpn2.dc.acme.local"),
+                Some("VPN gateway (recently added)"),
+                dc,
+                find_subnet("DC Compute"),
+                Ipv4Addr::new(172, 16, 10, 201),
+                vec![],
+                None,
+                None,
+                now,
+            ),
+            now,
+            ("OpenVPN", "OpenVPN", Some(PortType::OpenVPN), vec![]),
+            ("SSH", "SSH", Some(PortType::Ssh), vec![]),
+        ),
+        // DC: a new compute node.
+        host_with_services!(
+            create_host(
+                "dc-node07",
+                Some("node07.dc.acme.local"),
+                Some("Compute node (recently added)"),
+                dc,
+                find_subnet("DC Compute"),
+                Ipv4Addr::new(172, 16, 10, 202),
+                vec![],
+                None,
+                None,
+                now,
+            ),
+            now,
+            ("SSH", "SSH", Some(PortType::Ssh), vec![]),
+        ),
+    ]
+}
+
 fn generate_hosts_and_services(
     networks: &[Network],
     subnets: &[Subnet],
@@ -1117,9 +1253,9 @@ fn generate_hosts_and_services(
     // Pre-generated service UUIDs for virtualization wiring
     let pve_hq1_svc_id = Uuid::new_v4(); // Proxmox VE on proxmox-hv01
     let pve_hq2_svc_id = Uuid::new_v4(); // Proxmox VE on proxmox-hv02
-    let docker_hq_svc_id = Uuid::new_v4(); // Docker daemon on docker-prod01
+    let docker_hq_svc_id = dep_svc_ids.docker_hq; // Docker daemon on docker-prod01 (shared with HQ Docker Bridge subnet)
     let pve_dc_svc_id = Uuid::new_v4(); // Proxmox VE on dc-proxmox-hv01
-    let docker_dc_svc_id = Uuid::new_v4(); // Docker daemon on dc-docker01
+    let docker_dc_svc_id = dep_svc_ids.docker_dc; // Docker daemon on dc-docker01 (shared with DC Docker Bridge subnet)
 
     // Service UUIDs for HubAndSpoke dependency wiring (pre-generated at top level)
     let prometheus_hq_svc_id = dep_svc_ids.prometheus_hq;
@@ -1178,6 +1314,9 @@ fn generate_hosts_and_services(
             Some("HQ Server Room, Rack A1"),
             Some("netops@acme-corp.com"),
             None,
+            Some("Netgate"),
+            Some("SG-3100"),
+            Some("NG61003370A1F4"),
         );
         let ip_addresses = vec![ip_address];
         let mut ports = Vec::new();
@@ -1261,6 +1400,9 @@ fn generate_hosts_and_services(
             Some("HQ Server Room, Rack A2"),
             Some("netops@acme-corp.com"),
             Some("78:45:c4:ab:cd:01"),
+            Some("Ubiquiti"),
+            Some("USW-48-PoE"),
+            Some("UI7845C4ABCD01"),
         ),
         now,
         ("SNMP", "SNMP", Some(PortType::Snmp), vec![]),
@@ -1441,6 +1583,9 @@ fn generate_hosts_and_services(
             Some("HQ Server Room, Rack B1"),
             Some("sysadmin@acme-corp.com"),
             None,
+            Some("Dell Inc."),
+            Some("PowerEdge R740"),
+            Some("DL7QX2B1PVE1"),
         );
         let ip_addresses = vec![ip_address];
         let mut ports = Vec::new();
@@ -1506,6 +1651,9 @@ fn generate_hosts_and_services(
             Some("HQ Server Room, Rack B2"),
             Some("sysadmin@acme-corp.com"),
             None,
+            Some("Supermicro"),
+            Some("AS-2124BT-HNTR"),
+            Some("SMC2124B2PVE2"),
         );
         let ip_addresses = vec![ip_address];
         let mut ports = Vec::new();
@@ -1954,6 +2102,9 @@ fn generate_hosts_and_services(
             Some("HQ Server Room, Rack C1"),
             Some("sysadmin@acme-corp.com"),
             None,
+            Some("iXsystems"),
+            Some("TrueNAS Mini X+"),
+            Some("IX-TNMXP-2231C0087"),
         );
         let ip_addresses = vec![ip_address];
         let mut ports = Vec::new();
@@ -2018,6 +2169,9 @@ fn generate_hosts_and_services(
             Some("HQ Server Room, Rack C2"),
             Some("sysadmin@acme-corp.com"),
             None,
+            Some("Synology"),
+            Some("DS1621+"),
+            Some("2140PDN6C201"),
         ),
         now,
         (
@@ -2107,6 +2261,9 @@ fn generate_hosts_and_services(
             Some("HQ Main Lobby, Ceiling Mount"),
             Some("netops@acme-corp.com"),
             Some("fc:ec:da:aa:bb:01"),
+            Some("Ubiquiti"),
+            Some("U6-Pro"),
+            Some("UIFCECDAAABB01"),
         ),
         now,
         (
@@ -2140,6 +2297,9 @@ fn generate_hosts_and_services(
             Some("HQ Floor 2, Hallway Ceiling"),
             Some("netops@acme-corp.com"),
             Some("fc:ec:da:aa:bb:02"),
+            Some("Ubiquiti"),
+            Some("U6-LR"),
+            Some("UIFCECDAAABB02"),
         ),
         now,
         (
@@ -2199,6 +2359,9 @@ fn generate_hosts_and_services(
             Some("HQ Floor 1, Copy Room"),
             Some("helpdesk@acme-corp.com"),
             None,
+            Some("HP"),
+            Some("LaserJet Pro MFP M428fdw"),
+            Some("CNBRK1F0X8"),
         ),
         now,
         (
@@ -2286,6 +2449,9 @@ fn generate_hosts_and_services(
             Some("HQ Guest Lobby, Ceiling Mount"),
             Some("netops@acme-corp.com"),
             Some("fc:ec:da:aa:bb:03"),
+            Some("Ubiquiti"),
+            Some("U6-Lite"),
+            Some("UIFCECDAAABB03"),
         ),
         now,
         (
@@ -2353,6 +2519,9 @@ fn generate_hosts_and_services(
             Some("DC-East, Cage 4, Rack 1"),
             Some("netops@acme-corp.com"),
             None,
+            Some("Fortinet"),
+            Some("FortiGate-60F"),
+            Some("FGT60FTK24010123"),
         ),
         now,
         (
@@ -2386,6 +2555,9 @@ fn generate_hosts_and_services(
             Some("DC-East, Cage 4, Rack 2"),
             Some("netops@acme-corp.com"),
             Some("78:45:c4:ab:cd:02"),
+            Some("Arista Networks"),
+            Some("DCS-7050SX3-48YC12"),
+            Some("JPE21120CD02"),
         ),
         now,
         ("SNMP", "SNMP", Some(PortType::Snmp), vec![]),
@@ -2576,6 +2748,9 @@ fn generate_hosts_and_services(
             Some("DC-East, Cage 4, Rack 3"),
             Some("sysadmin@acme-corp.com"),
             None,
+            Some("Dell Inc."),
+            Some("PowerEdge R640"),
+            Some("DL9RT4DC07PVE"),
         );
         let ip_addresses = vec![ip_address];
         let mut ports = Vec::new();
@@ -4727,7 +4902,7 @@ fn generate_discoveries(
     subnets: &[Subnet],
     daemons: &[Daemon],
     _hosts: &[&Host],
-    _credentials: &[Credential],
+    credentials: &[Credential],
     now: DateTime<Utc>,
 ) -> Vec<Discovery> {
     let find_network = |name: &str| {
@@ -4743,6 +4918,44 @@ fn generate_discoveries(
             .filter(|s| s.base.network_id == network_id)
             .map(|s| s.id)
             .collect()
+    };
+
+    // Credential IDs for integration targets.
+    let default_snmp_cred_id = credentials
+        .iter()
+        .find(|c| c.base.name == "Default SNMPv2c")
+        .unwrap()
+        .id;
+    let network_devices_cred_id = credentials
+        .iter()
+        .find(|c| c.base.name == "Network Devices")
+        .unwrap()
+        .id;
+    let docker_proxy_cred_id = credentials
+        .iter()
+        .find(|c| c.base.name == "Docker TLS Proxy")
+        .unwrap()
+        .id;
+
+    // Both SNMP creds are broadcast to every network (see
+    // `generate_network_credential_assignments`), so every discovery targets both.
+    let snmp_network_targets = || {
+        vec![
+            IntegrationTarget::Network {
+                credential_id: default_snmp_cred_id,
+            },
+            IntegrationTarget::Network {
+                credential_id: network_devices_cred_id,
+            },
+        ]
+    };
+    // Ad-hoc discoveries additionally reach the daemon-local Docker socket.
+    let snmp_and_docker_targets = || {
+        let mut targets = snmp_network_targets();
+        targets.push(IntegrationTarget::DaemonHost {
+            credential_id: docker_proxy_cred_id,
+        });
+        targets
     };
 
     let unified = |daemon: &Daemon, subnet_ids: Option<Vec<Uuid>>| DiscoveryType::Unified {
@@ -4774,7 +4987,7 @@ fn generate_discoveries(
             },
             scan_count: 0,
             force_full_scan: false,
-            integration_targets: vec![],
+            integration_targets: snmp_and_docker_targets(),
         });
 
         // Historical — completed 3 weeks ago
@@ -4811,7 +5024,7 @@ fn generate_discoveries(
             },
             scan_count: 0,
             force_full_scan: false,
-            integration_targets: vec![],
+            integration_targets: snmp_network_targets(),
         });
 
         // Historical — completed 1 week ago
@@ -4847,7 +5060,7 @@ fn generate_discoveries(
             },
             scan_count: 0,
             force_full_scan: false,
-            integration_targets: vec![],
+            integration_targets: snmp_network_targets(),
         });
     }
 
@@ -4871,7 +5084,7 @@ fn generate_discoveries(
             },
             scan_count: 0,
             force_full_scan: false,
-            integration_targets: vec![],
+            integration_targets: snmp_and_docker_targets(),
         });
 
         // Historical — failed 2 weeks ago
@@ -4908,7 +5121,7 @@ fn generate_discoveries(
             },
             scan_count: 0,
             force_full_scan: false,
-            integration_targets: vec![],
+            integration_targets: snmp_network_targets(),
         });
     }
 
