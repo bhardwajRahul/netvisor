@@ -37,7 +37,9 @@ Both links should render in L2 Physical, and the server's `LLDP/CDP link resolut
 - `ipAddrTable` and `ipNetToMedia` (ARP) are answered by snmpd's built-in IP module, so those walks run on every device already. (net-snmp `pass` can't emit binary MAC octet-strings, so FDB/ARP MAC *rows* aren't simulated — the daemon still walks those subtrees and terminates cleanly.)
 - **ap-wireless-01** is the one exception: it serves its own `ipAddrTable` so it can advertise a second subnet (see below).
 
-**Access-point guest subnet (`.235`) — #663.** The built-in IP module answers `ipAddrTable` from the VM's real kernel state, so every other agent only ever reports addresses inside the scanned `192.168.4.0/22`. `ap-wireless-01` displaces that module (`-I …,-ipAddr` in its systemd unit) and serves the table from `ap-wireless-01-ipaddr.txt`, advertising **172.30.10.1/24 on ifIndex 4**, whose `ifName` is **`br-guest`** — the built-in NAT guest network of a real access point.
+**Access-point guest subnet (`.235`) — #663.** The built-in IP module answers `ipAddrTable` from the VM's real kernel state, so every other agent only ever reports addresses inside the scanned `192.168.4.0/22`. `ap-wireless-01` overrides it and serves the table from `ap-wireless-01-ipaddr.txt`, advertising **172.30.10.1/24 on ifIndex 4**, whose `ifName` is **`br-guest`** — the built-in NAT guest network of a real access point.
+
+> Unlike ifTable/ifXTable, this subtree **cannot** be freed by disabling its module: `-I -ipaddr` (or `-ipAddr`) does not stop `mibII/ipaddr` registering. It also registers per *column* (`.4.20.1.1`…`.4.20.1.5`), so a single `pass` at the `.4.20` root always loses on specificity, whatever priority it carries. The override therefore registers one `pass -p 1` per column — matching granularity and beating the default priority of 255. Confirm what owns a subtree with `snmpd -Dregister_mib -C -c <conf>`.
 
 That combination is what issue #663 reported: a `br-` prefixed `ifName` on a remote device used to be classified as a Docker bridge, so the AP's guest subnet rendered as "Docker @ *AP*" in Topology. A scan of `.235` should now discover `172.30.10.0/24` as a **Guest** subnet, with no Docker/container label anywhere.
 
@@ -93,13 +95,16 @@ for f in /etc/systemd/system/snmpd-*.service; do sed -i 's|snmpd -f -Lo -C|snmpd
 `lxc/setup.sh` is idempotent — existing macvlan interfaces are left alone, while MIB data files, snmpd configs and systemd units are rewritten and every agent is restarted. So a full re-run is always the update path; there is no separate partial script.
 
 ```bash
-# from your Mac
-scp -r tools/snmp root@192.168.7.230:/root/snmp-test
-# on the VM (root shell)
-bash /root/snmp-test/lxc/setup.sh
+ssh -i ~/.ssh/snmp-test-vm root@192.168.7.230 'rm -rf /root/snmp-test' \
+  && scp -i ~/.ssh/snmp-test-vm -r tools/snmp root@192.168.7.230:/root/snmp-test \
+  && ssh -i ~/.ssh/snmp-test-vm root@192.168.7.230 'bash /root/snmp-test/lxc/setup.sh'
 ```
 
 Hosts that gained nothing are effectively no-ops; anything whose data file, config or unit changed comes back with the new content.
+
+> **The `rm -rf` is required, not tidiness.** `scp -r tools/snmp <host>:/root/snmp-test` only lands at that path the *first* time. Once `/root/snmp-test` exists, scp copies *into* it — the new tree lands at `/root/snmp-test/snmp/` while `bash /root/snmp-test/lxc/setup.sh` re-runs the **stale** copy. Every agent restarts and the run reports success, so this fails silently and looks like a broken fixture rather than a stale deploy. Sanity-check with `grep -c br-guest /root/snmp-test/lxc/setup.sh` before running it.
+
+> **SSH key.** The VM accepts publickey only (password auth is disabled) and there is no `~/.ssh/config` entry, so `-i ~/.ssh/snmp-test-vm` is required or you get `Permission denied (publickey)`. Add a `Host 192.168.7.2*` / `IdentityFile ~/.ssh/snmp-test-vm` block to `~/.ssh/config` to drop the flag.
 
 Afterwards, flush the scanning host's ARP cache (`sudo arp -a -d` on macOS) so any new MACs are learned, then run `make snmp-verify` from your Mac.
 

@@ -135,8 +135,15 @@ impl Subnet {
     /// can only have come from the interface-name heuristic that used to type an
     /// access point's `br-`-prefixed guest bridge as Docker (#663) — so a current
     /// non-bridge observation of the same CIDR supersedes it.
+    ///
+    /// Both rows must be `Discovery`. A `Manual` subnet type is a user's explicit
+    /// assertion, not a guess to be repaired, and discovery must never silently
+    /// overwrite it — the CIDR dedup happily matches a Manual row against an
+    /// incoming discovered one, so this is the only thing keeping them apart.
     pub fn corrects_container_bridge_guess(&self, existing: &Subnet) -> bool {
-        existing.base.subnet_type.is_container_bridge()
+        existing.base.source == EntitySource::Discovery
+            && self.base.source == EntitySource::Discovery
+            && existing.base.subnet_type.is_container_bridge()
             && existing.base.virtualization.is_none()
             && !self.base.subnet_type.is_container_bridge()
     }
@@ -259,6 +266,14 @@ mod tests {
     }
 
     fn subnet(subnet_type: SubnetType, virtualization: Option<SubnetVirtualization>) -> Subnet {
+        sourced_subnet(subnet_type, virtualization, EntitySource::Discovery)
+    }
+
+    fn sourced_subnet(
+        subnet_type: SubnetType,
+        virtualization: Option<SubnetVirtualization>,
+        source: EntitySource,
+    ) -> Subnet {
         Subnet::new(SubnetBase {
             cidr: cidr::IpCidr::from_str("172.30.10.0/24").unwrap(),
             network_id: Uuid::nil(),
@@ -266,7 +281,7 @@ mod tests {
             description: None,
             subnet_type,
             virtualization,
-            source: EntitySource::Discovery,
+            source,
             tags: Vec::new(),
         })
     }
@@ -297,6 +312,22 @@ mod tests {
         assert!(
             !subnet(SubnetType::DockerBridge, None)
                 .corrects_container_bridge_guess(&subnet(SubnetType::DockerBridge, None))
+        );
+    }
+
+    /// A manually-set subnet type is a user's assertion, not a guess to repair.
+    /// The CIDR dedup matches a Manual row against an incoming discovered one,
+    /// so without the source check discovery would silently overwrite it.
+    #[test]
+    fn manual_subnet_type_is_never_overwritten_by_discovery() {
+        let manual = sourced_subnet(SubnetType::DockerBridge, None, EntitySource::Manual);
+        assert!(!subnet(SubnetType::Guest, None).corrects_container_bridge_guess(&manual));
+
+        // ...and a manual observation may not rewrite a discovered row either.
+        let discovered = subnet(SubnetType::DockerBridge, None);
+        assert!(
+            !sourced_subnet(SubnetType::Guest, None, EntitySource::Manual)
+                .corrects_container_bridge_guess(&discovered)
         );
     }
 

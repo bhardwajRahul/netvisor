@@ -465,9 +465,9 @@ EOF
 # Every other agent lets snmpd's built-in IP module answer ipAddrTable from the
 # VM's real kernel state, which only ever yields addresses inside the scanned
 # 192.168.4.0/22 — so no agent advertises a second subnet, and the misclassified
-# guest network from #663 can't be reproduced. This host displaces that module
-# (see DISABLED_MIB_MODULES below) and serves the table itself, so it can report
-# 172.30.10.1/24 on the `br-guest` interface the way a real AP does.
+# guest network from #663 can't be reproduced. This host overrides that module
+# (see the `pass -p 1` lines in its config) and serves the table itself, so it
+# can report 172.30.10.1/24 on the `br-guest` interface the way a real AP does.
 #
 # Rows must stay in numeric OID order (column-major, then ascending IP): the pass
 # handler answers GETNEXT by returning the first line greater than the request,
@@ -965,6 +965,20 @@ pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/printer-lobby-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/printer-lobby-iftable.txt
 EOF
 
+# The ipAddrTable override below is registered per COLUMN with an explicit
+# priority, which looks redundant but is the only thing that works:
+#
+#  - `-I -ipaddr` / `-ipAddr` does NOT disable the built-in module. It keeps
+#    registering (verify with `snmpd -Dregister_mib …` — it reports the module
+#    as "mibII/ipaddr"), so unlike ifTable/ifXTable this subtree cannot be freed
+#    up by disabling its module.
+#  - mibII/ipaddr registers each column separately (.4.20.1.1 … .4.20.1.5), so a
+#    single `pass` at the .4.20 subtree root loses on specificity no matter what
+#    priority it carries — net-snmp prefers the more specific registration.
+#
+# Matching that column granularity and taking priority 1 (default is 255; lower
+# wins) is what actually displaces it. Columns 4-5 are deliberately left to the
+# built-in module — the daemon only reads addr/ifIndex/netmask.
 cat > "$CONF_DIR/snmpd-ap-wireless-01.conf" << EOF
 agentAddress udp:${HOSTS[5]}:161
 rocommunity netdefault
@@ -976,7 +990,9 @@ sysobjectid .1.3.6.1.4.1.41112.1.6.1
 sysservices 6
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/ap-wireless-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/ap-wireless-01-iftable.txt
-pass .1.3.6.1.2.1.4.20 /bin/bash $H $D/ap-wireless-01-ipaddr.txt
+pass -p 1 .1.3.6.1.2.1.4.20.1.1 /bin/bash $H $D/ap-wireless-01-ipaddr.txt
+pass -p 1 .1.3.6.1.2.1.4.20.1.2 /bin/bash $H $D/ap-wireless-01-ipaddr.txt
+pass -p 1 .1.3.6.1.2.1.4.20.1.3 /bin/bash $H $D/ap-wireless-01-ipaddr.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/ap-wireless-01-lldp.txt
 EOF
 
@@ -1093,22 +1109,9 @@ pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-omada-01-iftable.txt
 EOF
 
 # ── 6. Create systemd services ───────────────────────────────────────
-#
-# A built-in MIB module and a `pass` directive cannot both own an OID subtree —
-# snmpd logs "duplicate registration" and the pass loses. So every subtree served
-# by pass needs its built-in module disabled via `-I`. All hosts displace
-# ifTable/ifXTable; ap-wireless-01 additionally displaces ipAddr (the
-# kernel-backed ipAddrTable) so it can advertise its own guest subnet (#663).
 echo "Creating systemd services..."
-BASE_DISABLED_MIB_MODULES="-ifTable,-ifXTable"
-declare -A EXTRA_DISABLED_MIB_MODULES=( [ap-wireless-01]="-ipAddr" )
 for i in "${!SYSNAMES[@]}"; do
     name="${SYSNAMES[$i]}"
-    disabled="$BASE_DISABLED_MIB_MODULES"
-    extra="${EXTRA_DISABLED_MIB_MODULES[$name]:-}"
-    if [ -n "$extra" ]; then
-        disabled="${disabled},${extra}"
-    fi
     cat > "/etc/systemd/system/snmpd-${name}.service" << EOF
 [Unit]
 Description=SNMP Test Agent — ${name} (${HOSTS[$i]})
@@ -1116,7 +1119,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/snmpd -f -Lo -I ${disabled} -C -c ${CONF_DIR}/snmpd-${name}.conf
+ExecStart=/usr/sbin/snmpd -f -Lo -I -ifTable,-ifXTable -C -c ${CONF_DIR}/snmpd-${name}.conf
 Restart=on-failure
 RestartSec=2
 
