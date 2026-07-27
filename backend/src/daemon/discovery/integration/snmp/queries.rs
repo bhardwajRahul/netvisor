@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use snmp2::{Oid, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use tokio::time::timeout;
 use tracing::{debug, trace, warn};
@@ -28,9 +28,9 @@ const BULK_MAX_REPETITIONS: u32 = 20;
 /// non-error signal is an agent that refuses getbulk, which the walk retries via getnext.
 /// Varbinds borrow the session's response buffer (`snmp2::Value<'a>` holds `&'a [u8]`
 /// for octet strings), so a page is only valid while the session stays borrowed.
-type Varbinds<'a> = Vec<(Vec<u64>, Value<'a>)>;
+pub type Varbinds<'a> = Vec<(Vec<u64>, Value<'a>)>;
 
-enum WalkPage<'a> {
+pub enum WalkPage<'a> {
     /// Decoded varbinds in wire order, OIDs as sub-id vectors.
     Varbinds(Varbinds<'a>),
     /// Agent rejected getbulk (e.g. SNMPv1) — retry from the same OID with getnext.
@@ -42,7 +42,7 @@ enum WalkPage<'a> {
 /// socket. Two implementors only: `Box<AsyncSession>` in production (below) and a
 /// canned-page mock under `#[cfg(test)]`.
 #[async_trait::async_trait]
-trait SnmpWalkTransport: Send {
+pub trait SnmpWalkTransport: Send {
     async fn walk_getbulk<'a>(
         &'a mut self,
         from: &[u64],
@@ -63,6 +63,14 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
             Ok(Ok(pdu)) => Ok(WalkPage::Varbinds(
                 pdu.varbinds.map(|(o, v)| (oid_to_vec(&o), v)).collect(),
             )),
+            // A response that fails request-id or community validation is a session that has lost
+            // sync with its own traffic, not an agent declining getbulk. Retrying the same OID with
+            // getnext on a desynced session just reads the next stale answer, so the walk has to
+            // end and be reported as truncated — treating it as "no bulk support" produced a
+            // silently short table that still claimed to be complete.
+            Ok(Err(e @ (snmp2::Error::RequestIdMismatch | snmp2::Error::CommunityMismatch))) => {
+                Err(anyhow::anyhow!("SNMP session desynchronized: {e}"))
+            }
             Ok(Err(_)) => Ok(WalkPage::BulkUnsupported),
             Err(_) => Err(anyhow::anyhow!("getbulk timed out")),
         }
@@ -160,7 +168,21 @@ where
                 break;
             }
             if resp_parts.len() <= base_parts.len() || !resp_parts.starts_with(&base_parts) {
-                // Walked past the subtree — natural end, not truncation.
+                // Out of the subtree. That is the natural end of a column *if* the agent moved
+                // forward past it — a walk always advances. An OID that doesn't exceed where we
+                // asked from is not a continuation of this walk at all (a stale response left
+                // over from a cancelled request reads exactly like this), and calling it a
+                // natural end would report a column that stopped early as authoritative, which
+                // then re-enables the server-side prune #649 exists to suppress.
+                if resp_parts <= current_parts {
+                    debug!(
+                        ?resp_parts,
+                        ?current_parts,
+                        base = base_oid_str,
+                        "SNMP walk stopped: response left the subtree without advancing"
+                    );
+                    truncated = true;
+                }
                 done = true;
                 break;
             }
@@ -266,8 +288,8 @@ pub async fn query_system_info(
 /// per-getnext timeout, or the `MAX_WALK_ENTRIES` cap. A `false` here means the entry set may be
 /// a partial view of the host's real ifTable — the server uses it to skip the interface prune so
 /// a transient partial walk cannot delete interfaces (and their resolved L2 neighbors). See #649.
-pub async fn walk_if_table(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn walk_if_table<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
 ) -> Result<(Vec<IfTableEntry>, bool)> {
     let mut entries: HashMap<i32, IfTableEntry> = HashMap::new();
@@ -289,13 +311,32 @@ pub async fn walk_if_table(
         (oids::if_mib::if_x_table::IF_ALIAS, "ifAlias"),
     ];
 
+    // ifIndex is walked first and is the table's index column, so once it has returned a
+    // non-empty set every later column must land inside it. A row appearing only in a later
+    // column is not an interface this device reported — it is a response that doesn't belong to
+    // this walk — and minting an interface from it is how a foreign port ended up on a switch.
+    // Only trusted when the ifIndex column itself completed; a device that doesn't serve it at
+    // all still gets the old permissive behaviour.
+    let mut known_if_indexes: Option<HashSet<i32>> = None;
+    let mut foreign_rows = 0usize;
+
     // Walk each column. ifTable/ifXTable are indexed by a single sub-id (ifIndex).
     for (base_oid_str, column_name) in columns {
+        let known = known_if_indexes.clone();
+        let mut column_indexes: HashSet<i32> = HashSet::new();
+        let mut column_foreign = 0usize;
         let walked = walk_subtree(session, base_oid_str, |suffix, value| {
             let Some(&if_index_u64) = suffix.last() else {
                 return;
             };
             let if_index = if_index_u64 as i32;
+            column_indexes.insert(if_index);
+            if let Some(known) = &known
+                && !known.contains(&if_index)
+            {
+                column_foreign += 1;
+                return;
+            }
             let entry = entries.entry(if_index).or_insert_with(|| IfTableEntry {
                 if_index,
                 if_descr: None,
@@ -341,6 +382,24 @@ pub async fn walk_if_table(
         if !walked {
             complete = false;
         }
+
+        if column_name == "ifIndex" && walked && !column_indexes.is_empty() {
+            known_if_indexes = Some(column_indexes);
+        }
+
+        if column_foreign > 0 {
+            // Something answered for an interface this device never listed. Whatever the cause,
+            // what we hold is not a faithful copy of its ifTable.
+            foreign_rows += column_foreign;
+            complete = false;
+            tracing::warn!(
+                ip = %ip,
+                column = column_name,
+                rows = column_foreign,
+                "SNMP ifTable column returned rows for unknown ifIndexes; discarding them and \
+                 marking the walk partial"
+            );
+        }
     }
 
     let mut result: Vec<IfTableEntry> = entries.into_values().collect();
@@ -353,6 +412,7 @@ pub async fn walk_if_table(
         ip = %ip,
         if_count = result.len(),
         complete = complete,
+        foreign_rows = foreign_rows,
         "SNMP ifTable walk finished"
     );
     // Diagnostic for issue #614 (high-ifIndex interfaces missing): log the full set of
@@ -1319,5 +1379,233 @@ mod walk_tests {
             "a walk that reaches the end of the subtree is complete"
         );
         assert_eq!(suffixes, vec![vec![1], vec![2], vec![3], vec![4]]);
+    }
+}
+
+/// `walk_if_table` assembles one interface per ifIndex across eleven separate column walks, and
+/// until now had no test at all — the multi-column assembly, the row-minting and the `complete`
+/// aggregation were all uncovered, which is how a foreign interface ended up on a switch and was
+/// still reported as an authoritative full ifTable.
+#[cfg(test)]
+mod if_table_tests {
+    use super::*;
+
+    const IF_INDEX: &str = "1.3.6.1.2.1.2.2.1.1";
+    const IF_DESCR: &str = "1.3.6.1.2.1.2.2.1.2";
+
+    /// A value an agent can return. `Value` borrows, so the test data is `'static`.
+    #[derive(Clone)]
+    enum Canned {
+        Int(i64),
+        Str(&'static str),
+    }
+
+    /// An agent backed by a sorted OID table, answering GETNEXT/GETBULK the way a real one does:
+    /// every row strictly greater than the requested OID, in order. That is what makes the
+    /// multi-column walk behave as it does in production — each column walk asks from its own
+    /// base and stops when the responses leave that subtree.
+    struct FakeAgent {
+        rows: Vec<(Vec<u64>, Canned)>,
+    }
+
+    impl FakeAgent {
+        fn new(rows: &[(&str, Canned)]) -> Self {
+            let mut rows: Vec<(Vec<u64>, Canned)> = rows
+                .iter()
+                .map(|(oid, v)| {
+                    (
+                        oid.split('.').map(|p| p.parse().unwrap()).collect(),
+                        v.clone(),
+                    )
+                })
+                .collect();
+            rows.sort_by(|a, b| a.0.cmp(&b.0));
+            Self { rows }
+        }
+
+        /// The ifTable of a switch whose 16 ports live at high ifIndexes, like the Omada
+        /// TL-SG3216 in the SNMP sim.
+        fn omada() -> Vec<(&'static str, Canned)> {
+            let mut rows = vec![
+                ("1.3.6.1.2.1.2.2.1.1.1", Canned::Int(1)),
+                ("1.3.6.1.2.1.2.2.1.2.1", Canned::Str("Vlan-interface1")),
+            ];
+            // A handful of ports is enough to prove the assembly; the real device has 16.
+            for (idx, oid, descr) in [
+                (
+                    49153u64,
+                    "1.3.6.1.2.1.2.2.1.1.49153",
+                    "gigabitEthernet 1/0/1",
+                ),
+                (49154, "1.3.6.1.2.1.2.2.1.1.49154", "gigabitEthernet 1/0/2"),
+                (49155, "1.3.6.1.2.1.2.2.1.1.49155", "gigabitEthernet 1/0/3"),
+            ] {
+                rows.push((oid, Canned::Int(idx as i64)));
+                rows.push((
+                    match idx {
+                        49153 => "1.3.6.1.2.1.2.2.1.2.49153",
+                        49154 => "1.3.6.1.2.1.2.2.1.2.49154",
+                        _ => "1.3.6.1.2.1.2.2.1.2.49155",
+                    },
+                    Canned::Str(descr),
+                ));
+            }
+            rows
+        }
+
+        fn page(&self, from: &[u64]) -> Varbinds<'_> {
+            let page: Varbinds<'_> = self
+                .rows
+                .iter()
+                .filter(|(oid, _)| oid.as_slice() > from)
+                .take(BULK_MAX_REPETITIONS as usize)
+                .map(|(oid, v)| {
+                    let value = match v {
+                        Canned::Int(i) => Value::Integer(*i),
+                        Canned::Str(s) => Value::OctetString(s.as_bytes()),
+                    };
+                    (oid.clone(), value)
+                })
+                .collect();
+
+            // Past the last row a real agent says so rather than answering with nothing — an
+            // empty response is abnormal and the walk rightly treats it as truncation. Columns
+            // this device doesn't implement have to end this way or every walk reads as partial.
+            if page.is_empty() {
+                return vec![(from.to_vec(), Value::EndOfMibView)];
+            }
+            page
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SnmpWalkTransport for FakeAgent {
+        async fn walk_getbulk<'a>(&'a mut self, from: &[u64], _max: u32) -> Result<WalkPage<'a>> {
+            Ok(WalkPage::Varbinds(self.page(from)))
+        }
+
+        async fn walk_getnext<'a>(&'a mut self, from: &[u64]) -> Result<Varbinds<'a>> {
+            Ok(self.page(from))
+        }
+    }
+
+    fn ip() -> IpAddr {
+        "192.0.2.1".parse().unwrap()
+    }
+
+    #[tokio::test]
+    async fn assembles_one_entry_per_if_index_across_columns() {
+        let mut agent = FakeAgent::new(&FakeAgent::omada());
+
+        let (entries, complete) = walk_if_table(&mut agent, ip()).await.unwrap();
+
+        assert!(complete, "a device answering every column is authoritative");
+        assert_eq!(
+            entries.iter().map(|e| e.if_index).collect::<Vec<_>>(),
+            vec![1, 49153, 49154, 49155],
+            "every ifIndex appears exactly once, in order"
+        );
+        assert_eq!(entries[0].if_descr.as_deref(), Some("Vlan-interface1"));
+        assert_eq!(
+            entries[1].if_descr.as_deref(),
+            Some("gigabitEthernet 1/0/1"),
+            "a high ifIndex must keep the description from its own column"
+        );
+    }
+
+    /// The reported defect: a switch came back with an interface belonging to a different device.
+    ///
+    /// Every column mints a row on sight, so a single varbind under `ifDescr` for an ifIndex the
+    /// device never listed in `ifIndex` was enough to invent an interface — and the walk still
+    /// reported itself complete, which lets the server prune real interfaces against a table it
+    /// should not trust (#649). The row must be discarded and the walk must admit it is partial.
+    #[tokio::test]
+    async fn a_row_for_an_unlisted_if_index_is_discarded_and_makes_the_walk_partial() {
+        let mut rows = FakeAgent::omada();
+        // ifIndex 2 exists only in the ifDescr column — the shape of the foreign row.
+        rows.push(("1.3.6.1.2.1.2.2.1.2.2", Canned::Str("ge-0/0/1")));
+        let mut agent = FakeAgent::new(&rows);
+
+        let (entries, complete) = walk_if_table(&mut agent, ip()).await.unwrap();
+
+        assert!(
+            !entries.iter().any(|e| e.if_index == 2),
+            "an ifIndex the device never listed must not become an interface"
+        );
+        assert_eq!(
+            entries.iter().map(|e| e.if_index).collect::<Vec<_>>(),
+            vec![1, 49153, 49154, 49155]
+        );
+        assert!(
+            !complete,
+            "a table carrying rows the device never listed is not authoritative, so the server \
+             must not prune against it"
+        );
+    }
+
+    /// The guard only applies once the device has actually told us its ifIndex set. An agent that
+    /// serves no ifIndex column at all still gets its other columns, as before.
+    #[tokio::test]
+    async fn a_device_serving_no_if_index_column_still_yields_interfaces() {
+        let mut agent = FakeAgent::new(&[
+            ("1.3.6.1.2.1.2.2.1.2.7", Canned::Str("eth7")),
+            ("1.3.6.1.2.1.2.2.1.3.7", Canned::Int(6)),
+        ]);
+
+        let (entries, _) = walk_if_table(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].if_index, 7);
+        assert_eq!(entries[0].if_descr.as_deref(), Some("eth7"));
+    }
+
+    /// A response that leaves the subtree *without advancing* is not this walk's natural end — it
+    /// is an answer to some other question. Reporting it as a finished column is what let a
+    /// silently short ifTable claim to be complete.
+    #[tokio::test]
+    async fn a_non_advancing_out_of_subtree_response_reports_partial() {
+        struct StaleAgent;
+
+        #[async_trait::async_trait]
+        impl SnmpWalkTransport for StaleAgent {
+            async fn walk_getbulk<'a>(
+                &'a mut self,
+                _from: &[u64],
+                _max: u32,
+            ) -> Result<WalkPage<'a>> {
+                // Below the requested base, so it neither belongs to the subtree nor advances.
+                Ok(WalkPage::Varbinds(vec![(
+                    vec![1, 3, 6, 1, 2, 1, 1, 1, 0],
+                    Value::Integer(1),
+                )]))
+            }
+
+            async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
+                unreachable!("getbulk answers first")
+            }
+        }
+
+        let complete = walk_subtree(&mut StaleAgent, IF_DESCR, |_, _| {})
+            .await
+            .unwrap();
+        assert!(!complete);
+    }
+
+    /// The other side of that rule: a genuine end-of-column response *does* advance past the
+    /// subtree, and must still count as a complete walk.
+    #[tokio::test]
+    async fn a_natural_end_of_column_still_reports_complete() {
+        let mut agent = FakeAgent::new(&[
+            ("1.3.6.1.2.1.2.2.1.1.1", Canned::Int(1)),
+            ("1.3.6.1.2.1.2.2.1.2.1", Canned::Str("eth0")),
+        ]);
+
+        let mut seen = 0usize;
+        let complete = walk_subtree(&mut agent, IF_INDEX, |_, _| seen += 1)
+            .await
+            .unwrap();
+
+        assert!(complete, "walking off the end of a column is a natural end");
+        assert_eq!(seen, 1);
     }
 }
