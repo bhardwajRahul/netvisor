@@ -3,7 +3,7 @@ set -euo pipefail
 
 # SNMP Test Environment — manages 13 snmpd instances on a Proxmox LXC
 # Subnet: 192.168.4.0/22 (hosts at 192.168.7.230–242)
-# Usage: tools/snmp/snmp-test-env.sh verify|status|ssh-setup
+# Usage: tools/snmp/snmp-test-env.sh deploy|verify|status
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SNMPGET="${SNMPGET:-/opt/homebrew/opt/net-snmp/bin/snmpget}"
@@ -17,6 +17,14 @@ SYSNAMES=("switch-core-01" "switch-access-01" "router-gw-01" "firewall-01" "prin
 V3_USER="${V3_USER:-scanopyv3}"
 V3_AUTH_PASS="${V3_AUTH_PASS:-authpass12345}"
 V3_PRIV_PASS="${V3_PRIV_PASS:-privpass12345}"
+
+# Deploy target: the Proxmox VM that hosts the LXC agents, reached over SSH at
+# HOSTS[0] (its management IP doubles as switch-core-01's macvlan address). The
+# VM accepts publickey auth only, so the key is required. Override either with
+# SNMP_VM_HOST / SNMP_SSH_KEY.
+VM_HOST="${SNMP_VM_HOST:-${HOSTS[0]}}"
+SSH_KEY="${SNMP_SSH_KEY:-$HOME/.ssh/snmp-test-vm}"
+REMOTE_DIR="/root/snmp-test"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -129,7 +137,36 @@ cmd_status() {
     done
 }
 
+# Push this tools/snmp tree to the VM and (re)build every agent. Idempotent: it
+# always clears the remote copy first, because scp -r into an *existing*
+# directory nests the tree one level deeper (/root/snmp-test/snmp/...) while
+# setup.sh keeps running the stale copy — a silent failure that looks like a
+# broken fixture. Deploy does not verify; run `snmp-verify` afterwards (the
+# `make snmp-deploy` target chains them).
+cmd_deploy() {
+    if [ ! -f "$SSH_KEY" ]; then
+        printf "${RED}✗${NC} SSH key not found: %s\n" "$SSH_KEY"
+        echo "  The VM accepts publickey auth only. Point SNMP_SSH_KEY at the key,"
+        echo "  or place it at the default path above."
+        exit 1
+    fi
+    local ssh_opts=(-i "$SSH_KEY" -o ConnectTimeout=10)
+
+    echo "Deploying SNMP test environment to root@${VM_HOST}..."
+    echo "  → clearing ${REMOTE_DIR} (required — scp -r nests into an existing dir)"
+    ssh "${ssh_opts[@]}" "root@${VM_HOST}" "rm -rf ${REMOTE_DIR}"
+    echo "  → copying tools/snmp → ${VM_HOST}:${REMOTE_DIR}"
+    scp "${ssh_opts[@]}" -q -r "$SCRIPT_DIR" "root@${VM_HOST}:${REMOTE_DIR}"
+    echo "  → running lxc/setup.sh on the VM (rebuilds every agent)"
+    ssh "${ssh_opts[@]}" "root@${VM_HOST}" "bash ${REMOTE_DIR}/lxc/setup.sh"
+    echo ""
+    printf "${GREEN}Deploy complete.${NC} Verify with: make snmp-verify\n"
+}
+
 case "${1:-}" in
+    deploy)
+        cmd_deploy
+        ;;
     verify)
         cmd_verify
         ;;
@@ -137,12 +174,11 @@ case "${1:-}" in
         cmd_status
         ;;
     *)
-        echo "Usage: $0 {verify|status}"
+        echo "Usage: $0 {deploy|verify|status}"
         echo ""
+        echo "  deploy — Copy tools/snmp to the VM and rebuild every agent (needs SSH key)"
         echo "  verify — Query each SNMP host and check sysName"
         echo "  status — Ping each host to check reachability"
-        echo ""
-        echo "LXC setup: copy tools/snmp/ to the container and run lxc/setup.sh"
         exit 1
         ;;
 esac
