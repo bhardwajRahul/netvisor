@@ -228,12 +228,13 @@ impl DiscoveryIntegration for SnmpIntegration {
         // authoritative full ifTable (safe to prune stale interfaces against) or a partial walk
         // cut short by timeout/error (must NOT prune — see GH #649). A hard failure yields an
         // empty set, which the server's existing empty-set guard already protects.
-        let (snmp_if_entries, if_table_complete) =
-            query_or_default(ip, "if_table", walk_if_table(&mut session, ip)).await;
+        let if_table = query_or_default(ip, "if_table", walk_if_table(&mut session, ip)).await;
+        let snmp_if_entries = if_table.entries;
         tracing::debug!(
             ip = %ip,
             if_count = snmp_if_entries.len(),
-            complete = if_table_complete,
+            set_complete = if_table.set_complete,
+            attributes_complete = if_table.attributes_complete,
             "SNMP ifTable walked"
         );
 
@@ -252,22 +253,34 @@ impl DiscoveryIntegration for SnmpIntegration {
                 })
                 .collect(),
         );
-        host_data.set_interfaces_complete(if_table_complete);
+        // Pruning acts on the interface *set*, so that is what gates it — not whether every
+        // attribute column also finished (#649).
+        host_data.set_interfaces_complete(if_table.set_complete);
 
-        // A truncated ifTable means interfaces are missing from this scan. Surface it on the
-        // session so the operator sees it, rather than leaving it to debug logs (it also
-        // suppresses server-side pruning — GH #649).
-        if !if_table_complete
-            && !snmp_if_entries.is_empty()
+        // Surface an incomplete walk on the session rather than leaving it to debug logs, but say
+        // which kind it was: a short interface list means interfaces are genuinely missing, while
+        // a short attribute column only means some fields are blank. Reporting the second as
+        // possible data loss sends operators hunting for interfaces that were never absent.
+        let walk_fell_short = !if_table.set_complete || !if_table.attributes_complete;
+        if !snmp_if_entries.is_empty()
+            && walk_fell_short
             && let Ok(session_state) = ctx.ops.get_session().await
             && let Ok(mut warnings) = session_state.warnings.lock()
         {
-            warnings.push(format!(
-                "SNMP interface collection for {ip} was incomplete — the device stopped \
-                 responding partway through its interface table, so some interfaces may be \
-                 missing. Collected {} so far.",
-                snmp_if_entries.len()
-            ));
+            let count = snmp_if_entries.len();
+            warnings.push(if if_table.set_complete {
+                format!(
+                    "SNMP interface details for {ip} are incomplete — all {count} interfaces were \
+                     found, but the device stopped responding while reading their details, so \
+                     some descriptions or speeds may be blank."
+                )
+            } else {
+                format!(
+                    "SNMP interface collection for {ip} was incomplete — the device stopped \
+                     responding partway through its interface list, so some interfaces are \
+                     missing. Collected {count} so far."
+                )
+            });
         }
 
         // Query LLDP neighbors
@@ -465,7 +478,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Mark whether this SNMP interface set is a complete, authoritative ifTable. The server
         // only prunes interfaces no longer reported when this is true, so a partial walk cannot
         // tear down the host's L2 topology (GH #649).
-        host_data.set_interfaces_complete(if_table_complete);
+        host_data.set_interfaces_complete(if_table.set_complete);
 
         // GH #649: one consolidated per-host collection record. Ties together the scattered
         // per-query lines above so a self-hosted operator (and we, from their logs) can see, at a
@@ -475,7 +488,8 @@ impl DiscoveryIntegration for SnmpIntegration {
         tracing::debug!(
             ip = %ip,
             if_count = snmp_if_entries.len(),
-            if_table_complete = if_table_complete,
+            if_set_complete = if_table.set_complete,
+            if_attributes_complete = if_table.attributes_complete,
             arp = arp_count,
             fdb = fdb_count,
             lldp = lldp_count,
@@ -862,11 +876,11 @@ pub async fn poll_device(
         .await
         .map_err(|_| anyhow::anyhow!("System info query timeout"))??;
 
-    let (interfaces, _if_table_complete) =
-        timeout(SNMP_WALK_TIMEOUT, walk_if_table(&mut session, ip))
-            .await
-            .map_err(|_| anyhow::anyhow!("ifTable walk timeout"))?
-            .unwrap_or_default();
+    let interfaces = timeout(SNMP_WALK_TIMEOUT, walk_if_table(&mut session, ip))
+        .await
+        .map_err(|_| anyhow::anyhow!("ifTable walk timeout"))?
+        .map(|walk| walk.entries)
+        .unwrap_or_default();
 
     let lldp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_lldp_neighbors(&mut session, ip))
         .await
