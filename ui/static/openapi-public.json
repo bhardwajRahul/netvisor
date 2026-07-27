@@ -11177,19 +11177,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-27T20:41:09.357456Z",
+              "created_at": "2026-07-27T21:36:40.032487Z",
               "first_discovery_id": null,
-              "id": "9f3f4788-6bd3-49db-b2bd-38beba84ee25",
+              "id": "8df6b522-265f-428d-8dbe-e1a0f2bd360f",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-27T20:41:09.357456Z",
+              "last_seen_at": "2026-07-27T21:36:40.032487Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-27T20:41:09.357456Z",
-              "valid_from": "2026-07-27T20:41:09.357456Z",
+              "updated_at": "2026-07-27T21:36:40.032487Z",
+              "valid_from": "2026-07-27T21:36:40.032487Z",
               "valid_to": null
             }
           },
@@ -12338,19 +12338,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-27T20:41:09.344420Z",
+                      "created_at": "2026-07-27T21:36:40.012658Z",
                       "first_discovery_id": null,
-                      "id": "baa807d6-6cac-46d0-a3c5-213d03fe428a",
+                      "id": "4934aed2-9021-4cb4-877e-82881f2795c4",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-27T20:41:09.344420Z",
+                      "last_seen_at": "2026-07-27T21:36:40.012658Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-27T20:41:09.344420Z",
-                      "valid_from": "2026-07-27T20:41:09.344420Z",
+                      "updated_at": "2026-07-27T21:36:40.012658Z",
+                      "valid_from": "2026-07-27T21:36:40.012658Z",
                       "valid_to": null
                     }
                   ],
@@ -12364,7 +12364,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Docmost",
+                  "service_definition": "Jitsi Meet",
                   "source": {
                     "type": "Manual"
                   },
@@ -13434,19 +13434,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-27T20:41:09.352815Z",
+                  "created_at": "2026-07-27T21:36:40.026082Z",
                   "first_discovery_id": null,
-                  "id": "0f63441c-eb0f-43aa-a47b-0d38768f5444",
+                  "id": "e869a27c-3c90-4bec-8d77-529ebceea5e8",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-27T20:41:09.352815Z",
+                  "last_seen_at": "2026-07-27T21:36:40.026082Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-27T20:41:09.352815Z",
-                  "valid_from": "2026-07-27T20:41:09.352815Z",
+                  "updated_at": "2026-07-27T21:36:40.026082Z",
+                  "valid_from": "2026-07-27T21:36:40.026082Z",
                   "valid_to": null
                 }
               ],
@@ -13460,7 +13460,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Docmost",
+              "service_definition": "Jitsi Meet",
               "source": {
                 "type": "Manual"
               },
@@ -15330,19 +15330,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-27T20:41:09.344659Z",
+          "created_at": "2026-07-27T21:36:40.013081Z",
           "first_discovery_id": null,
-          "id": "05641c58-0d16-4f82-a7e5-cdc4e186e71e",
+          "id": "394bef82-3a5c-443d-b369-9438d953114d",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-27T20:41:09.344659Z",
+          "last_seen_at": "2026-07-27T21:36:40.013081Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-27T20:41:09.344659Z",
-          "valid_from": "2026-07-27T20:41:09.344659Z",
+          "updated_at": "2026-07-27T21:36:40.013081Z",
+          "valid_from": "2026-07-27T21:36:40.013081Z",
           "valid_to": null
         }
       },
@@ -15933,7 +15933,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Docmost",
+              "service_definition": "Jitsi Meet",
               "tags": [],
               "virtualization": null
             }
@@ -17370,6 +17370,10 @@
         "properties": {
           "host": {
             "$ref": "#/components/schemas/Host"
+          },
+          "interface_data_complete": {
+            "$ref": "#/components/schemas/InterfaceDataComplete",
+            "description": "Which groups of per-interface data (LLDP, CDP, FDB, VLAN membership) this scan read in\nfull. A group the daemon could not finish reading must not overwrite what is already\nstored: a cut-short walk returns the same empty result as a device with nothing to report,\nand for the neighbour fields that also drops the row out of L2 resolution for good.\nDaemons predating this field omit it; it defaults to all-complete so they behave as before."
           },
           "interfaces": {
             "type": "array",
@@ -18983,19 +18987,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-27T20:41:09.344152Z",
+                  "created_at": "2026-07-27T21:36:40.012153Z",
                   "first_discovery_id": null,
-                  "id": "95a461af-583e-4af7-b1f3-3f673c77cdf6",
+                  "id": "a332bcac-cc79-45b2-9ea4-5d9b084dbe30",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-27T20:41:09.344152Z",
+                  "last_seen_at": "2026-07-27T21:36:40.012153Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-27T20:41:09.344152Z",
-                  "valid_from": "2026-07-27T20:41:09.344152Z",
+                  "updated_at": "2026-07-27T21:36:40.012153Z",
+                  "valid_from": "2026-07-27T21:36:40.012153Z",
                   "valid_to": null
                 }
               ],
@@ -19009,7 +19013,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Docmost",
+              "service_definition": "Jitsi Meet",
               "source": {
                 "type": "Manual"
               },
@@ -19883,6 +19887,28 @@
               "format": "uuid"
             },
             "description": "Tagged VLAN entity IDs on this port (resolved from Q-BRIDGE dot1qVlanCurrentEgressPorts)"
+          }
+        }
+      },
+      "InterfaceDataComplete": {
+        "type": "object",
+        "description": "Which groups of per-interface data the daemon read in full during a scan.\n\nEach group comes from its own SNMP walk, and a walk cut short by a timeout yields exactly the\nsame empty result as a device that genuinely has nothing to report. Without knowing which\nhappened, the server overwrote good data with NULL on every truncation — and for the neighbour\nfields that also dropped the row out of L2 resolution permanently, since the resolution filter\nrequires a chassis id or CDP device id to be present.\n\nEvery field defaults to `true`, so a daemon predating this behaves exactly as before: it\nreports everything as authoritative and the server overwrites.",
+        "properties": {
+          "cdp": {
+            "type": "boolean",
+            "description": "`cdp_device_id`, `cdp_port_id`, `cdp_platform`, `cdp_address`"
+          },
+          "fdb": {
+            "type": "boolean",
+            "description": "`fdb_macs`"
+          },
+          "lldp": {
+            "type": "boolean",
+            "description": "`lldp_chassis_id`, `lldp_port_id`, `lldp_sys_name`, `lldp_port_desc`, `lldp_mgmt_addr`,\n`lldp_sys_desc`"
+          },
+          "vlan_membership": {
+            "type": "boolean",
+            "description": "`native_vlan_id`, `vlan_ids`"
           }
         }
       },
@@ -21624,19 +21650,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-27T20:41:09.338323Z",
+                        "created_at": "2026-07-27T21:36:40.000579Z",
                         "first_discovery_id": null,
-                        "id": "c4af5178-280c-49be-9007-518ecbc2d9b1",
+                        "id": "99d7154f-6397-43fa-b350-fc70ed657bae",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-27T20:41:09.338323Z",
+                        "last_seen_at": "2026-07-27T21:36:40.000579Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-27T20:41:09.338323Z",
-                        "valid_from": "2026-07-27T20:41:09.338323Z",
+                        "updated_at": "2026-07-27T21:36:40.000579Z",
+                        "valid_from": "2026-07-27T21:36:40.000579Z",
                         "valid_to": null
                       }
                     ],
@@ -21650,7 +21676,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Docmost",
+                    "service_definition": "Jitsi Meet",
                     "source": {
                       "type": "Manual"
                     },
@@ -21771,19 +21797,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-27T20:41:09.351982Z",
+                    "created_at": "2026-07-27T21:36:40.024871Z",
                     "first_discovery_id": null,
-                    "id": "4b6303b1-8f75-4da2-bf7b-1ccb5db921fd",
+                    "id": "d568118e-2a95-497e-9a3b-f3371ee34011",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-27T20:41:09.351982Z",
+                    "last_seen_at": "2026-07-27T21:36:40.024871Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-27T20:41:09.351982Z",
-                    "valid_from": "2026-07-27T20:41:09.351982Z",
+                    "updated_at": "2026-07-27T21:36:40.024871Z",
+                    "valid_from": "2026-07-27T21:36:40.024871Z",
                     "valid_to": null
                   }
                 ],
@@ -21797,7 +21823,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Docmost",
+                "service_definition": "Jitsi Meet",
                 "source": {
                   "type": "Manual"
                 },
@@ -23500,19 +23526,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-27T20:41:09.344605Z",
+              "created_at": "2026-07-27T21:36:40.012988Z",
               "first_discovery_id": null,
-              "id": "84521d8d-9722-4fb3-bb40-5d4f50732035",
+              "id": "34d7e9ec-ebb6-4ca8-b268-e2a50105efea",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-27T20:41:09.344605Z",
+              "last_seen_at": "2026-07-27T21:36:40.012988Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-27T20:41:09.344605Z",
-              "valid_from": "2026-07-27T20:41:09.344605Z",
+              "updated_at": "2026-07-27T21:36:40.012988Z",
+              "valid_from": "2026-07-27T21:36:40.012988Z",
               "valid_to": null
             }
           ],
@@ -23526,7 +23552,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Docmost",
+          "service_definition": "Jitsi Meet",
           "source": {
             "type": "Manual"
           },
@@ -24658,7 +24684,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "39915cff-1fd1-424b-a026-9c097b5efbd5",
+                  "id": "8532b2c6-177b-43d4-a642-1664291e1e59",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24668,23 +24694,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "73ba2f32-4d40-4900-9e30-001a61239f59",
+                  "id": "f58c6f34-a393-4ec1-95b9-e1b9a7c660cf",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "b086245f-d8cb-4d3f-9e00-b53203bb946c",
+                  "id": "371885dc-e7ae-4334-8048-215fa1f39f28",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "8fd52208-ea3b-4f45-b5bd-c33ba4338ee5",
+                  "id": "4057d725-762c-4359-ad1d-480317c67343",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "73ba2f32-4d40-4900-9e30-001a61239f59",
+                  "id": "f58c6f34-a393-4ec1-95b9-e1b9a7c660cf",
                   "rule": "ByHost"
                 }
               ]
@@ -24713,19 +24739,19 @@
             },
             "default": [
               {
-                "id": "782c9982-f156-4aab-8815-1216097b0ed0",
+                "id": "27f970b1-6b01-4fba-b39c-a9670f4b5aae",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "348c563f-dd52-4969-a668-2587de0aa565",
+                "id": "486ea5d2-ba7a-45fe-807f-a033a7a03bb2",
                 "rule": "ByVLAN"
               },
               {
-                "id": "c39f6a19-4389-45c7-a6ab-fdc46d6c219e",
+                "id": "0310e084-88aa-49e4-8150-efed7648b5f8",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "62255413-ff85-48ed-8418-bbe448262437",
+                "id": "3525cfe6-d41d-4bcd-a5b8-65fc90c4faac",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24743,7 +24769,7 @@
                 }
               },
               {
-                "id": "ebdccc44-ba82-48b5-8466-2a1a4d594ff5",
+                "id": "00b6fc0b-8a9f-4fc1-b830-0cd7b1027da0",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24752,15 +24778,15 @@
                 }
               },
               {
-                "id": "95132d8f-ad07-4e1c-8511-790dbb9576c3",
+                "id": "8539a0c1-6f0e-497b-9168-d6f23ec0e9e0",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "3d641279-4364-48e6-a835-395c52105fff",
+                "id": "6babb700-4a14-461a-add1-e45eb7886c4f",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "9fbe6f7f-ce6c-4e8d-8bb2-b83d786c32d9",
+                "id": "648bbb42-61c9-4943-983b-bee9b5887d99",
                 "rule": "ByStack"
               }
             ]
@@ -25466,6 +25492,15 @@
           },
           "source": {
             "$ref": "#/components/schemas/EntitySource"
+          },
+          "subnet_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "readOnly": true
+            },
+            "description": "Subnets associated with this VLAN, derived from discovered interface\nnative-VLAN data via the `subnet_vlans` junction. Hydrated by\n`VlanService` on read; it is not a column on `vlans`, so anything sent\nhere on create/update is ignored by `to_params`."
           },
           "vlan_number": {
             "type": "integer",
