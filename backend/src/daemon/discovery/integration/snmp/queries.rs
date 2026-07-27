@@ -280,21 +280,42 @@ pub async fn query_system_info(
     Ok(info)
 }
 
-/// Walk the ifTable and ifXTable to get interface information
+/// The outcome of walking the ifTable/ifXTable columns.
+///
+/// Two independent notions of "complete", because they answer different questions and only one of
+/// them may gate a destructive operation. `ifIndex` is the table's index column: it alone decides
+/// *which* interfaces exist. The other ten carry attributes of interfaces already known.
+///
+/// Collapsing both into one flag (as this used to) meant a timed-out `ifDescr` read blocked the
+/// server-side prune — so stale interfaces lingered on any device with one flaky column — and
+/// raised an operator warning about missing interfaces when none were missing.
+#[derive(Default)]
+pub struct IfTableWalk {
+    pub entries: Vec<IfTableEntry>,
+    /// Every interface the device listed is present. The set is authoritative, so the server may
+    /// prune interfaces absent from it (#649). False whenever the `ifIndex` column itself was cut
+    /// short, or a column answered for an interface the device never listed.
+    pub set_complete: bool,
+    /// Every attribute column also walked to its end. False means some descriptions, speeds or
+    /// aliases may be blank — a cosmetic gap, never a reason to withhold pruning.
+    pub attributes_complete: bool,
+}
+
+// `Default` is the hard-failure outcome (`query_or_default`): no entries, and neither flag set,
+// so a walk that never ran can never be mistaken for an authoritative one.
+
 /// Walk the ifTable/ifXTable columns.
 ///
-/// Returns the collected entries plus a `complete` flag: `true` only when every column walked
-/// cleanly to its end-of-subtree, `false` if any column was cut short by an SNMP error, a
-/// per-getnext timeout, or the `MAX_WALK_ENTRIES` cap. A `false` here means the entry set may be
-/// a partial view of the host's real ifTable — the server uses it to skip the interface prune so
-/// a transient partial walk cannot delete interfaces (and their resolved L2 neighbors). See #649.
+/// See [`IfTableWalk`] for what the two completeness flags mean and why they are separate.
 pub async fn walk_if_table<T: SnmpWalkTransport>(
     session: &mut T,
     ip: IpAddr,
-) -> Result<(Vec<IfTableEntry>, bool)> {
+) -> Result<IfTableWalk> {
     let mut entries: HashMap<i32, IfTableEntry> = HashMap::new();
     // Cleared to false the moment any column walk is cut short (error/timeout/limit).
     let mut complete = true;
+    // Whether the index column specifically survived. `None` until it has been walked.
+    let mut index_column_complete: Option<bool> = None;
 
     // Define the columns we want to walk
     let columns = [
@@ -383,8 +404,11 @@ pub async fn walk_if_table<T: SnmpWalkTransport>(
             complete = false;
         }
 
-        if column_name == "ifIndex" && walked && !column_indexes.is_empty() {
-            known_if_indexes = Some(column_indexes);
+        if column_name == "ifIndex" {
+            index_column_complete = Some(walked);
+            if walked && !column_indexes.is_empty() {
+                known_if_indexes = Some(column_indexes);
+            }
         }
 
         if column_foreign > 0 {
@@ -405,13 +429,25 @@ pub async fn walk_if_table<T: SnmpWalkTransport>(
     let mut result: Vec<IfTableEntry> = entries.into_values().collect();
     result.sort_by_key(|e| e.if_index);
 
+    // A foreign row means something answered for an interface this device never listed, so the
+    // set itself is suspect — not just its attributes.
+    let set_complete = match index_column_complete {
+        // The index column decides membership, so its own completeness is the set's.
+        Some(true) => foreign_rows == 0,
+        Some(false) => false,
+        // A device that serves no index column at all gives us no independent read on membership;
+        // fall back to requiring every column, which is what this did before the split.
+        None => complete,
+    };
+
     // `complete` distinguishes an authoritative full ifTable from a partial walk cut short by
     // timeout/error. The server prunes stale interfaces only on a complete walk (GH #649), so
     // surface it at debug level for self-hosted daemon-log triage (enable SCANOPY_LOG_LEVEL=debug).
     tracing::debug!(
         ip = %ip,
         if_count = result.len(),
-        complete = complete,
+        set_complete = set_complete,
+        attributes_complete = complete,
         foreign_rows = foreign_rows,
         "SNMP ifTable walk finished"
     );
@@ -424,7 +460,11 @@ pub async fn walk_if_table<T: SnmpWalkTransport>(
         "SNMP ifTable walk ifIndex set"
     );
 
-    Ok((result, complete))
+    Ok(IfTableWalk {
+        entries: result,
+        set_complete,
+        attributes_complete: complete,
+    })
 }
 
 /// Query LLDP remote table for neighbor information
@@ -1497,9 +1537,10 @@ mod if_table_tests {
     async fn assembles_one_entry_per_if_index_across_columns() {
         let mut agent = FakeAgent::new(&FakeAgent::omada());
 
-        let (entries, complete) = walk_if_table(&mut agent, ip()).await.unwrap();
+        let walk = walk_if_table(&mut agent, ip()).await.unwrap();
+        let entries = walk.entries;
 
-        assert!(complete, "a device answering every column is authoritative");
+        assert!(walk.set_complete && walk.attributes_complete);
         assert_eq!(
             entries.iter().map(|e| e.if_index).collect::<Vec<_>>(),
             vec![1, 49153, 49154, 49155],
@@ -1526,7 +1567,8 @@ mod if_table_tests {
         rows.push(("1.3.6.1.2.1.2.2.1.2.2", Canned::Str("ge-0/0/1")));
         let mut agent = FakeAgent::new(&rows);
 
-        let (entries, complete) = walk_if_table(&mut agent, ip()).await.unwrap();
+        let walk = walk_if_table(&mut agent, ip()).await.unwrap();
+        let entries = walk.entries;
 
         assert!(
             !entries.iter().any(|e| e.if_index == 2),
@@ -1537,7 +1579,7 @@ mod if_table_tests {
             vec![1, 49153, 49154, 49155]
         );
         assert!(
-            !complete,
+            !walk.set_complete,
             "a table carrying rows the device never listed is not authoritative, so the server \
              must not prune against it"
         );
@@ -1552,11 +1594,107 @@ mod if_table_tests {
             ("1.3.6.1.2.1.2.2.1.3.7", Canned::Int(6)),
         ]);
 
-        let (entries, _) = walk_if_table(&mut agent, ip()).await.unwrap();
+        let walk = walk_if_table(&mut agent, ip()).await.unwrap();
 
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].if_index, 7);
-        assert_eq!(entries[0].if_descr.as_deref(), Some("eth7"));
+        assert_eq!(walk.entries.len(), 1);
+        assert_eq!(walk.entries[0].if_index, 7);
+        assert_eq!(walk.entries[0].if_descr.as_deref(), Some("eth7"));
+    }
+
+    /// A flaky attribute column costs descriptions, not interfaces.
+    ///
+    /// The two used to be one flag, so a timed-out `ifDescr` read both blocked the server-side
+    /// prune — leaving stale interfaces on the host forever — and told the operator interfaces
+    /// might be missing when every one had been found.
+    #[tokio::test]
+    async fn a_truncated_attribute_column_keeps_the_interface_set_authoritative() {
+        struct FlakyDescr {
+            agent: FakeAgent,
+        }
+
+        #[async_trait::async_trait]
+        impl SnmpWalkTransport for FlakyDescr {
+            async fn walk_getbulk<'a>(
+                &'a mut self,
+                from: &[u64],
+                max: u32,
+            ) -> Result<WalkPage<'a>> {
+                // ifDescr is column 2; cut it short the way a timeout does.
+                if from.starts_with(&[1, 3, 6, 1, 2, 1, 2, 2, 1, 2]) {
+                    return Err(anyhow::anyhow!("getbulk timed out"));
+                }
+                self.agent.walk_getbulk(from, max).await
+            }
+
+            async fn walk_getnext<'a>(&'a mut self, from: &[u64]) -> Result<Varbinds<'a>> {
+                if from.starts_with(&[1, 3, 6, 1, 2, 1, 2, 2, 1, 2]) {
+                    return Err(anyhow::anyhow!("getnext timed out"));
+                }
+                self.agent.walk_getnext(from).await
+            }
+        }
+
+        let mut session = FlakyDescr {
+            agent: FakeAgent::new(&FakeAgent::omada()),
+        };
+
+        let walk = walk_if_table(&mut session, ip()).await.unwrap();
+
+        assert_eq!(
+            walk.entries.iter().map(|e| e.if_index).collect::<Vec<_>>(),
+            vec![1, 49153, 49154, 49155],
+            "the interface set comes from the ifIndex column, which was unaffected"
+        );
+        assert!(
+            walk.set_complete,
+            "every interface the device listed is present, so the set is prunable"
+        );
+        assert!(
+            !walk.attributes_complete,
+            "descriptions are missing and the operator should be told so"
+        );
+        assert!(walk.entries.iter().all(|e| e.if_descr.is_none()));
+    }
+
+    /// The converse: losing the index column loses the set, whatever else succeeded.
+    #[tokio::test]
+    async fn a_truncated_index_column_makes_the_set_unauthoritative() {
+        struct FlakyIndex {
+            agent: FakeAgent,
+        }
+
+        #[async_trait::async_trait]
+        impl SnmpWalkTransport for FlakyIndex {
+            async fn walk_getbulk<'a>(
+                &'a mut self,
+                from: &[u64],
+                max: u32,
+            ) -> Result<WalkPage<'a>> {
+                if from.starts_with(&[1, 3, 6, 1, 2, 1, 2, 2, 1, 1]) {
+                    return Err(anyhow::anyhow!("getbulk timed out"));
+                }
+                self.agent.walk_getbulk(from, max).await
+            }
+
+            async fn walk_getnext<'a>(&'a mut self, from: &[u64]) -> Result<Varbinds<'a>> {
+                if from.starts_with(&[1, 3, 6, 1, 2, 1, 2, 2, 1, 1]) {
+                    return Err(anyhow::anyhow!("getnext timed out"));
+                }
+                self.agent.walk_getnext(from).await
+            }
+        }
+
+        let mut session = FlakyIndex {
+            agent: FakeAgent::new(&FakeAgent::omada()),
+        };
+
+        let walk = walk_if_table(&mut session, ip()).await.unwrap();
+
+        assert!(
+            !walk.set_complete,
+            "without the index column we cannot know which interfaces exist, so pruning must \
+             stay blocked"
+        );
     }
 
     /// A response that leaves the subtree *without advancing* is not this walk's natural end — it
