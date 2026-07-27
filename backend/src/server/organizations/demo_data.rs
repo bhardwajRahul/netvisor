@@ -3401,7 +3401,6 @@ fn generate_vlans(networks: &[Network], organization_id: Uuid, now: DateTime<Utc
                 last_seen_at: now,
                 last_discovery_id: None,
                 first_discovery_id: None,
-                subnet_ids: Vec::new(),
                 base: VlanBase {
                     vlan_number,
                     name: name.to_string(),
@@ -3409,6 +3408,7 @@ fn generate_vlans(networks: &[Network], organization_id: Uuid, now: DateTime<Utc
                     network_id: network.id,
                     organization_id,
                     source: EntitySource::Discovery,
+                    subnet_ids: Vec::new(),
                 },
             });
         }

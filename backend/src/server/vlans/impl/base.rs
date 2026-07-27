@@ -26,6 +26,13 @@ pub struct VlanBase {
     pub organization_id: Uuid,
     #[serde(default)]
     pub source: EntitySource,
+    /// Subnets associated with this VLAN, derived from discovered interface
+    /// native-VLAN data via the `subnet_vlans` junction. Hydrated by
+    /// `VlanService` on read; it is not a column on `vlans`, so anything sent
+    /// here on create/update is ignored by `to_params`.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub subnet_ids: Vec<Uuid>,
 }
 
 impl Default for VlanBase {
@@ -37,6 +44,7 @@ impl Default for VlanBase {
             network_id: Uuid::nil(),
             organization_id: Uuid::nil(),
             source: EntitySource::Manual,
+            subnet_ids: Vec::new(),
         }
     }
 }
@@ -72,13 +80,6 @@ pub struct Vlan {
     #[serde(default)]
     #[schema(read_only)]
     pub first_discovery_id: Option<Uuid>,
-    /// Subnets associated with this VLAN, derived from discovered interface
-    /// native-VLAN data via the `subnet_vlans` junction. Hydrated by
-    /// `VlanService` on read — it is not a column on `vlans`, and it is never
-    /// accepted on create/update (which take `VlanBase`).
-    #[serde(default)]
-    #[schema(read_only)]
-    pub subnet_ids: Vec<Uuid>,
     #[serde(flatten)]
     #[validate(nested)]
     pub base: VlanBase,

@@ -56,7 +56,6 @@ impl Storable for Vlan {
             last_seen_at: now,
             last_discovery_id: None,
             first_discovery_id: None,
-            subnet_ids: Vec::new(),
             base,
         }
     }
@@ -76,8 +75,6 @@ impl Storable for Vlan {
             last_seen_at,
             last_discovery_id,
             first_discovery_id,
-            // Hydrated from the `subnet_vlans` junction on read; not a column.
-            subnet_ids: _,
             base:
                 Self::BaseData {
                     vlan_number,
@@ -86,6 +83,9 @@ impl Storable for Vlan {
                     network_id,
                     organization_id,
                     source,
+                    // Hydrated from the `subnet_vlans` junction on read; not a
+                    // column, so nothing sent by a client is persisted.
+                    subnet_ids: _,
                 },
         } = self.clone();
 
@@ -139,8 +139,6 @@ impl Storable for Vlan {
             last_seen_at: row.get("last_seen_at"),
             last_discovery_id: row.get("last_discovery_id"),
             first_discovery_id: row.get("first_discovery_id"),
-            // Populated by `VlanService` from the junction, not from this row.
-            subnet_ids: Vec::new(),
             base: VlanBase {
                 vlan_number: vlan_number_i16 as u16,
                 name: row.get("name"),
@@ -149,6 +147,8 @@ impl Storable for Vlan {
                 organization_id: row.get("organization_id"),
                 source: serde_json::from_value(row.get::<serde_json::Value, _>("source"))
                     .map_err(|e| anyhow::anyhow!("Failed to deserialize source: {}", e))?,
+                // Populated by `VlanService` from the junction, not from this row.
+                subnet_ids: Vec::new(),
             },
         })
     }

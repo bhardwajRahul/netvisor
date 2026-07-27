@@ -47,7 +47,7 @@ async fn hydrate_subnet_ids_for_batch(
     let ids: Vec<Uuid> = vlans.iter().map(|v| v.id).collect();
     let subnets_map = subnet_vlan_storage.get_for_vlans(&ids).await?;
     for vlan in vlans.iter_mut() {
-        vlan.subnet_ids = subnets_map.get(&vlan.id).cloned().unwrap_or_default();
+        vlan.base.subnet_ids = subnets_map.get(&vlan.id).cloned().unwrap_or_default();
     }
     Ok(())
 }
@@ -67,7 +67,7 @@ impl CrudService<Vlan> for VlanService {
     async fn get_by_id(&self, id: &Uuid) -> Result<Option<Vlan>, anyhow::Error> {
         match self.storage().get_by_id(id).await? {
             Some(mut vlan) => {
-                vlan.subnet_ids = self
+                vlan.base.subnet_ids = self
                     .subnet_vlan_storage
                     .get_subnet_ids_for_vlan(&vlan.id)
                     .await?;
@@ -86,7 +86,7 @@ impl CrudService<Vlan> for VlanService {
     async fn get_one(&self, filter: StorableFilter<Vlan>) -> Result<Option<Vlan>, anyhow::Error> {
         match self.storage().get_one(filter).await? {
             Some(mut vlan) => {
-                vlan.subnet_ids = self
+                vlan.base.subnet_ids = self
                     .subnet_vlan_storage
                     .get_subnet_ids_for_vlan(&vlan.id)
                     .await?;
@@ -173,6 +173,7 @@ impl VlanService {
             network_id,
             organization_id,
             source: EntitySource::Discovery,
+            subnet_ids: Vec::new(),
         });
         if let Some(ctx) = scan_ctx {
             vlan.originate_scan_timestamps(ctx.scan_time);

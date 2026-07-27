@@ -10,17 +10,16 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useVlansQuery } from '../queries';
-	import { sourceLabel } from '../source';
 	import type { Vlan, VlanOrderField } from '../types/base';
 	import type { components } from '$lib/api/schema';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
 		common_created,
 		common_description,
+		common_lastSeen,
 		common_name,
 		common_network,
 		common_noEntityYet,
-		common_source,
 		common_subnets,
 		common_unknownNetwork,
 		common_updated,
@@ -86,19 +85,19 @@
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
 				},
 				{
-					key: 'source',
-					label: common_source(),
-					type: 'string',
-					filterable: true,
-					getValue: (item) => sourceLabel(item.source)
-				},
-				{
 					key: 'subnet_ids',
 					label: common_subnets(),
 					type: 'array',
 					searchable: true,
 					filterable: true,
 					getValue: getSubnetNames
+				},
+				{
+					// Not in VlanOrderField, so display-only with client-side sorting.
+					key: 'last_seen_at',
+					label: common_lastSeen(),
+					type: 'date',
+					sortable: true
 				}
 			]
 		)

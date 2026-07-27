@@ -3,11 +3,12 @@
 	import { entities } from '$lib/shared/stores/metadata';
 	import type { CardFieldItem } from '$lib/shared/components/data/types';
 	import type { Vlan } from '../types/base';
-	import { sourceLabel } from '../source';
+	import { formatRelativeTime } from '$lib/shared/utils/formatting';
 	import {
 		common_description,
+		common_lastSeen,
+		common_never,
 		common_none,
-		common_source,
 		common_subnets,
 		vlans_vlanNumber
 	} from '$lib/paraglide/messages';
@@ -42,20 +43,14 @@
 				value: vlan.description
 			},
 			{
-				label: common_source(),
-				value: [
-					{
-						id: 'source',
-						label: sourceLabel(vlan.source),
-						color: entities.getColorString('Vlan')
-					}
-				]
-			},
-			{
 				label: common_subnets(),
 				value: subnetItems,
 				color: entities.getColorString('Subnet'),
 				emptyText: common_none()
+			},
+			{
+				label: common_lastSeen(),
+				value: vlan.last_seen_at ? formatRelativeTime(vlan.last_seen_at) : common_never()
 			}
 		]
 	});

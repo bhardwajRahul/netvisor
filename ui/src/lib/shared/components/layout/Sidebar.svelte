@@ -303,18 +303,18 @@
 					component: NetworksTab
 				},
 				{
-					id: entityUIConfig.Subnet!.tabId,
-					label: TAB_LABELS[entityUIConfig.Subnet!.tabId],
-					icon: entities.getIconComponent('Subnet'),
-					entityType: 'Subnet',
-					component: SubnetTab
-				},
-				{
 					id: entityUIConfig.Vlan!.tabId,
 					label: TAB_LABELS[entityUIConfig.Vlan!.tabId],
 					icon: entities.getIconComponent('Vlan'),
 					entityType: 'Vlan',
 					component: VlanTab
+				},
+				{
+					id: entityUIConfig.Subnet!.tabId,
+					label: TAB_LABELS[entityUIConfig.Subnet!.tabId],
+					icon: entities.getIconComponent('Subnet'),
+					entityType: 'Subnet',
+					component: SubnetTab
 				},
 				{
 					id: entityUIConfig.Host!.tabId,
