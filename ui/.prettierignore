@@ -8,6 +8,10 @@ bun.lockb
 # Generated files
 src/lib/api/schema.d.ts
 src/lib/paraglide/
+# inlang regenerates .meta.json/README.md on every `paraglide-js compile` — which
+# `make lint` itself runs — and its own .gitignore excludes everything but
+# settings.json. Formatting tool output we never commit just fails the gate.
+project.inlang/
 
 # Miscellaneous
 /static/

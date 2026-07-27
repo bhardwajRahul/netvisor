@@ -1,6 +1,6 @@
 # SNMP Test Environment
 
-10 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026).
+13 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614.
 
 | IP | Host | Version | Credential | Device |
 |---|---|---|---|---|
@@ -14,8 +14,20 @@
 | 192.168.7.237 | secure-switch-01 | **v3 only** | user `scanopyv3` (see below) | Huawei S5000 |
 | 192.168.7.238 | switch-exos-01 | v2c | community `netdefault` | Extreme X435 (EXOS) |
 | 192.168.7.239 | switch-voss-01 | v2c | community `netdefault` | Extreme VSP-7400 (VOSS) |
+| 192.168.7.240 | switch-netgear-01 | v2c | community `netdefault` | Netgear GS724Tv3 |
+| 192.168.7.241 | switch-aruba-01 | v2c | community `netdefault` | HP/Aruba ProCurve 2910al |
+| 192.168.7.242 | switch (Omada) | v2c | community `public` | TP-Link Omada TL-SG3216 |
 
 **LLDP local-port remap (`.238`/`.239`).** ExtremeXOS reports its `lldpRemTable` local-port index as an `lldpLocPortNum` (1..N) that is a **separate namespace from `ifIndex`** (switch-exos-01 uses ifIndex 1001+, ifName `1:N`), so neighbours only resolve if the daemon walks `lldpLocPortTable` (`1.0.8802.1.1.2.1.3.7`) and suffix-matches `lldpLocPortId` against `ifName`. Before the Issue 2 fix, switch-exos-01 yields **zero** LLDP neighbours. Extreme VOSS (switch-voss-01) reports local-port == ifIndex with `lldpLocPortId` matching `ifName` exactly, so it stays correct on both old and new code — the regression guard for the fix.
+
+**L2 neighbour resolution (`.240`/`.241`).** These two are cabled to each other in the fixture data — `switch-netgear-01 g1 ↔ switch-aruba-01 port 41` and `g2 ↔ A5` — and between them cover both halves of a physical link:
+
+- **Chassis MAC that is on no port (#664).** switch-netgear-01's LLDP chassis id is `00:1a:2b:3c:4d:63`, while its ports report `…:65/:66/:67` and it bears no IP with that MAC. switch-aruba-01's neighbour entries advertise that chassis MAC, so the remote host is identifiable **only** through the `chassis_id` recorded from switch-netgear-01's own LLDP local identity. Matching MACs against interfaces and IPs alone yields `hosts_resolved=0` and an empty L2 Physical view.
+- **Locally-assigned port ids (#649).** switch-netgear-01's neighbour entries use port-ID subtype 7 with values `41` (which is switch-aruba-01's `ifDescr`) and `197` (which matches only its `ifIndex` — that port is labelled `A5`). Both shapes occur on real Aruba/HP gear. Treating subtype 7 as unresolvable stops resolution at the host, and a host-only neighbour draws **no edge at all**, so the switch is missing from L2 Physical entirely.
+
+Both links should render in L2 Physical, and the server's `LLDP/CDP link resolution complete` line should report `ports_resolved` covering all four neighbour records (two per device).
+
+**High-ifIndex interface persistence (`.242`).** The Omada TL-SG3216 puts its 16 physical ports at ifIndex 49153–49168, reports **no** ifXTable `ifName` for any of them, and returns the same chassis `ifPhysAddress` on every port; only ifIndex 1 (`Vlan-interface1`) carries a name and an IP. All 17 must persist as distinct interfaces. It advertises no LLDP neighbours at all — deliberately, so it exercises the interface-persistence path in isolation. Note its `sysName` is the literal `switch`, matching the reporter's device.
 
 **What a scan exercises (session-reuse + getbulk).** Every device is scanned with a single reused SNMP session across all ~11 queries (one v3 engine discovery instead of ~12), and each table is walked with `getbulk` (v1 falls back to `getnext`). To make the getbulk walks land on real data for the subtrees stock `snmpd` does **not** implement:
 - **switch-core-01** additionally serves BRIDGE-MIB / Q-BRIDGE (`dot1dBasePortIfIndex`, `dot1qVlanStaticName` → VLANs "DATA"/"VOICE", `dot1qPvid`), ENTITY-MIB (chassis inventory) and CDP (a `router-gw-01` neighbour) — exercising those getbulk walks end-to-end.
@@ -42,7 +54,7 @@ Before pasting, verify:
 If each device shares the host's MAC (secondary IPs on eth0), run on the VM:
 
 ```bash
-IFACE=eth0; CIDR=22; HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237); for i in "${!HOSTS[@]}"; do ip addr del "${HOSTS[$i]}/$CIDR" dev "$IFACE" 2>/dev/null; ip link del "mv-snmp${i}" 2>/dev/null; ip link add "mv-snmp${i}" link "$IFACE" type macvlan mode bridge; ip addr add "${HOSTS[$i]}/$CIDR" dev "mv-snmp${i}"; ip link set "mv-snmp${i}" up; done && sysctl -w net.ipv4.conf.all.arp_ignore=1 net.ipv4.conf.all.arp_announce=2 && for iface in mv-snmp0 mv-snmp1 mv-snmp2 mv-snmp3 mv-snmp4 mv-snmp5 mv-snmp6 mv-snmp7 eth0; do sysctl -w net.ipv4.conf.${iface}.arp_ignore=1 net.ipv4.conf.${iface}.arp_announce=2; done
+IFACE=eth0; CIDR=22; HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242); for i in "${!HOSTS[@]}"; do ip addr del "${HOSTS[$i]}/$CIDR" dev "$IFACE" 2>/dev/null; ip link del "mv-snmp${i}" 2>/dev/null; ip link add "mv-snmp${i}" link "$IFACE" type macvlan mode bridge; ip addr add "${HOSTS[$i]}/$CIDR" dev "mv-snmp${i}"; ip link set "mv-snmp${i}" up; done && sysctl -w net.ipv4.conf.all.arp_ignore=1 net.ipv4.conf.all.arp_announce=2 && for i in "${!HOSTS[@]}"; do sysctl -w net.ipv4.conf.mv-snmp${i}.arp_ignore=1 net.ipv4.conf.mv-snmp${i}.arp_announce=2; done && sysctl -w net.ipv4.conf.${IFACE}.arp_ignore=1 net.ipv4.conf.${IFACE}.arp_announce=2
 ```
 
 Then flush the ARP cache on the scanning host (`sudo arp -a -d` on macOS).
@@ -52,12 +64,12 @@ Then flush the ARP cache on the scanning host (`sudo arp -a -d` on macOS).
 If snmpd logs show `duplicate registration: MIB modules ifTable and pass`, run:
 
 ```bash
-for f in /etc/systemd/system/snmpd-*.service; do sed -i 's|snmpd -f -Lo -C|snmpd -f -Lo -I -ifTable,-ifXTable -C|' "$f"; done && systemctl daemon-reload && for name in switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01; do systemctl restart "snmpd-${name}"; done
+for f in /etc/systemd/system/snmpd-*.service; do sed -i 's|snmpd -f -Lo -C|snmpd -f -Lo -I -ifTable,-ifXTable -C|' "$f"; done && systemctl daemon-reload && for f in /etc/systemd/system/snmpd-*.service; do systemctl restart "$(basename "$f" .service)"; done
 ```
 
 ## Updating an already-running VM
 
-`lxc/setup.sh` is idempotent (existing macvlan interfaces and services are skipped), so the simplest update path adds the two new hosts without disturbing the existing six.
+`lxc/setup.sh` is idempotent (existing macvlan interfaces and services are skipped), so the simplest update path adds the new hosts without disturbing the ones already running. MIB data files and snmpd configs are rewritten on every run, so a re-run also picks up corrections to existing devices.
 
 **Option 1 — full re-run (recommended).** Copy the updated `tools/snmp/` to the VM and re-run the setup script as root:
 
@@ -68,11 +80,11 @@ scp -r tools/snmp root@192.168.7.230:/root/snmp-test
 bash /root/snmp-test/lxc/setup.sh
 ```
 
-The existing 6 hosts are no-ops; 192.168.7.236 (v1) and 192.168.7.237 (v3) come up.
+Hosts that already exist are no-ops; any newly added ones come up. Data files and snmpd configs are rewritten every run, so corrections to existing devices land too.
 
-**Option 2 — incremental (only the two new hosts).** Paste `lxc/setup.sh` into a root shell as in Option 1 — there is no separate partial script. The macvlan/config/service steps for indices 6–7 are the only ones that create anything new; the rest short-circuit.
+**Option 2 — paste instead of copy.** Paste `lxc/setup.sh` into a root shell as in Option 1 — there is no separate partial script. Only the macvlan/service steps for hosts that don't yet exist create anything new; the rest short-circuit.
 
-After either option, flush the scanning host's ARP cache (`sudo arp -a -d` on macOS) so the two new MACs are learned.
+After either option, flush the scanning host's ARP cache (`sudo arp -a -d` on macOS) so any new MACs are learned.
 
 ## Verify
 

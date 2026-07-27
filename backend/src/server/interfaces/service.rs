@@ -209,6 +209,9 @@ impl InterfaceService {
         claimed: &HashSet<Uuid>,
         authentication: AuthenticatedEntity,
     ) -> Result<Interface> {
+        let mut entry = entry;
+        entry.normalize_blank_identity();
+
         let existing = self.find_matching_existing(&entry, claimed).await?;
 
         if let Some(existing_entry) = existing {
@@ -357,7 +360,8 @@ mod tests {
     ) -> Vec<Interface> {
         let mut claimed: HashSet<Uuid> = HashSet::new();
         let empty: HashSet<Uuid> = HashSet::new();
-        for entry in incoming {
+        for mut entry in incoming {
+            entry.normalize_blank_identity();
             let claim_set = if batch_aware { &claimed } else { &empty };
             match match_existing_interface(&entry, &persisted, claim_set) {
                 Some(id) => {
@@ -417,6 +421,43 @@ mod tests {
             Some("Vlan-interface1"),
             "the lone survivor retains the management interface's name"
         );
+    }
+
+    /// Some switches answer ifXTable `ifName` with a zero-length string on every port. That is
+    /// "this device has no name for this port", but it arrives as `Some("")` and would otherwise
+    /// be treated as a real, shared name: every such port claims the same tier-1 identity, so a
+    /// rescan pairs incoming ports with whichever blank-named row happens to be unclaimed rather
+    /// than with their own. (In Postgres the same false identity collides with the partial unique
+    /// index on `(host_id, if_name)`.) Blank is absence, so each port falls through to its
+    /// ifIndex.
+    #[test]
+    fn blank_if_names_do_not_become_a_shared_identity() {
+        let chassis_mac = "00:11:22:33:44:55";
+        let blank_named: Vec<Interface> = (49153..=49156)
+            .map(|if_index| make_iface(if_index, Some(""), Some(chassis_mac)))
+            .collect();
+
+        let first = run_batch_from(Vec::new(), blank_named.clone(), true);
+        assert_eq!(first.len(), 4, "every port must persist as its own row");
+
+        // Rescan in a different order than the first walk — a device is under no obligation to
+        // enumerate its ifTable identically, and identity must not depend on ordering.
+        let mut reordered = blank_named;
+        reordered.reverse();
+        let second = run_batch_from(first.clone(), reordered, true);
+
+        assert_eq!(second.len(), 4, "rescan must not create duplicate rows");
+        for iface in &second {
+            let original = first
+                .iter()
+                .find(|e| e.base.if_index == iface.base.if_index)
+                .expect("every ifIndex is still represented");
+            assert_eq!(
+                iface.id, original.id,
+                "ifIndex {} must keep its own row across a rescan",
+                iface.base.if_index
+            );
+        }
     }
 
     /// Re-scanning the same device updates the existing 17 rows in place rather

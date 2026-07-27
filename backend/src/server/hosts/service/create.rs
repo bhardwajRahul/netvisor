@@ -2,16 +2,23 @@
 use super::*;
 
 /// Decide whether the end-of-scan interface prune (delete interfaces no longer reported for a
-/// host) should run for this upsert. It runs only when BOTH hold:
+/// host) should run for this upsert. It runs only when ALL of these hold:
 ///   - `interfaces_complete`: the incoming set is an authoritative, complete ifTable. A partial
 ///     SNMP walk cut short by timeout/error reports fewer interfaces than really exist; pruning
 ///     against it deletes live interfaces and their server-resolved L2 neighbors (GH #649).
-///   - `incoming_count > 0`: a total SNMP failure / credential removal yields zero interfaces,
+///   - `persisted_count > 0`: a total SNMP failure / credential removal yields zero interfaces,
 ///     which means "none observed", not "all removed".
+///   - `skipped_count == 0`: every reported interface actually persisted. If some were skipped,
+///     what we hold is a subset of what the device reported, so it is no more authoritative than
+///     a partial walk — same rule, different cause.
 ///
 /// Returning false preserves existing interface rows — the safe direction (stale beats deleted).
-pub(crate) fn should_prune_interfaces(interfaces_complete: bool, incoming_count: usize) -> bool {
-    interfaces_complete && incoming_count > 0
+pub(crate) fn should_prune_interfaces(
+    interfaces_complete: bool,
+    persisted_count: usize,
+    skipped_count: usize,
+) -> bool {
+    interfaces_complete && persisted_count > 0 && skipped_count == 0
 }
 
 impl HostService {
@@ -1107,18 +1114,40 @@ impl HostService {
         // incoming ifTable entries can't collapse onto one existing row — e.g. an
         // L2 switch whose IP-less ports all share the chassis MAC and lack ifName
         // would otherwise all tier-3 onto the management interface (issue #614).
+        //
+        // A single interface that fails validation (e.g. it collides with a unique index) is
+        // skipped rather than propagated: `?` here would abandon the rest of the ifTable *and*
+        // every child created after this loop, silently, on every scan. Only validation failures
+        // are tolerated — anything else (a lost connection, a failed lock) is a systemic problem
+        // and must still abort the host.
         let mut created_interfaces = Vec::new();
+        let mut skipped_interfaces = 0usize;
         let mut claimed: HashSet<Uuid> = HashSet::new();
         for mut entry in interfaces {
             entry.base.host_id = created_host.id;
             entry.base.network_id = created_host.base.network_id;
+            let if_index = entry.base.if_index;
 
-            let created = self
+            match self
                 .interface_service
                 .create_or_update_from_discovery(entry, &claimed, authentication.clone())
-                .await?;
-            claimed.insert(created.id);
-            created_interfaces.push(created);
+                .await
+            {
+                Ok(created) => {
+                    claimed.insert(created.id);
+                    created_interfaces.push(created);
+                }
+                Err(e) if e.downcast_ref::<ValidationError>().is_some() => {
+                    skipped_interfaces += 1;
+                    tracing::warn!(
+                        host_id = %created_host.id,
+                        if_index = if_index,
+                        error = %e,
+                        "Skipped an interface that failed validation; continuing with the rest of the ifTable"
+                    );
+                }
+                Err(e) => return Err(e),
+            }
         }
 
         // Full-sweep prune of interfaces no longer reported for this host.
@@ -1127,11 +1156,17 @@ impl HostService {
         // (`interfaces_complete`). An SNMP walk cut short by timeout/error returns a partial,
         // smaller-than-real ifTable (see daemon `walk_if_table`); pruning against it would delete
         // live interfaces and the server-resolved L2 neighbors on them, tearing switches off the
-        // L2 topology map on every scan that hiccups (GH #649). Two guards, both required:
+        // L2 topology map on every scan that hiccups (GH #649). Three guards, all required:
         //   - `interfaces_complete`: skip pruning on a partial walk (daemon-signalled).
         //   - non-empty set: a total SNMP failure / credential removal yields zero interfaces,
         //     which is "none observed", not "all removed".
-        if should_prune_interfaces(interfaces_complete, created_interfaces.len()) {
+        //   - nothing skipped: an interface that failed to persist means what we hold is a subset
+        //     of what the device reported — as non-authoritative as a partial walk.
+        if should_prune_interfaces(
+            interfaces_complete,
+            created_interfaces.len(),
+            skipped_interfaces,
+        ) {
             let kept_ids: HashSet<Uuid> = created_interfaces.iter().map(|i| i.id).collect();
             let existing = self
                 .interface_service
@@ -1167,9 +1202,10 @@ impl HostService {
                 );
             }
         } else if !created_interfaces.is_empty() {
-            // Non-empty incoming set that we chose NOT to prune against ⇒ an incomplete (partial)
-            // walk. Surface it so a self-hosted operator can see why stale interfaces persist —
-            // and how many interfaces this partial scan would have deleted had the fix not gated it.
+            // Non-empty incoming set that we chose NOT to prune against ⇒ the set isn't
+            // authoritative: an incomplete (partial) walk, or an interface that failed to persist.
+            // Surface it so a self-hosted operator can see why stale interfaces persist — and how
+            // many interfaces this scan would have deleted had the fix not gated it.
             let existing_count = self
                 .interface_service
                 .get_for_host(&created_host.id)
@@ -1178,10 +1214,11 @@ impl HostService {
                 .unwrap_or_default();
             tracing::debug!(
                 host_id = %created_host.id,
-                interfaces_complete = false,
+                interfaces_complete = interfaces_complete,
+                skipped = skipped_interfaces,
                 incoming = created_interfaces.len(),
                 existing = existing_count,
-                "Skipped interface prune: SNMP ifTable walk was incomplete (partial scan) — preserving existing interfaces and L2 links"
+                "Skipped interface prune: incoming ifTable is not authoritative (partial walk, or an interface failed to persist) — preserving existing interfaces and L2 links"
             );
         }
 
@@ -1341,19 +1378,26 @@ mod tests {
     fn partial_walk_never_prunes_even_with_interfaces_present() {
         // The bug: an incomplete walk reported some (but not all) interfaces; pruning against it
         // would delete every interface it missed. It must be skipped.
-        assert!(!should_prune_interfaces(false, 5));
+        assert!(!should_prune_interfaces(false, 5, 0));
     }
 
     #[test]
     fn complete_walk_with_interfaces_prunes() {
         // An authoritative full ifTable is the only time stale interfaces may be removed.
-        assert!(should_prune_interfaces(true, 5));
+        assert!(should_prune_interfaces(true, 5, 0));
     }
 
     #[test]
     fn empty_set_never_prunes_regardless_of_completeness() {
         // Zero interfaces = "none observed" (total SNMP failure / cred removal), not "all removed".
-        assert!(!should_prune_interfaces(true, 0));
-        assert!(!should_prune_interfaces(false, 0));
+        assert!(!should_prune_interfaces(true, 0, 0));
+        assert!(!should_prune_interfaces(false, 0, 0));
+    }
+
+    #[test]
+    fn complete_walk_with_a_skipped_interface_never_prunes() {
+        // An interface that failed to persist means the set we hold is a subset of what the
+        // device reported — pruning against it would delete ports that are genuinely still there.
+        assert!(!should_prune_interfaces(true, 5, 1));
     }
 }

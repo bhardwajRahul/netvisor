@@ -344,6 +344,36 @@ impl Interface {
     pub fn has_neighbor_discovery_data(&self) -> bool {
         self.has_lldp_data() || self.has_cdp_data()
     }
+
+    /// Drop identity fields the device reported blank, so absence is recorded as absence.
+    ///
+    /// A zero-length ifXTable `ifName` is a legitimate SNMP answer meaning "this device has no
+    /// name for this port", but it reaches the server as `Some("")` and from there is treated as
+    /// a real name: the tiered discovery match keys on `if_name.is_some()`, and the partial unique
+    /// index `(host_id, if_name) WHERE if_name IS NOT NULL` counts `""` as a value. A switch that
+    /// answers `""` for every port then hits a duplicate-key violation on its second port —
+    /// truncating that host's whole ingest. `if_index` remains as the identity for such ports,
+    /// which is the correct one anyway.
+    ///
+    /// Called on the discovery ingest path so devices behind older daemons are covered too.
+    pub fn normalize_blank_identity(&mut self) {
+        if self
+            .base
+            .if_name
+            .as_deref()
+            .is_some_and(|name| name.trim().is_empty())
+        {
+            self.base.if_name = None;
+        }
+        if self
+            .base
+            .if_alias
+            .as_deref()
+            .is_some_and(|alias| alias.trim().is_empty())
+        {
+            self.base.if_alias = None;
+        }
+    }
 }
 
 /// Common IANAifType values for reference

@@ -417,15 +417,9 @@ impl DiscoveryIntegration for SnmpIntegration {
             && let Some(chassis) =
                 LldpChassisId::from_snmp(local.chassis_id_subtype, &local.chassis_id_bytes)
         {
-            host_data.with_chassis_id(match &chassis {
-                LldpChassisId::NetworkAddress(addr) => addr.to_string(),
-                LldpChassisId::MacAddress(s)
-                | LldpChassisId::ChassisComponent(s)
-                | LldpChassisId::InterfaceAlias(s)
-                | LldpChassisId::PortComponent(s)
-                | LldpChassisId::InterfaceName(s)
-                | LldpChassisId::LocallyAssigned(s) => s.clone(),
-            });
+            // Same canonical form the server matches a *neighbor's* chassis ID against, so a
+            // device whose chassis MAC appears on none of its ports is still identifiable.
+            host_data.with_chassis_id(chassis.identifier());
         }
 
         // --- Add ENTITY-MIB hardware inventory ---
