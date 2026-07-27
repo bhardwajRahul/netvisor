@@ -17,6 +17,7 @@
 	import {
 		common_created,
 		common_description,
+		common_lastSeen,
 		common_name,
 		common_network,
 		common_noEntityYet,
@@ -99,6 +100,13 @@
 					searchable: true,
 					filterable: true,
 					getValue: getSubnetNames
+				},
+				{
+					// Not in VlanOrderField, so display-only with client-side sorting.
+					key: 'last_seen_at',
+					label: common_lastSeen(),
+					type: 'date',
+					sortable: true
 				}
 			]
 		)

@@ -17645,15 +17645,6 @@
                     "format": "uuid",
                     "readOnly": true
                   },
-                  "subnet_ids": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "format": "uuid",
-                      "readOnly": true
-                    },
-                    "description": "Subnets associated with this VLAN, derived from discovered interface\nnative-VLAN data via the `subnet_vlans` junction. Hydrated by\n`VlanService` on read — it is not a column on `vlans`, and it is never\naccepted on create/update (which take `VlanBase`)."
-                  },
                   "updated_at": {
                     "type": "string",
                     "format": "date-time",
@@ -24982,15 +24973,6 @@
                       "format": "uuid",
                       "readOnly": true
                     },
-                    "subnet_ids": {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "format": "uuid",
-                        "readOnly": true
-                      },
-                      "description": "Subnets associated with this VLAN, derived from discovered interface\nnative-VLAN data via the `subnet_vlans` junction. Hydrated by\n`VlanService` on read — it is not a column on `vlans`, and it is never\naccepted on create/update (which take `VlanBase`)."
-                    },
                     "updated_at": {
                       "type": "string",
                       "format": "date-time",
@@ -28135,15 +28117,6 @@
                 "format": "uuid",
                 "readOnly": true
               },
-              "subnet_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid",
-                  "readOnly": true
-                },
-                "description": "Subnets associated with this VLAN, derived from discovered interface\nnative-VLAN data via the `subnet_vlans` junction. Hydrated by\n`VlanService` on read — it is not a column on `vlans`, and it is never\naccepted on create/update (which take `VlanBase`)."
-              },
               "updated_at": {
                 "type": "string",
                 "format": "date-time",
@@ -28194,6 +28167,15 @@
           },
           "source": {
             "$ref": "#/components/schemas/EntitySource"
+          },
+          "subnet_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "readOnly": true
+            },
+            "description": "Subnets associated with this VLAN, derived from discovered interface\nnative-VLAN data via the `subnet_vlans` junction. Hydrated by\n`VlanService` on read; it is not a column on `vlans`, so anything sent\nhere on create/update is ignored by `to_params`."
           },
           "vlan_number": {
             "type": "integer",

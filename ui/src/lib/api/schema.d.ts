@@ -4438,13 +4438,6 @@ export interface components {
                 readonly last_seen_at?: string;
                 /** Format: uuid */
                 readonly lineage_id?: string | null;
-                /**
-                 * @description Subnets associated with this VLAN, derived from discovered interface
-                 *     native-VLAN data via the `subnet_vlans` junction. Hydrated by
-                 *     `VlanService` on read — it is not a column on `vlans`, and it is never
-                 *     accepted on create/update (which take `VlanBase`).
-                 */
-                subnet_ids?: string[];
                 /** Format: date-time */
                 readonly updated_at: string;
                 /** Format: date-time */
@@ -6961,13 +6954,6 @@ export interface components {
                 readonly last_seen_at?: string;
                 /** Format: uuid */
                 readonly lineage_id?: string | null;
-                /**
-                 * @description Subnets associated with this VLAN, derived from discovered interface
-                 *     native-VLAN data via the `subnet_vlans` junction. Hydrated by
-                 *     `VlanService` on read — it is not a column on `vlans`, and it is never
-                 *     accepted on create/update (which take `VlanBase`).
-                 */
-                subnet_ids?: string[];
                 /** Format: date-time */
                 readonly updated_at: string;
                 /** Format: date-time */
@@ -8309,13 +8295,6 @@ export interface components {
             readonly last_seen_at?: string;
             /** Format: uuid */
             readonly lineage_id?: string | null;
-            /**
-             * @description Subnets associated with this VLAN, derived from discovered interface
-             *     native-VLAN data via the `subnet_vlans` junction. Hydrated by
-             *     `VlanService` on read — it is not a column on `vlans`, and it is never
-             *     accepted on create/update (which take `VlanBase`).
-             */
-            subnet_ids?: string[];
             /** Format: date-time */
             readonly updated_at: string;
             /** Format: date-time */
@@ -8331,6 +8310,13 @@ export interface components {
             /** Format: uuid */
             organization_id: string;
             source?: components["schemas"]["EntitySource"];
+            /**
+             * @description Subnets associated with this VLAN, derived from discovered interface
+             *     native-VLAN data via the `subnet_vlans` junction. Hydrated by
+             *     `VlanService` on read; it is not a column on `vlans`, so anything sent
+             *     here on create/update is ignored by `to_params`.
+             */
+            subnet_ids?: string[];
             /**
              * Format: int32
              * @description The 802.1Q VLAN number (1-4094)
