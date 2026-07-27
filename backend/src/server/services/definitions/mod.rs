@@ -342,6 +342,8 @@ pub mod actual_budget;
 pub mod autobrr;
 pub mod backrest;
 pub mod cleanuparr;
+pub mod docmost;
+pub mod firefly_iii;
 pub mod freshrss;
 pub mod grocy;
 pub mod huntarr;
