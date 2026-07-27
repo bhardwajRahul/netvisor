@@ -219,12 +219,14 @@ where
         }
     }
 
-    // A truncated column is why interfaces and neighbours go missing, and until now the reason was
-    // invisible — a timeout and a session reading stale answers produce identical data. Logged at
-    // info because it is both rare on a healthy network and the first thing worth knowing when it
-    // is not; a clean walk stays silent.
+    // A truncated column is why interfaces and neighbours go missing, and the reason is otherwise
+    // invisible — a timeout and a session reading stale answers produce identical data. Kept at
+    // debug rather than info: truncation is common enough on a busy agent to be noise at info
+    // (the SNMP simulator alone produces several per scan), and the operator-facing signal is
+    // already the session warning. This is the follow-up detail for when that warning needs
+    // explaining. A clean walk stays silent either way.
     if stop.is_truncation() {
-        tracing::info!(
+        debug!(
             base = base_oid_str,
             ?stop,
             detail = stop_detail.as_deref().unwrap_or(""),
