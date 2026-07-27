@@ -131,6 +131,15 @@ pub struct ServerConfig {
     /// SMTP port. Defaults to 465 (implicit TLS) when unset. Ports other than
     /// 465 use STARTTLS (e.g. 587, 25).
     pub smtp_port: Option<u16>,
+    /// Directory the logging email transport writes rendered emails to
+    /// (`SCANOPY_EMAIL_LOG_DIR`). Setting it selects that transport ahead of
+    /// Brevo and SMTP, so nothing is actually delivered — it exists to
+    /// exercise email paths locally without credentials.
+    ///
+    /// Testing only: the written files contain full bodies, including
+    /// password-reset and verification tokens, in plaintext on disk.
+    #[serde(default)]
+    pub email_log_dir: Option<PathBuf>,
     #[serde(default)]
     pub oidc_providers: Option<Vec<OidcProviderConfig>>,
 
@@ -261,6 +270,7 @@ impl Default for ServerConfig {
             smtp_email: None,
             smtp_relay: None,
             smtp_port: None,
+            email_log_dir: None,
             client_ip_source: None,
             oidc_providers: None,
             posthog_key: None,
@@ -541,7 +551,8 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
             stripe_publishable_key: state.config.stripe_key.clone(),
             discount_save_offer_available: std::env::var("STRIPE_SAVE_OFFER_COUPON_ID").is_ok(),
             has_integrated_daemon: state.config.integrated_daemon_url.is_some(),
-            has_email_service: state.config.brevo_api_key.is_some()
+            has_email_service: state.config.email_log_dir.is_some()
+                || state.config.brevo_api_key.is_some()
                 || (state.config.smtp_password.is_some()
                     && state.config.smtp_username.is_some()
                     && state.config.smtp_email.is_some()
