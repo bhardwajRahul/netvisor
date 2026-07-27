@@ -10,21 +10,27 @@ use utoipa::ToSchema;
 // they sunset." Replaces the former constant `minimum_supported` and the dead
 // hard-coded `sunset_date` string literal.
 //
-// Two data tables drive everything:
-//   * `release_lines()` — every shipped minor line and its `.0` ship date.
-//   * `V1_SUNSET` — the one announced cutover (everything below 0.17.5 sunsets
-//     at the v1.0 launch + 3 months).
+// One data table drives everything: `scheduled_sunsets()` — the hand-curated
+// list of announced cutovers, each a (floor, absolute effective date) pair.
 //
-// The enforced floor and every lifecycle stage are *derived* from those tables
-// plus the current date. Nothing is a literal in a match arm, so nothing can
+// There is deliberately NO policy: no support window, no version-count rule, no
+// fixed support duration. A sunset exists because someone decided to announce it
+// and wrote down one entry; nothing is inferred from release cadence. Adding a
+// cutover ("everything below 1.2.0 stops working on 2027-08-01") is one literal
+// appended to that list, and is the only maintenance this module needs.
+//
+// The enforced floor and every lifecycle stage are *derived* from that list plus
+// the current date, so no date is a literal in a match arm and nothing can
 // silently rot the way `2025-02-01` did.
 //
-// Dormancy: `V1_SUNSET.effective_on` is `None` until the real launch date is
-// baked in before the release build. While it is `None` the whole machinery is
-// OFF — the enforced floor stays at the historical `BASELINE_FLOOR` (0.12.0),
-// nothing is marked `Deprecated`/`Unsupported`, and no daemon is rejected that
-// wasn't already. This lets the code ship well ahead of launch without changing
-// any daemon's behavior until the date is set.
+// Dormancy: an entry whose `effective_on` is `None` is ignored entirely. The v1
+// entry — the one cutover that genuinely derives from the launch date rather
+// than from a hand-picked date — is `None` until the real launch date is baked
+// in before the release build. While every entry is dormant the whole machinery
+// is OFF: the enforced floor stays at the historical baseline (0.12.0), nothing
+// is marked `Deprecated`/`Unsupported`, and no daemon is rejected that wasn't
+// already. This lets the code ship well ahead of launch without changing any
+// daemon's behavior until the date is set.
 // ===========================================================================
 
 /// The historical floor. Used while the sunset machinery is dormant, and as the
@@ -41,55 +47,20 @@ fn own_version() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).expect("CARGO_PKG_VERSION is valid semver")
 }
 
-/// Helper: a UTC timestamp at midnight for the given calendar date.
+/// Helper: a UTC timestamp at midnight for the given calendar date. Unused while
+/// the only cutover derives its date from `v1_launch()`; it is how every
+/// appended entry spells its absolute effective date, so it stays.
+#[allow(dead_code)]
 fn dt(year: i32, month: u32, day: u32) -> DateTime<Utc> {
     Utc.with_ymd_and_hms(year, month, day, 0, 0, 0)
         .single()
         .expect("valid date")
 }
 
-/// A shipped minor release line and the date its `.0` shipped. Seeded from git
-/// tags. Used to detect "a newer release exists" (Outdated) and to derive future
-/// support-window floors as newer binaries add entries.
-struct ReleaseLine {
-    minor: (u64, u64),
-    released_on: DateTime<Utc>,
-}
-
-/// Every shipped minor line, oldest first. Add one entry per new minor at
-/// release time — that is the only maintenance the automatic-advance rule needs.
-fn release_lines() -> Vec<ReleaseLine> {
-    vec![
-        ReleaseLine {
-            minor: (0, 12),
-            released_on: dt(2025, 12, 14),
-        },
-        ReleaseLine {
-            minor: (0, 13),
-            released_on: dt(2026, 1, 4),
-        },
-        ReleaseLine {
-            minor: (0, 14),
-            released_on: dt(2026, 2, 1),
-        },
-        ReleaseLine {
-            minor: (0, 15),
-            released_on: dt(2026, 3, 23),
-        },
-        ReleaseLine {
-            minor: (0, 16),
-            released_on: dt(2026, 4, 17),
-        },
-        ReleaseLine {
-            minor: (0, 17),
-            released_on: dt(2026, 6, 22),
-        },
-    ]
-}
-
 /// An announced support cutover: at `effective_on`, daemons below `floor` become
 /// `Unsupported` and are rejected. Before it (but once announced) they are
 /// `Deprecated` and carry the date. `effective_on: None` is the dormant sentinel.
+#[derive(Clone)]
 struct ScheduledFloor {
     floor: Version,
     effective_on: Option<DateTime<Utc>>,
@@ -98,9 +69,10 @@ struct ScheduledFloor {
 /// Months of lead time between the v1.0 launch and the first enforced cutover.
 const V1_SUNSET_LEAD_MONTHS: i64 = 3;
 
-/// The v1.0 launch anchor — the single place the launch date lives. Everything
-/// (the 0.17.5 cutover date, every `Deprecated` sunset date shown in UI/email,
-/// and the automatic-advance schedule) derives from this one value.
+/// The v1.0 launch anchor — the single place the launch date lives. The v1
+/// cutover's date (and so every `Deprecated` sunset date it shows in UI/email)
+/// derives from this one value. It exists for the v1 entry alone: cutovers
+/// announced after launch carry absolute dates instead.
 ///
 /// `None` is the dormant sentinel: keep it `None` in development so the whole
 /// sunset machinery stays off and CI is green. Bake in the real launch date as
@@ -113,13 +85,22 @@ fn v1_launch() -> Option<DateTime<Utc>> {
     None
 }
 
-/// The single announced cutover, derived from the launch anchor: everything
-/// below 0.17.5 sunsets `V1_SUNSET_LEAD_MONTHS` after launch.
-fn v1_sunset() -> ScheduledFloor {
-    ScheduledFloor {
-        floor: Version::new(0, 17, 5),
-        effective_on: v1_launch().map(|launch| add_months(launch, V1_SUNSET_LEAD_MONTHS)),
-    }
+/// Every announced daemon-sunset cutover, oldest floor first. Add one entry per
+/// announcement — the ONLY maintenance the sunset system needs. Each carries an
+/// absolute effective date; there is no automatic window or version-count policy.
+fn scheduled_sunsets() -> Vec<ScheduledFloor> {
+    vec![
+        // v1.0: everything below 0.17.5, 3 months after launch. This entry is the
+        // one exception to "absolute dates" — it genuinely derives from the launch
+        // anchor, and stays dormant (`None`) until that date is baked in.
+        ScheduledFloor {
+            floor: Version::new(0, 17, 5),
+            effective_on: v1_launch().map(|launch| add_months(launch, V1_SUNSET_LEAD_MONTHS)),
+        },
+        // Future announcements are appended here with an absolute effective date —
+        // do the "release + N months" math when you announce, not in code, e.g.:
+        // ScheduledFloor { floor: Version::new(1, 2, 0), effective_on: Some(dt(2027, 8, 1)) },
+    ]
 }
 
 /// Add whole months to a timestamp (day clamped to the target month's length via
@@ -133,91 +114,64 @@ fn add_months(base: DateTime<Utc>, months: i64) -> DateTime<Utc> {
 /// The enforced support floor at `now`: daemons below it are rejected (once the
 /// gate is wired in). Derived, never a literal.
 ///
-/// While dormant (`v1_launch()` is `None`) this is exactly `baseline_floor()`
-/// (0.12.0) — the historical behavior. Once the launch date is set, the newest
-/// effective cutover applies, capped at `own_version()` so a stale server can
-/// never over-enforce.
+/// While every announced cutover is dormant this is exactly `baseline_floor()`
+/// (0.12.0) — the historical behavior. Otherwise the highest cutover whose date
+/// has arrived applies, capped at `own_version()` so a stale server can never
+/// over-enforce.
 pub fn enforced_floor(now: DateTime<Utc>) -> Version {
-    let mut floor = baseline_floor();
+    floor_from(&scheduled_sunsets(), now)
+}
 
-    // The explicit v1.0 cutover.
-    let v1 = v1_sunset();
-    if let Some(eff) = v1.effective_on
-        && eff <= now
-        && v1.floor > floor
-    {
-        floor = v1.floor;
-    }
-
-    // Automatic advancement for post-v1.0 binaries: once the launch anchor is
-    // set, the support window is the three newest minor lines; the floor is the
-    // oldest still-supported line, effective 6 months after the line that pushed
-    // its predecessor out of the window shipped. This only produces a higher
-    // floor than the v1.0 cutover on a *newer* binary (whose release table
-    // reaches past 0.17); on this binary it is a no-op below 0.17.5.
-    if v1_launch().is_some()
-        && let Some(auto) = support_window_floor(now)
-        && auto > floor
-    {
-        floor = auto;
-    }
+/// The enforced floor implied by `sunsets` at `now`: the highest floor whose
+/// cutover has taken effect, never below `baseline_floor()` and never above
+/// `own_version()`. Dormant entries (`effective_on: None`) are ignored, so an
+/// all-dormant list yields exactly the baseline.
+///
+/// Takes the list as a parameter so tests drive the real rule with synthetic
+/// cutovers instead of re-implementing it.
+fn floor_from(sunsets: &[ScheduledFloor], now: DateTime<Utc>) -> Version {
+    let effective_floors = sunsets
+        .iter()
+        .filter(|s| s.effective_on.is_some_and(|eff| eff <= now))
+        .map(|s| s.floor.clone());
 
     // Safety cap: never enforce a floor newer than this binary.
-    floor.min(own_version())
+    effective_floors
+        .fold(baseline_floor(), |acc, floor| acc.max(floor))
+        .min(own_version())
 }
 
-/// The support-window floor: the oldest of the three newest minor lines, once
-/// its window has elapsed. `None` if there are fewer than three lines or the
-/// window has not yet passed. Effective dates are clamped to never precede the
-/// v1.0 cutover, so this never front-runs launch.
-fn support_window_floor(now: DateTime<Utc>) -> Option<Version> {
-    let lines = release_lines();
-    if lines.len() < 3 {
-        return None;
-    }
-    // Newest three lines are supported; the oldest supported is index len-3.
-    let oldest_supported = &lines[lines.len() - 3];
-    // The line that pushed the predecessor of `oldest_supported` out of the
-    // window is `oldest_supported` itself; give a 6-month grace from its ship.
-    let mut effective = add_months(oldest_supported.released_on, 6);
-    if let Some(launch) = v1_launch() {
-        let cutover = add_months(launch, V1_SUNSET_LEAD_MONTHS);
-        if effective < cutover {
-            effective = cutover;
-        }
-    }
-    if effective <= now {
-        Some(Version::new(
-            oldest_supported.minor.0,
-            oldest_supported.minor.1,
-            0,
-        ))
-    } else {
-        None
-    }
+/// The cutover a daemon at version `v` actually faces, if any: among the
+/// announced sunsets whose floor is above `v`, the one arriving **soonest**. A
+/// daemon below several floors is only ever told about the nearest deadline —
+/// surfacing a later, higher cutover it is also below would misstate when it
+/// stops working.
+pub fn applicable_sunset(v: Option<&Version>) -> Option<(Version, DateTime<Utc>)> {
+    applicable_sunset_in(&scheduled_sunsets(), v)
 }
 
-/// The currently-announced daemon sunset, if the launch date has been baked in:
-/// the floor below which daemons will become (or are) `Unsupported`, and the
-/// date it takes effect. `None` while dormant, so the boot-time sunset sweep is
-/// a no-op until launch is set.
-pub fn announced_sunset() -> Option<(Version, DateTime<Utc>)> {
-    let v1 = v1_sunset();
-    v1.effective_on.map(|eff| (v1.floor, eff))
-}
-
-/// Whether the announced sunset `announced` covers version `v`, with its date.
-/// A version-less daemon (`None`) is treated as **below** any floor: a daemon
+/// [`applicable_sunset`] over an explicit list (production passes
+/// `scheduled_sunsets()`; tests pass synthetic cutovers).
+///
+/// A version-less daemon (`None`) is treated as **below** every floor: a daemon
 /// that reports no version is almost always genuinely old (modern daemons always
-/// report one), so it is covered by the sunset just like an old versioned daemon.
-/// Returns `None` when no sunset is announced (dormant) or `v` is at/above the floor.
-fn announced_sunset_for(
-    announced: &Option<(Version, DateTime<Utc>)>,
+/// report one), so it is covered by a sunset just like an old versioned daemon.
+///
+/// Dormant entries (`effective_on: None`) are skipped, so an all-dormant list
+/// yields `None` for every version and the whole machinery stays off.
+fn applicable_sunset_in(
+    sunsets: &[ScheduledFloor],
     v: Option<&Version>,
 ) -> Option<(Version, DateTime<Utc>)> {
-    let (floor, eff) = announced.as_ref()?;
-    let below = v.is_none_or(|v| v < floor);
-    below.then(|| (floor.clone(), *eff))
+    sunsets
+        .iter()
+        .filter_map(|s| s.effective_on.map(|eff| (s.floor.clone(), eff)))
+        .filter(|(floor, _)| v.is_none_or(|v| v < floor))
+        // Soonest deadline wins; the lower floor breaks a date tie so the result
+        // never depends on the order entries happen to be written in.
+        .min_by(|(a_floor, a_eff), (b_floor, b_eff)| {
+            a_eff.cmp(b_eff).then_with(|| a_floor.cmp(b_floor))
+        })
 }
 
 // ===========================================================================
@@ -320,9 +274,9 @@ pub struct DaemonVersionPolicy {
     pub recommended: Version,
     pub latest: Version,
     pub now: DateTime<Utc>,
-    /// The announced sunset (floor, effective date), or `None` while dormant.
-    /// Captured on construction so evaluation is deterministic and testable.
-    announced_sunset: Option<(Version, DateTime<Utc>)>,
+    /// Every announced cutover, captured on construction so evaluation is
+    /// deterministic and testable. Empty of effective entries while dormant.
+    scheduled_sunsets: Vec<ScheduledFloor>,
 }
 
 impl Default for DaemonVersionPolicy {
@@ -340,22 +294,22 @@ impl DaemonVersionPolicy {
             recommended: current.clone(),
             latest: current,
             now,
-            announced_sunset: announced_sunset(),
+            scheduled_sunsets: scheduled_sunsets(),
         }
     }
 
-    /// Test-only constructor pinning both the clock and the announced sunset, so
-    /// every lifecycle branch (Deprecated / Unsupported / version-less) can be
+    /// Test-only constructor pinning both the clock and the announced cutovers,
+    /// so every lifecycle branch (Deprecated / Unsupported / version-less) can be
     /// exercised without depending on the hard-coded `v1_launch()` sentinel.
     #[cfg(test)]
-    fn at_with_sunset(now: DateTime<Utc>, announced: Option<(Version, DateTime<Utc>)>) -> Self {
+    fn at_with_sunsets(now: DateTime<Utc>, sunsets: Vec<ScheduledFloor>) -> Self {
         let current = own_version();
         Self {
-            minimum_supported: baseline_floor(),
+            minimum_supported: floor_from(&sunsets, now),
             recommended: current.clone(),
             latest: current,
             now,
-            announced_sunset: announced,
+            scheduled_sunsets: sunsets,
         }
     }
 
@@ -388,7 +342,7 @@ impl DaemonVersionPolicy {
             None => "This daemon (no reported version)".to_string(),
         };
 
-        if let Some((_floor, effective_on)) = announced_sunset_for(&self.announced_sunset, v) {
+        if let Some((_floor, effective_on)) = applicable_sunset_in(&self.scheduled_sunsets, v) {
             let sunset_str = effective_on.format("%Y-%m-%d").to_string();
             let (status, message) = if effective_on <= self.now {
                 // Past its announced cutover — unsupported and rejected.
@@ -440,8 +394,9 @@ impl DaemonVersionPolicy {
         };
 
         if v < &self.minimum_supported {
-            // Below the enforced floor without an explicit announced schedule
-            // (e.g. a future auto-advanced floor). Unsupported.
+            // Below the enforced floor with no cutover naming a date for it —
+            // i.e. below the historical baseline, which predates every
+            // announcement. Unsupported, but there is no date to quote.
             (
                 VersionHealthStatus::Unsupported,
                 vec![DeprecationWarning {
@@ -577,13 +532,42 @@ mod tests {
     }
 
     #[test]
+    fn dormant_list_has_no_applicable_sunset() {
+        // Every entry dormant (no date baked in) — nothing applies to anything,
+        // however old, so the whole machinery stays off.
+        let dormant = vec![
+            ScheduledFloor {
+                floor: Version::new(0, 17, 5),
+                effective_on: None,
+            },
+            ScheduledFloor {
+                floor: Version::new(1, 2, 0),
+                effective_on: None,
+            },
+        ];
+        for v in [
+            None,
+            Some(Version::new(0, 1, 0)),
+            Some(Version::new(0, 16, 0)),
+            Some(Version::new(1, 0, 0)),
+        ] {
+            assert!(applicable_sunset_in(&dormant, v.as_ref()).is_none());
+        }
+        // ...and it never raises the floor.
+        assert_eq!(floor_from(&dormant, dt(2030, 1, 1)), baseline_floor());
+    }
+
+    #[test]
     fn announced_sunset_deprecates_old_and_versionless() {
         // Future sunset date: an old versioned daemon AND a version-less one are
         // both Deprecated with that date (a version-less daemon is treated as
         // genuinely old). A current daemon is unaffected.
-        let policy = DaemonVersionPolicy::at_with_sunset(
+        let policy = DaemonVersionPolicy::at_with_sunsets(
             dt(2026, 7, 27),
-            Some((Version::new(0, 17, 5), dt(2026, 10, 1))),
+            vec![ScheduledFloor {
+                floor: Version::new(0, 17, 5),
+                effective_on: Some(dt(2026, 10, 1)),
+            }],
         );
 
         let old = policy.evaluate(Some(&Version::new(0, 16, 0)));
@@ -604,9 +588,12 @@ mod tests {
     fn passed_sunset_is_unsupported_including_versionless() {
         // Sunset date already elapsed: both an old versioned daemon and a
         // version-less one are Unsupported.
-        let policy = DaemonVersionPolicy::at_with_sunset(
+        let policy = DaemonVersionPolicy::at_with_sunsets(
             dt(2026, 11, 1),
-            Some((Version::new(0, 17, 5), dt(2026, 10, 1))),
+            vec![ScheduledFloor {
+                floor: Version::new(0, 17, 5),
+                effective_on: Some(dt(2026, 10, 1)),
+            }],
         );
         assert_eq!(
             policy.evaluate(Some(&Version::new(0, 16, 0))).status,
@@ -620,44 +607,41 @@ mod tests {
 
     // --- Once the launch anchor is set: the real transitions. ----------------
     //
-    // These drive `enforced_floor`/`evaluate` off an explicit `ScheduledFloor`
-    // instead of the production `v1_launch()` sentinel, so they exercise the
-    // date logic without depending on an unset launch date.
+    // These drive the production derivations (`floor_from` / `applicable_sunset_in`)
+    // off explicit `ScheduledFloor` lists instead of the `v1_launch()` sentinel,
+    // so they exercise the real date logic without depending on an unset launch
+    // date.
 
-    fn floor_for(v1: &ScheduledFloor, now: DateTime<Utc>) -> Version {
-        let mut floor = baseline_floor();
-        if let Some(eff) = v1.effective_on
-            && eff <= now
-            && v1.floor > floor
-        {
-            floor = v1.floor.clone();
+    /// The v1 cutover as it will be once a launch date is baked in.
+    fn v1_cutover(launch: DateTime<Utc>) -> ScheduledFloor {
+        ScheduledFloor {
+            floor: Version::new(0, 17, 5),
+            effective_on: Some(add_months(launch, V1_SUNSET_LEAD_MONTHS)),
         }
-        floor.min(own_version())
     }
 
     #[test]
     fn floor_moves_only_after_cutover() {
-        let launch = dt(2026, 9, 1);
-        let v1 = ScheduledFloor {
-            floor: Version::new(0, 17, 5),
-            effective_on: Some(add_months(launch, V1_SUNSET_LEAD_MONTHS)), // 2026-12-01
-        };
+        let sunsets = vec![v1_cutover(dt(2026, 9, 1))]; // effective 2026-12-01
         // Before the cutover: still baseline.
-        assert_eq!(floor_for(&v1, dt(2026, 11, 30)), baseline_floor());
+        assert_eq!(floor_from(&sunsets, dt(2026, 11, 30)), baseline_floor());
         // On/after the cutover: 0.17.5.
-        assert_eq!(floor_for(&v1, dt(2026, 12, 1)), Version::new(0, 17, 5));
-        assert_eq!(floor_for(&v1, dt(2027, 6, 1)), Version::new(0, 17, 5));
+        assert_eq!(
+            floor_from(&sunsets, dt(2026, 12, 1)),
+            Version::new(0, 17, 5)
+        );
+        assert_eq!(floor_from(&sunsets, dt(2027, 6, 1)), Version::new(0, 17, 5));
     }
 
     #[test]
     fn floor_capped_at_own_version() {
         // A cutover naming a version newer than this binary is capped down —
         // a server never enforces a floor it can't reason about.
-        let v1 = ScheduledFloor {
+        let sunsets = vec![ScheduledFloor {
             floor: Version::new(9, 9, 9),
             effective_on: Some(dt(2026, 1, 1)),
-        };
-        assert_eq!(floor_for(&v1, dt(2027, 1, 1)), own_version());
+        }];
+        assert_eq!(floor_from(&sunsets, dt(2027, 1, 1)), own_version());
     }
 
     #[test]
@@ -666,20 +650,103 @@ mod tests {
         assert_eq!(add_months(dt(2026, 11, 15), 3), dt(2027, 2, 15));
     }
 
-    // --- Rot guards -----------------------------------------------------------
-
     #[test]
-    fn current_minor_has_a_release_line() {
-        let own = own_version();
-        let has = release_lines()
-            .iter()
-            .any(|l| l.minor == (own.major, own.minor));
-        assert!(
-            has,
-            "release_lines() is missing the current minor {}.{} — add an entry",
-            own.major, own.minor
+    fn v1_cutover_behavior_is_preserved() {
+        // Behavior preservation: with only the v1 cutover active, a daemon below
+        // 0.17.5 resolves exactly as it did under the single-sunset model —
+        // Deprecated with the cutover date before it, Unsupported after.
+        let sunsets = vec![v1_cutover(dt(2026, 9, 1))]; // effective 2026-12-01
+        let old = Version::new(0, 16, 0);
+
+        let before = DaemonVersionPolicy::at_with_sunsets(dt(2026, 11, 30), sunsets.clone());
+        let status = before.evaluate(Some(&old));
+        assert_eq!(status.status, VersionHealthStatus::Deprecated);
+        assert_eq!(status.sunset_date.as_deref(), Some("2026-12-01"));
+
+        let after = DaemonVersionPolicy::at_with_sunsets(dt(2026, 12, 2), sunsets);
+        assert_eq!(
+            after.evaluate(Some(&old)).status,
+            VersionHealthStatus::Unsupported
         );
     }
+
+    // --- Multiple announced cutovers -----------------------------------------
+
+    /// Two announcements live at once: 0.17.5 already in force, 1.2.0 upcoming.
+    fn two_cutovers() -> Vec<ScheduledFloor> {
+        vec![
+            ScheduledFloor {
+                floor: Version::new(0, 17, 5),
+                effective_on: Some(dt(2026, 12, 1)),
+            },
+            ScheduledFloor {
+                floor: Version::new(1, 2, 0),
+                effective_on: Some(dt(2027, 8, 1)),
+            },
+        ]
+    }
+
+    #[test]
+    fn floor_takes_highest_cutover_already_in_force() {
+        let sunsets = two_cutovers();
+        // Neither in force yet.
+        assert_eq!(floor_from(&sunsets, dt(2026, 11, 1)), baseline_floor());
+        // Only the first — capped at own_version, which is exactly 0.17.5 today.
+        assert_eq!(
+            floor_from(&sunsets, dt(2027, 1, 1)),
+            Version::new(0, 17, 5).min(own_version())
+        );
+        // Both in force: the higher wins (still capped at this binary).
+        assert_eq!(
+            floor_from(&sunsets, dt(2027, 9, 1)),
+            Version::new(1, 2, 0).min(own_version())
+        );
+    }
+
+    #[test]
+    fn daemon_is_told_the_soonest_cutover_it_faces() {
+        let sunsets = two_cutovers();
+
+        // Below both floors: told about the nearer deadline only, never the
+        // later 1.2.0 one it is also below.
+        let (floor, eff) = applicable_sunset_in(&sunsets, Some(&Version::new(0, 16, 0))).unwrap();
+        assert_eq!(floor, Version::new(0, 17, 5));
+        assert_eq!(eff, dt(2026, 12, 1));
+
+        // Version-less counts as below every floor — same nearest deadline.
+        assert_eq!(
+            applicable_sunset_in(&sunsets, None).unwrap().0,
+            Version::new(0, 17, 5)
+        );
+
+        // Between the floors: only the higher cutover applies.
+        let (floor, eff) = applicable_sunset_in(&sunsets, Some(&Version::new(1, 0, 0))).unwrap();
+        assert_eq!(floor, Version::new(1, 2, 0));
+        assert_eq!(eff, dt(2027, 8, 1));
+
+        // At or above both: nothing applies.
+        assert!(applicable_sunset_in(&sunsets, Some(&Version::new(1, 2, 0))).is_none());
+        assert!(applicable_sunset_in(&sunsets, Some(&Version::new(2, 0, 0))).is_none());
+    }
+
+    #[test]
+    fn lifecycle_reflects_the_applicable_cutover_of_two() {
+        // Between the cutovers in time: the 0.17.5 daemon is already past its
+        // deadline (Unsupported) while the 1.0 daemon is Deprecated with the
+        // later date — one policy, two different outcomes.
+        let policy = DaemonVersionPolicy::at_with_sunsets(dt(2027, 1, 1), two_cutovers());
+
+        assert_eq!(
+            policy.evaluate(Some(&Version::new(0, 16, 0))).status,
+            VersionHealthStatus::Unsupported
+        );
+
+        let mid = policy.evaluate(Some(&Version::new(1, 0, 0)));
+        assert_eq!(mid.status, VersionHealthStatus::Deprecated);
+        assert_eq!(mid.sunset_date.as_deref(), Some("2027-08-01"));
+    }
+
+    // --- Rot guards -----------------------------------------------------------
 
     #[test]
     fn capability_floors_within_server_version() {
@@ -689,21 +756,6 @@ mod tests {
                 floor <= own,
                 "capability floor {floor} exceeds server version {own} — a shim references a \
                  version this build doesn't know; move the floor or delete the shim"
-            );
-        }
-    }
-
-    #[test]
-    fn release_lines_are_sorted_and_unique() {
-        let lines = release_lines();
-        for pair in lines.windows(2) {
-            assert!(
-                pair[0].minor < pair[1].minor,
-                "release_lines() must be strictly increasing by minor"
-            );
-            assert!(
-                pair[0].released_on < pair[1].released_on,
-                "release_lines() dates must be strictly increasing"
             );
         }
     }
