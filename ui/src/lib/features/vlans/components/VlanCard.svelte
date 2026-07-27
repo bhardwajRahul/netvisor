@@ -1,8 +1,9 @@
 <script lang="ts">
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import { entities } from '$lib/shared/stores/metadata';
-	import type { CardFieldItem } from '$lib/shared/components/data/types';
+	import { entityRef, type CardFieldItem } from '$lib/shared/components/data/types';
 	import type { Vlan } from '../types/base';
+	import type { Subnet } from '$lib/features/subnets/types/base';
 	import { formatRelativeTime } from '$lib/shared/utils/formatting';
 	import {
 		common_description,
@@ -15,20 +16,27 @@
 
 	let {
 		vlan,
-		subnetNames,
+		subnets,
 		viewMode,
 		selected,
 		onSelectionChange = () => {}
 	}: {
 		vlan: Vlan;
-		subnetNames: (vlan: Vlan) => string[];
+		subnets: (vlan: Vlan) => Subnet[];
 		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
 
+	// Rendered as EntityTags so each subnet links through to the subnet itself,
+	// the same way DaemonCard lists a daemon's interfaced subnets.
 	let subnetItems = $derived<CardFieldItem[]>(
-		subnetNames(vlan).map((name, i) => ({ id: `${vlan.id}-subnet-${i}`, label: name }))
+		subnets(vlan).map((s) => ({
+			id: s.id,
+			label: s.name,
+			color: entities.getColorHelper('Subnet').color,
+			entityRef: entityRef('Subnet', s.id, s)
+		}))
 	);
 
 	// No actions: VLANs are discovery-populated and this tab is view-only.
@@ -45,7 +53,6 @@
 			{
 				label: common_subnets(),
 				value: subnetItems,
-				color: entities.getColorString('Subnet'),
 				emptyText: common_none()
 			},
 			{
