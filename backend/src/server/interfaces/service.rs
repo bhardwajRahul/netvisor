@@ -8,7 +8,7 @@ use validator::ValidationError;
 
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
-    interfaces::r#impl::base::{Interface, Neighbor},
+    interfaces::r#impl::base::{Interface, InterfaceDataComplete, Neighbor},
     ip_addresses::service::IPAddressService,
     shared::{
         events::bus::EventBus,
@@ -207,6 +207,7 @@ impl InterfaceService {
         &self,
         entry: Interface,
         claimed: &HashSet<Uuid>,
+        collected: InterfaceDataComplete,
         authentication: AuthenticatedEntity,
     ) -> Result<Interface> {
         let mut entry = entry;
@@ -218,6 +219,7 @@ impl InterfaceService {
             let mut updated = entry;
             updated.id = existing_entry.id;
             updated.preserve_immutable_fields(&existing_entry);
+            updated.preserve_uncollected_data(&existing_entry, collected);
             self.update(&mut updated, authentication).await
         } else {
             // SCD2 origin: no match found, this is a new insert. Stamp

@@ -1,5 +1,6 @@
 //! Inbound daemon message processing: status, startup, registration, capabilities, discovery entities, and migration.
 use super::*;
+use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 
 impl DaemonService {
     // ========================================================================
@@ -400,8 +401,10 @@ impl DaemonService {
                 vec![],
                 vec![],
                 vec![],
-                // No interfaces in this registration stub; nothing to prune.
+                // No interfaces in this registration stub; nothing to prune, and no neighbour
+                // data to preserve against.
                 true,
+                InterfaceDataComplete::default(),
                 None,
                 auth.clone(),
                 None,
@@ -634,6 +637,7 @@ impl DaemonService {
                     host_request.interfaces,
                     host_request.subnets,
                     host_request.interfaces_complete,
+                    host_request.interface_data_complete,
                     scan_ctx.as_ref(),
                     auth.clone(),
                     limit_ctx.as_ref(),

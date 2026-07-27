@@ -13,7 +13,9 @@ use crate::server::{
         base::{Host, HostBase},
         virtualization::HostVirtualization,
     },
-    interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
+    interfaces::r#impl::base::{
+        IfAdminStatus, IfOperStatus, Interface, InterfaceBase, InterfaceDataComplete,
+    },
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
     ports::r#impl::base::{Port, PortBase, PortConfig, PortType, TransportProtocol},
     services::r#impl::{
@@ -77,6 +79,13 @@ pub struct DiscoveryHostRequest {
     /// predate this field omit it; it defaults to true so their behavior is unchanged.
     #[serde(default = "default_interfaces_complete")]
     pub interfaces_complete: bool,
+    /// Which groups of per-interface data (LLDP, CDP, FDB, VLAN membership) this scan read in
+    /// full. A group the daemon could not finish reading must not overwrite what is already
+    /// stored: a cut-short walk returns the same empty result as a device with nothing to report,
+    /// and for the neighbour fields that also drops the row out of L2 resolution for good.
+    /// Daemons predating this field omit it; it defaults to all-complete so they behave as before.
+    #[serde(default)]
+    pub interface_data_complete: InterfaceDataComplete,
 }
 
 /// Serde default for `interfaces_complete`: absent (old daemon) ⇒ treat as a complete/authoritative
@@ -108,6 +117,8 @@ struct DiscoveryHostRequestWire {
     subnets: Vec<crate::server::subnets::r#impl::base::Subnet>,
     #[serde(default = "default_interfaces_complete")]
     interfaces_complete: bool,
+    #[serde(default)]
+    interface_data_complete: InterfaceDataComplete,
 }
 
 impl From<DiscoveryHostRequest> for DiscoveryHostRequestWire {
@@ -125,6 +136,7 @@ impl From<DiscoveryHostRequest> for DiscoveryHostRequestWire {
             if_entries: vec![],
             subnets: req.subnets,
             interfaces_complete: req.interfaces_complete,
+            interface_data_complete: req.interface_data_complete,
         }
     }
 }
@@ -152,6 +164,7 @@ impl<'de> serde::Deserialize<'de> for DiscoveryHostRequest {
                 interfaces,
                 subnets: wire.subnets,
                 interfaces_complete: wire.interfaces_complete,
+                interface_data_complete: wire.interface_data_complete,
             })
         } else {
             // Old format (< v0.16.0): interfaces = IPAddress data, if_entries = SNMP data
@@ -169,6 +182,7 @@ impl<'de> serde::Deserialize<'de> for DiscoveryHostRequest {
                 interfaces: wire.if_entries,
                 subnets: wire.subnets,
                 interfaces_complete: wire.interfaces_complete,
+                interface_data_complete: wire.interface_data_complete,
             })
         }
     }
@@ -187,6 +201,7 @@ mod discovery_request_interfaces_complete_tests {
             interfaces: vec![],
             subnets: vec![],
             interfaces_complete,
+            interface_data_complete: InterfaceDataComplete::default(),
         }
     }
 

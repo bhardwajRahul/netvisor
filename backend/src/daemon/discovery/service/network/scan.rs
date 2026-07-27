@@ -6,6 +6,7 @@ use crate::daemon::utils::scanner::{
     ScanConcurrencyController, can_arp_scan, scan_endpoints, scan_tcp_ports, scan_udp_ports,
 };
 use crate::server::discovery::r#impl::scan_settings::defaults;
+use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::base::{Service, ServiceMatchBaselineParams};
@@ -566,6 +567,9 @@ impl NetworkScan {
                                         subnets: vec![],
                                         // Early host stub carries no ifTable; nothing to prune against.
                                         interfaces_complete: true,
+                                        // ...and no neighbour data either, so there is nothing
+                                        // for it to overwrite.
+                                        interface_data_complete: InterfaceDataComplete::default(),
                                     };
                                     early_entity_buffer.push_host(request.clone()).await;
                                     let mode = early_config_store.get_mode().await?;
@@ -1277,6 +1281,7 @@ impl NetworkScan {
 
             // Extract final state from host_data
             let interfaces_complete = host_data.interfaces_complete;
+            let interface_data_complete = host_data.interface_data_complete;
             let host = host_data.host;
             let ip_addresses = host_data.ip_addresses;
             let ports = host_data.ports;
@@ -1309,6 +1314,7 @@ impl NetworkScan {
                     interfaces,
                     subnets,
                     interfaces_complete,
+                    interface_data_complete,
                     &cancel,
                 )
                 .await

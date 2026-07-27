@@ -45,7 +45,7 @@ use crate::{
         },
         hosts::r#impl::base::{Host, HostBase},
         interfaces::r#impl::base::{
-            IfAdminStatus, IfOperStatus, Interface, InterfaceBase, if_type,
+            IfAdminStatus, IfOperStatus, Interface, InterfaceBase, InterfaceDataComplete, if_type,
         },
         ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
         ports::r#impl::base::PortType,
@@ -284,15 +284,27 @@ impl DiscoveryIntegration for SnmpIntegration {
         }
 
         // Query LLDP neighbors
-        let mut lldp_neighbors =
-            query_or_default(ip, "lldp", query_lldp_neighbors(&mut session, ip)).await;
-        tracing::debug!(ip = %ip, count = lldp_neighbors.len(), "LLDP neighbors discovered");
+        let lldp = query_or_default(ip, "lldp", query_lldp_neighbors(&mut session, ip)).await;
+        let lldp_complete = lldp.complete;
+        let mut lldp_neighbors = lldp.records;
+        tracing::debug!(
+            ip = %ip,
+            count = lldp_neighbors.len(),
+            complete = lldp_complete,
+            "LLDP neighbors discovered"
+        );
         let lldp_count = lldp_neighbors.len();
 
         // Query CDP neighbors (Cisco devices)
-        let cdp_neighbors =
-            query_or_default(ip, "cdp", query_cdp_neighbors(&mut session, ip)).await;
-        tracing::debug!(ip = %ip, count = cdp_neighbors.len(), "CDP neighbors discovered");
+        let cdp = query_or_default(ip, "cdp", query_cdp_neighbors(&mut session, ip)).await;
+        let cdp_complete = cdp.complete;
+        let cdp_neighbors = cdp.records;
+        tracing::debug!(
+            ip = %ip,
+            count = cdp_neighbors.len(),
+            complete = cdp_complete,
+            "CDP neighbors discovered"
+        );
         let cdp_count = cdp_neighbors.len();
 
         // Translate LLDP local-port indices (which are lldpLocPortNum values, a
@@ -333,10 +345,16 @@ impl DiscoveryIntegration for SnmpIntegration {
         );
 
         // Query bridge FDB for MAC-to-port mappings
-        let bridge_fdb =
-            query_or_default(ip, "bridge_fdb", query_bridge_fdb(&mut session, ip)).await;
+        let fdb = query_or_default(ip, "bridge_fdb", query_bridge_fdb(&mut session, ip)).await;
+        let fdb_complete = fdb.complete;
+        let bridge_fdb = fdb.records;
         let fdb_count = bridge_fdb.len();
-        tracing::info!(ip = %ip, count = fdb_count, "Bridge FDB entries collected");
+        tracing::info!(
+            ip = %ip,
+            count = fdb_count,
+            complete = fdb_complete,
+            "Bridge FDB entries collected"
+        );
 
         // Query VLAN table for VLAN names and persist as VLAN entities
         let vlan_table =
@@ -372,7 +390,14 @@ impl DiscoveryIntegration for SnmpIntegration {
             query_port_vlan_membership(&mut session, ip),
         )
         .await;
-        tracing::info!(ip = %ip, count = port_vlan_membership.len(), "Port VLAN memberships collected");
+        let vlan_membership_complete = port_vlan_membership.complete;
+        let port_vlan_membership = port_vlan_membership.records;
+        tracing::info!(
+            ip = %ip,
+            count = port_vlan_membership.len(),
+            complete = vlan_membership_complete,
+            "Port VLAN memberships collected"
+        );
 
         // Query local LLDP identity
         let lldp_local =
@@ -479,6 +504,41 @@ impl DiscoveryIntegration for SnmpIntegration {
         // only prunes interfaces no longer reported when this is true, so a partial walk cannot
         // tear down the host's L2 topology (GH #649).
         host_data.set_interfaces_complete(if_table.set_complete);
+        // Tell the server which of these groups it may treat as authoritative. A group we only
+        // read partially must not overwrite what is already stored — an empty result from a
+        // cut-short walk is indistinguishable from a device reporting nothing, and for the
+        // neighbour fields losing them drops the row out of L2 resolution for good.
+        host_data.set_interface_data_complete(InterfaceDataComplete {
+            lldp: lldp_complete,
+            cdp: cdp_complete,
+            fdb: fdb_complete,
+            vlan_membership: vlan_membership_complete,
+        });
+
+        // A cut-short neighbour walk used to be entirely silent — it took a database query to
+        // discover that a switch had lost its chassis ids. Say so, and say what happened as a
+        // result: the previous values are kept, so this is a "no fresh data" notice rather than
+        // a loss.
+        let incomplete: Vec<&str> = [
+            (!lldp_complete).then_some("LLDP"),
+            (!cdp_complete).then_some("CDP"),
+            (!fdb_complete).then_some("bridge forwarding"),
+            (!vlan_membership_complete).then_some("VLAN membership"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        if !incomplete.is_empty()
+            && let Ok(session_state) = ctx.ops.get_session().await
+            && let Ok(mut warnings) = session_state.warnings.lock()
+        {
+            warnings.push(format!(
+                "SNMP {} data for {ip} was incomplete — the device stopped responding partway \
+                 through, so its previously discovered values were kept rather than overwritten. \
+                 They refresh on the next complete scan.",
+                incomplete.join(" and ")
+            ));
+        }
 
         // GH #649: one consolidated per-host collection record. Ties together the scattered
         // per-query lines above so a self-hosted operator (and we, from their logs) can see, at a
@@ -674,6 +734,8 @@ impl DiscoveryIntegration for SnmpIntegration {
                         vec![],
                         // ARP-discovered remote host has no ifTable of its own; nothing to prune.
                         true,
+                        // ...and no neighbour data, so nothing to preserve against.
+                        InterfaceDataComplete::default(),
                         ctx.cancel,
                     )
                     .await
@@ -884,11 +946,13 @@ pub async fn poll_device(
 
     let lldp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_lldp_neighbors(&mut session, ip))
         .await
+        .map(|r| r.map(|c| c.records))
         .unwrap_or(Ok(vec![]))
         .unwrap_or_default();
 
     let cdp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_cdp_neighbors(&mut session, ip))
         .await
+        .map(|r| r.map(|c| c.records))
         .unwrap_or(Ok(vec![]))
         .unwrap_or_default();
 

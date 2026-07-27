@@ -14,6 +14,7 @@ use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::utils::base::DaemonUtils;
 use crate::server::bindings::r#impl::base::Binding;
 use crate::server::hosts::r#impl::base::{Host, HostBase};
+use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 use crate::server::ip_addresses::r#impl::base::{ALL_IP_ADDRESSES_IP, IPAddress};
 use crate::server::ports::r#impl::base::Port;
 use crate::server::ports::r#impl::base::PortType;
@@ -155,6 +156,8 @@ impl DiscoveryRunner {
             vec![],
             // Self-report carries no ifTable; empty interface set, nothing to prune.
             true,
+            // ...and no neighbour data, so nothing to preserve against either.
+            InterfaceDataComplete::default(),
             cancel,
         )
         .await?;
