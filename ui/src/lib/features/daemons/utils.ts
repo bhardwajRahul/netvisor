@@ -10,6 +10,8 @@ import {
 	common_outdated,
 	common_standby,
 	common_unreachable,
+	common_unsupported,
+	common_unknown,
 	daemons_awaitingConnection
 } from '$lib/paraglide/messages';
 
@@ -17,11 +19,17 @@ export const DAEMON_STATUS_DOCS_URL = 'https://scanopy.net/docs/reference/daemon
 
 /**
  * Returns the highest-priority status tag for a daemon.
- * Priority: Unreachable > Standby > Deprecated > Outdated > Healthy
+ * Priority: Unsupported > Unreachable > Standby > Deprecated > Outdated > Unknown > Healthy
+ *
+ * Unsupported ranks above Unreachable: a rejected daemon can't connect, so its
+ * unreachability is a symptom — the version is the actionable cause.
  */
 export function getDaemonStatusTag(daemon: Daemon): TagProps {
 	const docsTag = { href: DAEMON_STATUS_DOCS_URL, icon: CircleHelp };
 
+	if (daemon.version_status.status === 'Unsupported') {
+		return { label: common_unsupported(), color: toColor('red'), ...docsTag };
+	}
 	if (daemon.is_unreachable === true) {
 		return { label: common_unreachable(), color: toColor('red'), ...docsTag };
 	}
@@ -36,9 +44,20 @@ export function getDaemonStatusTag(daemon: Daemon): TagProps {
 			return { label: common_deprecated(), color: toColor('orange'), ...docsTag };
 		case 'Outdated':
 			return { label: common_outdated(), color: toColor('yellow'), ...docsTag };
+		case 'Unknown':
+			return { label: common_unknown(), color: toColor('gray'), ...docsTag };
 		default:
 			return { label: common_healthy(), color: toColor('green') };
 	}
+}
+
+/**
+ * Whether a daemon has an active or upcoming sunset the user should act on.
+ * True for Deprecated (a sunset date is scheduled) and Unsupported (past it).
+ */
+export function hasSunsetWarning(daemon: Daemon): boolean {
+	const status = daemon.version_status.status;
+	return status === 'Deprecated' || status === 'Unsupported';
 }
 
 export type DaemonOS = 'linux' | 'macos' | 'windows' | 'freebsd';

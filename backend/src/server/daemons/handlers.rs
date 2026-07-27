@@ -758,10 +758,10 @@ async fn receive_work_request(
             // Daemon was deleted or DB was reset. Version-split the response:
             // - Daemons >= 0.15.0 get DaemonNotRegistered (they handle it explicitly)
             // - Older daemons get DaemonStandby (which they already handle by entering standby)
-            let supports_not_registered = status
-                .version
-                .as_ref()
-                .is_some_and(|v| *v >= semver::Version::new(0, 15, 0));
+            let supports_not_registered =
+                crate::server::daemons::r#impl::version::supports_unified_discovery(
+                    status.version.as_ref(),
+                );
             if supports_not_registered {
                 return Err(ApiError::coded(
                     StatusCode::NOT_FOUND,

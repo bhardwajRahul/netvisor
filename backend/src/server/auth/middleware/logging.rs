@@ -53,9 +53,25 @@ pub async fn request_logging_middleware(
         .await
         .ok();
 
-    let (entity_type, entity_id) = entity
-        .map(|e| (e.entity_name(), e.entity_id()))
-        .unwrap_or(("anonymous".to_string(), None));
+    let (entity_type, entity_id, daemon_version_raw) = entity
+        .map(|e| {
+            (
+                e.entity_name(),
+                e.entity_id(),
+                e.daemon_version().map(|v| v.to_string()),
+            )
+        })
+        .unwrap_or(("anonymous".to_string(), None, None));
+
+    // Bounded daemon-version label: reduce the (client-supplied) X-Daemon-Version
+    // to `major.minor` so cardinality is capped at the finite set of release lines
+    // (a garbage or spoofed header collapses to "none"). Lets us see the installed
+    // base's version distribution from live traffic, not just the DB.
+    let daemon_version_label = daemon_version_raw
+        .as_deref()
+        .and_then(|v| semver::Version::parse(v).ok())
+        .map(|v| format!("{}.{}", v.major, v.minor))
+        .unwrap_or_else(|| "none".to_string());
 
     // Capture request size (approximate from Content-Length header)
     let request_size = parts
@@ -143,7 +159,8 @@ pub async fn request_logging_middleware(
         "status" => status_class.to_string(),
         "status_code" => status.to_string(),
         "error_code" => error_code.to_string(),
-        "entity_type" => entity_type_str.clone()
+        "entity_type" => entity_type_str.clone(),
+        "daemon_version" => daemon_version_label
     )
     .increment(1);
 

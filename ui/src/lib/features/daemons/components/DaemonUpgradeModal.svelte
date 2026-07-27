@@ -1,6 +1,7 @@
 <script lang="ts">
 	import CodeContainer from '$lib/shared/components/data/CodeContainer.svelte';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
+	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
@@ -37,6 +38,10 @@
 		daemons_upgradeVolumeMountFixStep,
 		daemons_upgradeVolumeMountWarningBody,
 		daemons_upgradeVolumeMountWarningTitle,
+		daemons_sunsetDeprecatedTitle,
+		daemons_sunsetDeprecatedBody,
+		daemons_sunsetUnsupportedTitle,
+		daemons_sunsetUnsupportedBody,
 		discovery_upgradeConsolidationWarning
 	} from '$lib/paraglide/messages';
 
@@ -47,6 +52,17 @@
 	}
 
 	let { isOpen = false, onClose, daemon }: Props = $props();
+
+	// Server-published sunset for this daemon's version (set for Deprecated /
+	// Unsupported). The UI renders the same date the sunset email uses; it never
+	// computes its own notion of "deprecated".
+	let sunsetDate = $derived(daemon.version_status.sunset_date ?? null);
+	let isUnsupported = $derived(daemon.version_status.status === 'Unsupported');
+	let sunsetDaysRemaining = $derived.by(() => {
+		if (!sunsetDate) return 0;
+		const ms = new Date(`${sunsetDate}T00:00:00Z`).getTime() - Date.now();
+		return Math.max(0, Math.ceil(ms / 86_400_000));
+	});
 
 	// OS selection state
 	let selectedOS: DaemonOS = $state(detectOS());
@@ -106,6 +122,18 @@ docker compose up -d`;
 					{/if}
 					{daemons_latestVersion()} <span class="font-mono">{VERSION}.</span>
 				</p>
+
+				{#if sunsetDate && isUnsupported}
+					<InlineDanger
+						title={daemons_sunsetUnsupportedTitle()}
+						body={daemons_sunsetUnsupportedBody({ date: sunsetDate })}
+					/>
+				{:else if sunsetDate}
+					<InlineWarning
+						title={daemons_sunsetDeprecatedTitle()}
+						body={daemons_sunsetDeprecatedBody({ date: sunsetDate, days: sunsetDaysRemaining })}
+					/>
+				{/if}
 
 				<InlineInfo title="" body={daemons_upgradeConfigPreserved()} />
 

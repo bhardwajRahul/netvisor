@@ -309,10 +309,14 @@ impl DaemonService {
         api_key: &str,
     ) -> Result<DaemonStatus> {
         let policy = DaemonVersionPolicy::default();
+        // Populate deprecation/sunset warnings for this daemon's version instead
+        // of sending an empty list — ServerPoll daemons previously never received
+        // any sunset warning on first contact.
+        let deprecation_warnings = policy.evaluate(daemon.base.version.as_ref()).warnings;
         let server_capabilities = ServerCapabilities {
             server_version: policy.latest.clone(),
             minimum_daemon_version: policy.minimum_supported.clone(),
-            deprecation_warnings: vec![],
+            deprecation_warnings,
         };
 
         let request = FirstContactRequest {

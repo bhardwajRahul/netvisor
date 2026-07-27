@@ -10,6 +10,7 @@ mod cancellation_initiated;
 mod checkout_completed;
 mod compose;
 mod daemon_standby;
+mod daemon_sunset;
 mod daemon_unreachable;
 mod discovery_digest;
 mod discovery_guide;
@@ -44,6 +45,7 @@ pub use cancellation_initiated::CancellationInitiated;
 pub use checkout_completed::CheckoutCompleted;
 pub use compose::{BILLING_DETAILS_TAGLINE, Body, Content};
 pub use daemon_standby::DaemonStandby;
+pub use daemon_sunset::DaemonSunset;
 pub use daemon_unreachable::DaemonUnreachable;
 pub use discovery_digest::DiscoveryDigest;
 pub use discovery_guide::DiscoveryGuide;
@@ -407,6 +409,10 @@ mod tests {
             daemon_name: "daemon-1",
             network_name: "Home",
         });
+        assert_fully_rendered(&DaemonSunset {
+            daemon_names: &["daemon-1", "daemon-2"],
+            sunset_date: "November 1, 2026",
+        });
 
         // Account
         assert_fully_rendered(&OrganizationDeleted);
@@ -591,6 +597,13 @@ mod tests {
             &DaemonUnreachable {
                 daemon_name: "daemon-1",
                 network_name: "Home",
+            },
+        );
+        f(
+            "daemon_sunset",
+            &DaemonSunset {
+                daemon_names: &["daemon-1", "daemon-2"],
+                sunset_date: "November 1, 2026",
             },
         );
         f("organization_deleted", &OrganizationDeleted);

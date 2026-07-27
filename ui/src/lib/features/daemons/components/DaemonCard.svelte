@@ -76,15 +76,25 @@
 	let status: TagProps = $derived(getDaemonStatusTag(daemon));
 
 	let hasUpdateAvailable = $derived(
-		daemon.version_status.status === 'Outdated' || daemon.version_status.status === 'Deprecated'
+		daemon.version_status.status === 'Outdated' ||
+			daemon.version_status.status === 'Deprecated' ||
+			daemon.version_status.status === 'Unsupported'
 	);
+
+	// The scheduled sunset date for this daemon's version, if any (Deprecated /
+	// Unsupported). Server-published — the UI never computes it.
+	let sunsetDate = $derived(daemon.version_status.sunset_date ?? null);
 
 	let retryPending = $derived(retryConnectionMutation.isPending);
 
+	// Escalate the upgrade affordance by lifecycle stage: a scheduled/active
+	// sunset is a warning/danger action, a plain newer release is neutral-info.
 	let upgradeButtonClass = $derived.by(() => {
 		switch (daemon.version_status.status) {
+			case 'Unsupported':
+				return 'btn-icon-danger';
 			case 'Deprecated':
-				return 'btn-icon-info';
+				return 'btn-icon-warning';
 			case 'Outdated':
 				return 'btn-icon-info';
 			default:
@@ -172,7 +182,7 @@
 						}
 					]
 				: []),
-			...(hasUpdateAvailable && daemon.is_unreachable !== true
+			...(hasUpdateAvailable && (daemon.is_unreachable !== true || sunsetDate !== null)
 				? [
 						{
 							label: 'Update',

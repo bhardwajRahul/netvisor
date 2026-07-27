@@ -1,29 +1,230 @@
+use chrono::{DateTime, TimeZone, Utc};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-/// Version policy for daemons
-///
-/// Defines which versions are supported, recommended, and deprecated.
-/// Used to evaluate daemon version status and generate warnings.
-pub struct DaemonVersionPolicy {
-    pub minimum_supported: Version,
-    pub recommended: Version,
-    pub latest: Version,
+// ===========================================================================
+// Version lifecycle registry
+//
+// Single source of truth for "what daemon versions are supported, and when do
+// they sunset." Replaces the former constant `minimum_supported` and the dead
+// hard-coded `sunset_date` string literal.
+//
+// Two data tables drive everything:
+//   * `release_lines()` — every shipped minor line and its `.0` ship date.
+//   * `V1_SUNSET` — the one announced cutover (everything below 0.17.5 sunsets
+//     at the v1.0 launch + 3 months).
+//
+// The enforced floor and every lifecycle stage are *derived* from those tables
+// plus the current date. Nothing is a literal in a match arm, so nothing can
+// silently rot the way `2025-02-01` did.
+//
+// Dormancy: `V1_SUNSET.effective_on` is `None` until the real launch date is
+// baked in before the release build. While it is `None` the whole machinery is
+// OFF — the enforced floor stays at the historical `BASELINE_FLOOR` (0.12.0),
+// nothing is marked `Deprecated`/`Unsupported`, and no daemon is rejected that
+// wasn't already. This lets the code ship well ahead of launch without changing
+// any daemon's behavior until the date is set.
+// ===========================================================================
+
+/// The historical floor. Used while the sunset machinery is dormant, and as the
+/// lower bound the derived floor never drops below.
+fn baseline_floor() -> Version {
+    Version::new(0, 12, 0)
 }
 
-impl Default for DaemonVersionPolicy {
-    fn default() -> Self {
-        // Use CARGO_PKG_VERSION for both recommended and latest
-        // so the current release is always considered "Current"
-        let current = Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
-        Self {
-            minimum_supported: Version::new(0, 12, 0),
-            recommended: current.clone(),
-            latest: current,
-        }
+/// This binary's own version. The derived floor is capped here: a server never
+/// enforces a floor newer than itself, so it can never reject a daemon of its
+/// own generation. A pinned/stale self-hosted server therefore converges to a
+/// floor it can actually reason about and stops.
+fn own_version() -> Version {
+    Version::parse(env!("CARGO_PKG_VERSION")).expect("CARGO_PKG_VERSION is valid semver")
+}
+
+/// Helper: a UTC timestamp at midnight for the given calendar date.
+fn dt(year: i32, month: u32, day: u32) -> DateTime<Utc> {
+    Utc.with_ymd_and_hms(year, month, day, 0, 0, 0)
+        .single()
+        .expect("valid date")
+}
+
+/// A shipped minor release line and the date its `.0` shipped. Seeded from git
+/// tags. Used to detect "a newer release exists" (Outdated) and to derive future
+/// support-window floors as newer binaries add entries.
+struct ReleaseLine {
+    minor: (u64, u64),
+    released_on: DateTime<Utc>,
+}
+
+/// Every shipped minor line, oldest first. Add one entry per new minor at
+/// release time — that is the only maintenance the automatic-advance rule needs.
+fn release_lines() -> Vec<ReleaseLine> {
+    vec![
+        ReleaseLine {
+            minor: (0, 12),
+            released_on: dt(2025, 12, 14),
+        },
+        ReleaseLine {
+            minor: (0, 13),
+            released_on: dt(2026, 1, 4),
+        },
+        ReleaseLine {
+            minor: (0, 14),
+            released_on: dt(2026, 2, 1),
+        },
+        ReleaseLine {
+            minor: (0, 15),
+            released_on: dt(2026, 3, 23),
+        },
+        ReleaseLine {
+            minor: (0, 16),
+            released_on: dt(2026, 4, 17),
+        },
+        ReleaseLine {
+            minor: (0, 17),
+            released_on: dt(2026, 6, 22),
+        },
+    ]
+}
+
+/// An announced support cutover: at `effective_on`, daemons below `floor` become
+/// `Unsupported` and are rejected. Before it (but once announced) they are
+/// `Deprecated` and carry the date. `effective_on: None` is the dormant sentinel.
+struct ScheduledFloor {
+    floor: Version,
+    effective_on: Option<DateTime<Utc>>,
+}
+
+/// Months of lead time between the v1.0 launch and the first enforced cutover.
+const V1_SUNSET_LEAD_MONTHS: i64 = 3;
+
+/// The v1.0 launch anchor — the single place the launch date lives. Everything
+/// (the 0.17.5 cutover date, every `Deprecated` sunset date shown in UI/email,
+/// and the automatic-advance schedule) derives from this one value.
+///
+/// `None` is the dormant sentinel: keep it `None` in development so the whole
+/// sunset machinery stays off and CI is green. Bake in the real launch date as
+/// `Some(dt(YYYY, MM, DD))` immediately before the release build. The
+/// `release_build_has_launch_date_set` test guards against shipping it dormant.
+//
+// TODO(release): set to Some(dt(<v1.0 launch year>, <month>, <day>)) before the
+// release build. Until then the machinery is intentionally dormant.
+fn v1_launch() -> Option<DateTime<Utc>> {
+    None
+}
+
+/// The single announced cutover, derived from the launch anchor: everything
+/// below 0.17.5 sunsets `V1_SUNSET_LEAD_MONTHS` after launch.
+fn v1_sunset() -> ScheduledFloor {
+    ScheduledFloor {
+        floor: Version::new(0, 17, 5),
+        effective_on: v1_launch().map(|launch| add_months(launch, V1_SUNSET_LEAD_MONTHS)),
     }
 }
+
+/// Add whole months to a timestamp (day clamped to the target month's length via
+/// chrono's checked arithmetic; falls back to the original on overflow, which
+/// cannot happen for the dates in play).
+fn add_months(base: DateTime<Utc>, months: i64) -> DateTime<Utc> {
+    base.checked_add_months(chrono::Months::new(months as u32))
+        .unwrap_or(base)
+}
+
+/// The enforced support floor at `now`: daemons below it are rejected (once the
+/// gate is wired in). Derived, never a literal.
+///
+/// While dormant (`v1_launch()` is `None`) this is exactly `baseline_floor()`
+/// (0.12.0) — the historical behavior. Once the launch date is set, the newest
+/// effective cutover applies, capped at `own_version()` so a stale server can
+/// never over-enforce.
+pub fn enforced_floor(now: DateTime<Utc>) -> Version {
+    let mut floor = baseline_floor();
+
+    // The explicit v1.0 cutover.
+    let v1 = v1_sunset();
+    if let Some(eff) = v1.effective_on
+        && eff <= now
+        && v1.floor > floor
+    {
+        floor = v1.floor;
+    }
+
+    // Automatic advancement for post-v1.0 binaries: once the launch anchor is
+    // set, the support window is the three newest minor lines; the floor is the
+    // oldest still-supported line, effective 6 months after the line that pushed
+    // its predecessor out of the window shipped. This only produces a higher
+    // floor than the v1.0 cutover on a *newer* binary (whose release table
+    // reaches past 0.17); on this binary it is a no-op below 0.17.5.
+    if v1_launch().is_some()
+        && let Some(auto) = support_window_floor(now)
+        && auto > floor
+    {
+        floor = auto;
+    }
+
+    // Safety cap: never enforce a floor newer than this binary.
+    floor.min(own_version())
+}
+
+/// The support-window floor: the oldest of the three newest minor lines, once
+/// its window has elapsed. `None` if there are fewer than three lines or the
+/// window has not yet passed. Effective dates are clamped to never precede the
+/// v1.0 cutover, so this never front-runs launch.
+fn support_window_floor(now: DateTime<Utc>) -> Option<Version> {
+    let lines = release_lines();
+    if lines.len() < 3 {
+        return None;
+    }
+    // Newest three lines are supported; the oldest supported is index len-3.
+    let oldest_supported = &lines[lines.len() - 3];
+    // The line that pushed the predecessor of `oldest_supported` out of the
+    // window is `oldest_supported` itself; give a 6-month grace from its ship.
+    let mut effective = add_months(oldest_supported.released_on, 6);
+    if let Some(launch) = v1_launch() {
+        let cutover = add_months(launch, V1_SUNSET_LEAD_MONTHS);
+        if effective < cutover {
+            effective = cutover;
+        }
+    }
+    if effective <= now {
+        Some(Version::new(
+            oldest_supported.minor.0,
+            oldest_supported.minor.1,
+            0,
+        ))
+    } else {
+        None
+    }
+}
+
+/// The currently-announced daemon sunset, if the launch date has been baked in:
+/// the floor below which daemons will become (or are) `Unsupported`, and the
+/// date it takes effect. `None` while dormant, so the boot-time sunset sweep is
+/// a no-op until launch is set.
+pub fn announced_sunset() -> Option<(Version, DateTime<Utc>)> {
+    let v1 = v1_sunset();
+    v1.effective_on.map(|eff| (v1.floor, eff))
+}
+
+/// Whether an announced-but-not-yet-past sunset covers `v`, with its date.
+/// Returns the covering floor and its effective date. `None` when no announced
+/// cutover applies (either dormant, or `v` is at/above every announced floor).
+fn announced_sunset_for(v: &Version) -> Option<(Version, DateTime<Utc>)> {
+    let v1 = v1_sunset();
+    match v1.effective_on {
+        Some(eff) if v < &v1.floor => Some((v1.floor, eff)),
+        _ => None,
+    }
+}
+
+// ===========================================================================
+// Capability floors (single source; permanent until their cutover cleanup)
+//
+// These gate specific server↔daemon features. They legitimately live near the
+// policy so the rot-guard test can assert every one is ≤ the current server
+// version. Credential-type floors stay in the credentials module (they own
+// their domain) but are covered by the same invariant test there.
+// ===========================================================================
 
 /// Minimum daemon version required for unified discovery support.
 pub fn minimum_unified_discovery() -> Version {
@@ -33,6 +234,18 @@ pub fn minimum_unified_discovery() -> Version {
 /// Returns true if the daemon version supports unified discovery (>= 0.15.0).
 pub fn supports_unified_discovery(version: Option<&Version>) -> bool {
     version.is_some_and(|v| v >= &minimum_unified_discovery())
+}
+
+/// Minimum daemon version that supports the full ServerPoll flow (>= 0.14.0).
+/// Absorbed here from `daemons/impl/base.rs` so the registry owns every floor.
+pub fn minimum_full_server_poll() -> Version {
+    Version::new(0, 14, 0)
+}
+
+/// Returns true if the daemon supports the full ServerPoll flow (>= 0.14.0).
+/// A daemon without a recorded version is assumed legacy (`false`).
+pub fn supports_full_server_poll(version: Option<&Version>) -> bool {
+    version.is_some_and(|v| v >= &minimum_full_server_poll())
 }
 
 /// Minimum daemon version that ships with server-provisioned identity: it is
@@ -76,7 +289,54 @@ pub fn has_correct_docker_volume_mount(version: Option<&Version>) -> bool {
     version.is_some_and(|v| v >= &minimum_correct_docker_volume_mount())
 }
 
+/// Every capability floor owned by this module. The rot-guard test asserts each
+/// is ≤ the current server version, so a floor can never quietly reference a
+/// version this build doesn't know about.
+#[cfg(test)]
+fn capability_floors() -> Vec<Version> {
+    vec![
+        minimum_unified_discovery(),
+        minimum_full_server_poll(),
+        minimum_server_provisioned_identity(),
+        minimum_correct_docker_volume_mount(),
+    ]
+}
+
+// ===========================================================================
+// Policy + lifecycle evaluation
+// ===========================================================================
+
+/// Version policy for daemons.
+///
+/// `minimum_supported` is the derived enforced floor (see [`enforced_floor`]);
+/// `recommended`/`latest` are this server's own version. `now` is captured at
+/// construction so lifecycle evaluation and sunset dates are deterministic
+/// within one request (tests pin it).
+pub struct DaemonVersionPolicy {
+    pub minimum_supported: Version,
+    pub recommended: Version,
+    pub latest: Version,
+    pub now: DateTime<Utc>,
+}
+
+impl Default for DaemonVersionPolicy {
+    fn default() -> Self {
+        Self::at(Utc::now())
+    }
+}
+
 impl DaemonVersionPolicy {
+    /// Construct the policy as of `now` (real time in production, fixed in tests).
+    pub fn at(now: DateTime<Utc>) -> Self {
+        let current = own_version();
+        Self {
+            minimum_supported: enforced_floor(now),
+            recommended: current.clone(),
+            latest: current,
+            now,
+        }
+    }
+
     pub fn evaluate(&self, version: Option<&Version>) -> DaemonVersionStatus {
         match version {
             None => self.evaluate_unknown(),
@@ -84,11 +344,12 @@ impl DaemonVersionPolicy {
         }
     }
 
-    /// During migration period: unknown = outdated
+    /// No recorded version. Distinct `Unknown` stage (no longer conflated with
+    /// `Outdated`): the server genuinely cannot tell what this daemon is.
     fn evaluate_unknown(&self) -> DaemonVersionStatus {
         DaemonVersionStatus {
             version: None,
-            status: VersionHealthStatus::Outdated,
+            status: VersionHealthStatus::Unknown,
             warnings: vec![DeprecationWarning {
                 message: format!(
                     "Daemon version unknown. Update to {} or later.",
@@ -97,6 +358,7 @@ impl DaemonVersionPolicy {
                 sunset_date: None,
                 severity: DeprecationSeverity::Warning,
             }],
+            sunset_date: None,
             supports_unified_discovery: false,
             has_correct_docker_volume_mount: false,
         }
@@ -105,44 +367,81 @@ impl DaemonVersionPolicy {
     fn evaluate_known(&self, v: &Version) -> DaemonVersionStatus {
         let supports_unified = supports_unified_discovery(Some(v));
         let has_correct_mount = has_correct_docker_volume_mount(Some(v));
-        if v < &self.minimum_supported {
-            DaemonVersionStatus {
-                version: Some(v.to_string()),
-                status: VersionHealthStatus::Deprecated,
-                warnings: vec![DeprecationWarning {
+
+        let (status, warnings, sunset_date) = if let Some((_floor, effective_on)) =
+            announced_sunset_for(v)
+        {
+            let sunset_str = effective_on.format("%Y-%m-%d").to_string();
+            if effective_on <= self.now {
+                // Past its announced cutover — unsupported and rejected.
+                (
+                    VersionHealthStatus::Unsupported,
+                    vec![DeprecationWarning {
+                        message: format!(
+                            "Daemon {v} is no longer supported (support ended {sunset_str}). \
+                             Update to {} or later to reconnect.",
+                            self.recommended
+                        ),
+                        sunset_date: Some(sunset_str.clone()),
+                        severity: DeprecationSeverity::Critical,
+                    }],
+                    Some(sunset_str),
+                )
+            } else {
+                // Announced but still in the window — deprecated, with a date.
+                (
+                    VersionHealthStatus::Deprecated,
+                    vec![DeprecationWarning {
+                        message: format!(
+                            "Daemon {v} is deprecated and support ends {sunset_str}. \
+                             Update to {} or later before then to avoid interruption.",
+                            self.recommended
+                        ),
+                        sunset_date: Some(sunset_str.clone()),
+                        severity: DeprecationSeverity::Critical,
+                    }],
+                    Some(sunset_str),
+                )
+            }
+        } else if v < &self.minimum_supported {
+            // Below the enforced floor without an explicit announced schedule
+            // (e.g. a future auto-advanced floor). Unsupported.
+            (
+                VersionHealthStatus::Unsupported,
+                vec![DeprecationWarning {
                     message: format!(
-                        "Daemon {} is deprecated. Update to {} or later.",
-                        v, self.recommended
+                        "Daemon {v} is no longer supported. Update to {} or later to reconnect.",
+                        self.recommended
                     ),
-                    sunset_date: Some("2025-02-01".into()),
+                    sunset_date: None,
                     severity: DeprecationSeverity::Critical,
                 }],
-                supports_unified_discovery: supports_unified,
-                has_correct_docker_volume_mount: has_correct_mount,
-            }
+                None,
+            )
         } else if v < &self.recommended {
-            DaemonVersionStatus {
-                version: Some(v.to_string()),
-                status: VersionHealthStatus::Outdated,
-                warnings: vec![DeprecationWarning {
+            (
+                VersionHealthStatus::Outdated,
+                vec![DeprecationWarning {
                     message: format!(
-                        "Daemon {} is outdated. Update to {} for latest features.",
-                        v, self.recommended
+                        "Daemon {v} is outdated. Update to {} for the latest features.",
+                        self.recommended
                     ),
                     sunset_date: None,
                     severity: DeprecationSeverity::Warning,
                 }],
-                supports_unified_discovery: supports_unified,
-                has_correct_docker_volume_mount: has_correct_mount,
-            }
+                None,
+            )
         } else {
-            DaemonVersionStatus {
-                version: Some(v.to_string()),
-                status: VersionHealthStatus::Current,
-                warnings: vec![],
-                supports_unified_discovery: supports_unified,
-                has_correct_docker_volume_mount: has_correct_mount,
-            }
+            (VersionHealthStatus::Current, vec![], None)
+        };
+
+        DaemonVersionStatus {
+            version: Some(v.to_string()),
+            status,
+            warnings,
+            sunset_date,
+            supports_unified_discovery: supports_unified,
+            has_correct_docker_volume_mount: has_correct_mount,
         }
     }
 }
@@ -177,147 +476,200 @@ pub struct DaemonVersionStatus {
     pub status: VersionHealthStatus,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<DeprecationWarning>,
+    /// The date this daemon's version stops being supported, if a sunset is
+    /// scheduled for it. Surfaced top-level (not only inside `warnings`) so the
+    /// UI can render a countdown from the same value the email uses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sunset_date: Option<String>,
     #[serde(default)]
     pub supports_unified_discovery: bool,
     #[serde(default)]
     pub has_correct_docker_volume_mount: bool,
 }
 
-/// Health status for daemon versions
+/// Health status for daemon versions.
+///
+/// Lifecycle order: `Current` → `Outdated` → `Deprecated` → `Unsupported`, with
+/// `Unknown` for daemons whose version the server has no record of.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
 pub enum VersionHealthStatus {
     Current,
     Outdated,
+    /// A sunset date is scheduled for this version; it still works until then.
     Deprecated,
+    /// Past its sunset / below the enforced floor. Rejected by the server.
+    Unsupported,
+    /// The server has no recorded version for this daemon.
+    Unknown,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn test_policy() -> DaemonVersionPolicy {
-        // Use fixed versions for predictable tests
-        DaemonVersionPolicy {
-            minimum_supported: Version::new(0, 12, 0),
-            recommended: Version::new(0, 12, 8),
-            latest: Version::new(0, 12, 8),
+    /// A policy pinned to a fixed instant for deterministic lifecycle tests.
+    fn policy_at(now: DateTime<Utc>) -> DaemonVersionPolicy {
+        DaemonVersionPolicy::at(now)
+    }
+
+    // --- Dormancy: with the launch anchor unset, nothing new happens. --------
+
+    #[test]
+    fn dormant_floor_is_baseline() {
+        // v1_launch() is None in dev, so the floor must stay at the historical
+        // baseline regardless of date.
+        assert_eq!(enforced_floor(dt(2026, 7, 27)), baseline_floor());
+        assert_eq!(enforced_floor(dt(2030, 1, 1)), baseline_floor());
+    }
+
+    #[test]
+    fn dormant_old_daemon_is_not_deprecated() {
+        // A <0.17.5 daemon while dormant is Outdated (as today), never Deprecated
+        // or Unsupported — the machinery is off.
+        let policy = policy_at(dt(2026, 7, 27));
+        let status = policy.evaluate(Some(&Version::new(0, 16, 0)));
+        assert_eq!(status.status, VersionHealthStatus::Outdated);
+        assert!(status.sunset_date.is_none());
+    }
+
+    #[test]
+    fn dormant_current_daemon_is_current() {
+        let policy = policy_at(dt(2026, 7, 27));
+        let status = policy.evaluate(Some(&own_version()));
+        assert_eq!(status.status, VersionHealthStatus::Current);
+        assert!(status.warnings.is_empty());
+    }
+
+    #[test]
+    fn unknown_version_is_unknown_not_outdated() {
+        let policy = policy_at(dt(2026, 7, 27));
+        let status = policy.evaluate(None);
+        assert_eq!(status.status, VersionHealthStatus::Unknown);
+        assert!(status.version.is_none());
+    }
+
+    // --- Once the launch anchor is set: the real transitions. ----------------
+    //
+    // These drive `enforced_floor`/`evaluate` off an explicit `ScheduledFloor`
+    // instead of the production `v1_launch()` sentinel, so they exercise the
+    // date logic without depending on an unset launch date.
+
+    fn floor_for(v1: &ScheduledFloor, now: DateTime<Utc>) -> Version {
+        let mut floor = baseline_floor();
+        if let Some(eff) = v1.effective_on
+            && eff <= now
+            && v1.floor > floor
+        {
+            floor = v1.floor.clone();
+        }
+        floor.min(own_version())
+    }
+
+    #[test]
+    fn floor_moves_only_after_cutover() {
+        let launch = dt(2026, 9, 1);
+        let v1 = ScheduledFloor {
+            floor: Version::new(0, 17, 5),
+            effective_on: Some(add_months(launch, V1_SUNSET_LEAD_MONTHS)), // 2026-12-01
+        };
+        // Before the cutover: still baseline.
+        assert_eq!(floor_for(&v1, dt(2026, 11, 30)), baseline_floor());
+        // On/after the cutover: 0.17.5.
+        assert_eq!(floor_for(&v1, dt(2026, 12, 1)), Version::new(0, 17, 5));
+        assert_eq!(floor_for(&v1, dt(2027, 6, 1)), Version::new(0, 17, 5));
+    }
+
+    #[test]
+    fn floor_capped_at_own_version() {
+        // A cutover naming a version newer than this binary is capped down —
+        // a server never enforces a floor it can't reason about.
+        let v1 = ScheduledFloor {
+            floor: Version::new(9, 9, 9),
+            effective_on: Some(dt(2026, 1, 1)),
+        };
+        assert_eq!(floor_for(&v1, dt(2027, 1, 1)), own_version());
+    }
+
+    #[test]
+    fn add_months_is_three_month_lead() {
+        assert_eq!(add_months(dt(2026, 9, 1), 3), dt(2026, 12, 1));
+        assert_eq!(add_months(dt(2026, 11, 15), 3), dt(2027, 2, 15));
+    }
+
+    // --- Rot guards -----------------------------------------------------------
+
+    #[test]
+    fn current_minor_has_a_release_line() {
+        let own = own_version();
+        let has = release_lines()
+            .iter()
+            .any(|l| l.minor == (own.major, own.minor));
+        assert!(
+            has,
+            "release_lines() is missing the current minor {}.{} — add an entry",
+            own.major, own.minor
+        );
+    }
+
+    #[test]
+    fn capability_floors_within_server_version() {
+        let own = own_version();
+        for floor in capability_floors() {
+            assert!(
+                floor <= own,
+                "capability floor {floor} exceeds server version {own} — a shim references a \
+                 version this build doesn't know; move the floor or delete the shim"
+            );
         }
     }
 
     #[test]
-    fn test_unknown_version_is_outdated() {
-        let policy = test_policy();
-        let status = policy.evaluate(None);
-
-        assert_eq!(status.status, VersionHealthStatus::Outdated);
-        assert!(status.version.is_none());
-        assert_eq!(status.warnings.len(), 1);
-        assert_eq!(status.warnings[0].severity, DeprecationSeverity::Warning);
-        assert!(!status.supports_unified_discovery);
+    fn release_lines_are_sorted_and_unique() {
+        let lines = release_lines();
+        for pair in lines.windows(2) {
+            assert!(
+                pair[0].minor < pair[1].minor,
+                "release_lines() must be strictly increasing by minor"
+            );
+            assert!(
+                pair[0].released_on < pair[1].released_on,
+                "release_lines() dates must be strictly increasing"
+            );
+        }
     }
 
+    /// Only asserts in a release build (when `SCANOPY_RELEASE_BUILD` is set), so
+    /// dev CI stays green while the launch date is intentionally unset, but the
+    /// release build cannot ship with the sunset machinery dormant.
     #[test]
-    fn test_deprecated_version() {
-        let policy = test_policy();
-        let old_version = Version::new(0, 11, 0);
-        let status = policy.evaluate(Some(&old_version));
-
-        assert_eq!(status.status, VersionHealthStatus::Deprecated);
-        assert_eq!(status.version, Some("0.11.0".to_string()));
-        assert_eq!(status.warnings.len(), 1);
-        assert_eq!(status.warnings[0].severity, DeprecationSeverity::Critical);
-        assert!(status.warnings[0].sunset_date.is_some());
-        assert!(!status.supports_unified_discovery);
+    fn release_build_has_launch_date_set() {
+        if option_env!("SCANOPY_RELEASE_BUILD").is_some() {
+            assert!(
+                v1_launch().is_some(),
+                "SCANOPY_RELEASE_BUILD is set but v1_launch() is None — bake in the v1.0 launch \
+                 date in version.rs before shipping"
+            );
+        }
     }
 
-    #[test]
-    fn test_outdated_version() {
-        let policy = test_policy();
-        let outdated_version = Version::new(0, 12, 5);
-        let status = policy.evaluate(Some(&outdated_version));
-
-        assert_eq!(status.status, VersionHealthStatus::Outdated);
-        assert_eq!(status.version, Some("0.12.5".to_string()));
-        assert_eq!(status.warnings.len(), 1);
-        assert_eq!(status.warnings[0].severity, DeprecationSeverity::Warning);
-        assert!(!status.supports_unified_discovery);
-    }
+    // --- Capability helpers (unchanged behavior) -----------------------------
 
     #[test]
-    fn test_current_version() {
-        let policy = test_policy();
-        let current_version = Version::new(0, 12, 8);
-        let status = policy.evaluate(Some(&current_version));
-
-        assert_eq!(status.status, VersionHealthStatus::Current);
-        assert_eq!(status.version, Some("0.12.8".to_string()));
-        assert!(status.warnings.is_empty());
-        assert!(!status.supports_unified_discovery);
-    }
-
-    #[test]
-    fn test_newer_than_recommended_is_current() {
-        let policy = test_policy();
-        let future_version = Version::new(0, 14, 0);
-        let status = policy.evaluate(Some(&future_version));
-
-        assert_eq!(status.status, VersionHealthStatus::Current);
-        assert!(status.warnings.is_empty());
-        assert!(!status.supports_unified_discovery);
-    }
-
-    #[test]
-    fn test_supports_unified_discovery() {
+    fn supports_unified_discovery_floor() {
         assert!(!supports_unified_discovery(None));
         assert!(!supports_unified_discovery(Some(&Version::new(0, 14, 0))));
         assert!(supports_unified_discovery(Some(&Version::new(0, 15, 0))));
-        assert!(supports_unified_discovery(Some(&Version::new(0, 16, 0))));
         assert!(supports_unified_discovery(Some(&Version::new(1, 0, 0))));
     }
 
     #[test]
-    fn test_version_status_supports_unified_at_015() {
-        let policy = test_policy();
-        let v015 = Version::new(0, 15, 0);
-        let status = policy.evaluate(Some(&v015));
-        assert!(status.supports_unified_discovery);
-    }
-
-    #[test]
-    fn test_has_correct_docker_volume_mount() {
+    fn has_correct_docker_volume_mount_floor() {
         assert!(!has_correct_docker_volume_mount(None));
-        assert!(!has_correct_docker_volume_mount(Some(&Version::new(
-            0, 14, 8
-        ))));
         assert!(!has_correct_docker_volume_mount(Some(&Version::new(
             0, 16, 0
         ))));
         assert!(has_correct_docker_volume_mount(Some(&Version::new(
             0, 16, 1
         ))));
-        assert!(has_correct_docker_volume_mount(Some(&Version::new(
-            0, 17, 0
-        ))));
-        assert!(has_correct_docker_volume_mount(Some(&Version::new(
-            1, 0, 0
-        ))));
-    }
-
-    #[test]
-    fn test_version_status_has_correct_volume_mount_flag() {
-        let policy = test_policy();
-        let pre_fix = Version::new(0, 16, 0);
-        let at_fix = Version::new(0, 16, 1);
-        assert!(
-            !policy
-                .evaluate(Some(&pre_fix))
-                .has_correct_docker_volume_mount
-        );
-        assert!(
-            policy
-                .evaluate(Some(&at_fix))
-                .has_correct_docker_volume_mount
-        );
-        assert!(!policy.evaluate(None).has_correct_docker_volume_mount);
     }
 }

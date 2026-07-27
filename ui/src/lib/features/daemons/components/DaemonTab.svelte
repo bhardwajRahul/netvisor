@@ -2,8 +2,10 @@
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
+	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import DaemonCard from './DaemonCard.svelte';
+	import { hasSunsetWarning } from '$lib/features/daemons/utils';
 	import CreateDaemonModal from './CreateDaemonModal/CreateDaemonModal.svelte';
 	import { defineFields } from '$lib/shared/components/data/types';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
@@ -33,7 +35,9 @@
 		common_noEntityYet,
 		common_unknownNetwork,
 		common_updated,
-		daemons_lastSeen
+		daemons_lastSeen,
+		daemons_sunsetBannerTitle,
+		daemons_sunsetBannerBody
 	} from '$lib/paraglide/messages';
 
 	type DaemonOrderField = components['schemas']['DaemonOrderField'];
@@ -54,6 +58,10 @@
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
+
+	// Any daemon with a scheduled/active sunset. Drives a non-dismissable banner
+	// so the warning re-arms as long as an affected daemon exists.
+	let hasSunsetDaemons = $derived(daemonsData.some(hasSunsetWarning));
 	let networksData = $derived(networksQuery.data ?? []);
 	let isLoading = $derived(daemonsQuery.isPending || networksQuery.isPending);
 
@@ -186,6 +194,11 @@
 			cta={common_create()}
 		/>
 	{:else}
+		{#if hasSunsetDaemons}
+			<div class="mb-4">
+				<InlineWarning title={daemons_sunsetBannerTitle()} body={daemons_sunsetBannerBody()} />
+			</div>
+		{/if}
 		<DataControls
 			items={daemonsData}
 			fields={daemonFields}

@@ -62,11 +62,19 @@ pub enum LimitNotificationLevel {
     Reached,
 }
 
+/// Per-organization notification bookkeeping stored in the `notifications`
+/// JSONB column. Started as plan-limit ratchets; now also carries the daemon
+/// sunset ratchet, hence the generalized name. Internal (never on the API).
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
-pub struct PlanLimitNotifications {
+pub struct OrgNotifications {
     pub hosts: LimitNotificationLevel,
     pub networks: LimitNotificationLevel,
     pub seats: LimitNotificationLevel,
+    /// The announced daemon-sunset floor this org has already been emailed about
+    /// (e.g. "0.17.5"). Ratchets so the boot-time sweep emails each org at most
+    /// once per announced floor. `None` until the first sunset email is sent.
+    #[serde(default)]
+    pub sunset_notified_floor: Option<String>,
 }
 
 #[derive(
@@ -142,9 +150,9 @@ pub struct OrganizationBase {
     /// Brevo company ID - internal, not exposed to API
     #[serde(default, skip_serializing)]
     pub brevo_company_id: Option<String>,
-    /// Tracks which plan limit notification levels have been sent
+    /// Per-org notification bookkeeping (plan-limit ratchets + daemon sunset).
     #[serde(default, skip_serializing)]
-    pub plan_limit_notifications: PlanLimitNotifications,
+    pub notifications: OrgNotifications,
     /// Use case selection (homelab, company, msp, other)
     #[serde(default, deserialize_with = "deserialize_use_case_from_option")]
     pub use_case: UseCase,
