@@ -30,7 +30,7 @@ use crate::server::{
 };
 use anyhow::Error;
 use async_trait::async_trait;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, OnceLock};
 use strum::IntoDiscriminant;
@@ -670,29 +670,24 @@ impl CredentialService {
         // Fetch network-level credentials
         let network_cred_ids = self.get_credential_ids_for_network(&network_id).await?;
 
-        // Group network credentials by discriminant — one mapping per type
-        let mut mappings_by_type: std::collections::HashMap<
-            CredentialTypeDiscriminants,
-            CredentialMapping<CredentialQueryPayload>,
-        > = std::collections::HashMap::new();
+        // One mapping per *credential*, not per credential type. Keying by type meant a network
+        // assigned two SNMPv2c communities dispatched only the lower-UUID one and silently dropped
+        // the other, leaving every device that answers to the dropped community unscanned. Two
+        // communities is ordinary practice (per site, per vendor), and the daemon already expects
+        // several mappings sharing one wire discriminant — it appends exactly such a sibling
+        // itself (the injected "public" default) and dedups them at execute time.
+        //
+        // BTreeMap so the emitted order is stable across runs, and keyed the same way the source
+        // rows are ordered (`credential_id ASC`).
+        let mut mappings_by_credential: BTreeMap<Uuid, TypedCredentialMapping> = BTreeMap::new();
 
         for cred_id in &network_cred_ids {
             if let Some(cred) = self.get_by_id(cred_id).await?
                 && owned_by_network_org(&cred)
             {
                 let cred_type = &cred.base.credential_type;
-                let discriminant = cred_type.discriminant();
-                let payload = cred_type.to_query_payload();
-                let mapping =
-                    mappings_by_type
-                        .entry(discriminant)
-                        .or_insert_with(|| CredentialMapping {
-                            default_credential: None,
-                            ip_overrides: vec![],
-                        });
-                if mapping.default_credential.is_none() {
-                    mapping.default_credential = Some(payload);
-                }
+                mapping_for(&mut mappings_by_credential, cred.id, cred_type).default_credential =
+                    Some(cred_type.to_query_payload());
             }
         }
 
@@ -707,14 +702,8 @@ impl CredentialService {
                         && owned_by_network_org(&cred)
                     {
                         let cred_type = &cred.base.credential_type;
-                        let discriminant = cred_type.discriminant();
                         let payload = cred_type.to_query_payload();
-                        let mapping = mappings_by_type.entry(discriminant).or_insert_with(|| {
-                            CredentialMapping {
-                                default_credential: None,
-                                ip_overrides: vec![],
-                            }
-                        });
+                        let mapping = mapping_for(&mut mappings_by_credential, cred.id, cred_type);
 
                         // Create IP overrides for relevant ip_addresses
                         let relevant_interfaces: Vec<_> = ip_addresses
@@ -752,20 +741,94 @@ impl CredentialService {
                 );
                 continue;
             };
-            apply_integration_target(&mut mappings_by_type, target, &cred.base.credential_type);
+            apply_integration_target(
+                &mut mappings_by_credential,
+                target,
+                &cred.base.credential_type,
+            );
         }
 
         // Version gate: never dispatch a credential mapping the target daemon can't
-        // deserialize. Filter on the `CredentialType` discriminant (the HashMap key,
-        // 7-way) BEFORE the lossy collapse to the 5-way `CredentialQueryPayload` wire
-        // tag — SnmpV1/V3 have a higher floor than SnmpV2c. A missing version is
+        // deserialize. Filter on the `CredentialType` discriminant (kept alongside each
+        // mapping, 7-way) BEFORE the lossy collapse to the 5-way `CredentialQueryPayload`
+        // wire tag — SnmpV1/V3 have a higher floor than SnmpV2c. A missing version is
         // treated conservatively (keep only the 0.16.2 wire floor). This protects the
         // installed base of already-released daemons that predate `serde(other)`.
-        mappings_by_type
-            .retain(|discriminant, _| discriminant.compatible_with_daemon(daemon_version));
+        retain_daemon_compatible(&mut mappings_by_credential, daemon_version);
 
-        Ok(mappings_by_type.into_values().collect())
+        Ok(order_mappings_for_dispatch(mappings_by_credential))
     }
+}
+
+/// A credential mapping plus the 7-way credential type it came from.
+///
+/// The wire payload collapses SnmpV1/V2c/V3 into one `Snmp` tag, but the daemon-version floor
+/// differs between them, so the version gate has to run before that collapse — which means the
+/// discriminant has to survive alongside the mapping.
+pub(crate) struct TypedCredentialMapping {
+    pub discriminant: CredentialTypeDiscriminants,
+    pub mapping: CredentialMapping<CredentialQueryPayload>,
+}
+
+impl TypedCredentialMapping {
+    pub(crate) fn new(discriminant: CredentialTypeDiscriminants) -> Self {
+        Self {
+            discriminant,
+            mapping: CredentialMapping {
+                default_credential: None,
+                ip_overrides: vec![],
+            },
+        }
+    }
+}
+
+/// The mapping for one credential, created on first use.
+///
+/// The single place the accumulator is keyed, shared by the network-default, host-override and
+/// integration-target paths so they cannot drift back apart.
+pub(crate) fn mapping_for<'a>(
+    mappings: &'a mut BTreeMap<Uuid, TypedCredentialMapping>,
+    credential_id: Uuid,
+    credential_type: &CredentialType,
+) -> &'a mut CredentialMapping<CredentialQueryPayload> {
+    &mut mappings
+        .entry(credential_id)
+        .or_insert_with(|| TypedCredentialMapping::new(credential_type.discriminant()))
+        .mapping
+}
+
+/// Drop any mapping the target daemon is too old to deserialize.
+///
+/// Filters on the 7-way `CredentialTypeDiscriminants` rather than the 5-way wire tag, because
+/// SnmpV1 and SnmpV3 carry a higher daemon floor than SnmpV2c but all three collapse to one `Snmp`
+/// tag on the wire — gating after that collapse could not tell them apart.
+pub(crate) fn retain_daemon_compatible(
+    mappings: &mut BTreeMap<Uuid, TypedCredentialMapping>,
+    daemon_version: Option<&semver::Version>,
+) {
+    mappings.retain(|_, typed| typed.discriminant.compatible_with_daemon(daemon_version));
+}
+
+/// Flatten the per-credential mappings into the order the daemon should probe them.
+///
+/// Mappings carrying IP overrides are emitted **last**, and this is load-bearing. Within a single
+/// mapping the daemon tries overrides before the default and stops at the first success, so a
+/// host-specific credential beats a network-wide one. Across mappings the rule inverts — the *last*
+/// successful probe is recorded as that host's working credential — so splitting one-mapping-per-type
+/// into one-per-credential would have flipped that precedence and started attributing hosts to a
+/// network-wide credential instead of the specific one assigned to them.
+///
+/// Ties are broken by credential id (the `BTreeMap` order), so dispatch order is reproducible
+/// between scans rather than depending on hash iteration.
+fn order_mappings_for_dispatch(
+    mappings: BTreeMap<Uuid, TypedCredentialMapping>,
+) -> Vec<CredentialMapping<CredentialQueryPayload>> {
+    let (broadcast_only, with_overrides): (Vec<_>, Vec<_>) = mappings
+        .into_values()
+        .map(|typed| typed.mapping)
+        .partition(|mapping| mapping.ip_overrides.is_empty());
+
+    broadcast_only.into_iter().chain(with_overrides).collect()
 }
 
 /// Apply one [`IntegrationTarget`] to the per-credential-type mapping accumulator.
@@ -778,10 +841,7 @@ impl CredentialService {
 /// Idempotent — applying the same target twice (e.g. across scans) does not duplicate overrides,
 /// core to the #637 fix: targeting lives per-daemon on the `Discovery` and is re-applied each scan.
 pub(crate) fn apply_integration_target(
-    mappings_by_type: &mut std::collections::HashMap<
-        CredentialTypeDiscriminants,
-        CredentialMapping<CredentialQueryPayload>,
-    >,
+    mappings_by_credential: &mut BTreeMap<Uuid, TypedCredentialMapping>,
     target: &IntegrationTarget,
     credential_type: &CredentialType,
 ) {
@@ -807,21 +867,15 @@ pub(crate) fn apply_integration_target(
         return;
     }
 
-    let discriminant = credential_type.discriminant();
     let payload = credential_type.to_query_payload();
     let credential_id = target.credential_id();
-    let mapping = mappings_by_type
-        .entry(discriminant)
-        .or_insert_with(|| CredentialMapping {
-            default_credential: None,
-            ip_overrides: vec![],
-        });
+    // Keyed by credential, so a second `Network` target of the same type no longer displaces the
+    // first — the same collapse that dropped network-assigned credentials applied here too.
+    let mapping = mapping_for(mappings_by_credential, credential_id, credential_type);
 
     match target {
         IntegrationTarget::Network { .. } => {
-            if mapping.default_credential.is_none() {
-                mapping.default_credential = Some(payload);
-            }
+            mapping.default_credential = Some(payload);
         }
         IntegrationTarget::Hosts { .. } | IntegrationTarget::DaemonHost { .. } => {
             for ip in target_ips {
@@ -976,13 +1030,38 @@ mod single_endpoint_tests {
 #[cfg(test)]
 mod integration_target_tests {
     use super::*;
-    use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr};
 
-    type Mappings = HashMap<CredentialTypeDiscriminants, CredentialMapping<CredentialQueryPayload>>;
+    type Mappings = BTreeMap<Uuid, TypedCredentialMapping>;
 
     fn localhost() -> IpAddr {
         IpAddr::V4(Ipv4Addr::LOCALHOST)
+    }
+
+    fn snmp_v2c(community: &str) -> CredentialType {
+        CredentialType::SnmpV2c {
+            community: crate::server::credentials::r#impl::types::SecretValue::Inline {
+                value: secrecy::SecretString::from(community.to_string()),
+            },
+        }
+    }
+
+    /// The community a dispatched SNMP payload actually carries.
+    fn payload_community(payload: &CredentialQueryPayload) -> String {
+        use crate::server::credentials::r#impl::mapping::ResolvableSecret;
+        match payload {
+            CredentialQueryPayload::Snmp(snmp) => match &snmp.community {
+                ResolvableSecret::Value { value } => value.clone(),
+                other => panic!("expected an inline community, got {other:?}"),
+            },
+            other => panic!("expected an SNMP payload, got {other:?}"),
+        }
+    }
+
+    /// The single mapping in `map`, which most of these tests build from one target.
+    fn only(map: &Mappings) -> &CredentialMapping<CredentialQueryPayload> {
+        assert_eq!(map.len(), 1, "expected exactly one mapping");
+        &map.values().next().unwrap().mapping
     }
 
     /// A `DaemonHost` target is reached over the loopback, so it becomes a 127.0.0.1 override —
@@ -998,9 +1077,9 @@ mod integration_target_tests {
             CredentialTypeDiscriminants::DockerProxy,
             CredentialTypeDiscriminants::DockerSocket,
         ] {
-            let mut map: Mappings = HashMap::new();
+            let mut map: Mappings = Mappings::new();
             apply_integration_target(&mut map, &target, &disc.to_credential_type());
-            let mapping = map.get(&disc).expect("daemon-host target must be offered");
+            let mapping = only(&map);
             assert_eq!(mapping.ip_overrides.len(), 1);
             assert_eq!(mapping.ip_overrides[0].ip, localhost());
             assert_eq!(mapping.ip_overrides[0].credential_id, cred_id);
@@ -1020,9 +1099,9 @@ mod integration_target_tests {
             credential_id: cred_id,
             ips: vec![localhost(), remote],
         };
-        let mut map: Mappings = HashMap::new();
+        let mut map: Mappings = Mappings::new();
         apply_integration_target(&mut map, &target, &cred_type);
-        let mapping = map.get(&CredentialTypeDiscriminants::DockerProxy).unwrap();
+        let mapping = only(&map);
         assert_eq!(
             mapping
                 .ip_overrides
@@ -1043,10 +1122,10 @@ mod integration_target_tests {
             credential_id: cred_id,
             ips: vec!["10.0.0.5".parse::<IpAddr>().unwrap()],
         };
-        let mut map: Mappings = HashMap::new();
+        let mut map: Mappings = Mappings::new();
         apply_integration_target(&mut map, &target, &cred_type);
         apply_integration_target(&mut map, &target, &cred_type);
-        let mapping = map.get(&CredentialTypeDiscriminants::DockerProxy).unwrap();
+        let mapping = only(&map);
         assert_eq!(
             mapping.ip_overrides.len(),
             1,
@@ -1062,9 +1141,118 @@ mod integration_target_tests {
         let target = IntegrationTarget::Network {
             credential_id: Uuid::new_v4(),
         };
-        let mut map: Mappings = HashMap::new();
+        let mut map: Mappings = Mappings::new();
         apply_integration_target(&mut map, &target, &cred_type);
         assert!(map.is_empty(), "invalid scope must not produce a mapping");
+    }
+
+    /// Two credentials of the same type must both reach the daemon.
+    ///
+    /// Keying the accumulator by credential *type* meant a network assigned two SNMPv2c
+    /// communities dispatched only one of them — chosen by whichever had the lower UUID — and
+    /// dropped the other with no log. Every device answering to the dropped community was then
+    /// never scanned at all: no interfaces, no LLDP, absent from L2. Two communities (per site,
+    /// per vendor) is ordinary practice.
+    #[test]
+    fn two_credentials_of_one_type_both_reach_the_daemon() {
+        let mut map: Mappings = Mappings::new();
+        let first = Uuid::from_u128(1);
+        let second = Uuid::from_u128(2);
+
+        for (id, community) in [(first, "netdefault"), (second, "secret42")] {
+            let cred_type = snmp_v2c(community);
+            mapping_for(&mut map, id, &cred_type).default_credential =
+                Some(cred_type.to_query_payload());
+        }
+
+        assert_eq!(map.len(), 2, "both credentials must survive");
+        let dispatched = order_mappings_for_dispatch(map);
+        let communities: Vec<String> = dispatched
+            .iter()
+            .filter_map(|m| m.default_credential.as_ref())
+            .map(payload_community)
+            .collect();
+        assert_eq!(communities, vec!["netdefault", "secret42"]);
+    }
+
+    /// The version gate has to run on the 7-way credential type, not the 5-way wire tag: SnmpV1
+    /// and SnmpV2c both serialize as `Snmp`, but only SnmpV1 requires a 0.17.0 daemon. Gating
+    /// after the collapse could not tell them apart and would either starve old daemons of
+    /// SNMPv2c or hand them a payload they cannot deserialize.
+    #[test]
+    fn version_gate_drops_only_the_type_the_daemon_cannot_read() {
+        let mut map: Mappings = Mappings::new();
+        let v2c_id = Uuid::from_u128(1);
+        let v1_id = Uuid::from_u128(2);
+
+        let v2c = snmp_v2c("public");
+        mapping_for(&mut map, v2c_id, &v2c).default_credential = Some(v2c.to_query_payload());
+        let v1 = CredentialTypeDiscriminants::SnmpV1.to_credential_type();
+        mapping_for(&mut map, v1_id, &v1).default_credential = Some(v1.to_query_payload());
+
+        retain_daemon_compatible(&mut map, Some(&semver::Version::new(0, 16, 2)));
+
+        assert_eq!(map.keys().copied().collect::<Vec<_>>(), vec![v2c_id]);
+    }
+
+    /// Overrides are emitted last so a host-specific credential still beats a network-wide one.
+    ///
+    /// Within one mapping the daemon tries overrides first and stops at the first success; across
+    /// mappings it records the *last* success as the host's working credential. Splitting one
+    /// mapping per type into one per credential inverts which rule applies, so without this
+    /// ordering a host with its own assigned credential would start being attributed to whichever
+    /// network-wide credential also happened to work.
+    #[test]
+    fn overrides_are_probed_after_broadcasts() {
+        let mut map: Mappings = Mappings::new();
+        // Lower id, so a naive credential-id ordering would put the broadcast last.
+        let broadcast_id = Uuid::from_u128(1);
+        let host_id = Uuid::from_u128(2);
+
+        let broadcast = snmp_v2c("network-wide");
+        mapping_for(&mut map, broadcast_id, &broadcast).default_credential =
+            Some(broadcast.to_query_payload());
+
+        let specific = snmp_v2c("host-specific");
+        let specific_mapping = mapping_for(&mut map, host_id, &specific);
+        specific_mapping.ip_overrides.push(IpOverride {
+            ip: "10.0.0.5".parse().unwrap(),
+            credential: specific.to_query_payload(),
+            credential_id: host_id,
+        });
+
+        let dispatched = order_mappings_for_dispatch(map);
+        assert!(
+            dispatched[0].ip_overrides.is_empty(),
+            "the broadcast-only mapping must be probed first"
+        );
+        assert_eq!(
+            payload_community(&dispatched[1].ip_overrides[0].credential),
+            "host-specific",
+            "the host-specific credential must be probed last so it wins the merge"
+        );
+    }
+
+    /// A second `Network` target of the same credential type must not displace the first — the
+    /// same collapse, reached through the init-command targeting path instead.
+    #[test]
+    fn two_network_targets_of_one_type_both_survive() {
+        let mut map: Mappings = Mappings::new();
+        let cred_type = CredentialTypeDiscriminants::SnmpV2c.to_credential_type();
+
+        for id in [Uuid::from_u128(1), Uuid::from_u128(2)] {
+            apply_integration_target(
+                &mut map,
+                &IntegrationTarget::Network { credential_id: id },
+                &cred_type,
+            );
+        }
+
+        assert_eq!(map.len(), 2);
+        assert!(
+            map.values().all(|t| t.mapping.default_credential.is_some()),
+            "both targets must produce a dispatchable default"
+        );
     }
 
     /// A `Network`-scoped target becomes a network-level default, not an IP override.
@@ -1074,9 +1262,9 @@ mod integration_target_tests {
         let target = IntegrationTarget::Network {
             credential_id: Uuid::new_v4(),
         };
-        let mut map: Mappings = HashMap::new();
+        let mut map: Mappings = Mappings::new();
         apply_integration_target(&mut map, &target, &cred_type);
-        let mapping = map.get(&CredentialTypeDiscriminants::SnmpV2c).unwrap();
+        let mapping = only(&map);
         assert!(mapping.ip_overrides.is_empty());
         assert!(mapping.default_credential.is_some());
     }
@@ -1094,9 +1282,9 @@ mod integration_target_tests {
             credential_id: cred_id,
             ips: ips.clone(),
         };
-        let mut map: Mappings = HashMap::new();
+        let mut map: Mappings = Mappings::new();
         apply_integration_target(&mut map, &target, &cred_type);
-        let mapping = map.get(&CredentialTypeDiscriminants::SnmpV2c).unwrap();
+        let mapping = only(&map);
         assert_eq!(mapping.ip_overrides.len(), 2);
         assert_eq!(
             mapping
