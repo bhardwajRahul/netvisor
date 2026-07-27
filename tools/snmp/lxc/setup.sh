@@ -582,13 +582,20 @@ cat > "$DATA_DIR/switch-exos-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.31.1.1.1.1.1003 string 1:3
 EOF
 
-# switch-exos-01 LLDP — lldpRemTable local-port numbers (1, 3) are lldpLocPortNum
+# switch-exos-01 LLDP. Its own chassis id is deliberately left with UNPADDED octets
+# (0:4:96:1:e0:0) — every other device here uses the padded form. ExtremeXOS is one of the two
+# vendors known to send a MAC-subtype identifier as an ASCII string rather than six octets, and
+# firmware that formats a MAC itself is as likely to use %x as %02x. Rejecting that form doesn't
+# degrade a neighbour, it discards it entirely and the device silently contributes nothing to L2,
+# so this host is the standing guard that the daemon still accepts it.
+#
+# lldpRemTable local-port numbers (1, 3) are lldpLocPortNum
 # values in a namespace distinct from ifIndex (1001+). lldpLocPortTable maps
 # lldpLocPortNum -> lldpLocPortId ("1".."3", subtype interfaceName(5)), which
 # suffix-matches ifName "1:N". Before the Issue 2 fix these neighbours are dropped.
 cat > "$DATA_DIR/switch-exos-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.1.0 integer 4
-.1.0.8802.1.1.2.1.3.2.0 string 00:04:96:01:e0:00
+.1.0.8802.1.1.2.1.3.2.0 string 0:4:96:1:e0:0
 .1.0.8802.1.1.2.1.3.3.0 string switch-exos-01
 .1.0.8802.1.1.2.1.3.4.0 string ExtremeXOS version 31.7 X435-24P
 .1.0.8802.1.1.2.1.3.7.1.2.1 integer 5
