@@ -20,16 +20,15 @@
 		KeyRound
 	} from 'lucide-svelte';
 	import confetti from 'canvas-confetti';
-	import {
-		createEmptyApiKeyFormData,
-		useCreateApiKeyMutation
-	} from '$lib/features/daemon_api_keys/queries';
+	import type { DaemonMode } from '../../types/base';
+	import { fillInstallArtifactsKey, osInstallCommand } from '../../types/base';
 	import {
 		useProvisionDaemonMutation,
 		useDaemonQuery,
-		useEmailInstallCommandMutation
+		useDaemonInstallCommandQuery,
+		useEmailInstallCommandMutation,
+		type InstallCommandParams
 	} from '../../queries';
-	import { apiClient } from '$lib/api/client';
 	import { useConfigQuery, isCloud } from '$lib/shared/stores/config-query';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -38,8 +37,8 @@
 	import { getVisibleFieldIds } from '../../config';
 	import {
 		buildDefaultValues,
+		buildInstallConfig,
 		buildRunCommand,
-		buildDockerCompose,
 		constructDaemonUrl,
 		detectOS,
 		slugifyNetworkName,
@@ -54,7 +53,11 @@
 	import CredentialsStep, {
 		type PendingCredential
 	} from '$lib/features/credentials/components/CredentialsStep.svelte';
-	import { isDaemonHostOnly as isDaemonHostOnlyTargets } from '$lib/features/credentials/types/base';
+	import {
+		isDaemonHostOnly as isDaemonHostOnlyTargets,
+		type IntegrationTarget
+	} from '$lib/features/credentials/types/base';
+	import { useDiscoveriesQuery, useUpdateDiscoveryMutation } from '$lib/features/discovery/queries';
 	import {
 		common_close,
 		common_configure,
@@ -66,7 +69,8 @@
 		daemons_createDaemon,
 		daemons_credentialWizardReturn,
 		daemons_credentialWizardReturnToInstall,
-		daemons_enterApiKey,
+		daemons_provisioningDaemon,
+		daemons_seedCredentialsFailed,
 		daemons_emailInstallCommand,
 		daemons_installCommandEmailed,
 		daemons_installIveRunCommand,
@@ -94,7 +98,6 @@
 	const configQuery = useConfigQuery();
 	const currentUserQuery = useCurrentUserQuery();
 	const organizationQuery = useOrganizationQuery();
-	const createApiKeyMutation = useCreateApiKeyMutation();
 	const provisionDaemonMutation = useProvisionDaemonMutation();
 	const credentialsQuery = useCredentialsQuery();
 
@@ -119,9 +122,16 @@
 	const windowsDownloadUrl =
 		'https://github.com/scanopy/scanopy/releases/latest/download/scanopy-daemon-windows-amd64.exe';
 	let currentInstallCommand = $derived.by(() => {
+		// Prefer the server-assembled artifact for this method (single source of truth).
+		const serverCmd =
+			installArtifacts &&
+			(selectedOS === 'linux' && linuxMethod === 'docker'
+				? (installArtifacts.docker.compose ?? undefined)
+				: osInstallCommand(installArtifacts, selectedOS));
+		if (serverCmd) return serverCmd;
+		// Fallback (e.g. before provisioning completes) to the client-built command.
 		if (selectedOS === 'windows')
 			return `Invoke-WebRequest -Uri "${windowsDownloadUrl}" -OutFile "scanopy-daemon-windows-amd64.exe"; ${runCommand}`;
-		if (selectedOS === 'linux' && linuxMethod === 'docker' && dockerCompose) return dockerCompose;
 		return `${installScript} && ${runCommand}`;
 	});
 	let currentOsLabel = $derived.by(() => {
@@ -142,10 +152,6 @@
 	// API key state
 	let keyState = $state<string | null>(null);
 	let key = $derived(keyState);
-	let keySet = $derived(!!key);
-
-	// Auto-generation state (for first daemon flow)
-	let isAutoGenerating = $state(false);
 
 	// Credentials is its own stepper step (activeTab === 'credentials'); the shared
 	// CredentialsStep owns the type-grid → wizard sub-flow and persistence.
@@ -190,6 +196,7 @@
 				types_selected: 0,
 				credentials_attached: 0
 			});
+			await ensureProvisioned();
 			activeTab = 'install';
 			return;
 		}
@@ -223,9 +230,33 @@
 
 	// Connection waiting state
 	let provisionedDaemonId = $state('');
+	let isProvisioning = $state(false);
+	// Daemon identity (name + network) is frozen once Configure is left, so credentials — which
+	// are created against the selected network — can't be orphaned by a later network change.
+	let configureCommitted = $state(false);
+
+	const discoveriesQuery = useDiscoveriesQuery();
+	const updateDiscoveryMutation = useUpdateDiscoveryMutation();
+
+	// Advanced settings committed for the install-command builder. Set at provision and on
+	// leaving the Advanced panel — the builder is a pure read, so changing these re-fetches the
+	// command without re-minting the key.
+	let committedInstallParams = $state<InstallCommandParams | null>(null);
+
+	// Install commands come from the pure builder (with an <API_KEY> placeholder); the minted key
+	// is substituted in for display. Regenerating them never rotates the key.
+	const installCommandQuery = useDaemonInstallCommandQuery(
+		() => provisionedDaemonId || null,
+		() => committedInstallParams ?? { purpose: 'install' },
+		{ enabled: () => !!provisionedDaemonId && !!committedInstallParams }
+	);
+	let installArtifacts = $derived.by(() =>
+		installCommandQuery.data && keyState
+			? fillInstallArtifactsKey(installCommandQuery.data, keyState)
+			: null
+	);
 	let connectionStatus = $state<DaemonConnectionStatus>('idle');
 	let troubleTimeoutId = $state<ReturnType<typeof setTimeout> | null>(null);
-	let daemonIdsAtWaitStart = $state<Set<string>>(new Set());
 
 	// Daemon-specific queries for connection detection
 	const provisionedDaemonQuery = useDaemonQuery(() => provisionedDaemonId || null, {
@@ -287,45 +318,27 @@
 
 	// Derived commands.
 	//
-	// Build per-daemon integration-target tokens for the init command (see daemon `config.rs`
-	// grammar). Every token references a created credential by id; the suffix is the target IP(s):
-	// daemon-host-only credentials (local sockets) target 127.0.0.1 like any other IP target;
-	// a credential with target IPs becomes `<uuid>@<ip>[+<ip>]`; one with no target IPs becomes a
-	// bare `<uuid>` (network default). The daemon maps a sole-loopback IP to the DaemonHost scope.
-	let integrationTokens = $derived(
-		pendingCredentials.flatMap((p) => {
-			// Only persisted credentials get a targeting token (sockets are created too now).
+	// Integration targeting for this daemon, seeded onto its discovery row at provision
+	// (`seed_credential_refs`) so the credential is probed on the first scan and assigned to a
+	// host only once that probe succeeds. Daemon-host-only credentials (local sockets) resolve to
+	// the DaemonHost scope; a credential with target IPs pins to those hosts; one with none is a
+	// network-wide default.
+	let seedCredentialRefs = $derived(
+		pendingCredentials.flatMap((p): IntegrationTarget[] => {
+			// Only persisted credentials can be referenced (sockets are created too now).
 			if (!credentialIds.includes(p.credential.id)) return [];
+			const credential_id = p.credential.id;
 			if (isDaemonHostOnly(p.credential.credential_type.type)) {
-				return [`${p.credential.id}@127.0.0.1`];
+				return [{ credential_id, scope: 'DaemonHost' }];
 			}
 			const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
-			return ips.length > 0 ? [`${p.credential.id}@${ips.join('+')}`] : [p.credential.id];
+			return ips.length > 0
+				? [{ credential_id, ips, scope: 'Hosts' }]
+				: [{ credential_id, scope: 'Network' }];
 		})
 	);
 	let runCommand = $derived(
-		buildRunCommand(
-			serverUrl,
-			selectedNetworkId,
-			key,
-			formValues,
-			null,
-			currentUserId,
-			selectedOS,
-			integrationTokens
-		)
-	);
-	let dockerCompose = $derived(
-		key
-			? buildDockerCompose(
-					serverUrl,
-					selectedNetworkId,
-					key,
-					formValues,
-					currentUserId,
-					integrationTokens
-				)
-			: ''
+		buildRunCommand(serverUrl, selectedNetworkId, key, formValues, null, currentUserId, selectedOS)
 	);
 
 	// Check for form validation errors (only visible fields)
@@ -367,58 +380,111 @@
 	function handleTabChange(tabId: string) {
 		showAdvanced = false;
 		activeTab = tabId;
+		// The Install step needs a provisioned daemon regardless of how it's reached — including
+		// jumping straight here from the tab strip, skipping Credentials entirely. Kicked off
+		// rather than awaited: GenericModal has already switched its tab strip, so blocking here
+		// would leave the strip and the content out of step.
+		if (tabId === 'install') void ensureProvisioned();
 	}
 
-	// --- Key generation ---
-	async function handleCreateNewApiKey() {
-		const fields = getVisibleFieldIds(formValues);
-		const isValid = await validateForm(form, fields);
-		if (!isValid) return;
+	// --- Provisioning ---
+	/**
+	 * Provision the daemon record and its 1:1 key, seeding any credentials created in the
+	 * Credentials step onto its discovery row. Runs on the way into the Install step — later
+	 * than the daemon's identity is settled, because the credentials don't exist until then.
+	 *
+	 * Idempotent: once provisioned, further credential edits are pushed to the discovery row
+	 * rather than re-provisioning, which would rotate the key out from under a command the user
+	 * may already have copied.
+	 */
+	async function ensureProvisioned() {
+		if (provisionedDaemonId) {
+			await syncSeededCredentialRefs();
+			return;
+		}
+		if (isProvisioning) return;
 
 		const daemonName = (form.state.values['name'] as string) ?? 'daemon';
-		const mode = (form.state.values['mode'] as string) ?? 'daemon_poll';
+		const mode = (form.state.values['mode'] as DaemonMode) ?? 'daemon_poll';
 		const daemonUrlBase = (form.state.values['daemonUrl'] as string) ?? '';
 		const daemonPort = (() => {
 			const port = form.state.values['daemonPort'];
 			return typeof port === 'number' ? port : 60073;
 		})();
 
-		if (mode === 'server_poll') {
-			const fullDaemonUrl = constructDaemonUrl(daemonUrlBase, daemonPort);
-			try {
-				const result = await provisionDaemonMutation.mutateAsync({
-					name: daemonName,
-					network_id: selectedNetworkId,
-					url: fullDaemonUrl
-				});
-				keyState = result.daemon_api_key;
-				provisionedDaemonId = result.daemon.id;
-			} catch {
-				pushError(common_failedGenerateApiKey());
-			}
-		} else {
-			let newApiKey = createEmptyApiKeyFormData(selectedNetworkId);
-			newApiKey.name = `${daemonName} Api Key`;
-			try {
-				const result = await createApiKeyMutation.mutateAsync(newApiKey);
-				keyState = result.keyString;
-			} catch {
-				pushError(common_failedGenerateApiKey());
-			}
+		// Both modes provision a record bound 1:1 to a fresh key. ServerPoll also
+		// captures the reachable URL the server dials; DaemonPoll dials out, so it
+		// has none. Install commands are fetched separately from the builder.
+		const isServerPoll = mode === 'server_poll';
+		isProvisioning = true;
+		try {
+			const result = await provisionDaemonMutation.mutateAsync({
+				name: daemonName,
+				network_id: selectedNetworkId,
+				mode,
+				url: isServerPoll ? constructDaemonUrl(daemonUrlBase, daemonPort) : null,
+				seed_credential_refs: seedCredentialRefs
+			});
+			keyState = result.daemon_api_key;
+			provisionedDaemonId = result.daemon.id;
+			committedInstallParams = installCommandParams();
+		} catch {
+			pushError(common_failedGenerateApiKey());
+		} finally {
+			isProvisioning = false;
 		}
 	}
 
-	async function handleUseExistingKey() {
-		const fields = getVisibleFieldIds(formValues);
-		const isValid = await validateForm(form, fields);
-		if (!isValid) return;
+	/**
+	 * Push credential targeting onto an already-provisioned daemon's discovery row — for the user
+	 * who reaches Install, goes back, and adds or removes a credential. Without this the seeded
+	 * refs would silently keep the state they had at provision time.
+	 */
+	async function syncSeededCredentialRefs() {
+		const refs = seedCredentialRefs;
+		const discoveries = await discoveriesQuery.refetch();
+		const discovery = (discoveries.data ?? []).find((d) => d.daemon_id === provisionedDaemonId);
+		if (!discovery) return;
 
-		const trimmedKey = ((form.state.values['existingKeyInput'] as string) ?? '').trim();
-		if (!trimmedKey) {
-			pushError(daemons_enterApiKey());
-			return;
+		const fingerprint = (targets: IntegrationTarget[]) =>
+			JSON.stringify(
+				targets
+					.map((t) => `${t.scope}:${t.credential_id}:${t.scope === 'Hosts' ? t.ips.join('+') : ''}`)
+					.sort()
+			);
+		if (fingerprint(discovery.integration_targets) === fingerprint(refs)) return;
+
+		try {
+			await updateDiscoveryMutation.mutateAsync({ ...discovery, integration_targets: refs });
+		} catch {
+			pushError(daemons_seedCredentialsFailed());
 		}
-		keyState = trimmedKey;
+	}
+
+	/** The advanced settings the builder should fold into the install command. */
+	function installCommandParams(): InstallCommandParams {
+		const cfg = buildInstallConfig(formValues);
+		return {
+			purpose: 'install',
+			log_level: cfg.log_level ?? undefined,
+			log_file: cfg.log_file ?? undefined,
+			heartbeat_interval: cfg.heartbeat_interval ?? undefined,
+			bind_address: cfg.bind_address ?? undefined,
+			allow_self_signed_certs: cfg.allow_self_signed_certs ?? undefined,
+			accept_invalid_scan_certs: cfg.accept_invalid_scan_certs ?? undefined,
+			interfaces: cfg.interfaces?.length ? cfg.interfaces.join(',') : undefined
+			// No credential_refs: the install command never carries targeting. That param is for
+			// manual seeding only; UI installs get their targeting from the daemon's discovery row.
+		};
+	}
+
+	/**
+	 * Leave the Advanced panel, folding any changes into the emitted install command. The
+	 * builder is a pure read, so this re-fetches the command — it never re-mints the key.
+	 */
+	function closeAdvanced() {
+		showAdvanced = false;
+		committedInstallParams = installCommandParams();
 	}
 
 	// --- Navigation handlers ---
@@ -461,42 +527,10 @@
 
 			trackEvent('daemon_wizard_step_completed', { step: 'configure' });
 
-			// Auto-generate key for: first daemon (any mode), or server_poll, or daemon_poll with generate source
-			const mode = formValues.mode as string;
-			const keySource = formValues.keySource as string;
-			const needsAutoGenerate =
-				!key && (isFirstDaemon || mode === 'server_poll' || keySource === 'generate');
-
-			if (needsAutoGenerate) {
-				isAutoGenerating = true;
-				try {
-					await handleCreateNewApiKey();
-				} finally {
-					isAutoGenerating = false;
-				}
-				if (!keyState) return; // generation failed
-			}
-
-			// For daemon_poll with existing key source, key must be set already
-			if (!isFirstDaemon && mode === 'daemon_poll' && keySource === 'existing' && !key) {
-				pushError(daemons_enterApiKey());
-				return;
-			}
-
-			// Snapshot daemon IDs NOW, before showing install commands.
-			// Must happen before user can install, so fast-connecting daemons are detected.
-			if (formValues.mode !== 'server_poll') {
-				try {
-					const { data } = await apiClient.GET('/api/v1/daemons', {
-						params: { query: { limit: 0 } }
-					});
-					const daemons = data?.data ?? [];
-					daemonIdsAtWaitStart = new Set(daemons.map((d) => d.id));
-				} catch {
-					daemonIdsAtWaitStart = new Set();
-				}
-			}
-
+			// Provisioning happens on the way into Install, not here: every daemon gets a
+			// server-side record with a fresh 1:1 key, and the credentials created in the next
+			// step are seeded onto its discovery row by that same call.
+			configureCommitted = true;
 			if (furthestReached < 1) furthestReached = 1;
 			// Advance to the Credentials step (step 2). It's optional — the user can
 			// Skip to Install (step 3), which is also unlocked.
@@ -595,7 +629,7 @@
 		trackEvent('daemon_connected');
 	}
 
-	// ServerPoll: poll provisionedDaemonQuery every 5s when waiting/trouble
+	// Poll the provisioned daemon every 5s when waiting/trouble
 	$effect(() => {
 		if ((connectionStatus === 'waiting' || connectionStatus === 'trouble') && provisionedDaemonId) {
 			const interval = setInterval(() => {
@@ -605,7 +639,9 @@
 		}
 	});
 
-	// ServerPoll: detect connection when last_seen becomes non-null
+	// Detect connection when the daemon first checks in. Every daemon is provisioned before the
+	// Install step, and registration claims that record rather than creating a new one, so
+	// `last_seen` becoming non-null is the arrival signal for both modes.
 	$effect(() => {
 		if (
 			(connectionStatus === 'waiting' || connectionStatus === 'trouble') &&
@@ -613,42 +649,6 @@
 			provisionedDaemonQuery.data?.last_seen
 		) {
 			markConnected();
-		}
-	});
-
-	// DaemonPoll: poll API directly every 5s when waiting/trouble, detect new daemon
-	$effect(() => {
-		if (
-			(connectionStatus === 'waiting' || connectionStatus === 'trouble') &&
-			!provisionedDaemonId
-		) {
-			let active = true;
-
-			async function checkForNewDaemon() {
-				if (!active) return;
-				try {
-					const { data } = await apiClient.GET('/api/v1/daemons', {
-						params: { query: { limit: 0 } }
-					});
-					if (!active) return;
-					const currentIds = (data?.data ?? []).map((d) => d.id);
-					const hasNewDaemon = currentIds.some((id) => !daemonIdsAtWaitStart.has(id));
-					if (hasNewDaemon) {
-						markConnected();
-					}
-				} catch {
-					// Ignore fetch errors, will retry on next interval
-				}
-			}
-
-			// Check immediately, then every 5s
-			checkForNewDaemon();
-			const interval = setInterval(checkForNewDaemon, 5000);
-
-			return () => {
-				active = false;
-				clearInterval(interval);
-			};
 		}
 	});
 
@@ -664,7 +664,8 @@
 		}
 
 		keyState = null;
-		isAutoGenerating = false;
+		isProvisioning = false;
+		configureCommitted = false;
 		nameManuallyEdited = false;
 		activeTab = 'configure';
 		furthestReached = 0;
@@ -677,7 +678,6 @@
 		serverPollReachable = null;
 		isTestingReachability = false;
 		serverPollReachabilityResult = null;
-		daemonIdsAtWaitStart = new Set();
 
 		// Reset form fields to defaults so advanced overrides don't persist
 		const defaults = buildDefaultValues();
@@ -701,7 +701,7 @@
 		startedAsFirstDaemon = isFirstDaemon;
 		serverPollReachable = null;
 		serverPollReachabilityResult = null;
-		daemonIdsAtWaitStart = new Set();
+		configureCommitted = false;
 		hasCopied = false;
 	}
 
@@ -750,15 +750,21 @@
 							{selectedNetworkId}
 							onNetworkChange={(id) => (selectedNetworkId = id)}
 							onNameInput={() => (nameManuallyEdited = true)}
-							{keySet}
+							identityLocked={configureCommitted}
 							{isFirstDaemon}
-							onUseExistingKey={handleUseExistingKey}
 							onReachabilityChange={(r) => {
 								serverPollReachable = r;
 								if (r === null) serverPollReachabilityResult = null;
 							}}
 							bind:reachabilityResult={serverPollReachabilityResult}
 						/>
+					{:else if activeTab === 'install' && !provisionedDaemonId}
+						<!-- Provisioning is in flight (reaching Install via the tab strip doesn't
+						     await it). Hold the commands back rather than render one without a key. -->
+						<div class="text-muted flex flex-1 items-center justify-center gap-3 p-6">
+							<Loader2 class="h-4 w-4 animate-spin" />
+							{daemons_provisioningDaemon()}
+						</div>
 					{:else if activeTab === 'install'}
 						<InstallStep
 							{selectedOS}
@@ -766,14 +772,14 @@
 							{linuxMethod}
 							onLinuxMethodChange={(method) => (linuxMethod = method)}
 							{runCommand}
-							{dockerCompose}
 							{hasErrors}
 							isFirstDaemon={startedAsFirstDaemon}
 							{connectionStatus}
 							onViewDiscovery={handleViewDiscovery}
 							{hasEmailSupport}
 							onAdvanced={() => (showAdvanced = true)}
-							daemonMode={String(formValues.mode ?? 'daemon_poll')}
+							artifacts={installArtifacts}
+							daemonMode={(formValues.mode as DaemonMode) ?? 'daemon_poll'}
 							daemonName={String(formValues.name ?? 'scanopy-daemon')}
 							logFilePath={String(formValues.logFile ?? '')}
 							daemonUrl={constructDaemonUrl(
@@ -807,7 +813,7 @@
 					<button
 						type="button"
 						class="btn-primary"
-						disabled={credentialsStep?.busy}
+						disabled={credentialsStep?.busy || isProvisioning}
 						onclick={async () => {
 							const ids = await credentialsStep?.collectCredentialIds();
 							if (ids === null || ids === undefined) return; // validation failed
@@ -817,6 +823,9 @@
 								types_selected: selectedCredentialTypeIds.length,
 								credentials_attached: ids.length
 							});
+							// Provision after the credentials exist, so they're seeded onto the
+							// daemon's discovery row in the same call.
+							await ensureProvisioned();
 							activeTab = 'install';
 						}}
 					>
@@ -828,7 +837,7 @@
 						<ArrowRight class="h-4 w-4" />
 					</button>
 				{:else if showAdvanced}
-					<button type="button" class="btn-primary" onclick={() => (showAdvanced = false)}>
+					<button type="button" class="btn-primary" onclick={closeAdvanced}>
 						<ArrowLeft class="h-4 w-4" />
 						{daemons_installBackToInstall()}
 					</button>
@@ -837,13 +846,11 @@
 						type="button"
 						class="btn-primary btn-primary-lg"
 						onclick={handleNext}
-						disabled={isAutoGenerating || isTestingReachability}
+						disabled={isTestingReachability}
 					>
 						{#if isTestingReachability}
 							<Loader2 class="h-4 w-4 animate-spin" />
 							Testing connection to {formValues.daemonUrl}:{formValues.daemonPort || 60073}...
-						{:else if isAutoGenerating}
-							<Loader2 class="h-4 w-4 animate-spin" />
 						{:else}
 							{common_next()}
 							<ArrowRight class="h-4 w-4" />

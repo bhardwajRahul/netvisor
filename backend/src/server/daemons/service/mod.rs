@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use backon::{ExponentialBuilder, Retryable};
 use chrono::{DateTime, Utc};
 use futures::future::join_all;
-use secrecy::ExposeSecret;
+use secrecy::{ExposeSecret, SecretString};
 use semver::Version;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
@@ -28,15 +28,18 @@ use crate::server::billing::types::base::{LimitSource, LimitType};
 use crate::server::credentials::r#impl::mapping::IntegrationTarget;
 use crate::server::credentials::r#impl::types::CredentialTypeDiscriminants;
 use crate::server::credentials::service::CredentialService;
+use crate::server::daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase};
 use crate::server::daemon_api_keys::service::DaemonApiKeyService;
 use crate::server::daemons::r#impl::api::{
     DaemonDiscoveryRequest, DaemonRegistrationRequest, DaemonRegistrationResponse,
-    DiscoveryUpdatePayload, FirstContactRequest, LegacyCapabilities, ServerCapabilities,
+    DiscoveryUpdatePayload, FirstContactRequest, LegacyCapabilities, ProvisionDaemonRequest,
+    ServerCapabilities,
 };
-use crate::server::daemons::r#impl::base::{Daemon, DaemonBase};
+use crate::server::daemons::r#impl::base::{Daemon, DaemonBase, DaemonMode};
 use crate::server::daemons::r#impl::interfaced_subnets::DaemonInterfacedSubnetStorage;
 use crate::server::daemons::r#impl::version::{
-    DaemonVersionPolicy, pre_interface_to_ip_address_rename, supports_unified_discovery,
+    DaemonVersionPolicy, pre_interface_to_ip_address_rename, supports_server_provisioned_identity,
+    supports_unified_discovery,
 };
 use crate::server::discovery::r#impl::base::{Discovery, DiscoveryBase};
 use crate::server::discovery::r#impl::scan_settings::ScanSettings;
@@ -47,7 +50,9 @@ use crate::server::hosts::r#impl::base::{Host, HostBase};
 use crate::server::hosts::service::{HostLimitContext, HostService};
 use crate::server::networks::r#impl::Network;
 use crate::server::networks::service::NetworkService;
+use crate::server::openapi::SERVER_VERSION;
 use crate::server::organizations::service::OrganizationService;
+use crate::server::shared::api_key_common::{ApiKeyType, generate_api_key_for_storage};
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::events::bus::EventBus;
 use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event, OrgScope};
@@ -208,6 +213,7 @@ mod lifecycle;
 mod monitoring;
 mod polling;
 mod processing;
+mod provisioning;
 
 #[cfg(test)]
 mod tests {

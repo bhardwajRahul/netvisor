@@ -4,13 +4,12 @@
 	import { useRetryDaemonConnectionMutation } from '$lib/features/daemons/queries';
 	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
-	import { ArrowBigUp, RefreshCw, Trash2 } from 'lucide-svelte';
-	import { common_delete, common_tags } from '$lib/paraglide/messages';
+	import { ArrowBigUp, Edit, RefreshCw, Trash2 } from 'lucide-svelte';
+	import { common_delete, common_edit, common_tags } from '$lib/paraglide/messages';
 	import { getDaemonStatusTag } from '$lib/features/daemons/utils';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
-	import { useApiKeysQuery } from '$lib/features/daemon_api_keys/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import type { TagProps } from '$lib/shared/components/data/types';
 	import { entityRef } from '$lib/shared/components/data/types';
@@ -48,34 +47,31 @@
 	// Use limit: 0 to get all hosts for daemon card lookups
 	const hostsQuery = useHostsQuery({ limit: 0 });
 	const subnetsQuery = useSubnetsQuery();
-	const apiKeysQuery = useApiKeysQuery();
 	const credentialsQuery = useCredentialsQuery();
 
 	// Derived data
 	let networksData = $derived(networksQuery.data ?? []);
 	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
-	let apiKeysData = $derived(apiKeysQuery.data ?? []);
 	let credentialsData = $derived(credentialsQuery.data ?? []);
 
 	let {
 		daemon,
 		onDelete,
+		onEdit,
 		viewMode,
 		selected,
 		onSelectionChange = () => {}
 	}: {
 		daemon: Daemon;
 		onDelete?: (daemon: Daemon) => void;
+		onEdit?: (daemon: Daemon) => void;
 		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
 
 	let host = $derived(hostsData.find((h) => h.id === daemon.host_id) ?? null);
-	let linkedApiKey = $derived(
-		daemon.api_key_id ? apiKeysData.find((k) => k.id === daemon.api_key_id) : null
-	);
 
 	let status: TagProps = $derived(getDaemonStatusTag(daemon));
 
@@ -149,26 +145,6 @@
 				label: 'Mode',
 				value: daemon.mode
 			},
-			...(linkedApiKey
-				? [
-						{
-							label: 'API Key',
-							value: [
-								{
-									id: linkedApiKey.id,
-									label: linkedApiKey.name,
-									color: entities.getColorHelper('DaemonApiKey').color,
-									entityRef: entityRef('DaemonApiKey', linkedApiKey.id, linkedApiKey)
-								}
-							]
-						}
-					]
-				: [
-						{
-							label: 'API Key',
-							value: daemon.mode == 'server_poll' ? 'Not Found' : 'N/A'
-						}
-					]),
 			{
 				label: 'Interfaces With',
 				value: daemon.interfaced_subnet_ids
@@ -218,6 +194,19 @@
 							onClick: () => retryConnectionMutation.mutate(daemon.id),
 							disabled: retryPending,
 							forceLabel: true
+						}
+					]
+				: []),
+			// Edit sits last (rightmost) per the convention shared by every other entity card.
+			// It opens the daemon management modal, which is also where the daemon's 1:1 key
+			// is managed — and where a legacy daemon can be given one.
+			...(onEdit
+				? [
+						{
+							label: common_edit(),
+							icon: Edit,
+							class: 'btn-icon',
+							onClick: () => onEdit(daemon)
 						}
 					]
 				: [])

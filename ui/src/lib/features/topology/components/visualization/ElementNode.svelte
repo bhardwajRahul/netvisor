@@ -10,6 +10,11 @@
 		activeView
 	} from '../../queries';
 	import { useTopology, selectedTopologyId } from '../../context';
+	import Tag from '$lib/shared/components/data/Tag.svelte';
+	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import { getFreshnessTag } from '$lib/shared/utils/freshness';
+
+	const networksQuery = useNetworksQuery();
 	import type { TopologyNode, ElementRenderData, RenderableTopology } from '../../types/base';
 	import { resolveElementNode } from '../../resolvers';
 	import { type Writable, get } from 'svelte/store';
@@ -107,6 +112,44 @@
 
 	let resolved = $derived(topology ? resolveElementNode(id, data as TopologyNode, topology) : null);
 	let host = $derived(resolved?.host);
+
+	// Staleness marker. Deliberately additive rather than an opacity change:
+	// node opacity is already the filter/search dimming channel (see
+	// `nodeOpacity`), so fading stale nodes would make "stale" and "filtered
+	// out" indistinguishable — and a node that is both, invisible as either.
+	let networksData = $derived(networksQuery.data ?? []);
+	const networkFor = (entity: { network_id?: string } | undefined | null) =>
+		networksData.find((n) => n.id === entity?.network_id);
+
+	// The entity this node actually depicts.
+	let elementEntity = $derived.by(() => {
+		switch (resolved?.elementType) {
+			case 'Service':
+				return resolved.services[0];
+			case 'IPAddress':
+				return resolved.ipAddress;
+			case 'Interface':
+				return resolved.snmpInterface;
+			default:
+				return host;
+		}
+	});
+
+	// The verdict applies the digest's parent/child rule via `resolvedFreshness`,
+	// so a child of a stale host inherits rather than claiming its own decay.
+	// Judged on the node's own entity, with no inheritance from its host — the
+	// same rule the inventory cards apply, so the two surfaces agree and the
+	// tooltip's timestamp can never contradict the tag. Type names come from
+	// the entity metadata fixture, so they stay localized and in step with the
+	// backend.
+	let subject = $derived(elementEntity ?? host);
+	let staleTag = $derived(
+		subject
+			? getFreshnessTag(subject, networkFor(subject), {
+					entityTypeLabel: entities.getName(resolved?.elementType ?? 'Host') || undefined
+				})
+			: null
+	);
 	let servicesForHost = $derived(resolved?.services ?? []);
 	let ipAddress = $derived(resolved?.ipAddress ?? null);
 
@@ -519,13 +562,18 @@
 			} else if (entityType === 'Host' && (elType === 'IPAddress' || elType === 'Interface')) {
 				cardEntity = resolved.host ?? null;
 			}
-			if (cardEntity && extractor(cardEntity) === valueId) {
+			if (
+				cardEntity &&
+				extractor(cardEntity, { network: networkFor(cardEntity as { network_id?: string }) }) ===
+					valueId
+			) {
 				return { mode: 'element', color };
 			}
 
 			if (entityType === 'Service' && nodeRenderData?.services?.length) {
 				for (const service of nodeRenderData.services) {
-					if (extractor(service) === valueId) return { mode: 'inline', color };
+					if (extractor(service, { network: networkFor(service) }) === valueId)
+						return { mode: 'inline', color };
 				}
 			}
 			return null;
@@ -645,6 +693,25 @@
 		class={`${cardClass} ${isNewNode ? 'animate-pulse-highlight' : ''} ${serviceHoverShadowStyle ? 'animate-pulse-highlight-once' : ''} ${isEntityTypeHover ? 'entity-type-hover-active' : ''}`}
 		style={`width: ${effectiveWidth}px; height: 100%; display: flex; flex-direction: column; padding: 0; opacity: ${nodeOpacity}; transition: opacity 0.2s ease-in-out, box-shadow 0.15s ease-in-out; ${isNewNode ? `--pulse-color: ${discoveryColorHelper.rgb};` : ''} ${serviceHoverShadowStyle} ${tagHoverRingStyle}`}
 	>
+		<!-- Staleness tag: the same Tag component, label, colour and icon the
+		     inventory card badge uses (both come from `getFreshnessTag`), so one
+		     entity reads identically in the list, the map and the digest.
+		     Additive rather than an opacity change — opacity is already the
+		     filter/search dimming channel. -->
+
+		<!-- Topmost element of the card, centred: one placement that reads the
+		     same on every element type, rather than depending on which title row
+		     a given card happens to have. In flow so it stays inside the card
+		     bounds and never overlaps the title; node heights are DOM-measured
+		     (pipeline/measure.ts), so layout absorbs the row. -->
+		{#if staleTag}
+			<div class="flex flex-shrink-0 justify-center px-2 pt-2">
+				<div class="scale-90">
+					<Tag {...staleTag} pill />
+				</div>
+			</div>
+		{/if}
+
 		<!-- Rest of component stays the same -->
 		<!-- Header section with gradient transition to body -->
 		{#if nodeRenderData.headerText}
@@ -686,7 +753,11 @@
 						const extractor =
 							FILTER_VALUE_EXTRACTORS['Service']?.[currentHoveredMetadata.filterType];
 						if (!extractor) return '';
-						if (extractor(service) !== currentHoveredMetadata.valueId) return '';
+						if (
+							extractor(service, { network: networkFor(service) }) !==
+							currentHoveredMetadata.valueId
+						)
+							return '';
 						const ch = createColorHelper(
 							currentHoveredMetadata.color as Parameters<typeof createColorHelper>[0]
 						);

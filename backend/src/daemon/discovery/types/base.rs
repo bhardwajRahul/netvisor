@@ -176,6 +176,9 @@ pub struct DiscoverySessionUpdate {
     /// Percentage complete (0-100)
     pub progress: u8,
     pub error: Option<String>,
+    /// Non-fatal warnings for a completed run (e.g. hit the time limit with hosts
+    /// left un-scanned). Distinct from `error`, which marks the run as failed.
+    pub warnings: Vec<String>,
     pub finished_at: Option<DateTime<Utc>>,
 }
 
@@ -185,6 +188,7 @@ impl DiscoverySessionUpdate {
             phase: DiscoveryPhase::Scanning,
             progress: progress.min(100),
             error: None,
+            warnings: Vec::new(),
             finished_at: None,
         }
     }

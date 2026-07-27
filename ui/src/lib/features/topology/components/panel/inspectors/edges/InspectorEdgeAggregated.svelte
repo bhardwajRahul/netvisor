@@ -72,7 +72,19 @@
 		return result;
 	});
 
-	// Reactive ContainerRuntime resolution
+	/** The containers the given runtime edges stand for — the union of what each names. */
+	function containersOf(edges: TopologyEdge[]): string[] {
+		const ids = new SvelteSet<string>();
+		for (const edge of edges) {
+			const edgeIds = (edge as unknown as Record<string, unknown>).containerized_service_ids;
+			if (!Array.isArray(edgeIds)) continue;
+			for (const id of edgeIds as string[]) ids.add(id);
+		}
+		return [...ids];
+	}
+
+	// Reactive ContainerRuntime resolution. Each edge names the containers it reaches, so the
+	// aggregate is their union — not every container the runtime happens to host.
 	let svcVirtData = $derived.by(() => {
 		const typeEdges = edgesByType.get('ContainerRuntime');
 		if (!typeEdges || !topology) return null;
@@ -91,11 +103,8 @@
 			// Single Docker service — show detailed view
 			const [containerizingId] = [...byContainerizer.keys()];
 			const containerizer = topology.services.find((s) => s.id === containerizingId);
-			const containerized = topology.services.filter(
-				(s) =>
-					s.virtualization &&
-					s.virtualization.type === 'Docker' &&
-					s.virtualization.details.service_id === containerizingId
+			const containerized = containersOf(byContainerizer.get(containerizingId) ?? []).flatMap(
+				(id) => topology.services.find((s) => s.id === id) ?? []
 			);
 			return { mode: 'single' as const, containerizer, containerized };
 		} else {
@@ -104,29 +113,17 @@
 				string,
 				{ host: (typeof topology.hosts)[0]; containerCount: number }
 			>();
-			for (const [containerizingId] of byContainerizer) {
+			for (const [containerizingId, containerizerEdges] of byContainerizer) {
 				const service = topology.services.find((s) => s.id === containerizingId);
 				if (!service) continue;
 				const host = topology.hosts.find((h) => h.id === service.host_id);
 				if (!host) continue;
+				const containerCount = containersOf(containerizerEdges).length;
 				const existing = hosts.get(host.id);
 				if (existing) {
-					existing.containerCount += topology.services.filter(
-						(s) =>
-							s.virtualization &&
-							s.virtualization.type === 'Docker' &&
-							s.virtualization.details.service_id === containerizingId
-					).length;
+					existing.containerCount += containerCount;
 				} else {
-					hosts.set(host.id, {
-						host,
-						containerCount: topology.services.filter(
-							(s) =>
-								s.virtualization &&
-								s.virtualization.type === 'Docker' &&
-								s.virtualization.details.service_id === containerizingId
-						).length
-					});
+					hosts.set(host.id, { host, containerCount });
 				}
 			}
 			return { mode: 'multi' as const, hosts: [...hosts.values()] };

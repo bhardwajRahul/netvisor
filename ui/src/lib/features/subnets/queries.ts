@@ -10,14 +10,25 @@ import type { Subnet } from './types/base';
 /**
  * Query hook for fetching all subnets
  */
-export function useSubnetsQuery(atGetter?: () => string | undefined) {
+/**
+ * Subnets list. Called with no arguments this is the shared full-list cache
+ * that topology, host cards and the like read, so any narrowing argument must
+ * also change the query key — otherwise a filtered fetch would overwrite the
+ * shared cache with a subset.
+ */
+export function useSubnetsQuery(
+	atGetter?: () => string | undefined,
+	staleGetter?: () => boolean | undefined
+) {
 	return createQuery(() => {
 		const at = atGetter?.();
+		const stale = staleGetter?.();
+		const baseKey = at ? [...queryKeys.subnets.all, 'asOf', at] : queryKeys.subnets.all;
 		return {
-			queryKey: at ? [...queryKeys.subnets.all, 'asOf', at] : queryKeys.subnets.all,
+			queryKey: stale === undefined ? baseKey : [...baseKey, 'stale', stale],
 			queryFn: async () => {
 				const { data } = await apiClient.GET('/api/v1/subnets', {
-					params: { query: { limit: 0, at } }
+					params: { query: { limit: 0, at, stale } }
 				});
 				if (!data?.success || !data.data) {
 					throw new Error(data?.error || 'Failed to fetch subnets');

@@ -333,6 +333,11 @@ impl ViewBuilder for ApplicationBuilder {
                     edge_type: EdgeType::ContainerRuntime {
                         service_id: runtime_service_id,
                         host_id: service.base.host_id,
+                        // This view has no subnets — services are the elements — and it draws
+                        // one edge per container, so the edge stands for the container it
+                        // targets and nothing else.
+                        subnet_ids: vec![],
+                        containerized_service_ids: vec![service.id],
                     },
                     label: None,
                     source_handle: EdgeHandle::Bottom,

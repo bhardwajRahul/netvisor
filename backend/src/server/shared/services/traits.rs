@@ -707,8 +707,11 @@ where
 {
     async fn close_and_clone(&self, mut new_entity: E) -> Result<E, Error> {
         let mut tx = self.storage().begin_transaction().await?;
+        // FOR UPDATE: concurrent close-and-clones of the same entity
+        // serialize on the live row, so each change gets exactly one closed
+        // historical copy instead of two copies of the same interval.
         let live = tx
-            .get_by_id(&Snapshotable::id_value(&new_entity))
+            .get_by_id_for_update(&Snapshotable::id_value(&new_entity))
             .await?
             .ok_or_else(|| anyhow!("close_and_clone: live row not found"))?;
         let now = chrono::Utc::now();

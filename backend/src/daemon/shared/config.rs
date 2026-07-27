@@ -1,13 +1,16 @@
 use anyhow::{Context, Error, Result};
 use async_fs;
-use clap::{Parser, arg, command};
+use clap::{Args, Parser, Subcommand, arg, command};
 use directories_next::ProjectDirs;
 use figment::{
     Figment,
     providers::{Env, Format, Json, Serialized},
 };
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -81,112 +84,455 @@ fn parse_credential_id(value: &str, token: &str) -> anyhow::Result<Uuid> {
     })
 }
 
+/// Top-level daemon CLI.
+///
+/// With no subcommand, `scanopy-daemon <flags>` runs the daemon using the flattened
+/// [`DaemonArgs`] exactly as before. `scanopy-daemon install [flags]` /
+/// `scanopy-daemon uninstall [flags]` dispatch to the installer.
+/// `args_conflicts_with_subcommands` keeps the bare-run and subcommand paths from mixing, so
+/// no existing invocation regresses.
 #[derive(Parser)]
 #[command(name = "scanopy-daemon")]
 #[command(about = "Scanopy network discovery and test execution daemon")]
+#[command(version)]
+#[command(args_conflicts_with_subcommands = true)]
 pub struct DaemonCli {
-    /// Complete Server URL
+    #[command(subcommand)]
+    pub command: Option<DaemonCommand>,
+
+    #[command(flatten)]
+    pub run_args: DaemonArgs,
+
+    /// Internal marker: `daemon install` bakes this into the Windows service binPath so the
+    /// daemon knows the SCM launched it and should run under the service control dispatcher.
+    /// Not a config value; hidden from `--help`. Ignored on non-Windows platforms.
+    #[arg(long, hide = true)]
+    pub service: bool,
+}
+
+/// Install/uninstall/list subcommands. Install and uninstall reuse the daemon's own connection
+/// flags so there is a single source of truth for configuration (see [`DaemonArgs`]).
+// `Install` flattens the full `DaemonArgs` and so dwarfs `Uninstall`; boxing the variant (the usual
+// large_enum_variant remedy) is incompatible with clap's Subcommand derive, and this enum is only
+// ever constructed once at CLI parse time, so the size gap is harmless.
+#[allow(clippy::large_enum_variant)]
+#[derive(Subcommand)]
+pub enum DaemonCommand {
+    /// Install the daemon as a background service: place the binary, write `config.json`, and
+    /// register a system service (systemd / launchd / Windows SCM). Accepts the same
+    /// connection/identity flags as the daemon itself.
+    Install(InstallArgs),
+    /// Stop and remove the daemon's system service and delete its `config.json`.
+    Uninstall(UninstallArgs),
+    /// List the Scanopy daemons installed on this host, with the selector to use for each.
+    List,
+}
+
+/// Flags for `scanopy-daemon install`: the shared daemon flags plus install-only options.
+#[derive(Args)]
+pub struct InstallArgs {
+    #[command(flatten)]
+    pub args: DaemonArgs,
+
+    /// Only place the binary and write config; do not register or start the system service.
     #[arg(long)]
-    server_url: Option<String>,
+    pub no_service: bool,
+
+    /// Directory to install the daemon binary into (defaults to the platform location,
+    /// e.g. `/usr/local/bin` on Unix).
+    #[arg(long)]
+    pub bin_dir: Option<PathBuf>,
+}
+
+/// Flags for `scanopy-daemon uninstall`.
+#[derive(Args)]
+pub struct UninstallArgs {
+    /// Which installed daemon to remove: its name, its slot, or its service id (see
+    /// `scanopy-daemon list`). Optional when the host has only one daemon installed.
+    #[arg(long)]
+    pub name: Option<String>,
+
+    /// Remove every daemon installed on this host.
+    #[arg(long)]
+    pub all: bool,
+
+    /// Also delete the installed binary from disk (by default the binary is left in place).
+    #[arg(long)]
+    pub purge: bool,
+}
+
+/// Connection and identity flags shared by the bare-daemon run and the `install` subcommand.
+/// This is the single input surface for daemon configuration — the installer feeds these same
+/// flags to [`AppConfig::load`], so there is no second config path.
+///
+/// It doubles as the **API wire type** for install configuration: the server accepts one of these
+/// on `POST /daemons/provision` and emits it into the install command and the MSI filename hash
+/// (see [`DaemonArgs::install_config_pairs`]). Rather than mirroring these fields into a separate
+/// request struct — which would be a third copy of a list already duplicated into
+/// `ui/src/lib/features/daemons/config.ts` — the struct is reused directly.
+///
+/// Every field that the *server* controls (identity, mode, connection target) or that is a secret
+/// is `#[serde(skip)]`, so it can never be set from the wire while remaining a normal CLI flag.
+/// The deserializable set is therefore exactly the advanced daemon settings the UI exposes; the
+/// server fills the rest in from the daemon record before emitting. `serde` and `clap` attributes
+/// are independent, so this does not affect CLI parsing.
+#[derive(Args, Serialize, Deserialize, Default, Clone, utoipa::ToSchema)]
+pub struct DaemonArgs {
+    /// Complete Server URL
+    // Server-controlled: comes from the server's own public URL at provision time.
+    #[serde(skip)]
+    #[arg(long)]
+    pub server_url: Option<String>,
 
     /// Network ID to join
+    // Server-controlled: the tenancy boundary, taken from the provisioned record.
+    #[serde(skip)]
     #[arg(long)]
-    network_id: Option<String>,
+    pub network_id: Option<String>,
 
     /// Port the daemon listens on.
+    // Server-controlled: derived from the daemon record's `url` for ServerPoll daemons.
+    #[serde(skip)]
     #[arg(short, long)]
-    daemon_port: Option<u16>,
+    pub daemon_port: Option<u16>,
 
     /// Name for this daemon
+    // Server-controlled: the daemon learns its name via the handshake.
+    #[serde(skip)]
     #[arg(long)]
-    name: Option<String>,
+    pub name: Option<String>,
 
     /// Logging verbosity
     #[arg(long)]
-    log_level: Option<String>,
+    pub log_level: Option<String>,
 
     /// Seconds between heartbeat updates to the server
     #[arg(long)]
-    heartbeat_interval: Option<u64>,
+    pub heartbeat_interval: Option<u64>,
 
     /// IP address to bind daemon to
     #[arg(long)]
-    bind_address: Option<String>,
+    pub bind_address: Option<String>,
 
     /// API key
+    // Secret: minted server-side, never accepted from a client.
+    #[serde(skip)]
     #[arg(long)]
-    daemon_api_key: Option<String>,
+    pub daemon_api_key: Option<String>,
 
     /// Optional local proxy for Docker API on the daemon host. Supports non-SSL and SSL; SSL requires additional config vars
+    // Configured via the credentials/discovery UI, not daemon install config.
+    #[serde(skip)]
     #[arg(long)]
-    docker_proxy: Option<String>,
+    pub docker_proxy: Option<String>,
 
     /// Path to SSL certificate if using a docker proxy with SSL
+    #[serde(skip)]
     #[arg(long)]
-    docker_proxy_ssl_cert: Option<String>,
+    pub docker_proxy_ssl_cert: Option<String>,
 
     /// Path to SSL private key if using a docker proxy with SSL
+    // Secret.
+    #[serde(skip)]
     #[arg(long)]
-    docker_proxy_ssl_key: Option<String>,
+    pub docker_proxy_ssl_key: Option<String>,
 
     /// Path to SSL chain if using a docker proxy with SSL
+    #[serde(skip)]
     #[arg(long)]
-    docker_proxy_ssl_chain: Option<String>,
+    pub docker_proxy_ssl_chain: Option<String>,
 
     /// DaemonPoll: Daemon connects to server; works behind NAT/firewall without opening ports. ServerPoll: Server connects to daemon, for deployments where daemon cannot make outbound connections - requires providing Daemon URL
+    // Server-controlled: immutable post-provision, taken from the daemon record.
+    #[serde(skip)]
     #[arg(long)]
-    mode: Option<DaemonMode>,
+    pub mode: Option<DaemonMode>,
 
     /// Allow self-signed certs for daemon -> server connections
     #[arg(long)]
-    allow_self_signed_certs: Option<bool>,
+    pub allow_self_signed_certs: Option<bool>,
 
     /// Base URL where server can reach daemon
+    // Server-controlled: captured on the daemon record at provision time.
+    #[serde(skip)]
     #[arg(long)]
-    daemon_url: Option<String>,
+    pub daemon_url: Option<String>,
 
     /// User ID of the person who installed this daemon. Used for deprecation notifications.
+    // Server-controlled: the provisioning member.
+    #[serde(skip)]
     #[arg(long)]
-    user_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
 
     /// Accept invalid TLS certificates when scanning endpoints. Enabled by default since scanners probe arbitrary internal services.
     #[arg(long)]
-    accept_invalid_scan_certs: Option<bool>,
+    pub accept_invalid_scan_certs: Option<bool>,
 
     /// Integration target tokens (repeatable). Each is `<uuid>` (credential, no specific IP),
     /// `<uuid>@<ip>[+<ip>...]` (credential pinned to IP(s)), or `docker-socket` / `podman-socket`
     /// (credential-less local socket on the daemon host).
+    // Server-controlled: seeded from `seed_credential_refs` on the provision request.
+    #[serde(skip)]
     #[arg(long = "credential-id")]
-    credential_ids: Option<Vec<String>>,
+    pub credential_ids: Option<Vec<String>>,
 
     /// Path to log file. Defaults to platform-specific path. Set to "none" to disable file logging.
     #[arg(long)]
-    log_file: Option<String>,
+    pub log_file: Option<String>,
 
     /// Enable faster ARP scanning on Windows by using broadcast ARP via Npcap instead of native SendARP, which doesn't support broadcast. **Requires Npcap installation**. Ignored on Linux/macOS.
+    // Deprecated: scan settings are now per-discovery via ScanSettings, and not UI-exposed.
+    #[serde(skip)]
     #[arg(long)]
-    use_npcap_arp: Option<bool>,
+    pub use_npcap_arp: Option<bool>,
 
     /// Number of ARP retry rounds for non-responding hosts (default: 2, meaning 3 total attempts)
+    #[serde(skip)]
     #[arg(long)]
-    arp_retries: Option<u32>,
+    pub arp_retries: Option<u32>,
 
     /// Maximum ARP packets per second (default: 50, go more conservative for networks with enterprise switches)
+    #[serde(skip)]
     #[arg(long)]
-    arp_rate_pps: Option<u32>,
+    pub arp_rate_pps: Option<u32>,
 
     /// Maximum port scan probes per second (default: 500, controls rate of TCP/UDP connection attempts to avoid overwhelming target hosts)
+    #[serde(skip)]
     #[arg(long)]
-    scan_rate_pps: Option<u32>,
+    pub scan_rate_pps: Option<u32>,
 
     /// Number of ports scanned concurrently per host. Higher values scan faster but may overwhelm some hosts
+    #[serde(skip)]
     #[arg(long)]
-    port_scan_batch_size: Option<usize>,
+    pub port_scan_batch_size: Option<usize>,
 
     /// Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces
     #[arg(long, value_delimiter = ',')]
-    interfaces: Option<Vec<String>>,
+    pub interfaces: Option<Vec<String>>,
+
+    /// Directory that holds this daemon's `config.json`. Overrides the default per-user location.
+    /// The `install` command bakes this into the generated system service (pointing at a system
+    /// directory) so the service reads config from the exact path the installer wrote — a system
+    /// service runs under a different profile than the installer, so relying on the per-user
+    /// `$HOME`/`%APPDATA%` path would leave the service unable to find its config.
+    // Locator baked into system services by `install`, not a user-facing config field.
+    #[serde(skip)]
+    #[arg(long)]
+    pub config_dir: Option<PathBuf>,
+
+    /// Which daemon already installed on this host the `install` command targets: its name, its
+    /// slot, its service id, or its daemon id (see `scanopy-daemon list`). Only needed on a host
+    /// running several daemons; otherwise the installer resolves the target on its own.
+    // Install-time selector, not a config value — `AppConfig::load` never merges it. Server-set on
+    // the reconfigure command so it targets exactly the daemon it was generated for.
+    #[serde(skip)]
+    #[arg(long)]
+    pub instance: Option<String>,
 }
+
+/// One emittable install-config value, paired with the key it takes in each install artifact.
+/// A `None` key means the field is deliberately absent from that artifact.
+pub struct InstallConfigPair {
+    /// Long flag for the CLI `install` command, e.g. `--log-level`.
+    pub cli_flag: Option<&'static str>,
+    /// Query key for the MSI pre-fill filename. Must match the property map in
+    /// `backend/wix/parse-filename.js`.
+    pub msi_key: Option<&'static str>,
+    /// Environment variable for the docker-compose install, e.g. `SCANOPY_LOG_LEVEL`. These are
+    /// the names Figment picks up via `Env::prefixed("SCANOPY_")` below.
+    pub env_var: Option<&'static str>,
+    /// Rendered value.
+    pub value: String,
+}
+
+impl DaemonArgs {
+    /// The set values of this config, rendered once for every install artifact.
+    ///
+    /// Having a single table is what keeps the CLI command, the MSI filename hash, the
+    /// docker-compose env block, and `backend/wix/parse-filename.js` from drifting — the
+    /// artifacts key the same field differently (`--log-level` vs `loglevel` vs
+    /// `SCANOPY_LOG_LEVEL`), and previously only the JS and the frontend knew their own names.
+    ///
+    /// `None` fields are skipped entirely, which keeps commands terse and keeps the base64 MSI
+    /// filename clear of the ~255-character filename limit.
+    pub fn install_config_pairs(&self) -> Vec<InstallConfigPair> {
+        fn push(
+            pairs: &mut Vec<InstallConfigPair>,
+            cli_flag: Option<&'static str>,
+            msi_key: Option<&'static str>,
+            env_var: Option<&'static str>,
+            value: Option<String>,
+        ) {
+            if let Some(value) = value {
+                pairs.push(InstallConfigPair {
+                    cli_flag,
+                    msi_key,
+                    env_var,
+                    value,
+                });
+            }
+        }
+
+        // Exhaustive destructure (no `..`) so that adding a field to `DaemonArgs` fails to
+        // compile until it is either emitted here or explicitly marked as not emitted.
+        let Self {
+            server_url,
+            network_id: _, // Identity travels via the 1:1 api key binding, not a flag
+            daemon_port,
+            name,
+            log_level,
+            heartbeat_interval,
+            bind_address,
+            daemon_api_key,
+            docker_proxy: _, // Configured via the credentials/discovery UI
+            docker_proxy_ssl_cert: _,
+            docker_proxy_ssl_key: _,
+            docker_proxy_ssl_chain: _,
+            mode,
+            allow_self_signed_certs,
+            daemon_url: _, // Captured on the daemon record at provision time
+            user_id: _,    // Server-set from the provisioning member
+            accept_invalid_scan_certs,
+            credential_ids: _, // Seeded server-side from `seed_credential_refs`
+            log_file,
+            use_npcap_arp: _, // Deprecated: scan settings are per-discovery via ScanSettings
+            arp_retries: _,
+            arp_rate_pps: _,
+            scan_rate_pps: _,
+            port_scan_batch_size: _,
+            interfaces,
+            config_dir: _, // Install-time locator, baked into the service definition
+            instance,
+        } = self;
+
+        let mut pairs = Vec::new();
+
+        // The daemon infers ServerPoll from the *absence* of a server url, so neither the CLI
+        // command nor the compose env needs a mode; the MSI has no such inference and pre-fills
+        // MODE explicitly.
+        push(
+            &mut pairs,
+            None,
+            Some("mode"),
+            None,
+            render_mode(mode.as_ref()),
+        );
+        // The daemon learns its name via the handshake, so the CLI command and compose env both
+        // omit it; the MSI needs it up front to label the install it creates.
+        push(&mut pairs, None, Some("name"), None, name.clone());
+        // Which already-installed daemon to act on, for the rare host running several. Nothing to
+        // select on a fresh MSI install, and a docker daemon is one container per compose file.
+        push(&mut pairs, Some("--instance"), None, None, instance.clone());
+        push(
+            &mut pairs,
+            Some("--server-url"),
+            Some("url"),
+            Some("SCANOPY_SERVER_URL"),
+            server_url.clone(),
+        );
+        // A live credential must never sit in a filename. A compose file is a local artifact the
+        // operator already holds, so it does carry the key.
+        push(
+            &mut pairs,
+            Some("--daemon-api-key"),
+            None,
+            Some("SCANOPY_DAEMON_API_KEY"),
+            daemon_api_key.clone(),
+        );
+        push(
+            &mut pairs,
+            Some("--daemon-port"),
+            Some("port"),
+            Some("SCANOPY_DAEMON_PORT"),
+            daemon_port.map(|v| v.to_string()),
+        );
+        push(
+            &mut pairs,
+            Some("--bind-address"),
+            Some("addr"),
+            Some("SCANOPY_BIND_ADDRESS"),
+            bind_address.clone(),
+        );
+        push(
+            &mut pairs,
+            Some("--log-level"),
+            Some("loglevel"),
+            Some("SCANOPY_LOG_LEVEL"),
+            log_level.clone(),
+        );
+        push(
+            &mut pairs,
+            Some("--log-file"),
+            Some("logfile"),
+            Some("SCANOPY_LOG_FILE"),
+            log_file.clone(),
+        );
+        push(
+            &mut pairs,
+            Some("--heartbeat-interval"),
+            Some("heartbeat"),
+            Some("SCANOPY_HEARTBEAT_INTERVAL"),
+            heartbeat_interval.map(|v| v.to_string()),
+        );
+        push(
+            &mut pairs,
+            Some("--interfaces"),
+            Some("interfaces"),
+            Some("SCANOPY_INTERFACES"),
+            interfaces
+                .as_ref()
+                .filter(|v| !v.is_empty())
+                .map(|v| v.join(",")),
+        );
+        push(
+            &mut pairs,
+            Some("--allow-self-signed-certs"),
+            Some("allowselfsigned"),
+            Some("SCANOPY_ALLOW_SELF_SIGNED_CERTS"),
+            allow_self_signed_certs.map(|v| v.to_string()),
+        );
+        push(
+            &mut pairs,
+            Some("--accept-invalid-scan-certs"),
+            Some("acceptinvalidscan"),
+            Some("SCANOPY_ACCEPT_INVALID_SCAN_CERTS"),
+            accept_invalid_scan_certs.map(|v| v.to_string()),
+        );
+
+        pairs
+    }
+}
+
+/// Debug is written in terms of [`DaemonArgs::install_config_pairs`] rather than derived, so it
+/// cannot leak secrets: the api key is redacted explicitly, and the fields that never reach an
+/// install artifact at all (the docker proxy TLS material among them) are simply not enumerated.
+impl std::fmt::Debug for DaemonArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut out = f.debug_struct("DaemonArgs");
+        for pair in self.install_config_pairs() {
+            let key = pair.cli_flag.or(pair.msi_key).unwrap_or("?");
+            if pair.cli_flag == Some("--daemon-api-key") {
+                out.field(key, &"<redacted>");
+            } else {
+                out.field(key, &pair.value);
+            }
+        }
+        out.finish_non_exhaustive()
+    }
+}
+
+/// Render a mode using clap's own `ValueEnum` naming, so the emitted value is by construction
+/// one the daemon's `--mode` parser accepts.
+fn render_mode(mode: Option<&DaemonMode>) -> Option<String> {
+    use clap::ValueEnum;
+    mode.and_then(|m| m.to_possible_value())
+        .map(|v| v.get_name().to_string())
+}
+
+/// The name a daemon carries when nothing else names it. Also the name the server provisions
+/// the integrated daemon under, so a self-host install's record and the daemon's own default
+/// agree without either side having to remember the literal.
+pub const DEFAULT_DAEMON_NAME: &str = "scanopy-daemon";
 
 /// Unified configuration struct that handles both startup and runtime config
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -263,6 +609,11 @@ pub struct AppConfig {
     /// Set to true after the first self-report completes
     #[serde(default)]
     pub has_self_reported: bool,
+    /// Resolved on-disk path of this config, computed once by [`AppConfig::load`]. Runtime-only
+    /// (never serialized): the daemon and installer use it instead of re-deriving the path, so the
+    /// `--config-dir` override is honored consistently by both the write and read sides.
+    #[serde(skip)]
+    pub config_path: Option<PathBuf>,
 }
 
 fn default_accept_invalid_scan_certs() -> bool {
@@ -292,11 +643,16 @@ impl Default for AppConfig {
             network_id: None,
             daemon_port: 60073,
             bind_address: "0.0.0.0".to_string(),
-            name: "scanopy-daemon".to_string(),
+            name: DEFAULT_DAEMON_NAME.to_string(),
             log_level: "info".to_string(),
             log_file: None,
             heartbeat_interval: 30,
-            id: Uuid::new_v4(),
+            // Start with no id — a provisioned daemon learns its server-assigned id from the
+            // register / first-contact handshake, and sends a nil X-Daemon-ID until then. A
+            // self-generated random id here would NOT match the provisioned record and the
+            // server's 1:1 anti-reuse check would reject it as a daemon mismatch. (Legacy
+            // daemons that self-registered keep their persisted id in config.json, unaffected.)
+            id: Uuid::nil(),
             last_heartbeat: None,
             host_id: None,
             daemon_api_key: None,
@@ -320,36 +676,80 @@ impl Default for AppConfig {
             capabilities: LegacyCapabilities::default(),
             integration_targets: Vec::new(),
             has_self_reported: false,
+            config_path: None,
         }
     }
 }
 
 impl AppConfig {
-    /// Get config path, optionally namespaced by daemon name.
-    /// If name is None or "scanopy-daemon" (default), uses legacy path for backward compat.
-    pub fn get_config_path_for_name(name: Option<&str>) -> Result<(bool, PathBuf)> {
-        let proj_dirs = ProjectDirs::from("com", "scanopy", "daemon")
-            .ok_or_else(|| anyhow::anyhow!("Unable to determine config directory"))?;
-
-        let config_path = match name {
-            // Use namespaced path for custom daemon names
-            Some(n) if n != "scanopy-daemon" => proj_dirs.config_dir().join(n).join("config.json"),
-            // Legacy path for default name or None
-            _ => proj_dirs.config_dir().join("config.json"),
+    /// Resolve the `config.json` path.
+    ///
+    /// When `config_dir` is `Some` (e.g. the `--config-dir` baked into a system service), the
+    /// config lives at `<config_dir>/config.json` — an explicit, profile-independent location.
+    /// Otherwise it falls back to the per-user [`ProjectDirs`] location, namespaced by daemon name
+    /// (default name / `None` uses the legacy un-namespaced path for backward compat).
+    pub fn get_config_path_for_name(
+        name: Option<&str>,
+        config_dir: Option<&Path>,
+    ) -> Result<(bool, PathBuf)> {
+        let config_path = if let Some(dir) = config_dir {
+            dir.join("config.json")
+        } else {
+            let proj_dirs = ProjectDirs::from("com", "scanopy", "daemon")
+                .ok_or_else(|| anyhow::anyhow!("Unable to determine config directory"))?;
+            match name {
+                // Use namespaced path for custom daemon names
+                Some(n) if n != DEFAULT_DAEMON_NAME => {
+                    proj_dirs.config_dir().join(n).join("config.json")
+                }
+                // Legacy path for default name or None
+                _ => proj_dirs.config_dir().join("config.json"),
+            }
         };
 
         Ok((config_path.exists(), config_path))
     }
 
-    /// Get config path using default (legacy) location
+    /// Get config path using default (legacy) per-user location.
     pub fn get_config_path() -> Result<(bool, PathBuf)> {
-        Self::get_config_path_for_name(None)
+        Self::get_config_path_for_name(None, None)
     }
 
-    pub fn load(cli_args: DaemonCli) -> anyhow::Result<Self> {
-        // Determine config path based on daemon name
-        let (config_exists, config_path) =
-            AppConfig::get_config_path_for_name(cli_args.name.as_deref())?;
+    /// Platform default **system** config directory for service installs — a fixed location the
+    /// service can read regardless of the user profile it runs under (unlike the per-user
+    /// [`ProjectDirs`] path). Mirrors [`AppConfig::default_log_path`]'s per-OS scheme; the installer
+    /// namespaces this by daemon name.
+    pub fn default_system_config_dir() -> PathBuf {
+        #[cfg(target_os = "linux")]
+        {
+            PathBuf::from("/etc/scanopy/daemon")
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            PathBuf::from("/Library/Application Support/Scanopy/daemon")
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let program_data =
+                std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".to_string());
+            PathBuf::from(program_data).join("Scanopy").join("daemon")
+        }
+
+        // FreeBSD / OpenBSD and other unixes: ports/pkg convention.
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        {
+            PathBuf::from("/usr/local/etc/scanopy/daemon")
+        }
+    }
+
+    pub fn load(cli_args: DaemonArgs) -> anyhow::Result<Self> {
+        // Determine config path from the daemon name and any explicit --config-dir override.
+        let (config_exists, config_path) = AppConfig::get_config_path_for_name(
+            cli_args.name.as_deref(),
+            cli_args.config_dir.as_deref(),
+        )?;
 
         // Standard configuration layering: Defaults → Config file → Env → CLI (highest priority)
         let mut figment = Figment::from(Serialized::defaults(AppConfig::default()));
@@ -438,6 +838,13 @@ impl AppConfig {
         if let Some(docker_proxy_ssl_chain) = cli_args.docker_proxy_ssl_chain {
             figment = figment.merge(("docker_proxy_ssl_chain", docker_proxy_ssl_chain));
         }
+        // Whether the mode was explicitly chosen (CLI or env). If not, it is
+        // inferred from server_url presence after extraction below, so the
+        // two-flag install works: `--server-url … --api-key …` => DaemonPoll,
+        // `--api-key …` (no server url) => ServerPoll.
+        let mode_explicitly_set = cli_args.mode.is_some()
+            || std::env::var("SCANOPY_MODE").is_ok()
+            || std::env::var("NETVISOR_MODE").is_ok();
         if let Some(mode) = cli_args.mode {
             figment = figment.merge(("mode", mode));
         }
@@ -472,12 +879,27 @@ impl AppConfig {
             .extract()
             .map_err(|e| Error::msg(format!("Configuration error: {}", e)))?;
 
+        // Infer mode from server_url when it was not explicitly set: DaemonPoll
+        // dials the server (needs a server_url), ServerPoll is dialed by the
+        // server (no server_url). An explicit --mode / SCANOPY_MODE still wins.
+        if !mode_explicitly_set {
+            config.mode = if config.server_url.is_some() {
+                DaemonMode::DaemonPoll
+            } else {
+                DaemonMode::ServerPoll
+            };
+        }
+
         // Parse integration-target tokens last so CLI > env > config-file precedence holds:
         // CLI tokens win if provided, else env tokens; if neither, keep whatever the config file
         // already deserialized into `integration_targets`.
         if let Some(tokens) = cli_args.credential_ids.or(env_target_tokens) {
             config.integration_targets = parse_integration_target_tokens(&tokens)?;
         }
+
+        // Record the resolved path so the runtime read/write side uses it verbatim instead of
+        // re-deriving (which would re-read `$HOME`/`--config-dir` and could diverge).
+        config.config_path = Some(config_path);
 
         Ok(config)
     }
@@ -523,6 +945,26 @@ impl AppConfig {
         #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
         {
             PathBuf::from("/tmp/scanopy").join(&filename)
+        }
+    }
+
+    /// Platform default **system** log file for service installs — a fixed, root-writable path
+    /// (unlike [`default_log_path`], which is `$HOME`-relative on macOS/BSD). The installer bakes
+    /// this into the service via `--log-file` so logs land somewhere deterministic regardless of
+    /// the service's runtime profile.
+    pub fn default_system_log_path(name: &str) -> PathBuf {
+        let filename = format!("{}.log", name);
+
+        #[cfg(target_os = "windows")]
+        {
+            let program_data =
+                std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".to_string());
+            PathBuf::from(program_data).join("scanopy").join(&filename)
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            PathBuf::from("/var/log/scanopy").join(&filename)
         }
     }
 }
@@ -591,6 +1033,21 @@ impl ConfigStore {
         Ok(())
     }
 
+    /// Write the current config to disk, creating the parent directory if needed.
+    ///
+    /// Used by the `install` subcommand to persist `config.json` before starting the service.
+    /// Reuses the atomic temp-write+rename in [`ConfigStore::save`] rather than hand-rolling a
+    /// file write.
+    pub async fn persist(&self) -> Result<()> {
+        if let Some(parent) = self.path.parent() {
+            async_fs::create_dir_all(parent)
+                .await
+                .context("Failed to create config directory")?;
+        }
+        let config = self.config.read().await.clone();
+        self.save(&config).await
+    }
+
     pub async fn get_id(&self) -> Result<Uuid> {
         let config = self.config.read().await;
         Ok(config.id)
@@ -599,6 +1056,12 @@ impl ConfigStore {
     pub async fn get_name(&self) -> Result<String> {
         let config = self.config.read().await;
         Ok(config.name.clone())
+    }
+
+    pub async fn set_name(&self, name: String) -> Result<()> {
+        let mut config = self.config.write().await;
+        config.name = name;
+        self.save(&config.clone()).await
     }
 
     pub async fn set_id(&self, id: Uuid) -> Result<()> {
@@ -838,6 +1301,54 @@ mod tests {
         }
     }
 
+    /// The `install` subcommand doubles as reconfigure: it is re-run against an already-installed
+    /// daemon with only the settings that changed, and layers them over that daemon's existing
+    /// `config.json` before writing it back. The reconfigure command deliberately carries no
+    /// credential, so anything it does *not* carry has to survive the round trip — a load that
+    /// rebuilt from defaults would write back a config with no api key and no cached identity,
+    /// leaving the daemon unable to authenticate.
+    #[test]
+    #[serial]
+    fn a_reconfigure_load_keeps_the_settings_it_does_not_carry() {
+        use crate::daemon::shared::config::DaemonArgs;
+
+        let dir = tempfile::tempdir().unwrap();
+        let daemon_id = Uuid::new_v4();
+        std::fs::write(
+            dir.path().join("config.json"),
+            serde_json::json!({
+                "name": "edge-01",
+                "id": daemon_id,
+                "daemon_api_key": "the-key-it-already-has",
+                "server_url": "https://old.example",
+                "daemon_port": 60073,
+                "log_level": "info",
+                "heartbeat_interval": 30,
+                "bind_address": "0.0.0.0",
+                "server_target": null,
+                "server_port": null,
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let config = AppConfig::load(DaemonArgs {
+            config_dir: Some(dir.path().to_path_buf()),
+            server_url: Some("https://new.example".to_string()),
+            ..Default::default()
+        })
+        .expect("config loads from the directory it will be written back to");
+
+        assert_eq!(
+            config.daemon_api_key.as_deref(),
+            Some("the-key-it-already-has")
+        );
+        assert_eq!(config.id, daemon_id);
+        assert_eq!(config.name, "edge-01");
+        // …while what the command did carry still wins.
+        assert_eq!(config.server_url.as_deref(), Some("https://new.example"));
+    }
+
     #[derive(Debug)]
     struct FieldInfo {
         cli_flag: String,
@@ -845,10 +1356,18 @@ mod tests {
         help_text: String,
     }
 
-    const EXCLUDED_FIELDS: [&str; 16] = [
+    const EXCLUDED_FIELDS: [&str; 19] = [
         "daemon_api_key",
         "network_id",
         "server_url",
+        // Locator baked into system services by `install`, not a user-facing config field
+        "config_dir",
+        // Selects which already-installed daemon an install command acts on; resolved by the
+        // installer, never persisted, and meaningless to a fresh MSI install
+        "instance",
+        // Internal marker baked into the Windows service binPath so the daemon runs under the
+        // SCM dispatcher; not a user-facing config field
+        "service",
         // Automatically set by install command, not user-configurable
         "user_id",
         "credential_ids",
@@ -920,6 +1439,86 @@ mod tests {
         );
     }
 
+    /// Every `--flag` the Windows MSI passes to `scanopy-daemon install` must be a real
+    /// `DaemonArgs` long flag. This catches drift across the Rust↔WiX-XML boundary (a
+    /// compile-time check isn't possible there) — e.g. renaming a flag in Rust without
+    /// updating `backend/wix/main.wxs`, or a typo'd flag in the installer.
+    #[test]
+    fn msi_install_flags_are_valid_cli_flags() {
+        let wxs = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/wix/main.wxs"))
+            .expect("read backend/wix/main.wxs");
+
+        let cmd = DaemonCli::command();
+        let valid: std::collections::HashSet<String> = cmd
+            .get_arguments()
+            .filter_map(|a| a.get_long().map(|s| s.to_string()))
+            .collect();
+
+        // Collect every `--flag` token in the file. The .wxs only uses `--` for daemon
+        // CLI flags (HTML comment `<!--`/`-->` markers decode to an empty token and are
+        // skipped), so any token that isn't a known flag is real drift.
+        let bytes = wxs.as_bytes();
+        let mut msi_flags = std::collections::HashSet::new();
+        let mut i = 0;
+        while i + 2 < bytes.len() {
+            if bytes[i] == b'-' && bytes[i + 1] == b'-' {
+                let start = i + 2;
+                let mut j = start;
+                while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'-') {
+                    j += 1;
+                }
+                if j > start {
+                    msi_flags.insert(wxs[start..j].to_string());
+                }
+                i = j.max(i + 2);
+            } else {
+                i += 1;
+            }
+        }
+
+        let unknown: Vec<&String> = msi_flags.iter().filter(|f| !valid.contains(*f)).collect();
+        assert!(
+            unknown.is_empty(),
+            "backend/wix/main.wxs references daemon flags that don't exist in DaemonArgs: {:?}",
+            unknown
+        );
+
+        // COMPLETENESS: the MSI must expose every config field the UI does (the UI's fieldDefs
+        // == DaemonArgs minus EXCLUDED_FIELDS, enforced by config_fields_are_in_sync), except
+        // the ones a Windows service install genuinely can't/shouldn't carry: network + user
+        // come from the 1:1 key, the reachable url is captured at provision, credential refs are
+        // seeded at provision, and config-dir is baked by the installer. Without this direction,
+        // a field could be dropped from the MSI silently (the validity check above only rejects
+        // *extra* flags, not missing ones).
+        const MSI_EXCLUDED_FLAGS: &[&str] = &[
+            "network-id",
+            "user-id",
+            "daemon-url",
+            "credential-id",
+            "config-dir",
+        ];
+        let expected: std::collections::HashSet<String> = cmd
+            .get_arguments()
+            .filter(|a| {
+                let id = a.get_id().to_string();
+                id != "help" && id != "version" && !EXCLUDED_FIELDS.contains(&id.as_str())
+            })
+            .filter_map(|a| a.get_long().map(|s| s.to_string()))
+            .filter(|f| !MSI_EXCLUDED_FLAGS.contains(&f.as_str()))
+            .collect();
+        let missing: Vec<&String> = expected
+            .iter()
+            .filter(|f| !msi_flags.contains(*f))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "backend/wix/main.wxs is missing config flags the UI exposes: {:?}. \
+             Add them as MSI properties + install-command flags, or list them in \
+             MSI_EXCLUDED_FLAGS if a service install intentionally can't carry them.",
+            missing
+        );
+    }
+
     fn extract_rust_fields() -> HashMap<String, FieldInfo> {
         let cmd = DaemonCli::command();
         cmd.get_arguments()
@@ -983,7 +1582,7 @@ mod tests {
 
         // Load config with empty CLI args (env var should take effect)
         let cli = DaemonCli::parse_from::<[&str; 0], &str>([]);
-        let config = AppConfig::load(cli).expect("Failed to load config");
+        let config = AppConfig::load(cli.run_args).expect("Failed to load config");
 
         // Restore original value
         // SAFETY: This test runs serially
@@ -1024,7 +1623,7 @@ mod tests {
 
         // Load config with empty CLI args (env var should take effect)
         let cli = DaemonCli::parse_from::<[&str; 0], &str>([]);
-        let config = AppConfig::load(cli).expect("Failed to load config");
+        let config = AppConfig::load(cli.run_args).expect("Failed to load config");
 
         // Restore original value
         // SAFETY: This test runs serially
@@ -1091,6 +1690,32 @@ mod tests {
         assert!(
             parse_integration_target_tokens(&[format!("{id}@")]).is_err(),
             "trailing @ with no IPs should error"
+        );
+    }
+
+    /// The server renders these tokens into a docker-compose `SCANOPY_CREDENTIAL_IDS`, and the
+    /// daemon parses them back with the function above. Round-tripping every variant through
+    /// both is what keeps the writer and the reader of that grammar in agreement.
+    #[test]
+    fn integration_target_tokens_round_trip_through_display() {
+        let id = Uuid::new_v4();
+        let targets = vec![
+            IntegrationTarget::Network { credential_id: id },
+            IntegrationTarget::DaemonHost { credential_id: id },
+            IntegrationTarget::Hosts {
+                credential_id: id,
+                ips: vec!["10.0.0.5".parse().unwrap()],
+            },
+            IntegrationTarget::Hosts {
+                credential_id: id,
+                ips: vec!["127.0.0.1".parse().unwrap(), "10.0.0.5".parse().unwrap()],
+            },
+        ];
+
+        let tokens: Vec<String> = targets.iter().map(|t| t.to_string()).collect();
+        assert_eq!(
+            parse_integration_target_tokens(&tokens).expect("rendered tokens parse"),
+            targets
         );
     }
 }

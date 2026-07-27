@@ -1,7 +1,95 @@
 use crate::server::services::r#impl::patterns::MatchDetails;
+use crate::server::shared::types::metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider};
+use crate::server::shared::types::{Color, Icon};
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumDiscriminants, VariantNames};
 use utoipa::ToSchema;
+
+/// How recently discovery last observed an entity.
+///
+/// Derived, never persisted — computed from `last_seen_at` against the
+/// entity's network staleness window (`Network::stale_cutoff`). Shared by the
+/// discovery digest email and the UI so a host reported stale in the digest is
+/// the same host badged stale in the inventory and topology; running two
+/// different measures let them disagree (a scan-count measure calls an entity
+/// missing after 3 scans, which is 45 minutes on one network and 3 months on
+/// another).
+///
+/// Only discovery-managed entities can be `Stale` — see
+/// [`DiscoveryTracked::is_discovery_managed`](crate::server::shared::storage::snapshot::DiscoveryTracked::is_discovery_managed).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    ToSchema,
+    strum_macros::EnumIter,
+    strum_macros::IntoStaticStr,
+)]
+#[serde(rename_all = "snake_case")]
+// Matches the serde representation so the filter-value id, the API value and
+// the frontend's generated union are all the same string.
+#[strum(serialize_all = "snake_case")]
+pub enum EntityFreshness {
+    /// First observed during the scan window being reported on. Only the
+    /// digest distinguishes this; the inventory surfaces `created_at` directly.
+    New,
+    /// Observed within the network's staleness window, or not discovery-managed.
+    #[default]
+    Current,
+    /// Discovery-managed and not observed within the network's staleness
+    /// window. Asserts only "not seen recently" — never "removed".
+    Stale,
+}
+
+impl HasId for EntityFreshness {
+    fn id(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl EntityMetadataProvider for EntityFreshness {
+    fn color(&self) -> Color {
+        match self {
+            // Amber, not red: stale means behind, not broken — the same split
+            // the daemon status tags use.
+            Self::Stale => Color::Amber,
+            Self::Current => Color::Green,
+            Self::New => Color::Blue,
+        }
+    }
+
+    fn icon(&self) -> Icon {
+        match self {
+            Self::Stale => Icon::Clock,
+            Self::Current => Icon::Check,
+            Self::New => Icon::Plus,
+        }
+    }
+}
+
+impl TypeMetadataProvider for EntityFreshness {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::New => "New",
+            Self::Current => "Current",
+            Self::Stale => "Stale",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        match self {
+            Self::New => "First observed during the scan being reported on",
+            Self::Current => "Observed within this network's staleness window",
+            Self::Stale => "Not observed within this network's staleness window",
+        }
+    }
+}
 
 #[derive(
     Debug,

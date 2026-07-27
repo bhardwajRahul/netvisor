@@ -4,11 +4,13 @@
 	import { entities, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import type { Service } from '../types/base';
 	import type { Host, IPAddress, Port } from '$lib/features/hosts/types/base';
-	import { formatPort } from '$lib/shared/utils/formatting';
+	import { formatPort, formatRelativeTime } from '$lib/shared/utils/formatting';
 	import { formatIPAddress } from '$lib/features/hosts/queries';
 	import { useSubnetsQuery, isContainerSubnet } from '$lib/features/subnets/queries';
 	import { usePortsQuery } from '$lib/features/ports/queries';
 	import { useIPAddressesQuery } from '$lib/features/ip-addresses/queries';
+	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import { getFreshnessTag } from '$lib/shared/utils/freshness';
 	import { SvelteMap } from 'svelte/reactivity';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 	import { entityRef } from '$lib/shared/components/data/types';
@@ -16,6 +18,8 @@
 		common_delete,
 		common_edit,
 		common_ipAddressBindings,
+		common_lastSeen,
+		common_never,
 		common_notAssigned,
 		common_portBindings,
 		common_tags,
@@ -110,8 +114,16 @@
 	);
 
 	// Build card data
+	const networksQuery = useNetworksQuery();
+
 	let cardData = $derived({
 		title: service.name,
+		// Judged against this service's own network's staleness window.
+		status: getFreshnessTag(
+			service,
+			(networksQuery.data ?? []).find((n) => n.id === service.network_id),
+			{ entityTypeLabel: entities.getName('Service') || undefined }
+		),
 		iconColor: serviceDefinitions.getColorHelper(service.service_definition).icon,
 		Icon: serviceDefinitions.getIconComponent(service.service_definition),
 		fields: [
@@ -140,6 +152,10 @@
 					entityRef: entityRef('IPAddress', iface.id, iface, { subnets: subnetsData })
 				})),
 				emptyText: common_notAssigned()
+			},
+			{
+				label: common_lastSeen(),
+				value: service.last_seen_at ? formatRelativeTime(service.last_seen_at) : common_never()
 			},
 			{ label: common_tags(), snippet: tagsSnippet }
 		],

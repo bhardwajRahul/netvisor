@@ -1,3 +1,4 @@
+use crate::daemon::shared::config::DEFAULT_DAEMON_NAME;
 use crate::server::{
     auth::{
         r#impl::{
@@ -18,12 +19,11 @@ use crate::server::{
         oidc::{OidcRegisterResult, OidcService},
     },
     config::{AppState, DeploymentType, get_deployment_type},
-    daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase},
+    daemons::r#impl::{api::ProvisionDaemonRequest, base::DaemonMode},
     invites::handlers::process_pending_invite,
     networks::r#impl::{Network, NetworkBase},
     organizations::r#impl::base::UseCase,
     shared::{
-        api_key_common::{ApiKeyType, generate_api_key_for_storage},
         events::{
             traits::{Event, OrgScope},
             types::OnboardingOperation,

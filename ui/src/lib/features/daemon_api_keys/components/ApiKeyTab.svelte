@@ -7,7 +7,6 @@
 	import CreateApiKeyModal from './ApiKeyModal.svelte';
 	import type { ApiKey } from '../types/base';
 	import ApiKeyCard from './ApiKeyCard.svelte';
-	import { Plus } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import {
 		useApiKeysQuery,
@@ -23,14 +22,14 @@
 	import {
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
-		common_create,
 		common_created,
 		common_name,
 		common_network,
 		common_noEntityYet,
 		common_tags,
 		common_unknownNetwork,
-		daemonApiKeys_title
+		daemonApiKeys_title,
+		daemonApiKeys_provisionOnlyHint
 	} from '$lib/paraglide/messages';
 
 	let { isReadOnly = false }: TabProps = $props();
@@ -47,9 +46,10 @@
 	const deleteApiKeyMutation = useDeleteApiKeyMutation();
 	const bulkDeleteApiKeysMutation = useBulkDeleteApiKeysMutation();
 
-	// Derived data
+	// Derived data. Only legacy keys are shown here — a key bound 1:1 to a daemon
+	// (daemon_id set) is managed from the daemon record, not this tab.
 	let tagsData = $derived(tagsQuery.data ?? []);
-	let apiKeysData = $derived(apiKeysQuery.data ?? []);
+	let apiKeysData = $derived((apiKeysQuery.data ?? []).filter((k) => k.daemon_id == null));
 	let networksData = $derived(networksQuery.data ?? []);
 	let isLoading = $derived(apiKeysQuery.isPending);
 	let apiKeyIdsInUse = $derived(
@@ -61,11 +61,14 @@
 	let showCreateApiKeyModal = $state(false);
 	let editingApiKey = $state<ApiKey | null>(null);
 
-	// Deep-link: open daemon API key editor from URL
+	// Deep-link: open daemon API key editor from URL. Resolve the id against the FULL,
+	// unfiltered key list — the daemon card's "Manage key" action deep-links a key bound
+	// 1:1 to a daemon (daemon_id set), which is deliberately excluded from `apiKeysData`
+	// (the legacy-only tab list). Resolving against the filtered list would never find it.
 	$effect(() => {
 		if ($modalState.name === 'daemon-api-key' && !showCreateApiKeyModal) {
 			if ($modalState.id) {
-				const entity = apiKeysData.find((e) => e.id === $modalState.id);
+				const entity = (apiKeysQuery.data ?? []).find((e) => e.id === $modalState.id);
 				if (entity) {
 					editingApiKey = entity;
 					showCreateApiKeyModal = true;
@@ -86,11 +89,6 @@
 	async function handleUpdateApiKey(apiKey: ApiKey) {
 		await updateApiKeyMutation.mutateAsync(apiKey);
 		showCreateApiKeyModal = false;
-		editingApiKey = null;
-	}
-
-	function handleCreateApiKey() {
-		showCreateApiKeyModal = true;
 		editingApiKey = null;
 	}
 
@@ -160,16 +158,9 @@
 </script>
 
 <div class="space-y-6">
-	<!-- Header -->
-	<TabHeader title={daemonApiKeys_title()}>
-		<svelte:fragment slot="actions">
-			{#if !isReadOnly}
-				<button class="btn-primary flex items-center" onclick={handleCreateApiKey}
-					><Plus class="h-5 w-5" />{common_create()}</button
-				>
-			{/if}
-		</svelte:fragment>
-	</TabHeader>
+	<!-- Header. No create action: daemon keys are now minted 1:1 through daemon
+	     provisioning, so this tab only lists (and lets you manage) existing keys. -->
+	<TabHeader title={daemonApiKeys_title()} />
 	<!-- Loading state -->
 	{#if isLoading}
 		<Loading />
@@ -177,9 +168,7 @@
 		<!-- Empty state -->
 		<EmptyState
 			title={common_noEntityYet({ entity: daemonApiKeys_title() })}
-			subtitle=""
-			onClick={handleCreateApiKey}
-			cta={common_create()}
+			subtitle={daemonApiKeys_provisionOnlyHint()}
 		/>
 	{:else}
 		<DataControls

@@ -6,10 +6,11 @@ PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
 
 case "$PLATFORM" in
     mingw*|msys*|cygwin*)
-        echo "Windows detected. This install script is for Linux and macOS."
+        echo "Windows detected. This script is for Linux, macOS, and FreeBSD."
         echo ""
-        echo "To install on Windows, go to the Scanopy web UI and create a daemon — it will"
-        echo "generate the correct PowerShell download and run commands for you."
+        echo "On Windows, install with the signed MSI (attended wizard or silent"
+        echo "'msiexec /qn SERVERURL=... APIKEY=...'), or go to the Scanopy web UI and create a"
+        echo "daemon for the PowerShell download + 'scanopy-daemon install' commands."
         exit 1
         ;;
 esac
@@ -33,7 +34,7 @@ esac
 
 BINARY_NAME="scanopy-daemon-${PLATFORM}-${ARCH}"
 
-echo "Installing Scanopy daemon..."
+echo "Downloading Scanopy daemon..."
 echo "Platform: $PLATFORM"
 echo "Architecture: $ARCH"
 echo "Binary: $BINARY_NAME"
@@ -55,12 +56,12 @@ fi
 chmod +x scanopy-daemon
 
 # Install to system
-echo "Installing to /usr/local/bin (may require sudo)..."
+echo "Downloading to /usr/local/bin (may require sudo)..."
 if [ -w "/usr/local/bin" ]; then
     mv scanopy-daemon /usr/local/bin/
 else
     sudo mv scanopy-daemon /usr/local/bin/ || {
-        echo "Error: Failed to install scanopy-daemon. Please check sudo permissions."
+        echo "Error: Failed to download scanopy-daemon. Please check sudo permissions."
         rm -f scanopy-daemon
         exit 1
     }
@@ -68,71 +69,10 @@ fi
 
 # Verify installation
 if [ ! -f "/usr/local/bin/scanopy-daemon" ]; then
-    echo "Error: Installation verification failed."
+    echo "Error: Download verification failed."
     exit 1
 fi
 
 echo ""
-echo "✓ Scanopy daemon installed successfully!"
+echo "✓ Scanopy daemon binary downloaded successfully!"
 echo ""
-
-# Ask about systemd service installation (Linux only)
-if [ "$PLATFORM" = "linux" ] && command -v systemctl &> /dev/null; then
-    echo "Would you like to install Scanopy daemon as a systemd service?"
-    echo "This will allow the daemon to:"
-    echo "  - Start automatically on boot"
-    echo "  - Run in the background"
-    echo "  - Restart automatically if it crashes"
-    echo ""
-    read -p "Install as systemd service? [y/N]: " -n 1 -r
-    echo
-    
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo ""
-        echo "Installing systemd service..."
-        
-        # Download service file
-        SERVICE_URL="https://raw.githubusercontent.com/${REPO}/main/scanopy-daemon.service"
-        
-        if ! curl -fL "$SERVICE_URL" -o scanopy-daemon.service; then
-            echo "Warning: Failed to download service file from $SERVICE_URL"
-            echo "You can manually install the service later."
-        else
-            # Install service file
-            sudo mv scanopy-daemon.service /etc/systemd/system/ || {
-                echo "Error: Failed to install service file."
-                rm -f scanopy-daemon.service
-                exit 1
-            }
-            
-            echo ""
-            echo "✓ Systemd service file installed!"
-            echo ""
-            echo "⚠️  IMPORTANT: You must edit the service file with your daemon configuration:"
-            echo ""
-            echo "  sudo nano /etc/systemd/system/scanopy-daemon.service"
-            echo ""
-            echo "Add your daemon arguments to the ExecStart line:"
-            echo "  ExecStart=/usr/local/bin/scanopy-daemon --server-url http://YOUR_SERVER --server-port 60072 --network-id YOUR_NETWORK_ID --daemon-api-key YOUR_API_KEY"
-            echo ""
-            echo "Then enable and start the service:"
-            echo "  sudo systemctl daemon-reload"
-            echo "  sudo systemctl enable scanopy-daemon"
-            echo "  sudo systemctl start scanopy-daemon"
-            echo ""
-            echo "Check status:"
-            echo "  sudo systemctl status scanopy-daemon"
-            echo ""
-            echo "View logs:"
-            echo "  sudo journalctl -u scanopy-daemon -f"
-            echo ""
-        fi
-    fi
-fi
-
-# Show manual run instructions
-echo ""
-echo "To run daemon manually:"
-echo "  scanopy-daemon --server-url YOUR_SERVER_URL"
-echo ""
-echo "Need help? Visit: https://github.com/${REPO}#readme"

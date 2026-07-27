@@ -131,6 +131,112 @@ impl HostService {
         .await
     }
 
+    /// Create-or-upsert body of `CrudService::create`, WITHOUT the
+    /// `HostDedup` advisory lock. Only two callers:
+    /// - `CrudService::create` (mod.rs), which wraps it in the lock;
+    /// - `create_with_children`, which holds the same lock across the wider
+    ///   IP/MAC-match → create → IP-insertion window (re-acquiring here on a
+    ///   second connection would self-deadlock).
+    pub(crate) async fn create_unlocked(
+        &self,
+        host: Host,
+        authentication: AuthenticatedEntity,
+    ) -> Result<Host> {
+        let host = if host.id == Uuid::nil() {
+            Host::new(host.base.clone())
+        } else {
+            host
+        };
+
+        tracing::trace!("Creating host {:?}", host);
+
+        // SCD2: only live hosts are eligible for the natural-key match.
+        let filter = StorableFilter::<Host>::new_from_network_ids(&[host.base.network_id]).live();
+        let all_hosts = self.get_all(filter).await?;
+
+        // Find existing host by ID (Host::eq only compares IDs)
+        // For discovery, create_with_children already set host.id to the existing host's ID
+        // if an IP-address match was found, so this will find the match
+        let host_from_storage = match all_hosts.into_iter().find(|h| host.eq(h)) {
+            // Upsert if both are discovery sources, or if IDs match exactly
+            Some(existing_host)
+                if (host.base.source.discriminant() == EntitySourceDiscriminants::Discovery
+                    && existing_host.base.source.discriminant()
+                        == EntitySourceDiscriminants::Discovery)
+                    || host.id == existing_host.id =>
+            {
+                if host.id != existing_host.id {
+                    tracing::warn!(
+                        incoming_host_id = %host.id,
+                        matched_host_id = %existing_host.id,
+                        matched_host_name = %existing_host.base.name,
+                        "Host matched via MAC/IP address but discovery reported a different host ID. \
+                         This may indicate a daemon is using a stale configuration. \
+                         To fix, update the daemon's config file with: host_id = \"{}\"",
+                        existing_host.id
+                    );
+                }
+
+                tracing::debug!(
+                    "Duplicate host for {}: {} found, {}: {} - upserting discovery data...",
+                    host.base.name,
+                    host.id,
+                    existing_host.base.name,
+                    existing_host.id
+                );
+
+                self.upsert_host(existing_host, host, authentication)
+                    .await?
+            }
+            _ => {
+                if let Some(existing_host) = self.get_by_id(&host.id).await? {
+                    return Err(ValidationError::new(format!(
+                        "Network mismatch: Daemon is trying to update host '{}' (id: {}) but cannot proceed. \
+                        The host belongs to network {} while the daemon is assigned to network {}. \
+                        To resolve this, either reassign the daemon to the correct network or delete the mismatched host.",
+                        existing_host.base.name,
+                        host.id,
+                        existing_host.base.network_id,
+                        host.base.network_id
+                    )).into());
+                }
+
+                // SCD2 origin: this row is being inserted for the first
+                // time. Stamp created_at + valid_from to the entity's
+                // already-refreshed `last_seen_at` so all four temporal
+                // columns line up at one canonical scan_time. See
+                // `DiscoveryTracked::originate_scan_timestamps`.
+                use crate::server::shared::storage::snapshot::DiscoveryTracked;
+                let mut host = host;
+                host.originate_scan_timestamps(host.last_seen_at);
+                let created = self.storage().create(&host).await?;
+                let trigger_stale = created.triggers_staleness(None);
+
+                if let Some(scope) = EntityScope::from_ids(
+                    created.id(),
+                    created.clone().into(),
+                    self.get_network_id(&created),
+                    self.get_organization_id(&created),
+                ) {
+                    self.event_bus()
+                        .publish(
+                            Event::new(scope, EntityOperation::Created, authentication).with_flags(
+                                EntityEventFlags {
+                                    trigger_stale,
+                                    ..Default::default()
+                                },
+                            ),
+                        )
+                        .await?;
+                }
+
+                host
+            }
+        };
+
+        Ok(host_from_storage)
+    }
+
     /// Create a host with all children, handling conflicts according to behavior.
     /// This is the unified internal method used by both API and discovery paths.
     ///
@@ -144,9 +250,10 @@ impl HostService {
     ///    - For discovery (ConflictBehavior::Upsert): Sets `host.id = existing_host.id` so the
     ///      subsequent create() call will recognize this as an existing host.
     ///
-    /// 2. **ID-based matching** (in `create()`): Uses `Host::eq` which only compares IDs.
-    ///    Since we set `host.id = existing_host.id` in step 1, the create() method will find
-    ///    a match and call `upsert_host()` to merge discovery data.
+    /// 2. **ID-based matching** (in `create_unlocked()`): Uses `Host::eq` which only compares
+    ///    IDs. Since we set `host.id = existing_host.id` in step 1, it will find a match and
+    ///    call `upsert_host()` to merge discovery data. Both stages run under one
+    ///    `HostDedup` advisory lock held until children are persisted (see below).
     ///
     /// This two-stage approach means:
     /// - IP-address matching handles the "is this the same physical host?" question
@@ -169,6 +276,27 @@ impl HostService {
         // interfaces and their resolved L2 neighbors (GH #649).
         interfaces_complete: bool,
     ) -> Result<HostResponse> {
+        // For advancing `last_seen_at` on matched-existing child rows (see the upsert
+        // branches below); mirrors how upsert_host refreshes the host's freshness signal.
+        use crate::server::shared::storage::snapshot::DiscoveryTracked;
+
+        // DB-level dedup lock, held from the IP/MAC natural-key match until
+        // all children are persisted. The match reads the ip_addresses
+        // table, so a competing submission of the same NEW device only
+        // becomes visible once this one's host AND ip_addresses rows are
+        // inserted — locking `create_unlocked` alone (ID-based check) cannot
+        // catch two fresh-UUID submissions of one device. Error paths
+        // release via Drop.
+        let dedup_guard = self
+            .storage()
+            .session_lock(
+                LockKey::HostDedup {
+                    network_id: host.base.network_id,
+                },
+                DEFAULT_LOCK_TIMEOUT,
+            )
+            .await?;
+
         // Stage 1: IP-address-based collision detection
         // Compares MAC addresses and subnet+IP to find hosts that represent the same physical machine
         let matching_result = self
@@ -229,7 +357,8 @@ impl HostService {
 
         // Stage 2: Create or upsert host via ID matching
         // If host.id was set to an existing host's ID above, this will trigger upsert_host()
-        let mut created_host = self.create(host, authentication.clone()).await?;
+        // Unlocked variant: this task already holds the HostDedup lock.
+        let mut created_host = self.create_unlocked(host, authentication.clone()).await?;
 
         // Capture daemon interface ID → IP mapping before ip_addresses are consumed.
         // Used later to remap credential assignment ip_address_ids to server-assigned IDs.
@@ -249,13 +378,21 @@ impl HostService {
         // For Upsert: deduplicate by checking existing ports first
         // For Error: just create (will fail on duplicate constraint)
         let mut created_ports = Vec::new();
+        // Matched-existing children are pushed unchanged below; collect them here to
+        // advance their `last_seen_at` to this scan's time (they were still observed),
+        // then persist in one write — otherwise a repeat scan freezes child freshness
+        // even though the FK subscriber advances last_discovery_id.
+        let mut ports_to_refresh: Vec<Port> = Vec::new();
         for port in ports {
             let port_with_host = port.with_host(created_host.id, created_host.base.network_id);
 
             if matches!(conflict_behavior, ConflictBehavior::Upsert) {
                 // Check if port already exists by ID
-                if let Some(existing_port) = self.port_service.get_by_id(&port_with_host.id).await?
+                if let Some(mut existing_port) =
+                    self.port_service.get_by_id(&port_with_host.id).await?
                 {
+                    existing_port.set_last_seen_at(port_with_host.last_seen_at);
+                    ports_to_refresh.push(existing_port);
                     created_ports.push(existing_port);
                     continue;
                 }
@@ -263,11 +400,13 @@ impl HostService {
                 // Check by unique constraint (host_id, port_number, protocol)
                 let existing_ports = self.port_service.get_for_host(&created_host.id).await?;
                 let port_config = port_with_host.base.port_type.config();
-                if let Some(existing_port) = existing_ports.into_iter().find(|p| {
+                if let Some(mut existing_port) = existing_ports.into_iter().find(|p| {
                     let existing_config = p.base.port_type.config();
                     existing_config.number == port_config.number
                         && existing_config.protocol == port_config.protocol
                 }) {
+                    existing_port.set_last_seen_at(port_with_host.last_seen_at);
+                    ports_to_refresh.push(existing_port);
                     created_ports.push(existing_port);
                     continue;
                 }
@@ -277,7 +416,6 @@ impl HostService {
             // inserted. Stamp created_at + valid_from to the entity's
             // already-refreshed `last_seen_at` so all four temporal
             // columns line up at one canonical scan_time.
-            use crate::server::shared::storage::snapshot::DiscoveryTracked;
             let mut port_with_host = port_with_host;
             port_with_host.originate_scan_timestamps(port_with_host.last_seen_at);
             let created = self
@@ -285,6 +423,14 @@ impl HostService {
                 .create(port_with_host, authentication.clone())
                 .await?;
             created_ports.push(created);
+        }
+        // Persist the refreshed last_seen_at for matched ports (storage-level, so no
+        // Updated event is fired for a no-op freshness bump — same as upsert_host).
+        if !ports_to_refresh.is_empty() {
+            self.port_service
+                .storage()
+                .update_many(&ports_to_refresh)
+                .await?;
         }
 
         // Order: subnets → ip_addresses → services
@@ -383,6 +529,9 @@ impl HostService {
         let mut network_live_subnets: Option<Vec<Subnet>> = None;
 
         let mut created_ip_addresses = Vec::new();
+        // Matched-existing ip_addresses are pushed unchanged below; collect them to
+        // advance last_seen_at (see the ports loop for rationale) and persist in one write.
+        let mut ip_addresses_to_refresh: Vec<IPAddress> = Vec::new();
         for mut ip_address in ip_addresses {
             ip_address.base.host_id = created_host.id;
             // Force onto the host's network (see subnet loop above): the payload
@@ -434,9 +583,11 @@ impl HostService {
 
             if matches!(conflict_behavior, ConflictBehavior::Upsert) {
                 // Check if interface already exists by ID
-                if let Some(existing_iface) =
+                if let Some(mut existing_iface) =
                     self.ip_address_service.get_by_id(&ip_address.id).await?
                 {
+                    existing_iface.set_last_seen_at(ip_address.last_seen_at);
+                    ip_addresses_to_refresh.push(existing_iface.clone());
                     created_ip_addresses.push(existing_iface);
                     continue;
                 }
@@ -450,10 +601,12 @@ impl HostService {
                         .live();
                 let existing_by_key: Vec<IPAddress> =
                     self.ip_address_service.get_all(filter).await?;
-                if let Some(existing_iface) = existing_by_key
+                if let Some(mut existing_iface) = existing_by_key
                     .into_iter()
                     .find(|i| i.base.ip_address == ip_address.base.ip_address)
                 {
+                    existing_iface.set_last_seen_at(ip_address.last_seen_at);
+                    ip_addresses_to_refresh.push(existing_iface.clone());
                     created_ip_addresses.push(existing_iface);
                     continue;
                 }
@@ -477,7 +630,7 @@ impl HostService {
                     let existing_by_mac: Vec<IPAddress> =
                         self.ip_address_service.get_all(mac_filter).await?;
                     if existing_by_mac.len() == 1 {
-                        let existing_iface = existing_by_mac.into_iter().next().unwrap();
+                        let mut existing_iface = existing_by_mac.into_iter().next().unwrap();
                         tracing::debug!(
                             interface_ip = %ip_address.base.ip_address,
                             interface_mac = %mac,
@@ -485,6 +638,8 @@ impl HostService {
                             incoming_subnet_id = %ip_address.base.subnet_id,
                             "Found existing ip_address by MAC address (subnet_id differs, 1:1 MAC match)"
                         );
+                        existing_iface.set_last_seen_at(ip_address.last_seen_at);
+                        ip_addresses_to_refresh.push(existing_iface.clone());
                         created_ip_addresses.push(existing_iface);
                         continue;
                     }
@@ -494,7 +649,6 @@ impl HostService {
             // SCD2 origin: dedup didn't match, so this row is being
             // inserted. Stamp created_at + valid_from to the entity's
             // already-refreshed `last_seen_at`.
-            use crate::server::shared::storage::snapshot::DiscoveryTracked;
             let mut ip_address = ip_address;
             ip_address.originate_scan_timestamps(ip_address.last_seen_at);
             let created = self
@@ -502,6 +656,13 @@ impl HostService {
                 .create(ip_address, authentication.clone())
                 .await?;
             created_ip_addresses.push(created);
+        }
+        // Persist refreshed last_seen_at for matched ip_addresses (storage-level, no event).
+        if !ip_addresses_to_refresh.is_empty() {
+            self.ip_address_service
+                .storage()
+                .update_many(&ip_addresses_to_refresh)
+                .await?;
         }
 
         // Build scanner→DB ip_address ID mapping using positional correspondence.
@@ -1063,6 +1224,8 @@ impl HostService {
             );
         }
         created_host.base.credential_assignments = remapped_assignments;
+
+        dedup_guard.release().await?;
 
         Ok(HostResponse::from_host_with_children(
             created_host,

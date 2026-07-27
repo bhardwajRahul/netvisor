@@ -30,6 +30,7 @@
 		common_confirmBulkDelete,
 		common_created,
 		common_description,
+		common_lastSeen,
 		common_name,
 		common_network,
 		common_noEntityYet,
@@ -54,7 +55,14 @@
 
 	// Queries
 	const tagsQuery = useTagsQuery();
-	const subnetsQuery = useSubnetsQuery();
+	// Staleness filter state. Server-side so it applies to the whole set, and
+	// keyed separately from the shared subnets cache.
+	let stale = $state<boolean | null>(null);
+	const subnetsQuery = useSubnetsQuery(undefined, () => stale ?? undefined);
+
+	function handleStaleFilterChange(next: boolean | null) {
+		stale = next;
+	}
 	const networksQuery = useNetworksQuery();
 
 	// Mutations
@@ -169,7 +177,8 @@
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
 				},
 				created_at: { label: common_created(), type: 'date' },
-				updated_at: { label: common_updated(), type: 'date' }
+				updated_at: { label: common_updated(), type: 'date' },
+				last_seen_at: { label: common_lastSeen(), type: 'date' }
 			},
 			[
 				{ key: 'description', label: common_description(), type: 'string', searchable: true },
@@ -223,6 +232,7 @@
 			entityType={isReadOnly ? undefined : 'Subnet'}
 			getItemTags={getSubnetTags}
 			getItemId={(item) => item.id}
+			onStaleFilterChange={handleStaleFilterChange}
 			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(

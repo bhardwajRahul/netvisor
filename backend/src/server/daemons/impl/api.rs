@@ -181,6 +181,10 @@ pub struct DiscoveryUpdatePayload {
     pub discovery_type: DiscoveryType,
     pub progress: u8,
     pub error: Option<String>,
+    /// Non-fatal warnings for a completed run (e.g. the scan hit its time limit
+    /// and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
+    #[serde(default)]
+    pub warnings: Vec<String>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
     #[serde(default)]
@@ -244,6 +248,7 @@ impl DiscoveryUpdatePayload {
             progress: 0,
             discovery_type,
             error: None,
+            warnings: Vec::new(),
             started_at: None,
             finished_at: None,
             hosts_discovered: None,
@@ -266,6 +271,7 @@ impl DiscoveryUpdatePayload {
             phase: update.phase,
             progress: update.progress,
             error: update.error,
+            warnings: update.warnings,
             started_at: info.started_at,
             finished_at: update.finished_at,
             hosts_discovered: None,
@@ -355,11 +361,18 @@ impl ServerCapabilities {
 }
 
 /// First contact request from server to ServerPoll daemon.
-/// Sent on first poll to assign the daemon its server-side ID.
+/// Sent on first poll to hand the daemon its server-side identity.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FirstContactRequest {
     /// The daemon's server-assigned ID
     pub daemon_id: Uuid,
+    /// The network the daemon belongs to (server-provisioned identity). Additive:
+    /// an older daemon that ignores this field still works off its cached id.
+    #[serde(default)]
+    pub network_id: Option<Uuid>,
+    /// The daemon's server-assigned name.
+    #[serde(default)]
+    pub name: Option<String>,
     /// Server capabilities (version, deprecation warnings)
     pub server_capabilities: ServerCapabilities,
 }
@@ -382,20 +395,51 @@ pub struct DaemonResponse {
     pub interfaced_subnet_ids: Vec<Uuid>,
 }
 
-/// Request to pre-provision a ServerPoll mode daemon.
-/// This creates the daemon record on the server before the daemon is installed.
+/// Request to pre-provision a daemon (either mode) before it is installed.
+/// This creates the daemon record + its 1:1 API key on the server so the install
+/// command shrinks to two flags.
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ProvisionDaemonRequest {
-    /// Human-readable name for the daemon.
-    pub name: String,
-    /// Network this daemon will be associated with.
-    pub network_id: Uuid,
-    /// URL where the server can reach the daemon (required for ServerPoll mode).
-    pub url: String,
+    /// Human-readable name for the daemon. Required unless `daemon_id` is set, in which case
+    /// the existing record's name is kept.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Network this daemon will be associated with. Required unless `daemon_id` is set, in
+    /// which case the existing record's network is kept.
+    #[serde(default)]
+    pub network_id: Option<Uuid>,
+    /// How the daemon communicates with the server. Defaults to DaemonPoll
+    /// (the daemon dials out) for forward-compat with older clients.
+    #[serde(default)]
+    pub mode: DaemonMode,
+    /// Reachable URL where the *server* can dial the daemon. Required for
+    /// ServerPoll, unused for DaemonPoll (the daemon dials out instead).
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Credential/integration references to seed onto the daemon's first
+    /// discovery run. References only — never secret material. Empty by default.
+    #[serde(default)]
+    pub seed_credential_refs: Vec<IntegrationTarget>,
+    /// Mint a fresh 1:1 key for this existing daemon instead of creating a new record,
+    /// keeping its host, discovery jobs and history. Used to give a legacy daemon (no bound
+    /// key) a dedicated one. When set, `name`/`network_id`/`mode`/`url` are ignored — those
+    /// come from the existing record.
+    ///
+    /// Only accepted for a daemon that has never checked in or has no bound key; a live
+    /// provisioned daemon is refused, since it has no way to learn the new key.
+    ///
+    /// Note: install commands are not generated here — call the install-command endpoint,
+    /// which builds them idempotently and fills in the key this response returns.
+    #[serde(default)]
+    pub daemon_id: Option<Uuid>,
 }
 
 /// Response from provisioning a daemon.
 /// Contains the daemon record and the API key (shown only once).
+///
+/// Install commands are deliberately not here — fetch them from the install-command endpoint,
+/// which builds them idempotently and fills in this key. That keeps a display-only regenerate
+/// (advanced-setting change, OS switch) from re-minting the key.
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ProvisionDaemonResponse {
     /// The created daemon record (with version status).

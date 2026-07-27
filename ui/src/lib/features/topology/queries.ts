@@ -16,6 +16,7 @@ import _containerRuleTypes from '$lib/data/container-rule-types.json';
 import _elementRuleTypes from '$lib/data/element-rule-types.json';
 import type { Organization } from '$lib/features/organizations/types';
 import { BaseSSEManager, type SSEConfig } from '$lib/shared/utils/sse';
+import throttle from 'just-throttle';
 import { writable, derived, get } from 'svelte/store';
 import { UNTAGGED_SENTINEL } from './interactions';
 import { getDefaultHiddenEdgeTypes } from './layout/edge-classification';
@@ -836,43 +837,81 @@ interface LiveTopologyUpdate {
 	network_id: string;
 }
 
+// During discovery the server pings this stream ~5×/sec/network; each ping
+// otherwise refetches the uncached, full-rebuild `/topology/data`. Coalesce a
+// burst of pings into at most one refetch per window (trailing edge, so the
+// final state is always fetched), while still reflecting new hosts within ~1s.
+const TOPOLOGY_INVALIDATION_THROTTLE_MS = 1000;
+
 class TopologySSEManager extends BaseSSEManager<LiveTopologyUpdate> {
+	/** Network ids pinged since the last flush; drained by `flushInvalidations`. */
+	private pendingNetworkIds = new Set<string>();
+
+	/**
+	 * Trailing throttle: coalesces the pings accumulated in `pendingNetworkIds`
+	 * into a single invalidation pass per window. Trailing (not leading) so the
+	 * last ping of a burst is never dropped — the view always converges.
+	 */
+	private flushInvalidations = throttle(
+		() => this.runInvalidations(),
+		TOPOLOGY_INVALIDATION_THROTTLE_MS,
+		{
+			leading: false,
+			trailing: true
+		}
+	);
+
+	private runInvalidations() {
+		if (this.pendingNetworkIds.size === 0) return;
+		const networkIds = this.pendingNetworkIds;
+		this.pendingNetworkIds = new Set<string>();
+
+		// Live data changed for these networks — invalidate the topology list
+		// (a live row's nodes/edges may have shifted) plus the LIVE entity
+		// bundle for each affected network. Snapshot bundles are immutable, so
+		// the predicate leaves their cache entries intact.
+		queryClient.invalidateQueries({
+			predicate: (query) => {
+				const key = query.queryKey as readonly unknown[];
+				if (key[0] !== 'topology') return false;
+				if (key[1] === 'data') {
+					// key shape: ['topology', 'data', networkId, snapshotId | null]
+					return typeof key[2] === 'string' && networkIds.has(key[2]) && key[3] == null;
+				}
+				return true;
+			}
+		});
+
+		for (const networkId of networkIds) {
+			// Snapshots-for-network list (taking a snapshot would have added a row).
+			queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.byNetwork(networkId) });
+		}
+
+		// Invalidate org cache until FirstTopologyRebuild milestone appears.
+		const org = queryClient.getQueryData<Organization>(queryKeys.organizations.current());
+		if (org && !org.onboarding.includes('FirstTopologyRebuild')) {
+			queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
+		}
+	}
+
 	protected createConfig(): SSEConfig<LiveTopologyUpdate> {
 		return {
 			url: '/api/v1/topology/stream',
 			onMessage: (update) => {
-				// Live data changed for this network — invalidate the topology
-				// list (the live row's nodes/edges may have shifted), the
-				// snapshots-for-network list (taking a snapshot would have
-				// added a row), and the LIVE entity bundle for the affected
-				// network. Snapshot bundles are immutable; predicate keeps
-				// their cache entries intact.
-				queryClient.invalidateQueries({
-					predicate: (query) => {
-						const key = query.queryKey as readonly unknown[];
-						if (key[0] !== 'topology') return false;
-						if (key[1] === 'data') {
-							// key shape: ['topology', 'data', networkId, snapshotId | null]
-							return key[2] === update.network_id && key[3] == null;
-						}
-						return true;
-					}
-				});
-				queryClient.invalidateQueries({
-					queryKey: queryKeys.snapshots.byNetwork(update.network_id)
-				});
-
-				// Invalidate org cache until FirstTopologyRebuild milestone appears
-				const org = queryClient.getQueryData<Organization>(queryKeys.organizations.current());
-				if (org && !org.onboarding.includes('FirstTopologyRebuild')) {
-					queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
-				}
+				this.pendingNetworkIds.add(update.network_id);
+				this.flushInvalidations();
 			},
 			onError: (error) => {
 				console.error('Topology SSE error:', error);
 			},
 			onOpen: () => {}
 		};
+	}
+
+	override disconnect() {
+		this.flushInvalidations.cancel();
+		this.pendingNetworkIds.clear();
+		super.disconnect();
 	}
 }
 

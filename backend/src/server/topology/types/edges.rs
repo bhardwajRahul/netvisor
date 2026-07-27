@@ -40,6 +40,9 @@ pub enum EdgeStroke {
     #[default]
     Solid,
     Dashed,
+    /// Finer break-up than `Dashed`, for edges that annotate the graph rather than
+    /// structure it (see `SameContainer`).
+    Dotted,
 }
 
 /// Controls when an edge contributes to node highlighting on selection
@@ -53,6 +56,23 @@ pub enum EdgeHighlightBehavior {
     Always,
     /// Never highlights connected nodes
     Never,
+}
+
+/// What a click on an edge highlights.
+///
+/// An edge is one segment of a relation — a dependency's chain, a host's addresses, a
+/// container's addresses, a runtime's bridges — and a click either lights up the whole
+/// relation or only the segment that was clicked. Generic: any current or future edge type
+/// picks one, and the selection code reads the property rather than branching on edge type.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash, Default)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum EdgeSelectionScope {
+    /// Highlight every node connected by any segment of the same relation. `relation_field`
+    /// names the edge payload field holding that relation's id.
+    ConnectedNodes { relation_field: &'static str },
+    /// Highlight only this edge's own two endpoints.
+    #[default]
+    Segment,
 }
 
 /// Per-view configuration for an edge: disabled (not in this view) or active with properties
@@ -167,6 +187,18 @@ pub enum EdgeType {
     ContainerRuntime {
         host_id: Uuid,
         service_id: Uuid,
+        /// The bridge subnet(s) this edge reaches: one when they render as their own boxes,
+        /// all of them when merged into a single box. Resolved here rather than in the
+        /// inspector, which cannot tell which subnet an elevated edge landed on.
+        subnet_ids: Vec<Uuid>,
+        /// The containerized services this edge stands for — the ones on those subnets.
+        containerized_service_ids: Vec<Uuid>,
+    },
+    /// One container reachable at several of its host's container-bridge subnets. Ties the
+    /// container's addresses together so a multi-attached container reads as one thing rather
+    /// than as unrelated cards in separate subnet boxes.
+    SameContainer {
+        service_id: Uuid,
     },
     RequestPath {
         dependency_id: Uuid,
@@ -192,6 +224,36 @@ impl HasId for EdgeType {
     }
 }
 
+impl EdgeType {
+    /// What a click on this edge highlights. Edges that stand for one segment of a wider
+    /// relation light up the whole relation; edges that are a relationship in their own
+    /// right light up their endpoints.
+    pub fn selection_scope(&self) -> EdgeSelectionScope {
+        use EdgeSelectionScope::*;
+        match self {
+            // Every segment of the dependency's chain.
+            EdgeType::RequestPath { .. } | EdgeType::HubAndSpoke { .. } => ConnectedNodes {
+                relation_field: "dependency_id",
+            },
+            // Every address of the host.
+            EdgeType::SameHost { .. } => ConnectedNodes {
+                relation_field: "host_id",
+            },
+            // Every address of the container.
+            EdgeType::SameContainer { .. } => ConnectedNodes {
+                relation_field: "service_id",
+            },
+            // A runtime's edges each reach a different bridge, and a hypervisor's each reach a
+            // different VM — they are separate connections that happen to share an origin, not
+            // segments of one thing, so a click stays on the one that was clicked. A physical
+            // link is likewise the whole relationship, not a segment of one.
+            EdgeType::ContainerRuntime { .. }
+            | EdgeType::Hypervisor { .. }
+            | EdgeType::PhysicalLink { .. } => Segment,
+        }
+    }
+}
+
 impl EntityMetadataProvider for EdgeType {
     fn color(&self) -> Color {
         match self {
@@ -200,6 +262,7 @@ impl EntityMetadataProvider for EdgeType {
             EdgeType::SameHost { .. } => EntityDiscriminants::Host.color(),
             EdgeType::Hypervisor { .. } => Concept::Virtualization.color(),
             EdgeType::ContainerRuntime { .. } => Concept::Containerization.color(),
+            EdgeType::SameContainer { .. } => Concept::Containerization.color(),
             EdgeType::PhysicalLink { .. } => EntityDiscriminants::Interface.color(),
         }
     }
@@ -211,6 +274,7 @@ impl EntityMetadataProvider for EdgeType {
             EdgeType::SameHost { .. } => EntityDiscriminants::Host.icon(),
             EdgeType::Hypervisor { .. } => Concept::Virtualization.icon(),
             EdgeType::ContainerRuntime { .. } => Concept::Containerization.icon(),
+            EdgeType::SameContainer { .. } => Concept::Containerization.icon(),
             EdgeType::PhysicalLink { .. } => EntityDiscriminants::Interface.icon(),
         }
     }
@@ -224,6 +288,7 @@ impl TypeMetadataProvider for EdgeType {
             EdgeType::SameHost { .. } => "Same Host",
             EdgeType::Hypervisor { .. } => "Hypervisor",
             EdgeType::ContainerRuntime { .. } => "Container Runtime",
+            EdgeType::SameContainer { .. } => "Same Container",
             EdgeType::PhysicalLink { .. } => "Physical Link",
         }
     }
@@ -235,6 +300,7 @@ impl TypeMetadataProvider for EdgeType {
             EdgeType::SameHost { .. } => EdgeStyle::Bezier.into(),
             EdgeType::Hypervisor { .. } => EdgeStyle::Bezier.into(),
             EdgeType::ContainerRuntime { .. } => EdgeStyle::Bezier.into(),
+            EdgeType::SameContainer { .. } => EdgeStyle::Bezier.into(),
             EdgeType::PhysicalLink { .. } => EdgeStyle::Bezier.into(),
         };
 
@@ -246,6 +312,7 @@ impl TypeMetadataProvider for EdgeType {
             EdgeType::SameHost { .. } => false,
             EdgeType::Hypervisor { .. } => false,
             EdgeType::ContainerRuntime { .. } => false,
+            EdgeType::SameContainer { .. } => false,
             EdgeType::PhysicalLink { .. } => false, // No markers - bidirectional link
         };
 
@@ -265,7 +332,8 @@ impl TypeMetadataProvider for EdgeType {
             "edge_style": edge_style,
             "is_host_edge": is_host_edge,
             "is_dependency_edge": is_dependency_edge,
-            "is_physical_edge": is_physical_edge
+            "is_physical_edge": is_physical_edge,
+            "selection_scope": self.selection_scope()
         })
     }
 }
@@ -325,5 +393,23 @@ mod tests {
     #[test]
     fn view_config_default_is_disabled() {
         assert_eq!(EdgeViewConfig::default(), EdgeViewConfig::Disabled);
+    }
+
+    /// The relation-scoped edges point the selection code at one of their own payload fields
+    /// by name. Renaming or dropping that field would silently degrade every click on the
+    /// edge to "highlight my two endpoints", so hold the two in step here.
+    #[test]
+    fn relation_scoped_edges_carry_the_field_they_name() {
+        for edge_type in EdgeType::iter() {
+            let EdgeSelectionScope::ConnectedNodes { relation_field } = edge_type.selection_scope()
+            else {
+                continue;
+            };
+            let payload = serde_json::to_value(&edge_type).unwrap();
+            assert!(
+                payload.get(relation_field).is_some_and(|v| v.is_string()),
+                "{edge_type:?} says it groups by `{relation_field}`, but serializes {payload}"
+            );
+        }
     }
 }

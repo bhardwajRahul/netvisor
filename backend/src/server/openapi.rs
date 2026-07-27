@@ -19,6 +19,7 @@ use crate::server::credentials::r#impl::base::Credential;
 use crate::server::daemon_api_keys::r#impl::base::DaemonApiKey;
 use crate::server::daemons::handlers::DaemonOrderField;
 use crate::server::daemons::r#impl::base::Daemon;
+use crate::server::daemons::r#impl::install_artifacts::InstallCommandKind;
 use crate::server::dependencies::handlers::DependencyOrderField;
 use crate::server::dependencies::r#impl::base::Dependency;
 use crate::server::discovery::r#impl::base::Discovery;
@@ -34,6 +35,7 @@ use crate::server::services::handlers::ServiceOrderField;
 use crate::server::services::r#impl::base::Service;
 use crate::server::shared::handlers::query::{OrderDirection, PaginationParams};
 use crate::server::shared::storage::traits::Entity;
+use crate::server::shared::types::entities::EntityFreshness;
 use crate::server::shares::r#impl::base::Share;
 use crate::server::snapshots::types::base::Snapshot;
 use crate::server::subnets::handlers::SubnetOrderField;
@@ -67,7 +69,14 @@ pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
         SubnetOrderField,
         DaemonOrderField,
         CredentialOrderField,
-        VlanOrderField
+        VlanOrderField,
+        // Derived staleness status. Not a field on any entity (it's computed
+        // per-request against the network's window), so nothing else pulls it
+        // into the schema — but the frontend must derive its union from here
+        // rather than hand-maintaining one.
+        EntityFreshness,
+        // Referenced by the install-command query parameter, so it needs a registered schema.
+        InstallCommandKind
     )),
     info(
         title = "Scanopy API",

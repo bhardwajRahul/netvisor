@@ -7,6 +7,22 @@ on:
         description: 'Release tag to promote to latest (e.g., v1.0.0)'
         required: true
         type: string
+      generate_social:
+        description: 'Generate social post (Tweet/Bluesky/Discord)'
+        type: boolean
+        default: true
+      generate_email:
+        description: 'Generate product update email draft'
+        type: boolean
+        default: false
+      generate_reddit_scanopy:
+        description: 'Generate r/scanopy Reddit draft'
+        type: boolean
+        default: false
+      generate_reddit_community:
+        description: 'Generate community (r/selfhosted or r/homelab) Reddit draft'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -289,50 +305,46 @@ jobs:
           echo "Title: $TITLE"
           echo "Social post: $SOCIAL_POST"
 
-      - name: Categorize release
-        id: ai_category
-        uses: actions/ai-inference@v1
-        with:
-          model: openai/gpt-4.1
-          max-tokens: 256
-          system-prompt: |
-            You are categorizing releases for Scanopy, a self-hosted network discovery and topology mapping tool. Scanopy deploys as Docker containers: a server and one or more daemons that scan networks to discover hosts, services, subnets, and physical connections (via SNMP, LLDP/CDP, ARP, ping sweep). It generates interactive topology maps. Target audience: homelabbers, sysadmins, and IT teams. Existing capabilities include: host/service/subnet discovery, interactive topology visualization, topology sharing, SNMP polling, daemon management, API keys, and a free tier.
-
-            Categorize the release into one of three categories:
-
-            Category A (Major): A brand-new capability that didn't exist before. Examples: new discovery protocol (SNMP), major UI overhaul, topology sharing, v1.0 milestone.
-
-            Category B (Notable): A meaningful feature that solves a real user problem but isn't a brand-new capability. Examples: API key management, topology export formats, OIDC support, free tier, setup wizard.
-
-            Category C (Incremental): Bug fixes, performance tweaks, polish, minor UI improvements, backwards-compatibility fixes.
-
-            When in doubt between A and B, pick B. When in doubt between B and C, pick B.
-
-            Output exactly one line in this format:
-            CATEGORY: A
-          prompt: |
-            Categorize this release:
-
-            ${{ steps.cleaned_notes.outputs.notes }}
-
-      - name: Generate Reddit drafts
-        id: ai_reddit
+      - name: Generate r/scanopy Reddit draft
+        id: ai_reddit_scanopy
+        if: ${{ inputs.generate_reddit_scanopy }}
         uses: actions/ai-inference@v1
         with:
           model: openai/gpt-4.1
           max-tokens: 1500
           system-prompt: |
-            Generate two Reddit post drafts for a Scanopy release.
+            Generate a Reddit post draft for a Scanopy release, for r/scanopy (the project's own subreddit).
 
             About Scanopy: A self-hosted network discovery and topology mapping tool built for homelabbers, sysadmins, and IT teams. It deploys as Docker containers — a server and one or more daemons. Daemons scan your network using ping sweep, ARP, and SNMP to discover hosts, services (200+ recognized, including Docker, PostgreSQL, nginx, Prometheus, Active Directory), and subnets. It maps physical connections via LLDP/CDP neighbor discovery and generates interactive topology visualizations. It has a free tier for small networks. GitHub: https://github.com/scanopy/scanopy
 
-            Draft 1 — r/scanopy (own subreddit):
+            r/scanopy (own subreddit):
             - For existing users who already know what Scanopy is
             - Include version number in title: "Scanopy vX.Y.Z — <descriptive title>"
             - Full technical details, changelog style
             - Link to full changelog: https://scanopy.net/changelog
 
-            Draft 2 — r/selfhosted or r/homelab (community subreddit):
+            Output format (use these exact labels on their own lines):
+            SCANOPY_TITLE: <title>
+            SCANOPY_BODY:
+            <body text>
+          prompt: |
+            Generate the r/scanopy Reddit post draft for Scanopy ${{ inputs.release_tag }}:
+
+            ${{ steps.cleaned_notes.outputs.notes }}
+
+      - name: Generate community Reddit draft
+        id: ai_reddit_community
+        if: ${{ inputs.generate_reddit_community }}
+        uses: actions/ai-inference@v1
+        with:
+          model: openai/gpt-4.1
+          max-tokens: 1500
+          system-prompt: |
+            Generate a Reddit post draft for a Scanopy release, for a community subreddit (r/selfhosted or r/homelab).
+
+            About Scanopy: A self-hosted network discovery and topology mapping tool built for homelabbers, sysadmins, and IT teams. It deploys as Docker containers — a server and one or more daemons. Daemons scan your network using ping sweep, ARP, and SNMP to discover hosts, services (200+ recognized, including Docker, PostgreSQL, nginx, Prometheus, Active Directory), and subnets. It maps physical connections via LLDP/CDP neighbor discovery and generates interactive topology visualizations. It has a free tier for small networks. GitHub: https://github.com/scanopy/scanopy
+
+            r/selfhosted or r/homelab (community subreddit):
             - Written as if the reader has NEVER heard of Scanopy
             - NO version number in title — title is a benefit statement
             - Opening line: "I built Scanopy, a self-hosted tool that..."
@@ -342,19 +354,17 @@ jobs:
             - End with: GitHub link (https://github.com/scanopy/scanopy), docs (https://scanopy.net/docs), and mention r/scanopy for updates
 
             Output format (use these exact labels on their own lines):
-            SCANOPY_TITLE: <title>
-            SCANOPY_BODY:
-            <body text>
             COMMUNITY_TITLE: <title>
             COMMUNITY_BODY:
             <body text>
           prompt: |
-            Generate Reddit post drafts for Scanopy ${{ inputs.release_tag }}:
+            Generate the community Reddit post draft for Scanopy ${{ inputs.release_tag }}:
 
             ${{ steps.cleaned_notes.outputs.notes }}
 
       - name: Generate email content
         id: ai_email
+        if: ${{ inputs.generate_email }}
         uses: actions/ai-inference@v1
         with:
           model: openai/gpt-4.1
@@ -386,36 +396,28 @@ jobs:
       - name: Parse new AI outputs
         id: ai_parsed
         env:
-          CATEGORY_RESPONSE: ${{ steps.ai_category.outputs.response }}
-          REDDIT_RESPONSE: ${{ steps.ai_reddit.outputs.response }}
+          SCANOPY_RESPONSE: ${{ steps.ai_reddit_scanopy.outputs.response }}
+          COMMUNITY_RESPONSE: ${{ steps.ai_reddit_community.outputs.response }}
           EMAIL_RESPONSE: ${{ steps.ai_email.outputs.response }}
         run: |
-          # Parse category
-          CATEGORY=$(echo "$CATEGORY_RESPONSE" | grep "^CATEGORY:" | head -1 | sed 's/^CATEGORY: *//' | tr -d '[:space:]')
-          if [[ ! "$CATEGORY" =~ ^[ABC]$ ]]; then
-            CATEGORY="B"
-          fi
-          echo "category=$CATEGORY" >> $GITHUB_OUTPUT
-          echo "Category: $CATEGORY"
-
           # Parse Reddit - scanopy title
-          SCANOPY_TITLE=$(echo "$REDDIT_RESPONSE" | grep "^SCANOPY_TITLE:" | head -1 | sed 's/^SCANOPY_TITLE: *//')
+          SCANOPY_TITLE=$(echo "$SCANOPY_RESPONSE" | grep "^SCANOPY_TITLE:" | head -1 | sed 's/^SCANOPY_TITLE: *//')
           echo "scanopy_title=$SCANOPY_TITLE" >> $GITHUB_OUTPUT
 
-          # Parse Reddit - scanopy body (between SCANOPY_BODY: and COMMUNITY_TITLE:)
+          # Parse Reddit - scanopy body (after SCANOPY_BODY: to end)
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-          SCANOPY_BODY=$(echo "$REDDIT_RESPONSE" | awk '/^SCANOPY_BODY:/{found=1; sub(/^SCANOPY_BODY: */, ""); if(length>0) print; next} /^COMMUNITY_TITLE:/{exit} found{print}')
+          SCANOPY_BODY=$(echo "$SCANOPY_RESPONSE" | awk '/^SCANOPY_BODY:/{found=1; sub(/^SCANOPY_BODY: */, ""); if(length>0) print; next} found{print}')
           echo "scanopy_body<<$EOF" >> $GITHUB_OUTPUT
           echo "$SCANOPY_BODY" >> $GITHUB_OUTPUT
           echo "$EOF" >> $GITHUB_OUTPUT
 
           # Parse Reddit - community title
-          COMMUNITY_TITLE=$(echo "$REDDIT_RESPONSE" | grep "^COMMUNITY_TITLE:" | head -1 | sed 's/^COMMUNITY_TITLE: *//')
+          COMMUNITY_TITLE=$(echo "$COMMUNITY_RESPONSE" | grep "^COMMUNITY_TITLE:" | head -1 | sed 's/^COMMUNITY_TITLE: *//')
           echo "community_title=$COMMUNITY_TITLE" >> $GITHUB_OUTPUT
 
           # Parse Reddit - community body (after COMMUNITY_BODY: to end)
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-          COMMUNITY_BODY=$(echo "$REDDIT_RESPONSE" | awk '/^COMMUNITY_BODY:/{found=1; sub(/^COMMUNITY_BODY: */, ""); if(length>0) print; next} found{print}')
+          COMMUNITY_BODY=$(echo "$COMMUNITY_RESPONSE" | awk '/^COMMUNITY_BODY:/{found=1; sub(/^COMMUNITY_BODY: */, ""); if(length>0) print; next} found{print}')
           echo "community_body<<$EOF" >> $GITHUB_OUTPUT
           echo "$COMMUNITY_BODY" >> $GITHUB_OUTPUT
           echo "$EOF" >> $GITHUB_OUTPUT
@@ -436,8 +438,8 @@ jobs:
           VERSION: ${{ steps.parsed.outputs.version }}
           TITLE: ${{ steps.parsed.outputs.title }}
           SOCIAL_POST: ${{ steps.parsed.outputs.social_post }}
+          GEN_SOCIAL: ${{ inputs.generate_social }}
           CONTRIBUTORS: ${{ steps.diff.outputs.contributors }}
-          CATEGORY: ${{ steps.ai_parsed.outputs.category }}
           EMAIL_SUBJECT: ${{ steps.ai_parsed.outputs.email_subject }}
           NOTES: ${{ steps.cleaned_notes.outputs.notes }}
           REPO: ${{ github.repository }}
@@ -447,14 +449,21 @@ jobs:
           mkdir -p website/src/lib/changelog
           DATE=$(date -u +%Y-%m-%d)
 
+          # Only carry the social post text when social generation is enabled
+          if [ "$GEN_SOCIAL" = "true" ]; then
+            SOCIAL_POST_LINE="$SOCIAL_POST"
+          else
+            SOCIAL_POST_LINE=""
+          fi
+
           {
             echo "---"
             echo "version: ${VERSION}"
             echo "date: ${DATE}"
             echo "title: ${TITLE}"
-            echo "social_post: ${SOCIAL_POST}"
+            echo "social_post: ${SOCIAL_POST_LINE}"
+            echo "publish_social: ${GEN_SOCIAL}"
             echo "contributors: ${CONTRIBUTORS}"
-            echo "category: ${CATEGORY}"
             echo "email_subject: ${EMAIL_SUBJECT}"
             echo "---"
             echo ""
@@ -491,6 +500,7 @@ jobs:
           fi
 
       - name: Create email HTML file
+        if: ${{ inputs.generate_email }}
         env:
           EMAIL_BODY: ${{ steps.ai_parsed.outputs.email_body }}
         run: |
@@ -510,48 +520,14 @@ jobs:
             git push
           fi
 
-      - name: Check content plan cross-references
-        id: content_xref
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.SYNC_FIXTURES_TO_WEBSITE_TOKEN }}
-          RELEASE_NOTES: ${{ steps.cleaned_notes.outputs.notes }}
-        run: |
-          # Best-effort: check if any content plan pieces relate to this release
-          QUEUE_URL="https://raw.githubusercontent.com/scanopy/scanopy-content/main/queue.md"
-          QUEUE=$(curl -sf -H "Authorization: token $GH_TOKEN" "$QUEUE_URL" 2>/dev/null || echo "")
-
-          if [ -z "$QUEUE" ]; then
-            echo "Content queue not accessible — skipping cross-reference"
-            echo "xref=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # Extract keywords from release notes
-          KEYWORDS=$(echo "$RELEASE_NOTES" | grep -oiE '\b(snmp|topology|discovery|export|oidc|daemon|billing|onboarding|api.key|free.tier|lldp|cdp|mermaid|svg|confluence)\b' | sort -uf | tr '\n' '|' | sed 's/|$//')
-
-          if [ -z "$KEYWORDS" ]; then
-            echo "No keywords extracted — skipping cross-reference"
-            echo "xref=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          MATCHES=$(echo "$QUEUE" | grep -iE "$KEYWORDS" | head -5)
-
-          if [ -n "$MATCHES" ]; then
-            EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-            echo "xref<<$EOF" >> $GITHUB_OUTPUT
-            echo "$MATCHES" >> $GITHUB_OUTPUT
-            echo "$EOF" >> $GITHUB_OUTPUT
-          else
-            echo "xref=" >> $GITHUB_OUTPUT
-          fi
-
       - name: Create PR for changelog review
         working-directory: website
         env:
           GH_TOKEN: ${{ secrets.SYNC_FIXTURES_TO_WEBSITE_TOKEN }}
-          CATEGORY: ${{ steps.ai_parsed.outputs.category }}
+          GEN_SOCIAL: ${{ inputs.generate_social }}
+          GEN_EMAIL: ${{ inputs.generate_email }}
+          GEN_REDDIT_SCANOPY: ${{ inputs.generate_reddit_scanopy }}
+          GEN_REDDIT_COMMUNITY: ${{ inputs.generate_reddit_community }}
           SOCIAL_POST: ${{ steps.parsed.outputs.social_post }}
           SCANOPY_TITLE: ${{ steps.ai_parsed.outputs.scanopy_title }}
           SCANOPY_BODY: ${{ steps.ai_parsed.outputs.scanopy_body }}
@@ -560,7 +536,6 @@ jobs:
           EMAIL_SUBJECT: ${{ steps.ai_parsed.outputs.email_subject }}
           EMAIL_BODY: ${{ steps.ai_parsed.outputs.email_body }}
           IMAGE_PATHS: ${{ steps.images.outputs.paths }}
-          CONTENT_XREF: ${{ steps.content_xref.outputs.xref }}
         run: |
           BRANCH="changelog/${{ inputs.release_tag }}"
 
@@ -582,40 +557,41 @@ jobs:
           git commit -m "docs: add release notes for ${{ inputs.release_tag }}"
           git push -u origin "$BRANCH"
 
-          # Build category label
-          case "$CATEGORY" in
-            A) CAT_LABEL="A (Major)" ;;
-            B) CAT_LABEL="B (Notable)" ;;
-            C) CAT_LABEL="C (Incremental)" ;;
-            *) CAT_LABEL="$CATEGORY" ;;
-          esac
-
           # Build PR body into a temp file to avoid quoting issues
           {
             echo "## Release Notes: ${{ inputs.release_tag }}"
-            echo "**Category:** ${CAT_LABEL}"
             echo ""
             echo "### Review Checklist"
             echo "- [ ] Verify accuracy of feature descriptions"
-            echo "- [ ] Check category — override in frontmatter if wrong"
-            echo "- [ ] Review title and social post"
-            echo "- [ ] Review Reddit r/scanopy draft"
 
-            if [ "$CATEGORY" != "C" ]; then
+            if [ "$GEN_SOCIAL" = "true" ]; then
+              echo "- [ ] Review title and social post"
+            else
+              echo "- [ ] Review title"
+            fi
+
+            if [ "$GEN_EMAIL" = "true" ]; then
               echo "- [ ] Review email subject and body"
             fi
 
-            if [ "$CATEGORY" = "A" ]; then
+            if [ "$GEN_REDDIT_SCANOPY" = "true" ]; then
+              echo "- [ ] Review Reddit r/scanopy draft"
+            fi
+
+            if [ "$GEN_REDDIT_COMMUNITY" = "true" ]; then
               echo "- [ ] Review Reddit community post draft"
             fi
 
             echo ""
             echo "### Auto-published on merge"
             echo "- Changelog on scanopy.net"
-            echo "- Discord notification"
-            echo "- Tweet + Bluesky post"
 
-            if [ "$CATEGORY" != "C" ]; then
+            if [ "$GEN_SOCIAL" = "true" ]; then
+              echo "- Discord notification"
+              echo "- Tweet + Bluesky post"
+            fi
+
+            if [ "$GEN_EMAIL" = "true" ]; then
               echo "- Brevo email campaign draft (list 9) — preview and send from Brevo UI"
             fi
 
@@ -626,23 +602,31 @@ jobs:
               echo "- [ ] Take screenshots and commit to \`static/changelog/${{ inputs.release_tag }}/\`"
             fi
 
-            echo "- [ ] Post to r/scanopy (copy draft below)"
+            if [ "$GEN_REDDIT_SCANOPY" = "true" ]; then
+              echo "- [ ] Post to r/scanopy (copy draft below)"
+            fi
 
-            if [ "$CATEGORY" = "A" ]; then
+            if [ "$GEN_REDDIT_COMMUNITY" = "true" ]; then
               echo "- [ ] Post to r/selfhosted OR r/homelab (copy draft below)"
             fi
 
             echo ""
             echo "---"
-            echo "### Draft: Social Post"
-            echo "> ${SOCIAL_POST}"
-            echo ""
-            echo "### Draft: r/scanopy"
-            echo "**Title:** ${SCANOPY_TITLE}"
-            echo ""
-            printf '%s\n' "$SCANOPY_BODY"
 
-            if [ "$CATEGORY" = "A" ]; then
+            if [ "$GEN_SOCIAL" = "true" ]; then
+              echo "### Draft: Social Post"
+              echo "> ${SOCIAL_POST}"
+              echo ""
+            fi
+
+            if [ "$GEN_REDDIT_SCANOPY" = "true" ]; then
+              echo "### Draft: r/scanopy"
+              echo "**Title:** ${SCANOPY_TITLE}"
+              echo ""
+              printf '%s\n' "$SCANOPY_BODY"
+            fi
+
+            if [ "$GEN_REDDIT_COMMUNITY" = "true" ]; then
               echo ""
               echo "### Draft: r/selfhosted or r/homelab"
               echo "**Title:** ${COMMUNITY_TITLE}"
@@ -650,7 +634,7 @@ jobs:
               printf '%s\n' "$COMMUNITY_BODY"
             fi
 
-            if [ "$CATEGORY" != "C" ]; then
+            if [ "$GEN_EMAIL" = "true" ]; then
               echo ""
               echo "### Draft: Email"
               echo "**Subject:** ${EMAIL_SUBJECT}"
@@ -668,14 +652,6 @@ jobs:
               echo '```'
               echo ""
               echo "The changelog references these paths — images will appear on the website, in email, and in-app once committed."
-            fi
-
-            if [ -n "$CONTENT_XREF" ]; then
-              echo ""
-              echo "### Related Content Pieces"
-              echo "The following content plan items may relate to this release (coordinate timing):"
-              echo ""
-              printf '%s\n' "$CONTENT_XREF"
             fi
 
             echo ""

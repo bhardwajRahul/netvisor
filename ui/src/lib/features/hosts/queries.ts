@@ -147,6 +147,9 @@ export interface HostQueryOptions {
 	order_direction?: components['schemas']['OrderDirection'];
 	/** Filter by tag IDs (returns hosts that have ANY of the specified tags). */
 	tag_ids?: string[];
+	/** `true` returns only hosts discovery hasn't observed within their network's
+	 * staleness window; omit for no staleness constraint. */
+	stale?: boolean;
 	/** As-of timestamp (ISO 8601). When set, returns SCD2 state as of this instant
 	 * (snapshot view) instead of live state. */
 	at?: string;
@@ -198,6 +201,7 @@ export function useHostsQuery(optionsOrGetter: HostQueryOptions | (() => HostQue
 							order_by: options.order_by,
 							order_direction: options.order_direction,
 							tag_ids: options.tag_ids,
+							stale: options.stale,
 							at: options.at
 						}
 					}

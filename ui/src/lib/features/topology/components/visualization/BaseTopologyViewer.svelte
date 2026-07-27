@@ -67,7 +67,6 @@
 		type SelectionStores
 	} from '../../selection';
 	import { onMount, tick, setContext, getContext } from 'svelte';
-	import { useQueryClient } from '@tanstack/svelte-query';
 	import { writable as svelteWritable } from 'svelte/store';
 	import { themeStore } from '$lib/shared/stores/theme.svelte';
 	import { containerTypes } from '$lib/shared/stores/metadata';
@@ -88,6 +87,7 @@
 		readonly = false,
 		showControls = true,
 		isEmbed = false,
+		hideAttribution = false,
 		showBranding = false,
 		showMinimap = undefined,
 		onNodeDragStop = null,
@@ -102,6 +102,7 @@
 		readonly?: boolean;
 		showControls?: boolean;
 		isEmbed?: boolean;
+		hideAttribution?: boolean;
 		showBranding?: boolean;
 		showMinimap?: boolean | undefined;
 		onNodeDragStop?: ((node: Node) => void) | null;
@@ -141,7 +142,6 @@
 	let viewportMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const { fitView, getNodes } = useSvelteFlow();
-	const queryClient = useQueryClient();
 	let containerElement: HTMLDivElement;
 
 	/**
@@ -391,7 +391,6 @@
 				curSelectedEdge,
 				currentBaseEdges,
 				currentNodes,
-				queryClient,
 				topology,
 				multiSelected,
 				opts.local.hide_edge_types ?? []
@@ -933,6 +932,7 @@
 		selectionKey="Shift"
 		panOnDrag={true}
 		zoomOnScroll={true}
+		proOptions={{ hideAttribution }}
 	>
 		<Background
 			variant={BackgroundVariant.Dots}
@@ -983,7 +983,7 @@
 				class="branding-badge"
 			>
 				<img src="/logos/scanopy-logo.png" alt="Scanopy" class="h-4 w-4" />
-				<span>Created with Scanopy</span>
+				<span>Powered by Scanopy</span>
 			</a>
 		{/if}
 	</SvelteFlow>

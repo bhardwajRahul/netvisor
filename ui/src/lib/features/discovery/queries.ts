@@ -516,7 +516,13 @@ class DiscoverySSEManager extends BaseSSEManager<DiscoveryUpdatePayload> {
 
 				// Handle terminal phases
 				if (update.phase === 'Complete') {
-					pushSuccess(m.discovery_completed({ type: update.discovery_type.type }));
+					if (update.warnings && update.warnings.length > 0) {
+						// e.g. the scan hit its time limit and left hosts un-scanned;
+						// sticky so the user notices what needs a rescan or a higher limit.
+						pushWarning(update.warnings.join(' '), -1);
+					} else {
+						pushSuccess(m.discovery_completed({ type: update.discovery_type.type }));
+					}
 					// Final refresh on completion - do this immediately, not throttled
 					await Promise.all([
 						queryClient.invalidateQueries({ queryKey: queryKeys.hosts.all }),

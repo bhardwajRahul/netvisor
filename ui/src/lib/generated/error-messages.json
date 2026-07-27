@@ -1,6 +1,7 @@
 {
 	"errors_auth_api_key_required": "API key required",
 	"errors_auth_daemon_key_not_created": "Daemon is trying to register with an API key that has not yet been created",
+	"errors_auth_daemon_not_provisioned": "This daemon must be provisioned before it can register. Provision it in the Scanopy UI and re-run the install command.",
 	"errors_auth_daemon_required": "Daemon context required",
 	"errors_auth_demo_mode": "This action is disabled in demo mode",
 	"errors_auth_email_verification_required": "Please verify your email to access this feature",

@@ -12,6 +12,7 @@
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
+	import DurationInput from '$lib/shared/components/forms/input/DurationInput.svelte';
 	import TagPicker from '$lib/features/tags/components/TagPicker.svelte';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import type { Credential } from '$lib/features/credentials/types/base';
@@ -38,6 +39,8 @@
 		networks_credentialHelp,
 		networks_credentialHelpLinkText,
 		networks_networkNamePlaceholder,
+		networks_staleAfterHours,
+		networks_staleAfterHoursHelp,
 		networks_noCredentialsAssigned
 	} from '$lib/paraglide/messages';
 
@@ -220,6 +223,19 @@
 								{field}
 								placeholder={networks_networkNamePlaceholder()}
 								required
+							/>
+						{/snippet}
+					</form.Field>
+
+					<form.Field name="stale_after_hours">
+						{#snippet children(field)}
+							<DurationInput
+								label={networks_staleAfterHours()}
+								id="stale_after_hours"
+								{field}
+								initialHours={network?.stale_after_hours ?? null}
+								placeholderHours={network?.effective_stale_after_hours ?? null}
+								helpText={networks_staleAfterHoursHelp()}
 							/>
 						{/snippet}
 					</form.Field>

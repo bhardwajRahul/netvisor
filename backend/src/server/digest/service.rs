@@ -16,14 +16,14 @@ use crate::server::shared::storage::snapshot::DiscoveryTracked;
 use crate::server::{
     digest::payload::{
         AffectedHostCard, DigestRecipient, DiscoveryDigestFlags, DiscoveryDigestOperation,
-        DiscoveryDigestPayload, DiscoveryDigestScope, EntityDigestStatus, HostSummary,
+        DiscoveryDigestPayload, DiscoveryDigestScope, EntityFreshness, HostSummary,
         InterfaceSummary, IpAddressSummary, PortSummary, ServiceSummary, SubnetSummary,
         VlanSummary,
     },
     hosts::{r#impl::base::Host, service::HostService},
     interfaces::{r#impl::base::Interface, service::InterfaceService},
     ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},
-    networks::service::NetworkService,
+    networks::{r#impl::Network, service::NetworkService},
     ports::{r#impl::base::Port, service::PortService},
     services::{r#impl::base::Service as NetworkServiceEntity, service::ServiceService},
     shared::{
@@ -116,14 +116,7 @@ impl DiscoveryDigestService {
         };
 
         let digest = self
-            .compute(
-                payload,
-                scanned,
-                t_start,
-                t_end,
-                &network.base.name,
-                network.base.organization_id,
-            )
+            .compute(payload, scanned, t_start, t_end, &network)
             .await?;
 
         let scope = DiscoveryDigestScope {
@@ -148,10 +141,11 @@ impl DiscoveryDigestService {
         scanned: &ScannedEntityIds,
         t_start: DateTime<Utc>,
         t_end: DateTime<Utc>,
-        network_name: &str,
-        organization_id: Uuid,
+        network: &Network,
     ) -> Result<DiscoveryDigestPayload> {
         let network_id = payload.network_id;
+        let network_name = network.base.name.as_str();
+        let organization_id = network.base.organization_id;
 
         // Subnets scanned: prefer the discovery config's explicit subnet
         // list when set (the user targeted a specific subset). Fall back
@@ -182,28 +176,24 @@ impl DiscoveryDigestService {
                 .collect()
         };
 
-        // Recent-history grace: a child not in this scan that was last
-        // touched by one of the top-N most recent historical discoveries
-        // on this network gets `PossiblyMissing` rather than `Missing`.
-        // Tolerates transient scan-to-scan noise. Top-(N+1) gives us the
-        // discovery that just fell off the grace window this scan (used to
-        // detect fresh `Missing` transitions).
-        const REMOVAL_GRACE_SCANS: usize = 3;
-        let recent_window: Vec<Uuid> = self
+        // Staleness is time-based and anchored on this network's configured
+        // window, identical to what the inventory and topology render. The
+        // previous session's finish gives the "was it stale then?" anchor used
+        // to spot the transition.
+        let prev_finished_at = self
             .discovery_service
-            .get_recent_historical_ids(network_id, REMOVAL_GRACE_SCANS + 1)
+            .previous_historical_finished_at(network_id, t_end)
             .await?;
         let window = DigestWindow {
             t_start,
             t_end,
-            recent: recent_window
-                .iter()
-                .take(REMOVAL_GRACE_SCANS)
-                .copied()
-                .collect(),
-            d1: recent_window.get(1).copied(),
-            d_dropped: recent_window.get(REMOVAL_GRACE_SCANS).copied(),
+            cutoff: network.stale_cutoff(t_end),
+            prev_cutoff: prev_finished_at.map(|t| network.stale_cutoff(t)),
         };
+
+        // What this session could actually see. Entities outside it are dropped
+        // from the digest entirely — their absence carries no information.
+        let coverage = ScanCoverage::for_session(&payload.discovery_type, scanned);
 
         // One query for all live hosts on the network — the generic helper
         // buckets them by status. Per-entity-type queries for children are
@@ -214,14 +204,31 @@ impl DiscoveryDigestService {
             .await?;
         let scanned_host_ids: HashSet<Uuid> = scanned.host_ids.iter().copied().collect();
 
+        // Live IPs for the whole network, once: they place each host in its
+        // subnets (for the coverage gate) and are re-filtered for the affected
+        // hosts' child rows below, so this replaces the old per-affected-host
+        // IP query rather than adding to it.
+        let all_ips: Vec<IPAddress> = self
+            .ip_address_service
+            .get_all(StorableFilter::<IPAddress>::new_from_network_ids(&[network_id]).live())
+            .await?;
+        let mut host_subnets: HashMap<Uuid, HashSet<Uuid>> = HashMap::new();
+        for ip in &all_ips {
+            host_subnets
+                .entry(ip.base.host_id)
+                .or_default()
+                .insert(ip.base.subnet_id);
+        }
+
         // First pass on hosts: bucket each one by status + fresh.
         struct HostBucket {
             host: Host,
-            status: EntityDigestStatus,
+            status: EntityFreshness,
             is_fresh: bool,
         }
         let host_buckets: Vec<HostBucket> = all_hosts
             .into_iter()
+            .filter(|h| coverage.covers_host(h.id, host_subnets.get(&h.id)))
             .map(|h| {
                 let (status, is_fresh) = compute_digest_status(&h, &scanned_host_ids, &window);
                 HostBucket {
@@ -233,24 +240,32 @@ impl DiscoveryDigestService {
             .collect();
 
         // Affected = added + every host that's seen-this-scan (their
-        // children might have fresh deltas) + every host that's
-        // (Possibly)Missing with fresh transition (we want to render
-        // their last-known children too).
-        let affected_ids: Vec<Uuid> = host_buckets
+        // children might have fresh deltas) + every host that just turned
+        // stale (we want to render their last-known children too).
+        let affected: Vec<(Uuid, ChildPolicy)> = host_buckets
             .iter()
             .filter(|b| match b.status {
-                EntityDigestStatus::New | EntityDigestStatus::Unchanged => true,
-                EntityDigestStatus::PossiblyMissing | EntityDigestStatus::Missing => b.is_fresh,
+                EntityFreshness::New | EntityFreshness::Current => true,
+                EntityFreshness::Stale => b.is_fresh,
             })
-            .map(|b| b.host.id)
+            .map(|b| {
+                // Only a host we actually reached can tell us anything about
+                // which of its children are still there.
+                let policy = if scanned_host_ids.contains(&b.host.id) {
+                    ChildPolicy::Classify
+                } else {
+                    ChildPolicy::Inherit(b.status, b.is_fresh)
+                };
+                (b.host.id, policy)
+            })
             .collect();
 
         let current_children = self
-            .fetch_current_children(&affected_ids, scanned, &window)
+            .fetch_current_children(&affected, &all_ips, scanned, &window)
             .await?;
 
         let mut hosts_added: Vec<AffectedHostCard> = Vec::new();
-        let mut hosts_vanished: Vec<AffectedHostCard> = Vec::new();
+        let mut hosts_stale: Vec<AffectedHostCard> = Vec::new();
         let mut hosts_changed: Vec<AffectedHostCard> = Vec::new();
 
         for HostBucket {
@@ -260,15 +275,15 @@ impl DiscoveryDigestService {
         } in host_buckets
         {
             match status {
-                EntityDigestStatus::New => {
+                EntityFreshness::New => {
                     hosts_added.push(build_card(&host, status, &current_children));
                 }
-                EntityDigestStatus::PossiblyMissing | EntityDigestStatus::Missing => {
+                EntityFreshness::Stale => {
                     if is_fresh {
-                        hosts_vanished.push(build_card(&host, status, &current_children));
+                        hosts_stale.push(build_card(&host, status, &current_children));
                     }
                 }
-                EntityDigestStatus::Unchanged => {
+                EntityFreshness::Current => {
                     let card = build_card(&host, status, &current_children);
                     if card_has_fresh_children(&card) {
                         hosts_changed.push(card);
@@ -289,18 +304,31 @@ impl DiscoveryDigestService {
             )
             .await?;
         let vlans_added: Vec<VlanSummary> = vlans_added_records.iter().map(vlan_summary).collect();
+        let scanned_vlan_ids: HashSet<Uuid> = scanned.vlan_ids.iter().copied().collect();
 
-        let vlans_removed_records: Vec<Vlan> = self
-            .vlan_service
-            .get_all(
-                StorableFilter::<Vlan>::new_from_network_ids(&[network_id])
-                    .live()
-                    .created_before(t_start)
-                    .last_seen_before(t_start),
-            )
-            .await?;
-        let vlans_removed: Vec<VlanSummary> =
-            vlans_removed_records.iter().map(vlan_summary).collect();
+        // VLANs are network-scoped, so only a run that actually swept subnets
+        // can say anything about them — a Docker or self-report run observes no
+        // VLANs and must not conclude they all went stale.
+        let vlans_stale: Vec<VlanSummary> = if coverage.swept_subnets() {
+            let live_vlans: Vec<Vlan> = self
+                .vlan_service
+                .get_all(
+                    StorableFilter::<Vlan>::new_from_network_ids(&[network_id])
+                        .live()
+                        .created_before(t_start),
+                )
+                .await?;
+            live_vlans
+                .iter()
+                .filter(|v| {
+                    let (status, is_fresh) = compute_digest_status(*v, &scanned_vlan_ids, &window);
+                    status == EntityFreshness::Stale && is_fresh
+                })
+                .map(vlan_summary)
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         let recipients = self.resolve_recipients(network_id, organization_id).await?;
 
@@ -310,12 +338,13 @@ impl DiscoveryDigestService {
             network_name: network_name.to_string(),
             started_at: t_start,
             finished_at: t_end,
+            stale_after_hours: network.stale_after().num_hours(),
             subnets_scanned,
             hosts_added,
-            hosts_vanished,
+            hosts_stale,
             hosts_changed,
             vlans_added,
-            vlans_removed,
+            vlans_stale,
             recipients,
         })
     }
@@ -327,13 +356,26 @@ impl DiscoveryDigestService {
     /// loopback IPs.
     async fn fetch_current_children(
         &self,
-        host_ids: &[Uuid],
+        affected: &[(Uuid, ChildPolicy)],
+        all_ips: &[IPAddress],
         scanned: &ScannedEntityIds,
         window: &DigestWindow,
     ) -> Result<HashMap<Uuid, HostChildren>> {
-        if host_ids.is_empty() {
+        if affected.is_empty() {
             return Ok(HashMap::new());
         }
+        let host_ids: Vec<Uuid> = affected.iter().map(|(id, _)| *id).collect();
+        let policies: HashMap<Uuid, &ChildPolicy> =
+            affected.iter().map(|(id, p)| (*id, p)).collect();
+        let host_ids = host_ids.as_slice();
+
+        // Resolve a child's status under its host's policy: classify it on its
+        // own merits only when the host was actually reached this session.
+        let resolve = |host_id: Uuid, own: (EntityFreshness, bool)| {
+            policies
+                .get(&host_id)
+                .map_or(own, |policy| policy.resolve(own))
+        };
 
         let services: Vec<NetworkServiceEntity> = self
             .service_service
@@ -344,15 +386,13 @@ impl DiscoveryDigestService {
                     .uuids_column("host_id", host_ids),
             )
             .await?;
-        let ips: Vec<IPAddress> = self
-            .ip_address_service
-            .storage()
-            .get_all(
-                StorableFilter::<IPAddress>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids),
-            )
-            .await?;
+        // Reuse the network-wide live IP set already loaded for the coverage
+        // gate rather than re-querying by host.
+        let ips: Vec<IPAddress> = all_ips
+            .iter()
+            .filter(|ip| policies.contains_key(&ip.base.host_id))
+            .cloned()
+            .collect();
         let interfaces: Vec<Interface> = self
             .interface_service
             .storage()
@@ -387,7 +427,8 @@ impl DiscoveryDigestService {
             if s.base.service_definition.is_open_ports() {
                 continue;
             }
-            let (status, is_fresh) = compute_digest_status(s, &scanned_service_ids, window);
+            let own = compute_digest_status(s, &scanned_service_ids, window);
+            let (status, is_fresh) = resolve(s.base.host_id, own);
             out.entry(s.base.host_id)
                 .or_default()
                 .services
@@ -396,26 +437,29 @@ impl DiscoveryDigestService {
         for ip in &ips {
             // Skip loopback (127.0.0.0/8, ::1) — typically the daemon's own
             // local address, set once at daemon registration and never
-            // re-included in subsequent scan sets. Would graduate straight
-            // to Missing and falsely mark the daemon host as Changed.
+            // re-included in subsequent scan sets. Would go stale on its own
+            // and falsely mark the daemon host as Changed.
             if ip.base.ip_address.is_loopback() {
                 continue;
             }
-            let (status, is_fresh) = compute_digest_status(ip, &scanned_ip_ids, window);
+            let own = compute_digest_status(ip, &scanned_ip_ids, window);
+            let (status, is_fresh) = resolve(ip.base.host_id, own);
             out.entry(ip.base.host_id)
                 .or_default()
                 .ip_addresses
                 .push(ip_summary(ip, status, is_fresh));
         }
         for i in &interfaces {
-            let (status, is_fresh) = compute_digest_status(i, &scanned_interface_ids, window);
+            let own = compute_digest_status(i, &scanned_interface_ids, window);
+            let (status, is_fresh) = resolve(i.base.host_id, own);
             out.entry(i.base.host_id)
                 .or_default()
                 .interfaces
                 .push(interface_summary(i, status, is_fresh));
         }
         for p in &ports {
-            let (status, is_fresh) = compute_digest_status(p, &scanned_port_ids, window);
+            let own = compute_digest_status(p, &scanned_port_ids, window);
+            let (status, is_fresh) = resolve(p.base.host_id, own);
             out.entry(p.base.host_id)
                 .or_default()
                 .ports
@@ -458,19 +502,20 @@ impl EventBusService<Host> for DiscoveryDigestService {
     }
 }
 
-/// Per-scan window context for `compute_digest_status`. Built once per
-/// digest from the network's recent-discovery history.
+/// Per-scan context for [`compute_digest_status`]. Built once per digest.
 struct DigestWindow {
     t_start: DateTime<Utc>,
     t_end: DateTime<Utc>,
-    /// Top-N most-recent historical discoveries (grace window).
-    recent: HashSet<Uuid>,
-    /// Previous scan: `last_discovery_id == this` ⇒ entity was seen last
-    /// time and isn't now → fresh PossiblyMissing transition.
-    d1: Option<Uuid>,
-    /// The discovery that just dropped off the top-N this scan:
-    /// `last_discovery_id == this` ⇒ entity just graduated to Missing.
-    d_dropped: Option<Uuid>,
+    /// Instant before which a `last_seen_at` counts as stale, from this
+    /// network's configured window (`Network::stale_cutoff`) anchored at
+    /// `t_end`. The same rule the inventory and topology apply, so a host
+    /// reported stale here is the host badged stale in the app.
+    cutoff: DateTime<Utc>,
+    /// The same cutoff anchored at the *previous* session's finish. An entity
+    /// that is stale now but was not stale then crossed the line during this
+    /// session — that transition is what makes a card worth emailing.
+    /// `None` on a network's first-ever scan, where no transition is claimable.
+    prev_cutoff: Option<DateTime<Utc>>,
 }
 
 /// Compute the per-entity digest status. Generic over any
@@ -481,6 +526,10 @@ struct DigestWindow {
 /// acquired in THIS scan" (a transition just happened). Stably-stale
 /// entities have `is_fresh == false` and don't trigger card inclusion.
 ///
+/// Staleness itself is delegated to [`DiscoveryTracked::freshness`], the single
+/// definition shared with the read path — this function only adds the
+/// digest-specific `New` bucket and the transition detection.
+///
 /// `scanned_ids` is the daemon-reported set for whichever entity kind
 /// `T` is — `scanned.host_ids` for hosts, `scanned.port_ids` for ports,
 /// etc.
@@ -488,22 +537,98 @@ fn compute_digest_status<T: DiscoveryTracked>(
     entity: &T,
     scanned_ids: &HashSet<Uuid>,
     window: &DigestWindow,
-) -> (EntityDigestStatus, bool) {
-    use EntityDigestStatus::*;
-    let id = entity.id();
+) -> (EntityFreshness, bool) {
     let created_at = entity.created_at();
-    let last_disc = entity.last_discovery_id();
-
-    if scanned_ids.contains(&id) {
-        let is_new = created_at >= window.t_start && created_at <= window.t_end;
-        return (if is_new { New } else { Unchanged }, is_new);
+    let is_new = scanned_ids.contains(&entity.id())
+        && created_at >= window.t_start
+        && created_at <= window.t_end;
+    if is_new {
+        return (EntityFreshness::New, true);
     }
-    // Not in this scan. Recent-history grace check.
-    let is_fresh_pm = matches!((last_disc, window.d1), (Some(a), Some(b)) if a == b);
-    let is_fresh_m = matches!((last_disc, window.d_dropped), (Some(a), Some(b)) if a == b);
-    match last_disc {
-        Some(lid) if window.recent.contains(&lid) => (PossiblyMissing, is_fresh_pm),
-        _ => (Missing, is_fresh_m),
+    match entity.freshness(window.cutoff) {
+        EntityFreshness::Stale => {
+            // Crossed the line during this session iff it was still inside the
+            // window as of the previous session's finish.
+            let just_crossed = window
+                .prev_cutoff
+                .is_some_and(|prev| entity.last_seen_at() >= prev);
+            (EntityFreshness::Stale, just_crossed)
+        }
+        other => (other, false),
+    }
+}
+
+/// What a discovery session structurally covered, and therefore which entities
+/// its silence says anything about.
+///
+/// Absence of detection is only meaningful for an entity the session could have
+/// reached. Without this gate a targeted-subnet scan, a second daemon covering
+/// disjoint subnets, or a Docker/self-report run reports the rest of the network
+/// as stale.
+enum ScanCoverage {
+    /// Swept these subnets. A host is covered iff it holds a live IP in one.
+    Subnets(HashSet<Uuid>),
+    /// Touched only the daemon's own host — no subnet sweep at all
+    /// (`DiscoveryType::Docker` / `SelfReport`).
+    SingleHost(Uuid),
+}
+
+impl ScanCoverage {
+    fn for_session(discovery_type: &DiscoveryType, scanned: &ScannedEntityIds) -> Self {
+        match discovery_type {
+            DiscoveryType::Docker { host_id, .. } | DiscoveryType::SelfReport { host_id } => {
+                Self::SingleHost(*host_id)
+            }
+            // An explicit subnet list is the user's stated target. Otherwise
+            // fall back to the subnets the daemon actually confirmed this run.
+            DiscoveryType::Network {
+                subnet_ids: Some(ids),
+                ..
+            }
+            | DiscoveryType::Unified {
+                subnet_ids: Some(ids),
+                ..
+            } if !ids.is_empty() => Self::Subnets(ids.iter().copied().collect()),
+            _ => Self::Subnets(scanned.subnet_ids.iter().copied().collect()),
+        }
+    }
+
+    /// Whether this session's silence about `host_id` is meaningful.
+    fn covers_host(&self, host_id: Uuid, host_subnets: Option<&HashSet<Uuid>>) -> bool {
+        match self {
+            Self::SingleHost(id) => *id == host_id,
+            Self::Subnets(swept) => {
+                host_subnets.is_some_and(|subnets| subnets.iter().any(|s| swept.contains(s)))
+            }
+        }
+    }
+
+    /// Whether this session swept subnets at all. Network-scoped conclusions
+    /// (VLANs) are only drawn from a run that did.
+    fn swept_subnets(&self) -> bool {
+        matches!(self, Self::Subnets(s) if !s.is_empty())
+    }
+}
+
+/// How a host's children should be classified this session.
+enum ChildPolicy {
+    /// The host was reached, so a child's absence is the child's own — a
+    /// genuinely closed port or removed service.
+    Classify,
+    /// The host was not reached. Its children inherit the host's verdict rather
+    /// than each decaying independently — otherwise a host offline for a week
+    /// reads as "host stale AND every service stale", and the children appear
+    /// to have been removed one by one when nothing was observed at all.
+    Inherit(EntityFreshness, bool),
+}
+
+impl ChildPolicy {
+    /// Apply this policy to a child's own classification.
+    fn resolve(&self, own: (EntityFreshness, bool)) -> (EntityFreshness, bool) {
+        match self {
+            Self::Classify => own,
+            Self::Inherit(status, is_fresh) => (*status, *is_fresh),
+        }
     }
 }
 
@@ -528,7 +653,7 @@ struct HostChildren {
 
 fn build_card(
     host: &Host,
-    status: EntityDigestStatus,
+    status: EntityFreshness,
     children: &HashMap<Uuid, HostChildren>,
 ) -> AffectedHostCard {
     let kids = children.get(&host.id);
@@ -552,7 +677,7 @@ fn host_summary(h: &Host) -> HostSummary {
     HostSummary { id: h.id, label }
 }
 
-fn port_summary(p: &Port, status: EntityDigestStatus, is_fresh: bool) -> PortSummary {
+fn port_summary(p: &Port, status: EntityFreshness, is_fresh: bool) -> PortSummary {
     PortSummary {
         id: p.id,
         host_id: p.base.host_id,
@@ -566,7 +691,7 @@ fn port_summary(p: &Port, status: EntityDigestStatus, is_fresh: bool) -> PortSum
 
 fn service_summary(
     s: &NetworkServiceEntity,
-    status: EntityDigestStatus,
+    status: EntityFreshness,
     is_fresh: bool,
 ) -> ServiceSummary {
     let logo_url = {
@@ -592,7 +717,7 @@ fn service_summary(
     }
 }
 
-fn ip_summary(ip: &IPAddress, status: EntityDigestStatus, is_fresh: bool) -> IpAddressSummary {
+fn ip_summary(ip: &IPAddress, status: EntityFreshness, is_fresh: bool) -> IpAddressSummary {
     IpAddressSummary {
         id: ip.id,
         host_id: ip.base.host_id,
@@ -602,11 +727,7 @@ fn ip_summary(ip: &IPAddress, status: EntityDigestStatus, is_fresh: bool) -> IpA
     }
 }
 
-fn interface_summary(
-    i: &Interface,
-    status: EntityDigestStatus,
-    is_fresh: bool,
-) -> InterfaceSummary {
+fn interface_summary(i: &Interface, status: EntityFreshness, is_fresh: bool) -> InterfaceSummary {
     // Interface's Display includes its UUID. For the digest we want only the
     // human-readable bits: the description if discovery provided one, else
     // the ifIndex.
@@ -636,5 +757,350 @@ fn vlan_summary(v: &Vlan) -> VlanSummary {
         id: v.id,
         vlan_number: v.base.vlan_number,
         name: v.base.name.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::hosts::r#impl::base::HostBase;
+    use crate::server::networks::r#impl::{DEFAULT_STALE_AFTER_HOURS, Network, NetworkBase};
+    use crate::server::services::r#impl::base::{Service as Svc, ServiceBase};
+    use crate::server::shared::types::entities::EntitySource;
+
+    const HOUR: i64 = 3600;
+
+    fn t(secs_ago: i64) -> DateTime<Utc> {
+        // Fixed epoch-based clock: these tests compare instants, never "now".
+        DateTime::from_timestamp(1_800_000_000 - secs_ago, 0).unwrap()
+    }
+
+    fn network(stale_after_hours: Option<i64>) -> Network {
+        Network {
+            id: Uuid::new_v4(),
+            base: NetworkBase {
+                stale_after_hours,
+                ..NetworkBase::new(Uuid::new_v4())
+            },
+            ..Default::default()
+        }
+    }
+
+    /// A discovery-created host last observed `secs_ago` before the reference.
+    fn host(seen_secs_ago: i64) -> Host {
+        let mut h = Host::new(HostBase {
+            source: EntitySource::Discovery,
+            ..Default::default()
+        });
+        h.last_seen_at = t(seen_secs_ago);
+        h.created_at = t(seen_secs_ago + 100 * 24 * HOUR);
+        h
+    }
+
+    fn service(host_id: Uuid, seen_secs_ago: i64) -> Svc {
+        Svc {
+            id: Uuid::new_v4(),
+            last_seen_at: t(seen_secs_ago),
+            created_at: t(seen_secs_ago + 100 * 24 * HOUR),
+            base: ServiceBase {
+                host_id,
+                source: EntitySource::Discovery,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    /// Window anchored at the reference instant, for a network with the given
+    /// threshold, with the previous session `prev_secs_ago` before it.
+    fn window(stale_after_hours: i64, prev_secs_ago: Option<i64>) -> DigestWindow {
+        let net = network(Some(stale_after_hours));
+        let t_end = t(0);
+        DigestWindow {
+            t_start: t(600),
+            t_end,
+            cutoff: net.stale_cutoff(t_end),
+            prev_cutoff: prev_secs_ago.map(|p| net.stale_cutoff(t(p))),
+        }
+    }
+
+    fn none_scanned() -> HashSet<Uuid> {
+        HashSet::new()
+    }
+
+    // ---- The decay scenario from the task -------------------------------
+
+    // A host reported with 3 services loses one per scan, then goes dark
+    // itself. Each entity's verdict must follow its OWN last observation, and
+    // once the host stops answering its children must stop decaying separately.
+    #[test]
+    fn services_decay_individually_while_the_host_is_still_answering() {
+        let w = window(24 * 7, Some(HOUR));
+        let h = host(0); // host answered this scan
+        let host_id = h.id;
+        let mut scanned = HashSet::new();
+        scanned.insert(host_id);
+
+        // Still reported this scan.
+        let live = service(host_id, 0);
+        // Dropped out 2 days ago — inside the 7-day window, so not yet stale.
+        let recently_gone = service(host_id, 2 * 24 * HOUR);
+        // Dropped out 8 days ago — past the window.
+        let long_gone = service(host_id, 8 * 24 * HOUR);
+
+        let mut svc_scanned = HashSet::new();
+        svc_scanned.insert(live.id);
+
+        assert_eq!(
+            compute_digest_status(&h, &scanned, &w).0,
+            EntityFreshness::Current,
+            "a host answering this scan is current"
+        );
+        assert_eq!(
+            compute_digest_status(&live, &svc_scanned, &w).0,
+            EntityFreshness::Current
+        );
+        assert_eq!(
+            compute_digest_status(&recently_gone, &svc_scanned, &w).0,
+            EntityFreshness::Current,
+            "absent for 2 days is well inside a 7-day window — not stale yet"
+        );
+        assert_eq!(
+            compute_digest_status(&long_gone, &svc_scanned, &w).0,
+            EntityFreshness::Stale
+        );
+    }
+
+    #[test]
+    fn once_the_host_goes_dark_its_children_inherit_instead_of_decaying_alone() {
+        let w = window(24 * 7, Some(HOUR));
+        let h = host(8 * 24 * HOUR); // host itself unreachable for 8 days
+        let host_id = h.id;
+
+        let (host_status, host_fresh) = compute_digest_status(&h, &none_scanned(), &w);
+        assert_eq!(host_status, EntityFreshness::Stale);
+
+        // A service last seen at the same time as the host. On its own merits
+        // it is stale, but the host was never reached, so nothing was observed
+        // about the service — it must inherit rather than assert its own decay.
+        let svc = service(host_id, 8 * 24 * HOUR);
+        let own = compute_digest_status(&svc, &none_scanned(), &w);
+        let policy = ChildPolicy::Inherit(host_status, host_fresh);
+
+        assert_eq!(
+            policy.resolve(own),
+            (host_status, host_fresh),
+            "an unreached host's children report the host's verdict"
+        );
+        assert_eq!(
+            ChildPolicy::Classify.resolve(own),
+            own,
+            "a reached host's children keep their own verdict"
+        );
+    }
+
+    // ---- Staleness tracks elapsed time, not scan count -------------------
+
+    // The mismatch this model exists to remove: with a scan-count measure, an
+    // entity missing N scans was "missing" whether that was 45 minutes or 3
+    // months. The verdict must depend only on elapsed time vs the window.
+    #[test]
+    fn verdict_depends_on_elapsed_time_not_on_how_many_scans_were_missed() {
+        let w = window(24 * 7, Some(HOUR));
+
+        // Fast-cadence network: missing many scans, but only 45 minutes.
+        let missed_three_quarter_hourly_scans = host(45 * 60);
+        assert_eq!(
+            compute_digest_status(&missed_three_quarter_hourly_scans, &none_scanned(), &w).0,
+            EntityFreshness::Current,
+            "45 minutes is not stale under a 7-day window, however many scans it spans"
+        );
+
+        // Slow-cadence network: missed a single scan, but a month has passed.
+        let missed_one_monthly_scan = host(30 * 24 * HOUR);
+        assert_eq!(
+            compute_digest_status(&missed_one_monthly_scan, &none_scanned(), &w).0,
+            EntityFreshness::Stale,
+            "a month unobserved is stale even though only one scan was missed"
+        );
+    }
+
+    #[test]
+    fn a_network_with_no_configured_window_falls_back_to_the_default() {
+        let default_net = network(None);
+        let explicit_net = network(Some(DEFAULT_STALE_AFTER_HOURS));
+        assert_eq!(
+            default_net.stale_cutoff(t(0)),
+            explicit_net.stale_cutoff(t(0))
+        );
+
+        // And a tighter window genuinely bites sooner.
+        let strict = network(Some(1));
+        assert!(strict.stale_cutoff(t(0)) > default_net.stale_cutoff(t(0)));
+    }
+
+    #[test]
+    fn entities_discovery_never_refreshes_are_never_stale() {
+        let w = window(1, None); // 1-hour window; everything below is older
+        let mut manual = host(30 * 24 * HOUR);
+        manual.base.source = EntitySource::Manual;
+        let mut system = host(30 * 24 * HOUR);
+        system.base.source = EntitySource::System;
+        let discovered = host(30 * 24 * HOUR);
+
+        assert_eq!(
+            compute_digest_status(&manual, &none_scanned(), &w).0,
+            EntityFreshness::Current,
+            "a hand-created host is never refreshed by discovery, so it cannot go stale"
+        );
+        assert_eq!(
+            compute_digest_status(&system, &none_scanned(), &w).0,
+            EntityFreshness::Current
+        );
+        assert_eq!(
+            compute_digest_status(&discovered, &none_scanned(), &w).0,
+            EntityFreshness::Stale,
+            "the same age on a discovered host does go stale"
+        );
+    }
+
+    // ---- Transition reporting -------------------------------------------
+
+    #[test]
+    fn a_host_is_reported_only_on_the_scan_where_it_crosses_into_stale() {
+        // 7-day window, previous session an hour before this one.
+        let w = window(24 * 7, Some(HOUR));
+
+        // Last seen 7 days + 30 minutes ago: inside the window as of the
+        // previous session, outside it now.
+        let just_crossed = host(7 * 24 * HOUR + 30 * 60);
+        let (status, is_fresh) = compute_digest_status(&just_crossed, &none_scanned(), &w);
+        assert_eq!(status, EntityFreshness::Stale);
+        assert!(
+            is_fresh,
+            "crossing the line this session is worth reporting"
+        );
+
+        // Stale for weeks: still stale, but nothing happened this session.
+        let long_stale = host(30 * 24 * HOUR);
+        let (status, is_fresh) = compute_digest_status(&long_stale, &none_scanned(), &w);
+        assert_eq!(status, EntityFreshness::Stale);
+        assert!(
+            !is_fresh,
+            "an entity stale for weeks must not be re-reported every scan"
+        );
+    }
+
+    #[test]
+    fn no_transition_is_claimed_on_a_networks_first_scan() {
+        let w = window(24 * 7, None);
+        let (status, is_fresh) = compute_digest_status(&host(30 * 24 * HOUR), &none_scanned(), &w);
+        assert_eq!(status, EntityFreshness::Stale);
+        assert!(
+            !is_fresh,
+            "with no previous session there is no crossing to report"
+        );
+    }
+
+    // ---- Coverage: whose absence means anything --------------------------
+
+    fn subnets(ids: &[Uuid]) -> HashSet<Uuid> {
+        ids.iter().copied().collect()
+    }
+
+    #[test]
+    fn a_targeted_scan_says_nothing_about_hosts_in_subnets_it_did_not_sweep() {
+        let swept = Uuid::new_v4();
+        let untouched = Uuid::new_v4();
+        let coverage = ScanCoverage::for_session(
+            &DiscoveryType::Unified {
+                host_id: Uuid::new_v4(),
+                subnet_ids: Some(vec![swept]),
+                host_naming_fallback: Default::default(),
+                scan_settings: Default::default(),
+            },
+            &ScannedEntityIds::default(),
+        );
+
+        let in_scope = Uuid::new_v4();
+        let out_of_scope = Uuid::new_v4();
+        assert!(coverage.covers_host(in_scope, Some(&subnets(&[swept]))));
+        assert!(
+            !coverage.covers_host(out_of_scope, Some(&subnets(&[untouched]))),
+            "a host in an unswept subnet must be left out of the digest entirely"
+        );
+        assert!(
+            !coverage.covers_host(Uuid::new_v4(), None),
+            "a host with no IPs cannot be placed in a swept subnet"
+        );
+    }
+
+    #[test]
+    fn two_daemons_on_disjoint_subnets_do_not_report_each_others_hosts() {
+        let daemon_a_subnet = Uuid::new_v4();
+        let daemon_b_subnet = Uuid::new_v4();
+        // Daemon A scans without an explicit target: coverage is what it
+        // actually confirmed, which is only its own subnet.
+        let coverage = ScanCoverage::for_session(
+            &DiscoveryType::Unified {
+                host_id: Uuid::new_v4(),
+                subnet_ids: None,
+                host_naming_fallback: Default::default(),
+                scan_settings: Default::default(),
+            },
+            &ScannedEntityIds {
+                subnet_ids: vec![daemon_a_subnet],
+                ..Default::default()
+            },
+        );
+
+        assert!(coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[daemon_a_subnet]))));
+        assert!(
+            !coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[daemon_b_subnet]))),
+            "daemon A's silence about daemon B's subnet carries no information"
+        );
+    }
+
+    #[test]
+    fn runs_that_sweep_no_subnets_speak_only_for_the_daemons_own_host() {
+        let daemon_host = Uuid::new_v4();
+        let other_host = Uuid::new_v4();
+        let any_subnet = subnets(&[Uuid::new_v4()]);
+
+        for discovery_type in [
+            DiscoveryType::SelfReport {
+                host_id: daemon_host,
+            },
+            DiscoveryType::Docker {
+                host_id: daemon_host,
+                host_naming_fallback: Default::default(),
+            },
+        ] {
+            let coverage = ScanCoverage::for_session(&discovery_type, &ScannedEntityIds::default());
+            assert!(coverage.covers_host(daemon_host, Some(&any_subnet)));
+            assert!(
+                !coverage.covers_host(other_host, Some(&any_subnet)),
+                "a container/self-report run never swept the network"
+            );
+            assert!(
+                !coverage.swept_subnets(),
+                "network-wide conclusions (VLANs) must not be drawn from it"
+            );
+        }
+    }
+
+    #[test]
+    fn a_scan_that_confirmed_no_subnets_covers_nothing() {
+        let coverage = ScanCoverage::for_session(
+            &DiscoveryType::Unified {
+                host_id: Uuid::new_v4(),
+                subnet_ids: None,
+                host_naming_fallback: Default::default(),
+                scan_settings: Default::default(),
+            },
+            &ScannedEntityIds::default(),
+        );
+        assert!(!coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[Uuid::new_v4()]))));
+        assert!(!coverage.swept_subnets());
     }
 }

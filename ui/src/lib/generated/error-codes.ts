@@ -27,6 +27,8 @@ export const ERROR_CODES = {
 	auth_user_not_found: "User with ID '{id}' not found",
 	auth_daemon_key_not_created:
 		'Daemon is trying to register with an API key that has not yet been created',
+	auth_daemon_not_provisioned:
+		'This daemon must be provisioned before it can register. Provision it in the Scanopy UI and re-run the install command.',
 	auth_demo_mode: 'This action is disabled in demo mode',
 	auth_password_login_disabled: 'Password login is disabled',
 	auth_registration_disabled: 'User registration is disabled',
@@ -107,6 +109,7 @@ export interface ErrorParams {
 	auth_oidc_provider_error: { provider: string | number };
 	auth_user_not_found: { id: string | number };
 	auth_daemon_key_not_created: Record<string, never>;
+	auth_daemon_not_provisioned: Record<string, never>;
 	auth_demo_mode: Record<string, never>;
 	auth_password_login_disabled: Record<string, never>;
 	auth_registration_disabled: Record<string, never>;

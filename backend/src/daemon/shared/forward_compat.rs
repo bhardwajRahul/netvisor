@@ -214,6 +214,7 @@ impl DaemonResponse for HostResponse {
             id: _,
             created_at: _,
             updated_at: _,
+            last_seen_at: _,
             name: _,
             network_id: _,
             hostname: _,

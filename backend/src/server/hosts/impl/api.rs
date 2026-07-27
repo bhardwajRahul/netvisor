@@ -672,6 +672,10 @@ pub struct HostResponse {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Last time discovery observed this host. User-facing (drives the "Last
+    /// seen" column and the stale badge), which is why it is carried here while
+    /// the rest of the SCD2/audit columns are not.
+    pub last_seen_at: DateTime<Utc>,
 
     // Host fields
     pub name: String,
@@ -720,6 +724,7 @@ impl HostResponse {
             id,
             created_at,
             updated_at,
+            last_seen_at,
             name,
             network_id,
             hostname,
@@ -741,10 +746,10 @@ impl HostResponse {
             interfaces: _,
         } = self;
 
-        // SCD2 fields aren't in HostResponse yet; defaults are filled in here.
-        // The to_host() method is only used in legacy compat paths; round-tripping
-        // a HostResponse → Host loses temporal info that can be reconstructed
-        // from the live row's values via from_row.
+        // The remaining SCD2 fields aren't in HostResponse; defaults are filled
+        // in here. The to_host() method is only used in legacy compat paths;
+        // round-tripping a HostResponse → Host loses temporal info that can be
+        // reconstructed from the live row's values via from_row.
         Host {
             id: *id,
             created_at: *created_at,
@@ -752,7 +757,7 @@ impl HostResponse {
             valid_from: *created_at,
             valid_to: None,
             lineage_id: None,
-            last_seen_at: *updated_at,
+            last_seen_at: *last_seen_at,
             last_discovery_id: None,
             first_discovery_id: None,
             base: HostBase {
@@ -793,13 +798,14 @@ impl HostResponse {
             id,
             created_at,
             updated_at,
-            // SCD2/audit fields are intentionally dropped here — not part
-            // of the API response shape. Audit-trail UX worktree may surface
-            // them later via the historical Discovery row + lineage queries.
+            // `last_seen_at` IS part of the response shape: it drives the
+            // "Last seen" column and the stale badge. The remaining SCD2/audit
+            // fields stay internal — an audit-trail UX can surface those later
+            // via the historical Discovery row + lineage queries.
+            last_seen_at,
             valid_from: _,
             valid_to: _,
             lineage_id: _,
-            last_seen_at: _,
             last_discovery_id: _,
             first_discovery_id: _,
             base,
@@ -833,6 +839,7 @@ impl HostResponse {
             id,
             created_at,
             updated_at,
+            last_seen_at,
             name,
             network_id,
             hostname,

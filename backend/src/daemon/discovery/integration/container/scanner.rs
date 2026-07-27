@@ -599,6 +599,22 @@ impl<'a> ContainerScanner<'a> {
                     });
                 });
 
+                // Service matching above ran against a single endpoint. A container attached
+                // to several bridge subnets (e.g. a proxy subnet and a private database
+                // subnet) has an endpoint on each, and is equally present at all of them —
+                // spread the bindings so it resolves inside every subnet it is attached to.
+                let bridge_endpoint_ids: Vec<Uuid> = container_interfaces_and_subnets
+                    .iter()
+                    .filter(|(_, subnet)| subnet.is_container_bridge_subnet())
+                    .map(|(i, _)| i.id)
+                    .collect();
+
+                spread_bindings_across_endpoints(
+                    &mut host_data.services,
+                    &bridge_endpoint_ids,
+                    ip_address.id,
+                );
+
                 return Ok(Some(ContainerScanResult {
                     services: host_data.services,
                     ports: host_data.ports,
@@ -1215,6 +1231,17 @@ impl<'a> ContainerScanner<'a> {
                     Vec::new()
                 };
 
+                // The runtime reports attachments in a HashMap, so iteration order varies run
+                // to run. Downstream the first entry becomes the container's primary endpoint
+                // (the one service matching is anchored to, and the one the container-runtime
+                // edge targets), so sort by network name to keep both stable across scans.
+                ip_addresses_and_subnets.sort_by(|(a, _), (b, _)| {
+                    a.base
+                        .name
+                        .cmp(&b.base.name)
+                        .then_with(|| a.base.ip_address.cmp(&b.base.ip_address))
+                });
+
                 // Merge in host ip_addresses
                 ip_addresses_and_subnets.extend(host_interfaces_and_subnets.clone());
 
@@ -1287,5 +1314,196 @@ impl<'a> ContainerScanner<'a> {
             .into_iter()
             .zip(container_summaries)
             .collect())
+    }
+}
+
+/// Mirror each service's bindings from `primary_endpoint_id` onto the container's other
+/// `endpoint_ids`.
+///
+/// Service matching runs once per container, against whichever endpoint resolved first, so its
+/// bindings all point at that one endpoint. A container attached to several bridge subnets is
+/// reachable at its endpoint on each of them, and callers that ask "what is at this IP address?"
+/// — topology element cards, the container-runtime edge — resolve through bindings. Without this
+/// the container only ever surfaces in one of the subnets it belongs to.
+///
+/// Idempotent: bindings compare by type, so re-running adds nothing.
+fn spread_bindings_across_endpoints(
+    services: &mut [Service],
+    endpoint_ids: &[Uuid],
+    primary_endpoint_id: Uuid,
+) {
+    let other_endpoint_ids: Vec<Uuid> = endpoint_ids
+        .iter()
+        .copied()
+        .filter(|id| *id != primary_endpoint_id)
+        .collect();
+
+    if other_endpoint_ids.is_empty() {
+        return;
+    }
+
+    for service in services.iter_mut() {
+        let primary_bindings: Vec<Binding> = service
+            .base
+            .bindings
+            .iter()
+            .filter(|b| b.ip_address_id() == Some(primary_endpoint_id))
+            .copied()
+            .collect();
+
+        for endpoint_id in &other_endpoint_ids {
+            for binding in &primary_bindings {
+                let mirrored = binding.rebound_to_ip_address(*endpoint_id);
+                if !service.base.bindings.contains(&mirrored) {
+                    service.base.bindings.push(mirrored);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::services::r#impl::base::ServiceBase;
+    use crate::server::services::r#impl::categories::ServiceCategory;
+    use crate::server::services::r#impl::definitions::ServiceDefinition;
+    use crate::server::services::r#impl::patterns::Pattern;
+
+    #[derive(PartialEq, Eq, Hash, Clone)]
+    struct TestServiceDef;
+
+    impl ServiceDefinition for TestServiceDef {
+        fn name(&self) -> &'static str {
+            "TestService"
+        }
+        fn description(&self) -> &'static str {
+            "Test"
+        }
+        fn category(&self) -> ServiceCategory {
+            ServiceCategory::Development
+        }
+        fn discovery_pattern(&self) -> Pattern<'_> {
+            Pattern::None
+        }
+    }
+
+    fn service_with(bindings: Vec<Binding>) -> Service {
+        Service {
+            base: ServiceBase {
+                service_definition: Box::new(TestServiceDef),
+                bindings,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    /// Bindings anchored to a given endpoint, as (port_id, ip_address_id) pairs.
+    fn port_bindings(service: &Service) -> Vec<(Option<Uuid>, Option<Uuid>)> {
+        service
+            .base
+            .bindings
+            .iter()
+            .map(|b| (b.port_id(), b.ip_address_id()))
+            .collect()
+    }
+
+    #[test]
+    fn container_on_several_subnets_is_reachable_at_every_endpoint() {
+        let (primary, second, third) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let port_id = Uuid::new_v4();
+        let mut services = vec![service_with(vec![Binding::new_port_serviceless(
+            port_id,
+            Some(primary),
+        )])];
+
+        spread_bindings_across_endpoints(&mut services, &[primary, second, third], primary);
+
+        let bound_to: HashSet<Uuid> = services[0]
+            .base
+            .bindings
+            .iter()
+            .filter(|b| b.port_id() == Some(port_id))
+            .filter_map(|b| b.ip_address_id())
+            .collect();
+        assert_eq!(
+            bound_to,
+            HashSet::from([primary, second, third]),
+            "the container's port should resolve at each subnet it is attached to"
+        );
+    }
+
+    #[test]
+    fn single_attachment_is_left_alone() {
+        let primary = Uuid::new_v4();
+        let mut services = vec![service_with(vec![Binding::new_port_serviceless(
+            Uuid::new_v4(),
+            Some(primary),
+        )])];
+        let before = port_bindings(&services[0]);
+
+        spread_bindings_across_endpoints(&mut services, &[primary], primary);
+
+        assert_eq!(port_bindings(&services[0]), before);
+    }
+
+    #[test]
+    fn portless_container_is_reachable_at_every_endpoint() {
+        // A container exposing no ports is bound by IP address rather than by port
+        // (see `Service::from_discovery`); it is still present on every subnet.
+        let (primary, second) = (Uuid::new_v4(), Uuid::new_v4());
+        let mut services = vec![service_with(vec![Binding::new_ip_address_serviceless(
+            primary,
+        )])];
+
+        spread_bindings_across_endpoints(&mut services, &[primary, second], primary);
+
+        let bound_to: HashSet<Uuid> = services[0]
+            .base
+            .bindings
+            .iter()
+            .filter(|b| b.port_id().is_none())
+            .filter_map(|b| b.ip_address_id())
+            .collect();
+        assert_eq!(bound_to, HashSet::from([primary, second]));
+    }
+
+    #[test]
+    fn bindings_on_other_addresses_are_not_spread() {
+        // A published host port is bound to the host's own address, not to a container
+        // endpoint — it must not be duplicated onto the container's bridge endpoints.
+        let (primary, second, host_ip) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let host_port_id = Uuid::new_v4();
+        let mut services = vec![service_with(vec![
+            Binding::new_port_serviceless(Uuid::new_v4(), Some(primary)),
+            Binding::new_port_serviceless(host_port_id, Some(host_ip)),
+        ])];
+
+        spread_bindings_across_endpoints(&mut services, &[primary, second], primary);
+
+        let host_port_addresses: Vec<Option<Uuid>> = services[0]
+            .base
+            .bindings
+            .iter()
+            .filter(|b| b.port_id() == Some(host_port_id))
+            .map(|b| b.ip_address_id())
+            .collect();
+        assert_eq!(host_port_addresses, vec![Some(host_ip)]);
+    }
+
+    #[test]
+    fn rescanning_does_not_accumulate_bindings() {
+        let (primary, second) = (Uuid::new_v4(), Uuid::new_v4());
+        let mut services = vec![service_with(vec![Binding::new_port_serviceless(
+            Uuid::new_v4(),
+            Some(primary),
+        )])];
+
+        spread_bindings_across_endpoints(&mut services, &[primary, second], primary);
+        let after_first = port_bindings(&services[0]);
+        spread_bindings_across_endpoints(&mut services, &[primary, second], primary);
+
+        assert_eq!(port_bindings(&services[0]), after_first);
     }
 }

@@ -51,6 +51,7 @@ async fn create_compat_test_api_key(network_id: Uuid) -> Result<String, String> 
         network_id,
         is_enabled: true,
         tags: Vec::new(),
+        daemon_id: None,
         plaintext: None,
     });
 

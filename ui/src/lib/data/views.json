@@ -29,6 +29,9 @@
         "RequestPath": {
           "type": "disabled"
         },
+        "SameContainer": {
+          "type": "disabled"
+        },
         "SameHost": {
           "affects_layout": false,
           "default_visibility": "hidden",
@@ -113,6 +116,15 @@
           "highlight_behavior": "when_visible",
           "show_directionality": true,
           "stroke": "dashed",
+          "type": "active",
+          "will_target_container": false
+        },
+        "SameContainer": {
+          "affects_layout": false,
+          "default_visibility": "hidden",
+          "highlight_behavior": "when_visible",
+          "show_directionality": false,
+          "stroke": "dotted",
           "type": "active",
           "will_target_container": false
         },
@@ -372,6 +384,24 @@
                   "label": "Open Ports"
                 }
               ]
+            },
+            {
+              "filter_type": "Staleness",
+              "label": "By staleness",
+              "values": [
+                {
+                  "color": "Green",
+                  "icon": "check",
+                  "id": "current",
+                  "label": "Current"
+                },
+                {
+                  "color": "Amber",
+                  "icon": "clock",
+                  "id": "stale",
+                  "label": "Stale"
+                }
+              ]
             }
           ]
         }
@@ -435,6 +465,9 @@
           "type": "active",
           "will_target_container": false
         },
+        "SameContainer": {
+          "type": "disabled"
+        },
         "SameHost": {
           "type": "disabled"
         }
@@ -471,6 +504,24 @@
                   "icon": "server",
                   "id": "BareMetal",
                   "label": "Bare metal"
+                }
+              ]
+            },
+            {
+              "filter_type": "Staleness",
+              "label": "By staleness",
+              "values": [
+                {
+                  "color": "Green",
+                  "icon": "check",
+                  "id": "current",
+                  "label": "Current"
+                },
+                {
+                  "color": "Amber",
+                  "icon": "clock",
+                  "id": "stale",
+                  "label": "Stale"
                 }
               ]
             }
@@ -709,6 +760,24 @@
                   "label": "Open Ports"
                 }
               ]
+            },
+            {
+              "filter_type": "Staleness",
+              "label": "By staleness",
+              "values": [
+                {
+                  "color": "Green",
+                  "icon": "check",
+                  "id": "current",
+                  "label": "Current"
+                },
+                {
+                  "color": "Amber",
+                  "icon": "clock",
+                  "id": "stale",
+                  "label": "Stale"
+                }
+              ]
             }
           ]
         }
@@ -771,6 +840,9 @@
           "stroke": "solid",
           "type": "active",
           "will_target_container": false
+        },
+        "SameContainer": {
+          "type": "disabled"
         },
         "SameHost": {
           "type": "disabled"
@@ -1017,6 +1089,24 @@
                   "icon": "binary",
                   "id": "OpenPorts",
                   "label": "Open Ports"
+                }
+              ]
+            },
+            {
+              "filter_type": "Staleness",
+              "label": "By staleness",
+              "values": [
+                {
+                  "color": "Green",
+                  "icon": "check",
+                  "id": "current",
+                  "label": "Current"
+                },
+                {
+                  "color": "Amber",
+                  "icon": "clock",
+                  "id": "stale",
+                  "label": "Stale"
                 }
               ]
             }

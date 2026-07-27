@@ -15,11 +15,13 @@ use crate::server::bindings::r#impl::base::Binding;
 use crate::server::{
     dependencies::r#impl::base::DependencyMembers,
     shared::{
+        entities::EntityDiscriminants,
         position::Positioned,
         storage::{
             child::ChildStorableEntity,
             filter::StorableFilter,
             generic::GenericPostgresStorage,
+            lock::{DEFAULT_LOCK_TIMEOUT, LockKey},
             traits::{SqlValue, Storable, Storage},
         },
     },
@@ -336,6 +338,16 @@ impl DependencyMemberStorage {
         members: &DependencyMembers,
     ) -> Result<()> {
         let mut tx = self.storage.begin_transaction().await?;
+        // Serialize concurrent delete-all + re-insert syncs for one
+        // dependency (interleaving would duplicate member rows).
+        tx.lock(
+            LockKey::JunctionSync {
+                parent: EntityDiscriminants::Dependency,
+                parent_id: *dependency_id,
+            },
+            DEFAULT_LOCK_TIMEOUT,
+        )
+        .await?;
 
         // Delete existing members
         let filter =

@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 use std::net::Ipv4Addr;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
@@ -100,6 +102,8 @@ pub fn is_available() -> bool {
 /// * `targets` - List of IPs to scan
 /// * `retries` - Number of retry rounds for non-responding hosts (0 = single attempt)
 /// * `rate_pps` - Maximum packets per second (rate limiting for switch compatibility)
+/// * `packets_sent` - Shared counter incremented per ARP request sent, so callers can
+///   drive work-based progress/ETA off real send throughput rather than a rate estimate.
 pub fn scan_subnet(
     interface: &NetworkInterface,
     source_ip: Ipv4Addr,
@@ -107,6 +111,7 @@ pub fn scan_subnet(
     targets: Vec<Ipv4Addr>,
     retries: u32,
     rate_pps: u32,
+    packets_sent: Arc<AtomicU64>,
 ) -> Result<std::sync::mpsc::Receiver<ArpScanResult>> {
     use std::sync::mpsc;
 
@@ -118,7 +123,14 @@ pub fn scan_subnet(
     // Spawn background thread for the entire ARP scan
     std::thread::spawn(move || {
         if let Err(e) = scan_subnet_background(
-            &interface, source_ip, source_mac, target_set, retries, rate_pps, tx,
+            &interface,
+            source_ip,
+            source_mac,
+            target_set,
+            retries,
+            rate_pps,
+            packets_sent,
+            tx,
         ) {
             tracing::warn!(error = %e, "ARP scan background thread failed");
         }
@@ -127,6 +139,7 @@ pub fn scan_subnet(
     Ok(rx)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn scan_subnet_background(
     interface: &NetworkInterface,
     source_ip: Ipv4Addr,
@@ -134,6 +147,7 @@ fn scan_subnet_background(
     targets: HashSet<Ipv4Addr>,
     retries: u32,
     rate_pps: u32,
+    packets_sent: Arc<AtomicU64>,
     result_tx: std::sync::mpsc::Sender<ArpScanResult>,
 ) -> Result<()> {
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -387,6 +401,9 @@ fn scan_subnet_background(
                     }
                     None => sent_err += 1,
                 }
+                // Count every attempt (ok or err) — this tracks progress through the
+                // send schedule, which is what the ETA/progress bar is pacing against.
+                packets_sent.fetch_add(1, Ordering::Relaxed);
                 thread::sleep(send_delay);
             }
 

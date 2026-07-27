@@ -25,8 +25,12 @@ impl DaemonService {
         // - ServerPoll: Admin provides URL during provisioning
         // - DaemonPoll: URL not needed (server never connects to daemon)
         // This prevents daemons from overwriting admin-configured URLs.
-        daemon.base.name = status.name;
-        daemon.base.mode = status.mode;
+        // Name/mode: for a provisioned daemon (api_key_id set) these are authoritative
+        // server-side and must not be overwritten by the daemon's reported values.
+        if daemon.base.api_key_id.is_none() {
+            daemon.base.name = status.name;
+            daemon.base.mode = status.mode;
+        }
 
         // Update version if provided (for ServerPoll mode status responses)
         if let Some(version) = status.version {
@@ -209,12 +213,23 @@ impl DaemonService {
             .get()
             .ok_or_else(|| ApiError::internal_error("HostService not initialized"))?;
 
+        // Resolve the network from the authenticated key rather than trusting the
+        // request body. A provisioned DaemonPoll daemon starts without a network_id
+        // and sends nil; the server derives it from the 1:1 key. For a legacy
+        // shared-key daemon the key's network equals request.network_id, so this is
+        // a no-op there (and it stops a daemon claiming a network its key can't reach).
+        let effective_network_id = auth
+            .network_ids()
+            .first()
+            .copied()
+            .unwrap_or(request.network_id);
+
         // Check if this is a demo organization - block daemon registration
         let network = self
             .network_service
-            .get_by_id(&request.network_id)
+            .get_by_id(&effective_network_id)
             .await?
-            .ok_or_else(|| ApiError::entity_not_found::<Network>(request.network_id))?;
+            .ok_or_else(|| ApiError::entity_not_found::<Network>(effective_network_id))?;
 
         let org_id = network.base.organization_id;
         let organization =
@@ -236,6 +251,13 @@ impl DaemonService {
         }
 
         tracing::info!("{:?}", request);
+
+        // For a 1:1 provisioned key the auth layer resolved the daemon from the key,
+        // so that is the authoritative id — the client-sent request.daemon_id is
+        // untrusted and, for a freshly provisioned daemon, not yet known. For a legacy
+        // shared-key daemon, auth resolves to the header id, which equals
+        // request.daemon_id, so this is a no-op there.
+        let effective_daemon_id = auth.daemon_id().unwrap_or(request.daemon_id);
 
         // Parse version early for use in server_capabilities
         let daemon_version = request
@@ -266,9 +288,9 @@ impl DaemonService {
         });
 
         // Check if daemon already exists (re-registration scenario)
-        if let Some(mut existing_daemon) = self.get_by_id(&request.daemon_id).await? {
+        if let Some(mut existing_daemon) = self.get_by_id(&effective_daemon_id).await? {
             tracing::info!(
-                daemon_id = %request.daemon_id,
+                daemon_id = %effective_daemon_id,
                 host_id = %existing_daemon.base.host_id,
                 "Daemon already registered, updating registration"
             );
@@ -279,8 +301,15 @@ impl DaemonService {
             // (Interfaced subnets are not taken from registration — they flow via the
             // status heartbeat / update-capabilities channels into the junction.)
             existing_daemon.base.last_seen = Some(Utc::now());
-            existing_daemon.base.mode = request.mode;
-            existing_daemon.base.name = request.name;
+            // For a provisioned daemon the server-side name and mode are authoritative
+            // (chosen at provision, bound to the 1:1 key). A silent install defaulting to
+            // "scanopy-daemon" must not clobber the provisioned name. A provisioned record
+            // has api_key_id set; a legacy self-registered daemon does not, and keeps
+            // reporting its own name/mode.
+            if existing_daemon.base.api_key_id.is_none() {
+                existing_daemon.base.mode = request.mode;
+                existing_daemon.base.name = request.name;
+            }
             // A daemon that's re-registering is by definition no longer on standby.
             existing_daemon.base.standby = false;
             let was_pre_unified =
@@ -290,6 +319,14 @@ impl DaemonService {
             }
 
             let updated_daemon = self.update(&mut existing_daemon, auth).await?;
+
+            // A provisioned daemon's FIRST contact lands here (its record already exists from
+            // provisioning), not in the new-registration branch — so emit the onboarding
+            // milestone here too, or the org never records FirstDaemonRegistered and the UI
+            // keeps showing "install a daemon" while discovery actually runs. Idempotent: the
+            // emit is guarded by org.not_onboarded, so restarts don't re-fire it.
+            self.emit_first_daemon_telemetry(updated_daemon.id, updated_daemon.base.network_id)
+                .await?;
 
             // Migrate legacy discoveries if daemon just upgraded to unified-capable version
             if was_pre_unified
@@ -316,12 +353,25 @@ impl DaemonService {
             });
         }
 
+        // Records are created ONLY through provisioning for modern daemons. A daemon
+        // that supports server-provisioned identity (>= 0.17.5) is installed against a
+        // pre-provisioned record bound to a 1:1 key; if its register doesn't resolve to
+        // an existing record, something is wrong (unprovisioned, or a key that doesn't
+        // match the daemon) — creating a second record here is the bug testers hit on
+        // re-install. Reject instead. Self-registration below is a back-compat path for
+        // legacy (< 0.17.5) daemons that join with a shared network key.
+        if supports_server_provisioned_identity(daemon_version.as_ref()) {
+            // Coded (not bad_request) so the daemon can recognize this as a terminal
+            // registration rejection and stop retrying it as if the server were unreachable.
+            return Err(ApiError::daemon_not_provisioned());
+        }
+
         // Check daemon limit for unverified orgs (allows 1st daemon)
         self.check_unverified_daemon_limit(org_id).await?;
 
         // New registration - create host and daemon
         let dummy_host = Host::new(HostBase {
-            network_id: request.network_id,
+            network_id: effective_network_id,
             name: request.name.clone(),
             hostname: None,
             description: None,
@@ -361,7 +411,7 @@ impl DaemonService {
         // Seed the daemon host's loopback so a daemon-host socket/proxy credential is probed on the
         // very first scan (the credential mapping is snapshotted before the daemon self-reports).
         if let Err(e) = host_service
-            .seed_loopback(host_response.id, request.network_id, auth.clone())
+            .seed_loopback(host_response.id, effective_network_id, auth.clone())
             .await
         {
             tracing::warn!(host_id = %host_response.id, error = %e, "Failed to seed daemon host loopback");
@@ -391,26 +441,10 @@ impl DaemonService {
             }
         }
 
-        // Assign credentials targeted at the daemon host to this daemon's host now, so they appear
-        // in the credential's assignments immediately (#637 Symptom A). That's any DaemonHost-scoped
-        // target (e.g. a local socket credential) or a Hosts target naming a loopback IP. Remote-IP
-        // and Network credentials are auto-assigned to their hosts during discovery.
-        // Apply the init-command targeting through the SAME path the discovery-update handler uses:
-        // daemon-host creds (sockets / loopback Hosts) merge into the host_credentials junction;
-        // Network/Hosts targets are returned to persist on the daemon's Discovery row.
-        let remaining_targets = self
-            .credential_service
-            .apply_integration_targets(host_response.id, request.integration_targets.clone())
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(
-                    host_id = %host_response.id,
-                    error = ?e,
-                    "Failed to apply integration targets during registration"
-                );
-                request.integration_targets.clone()
-            });
-
+        // Init-command targeting is persisted on the daemon's Discovery row, never assigned to a
+        // host here. Every target — daemon-host sockets included — earns its assignment by
+        // probing successfully during discovery, at which point it's assigned to the host it
+        // worked on.
         // If user_id is nil (old daemon), fall back to org owner
         let user_id = if request.user_id.is_nil() {
             self.user_service
@@ -425,7 +459,7 @@ impl DaemonService {
 
         let mut daemon = Daemon::new(DaemonBase {
             host_id: host_response.id,
-            network_id: request.network_id,
+            network_id: effective_network_id,
             // DaemonPoll mode: URL not needed (server never connects to daemon)
             // ServerPoll mode: URL is set during provisioning, not during registration
             url: String::new(),
@@ -441,7 +475,7 @@ impl DaemonService {
             standby_cleared_at: None,
         });
 
-        daemon.id = request.daemon_id;
+        daemon.id = effective_daemon_id;
 
         let registered_daemon = self.create(daemon, auth.clone()).await?;
 
@@ -452,11 +486,11 @@ impl DaemonService {
         // Create default discovery jobs
         let is_free_plan = plan.is_free();
         self.create_default_discovery_jobs(
-            request.daemon_id,
-            request.network_id,
+            effective_daemon_id,
+            effective_network_id,
             host_response.id,
             is_free_plan,
-            &remaining_targets,
+            &request.integration_targets,
         )
         .await?;
 
@@ -733,6 +767,16 @@ impl DaemonService {
             return None;
         }
 
+        // Lazily start the daemon's initial discovery run the first time it pulls work.
+        // Provisioning creates the Discovery CONFIG but no session (so a not-yet-installed
+        // daemon's discovery can't be swept as a stalled Pending session). This is the one
+        // choke point both DaemonPoll (/request-work) and ServerPoll (poll loop) funnel
+        // through, and it only runs once the daemon is ready_for_work — so the initial
+        // session is born and dispatched in the same work-pull, never left idle-Pending.
+        // Idempotent: start_session stamps `last_run`, so a discovery that has ever run is
+        // skipped here and governed by its schedule/adhoc semantics thereafter.
+        self.start_initial_discovery_sessions(daemon_id).await;
+
         let sessions = self
             .discovery_service
             .get_sessions_for_daemon(&daemon_id)
@@ -746,6 +790,42 @@ impl DaemonService {
             Some(work)
         } else {
             None
+        }
+    }
+
+    /// Start the initial session for any of the daemon's live discoveries that have
+    /// never run. Called on the first work-pull (see get_pending_work). A discovery's
+    /// `last_run` is stamped by start_session, so this fires exactly once per discovery
+    /// — the initial run — after which the schedule (or one-shot adhoc) takes over.
+    /// Infallible on purpose (get_pending_work has no error channel): failures are logged.
+    async fn start_initial_discovery_sessions(&self, daemon_id: Uuid) {
+        let filter =
+            StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).exclude_historical();
+        let discoveries = match self.discovery_service.get_all(filter).await {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!(daemon_id = %daemon_id, error = ?e, "Failed to load discoveries for initial-session start");
+                return;
+            }
+        };
+
+        for discovery in discoveries {
+            let never_ran = matches!(
+                discovery.base.run_type,
+                RunType::Scheduled { last_run: None, .. } | RunType::AdHoc { last_run: None }
+            );
+            if !never_ran {
+                continue;
+            }
+            if let Err(e) = self
+                .discovery_service
+                .start_session(discovery, AuthenticatedEntity::System)
+                .await
+            {
+                // A concurrent poll may have already started it (start_session enforces
+                // one active session per discovery) — benign; log at debug.
+                tracing::debug!(daemon_id = %daemon_id, error = ?e, "Initial discovery session not started (likely already running)");
+            }
         }
     }
 
@@ -771,6 +851,25 @@ impl DaemonService {
         is_free_plan: bool,
         integration_targets: &[IntegrationTarget],
     ) -> Result<(), ApiError> {
+        // Idempotency guard: a daemon gets exactly one set of default discovery
+        // jobs. This is now called from provision (where seed refs are known),
+        // legacy self-registration, and ServerPoll first-contact — so without this
+        // guard a provisioned daemon that later registers / is first-contacted
+        // would get a duplicate discovery. Skip if any live discovery exists.
+        let existing = self
+            .discovery_service
+            .get_all(
+                StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).exclude_historical(),
+            )
+            .await?;
+        if !existing.is_empty() {
+            tracing::info!(
+                daemon_id = %daemon_id,
+                "Daemon already has discoveries; skipping default discovery creation"
+            );
+            return Ok(());
+        }
+
         tracing::info!(
             daemon_id = %daemon_id,
             network_id = %network_id,
@@ -811,13 +910,13 @@ impl DaemonService {
         // before the first session dispatches (the #637 fix: per-daemon, not on the credential).
         discovery.integration_targets = integration_targets.to_vec();
 
-        let unified_discovery = self
-            .discovery_service
-            .create_discovery(discovery, AuthenticatedEntity::System)
-            .await?;
-
+        // Create the Discovery CONFIG only — do NOT start a session here. The initial
+        // session is started lazily the first time the daemon pulls work (see
+        // get_pending_work). This is what keeps a provisioned-but-not-yet-installed
+        // daemon's discovery from being created as a `Pending` session and then
+        // cancelled by the 5-minute stall sweeper before the daemon ever connects.
         self.discovery_service
-            .start_session(unified_discovery, AuthenticatedEntity::System)
+            .create_discovery(discovery, AuthenticatedEntity::System)
             .await?;
 
         Ok(())

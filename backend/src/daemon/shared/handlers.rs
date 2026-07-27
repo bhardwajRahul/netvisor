@@ -141,6 +141,26 @@ async fn handle_first_contact(
         );
     }
 
+    // Cache the server-provisioned identity (additive; older servers omit these).
+    if let Some(network_id) = request.network_id
+        && let Err(e) = state.config.set_network_id(network_id).await
+    {
+        tracing::error!(
+            target: LOG_TARGET,
+            error = %e,
+            "Failed to store assigned network ID"
+        );
+    }
+    if let Some(name) = request.name.clone()
+        && let Err(e) = state.config.set_name(name).await
+    {
+        tracing::error!(
+            target: LOG_TARGET,
+            error = %e,
+            "Failed to store assigned daemon name"
+        );
+    }
+
     // Log server capabilities
     tracing::info!(
         target: LOG_TARGET,

@@ -7,6 +7,8 @@
 	import TroubleshootingChecklist from './TroubleshootingChecklist.svelte';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import type { DaemonOS } from '../../../utils';
+	import { osInstallCommand, type InstallArtifacts } from '../../../types/base';
+	import type { DaemonMode } from '../../../types/base';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { useTestReachabilityMutation, useRetryDaemonConnectionMutation } from '../../../queries';
 	import AnimatedProgressBar from '$lib/features/discovery/components/cards/AnimatedProgressBar.svelte';
@@ -51,14 +53,15 @@
 		linuxMethod?: LinuxMethod;
 		onLinuxMethodChange?: (method: LinuxMethod) => void;
 		runCommand: string;
-		dockerCompose: string;
+		/** Server-assembled install artifacts (single source of truth), key already filled. */
+		artifacts?: InstallArtifacts | null;
 		hasErrors: boolean;
 		isFirstDaemon?: boolean;
 		connectionStatus?: DaemonConnectionStatus;
 		onViewDiscovery?: () => void;
 		hasEmailSupport?: boolean;
 		onAdvanced?: (() => void) | null;
-		daemonMode?: string;
+		daemonMode?: DaemonMode;
 		daemonName?: string;
 		logFilePath?: string;
 		daemonUrl?: string;
@@ -76,7 +79,7 @@
 		linuxMethod = 'binary',
 		onLinuxMethodChange,
 		runCommand,
-		dockerCompose,
+		artifacts = null,
 		hasErrors,
 		isFirstDaemon = false,
 		connectionStatus = 'idle',
@@ -104,9 +107,17 @@
 	const windowsInstallCommand = `Invoke-WebRequest -Uri "${windowsDownloadUrl}" -OutFile "scanopy-daemon-windows-amd64.exe"`;
 	const installScript = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/scanopy/scanopy/refs/heads/main/install.sh)"`;
 
-	// Combined install commands
-	let combinedLinuxMacCommand = $derived(`${installScript} && ${runCommand}`);
-	let combinedWindowsCommand = $derived(`${windowsInstallCommand}; ${runCommand}`);
+	// Combined install commands — prefer the server-assembled command for the platform
+	// (single source of truth), falling back to the client-built one.
+	let dockerCompose = $derived(artifacts?.docker.compose ?? '');
+	let combinedLinuxMacCommand = $derived(
+		(artifacts ? osInstallCommand(artifacts, selectedOS) : '') ||
+			`${installScript} && ${runCommand}`
+	);
+	let combinedWindowsCommand = $derived(
+		(artifacts ? osInstallCommand(artifacts, 'windows') : '') ||
+			`${windowsInstallCommand}; ${runCommand}`
+	);
 
 	// ServerPoll health check
 	const healthCheckMutation = useTestReachabilityMutation();
@@ -417,6 +428,18 @@
 						expandable={false}
 						maxHeight=""
 						code={combinedWindowsCommand}
+						onCopy={() => handleCopy('combined-install')}
+						preventSelect={true}
+					/>
+				{:else if selectedOS === 'freebsd'}
+					<p class="text-secondary text-sm">
+						{daemons_installCommandDescription()}
+					</p>
+					<CodeContainer
+						language="bash"
+						expandable={false}
+						maxHeight=""
+						code={combinedLinuxMacCommand}
 						onCopy={() => handleCopy('combined-install')}
 						preventSelect={true}
 					/>

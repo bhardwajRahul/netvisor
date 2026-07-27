@@ -8,9 +8,11 @@ use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::storage::{
     filter::StorableFilter,
     generic::GenericPostgresStorage,
+    lock::{DEFAULT_LOCK_TIMEOUT, LockKey},
     traits::{SqlValue, Storable, Storage},
 };
 
@@ -155,6 +157,15 @@ impl UserApiKeyNetworkAccessStorage {
     /// Uses a transaction to ensure atomicity - if any insert fails, the delete is rolled back.
     pub async fn save_for_key(&self, api_key_id: &Uuid, network_ids: &[Uuid]) -> Result<()> {
         let mut tx = self.storage.begin_transaction().await?;
+        // Serialize concurrent delete-all + re-insert syncs for one key.
+        tx.lock(
+            LockKey::JunctionSync {
+                parent: EntityDiscriminants::UserApiKey,
+                parent_id: *api_key_id,
+            },
+            DEFAULT_LOCK_TIMEOUT,
+        )
+        .await?;
 
         // Delete existing access for this key
         let filter = StorableFilter::<UserApiKeyNetworkAccess>::new_from_uuid_column(

@@ -25,7 +25,8 @@ use crate::server::services::r#impl::patterns::ClientProbe;
 use crate::server::subnets::r#impl::base::Subnet;
 
 use super::{
-    IntegrationContext, IntegrationRegistry, ProbeContext, execute_with_progress_reporting,
+    DiscoveryIntegration, IntegrationContext, IntegrationRegistry, ProbeContext, ProbeSuccess,
+    execute_with_progress_reporting,
 };
 
 /// Results from probing all integrations for a single host IP.
@@ -69,97 +70,118 @@ pub async fn probe_integrations(
     // Combine caller's open ports with probe-discovered ports for gate checks
     let mut all_open_ports: Vec<PortType> = open_ports.to_vec();
 
+    // First pass (synchronous, cheap): resolve each mapping to a probe task, applying
+    // the discriminant / integration / credentials / gate checks. Gate checks use the
+    // port-scan `open_ports`; probe-discovered ports don't feed later gates (negligible
+    // in practice — probes surface their own service's ports — and it lets the probes
+    // run concurrently below).
+    struct ProbeTask<'a> {
+        discriminant: CredentialQueryPayloadDiscriminants,
+        integration: Box<dyn DiscoveryIntegration>,
+        credentials: Vec<(&'a CredentialQueryPayload, Option<Uuid>)>,
+    }
+    let mut tasks: Vec<ProbeTask> = Vec::new();
     for mapping in credential_mappings {
-        let discriminant: Option<CredentialQueryPayloadDiscriminants> = mapping
+        let Some(discriminant) = mapping
             .default_credential
             .as_ref()
             .map(|c| c.into())
-            .or_else(|| mapping.ip_overrides.first().map(|o| (&o.credential).into()));
-
-        let Some(discriminant) = discriminant else {
+            .or_else(|| mapping.ip_overrides.first().map(|o| (&o.credential).into()))
+        else {
             continue;
         };
-
-        if cancel.is_cancelled() {
-            return Err(Error::msg("Discovery was cancelled"));
-        }
-
         let Some(integration) = IntegrationRegistry::get(discriminant) else {
             tracing::warn!(integration = ?discriminant, "Skipping unrecognized credential type from newer server");
             continue;
         };
-
         let credentials = resolve_credentials_for_ip(mapping, ip);
         if credentials.is_empty() {
-            tracing::debug!(ip = %ip, integration = ?discriminant, "No credentials for this IP, skipping");
             continue;
         }
-
-        tracing::debug!(ip = %ip, integration = ?discriminant, credentials = credentials.len(), "Probing integration");
-
-        // Check probe gate ports (skipped on the daemon's own host, where there's
-        // no port scan and integrations probe directly).
         if !skip_gate {
             let gate_ports = integration.probe_gate_ports(credentials[0].0);
             if !gate_ports.is_empty() && !gate_ports.iter().all(|gp| all_open_ports.contains(gp)) {
                 continue;
             }
         }
+        tasks.push(ProbeTask {
+            discriminant,
+            integration,
+            credentials,
+        });
+    }
 
-        // Try each credential until probe succeeds
-        for (credential, cred_id) in &credentials {
-            if cancel.is_cancelled() {
-                return Err(Error::msg("Discovery was cancelled"));
+    if cancel.is_cancelled() {
+        return Err(Error::msg("Discovery was cancelled"));
+    }
+
+    // Probe all mappings concurrently. Each task tries its credentials in order and
+    // returns the first success (or None). This collapses the previously-serial
+    // per-credential probe latency (e.g. v1+v2c+v3 SNMP + the public default, each with
+    // multi-second UDP timeouts on non-responders) into roughly one probe's wall-clock.
+    let outcomes = futures::future::join_all(tasks.into_iter().map(|task| {
+        let ProbeTask {
+            discriminant,
+            integration,
+            credentials,
+        } = task;
+        async move {
+            for (credential, cred_id) in &credentials {
+                if cancel.is_cancelled() {
+                    return None;
+                }
+                match integration
+                    .probe(&ProbeContext {
+                        ip,
+                        credential,
+                        credential_id: *cred_id,
+                        cancel,
+                        utils,
+                    })
+                    .await
+                {
+                    Ok(success) => {
+                        return Some((discriminant, *cred_id, (*credential).clone(), success));
+                    }
+                    Err(failure) => {
+                        tracing::debug!(ip = %ip, integration = ?discriminant, error = %failure, "Integration probe failed, trying next credential");
+                    }
+                }
             }
+            None
+        }
+    }))
+    .await;
 
-            let probe_ctx = ProbeContext {
-                ip,
-                credential,
-                credential_id: *cred_id,
-                cancel,
-                utils,
-            };
+    if cancel.is_cancelled() {
+        return Err(Error::msg("Discovery was cancelled"));
+    }
 
-            match integration.probe(&probe_ctx).await {
-                Ok(success) => {
-                    tracing::info!(
-                        ip = %ip,
-                        integration = ?discriminant,
-                        ports = ?success.ports,
-                        "Integration probe succeeded"
-                    );
-                    // Track probe-discovered ports
-                    for port in &success.ports {
-                        if !all_open_ports.contains(port) {
-                            all_open_ports.push(*port);
-                            results.additional_ports.push(*port);
-                        }
-                    }
-                    results
-                        .client_responses
-                        .insert(success.client_probe, success.ports);
-                    if let Some(handle) = success.handle {
-                        results.probe_handles.insert(discriminant, handle);
-                    }
-                    // Record the winning credential for this integration.
-                    // `cred_id` is Some for user-configured creds (host assignments)
-                    // and None for network-default fallbacks; execute needs the
-                    // payload either way, so we insert unconditionally.
-                    results
-                        .working_credential_ids
-                        .insert(discriminant, (*cred_id, (*credential).clone()));
-                    break;
-                }
-                Err(failure) => {
-                    tracing::debug!(
-                        ip = %ip,
-                        integration = ?discriminant,
-                        error = %failure,
-                        "Integration probe failed, trying next credential"
-                    );
-                }
+    // Merge in original mapping order so winner-selection is unchanged from the serial
+    // version: for a given integration the last successful mapping's credential wins
+    // (overwrite), and probe-discovered ports are unioned.
+    for (discriminant, cred_id, credential, success) in outcomes.into_iter().flatten() {
+        let ProbeSuccess {
+            client_probe,
+            ports,
+            handle,
+        } = success;
+        tracing::info!(ip = %ip, integration = ?discriminant, ports = ?ports, "Integration probe succeeded");
+        for port in &ports {
+            if !all_open_ports.contains(port) {
+                all_open_ports.push(*port);
+                results.additional_ports.push(*port);
             }
         }
+        results.client_responses.insert(client_probe, ports);
+        if let Some(handle) = handle {
+            results.probe_handles.insert(discriminant, handle);
+        }
+        // `cred_id` is Some for user-configured creds and None for network-default
+        // fallbacks; execute needs the payload either way, so we insert unconditionally.
+        results
+            .working_credential_ids
+            .insert(discriminant, (cred_id, credential));
     }
 
     Ok(results)
@@ -182,6 +204,47 @@ pub struct ExecuteParams<'a> {
 
 /// Execute integrations whose probe succeeded and whose associated service was matched.
 ///
+/// Derive the integration discriminant a mapping resolves to (from its default
+/// credential, else its first ip-override).
+fn mapping_discriminant(
+    mapping: &CredentialMapping<CredentialQueryPayload>,
+) -> Option<CredentialQueryPayloadDiscriminants> {
+    mapping
+        .default_credential
+        .as_ref()
+        .map(|c| c.into())
+        .or_else(|| mapping.ip_overrides.first().map(|o| (&o.credential).into()))
+}
+
+/// Collapse credential mappings to the distinct `(integration, winning credential id)`
+/// collections `execute_integrations` should run, preserving first-seen order and
+/// dropping mappings with no probe winner. Deduping by the winning credential (not the
+/// mapping) means N mappings that share one integration + winner run once, while a
+/// distinct winning credential still runs.
+fn dedup_execution_keys(
+    credential_mappings: &[CredentialMapping<CredentialQueryPayload>],
+    working_credential_ids: &HashMap<
+        CredentialQueryPayloadDiscriminants,
+        (Option<Uuid>, CredentialQueryPayload),
+    >,
+) -> Vec<(CredentialQueryPayloadDiscriminants, Option<Uuid>)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut keys = Vec::new();
+    for mapping in credential_mappings {
+        let Some(discriminant) = mapping_discriminant(mapping) else {
+            continue;
+        };
+        let Some((cred_id, _)) = working_credential_ids.get(&discriminant) else {
+            continue;
+        };
+        let key = (discriminant, *cred_id);
+        if seen.insert(key) {
+            keys.push(key);
+        }
+    }
+    keys
+}
+
 /// Enriches host_data with integration-discovered services, ports, ip_addresses.
 /// Also populates credential_assignments for successful integrations.
 pub async fn execute_integrations(
@@ -190,17 +253,16 @@ pub async fn execute_integrations(
     host_data: &mut HostData,
     params: &ExecuteParams<'_>,
 ) -> Result<(), Error> {
-    for mapping in credential_mappings {
-        let discriminant: Option<CredentialQueryPayloadDiscriminants> = mapping
-            .default_credential
-            .as_ref()
-            .map(|c| c.into())
-            .or_else(|| mapping.ip_overrides.first().map(|o| (&o.credential).into()));
-
-        let Some(discriminant) = discriminant else {
-            continue;
-        };
-
+    // Multiple credential mappings can resolve to the same integration + winning
+    // credential (e.g. SnmpV1/V2c/V3 credentials plus the injected public default all
+    // collapse to the single Snmp discriminant, which has one probe winner). Running
+    // execute() once per mapping re-does the full collection against the same host
+    // with the same credential — pure repetition. dedup_execution_keys() collapses
+    // the mappings to the distinct (integration, winning credential) collections that
+    // actually need to run; a genuinely different winning credential still runs.
+    for (discriminant, _cred_id) in
+        dedup_execution_keys(credential_mappings, &probe_results.working_credential_ids)
+    {
         let Some(integration) = IntegrationRegistry::get(discriminant) else {
             continue;
         };
@@ -306,4 +368,97 @@ pub async fn execute_integrations(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::credentials::r#impl::mapping::ContainerSocketQueryCredential;
+
+    fn snmp_mapping() -> CredentialMapping<CredentialQueryPayload> {
+        CredentialMapping {
+            default_credential: Some(CredentialQueryPayload::default()), // Snmp
+            ip_overrides: Vec::new(),
+        }
+    }
+
+    fn docker_socket_mapping() -> CredentialMapping<CredentialQueryPayload> {
+        CredentialMapping {
+            default_credential: Some(CredentialQueryPayload::DockerSocket(
+                ContainerSocketQueryCredential { socket_path: None },
+            )),
+            ip_overrides: Vec::new(),
+        }
+    }
+
+    fn winners(
+        entries: Vec<(
+            CredentialQueryPayloadDiscriminants,
+            Option<Uuid>,
+            CredentialQueryPayload,
+        )>,
+    ) -> HashMap<CredentialQueryPayloadDiscriminants, (Option<Uuid>, CredentialQueryPayload)> {
+        entries
+            .into_iter()
+            .map(|(d, id, payload)| (d, (id, payload)))
+            .collect()
+    }
+
+    #[test]
+    fn dedup_collapses_duplicate_snmp_mappings_to_one() {
+        // SnmpV1/V2c/V3 + injected public default all resolve to the single Snmp
+        // discriminant with one probe winner: three mappings, one collection.
+        let mappings = vec![snmp_mapping(), snmp_mapping(), snmp_mapping()];
+        let cred_id = Some(Uuid::new_v4());
+        let w = winners(vec![(
+            CredentialQueryPayloadDiscriminants::Snmp,
+            cred_id,
+            CredentialQueryPayload::default(),
+        )]);
+
+        let keys = dedup_execution_keys(&mappings, &w);
+        assert_eq!(
+            keys,
+            vec![(CredentialQueryPayloadDiscriminants::Snmp, cred_id)]
+        );
+    }
+
+    #[test]
+    fn dedup_drops_mappings_without_probe_winner() {
+        // No probe winner for the mapping's integration => nothing to execute.
+        let mappings = vec![snmp_mapping()];
+        let w = winners(vec![]);
+        assert!(dedup_execution_keys(&mappings, &w).is_empty());
+    }
+
+    #[test]
+    fn dedup_preserves_distinct_integrations_in_order() {
+        // Different integrations each keep their own collection; first-seen order.
+        let mappings = vec![snmp_mapping(), docker_socket_mapping(), snmp_mapping()];
+        let snmp_id = Some(Uuid::new_v4());
+        let docker_id = Some(Uuid::new_v4());
+        let w = winners(vec![
+            (
+                CredentialQueryPayloadDiscriminants::Snmp,
+                snmp_id,
+                CredentialQueryPayload::default(),
+            ),
+            (
+                CredentialQueryPayloadDiscriminants::DockerSocket,
+                docker_id,
+                CredentialQueryPayload::DockerSocket(ContainerSocketQueryCredential {
+                    socket_path: None,
+                }),
+            ),
+        ]);
+
+        let keys = dedup_execution_keys(&mappings, &w);
+        assert_eq!(
+            keys,
+            vec![
+                (CredentialQueryPayloadDiscriminants::Snmp, snmp_id),
+                (CredentialQueryPayloadDiscriminants::DockerSocket, docker_id),
+            ]
+        );
+    }
 }

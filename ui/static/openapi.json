@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.3\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.3\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.3)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.5\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.5\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.5)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -4154,8 +4154,8 @@
           "internal",
           "Daemons"
         ],
-        "summary": "Pre-provision a ServerPoll mode daemon",
-        "description": "Creates a daemon record on the server before the daemon is installed.\nThis is only for ServerPoll mode where the server initiates connections to the daemon.\nFor DaemonPoll mode, daemons self-register on startup.\n\nReturns the daemon record and an API key that must be configured on the daemon.",
+        "summary": "Provision a daemon, or re-provision an existing one",
+        "description": "Creates a daemon record on the server before the daemon is installed, mints an API key bound\nto it 1:1, and returns ready-to-run install artifacts.\n\nWhen `daemon_id` is supplied the existing record is reused instead of creating a new one —\nthis both re-issues install artifacts after install config changes and gives a legacy daemon\n(one with no bound key) a pathway to a dedicated key without losing its host, discovery jobs,\nor history.\n\nReturns the daemon record and an API key that must be configured on the daemon.",
         "operationId": "provision_daemon",
         "requestBody": {
           "content": {
@@ -4190,6 +4190,16 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Daemon is live and already has a bound key",
             "content": {
               "application/json": {
                 "schema": {
@@ -4320,6 +4330,76 @@
           }
         ]
       },
+      "put": {
+        "tags": [
+          "daemons"
+        ],
+        "summary": "Update daemon",
+        "description": "Edits the server-side daemon record: its name, maintainer, tags, and — for ServerPoll —\nthe url the server dials. Identity and server-managed fields (network, mode, host, key\nbinding, version, liveness) are restored from the existing record by\n`preserve_immutable_fields`.",
+        "operationId": "update_daemon",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "daemon ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Daemon"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "daemon updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Daemon"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "daemon not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
       "delete": {
         "tags": [
           "daemons"
@@ -4361,6 +4441,159 @@
           },
           "409": {
             "description": "daemon has active sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/daemons/{id}/install-command": {
+      "get": {
+        "tags": [
+          "daemons"
+        ],
+        "summary": "Generate daemon install command",
+        "description": "A pure, idempotent builder — it never mints or persists anything. The api key in an `install`\ncommand is a placeholder (`<API_KEY>`) the caller substitutes from the plaintext it holds; a\n`reconfigure` command carries no key at all. Minting is a separate mutation\n(`POST /provision`), so regenerating a command here (advanced-setting change, OS switch, the\nDetails reconfigure view) never rotates the daemon's key.\n\nThe server derives the exact command shape from the record: DaemonPoll vs ServerPoll for the\nflags, and — for `install` — whether the daemon has checked in (`last_seen`) to decide between\na first-install and a minimal re-key command.",
+        "operationId": "get_daemon_install_command",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "daemon ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "description": "`install` (with the api-key placeholder) or `reconfigure` (credential-free).",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/InstallCommandKind"
+            }
+          },
+          {
+            "name": "log_level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "log_file",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "heartbeat_interval",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "bind_address",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "allow_self_signed_certs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "accept_invalid_scan_certs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "interfaces",
+            "in": "query",
+            "description": "Comma-separated interface names.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "credential_refs",
+            "in": "query",
+            "description": "Comma-separated credential/integration tokens (for the docker-compose env).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Install command",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_InstallArtifacts"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "daemon not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -5787,6 +6020,18 @@
               ],
               "format": "date-time"
             }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only hosts discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the host's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -6118,6 +6363,18 @@
               ],
               "format": "date-time"
             }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only hosts discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the host's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -6280,6 +6537,18 @@
                 "null"
               ],
               "format": "date-time"
+            }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only hosts discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the host's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           }
         ],
@@ -7855,6 +8124,12 @@
                                 "format": "date-time",
                                 "readOnly": true
                               },
+                              "effective_stale_after_hours": {
+                                "type": "integer",
+                                "format": "int64",
+                                "description": "`stale_after_hours` with the server's default already applied.\n\nComputed, never stored (excluded from `to_params`). Published so the\nfrontend derives staleness from the *same* number the digest uses rather\nthan re-declaring the default in TypeScript, where the two could drift\nand a host could read stale in the app but current in the digest email.",
+                                "readOnly": true
+                              },
                               "id": {
                                 "type": "string",
                                 "format": "uuid",
@@ -7871,9 +8146,11 @@
                         "example": {
                           "created_at": "2026-01-15T10:30:00Z",
                           "credential_ids": [],
+                          "effective_stale_after_hours": 672,
                           "id": "550e8400-e29b-41d4-a716-446655440002",
                           "name": "Home Network",
                           "organization_id": "550e8400-e29b-41d4-a716-446655440001",
+                          "stale_after_hours": null,
                           "tags": [],
                           "updated_at": "2026-01-15T10:30:00Z"
                         }
@@ -9299,6 +9576,18 @@
               ],
               "format": "date-time"
             }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only services discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the service's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -9585,6 +9874,18 @@
                 "null"
               ],
               "format": "date-time"
+            }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only services discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the service's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           }
         ],
@@ -10713,6 +11014,18 @@
               ],
               "format": "date-time"
             }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only subnets discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the subnet's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -10944,6 +11257,18 @@
                 "null"
               ],
               "format": "date-time"
+            }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "description": "`true` returns only subnets discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the subnet's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           }
         ],
@@ -13399,12 +13724,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.3"
+            "example": "0.17.5"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.3"
+          "server_version": "0.17.5"
         }
       },
       "ApiResponse": {
@@ -13520,19 +13845,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-07T19:19:03.661065Z",
+              "created_at": "2026-07-22T18:58:51.216657Z",
               "first_discovery_id": null,
-              "id": "f7276a1e-cb92-4132-93b9-866d0ff47387",
+              "id": "5b5a34e0-493f-4b12-a260-1cef006aa089",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-07T19:19:03.661065Z",
+              "last_seen_at": "2026-07-22T18:58:51.216657Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-07T19:19:03.661065Z",
-              "valid_from": "2026-07-07T19:19:03.661065Z",
+              "updated_at": "2026-07-22T18:58:51.216657Z",
+              "valid_from": "2026-07-22T18:58:51.216657Z",
               "valid_to": null
             }
           },
@@ -13720,6 +14045,59 @@
                   "id",
                   "created_at",
                   "updated_at"
+                ],
+                "properties": {
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_Daemon": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DaemonBase"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "id",
+                  "updated_at",
+                  "created_at"
                 ],
                 "properties": {
                   "created_at": {
@@ -14276,6 +14654,13 @@
                   "null"
                 ],
                 "format": "date-time"
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Non-fatal warnings for a completed run (e.g. the scan hit its time limit\nand left hosts un-scanned). Unlike `error`, these do not mark the run failed."
               }
             }
           },
@@ -14527,19 +14912,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-07T19:19:03.639467Z",
+                      "created_at": "2026-07-22T18:58:51.198634Z",
                       "first_discovery_id": null,
-                      "id": "60b14278-2a4b-4a78-9a15-934f7e23867b",
+                      "id": "43113784-e98c-45c7-af76-0451de6b4d77",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-07T19:19:03.639467Z",
+                      "last_seen_at": "2026-07-22T18:58:51.198634Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-07T19:19:03.639467Z",
-                      "valid_from": "2026-07-07T19:19:03.639467Z",
+                      "updated_at": "2026-07-22T18:58:51.198634Z",
+                      "valid_from": "2026-07-22T18:58:51.198634Z",
                       "valid_to": null
                     }
                   ],
@@ -14553,7 +14938,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "NTP Server",
+                  "service_definition": "Proxmox Datacenter Manager",
                   "source": {
                     "type": "Manual"
                   },
@@ -14683,6 +15068,59 @@
               "updated_at": "2026-01-15T10:30:00Z",
               "valid_from": "2026-01-15T10:30:00Z",
               "valid_to": null
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_InstallArtifacts": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "Everything the UI needs to install (or reconfigure) a daemon, one field per install method so\neach is a first-class peer with its own content — no method is a special case bolted onto a\nlist. The binary methods are ready-to-paste commands (any api key is the [`API_KEY_PLACEHOLDER`],\nfilled in client-side); docker and msi carry their own structured content.",
+            "required": [
+              "linux",
+              "macos",
+              "windows",
+              "freebsd",
+              "docker",
+              "msi"
+            ],
+            "properties": {
+              "docker": {
+                "$ref": "#/components/schemas/DockerInstall"
+              },
+              "freebsd": {
+                "type": "string"
+              },
+              "linux": {
+                "type": "string"
+              },
+              "macos": {
+                "type": "string"
+              },
+              "msi": {
+                "$ref": "#/components/schemas/MsiInstall"
+              },
+              "windows": {
+                "type": "string"
+              }
             }
           },
           "error": {
@@ -14872,6 +15310,12 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "effective_stale_after_hours": {
+                    "type": "integer",
+                    "format": "int64",
+                    "description": "`stale_after_hours` with the server's default already applied.\n\nComputed, never stored (excluded from `to_params`). Published so the\nfrontend derives staleness from the *same* number the digest uses rather\nthan re-declaring the default in TypeScript, where the two could drift\nand a host could read stale in the app but current in the digest email.",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
@@ -14888,9 +15332,11 @@
             "example": {
               "created_at": "2026-01-15T10:30:00Z",
               "credential_ids": [],
+              "effective_stale_after_hours": 672,
               "id": "550e8400-e29b-41d4-a716-446655440002",
               "name": "Home Network",
               "organization_id": "550e8400-e29b-41d4-a716-446655440001",
+              "stale_after_hours": null,
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z"
             }
@@ -15209,7 +15655,7 @@
         "properties": {
           "data": {
             "type": "object",
-            "description": "Response from provisioning a daemon.\nContains the daemon record and the API key (shown only once).",
+            "description": "Response from provisioning a daemon.\nContains the daemon record and the API key (shown only once).\n\nInstall commands are deliberately not here — fetch them from the install-command endpoint,\nwhich builds them idempotently and fills in this key. That keeps a display-only regenerate\n(advanced-setting change, OS switch) from re-minting the key.",
             "required": [
               "daemon",
               "daemon_api_key"
@@ -15562,19 +16008,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-07T19:19:03.653992Z",
+                  "created_at": "2026-07-22T18:58:51.210748Z",
                   "first_discovery_id": null,
-                  "id": "1abfcd1a-7e3f-4e05-a5fe-0b1055b0fe5e",
+                  "id": "a2e0560c-9bea-43a4-a9bd-416abc35ee72",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-07T19:19:03.653992Z",
+                  "last_seen_at": "2026-07-22T18:58:51.210748Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-07T19:19:03.653992Z",
-                  "valid_from": "2026-07-07T19:19:03.653992Z",
+                  "updated_at": "2026-07-22T18:58:51.210748Z",
+                  "valid_from": "2026-07-22T18:58:51.210748Z",
                   "valid_to": null
                 }
               ],
@@ -15588,7 +16034,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Proxmox Datacenter Manager",
               "source": {
                 "type": "Manual"
               },
@@ -16853,6 +17299,13 @@
                     "null"
                   ],
                   "format": "date-time"
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Non-fatal warnings for a completed run (e.g. the scan hit its time limit\nand left hosts un-scanned). Unlike `error`, these do not mark the run failed."
                 }
               }
             }
@@ -17451,19 +17904,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-07T19:19:03.639950Z",
+          "created_at": "2026-07-22T18:58:51.199026Z",
           "first_discovery_id": null,
-          "id": "f472b527-1886-4b1f-af61-fa85113b696b",
+          "id": "e7aca420-b75a-4608-8777-dcfe4cf89bda",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-07T19:19:03.639950Z",
+          "last_seen_at": "2026-07-22T18:58:51.199026Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-07T19:19:03.639950Z",
-          "valid_from": "2026-07-07T19:19:03.639950Z",
+          "updated_at": "2026-07-22T18:58:51.199026Z",
+          "valid_from": "2026-07-22T18:58:51.199026Z",
           "valid_to": null
         }
       },
@@ -18054,7 +18507,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Proxmox Datacenter Manager",
               "tags": [],
               "virtualization": null
             }
@@ -18627,6 +19080,15 @@
           "tags"
         ],
         "properties": {
+          "daemon_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Daemon this key is bound to 1:1, when provisioned server-side.\nNULL for legacy network-shared keys created before 1:1 provisioning,\nwhich resolve daemon identity from the X-Daemon-ID header instead.",
+            "readOnly": true
+          },
           "expires_at": {
             "type": [
               "string",
@@ -18750,7 +19212,7 @@
           },
           "url": {
             "type": "string",
-            "readOnly": true
+            "description": "Address the *server* dials for a ServerPoll daemon. Editable (a daemon can move);\nunused and not editable for DaemonPoll, which dials out instead."
           },
           "user_id": {
             "type": "string",
@@ -19683,6 +20145,36 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Non-fatal warnings for a completed run (e.g. the scan hit its time limit\nand left hosts un-scanned). Unlike `error`, these do not mark the run failed."
+          }
+        }
+      },
+      "DockerInstall": {
+        "type": "object",
+        "description": "The docker install method.",
+        "required": [
+          "env"
+        ],
+        "properties": {
+          "compose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A ready-to-run `docker-compose.yml` for a first install. `None` for a reconfigure — the\noperator keeps their own compose and swaps in `env`, rather than replacing the whole file."
+          },
+          "env": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The `SCANOPY_*` environment variables (`KEY=value`) this daemon is configured with. For a\nreconfigure these are exactly the vars that changed, so the UI can show them as a swap-in."
           }
         }
       },
@@ -19811,7 +20303,8 @@
         "description": "Visual stroke style for an edge",
         "enum": [
           "solid",
-          "dashed"
+          "dashed",
+          "dotted"
         ]
       },
       "EdgeStyle": {
@@ -19867,9 +20360,19 @@
             "required": [
               "host_id",
               "service_id",
+              "subnet_ids",
+              "containerized_service_ids",
               "edge_type"
             ],
             "properties": {
+              "containerized_service_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "description": "The containerized services this edge stands for — the ones on those subnets."
+              },
               "edge_type": {
                 "type": "string",
                 "enum": [
@@ -19879,6 +20382,34 @@
               "host_id": {
                 "type": "string",
                 "format": "uuid"
+              },
+              "service_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "subnet_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "description": "The bridge subnet(s) this edge reaches: one when they render as their own boxes,\nall of them when merged into a single box. Resolved here rather than in the\ninspector, which cannot tell which subnet an elevated edge landed on."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "One container reachable at several of its host's container-bridge subnets. Ties the\ncontainer's addresses together so a multi-attached container reads as one thing rather\nthan as unrelated cards in separate subnet boxes.",
+            "required": [
+              "service_id",
+              "edge_type"
+            ],
+            "properties": {
+              "edge_type": {
+                "type": "string",
+                "enum": [
+                  "SameContainer"
+                ]
               },
               "service_id": {
                 "type": "string",
@@ -19981,6 +20512,7 @@
           "SameHost",
           "Hypervisor",
           "ContainerRuntime",
+          "SameContainer",
           "RequestPath",
           "HubAndSpoke",
           "PhysicalLink"
@@ -20246,6 +20778,15 @@
           "Topology",
           "Snapshot",
           "Unknown"
+        ]
+      },
+      "EntityFreshness": {
+        "type": "string",
+        "description": "How recently discovery last observed an entity.\n\nDerived, never persisted — computed from `last_seen_at` against the\nentity's network staleness window (`Network::stale_cutoff`). Shared by the\ndiscovery digest email and the UI so a host reported stale in the digest is\nthe same host badged stale in the inventory and topology; running two\ndifferent measures let them disagree (a scan-count measure calls an entity\nmissing after 3 scans, which is 45 minutes on one network and 3 months on\nanother).\n\nOnly discovery-managed entities can be `Stale` — see\n[`DiscoveryTracked::is_discovery_managed`](crate::server::shared::storage::snapshot::DiscoveryTracked::is_discovery_managed).",
+        "enum": [
+          "new",
+          "current",
+          "stale"
         ]
       },
       "EntitySource": {
@@ -20675,7 +21216,8 @@
           "updated_at",
           "virtualized_by",
           "network_id",
-          "interface_ip"
+          "interface_ip",
+          "last_seen_at"
         ]
       },
       "HostResponse": {
@@ -20905,19 +21447,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-07T19:19:03.638885Z",
+                  "created_at": "2026-07-22T18:58:51.198174Z",
                   "first_discovery_id": null,
-                  "id": "1ac619bc-04b0-4966-9ff0-91b814106c36",
+                  "id": "0e418f70-f489-4a05-897f-e7387d8835dc",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-07T19:19:03.638885Z",
+                  "last_seen_at": "2026-07-22T18:58:51.198174Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-07T19:19:03.638885Z",
-                  "valid_from": "2026-07-07T19:19:03.638885Z",
+                  "updated_at": "2026-07-22T18:58:51.198174Z",
+                  "valid_from": "2026-07-22T18:58:51.198174Z",
                   "valid_to": null
                 }
               ],
@@ -20931,7 +21473,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Proxmox Datacenter Manager",
               "source": {
                 "type": "Manual"
               },
@@ -21421,6 +21963,46 @@
         "enum": [
           "Header",
           "Member"
+        ]
+      },
+      "InstallArtifacts": {
+        "type": "object",
+        "description": "Everything the UI needs to install (or reconfigure) a daemon, one field per install method so\neach is a first-class peer with its own content — no method is a special case bolted onto a\nlist. The binary methods are ready-to-paste commands (any api key is the [`API_KEY_PLACEHOLDER`],\nfilled in client-side); docker and msi carry their own structured content.",
+        "required": [
+          "linux",
+          "macos",
+          "windows",
+          "freebsd",
+          "docker",
+          "msi"
+        ],
+        "properties": {
+          "docker": {
+            "$ref": "#/components/schemas/DockerInstall"
+          },
+          "freebsd": {
+            "type": "string"
+          },
+          "linux": {
+            "type": "string"
+          },
+          "macos": {
+            "type": "string"
+          },
+          "msi": {
+            "$ref": "#/components/schemas/MsiInstall"
+          },
+          "windows": {
+            "type": "string"
+          }
+        }
+      },
+      "InstallCommandKind": {
+        "type": "string",
+        "description": "What the caller wants the command to do — the one axis that actually varies.\n\n`install` brings a daemon up (or re-keys a legacy one): it carries the api-key placeholder,\nfetches the binary, and spells out the connectivity + advanced config. `reconfigure` adjusts\nan already-installed daemon in place: no key, no fetch, just the server-held connectivity —\n`scanopy-daemon install` layers it over the existing `config.json`. There is no third case:\nre-asserting the record's (correct) values on an installed daemon is harmless, so a first\ninstall and a re-key are the same command.",
+        "enum": [
+          "install",
+          "reconfigure"
         ]
       },
       "IntegrationTarget": {
@@ -22331,6 +22913,27 @@
         ],
         "description": "Match reason - either a simple reason string or a container with nested reasons"
       },
+      "MsiInstall": {
+        "type": "object",
+        "description": "The Windows MSI install method. The MSI itself is a static release asset the UI links to; only\nthe per-daemon pre-fill data is tenant-specific.",
+        "required": [
+          "filename",
+          "omitted_config_keys"
+        ],
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI to\nthis name to pre-fill the installer — parse-filename.js decodes it. The api key is never\nencoded. Renaming a signed MSI doesn't affect its signature."
+          },
+          "omitted_config_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Config keys that did not fit in `filename` (a filename is capped at 255 characters). Empty\nfor any ordinary config. The MSI falls back to its built-in defaults for these, so the UI\nshould tell the user to set them in the installer — the other methods carry the full config."
+          }
+        }
+      },
       "Neighbor": {
         "oneOf": [
           {
@@ -22396,6 +22999,12 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "effective_stale_after_hours": {
+                "type": "integer",
+                "format": "int64",
+                "description": "`stale_after_hours` with the server's default already applied.\n\nComputed, never stored (excluded from `to_params`). Published so the\nfrontend derives staleness from the *same* number the digest uses rather\nthan re-declaring the default in TypeScript, where the two could drift\nand a host could read stale in the app but current in the digest email.",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
@@ -22412,9 +23021,11 @@
         "example": {
           "created_at": "2026-01-15T10:30:00Z",
           "credential_ids": [],
+          "effective_stale_after_hours": 672,
           "id": "550e8400-e29b-41d4-a716-446655440002",
           "name": "Home Network",
           "organization_id": "550e8400-e29b-41d4-a716-446655440001",
+          "stale_after_hours": null,
           "tags": [],
           "updated_at": "2026-01-15T10:30:00Z"
         }
@@ -22425,7 +23036,8 @@
           "name",
           "organization_id",
           "tags",
-          "credential_ids"
+          "credential_ids",
+          "stale_after_hours"
         ],
         "properties": {
           "credential_ids": {
@@ -22442,6 +23054,14 @@
           "organization_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "stale_after_hours": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long a discovery-managed entity on this network may go unobserved\nbefore it reads as stale. `None` = unset; callers resolve the effective\nvalue through [`Network::stale_after`], never by reading this directly.\n\nNetwork-scoped because staleness is only meaningful relative to scan\ncadence, and cadence is a property of a network's discoveries."
           },
           "tags": {
             "type": "array",
@@ -22980,7 +23600,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.3"
+            "example": "0.17.5"
           }
         },
         "example": {
@@ -22991,7 +23611,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.3"
+          "server_version": "0.17.5"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -23461,19 +24081,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-07T19:19:03.627035Z",
+                        "created_at": "2026-07-22T18:58:51.187550Z",
                         "first_discovery_id": null,
-                        "id": "5a359612-2d02-49cc-b9c8-93d72755cf41",
+                        "id": "b5b8ef3d-1b73-4e44-8988-ff8796dc9b3d",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-07T19:19:03.627035Z",
+                        "last_seen_at": "2026-07-22T18:58:51.187550Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-07T19:19:03.627035Z",
-                        "valid_from": "2026-07-07T19:19:03.627035Z",
+                        "updated_at": "2026-07-22T18:58:51.187550Z",
+                        "valid_from": "2026-07-22T18:58:51.187550Z",
                         "valid_to": null
                       }
                     ],
@@ -23487,7 +24107,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "NTP Server",
+                    "service_definition": "Proxmox Datacenter Manager",
                     "source": {
                       "type": "Manual"
                     },
@@ -23608,19 +24228,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-07T19:19:03.652582Z",
+                    "created_at": "2026-07-22T18:58:51.209612Z",
                     "first_discovery_id": null,
-                    "id": "d9eca5b4-6317-462a-8ce2-dae923c43043",
+                    "id": "e3f3a3b3-62d1-41d3-8c07-b1d8fae8f212",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-07T19:19:03.652582Z",
+                    "last_seen_at": "2026-07-22T18:58:51.209612Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-07T19:19:03.652582Z",
-                    "valid_from": "2026-07-07T19:19:03.652582Z",
+                    "updated_at": "2026-07-22T18:58:51.209612Z",
+                    "valid_from": "2026-07-22T18:58:51.209612Z",
                     "valid_to": null
                   }
                 ],
@@ -23634,7 +24254,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "NTP Server",
+                "service_definition": "Proxmox Datacenter Manager",
                 "source": {
                   "type": "Manual"
                 },
@@ -24597,31 +25217,54 @@
       },
       "ProvisionDaemonRequest": {
         "type": "object",
-        "description": "Request to pre-provision a ServerPoll mode daemon.\nThis creates the daemon record on the server before the daemon is installed.",
-        "required": [
-          "name",
-          "network_id",
-          "url"
-        ],
+        "description": "Request to pre-provision a daemon (either mode) before it is installed.\nThis creates the daemon record + its 1:1 API key on the server so the install\ncommand shrinks to two flags.",
         "properties": {
+          "daemon_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Mint a fresh 1:1 key for this existing daemon instead of creating a new record,\nkeeping its host, discovery jobs and history. Used to give a legacy daemon (no bound\nkey) a dedicated one. When set, `name`/`network_id`/`mode`/`url` are ignored — those\ncome from the existing record.\n\nOnly accepted for a daemon that has never checked in or has no bound key; a live\nprovisioned daemon is refused, since it has no way to learn the new key.\n\nNote: install commands are not generated here — call the install-command endpoint,\nwhich builds them idempotently and fills in the key this response returns."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/DaemonMode",
+            "description": "How the daemon communicates with the server. Defaults to DaemonPoll\n(the daemon dials out) for forward-compat with older clients."
+          },
           "name": {
-            "type": "string",
-            "description": "Human-readable name for the daemon."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable name for the daemon. Required unless `daemon_id` is set, in which case\nthe existing record's name is kept."
           },
           "network_id": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid",
-            "description": "Network this daemon will be associated with."
+            "description": "Network this daemon will be associated with. Required unless `daemon_id` is set, in\nwhich case the existing record's network is kept."
+          },
+          "seed_credential_refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntegrationTarget"
+            },
+            "description": "Credential/integration references to seed onto the daemon's first\ndiscovery run. References only — never secret material. Empty by default."
           },
           "url": {
-            "type": "string",
-            "description": "URL where the server can reach the daemon (required for ServerPoll mode)."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reachable URL where the *server* can dial the daemon. Required for\nServerPoll, unused for DaemonPoll (the daemon dials out instead)."
           }
         }
       },
       "ProvisionDaemonResponse": {
         "type": "object",
-        "description": "Response from provisioning a daemon.\nContains the daemon record and the API key (shown only once).",
+        "description": "Response from provisioning a daemon.\nContains the daemon record and the API key (shown only once).\n\nInstall commands are deliberately not here — fetch them from the install-command endpoint,\nwhich builds them idempotently and fills in this key. That keeps a display-only regenerate\n(advanced-setting change, OS switch) from re-minting the key.",
         "required": [
           "daemon",
           "daemon_api_key"
@@ -25074,6 +25717,15 @@
             "type": "boolean",
             "description": "Whether this specific scan run should do a full 65k port scan.\nSet by the server before dispatching to the daemon — not user-configurable."
           },
+          "max_discovery_duration": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Hard ceiling on how long a single discovery run may take, in seconds\n(default: 21600 = 6h). When hit, the run force-completes and any hosts\nstill queued are left un-scanned until the next run. Raise this for very\nlarge networks that legitimately need more than the default window.",
+            "minimum": 0
+          },
           "port_scan_batch_size": {
             "type": [
               "integer",
@@ -25305,19 +25957,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-07T19:19:03.639838Z",
+              "created_at": "2026-07-22T18:58:51.198941Z",
               "first_discovery_id": null,
-              "id": "c86db2e2-9c9a-4794-8255-3f972a627adf",
+              "id": "d1bfd1fd-cc6c-4233-b784-b7a0bc5de20d",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-07T19:19:03.639838Z",
+              "last_seen_at": "2026-07-22T18:58:51.198941Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-07T19:19:03.639838Z",
-              "valid_from": "2026-07-07T19:19:03.639838Z",
+              "updated_at": "2026-07-22T18:58:51.198941Z",
+              "valid_from": "2026-07-22T18:58:51.198941Z",
               "valid_to": null
             }
           ],
@@ -25331,7 +25983,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "NTP Server",
+          "service_definition": "Proxmox Datacenter Manager",
           "source": {
             "type": "Manual"
           },
@@ -25513,7 +26165,8 @@
           "updated_at",
           "host",
           "network_id",
-          "position"
+          "position",
+          "last_seen_at"
         ]
       },
       "ServiceVirtualization": {
@@ -26000,7 +26653,8 @@
           "cidr",
           "subnet_type",
           "updated_at",
-          "network_id"
+          "network_id",
+          "last_seen_at"
         ]
       },
       "SubnetType": {
@@ -26461,7 +27115,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "d194d20b-5bdc-4bd4-aab9-db7a5fee16b4",
+                  "id": "10b02d38-a519-4c27-a680-fe04e85a6553",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -26471,23 +27125,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "b3a0eb01-6438-40a3-b83e-4eeb0fe4a4d4",
+                  "id": "9c4332aa-9c70-42c8-a040-2fc50417c3e2",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "146fc5ae-fc46-4c3a-a4b5-35a94ecc8504",
+                  "id": "fa2e26ab-9be1-498b-96b6-5ba76e1dc1f4",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "23c3b514-4a1e-495e-aaf9-9557c855b7f9",
+                  "id": "a9c04512-8e08-43aa-9c99-b3a42212c214",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "b3a0eb01-6438-40a3-b83e-4eeb0fe4a4d4",
+                  "id": "9c4332aa-9c70-42c8-a040-2fc50417c3e2",
                   "rule": "ByHost"
                 }
               ]
@@ -26516,19 +27170,19 @@
             },
             "default": [
               {
-                "id": "564342d5-fd33-47d1-9c85-8c6496a9a365",
+                "id": "b768e641-adf5-4d6c-bcbb-74d9b17f6452",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "2762b355-2efa-49fc-9abf-c4d9f88c722a",
+                "id": "8be65a89-95ae-4098-bf9e-d7ce91ea4b95",
                 "rule": "ByVLAN"
               },
               {
-                "id": "d4d0250a-a672-4787-a929-cfc8ff3c5a8c",
+                "id": "241724e8-8b1a-4512-8b7a-28a971c02b36",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "d44efc91-33d4-4acd-82d3-c4d146a47786",
+                "id": "74b9a6a6-c982-4a09-84cd-17116c0e4a6d",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -26546,7 +27200,7 @@
                 }
               },
               {
-                "id": "991dcb08-3f68-4cda-beec-9d61b52a4cb8",
+                "id": "c726e21e-35c1-4e72-adec-f47211886d28",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -26555,15 +27209,15 @@
                 }
               },
               {
-                "id": "f4cbb217-290d-4f62-9de1-2cbbe8802eaa",
+                "id": "4d25d181-511a-42dd-a153-1cb69d25c1ae",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "9e8ce81e-8c32-44c9-b9ef-1e6a9601bcfd",
+                "id": "e211fcdd-db05-4f26-8cee-5b77d5b0dc1f",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "7ce4fa9a-eff3-4eba-bbef-da190713270a",
+                "id": "ee9f3f19-74d9-4d8a-8b9c-7b314d5b0c75",
                 "rule": "ByStack"
               }
             ]

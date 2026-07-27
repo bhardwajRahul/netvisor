@@ -42,3 +42,6 @@ CLAUDE.md
 CLAUDE-WORKER.md
 TASK.md
 STATE.md
+
+# Coordinator-local working docs (not shipped in-repo; product docs live in the website repo)
+docs/

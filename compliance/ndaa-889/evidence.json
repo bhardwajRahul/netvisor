@@ -2,20 +2,20 @@
   "document_type": "supporting evidence (the attestation is a separate signed letter)",
   "standard": "NDAA FY2019 Section 889",
   "result": "PASS",
-  "generated_at": "2026-07-05T13:33:39Z",
+  "generated_at": "2026-07-23T14:40:34Z",
   "repository": "scanopy/scanopy",
-  "assessed_commit": "32bb27669d6cea1cc7e51d7151338e9192f67b2e",
-  "assessed_describe": "32bb276-dirty",
+  "assessed_commit": "a0e1caec65765694be8269d156cb50099a3467b2",
+  "assessed_describe": "a0e1cae-dirty",
   "image_tag": "latest",
-  "components_assessed": 11375,
+  "components_assessed": 8057,
   "allowed_exceptions": 2,
   "prohibited_hits": 0,
   "tooling": {
     "sbom_generator": "syft 1.45.1",
-    "matcher_commit": "32bb276"
+    "matcher_commit": "a0e1cae"
   },
   "policy": {
-    "vendor_list_commit": "32bb276",
+    "vendor_list_commit": "a0e1cae",
     "vendor_list_sha256": "7f018a32dda6755f02f07a70cd76bc3e0a07c180a4dcf1bf7b23a118a663d611",
     "allowlist_sha256": "672002d05725bcd6e87afd809685f79208702c4ecbd0a2be1493c6468ad2c571"
   },
@@ -23,11 +23,6 @@
     {
       "label": "server",
       "ref": "ghcr.io/scanopy/scanopy/server:latest",
-      "status": "assessed"
-    },
-    {
-      "label": "server-commercial",
-      "ref": "ghcr.io/scanopy/scanopy/server-commercial:latest",
       "status": "assessed"
     },
     {
@@ -39,22 +34,17 @@
   "sboms": [
     {
       "file": "sbom-source.cdx.json",
-      "sha256": "fdebc1ca89487ce1d14d245d59d2872ba3852ec2ea1c65c47ecccf8d3ecda81e",
-      "components": 1107
+      "sha256": "b3b6fd767f18a84ae6ae15e71333fd2a95d1a02a6217cc253e59f5f65579be8b",
+      "components": 1129
     },
     {
       "file": "sbom-server.cdx.json",
-      "sha256": "3153ec3041abeba613bdc92cdf5c475e07957516757d1d9585e6ad5f8ded6017",
-      "components": 3340
-    },
-    {
-      "file": "sbom-server-commercial.cdx.json",
-      "sha256": "61d8ded3b1b1da382b12d8b44e7a36b4fba8c2fac0124db88d0fc7290ee0df9c",
+      "sha256": "0dad9ffc7d602215479d3bf62c16d29910663b0dedf76efb26a53c4f84e69933",
       "components": 3340
     },
     {
       "file": "sbom-daemon.cdx.json",
-      "sha256": "d5dec65907bfa2a767a73145c147a02509b39e2c9da5a777aceeb0ad4246ecf3",
+      "sha256": "cfc6bf636404264fb86a7ba6303db7fedde3bda5cad63582629d5915f3468b2a",
       "components": 3588
     }
   ]

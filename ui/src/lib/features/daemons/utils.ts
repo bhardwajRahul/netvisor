@@ -41,7 +41,7 @@ export function getDaemonStatusTag(daemon: Daemon): TagProps {
 	}
 }
 
-export type DaemonOS = 'linux' | 'macos' | 'windows' | 'freebsd' | 'openbsd';
+export type DaemonOS = 'linux' | 'macos' | 'windows' | 'freebsd';
 
 export function slugifyNetworkName(name: string): string {
 	return name
@@ -57,6 +57,26 @@ export function detectOS(): DaemonOS {
 	if (ua.includes('win')) return 'windows';
 	if (ua.includes('mac')) return 'macos';
 	return 'linux';
+}
+
+const DEFAULT_DAEMON_NAME = 'scanopy-daemon';
+
+/**
+ * Service/unit identifier the `scanopy-daemon install` engine registers for a given daemon name
+ * (systemd unit, Windows SCM service, FreeBSD rc.d). Mirrors `service_id()` in
+ * backend/src/daemon/install/mod.rs: the default name keeps its bare id; custom names are
+ * namespaced under the `scanopy-daemon-` prefix.
+ */
+export function daemonServiceId(name: string): string {
+	return name === DEFAULT_DAEMON_NAME ? DEFAULT_DAEMON_NAME : `scanopy-daemon-${name}`;
+}
+
+/**
+ * launchd label the installer uses on macOS. Mirrors `label()` in
+ * backend/src/daemon/install/macos.rs.
+ */
+export function daemonLaunchdLabel(name: string): string {
+	return name === DEFAULT_DAEMON_NAME ? 'com.scanopy.daemon' : `com.scanopy.daemon.${name}`;
 }
 
 /**
@@ -85,10 +105,62 @@ export function buildDefaultValues(
 			defaults[def.id] = def.defaultValue ?? '';
 		}
 	}
-	// UI state fields (not part of daemon config, just for form interaction)
-	defaults.keySource = 'generate';
-	defaults.existingKeyInput = '';
 	return defaults;
+}
+
+/**
+ * The client-settable advanced daemon settings, keyed by their daemon config-field names. Fed to
+ * the install-command builder, which folds them into the emitted command + MSI filename.
+ */
+export interface AdvancedInstallConfig {
+	log_level?: string;
+	log_file?: string;
+	heartbeat_interval?: number;
+	bind_address?: string;
+	allow_self_signed_certs?: boolean;
+	accept_invalid_scan_certs?: boolean;
+	interfaces?: string[];
+}
+
+/**
+ * Collect the advanced daemon settings from the wizard form.
+ *
+ * Only advanced fields (those with a `section`) are included — everything else the server owns
+ * and derives from the daemon record. Values equal to their default are skipped, which matches
+ * `buildRunCommand` and matters more here: the whole MSI config has to fit inside a 255-character
+ * filename.
+ */
+export function buildInstallConfig(
+	values: Record<string, string | number | boolean>
+): AdvancedInstallConfig {
+	const config: Record<string, string | number | boolean | string[]> = {};
+
+	for (const def of fieldDefs) {
+		if (!def.section || def.docsOnly) continue;
+
+		const value = values[def.id];
+		if (value === '' || value === null || value === undefined) continue;
+		if (value === def.defaultValue) continue;
+		if (!fieldPassesValidation(def, value)) continue;
+
+		// `--interfaces` is comma-delimited on the CLI but a list here.
+		if (def.id === 'interfaces') {
+			const list = String(value)
+				.split(',')
+				.map((s) => s.trim())
+				.filter(Boolean);
+			if (list.length > 0) config.interfaces = list;
+			continue;
+		}
+
+		config[camelToSnake(def.id)] = value;
+	}
+
+	return config as AdvancedInstallConfig;
+}
+
+function camelToSnake(id: string): string {
+	return id.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 }
 
 export function buildRunCommand(
@@ -98,13 +170,14 @@ export function buildRunCommand(
 	values: Record<string, string | number | boolean>,
 	daemon: Daemon | null,
 	userId: string | null,
-	os: DaemonOS = 'linux',
-	integrationTokens?: string[]
+	os: DaemonOS = 'linux'
 ): string {
 	const isWindows = os === 'windows';
 	const binary = isWindows ? '.\\scanopy-daemon-windows-amd64.exe' : 'scanopy-daemon';
 	const prefix = isWindows ? '' : 'sudo ';
-	let cmd = `${prefix}${binary} --server-url ${serverUrl}`;
+	// The `install` subcommand takes the same flags but also registers a system service and
+	// writes config.json, so the daemon starts on boot instead of running in the foreground.
+	let cmd = `${prefix}${binary} install --server-url ${serverUrl}`;
 
 	if (!daemon && networkId) {
 		cmd += ` --network-id ${networkId}`;
@@ -161,117 +234,10 @@ export function buildRunCommand(
 		}
 	}
 
-	// Integration targeting tokens: <uuid>, <uuid>@<ip>[+<ip>], docker-socket, podman-socket.
-	// Local sockets are explicit opt-in tokens — there are no enable/disable flags.
-	if (integrationTokens) {
-		for (const token of integrationTokens) {
-			cmd += ` --credential-id ${token}`;
-		}
-	}
+	// Integration targeting is not carried in the command: it's seeded onto the daemon's
+	// discovery row at provision (`seed_credential_refs`) and applied server-side every scan.
 
 	return cmd;
-}
-
-export function buildDockerCompose(
-	serverUrl: string,
-	networkId: string,
-	key: string,
-	values: Record<string, string | number | boolean>,
-	userId: string | null,
-	integrationTokens?: string[]
-): string {
-	const envVars: string[] = [`SCANOPY_SERVER_URL=${serverUrl}`, `SCANOPY_DAEMON_API_KEY=${key}`];
-
-	if (networkId) {
-		envVars.splice(1, 0, `SCANOPY_NETWORK_ID=${networkId}`);
-	}
-
-	// Include user_id for new daemon registrations
-	if (userId) {
-		envVars.push(`SCANOPY_USER_ID=${userId}`);
-	}
-
-	const mode = values['mode'] as string;
-
-	for (const def of fieldDefs) {
-		const value = values[def.id];
-
-		if (def.docsOnly) {
-			continue;
-		}
-
-		// Skip daemonUrl - only used for provisioning, not in daemon config
-		if (def.id === 'daemonUrl') {
-			continue;
-		}
-
-		// Skip daemonPort for DaemonPoll mode (server never connects to daemon)
-		if (def.id === 'daemonPort' && mode === 'daemon_poll') {
-			continue;
-		}
-
-		// Skip logFile - handled explicitly below for Docker with volume mount
-		if (def.id === 'logFile') {
-			continue;
-		}
-
-		if (value === '' || value === null || value === undefined) {
-			continue;
-		}
-
-		// Skip fields that don't pass validation
-		if (!fieldPassesValidation(def, value)) {
-			continue;
-		}
-
-		// Skip advanced fields (those with a section) that match their default value
-		if (def.section && value === def.defaultValue) {
-			continue;
-		}
-
-		if (def.type === 'boolean') {
-			envVars.push(`${def.envVar}=${value}`);
-		} else {
-			envVars.push(`${def.envVar}=${value}`);
-		}
-	}
-
-	// Integration targeting tokens (comma-separated): <uuid>, <uuid>@<ip>[+<ip>],
-	// docker-socket, podman-socket. Local sockets are explicit opt-in — no enable/disable flags.
-	if (integrationTokens && integrationTokens.length > 0) {
-		envVars.push(`SCANOPY_CREDENTIAL_IDS=${integrationTokens.join(',')}`);
-	}
-
-	// Mount log volume in Docker so logs persist on host
-	const daemonName = (values['name'] as string) || 'scanopy-daemon';
-	const customLogFile = values['logFile'] as string;
-	const dockerLogPath = customLogFile || `/var/log/scanopy/${daemonName}.log`;
-	envVars.push(`SCANOPY_LOG_FILE=${dockerLogPath}`);
-
-	const volumeMounts = [
-		'daemon-config:/root/.config/scanopy/daemon',
-		'/var/run/docker.sock:/var/run/docker.sock:ro',
-		'/var/log/scanopy:/var/log/scanopy'
-	];
-
-	const lines = [
-		'services:',
-		'  daemon:',
-		'    image: ghcr.io/scanopy/scanopy/daemon:latest',
-		'    container_name: scanopy-daemon',
-		'    network_mode: host',
-		'    privileged: true',
-		'    restart: unless-stopped',
-		'    environment:',
-		...envVars.map((v) => `      - ${v}`),
-		'    volumes:',
-		...volumeMounts.map((v) => `      - ${v}`),
-		'',
-		'volumes:',
-		'  daemon-config:'
-	];
-
-	return lines.join('\n');
 }
 
 /**

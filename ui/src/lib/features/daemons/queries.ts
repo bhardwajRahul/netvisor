@@ -5,6 +5,7 @@
 import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
+import type { paths } from '$lib/api/schema';
 import type { Daemon } from './types/base';
 import type { DiscoveryUpdatePayload } from '../discovery/types/api';
 import type { ProvisionDaemonRequest, ProvisionDaemonResponse } from './types/base';
@@ -46,6 +47,64 @@ export function useDaemonQuery(id: () => string | null, options?: { enabled?: ()
 			return data.data;
 		},
 		enabled: (options?.enabled?.() ?? true) && !!id()
+	}));
+}
+
+/**
+ * Query hook for a daemon's install command — the pure, idempotent builder. `purpose: 'install'`
+ * returns a command with an `<API_KEY>` placeholder to fill in; `purpose: 'reconfigure'` returns
+ * a credential-free command that re-asserts the server-held connectivity config. Never mints.
+ */
+export type InstallCommandParams = NonNullable<
+	paths['/api/v1/daemons/{id}/install-command']['get']['parameters']['query']
+>;
+
+export function useDaemonInstallCommandQuery(
+	id: () => string | null,
+	params: () => InstallCommandParams,
+	options?: { enabled?: () => boolean }
+) {
+	return createQuery(() => {
+		const query = params();
+		return {
+			queryKey: [...queryKeys.daemons.detail(id() ?? ''), 'install-command', query],
+			queryFn: async () => {
+				const daemonId = id();
+				if (!daemonId) throw new Error('No daemon ID');
+				const { data } = await apiClient.GET('/api/v1/daemons/{id}/install-command', {
+					params: { path: { id: daemonId }, query }
+				});
+				if (!data?.success || !data.data) {
+					throw new Error(data?.error || 'Failed to fetch install command');
+				}
+				return data.data;
+			},
+			enabled: (options?.enabled?.() ?? true) && !!id()
+		};
+	});
+}
+
+/**
+ * Mutation hook for updating a daemon's server-side record (name, maintainer, tags, and
+ * the ServerPoll url). Identity and server-managed fields are restored server-side.
+ */
+export function useUpdateDaemonMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async (daemon: Daemon) => {
+			const { data } = await apiClient.PUT('/api/v1/daemons/{id}', {
+				params: { path: { id: daemon.id } },
+				body: daemon
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to update daemon');
+			}
+			return data.data;
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: queryKeys.daemons.all });
+		}
 	}));
 }
 
@@ -98,7 +157,8 @@ export function useBulkDeleteDaemonsMutation() {
 }
 
 /**
- * Mutation hook for provisioning a ServerPoll mode daemon
+ * Mutation hook for provisioning a daemon (either mode) before install.
+ * Creates the daemon record + its 1:1 API key server-side.
  */
 export function useProvisionDaemonMutation() {
 	const queryClient = useQueryClient();
@@ -114,11 +174,14 @@ export function useProvisionDaemonMutation() {
 			return data.data;
 		},
 		onSuccess: (response: ProvisionDaemonResponse) => {
-			// Add the newly created daemon to the cache
-			queryClient.setQueryData<Daemon[]>(queryKeys.daemons.all, (old) => [
-				...(old ?? []),
-				response.daemon
-			]);
+			// Re-provisioning returns an existing daemon, so replace it in place rather than
+			// appending a duplicate; a fresh provision appends.
+			queryClient.setQueryData<Daemon[]>(queryKeys.daemons.all, (old) => {
+				const existing = old ?? [];
+				return existing.some((d) => d.id === response.daemon.id)
+					? existing.map((d) => (d.id === response.daemon.id ? response.daemon : d))
+					: [...existing, response.daemon];
+			});
 		}
 	}));
 }

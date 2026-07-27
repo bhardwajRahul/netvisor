@@ -10,11 +10,24 @@ impl ServiceService {
     ) -> Result<(), Error> {
         use crate::server::dependencies::r#impl::base::DependencyMembers;
 
+        // DB-level lock, per network (replaces the old process-global mutex).
+        // Acquired BEFORE the read: the dependency list feeds the
+        // read-modify-write below, so reading outside the lock would let two
+        // callers serialize conflicting writes computed from the same stale
+        // snapshot. Error paths release via Drop.
+        let lock_guard = self
+            .storage
+            .session_lock(
+                LockKey::DependencyMembers {
+                    network_id: current_service.base.network_id,
+                },
+                DEFAULT_LOCK_TIMEOUT,
+            )
+            .await?;
+
         let filter =
             StorableFilter::<Dependency>::new_from_network_ids(&[current_service.base.network_id]);
         let dependencies = self.dependency_service.get_all(filter).await?;
-
-        let _guard = self.dependency_update_lock.lock().await;
 
         let current_service_binding_ids: Vec<Uuid> = current_service
             .base
@@ -76,6 +89,7 @@ impl ServiceService {
             }
         }
 
+        lock_guard.release().await?;
         Ok(())
     }
 }

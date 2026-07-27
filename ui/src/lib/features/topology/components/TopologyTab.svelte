@@ -263,7 +263,8 @@
 			$topologyOptions.local.tag_filter,
 			$activeView,
 			hideMetadata[$activeView],
-			hideEntities[$activeView] ?? []
+			hideEntities[$activeView] ?? [],
+			networksData.find((n) => n.id === currentTopology?.network_id)
 		);
 	});
 

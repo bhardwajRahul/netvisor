@@ -10,7 +10,10 @@
 	import ExportButton from '$lib/features/topology/components/ExportButton.svelte';
 	import ExportModal from '$lib/features/topology/components/ExportModal.svelte';
 	import SegmentedControl from '$lib/shared/components/forms/SegmentedControl.svelte';
-	import { Share2 } from 'lucide-svelte';
+	import { Share2, ExternalLink } from 'lucide-svelte';
+	import { tooltip } from '$lib/shared/actions/tooltip';
+	import { shares_openInFullView } from '$lib/paraglide/messages';
+	import { resolve } from '$app/paths';
 	import type { ExportFeatures } from '../types/base';
 	import {
 		hydrateStoresFromTopology,
@@ -25,6 +28,7 @@
 	import { createTopologyKeydownHandler } from '$lib/features/topology/keyboard';
 	import { views } from '$lib/shared/stores/metadata';
 
+	export let shareId: string | undefined = undefined;
 	export let topology: RenderableTopology;
 	export let showControls: boolean = true;
 	export let showInspectPanel: boolean = true;
@@ -154,6 +158,19 @@
 							disabled={viewLoading}
 						/>
 					{/if}
+					{#if isEmbed && shareId}
+						<a
+							href={resolve('/share/[id]', { id: shareId })}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="text-secondary hover:text-primary flex items-center justify-center rounded-md border border-gray-600 px-2 py-1 transition-colors"
+							aria-label={shares_openInFullView()}
+							use:tooltip
+							data-tooltip={shares_openInFullView()}
+						>
+							<ExternalLink class="h-3.5 w-3.5" />
+						</a>
+					{/if}
 				</div>
 				<a
 					href="https://scanopy.net?utm_source={isEmbed
@@ -164,7 +181,7 @@
 					class="branding-badge"
 				>
 					<img src="/logos/scanopy-logo.png" alt="Scanopy" class="h-4 w-4" />
-					<span>Created with Scanopy</span>
+					<span>Powered by Scanopy</span>
 				</a>
 			</div>
 
@@ -174,6 +191,7 @@
 				readonly={true}
 				{showControls}
 				{isEmbed}
+				hideAttribution={true}
 				showBranding={false}
 				{showMinimap}
 				sidebarCollapsed={true}

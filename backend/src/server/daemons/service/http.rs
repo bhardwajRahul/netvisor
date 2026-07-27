@@ -1,6 +1,32 @@
 //! Daemon HTTP client (GET/POST with retry) and the request wrappers built on it.
 use super::*;
 
+/// A non-2xx HTTP response from a daemon. Carries the status code so the retry policy can
+/// tell a definitive client error (4xx — e.g. a 401 key mismatch that won't succeed on
+/// retry) apart from a transient transport/server error.
+#[derive(Debug)]
+pub(crate) struct DaemonHttpError {
+    /// e.g. "GET /api/status" — for the message/log.
+    pub op: String,
+    pub status: reqwest::StatusCode,
+}
+
+impl std::fmt::Display for DaemonHttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} failed: HTTP {}", self.op, self.status)
+    }
+}
+
+impl std::error::Error for DaemonHttpError {}
+
+/// Retry decision for daemon HTTP calls: retry transport errors and 5xx (transient), but
+/// NOT a definitive 4xx (e.g. 401 key mismatch) — retrying it just spams the log with
+/// escalating-backoff warnings before the poll loop marks the daemon unreachable anyway.
+pub(crate) fn should_retry_daemon_http_error(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<DaemonHttpError>()
+        .is_none_or(|h| !h.status.is_client_error())
+}
+
 impl DaemonService {
     // ========================================================================
     // Daemon HTTP helpers with built-in retry
@@ -31,7 +57,11 @@ impl DaemonService {
                 .await?;
 
             if !response.status().is_success() {
-                anyhow::bail!("GET {} failed: HTTP {}", path, response.status());
+                return Err(DaemonHttpError {
+                    op: format!("GET {}", path),
+                    status: response.status(),
+                }
+                .into());
             }
 
             let api_response: ApiResponse<T> = response.json().await?;
@@ -56,6 +86,7 @@ impl DaemonService {
                 .with_max_delay(Duration::from_secs(30))
                 .with_max_times(UNREACHABLE_THRESHOLD),
         )
+        .when(should_retry_daemon_http_error)
         .notify(|e, dur| {
             tracing::warn!(
                 daemon_id = %daemon_id,
@@ -104,7 +135,11 @@ impl DaemonService {
             let response = request.send().await?;
 
             if !response.status().is_success() {
-                anyhow::bail!("POST {} failed: HTTP {}", path, response.status());
+                return Err(DaemonHttpError {
+                    op: format!("POST {}", path),
+                    status: response.status(),
+                }
+                .into());
             }
 
             let api_response: ApiResponse<T> = response.json().await?;
@@ -127,6 +162,7 @@ impl DaemonService {
                 .with_max_delay(Duration::from_secs(30))
                 .with_max_times(UNREACHABLE_THRESHOLD),
         )
+        .when(should_retry_daemon_http_error)
         .notify(|e, dur| {
             tracing::warn!(
                 daemon_id = %daemon_id,
@@ -281,6 +317,8 @@ impl DaemonService {
 
         let request = FirstContactRequest {
             daemon_id: daemon.id,
+            network_id: Some(daemon.base.network_id),
+            name: Some(daemon.base.name.clone()),
             server_capabilities,
         };
 
@@ -324,5 +362,44 @@ impl DaemonService {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn http_err(status: reqwest::StatusCode) -> anyhow::Error {
+        DaemonHttpError {
+            op: "GET /api/status".to_string(),
+            status,
+        }
+        .into()
+    }
+
+    #[test]
+    fn does_not_retry_4xx_daemon_responses() {
+        // A 401 (key mismatch) or any 4xx is definitive — retrying can't fix it.
+        assert!(!should_retry_daemon_http_error(&http_err(
+            reqwest::StatusCode::UNAUTHORIZED
+        )));
+        assert!(!should_retry_daemon_http_error(&http_err(
+            reqwest::StatusCode::FORBIDDEN
+        )));
+        assert!(!should_retry_daemon_http_error(&http_err(
+            reqwest::StatusCode::NOT_FOUND
+        )));
+    }
+
+    #[test]
+    fn retries_transport_and_5xx_errors() {
+        // Transport errors carry no DaemonHttpError → retry.
+        assert!(should_retry_daemon_http_error(&anyhow::anyhow!(
+            "connection refused"
+        )));
+        // 5xx is transient (server briefly down) → retry.
+        assert!(should_retry_daemon_http_error(&http_err(
+            reqwest::StatusCode::BAD_GATEWAY
+        )));
     }
 }

@@ -23,6 +23,7 @@ erDiagram
 "public.discovery" }o--|| "public.networks" : "FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE"
 "public.discovery" }o--|| "public.daemons" : "FOREIGN KEY (daemon_id) REFERENCES daemons(id) ON DELETE CASCADE"
 "public.api_keys" }o--|| "public.networks" : "FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE"
+"public.api_keys" }o--o| "public.daemons" : "FOREIGN KEY (daemon_id) REFERENCES daemons(id) ON DELETE CASCADE"
 "public.topologies" }o--|| "public.networks" : "FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE"
 "public.tags" }o--|| "public.organizations" : "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE"
 "public.tags" }o--o| "public.snapshots" : "FOREIGN KEY (snapshot_id) REFERENCES snapshots(id) ON DELETE CASCADE"
@@ -116,6 +117,7 @@ erDiagram
   timestamp_with_time_zone password_reset_expires
   text pending_email
   jsonb email_settings
+  bigint session_epoch
 }
 "public.networks" {
   uuid id
@@ -123,6 +125,7 @@ erDiagram
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
   uuid organization_id FK
+  bigint stale_after_hours
 }
 "public.hosts" {
   uuid id
@@ -195,7 +198,6 @@ erDiagram
   uuid host_id
   timestamp_with_time_zone created_at
   timestamp_with_time_zone last_seen
-  jsonb capabilities
   timestamp_with_time_zone updated_at
   text mode
   text url
@@ -250,6 +252,7 @@ erDiagram
   timestamp_with_time_zone expires_at
   boolean is_enabled
   text plaintext
+  uuid daemon_id FK
 }
 "public.organizations" {
   uuid id
@@ -467,7 +470,6 @@ erDiagram
   uuid organization_id FK
   text name
   jsonb credential_type
-  inet__ target_ips
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
 }

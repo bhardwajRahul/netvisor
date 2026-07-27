@@ -9,7 +9,7 @@ import type { AggregatedEdge } from '../collapse';
 import type { LayoutGraph } from '../layout/layout-graph';
 import { edgeTypes } from '$lib/shared/stores/metadata';
 import { getEdgeDisplayState, searchHiddenNodeIds, tagHiddenNodeIds } from '../interactions';
-import { isDisabledEdge, isDashedEdge } from '../layout/edge-classification';
+import { isDisabledEdge, isOverlayEdge } from '../layout/edge-classification';
 import { bundleEdges } from '../layout/edge-bundling';
 
 export interface CreateFlowEdgeParams {
@@ -265,7 +265,7 @@ export function buildFlowEdges(params: BuildFlowEdgesParams): BuildFlowEdgesResu
 							bundleCount: bundle.count,
 							bundleEdges: bundle.edges,
 							bundleStrokeWidth,
-							bundleIsOverlay: isDashedEdge(representative)
+							bundleIsOverlay: isOverlayEdge(representative)
 						}
 					})
 				);

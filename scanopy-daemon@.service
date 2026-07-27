@@ -1,3 +1,6 @@
+# Manual-install reference template for running multiple daemon instances (scanopy-daemon@<name>).
+# For new installs prefer `sudo scanopy-daemon install --name <name> …`, which registers a
+# per-instance service automatically. Kept for manual setups and older daemons.
 [Unit]
 Description=Scanopy Network Discovery Daemon (%i)
 After=network-online.target
@@ -6,7 +9,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 # %i is the instance name (e.g., eth0 from scanopy-daemon@eth0)
-ExecStart=/usr/local/bin/scanopy-daemon --name=%i --interface=%i
+ExecStart=/usr/local/bin/scanopy-daemon --name=%i --interfaces=%i
 Restart=always
 RestartSec=10
 User=root

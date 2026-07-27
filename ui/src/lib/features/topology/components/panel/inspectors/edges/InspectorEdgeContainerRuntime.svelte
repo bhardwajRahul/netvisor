@@ -3,14 +3,11 @@
 	import EntityDisplayWrapper from '$lib/shared/components/forms/selection/display/EntityDisplayWrapper.svelte';
 	import { ServiceDisplay } from '$lib/shared/components/forms/selection/display/ServiceDisplay.svelte';
 	import { SubnetDisplay } from '$lib/shared/components/forms/selection/display/SubnetDisplay.svelte';
-	import { topologyOptions, activeView, topologyReadOnly } from '$lib/features/topology/queries';
+	import { topologyReadOnly } from '$lib/features/topology/queries';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import { getTopologyEditState } from '$lib/features/topology/state';
 	import { HostDisplay } from '$lib/shared/components/forms/selection/display/HostDisplay.svelte';
-	import { SvelteMap } from 'svelte/reactivity';
-	import type { Subnet } from '$lib/features/subnets/types/base';
 	import type { RenderableTopology } from '$lib/features/topology/types/base';
-	import { subnetTypes } from '$lib/shared/stores/metadata';
 	import {
 		common_containerizedService,
 		common_containerizedServices,
@@ -46,67 +43,32 @@
 			: null
 	);
 
-	// Target can be either a subnet (grouped) or a service (not grouped)
-	let isGrouped = $derived(
-		(
-			(($topologyOptions.request.container_rules ?? {}) as Record<string, { rule: unknown }[]>)[
-				$activeView
-			] ?? []
-		).some((r) => r.rule === 'MergeContainerBridges')
+	// The edge names the containers it stands for — the ones on the bridge subnet(s) it
+	// reaches, already narrowed for the current grouping. Resolving them here from the edge's
+	// endpoint can't work: the endpoint is elevated onto the subnet box before it reaches us.
+	let containerizedServiceIds = $derived(
+		((edge.data as Record<string, unknown> | undefined)?.containerized_service_ids as
+			| string[]
+			| undefined) ?? []
 	);
-	// Get containerized services - all if grouped, or just the one in edge.target if not.
-	// Runtime-agnostic: ServiceVirtualization is Docker | Podman (both container runtimes),
-	// so matching on the runtime service_id naturally covers either.
 	let containerizedServices = $derived(
 		topology
-			? isGrouped
-				? topology.services.filter(
-						(s) => s.virtualization && s.virtualization.details.service_id === serviceId
-					)
-				: topology.services.filter((s) => s.bindings.some((b) => b.ip_address_id == edge.target))
+			? containerizedServiceIds.flatMap((id) => topology.services.find((s) => s.id === id) ?? [])
 			: []
 	);
 
-	// Helper to get interface from topology
-	function getInterfaceFromTopology(ipAddressId: string) {
-		if (!topology) return null;
-		return topology.ip_addresses.find((i) => i.id === ipAddressId) ?? null;
-	}
-
-	// Helper to get subnet from topology
-	function getSubnetFromTopology(subnetId: string) {
-		if (!topology) return null;
-		return topology.subnets.find((s) => s.id === subnetId) || null;
-	}
-
-	// Get all container bridge subnets (Docker/Podman) for those containerized services
-	let allBridgeSubnets = $derived.by(() => {
-		const subnets = new SvelteMap<string, Subnet>(); // Use Map to deduplicate by subnet ID
-
-		for (const service of containerizedServices) {
-			for (const binding of service.bindings) {
-				// Get interface_id based on binding type
-				let ipAddressId: string | null = null;
-				if (binding.type === 'IPAddress') {
-					ipAddressId = binding.ip_address_id;
-				} else if (binding.type === 'Port') {
-					ipAddressId = binding.ip_address_id ?? null;
-				}
-
-				if (!ipAddressId) continue;
-
-				const iface = getInterfaceFromTopology(ipAddressId);
-				if (!iface?.subnet_id) continue;
-
-				const subnet = getSubnetFromTopology(iface.subnet_id);
-				if (subnet && subnetTypes.getMetadata(subnet.subnet_type).is_container_bridge) {
-					subnets.set(subnet.id, subnet);
-				}
-			}
-		}
-
-		return Array.from(subnets.values());
-	});
+	// The bridges this edge reaches — one when they render as separate boxes, all of them when
+	// merged. Walking the listed containers' bindings instead would pull in every other bridge
+	// a multi-attached container happens to sit on, which this edge does not connect.
+	let allBridgeSubnets = $derived(
+		topology
+			? (
+					((edge.data as Record<string, unknown> | undefined)?.subnet_ids as
+						| string[]
+						| undefined) ?? []
+				).flatMap((id) => topology.subnets.find((s) => s.id === id) ?? [])
+			: []
+	);
 </script>
 
 <div class="space-y-3">
@@ -148,7 +110,9 @@
 	{/if}
 
 	<span class="text-secondary mb-2 block text-sm font-medium">
-		{isGrouped ? common_containerizedServices() : common_containerizedService()}
+		{containerizedServices.length === 1
+			? common_containerizedService()
+			: common_containerizedServices()}
 	</span>
 	{#each containerizedServices as service (service.id)}
 		<div class="card card-static">

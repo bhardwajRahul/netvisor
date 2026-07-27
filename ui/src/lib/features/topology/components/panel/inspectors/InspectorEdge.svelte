@@ -7,6 +7,7 @@
 	import InspectorEdgeHypervisor from './edges/InspectorEdgeHypervisor.svelte';
 	import InspectorEdgeContainerRuntime from './edges/InspectorEdgeContainerRuntime.svelte';
 	import InspectorEdgePhysicalLink from './edges/InspectorEdgePhysicalLink.svelte';
+	import InspectorEdgeSameContainer from './edges/InspectorEdgeSameContainer.svelte';
 	import InspectorEdgeAggregated from './edges/InspectorEdgeAggregated.svelte';
 	import {
 		inspector_edgeDataUnavailable,
@@ -42,6 +43,8 @@
 		<InspectorEdgeHypervisor {edge} hypervisorServiceId={edgeData?.hypervisor_service_id} />
 	{:else if edgeData.edge_type === 'ContainerRuntime'}
 		<InspectorEdgeContainerRuntime {edge} serviceId={edgeData?.service_id} />
+	{:else if edgeData.edge_type === 'SameContainer'}
+		<InspectorEdgeSameContainer serviceId={edgeData?.service_id} />
 	{:else if edgeData.edge_type === 'PhysicalLink'}
 		<InspectorEdgePhysicalLink
 			sourceEntityId={edgeData?.source_entity_id}

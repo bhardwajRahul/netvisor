@@ -14,6 +14,7 @@
 		discovery_runDetails,
 		discovery_hostNamingFallback,
 		discovery_scanSettings,
+		discovery_completedWithWarnings,
 		discovery_defaultSettings,
 		discovery_bestService,
 		discovery_scanModeFull,
@@ -94,7 +95,9 @@
 
 <div class="space-y-4">
 	<!-- Status Banner -->
-	{#if payload.phase === 'Complete'}
+	{#if payload.phase === 'Complete' && payload.warnings && payload.warnings.length > 0}
+		<InlineWarning title={discovery_completedWithWarnings()} body={payload.warnings.join(' ')} />
+	{:else if payload.phase === 'Complete'}
 		<InlineSuccess title={payload.phase} />
 	{:else if payload.phase === 'Failed'}
 		<InlineDanger title={payload.phase} body={payload.error ?? null} />

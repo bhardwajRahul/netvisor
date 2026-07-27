@@ -9,7 +9,7 @@
 	import { ArrowBigUpDash } from 'lucide-svelte';
 	import type { Daemon } from '../types/base';
 	import { VERSION } from '$lib/version';
-	import { type DaemonOS, detectOS } from '../utils';
+	import { type DaemonOS, detectOS, daemonServiceId, daemonLaunchdLabel } from '../utils';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import OsSelector from './OsSelector.svelte';
 	import {
@@ -30,8 +30,9 @@
 		daemons_upgradeDaemon,
 		daemons_upgradeMultipleDaemons,
 		daemons_upgradeMultipleDaemonsBody,
-		daemons_upgradeStartProcess,
-		daemons_upgradeStopProcess,
+		daemons_upgradeRestartService,
+		daemons_upgradeStartService,
+		daemons_upgradeStopService,
 		daemons_upgradeVolumeMountCheckLabel,
 		daemons_upgradeVolumeMountFixStep,
 		daemons_upgradeVolumeMountWarningBody,
@@ -53,22 +54,29 @@
 	type LinuxMethod = 'binary' | 'docker';
 	let linuxMethod: LinuxMethod = $state('binary');
 
-	// Commands for upgrading — all platforms use stop/download/start flow
+	// Upgrade = download the new binary, then restart the installed service (systemd / launchd /
+	// Windows SCM / FreeBSD rc.d). The daemon runs as a managed service, so a plain foreground
+	// restart would fight the auto-respawning service and could leave a duplicate process.
 	const binaryUpgradeCommand = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/scanopy/scanopy/refs/heads/main/install.sh)"`;
 
-	const stopCommand = 'sudo pkill scanopy-daemon';
-	let startCommand = $derived(`sudo scanopy-daemon --name ${daemon.name}`);
+	let serviceId = $derived(daemonServiceId(daemon.name));
+	let launchdLabel = $derived(daemonLaunchdLabel(daemon.name));
+	let linuxRestartCommand = $derived(`sudo systemctl restart ${serviceId}`);
+	let macosRestartCommand = $derived(`sudo launchctl kickstart -k system/${launchdLabel}`);
+	let freebsdRestartCommand = $derived(`sudo service ${serviceId} restart`);
 
 	// Commands to list daemon config directories (each subdirectory = a daemon name)
 	const linuxConfigListCommand = 'ls ~/.config/scanopy/daemon/';
 	const macosConfigListCommand = 'ls ~/Library/Application\\ Support/com.scanopy.daemon/';
 	const windowsConfigListCommand = 'dir %APPDATA%\\scanopy\\daemon\\';
 
+	// Windows: the running .exe is locked, so stop the service before overwriting it in place.
+	// `sc` is a PowerShell alias for Set-Content, so use `sc.exe`. Requires an elevated shell.
 	const windowsDownloadUrl =
 		'https://github.com/scanopy/scanopy/releases/latest/download/scanopy-daemon-windows-amd64.exe';
-	const windowsDownloadCommand = `Invoke-WebRequest -Uri "${windowsDownloadUrl}" -OutFile "scanopy-daemon-windows-amd64.exe"`;
-	const windowsStopCommand = 'Stop-Process -Name "scanopy-daemon-windows-amd64"';
-	let windowsStartCommand = $derived(`.\\scanopy-daemon-windows-amd64.exe --name ${daemon.name}`);
+	const windowsDownloadCommand = `Invoke-WebRequest -Uri "${windowsDownloadUrl}" -OutFile "$env:ProgramFiles\\Scanopy\\scanopy-daemon.exe"`;
+	let windowsStopCommand = $derived(`sc.exe stop ${serviceId}`);
+	let windowsStartCommand = $derived(`sc.exe start ${serviceId}`);
 
 	const dockerComposeLatestPull = `docker compose pull
 docker compose up -d`;
@@ -117,21 +125,16 @@ docker compose up -d`;
 				>
 					{#if selectedOS === 'linux'}
 						{#if linuxMethod === 'binary'}
-							<!-- Linux Binary: stop, download, start -->
+							<!-- Linux Binary: download new binary, restart the service -->
 							<div class="space-y-3">
 								<div class="text-secondary">
 									<b>{common_stepNumber({ number: '1' })}</b>
-									{daemons_upgradeStopProcess()}
-								</div>
-								<CodeContainer language="bash" expandable={false} code={stopCommand} />
-								<div class="text-secondary">
-									<b>{common_stepNumber({ number: '2' })}</b>
 									{daemons_upgradeDownload()}
 								</div>
 								<CodeContainer language="bash" expandable={false} code={binaryUpgradeCommand} />
 								<div class="text-secondary">
-									<b>{common_stepNumber({ number: '3' })}</b>
-									{daemons_upgradeStartProcess()}
+									<b>{common_stepNumber({ number: '2' })}</b>
+									{daemons_upgradeRestartService()}
 								</div>
 								<details class="text-tertiary text-sm">
 									<summary class="cursor-pointer hover:text-blue-400"
@@ -151,7 +154,7 @@ docker compose up -d`;
 										/>
 									</div>
 								</details>
-								<CodeContainer language="bash" expandable={false} code={startCommand} />
+								<CodeContainer language="bash" expandable={false} code={linuxRestartCommand} />
 							</div>
 						{:else if linuxMethod === 'docker'}
 							<!-- Linux Docker Compose -->
@@ -209,21 +212,16 @@ docker compose up -d`;
 							</div>
 						{/if}
 					{:else if selectedOS === 'macos'}
-						<!-- macOS: stop, download, start -->
+						<!-- macOS: download new binary, restart the launchd service -->
 						<div class="space-y-3">
 							<div class="text-secondary">
 								<b>{common_stepNumber({ number: '1' })}</b>
-								{daemons_upgradeStopProcess()}
-							</div>
-							<CodeContainer language="bash" expandable={false} code={stopCommand} />
-							<div class="text-secondary">
-								<b>{common_stepNumber({ number: '2' })}</b>
 								{daemons_upgradeDownload()}
 							</div>
 							<CodeContainer language="bash" expandable={false} code={binaryUpgradeCommand} />
 							<div class="text-secondary">
-								<b>{common_stepNumber({ number: '3' })}</b>
-								{daemons_upgradeStartProcess()}
+								<b>{common_stepNumber({ number: '2' })}</b>
+								{daemons_upgradeRestartService()}
 							</div>
 							<details class="text-tertiary text-sm">
 								<summary class="cursor-pointer hover:text-blue-400"
@@ -239,16 +237,46 @@ docker compose up -d`;
 									/>
 								</div>
 							</details>
-							<CodeContainer language="bash" expandable={false} code={startCommand} />
+							<CodeContainer language="bash" expandable={false} code={macosRestartCommand} />
+
+							<InlineInfo title={daemons_dockerLinuxOnly()} body={daemons_dockerLinuxOnlyBody()} />
+						</div>
+					{:else if selectedOS === 'freebsd'}
+						<!-- FreeBSD: download new binary, restart the rc.d service -->
+						<div class="space-y-3">
+							<div class="text-secondary">
+								<b>{common_stepNumber({ number: '1' })}</b>
+								{daemons_upgradeDownload()}
+							</div>
+							<CodeContainer language="bash" expandable={false} code={binaryUpgradeCommand} />
+							<div class="text-secondary">
+								<b>{common_stepNumber({ number: '2' })}</b>
+								{daemons_upgradeRestartService()}
+							</div>
+							<details class="text-tertiary text-sm">
+								<summary class="cursor-pointer hover:text-blue-400"
+									>{daemons_upgradeMultipleDaemons()}</summary
+								>
+								<div class="mt-2 space-y-2 text-xs">
+									<p>{daemons_upgradeMultipleDaemonsBody()}</p>
+									<CodeContainer language="bash" expandable={false} code={linuxConfigListCommand} />
+									<DocsHint
+										text={daemons_docsUpgradeMultipleDaemons()}
+										href="https://scanopy.net/docs/guides/multiple-daemons/#upgrading-and-restarting"
+										linkText={daemons_docsUpgradeMultipleDaemonsLinkText()}
+									/>
+								</div>
+							</details>
+							<CodeContainer language="bash" expandable={false} code={freebsdRestartCommand} />
 
 							<InlineInfo title={daemons_dockerLinuxOnly()} body={daemons_dockerLinuxOnlyBody()} />
 						</div>
 					{:else if selectedOS === 'windows'}
-						<!-- Windows: stop, download, start -->
+						<!-- Windows: stop the service, replace the exe, start the service (elevated PowerShell) -->
 						<div class="space-y-3">
 							<div class="text-secondary">
 								<b>{common_stepNumber({ number: '1' })}</b>
-								{daemons_upgradeStopProcess()}
+								{daemons_upgradeStopService()}
 							</div>
 							<CodeContainer language="powershell" expandable={false} code={windowsStopCommand} />
 							<div class="text-secondary">
@@ -262,7 +290,7 @@ docker compose up -d`;
 							/>
 							<div class="text-secondary">
 								<b>{common_stepNumber({ number: '3' })}</b>
-								{daemons_upgradeStartProcess()}
+								{daemons_upgradeStartService()}
 							</div>
 							<details class="text-tertiary text-sm">
 								<summary class="cursor-pointer hover:text-blue-400"

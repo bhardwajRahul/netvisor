@@ -168,9 +168,14 @@ impl Storable for Host {
         let source: EntitySource =
             serde_json::from_value(row.get::<serde_json::Value, _>("source"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize source: {}", e))?;
+        // virtualization is a nullable JSONB column, so decode it as Option: a SQL NULL
+        // (as opposed to a JSONB 'null') must map to None rather than panic on a non-Option get.
         let virtualization: Option<HostVirtualization> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("virtualization"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize virtualization: {}", e))?;
+            match row.get::<Option<serde_json::Value>, _>("virtualization") {
+                Some(v) => serde_json::from_value(v)
+                    .map_err(|e| anyhow::anyhow!("Failed to deserialize virtualization: {}", e))?,
+                None => None,
+            };
 
         Ok(Host {
             id: row.get("id"),
@@ -318,6 +323,13 @@ impl Snapshotable for Host {
 }
 
 impl DiscoveryTracked for Host {
+    // Overrides the trait default: this type carries `EntitySource`, so a
+    // manually- or system-created row must never read as stale (discovery
+    // never refreshes its `last_seen_at`).
+    fn is_discovery_managed(&self) -> bool {
+        self.base.source.is_from_discovery()
+    }
+
     fn last_seen_at(&self) -> DateTime<Utc> {
         self.last_seen_at
     }

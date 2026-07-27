@@ -1,12 +1,10 @@
 use super::arp::{self, ArpScanResult};
-use crate::daemon::discovery::integration::IntegrationRegistry;
 use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::discovery::types::base::DiscoveryCriticalError;
 use crate::daemon::utils::base::{DaemonUtils, PlatformDaemonUtils};
 use crate::daemon::utils::scanner::{
     ScanConcurrencyController, can_arp_scan, scan_endpoints, scan_tcp_ports, scan_udp_ports,
 };
-use crate::server::credentials::r#impl::mapping::CredentialQueryPayloadDiscriminants;
 use crate::server::discovery::r#impl::scan_settings::defaults;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::ports::r#impl::base::PortType;
@@ -26,7 +24,7 @@ use futures::StreamExt;
 use mac_address::MacAddress;
 use pnet::datalink;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use std::{net::IpAddr, sync::Arc};
 use tokio::sync::mpsc as tokio_mpsc;
@@ -35,8 +33,9 @@ use uuid::Uuid;
 
 use super::{
     DeepScanParams, DiscoveredHostData, FULL_SCAN_COST_CS, LATE_ARRIVAL_GRACE_PERIOD,
-    LIGHT_SCAN_COST_CS, MAX_DISCOVERY_DURATION, MAX_PROGRESS_REPORT_INTERVAL, NetworkScan,
-    PROGRESS_ARP_PHASE, PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE,
+    LIGHT_SCAN_COST_CS, MAX_PROGRESS_REPORT_INTERVAL, NetworkScan, PROGRESS_ARP_PHASE,
+    PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE, RESPONSIVENESS_COST_CS,
+    integration_cost_for_ip,
 };
 
 impl NetworkScan {
@@ -164,6 +163,14 @@ impl NetworkScan {
             .unwrap_or(defaults::arp_scan_cutoff());
         let max_arp_targets: usize = 1usize << (32 - arp_cutoff as u32);
 
+        // Work-based ARP progress signal (B): `arp_packets_sent` is incremented per ARP
+        // request across every subnet/round; `arp_packets_total` is the upper bound of
+        // requests this scan will send (targets × rounds). Progress/ETA derive from real
+        // send throughput so a wrong rate estimate can't pin the bar or lie about the ETA.
+        let arp_packets_sent = Arc::new(AtomicU64::new(0));
+        let mut arp_packets_total: u64 = 0;
+        let arp_total_rounds = 1 + arp_retries as u64;
+
         if !interfaced_subnets.is_empty() {
             let mut subnet_to_ips: HashMap<IpCidr, (Subnet, Vec<std::net::Ipv4Addr>)> =
                 HashMap::new();
@@ -260,6 +267,7 @@ impl NetworkScan {
                     arp_rate_pps,
                     "Starting ARP scan"
                 );
+                arp_packets_total += target_count as u64 * arp_total_rounds;
 
                 match arp::scan_subnet(
                     &interface,
@@ -269,6 +277,7 @@ impl NetworkScan {
                     use_npcap,
                     arp_retries,
                     arp_rate_pps,
+                    arp_packets_sent.clone(),
                 ) {
                     Ok(arp_rx) => {
                         // Spawn a task to forward ARP results to the async channel
@@ -373,6 +382,13 @@ impl NetworkScan {
         let last_activity = Arc::new(std::sync::Mutex::new(Instant::now()));
         let mut results: Vec<(IpAddr, Host, DiscoveredHostData)> = Vec::new();
 
+        // Server-configurable hard ceiling for this run (default = the historical 6h).
+        let max_discovery_duration = Duration::from_secs(
+            self.scan_settings
+                .max_discovery_duration
+                .unwrap_or(defaults::max_discovery_duration()) as u64,
+        );
+
         // Batch-level progress tracking for smoother UX
         // TCP port scanning is the bulk of deep scan work
         let is_full_scan = self.scan_settings.is_full_scan;
@@ -389,6 +405,13 @@ impl NetworkScan {
         };
         let total_cost = Arc::new(AtomicUsize::new(0));
         let completed_cost = Arc::new(AtomicUsize::new(0));
+        // Seed total_cost with the responsiveness-check work for every non-interfaced IP
+        // (checked whether or not it responds), so progress/ETA account for draining that
+        // range instead of pinning at ~95% while it's still being scanned.
+        total_cost.fetch_add(
+            non_interfaced_ip_count as usize * RESPONSIVENESS_COST_CS,
+            Ordering::Relaxed,
+        );
 
         // Collect hosts into a stream and process with concurrency limit
         // Use trait objects to allow spawning from different code paths
@@ -421,17 +444,45 @@ impl NetworkScan {
                                   total_cost_val: usize,
                                   completed_cost_val: usize,
                                   hosts_discovered_val: usize,
-                                  hosts_scanned_val: usize|
+                                  hosts_scanned_val: usize,
+                                  arp_packets_sent_val: u64,
+                                  arp_packets_total_val: u64|
          -> u8 {
             if !channel_closed {
-                // ARP phase (0-30%): Based on elapsed time vs estimated duration
-                let arp_elapsed = pipeline_start.elapsed();
-                let arp_progress = if estimated_arp_duration.as_secs() > 0 {
-                    (arp_elapsed.as_secs_f64() / estimated_arp_duration.as_secs_f64()).min(1.0)
+                // ARP + deep scan run concurrently, so blend both so the bar keeps moving
+                // through the ARP tail instead of pinning at 30% then jumping when the
+                // channel closes.
+                //
+                // ARP fraction (0-30%): prefer real packets-sent throughput (self-correcting
+                // when the send rate differs from the estimate); fall back to the time
+                // estimate before any packet is sent, or on paths that can't report sends
+                // (Windows SendARP).
+                let arp_frac = if arp_packets_total_val > 0 && arp_packets_sent_val > 0 {
+                    (arp_packets_sent_val as f64 / arp_packets_total_val as f64).min(1.0)
+                } else if estimated_arp_duration.as_secs() > 0 {
+                    (pipeline_start.elapsed().as_secs_f64() / estimated_arp_duration.as_secs_f64())
+                        .min(1.0)
                 } else {
                     1.0
                 };
-                (arp_progress * PROGRESS_ARP_PHASE as f64) as u8
+                // Deep-scan fraction of the work discovered so far. Its denominator grows
+                // as ARP keeps finding hosts, so a couple of early completions can spike it
+                // (e.g. 2 of an eventual 34 hosts done = 100%). Weighting the deep-scan
+                // contribution by `arp_frac` below discounts that until discovery is
+                // actually complete, so the bar can't jump ahead then stall.
+                let deep_frac = if total_cost_val > 0 {
+                    (completed_cost_val as f64 / total_cost_val as f64).min(1.0)
+                } else if hosts_discovered_val > 0 {
+                    (hosts_scanned_val as f64 / hosts_discovered_val as f64).min(1.0)
+                } else {
+                    0.0
+                };
+                // blended = arp_frac * (30 + deep_frac*65). At arp_frac→1 this converges to
+                // the post-channel-close formula (30 + deep_frac*65), a seamless handoff.
+                let blended = arp_frac
+                    * (PROGRESS_ARP_PHASE as f64 + deep_frac * PROGRESS_DEEP_SCAN_PHASE as f64);
+                // Cap below the grace band — the channel must close before we reach 95%.
+                (blended as u8).min(PROGRESS_ARP_PHASE + PROGRESS_DEEP_SCAN_PHASE - 1)
             } else if total_cost_val > 0
                 && (completed_cost_val < total_cost_val || has_pending_scans)
             {
@@ -731,8 +782,11 @@ impl NetworkScan {
                     let completed_cost_val = completed_cost.load(Ordering::Relaxed);
                     let hosts_discovered_val = hosts_discovered.load(Ordering::Relaxed);
                     let hosts_scanned_val = hosts_scanned.load(Ordering::Relaxed);
+                    let arp_packets_sent_val = arp_packets_sent.load(Ordering::Relaxed);
 
-                    // Calculate and report progress (only if changed)
+                    // Calculate progress. Clamp to be monotonic: the blended ARP+deep-scan
+                    // value can dip when ARP discovers more hosts (growing the deep-scan
+                    // denominator), and a progress bar must never go backwards.
                     let progress = calculate_progress(
                         channel_closed,
                         has_pending,
@@ -741,30 +795,69 @@ impl NetworkScan {
                         completed_cost_val,
                         hosts_discovered_val,
                         hosts_scanned_val,
-                    );
+                        arp_packets_sent_val,
+                        arp_packets_total,
+                    )
+                    .max(last_progress_report);
+
+                    // Remaining ARP send/retry work — dominates a sparse subnet's tail
+                    // (rounds 2-3 re-probe every dead IP). Derived from real send rate so
+                    // the ETA stops claiming "<1 min" while ARP still has minutes to go.
+                    let arp_remaining_secs = if !channel_closed
+                        && arp_packets_total > 0
+                        && arp_packets_sent_val > 0
+                    {
+                        let arp_elapsed = pipeline_start.elapsed().as_secs_f64();
+                        let rate = arp_packets_sent_val as f64 / arp_elapsed.max(0.001);
+                        let remaining = arp_packets_total.saturating_sub(arp_packets_sent_val);
+                        (remaining as f64 / rate.max(0.001)) as u32
+                    } else {
+                        0
+                    };
 
                     // Update estimation atomics on the session
                     if let Ok(session) = ops.get_session().await {
                         session.hosts_discovered.store(hosts_discovered_val as u32, Ordering::Relaxed);
 
                         if channel_closed && hosts_scanned_val > 0 {
-                            // Host-based estimation: uses actual per-host completion time
-                            // which includes TCP + endpoints + SNMP + host creation — the
-                            // real bottleneck, not just TCP port scanning batches.
                             let started = deep_scan_started_at.get_or_insert(Instant::now());
                             let deep_scan_elapsed = started.elapsed();
+                            // Host-based estimate: real per-host completion time for the
+                            // responsive hosts (TCP + endpoints + SNMP + host creation).
                             let time_per_host = deep_scan_elapsed.as_secs_f64() / hosts_scanned_val as f64;
                             let remaining_hosts = hosts_discovered_val.saturating_sub(hosts_scanned_val);
-                            let remaining_secs = (remaining_hosts as f64 * time_per_host) as u32
+                            let host_based = (remaining_hosts as f64 * time_per_host) as u32;
+                            // Cost-based estimate also captures pending non-interfaced
+                            // responsiveness work — dead IPs never increment
+                            // hosts_discovered, so host-based alone collapses to "<1 min"
+                            // while a large non-interfaced range is still draining. Take
+                            // the larger so the ETA reflects whichever work dominates.
+                            let cost_based = if completed_cost_val > 0 {
+                                let time_per_cost_unit =
+                                    deep_scan_elapsed.as_secs_f64() / completed_cost_val as f64;
+                                let remaining_cost = total_cost_val.saturating_sub(completed_cost_val);
+                                (remaining_cost as f64 * time_per_cost_unit) as u32
+                            } else {
+                                0
+                            };
+                            let remaining_secs = host_based.max(cost_based)
                                 + LATE_ARRIVAL_GRACE_PERIOD.as_secs() as u32;
                             session.estimated_remaining_secs.store(remaining_secs, Ordering::Relaxed);
-                        } else if completed_cost_val > 0 {
-                            // ARP phase still active — fall back to cost-based estimation
-                            let started = deep_scan_started_at.get_or_insert(Instant::now());
-                            let deep_scan_elapsed = started.elapsed();
-                            let time_per_cost_unit = deep_scan_elapsed.as_secs_f64() / completed_cost_val as f64;
-                            let remaining_cost = total_cost_val.saturating_sub(completed_cost_val);
-                            let remaining_secs = (remaining_cost as f64 * time_per_cost_unit * 1.2) as u32
+                        } else {
+                            // ARP phase still active. The ETA must cover BOTH the remaining
+                            // ARP send/retry work and any concurrent deep-scan cost, taking
+                            // whichever dominates — otherwise the near-done deep-scan cost
+                            // alone reports "<1 min" while the ARP tail still runs.
+                            let deep_remaining = if completed_cost_val > 0 {
+                                let started = deep_scan_started_at.get_or_insert(Instant::now());
+                                let deep_scan_elapsed = started.elapsed();
+                                let time_per_cost_unit = deep_scan_elapsed.as_secs_f64() / completed_cost_val as f64;
+                                let remaining_cost = total_cost_val.saturating_sub(completed_cost_val);
+                                (remaining_cost as f64 * time_per_cost_unit * 1.2) as u32
+                            } else {
+                                0
+                            };
+                            let remaining_secs = deep_remaining.max(arp_remaining_secs)
                                 + LATE_ARRIVAL_GRACE_PERIOD.as_secs() as u32;
                             session.estimated_remaining_secs.store(remaining_secs, Ordering::Relaxed);
                         }
@@ -796,16 +889,52 @@ impl NetworkScan {
             }
 
             // Global timeout safety net
-            if pipeline_start.elapsed() >= MAX_DISCOVERY_DURATION {
+            if pipeline_start.elapsed() >= max_discovery_duration {
+                let discovered = hosts_discovered.load(Ordering::Relaxed);
+                let scanned = hosts_scanned.load(Ordering::Relaxed);
+                // Hosts that were discovered but never deep-scanned (queued work + the
+                // discovered/scanned gap), so the user sees what was left behind.
+                let not_scanned = pending_scans
+                    .len()
+                    .saturating_add(pending_hosts.len())
+                    .max(discovered.saturating_sub(scanned));
                 tracing::error!(
                     elapsed_secs = pipeline_start.elapsed().as_secs(),
-                    hosts_discovered = hosts_discovered.load(Ordering::Relaxed),
-                    hosts_scanned = hosts_scanned.load(Ordering::Relaxed),
+                    hosts_discovered = discovered,
+                    hosts_scanned = scanned,
                     pending_scans = pending_scans.len(),
                     pending_hosts = pending_hosts.len(),
                     channel_closed,
                     "Discovery hit global timeout, forcing completion"
                 );
+                if not_scanned > 0 {
+                    // Reuse the estimate already computed this tick to say how much
+                    // work was left, without any new estimation plumbing.
+                    let remaining = ops
+                        .get_session()
+                        .await
+                        .ok()
+                        .map(|s| s.estimated_remaining_secs.load(Ordering::Relaxed))
+                        .filter(|&s| s != u32::MAX && s > 0);
+                    let msg = match remaining {
+                        Some(secs) => format!(
+                            "Scan hit its time limit ({}h) — {} host(s) not scanned (~{} min of estimated work remaining). Raise Max Discovery Duration or rescan.",
+                            max_discovery_duration.as_secs() / 3600,
+                            not_scanned,
+                            secs.div_ceil(60),
+                        ),
+                        None => format!(
+                            "Scan hit its time limit ({}h) — {} host(s) not scanned. Raise Max Discovery Duration or rescan.",
+                            max_discovery_duration.as_secs() / 3600,
+                            not_scanned,
+                        ),
+                    };
+                    if let Ok(session) = ops.get_session().await
+                        && let Ok(mut warnings) = session.warnings.lock()
+                    {
+                        warnings.push(msg);
+                    }
+                }
                 break;
             }
 
@@ -906,6 +1035,13 @@ impl NetworkScan {
             )
             .await?;
 
+            // The responsiveness check itself is accounted work (seeded into total_cost
+            // up front for every non-interfaced IP); mark it complete now, on both the
+            // responsive and unresponsive paths.
+            if let Some(counter) = completed_cost {
+                counter.fetch_add(RESPONSIVENESS_COST_CS, Ordering::Relaxed);
+            }
+
             if responsive_ports.is_empty() {
                 tracing::debug!(ip = %ip, "Host unresponsive, skipping deep scan");
                 return Ok(None);
@@ -917,25 +1053,9 @@ impl NetworkScan {
                 discovered.fetch_add(1, Ordering::Relaxed);
             }
             if let Some(total) = total_cost {
-                // Compute integration cost from credential mappings for this IP
-                let integration_cost_cs: usize = credential_mappings
-                    .iter()
-                    .filter_map(|m| {
-                        let discriminant: CredentialQueryPayloadDiscriminants = m
-                            .default_credential
-                            .as_ref()
-                            .map(|c| c.into())
-                            .or_else(|| m.ip_overrides.first().map(|o| (&o.credential).into()))?;
-                        let has_cred = m.ip_overrides.iter().any(|o| o.ip == ip)
-                            || m.default_credential.is_some();
-                        if has_cred {
-                            let integration = IntegrationRegistry::get(discriminant)?;
-                            Some(integration.estimated_seconds() as usize * 100)
-                        } else {
-                            None
-                        }
-                    })
-                    .sum();
+                // Integration cost, counted once per distinct integration for this IP
+                // (see integration_cost_for_ip) so it matches the completed-cost accrual.
+                let integration_cost_cs = integration_cost_for_ip(credential_mappings, ip);
                 total.fetch_add(scan_cost_cs + integration_cost_cs, Ordering::Relaxed);
             }
 
@@ -1042,17 +1162,15 @@ impl NetworkScan {
         )
         .await?;
         open_ports.extend(probe_results.additional_ports.iter());
-        // Mark integration probe costs as completed
+        // Mark this host's integration cost as completed once its probes resolve. Uses
+        // the SAME per-distinct-integration cost that total_cost accrued for the host,
+        // so completed_cost converges to total_cost (the scan ETA/progress stay accurate
+        // even when several SNMP credentials cover the host).
         if let Some(counter) = completed_cost {
-            for discriminant in probe_results.working_credential_ids.keys() {
-                let Some(integration) = IntegrationRegistry::get(*discriminant) else {
-                    continue;
-                };
-                counter.fetch_add(
-                    integration.estimated_seconds() as usize * 100,
-                    Ordering::Relaxed,
-                );
-            }
+            counter.fetch_add(
+                integration_cost_for_ip(credential_mappings, ip),
+                Ordering::Relaxed,
+            );
         }
         let client_responses = &probe_results.client_responses;
 
@@ -1182,7 +1300,7 @@ impl NetworkScan {
                 );
             }
 
-            if let Ok(host_response) = ops
+            match ops
                 .create_host(
                     host,
                     ip_addresses,
@@ -1195,23 +1313,29 @@ impl NetworkScan {
                 )
                 .await
             {
-                tracing::info!(
-                    ip = %ip,
-                    services = services_count,
-                    interfaces = if_entries_count,
-                    "Host created"
-                );
-                let host_data = DiscoveredHostData {
-                    docker_service_id: host_response
-                        .services
-                        .iter()
-                        .find(|s| s.base.service_definition.id() == "Docker")
-                        .map(|s| s.id),
-                    ip_addresses: host_response.ip_addresses.clone(),
-                };
-                return Ok(Some((ip, host_response.to_host(), host_data)));
-            } else {
-                tracing::warn!(ip = %ip, "Host creation failed");
+                Ok(host_response) => {
+                    tracing::info!(
+                        ip = %ip,
+                        services = services_count,
+                        interfaces = if_entries_count,
+                        "Host created"
+                    );
+                    let host_data = DiscoveredHostData {
+                        docker_service_id: host_response
+                            .services
+                            .iter()
+                            .find(|s| s.base.service_definition.id() == "Docker")
+                            .map(|s| s.id),
+                        ip_addresses: host_response.ip_addresses.clone(),
+                    };
+                    return Ok(Some((ip, host_response.to_host(), host_data)));
+                }
+                Err(e) => {
+                    // Include the server error so create rejections are diagnosable
+                    // from the daemon log alone (create_host does not retry on
+                    // ApiErrorResponse, so the reason otherwise lives only server-side).
+                    tracing::warn!(ip = %ip, error = %e, "Host creation failed");
+                }
             }
         } else {
             tracing::debug!(ip = %ip, "Host processing returned None");

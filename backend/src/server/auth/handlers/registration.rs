@@ -399,31 +399,34 @@ pub(crate) async fn apply_pending_setup(
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to create topology: {}", e)))?;
 
-    // Handle integrated daemon if configured
+    // Handle integrated daemon if configured.
+    //
+    // The integrated daemon is provisioned, not handed a shared network key: since 0.17.5 a
+    // daemon that reaches /register without resolving to an existing record is rejected
+    // (`daemon_not_provisioned`), so a shared key would leave it permanently unregistered.
+    // Provisioning creates its record + a 1:1 key up front; the daemon then learns its identity
+    // from that key on first contact. Legacy (< 0.17.5) daemons still self-register with their
+    // existing shared keys — those are untouched here.
     if let Some(integrated_daemon_url) = &state.config.integrated_daemon_url {
         let network_id = setup.network.network_id;
-        let (plaintext, hashed) = generate_api_key_for_storage(ApiKeyType::Daemon);
 
-        state
+        let (_daemon, plaintext) = state
             .services
-            .daemon_api_key_service
-            .create(
-                DaemonApiKey::new(DaemonApiKeyBase {
-                    key: hashed,
-                    name: "Integrated Daemon API Key".to_string(),
-                    last_used: None,
-                    expires_at: None,
-                    network_id,
-                    is_enabled: true,
-                    tags: Vec::new(),
-                    plaintext: None,
-                }),
-                AuthenticatedEntity::System,
+            .daemon_service
+            .provision(
+                &ProvisionDaemonRequest {
+                    name: Some(DEFAULT_DAEMON_NAME.to_string()),
+                    network_id: Some(network_id),
+                    // The integrated daemon dials the server, so it needs no reachable url.
+                    mode: DaemonMode::DaemonPoll,
+                    url: None,
+                    seed_credential_refs: Vec::new(),
+                    daemon_id: None,
+                },
+                None,
+                auth_entity.clone(),
             )
-            .await
-            .map_err(|e| {
-                ApiError::internal_error(&format!("Failed to create integrated daemon key: {}", e))
-            })?;
+            .await?;
 
         state
             .services

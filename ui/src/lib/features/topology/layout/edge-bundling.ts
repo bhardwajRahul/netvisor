@@ -54,10 +54,21 @@ export function bundleEdges(
 				? [sourceContainer, targetContainer]
 				: [targetContainer, sourceContainer];
 
-		// Dependency edges include dependency_id so different dependencies
-		// are never bundled together (even if between the same containers).
-		const depId = 'dependency_id' in edge ? (edge.dependency_id as string) : '';
-		const key = depId ? `${c1}:${c2}:${edge.edge_type}:${depId}` : `${c1}:${c2}:${edge.edge_type}`;
+		// Edges that stand for one specific relationship carry that relationship's id in the key,
+		// so two instances between the same containers never merge: a dependency is identified by
+		// its dependency_id, a SameContainer edge by the container it belongs to. Merging those
+		// would leave a bundle asserting "these subnets are linked" while dropping *which*
+		// dependency or container links them — and bundles also lose their label and highlight
+		// only as a group.
+		const instanceId =
+			'dependency_id' in edge
+				? (edge.dependency_id as string)
+				: edge.edge_type === 'SameContainer'
+					? (edge.service_id as string)
+					: '';
+		const key = instanceId
+			? `${c1}:${c2}:${edge.edge_type}:${instanceId}`
+			: `${c1}:${c2}:${edge.edge_type}`;
 
 		const group = groups.get(key);
 		if (group) {

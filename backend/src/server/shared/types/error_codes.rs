@@ -75,6 +75,10 @@ pub enum ErrorCode {
     AuthUserNotFound { id: String },
     /// Daemon is trying to register with a key that has not yet been created (onboarding)
     AuthDaemonKeyNotCreated,
+    /// A modern daemon (>= server-provisioned-identity floor) tried to self-register but
+    /// isn't provisioned. It must be provisioned in the UI first; this is a terminal,
+    /// non-retryable rejection (the server is reachable and answered definitively).
+    AuthDaemonNotProvisioned,
     /// Action is blocked in demo mode
     AuthDemoMode,
     /// Password login is disabled (OIDC-only mode)
@@ -248,6 +252,9 @@ impl ErrorCode {
             Self::AuthDaemonKeyNotCreated => {
                 "Daemon is trying to register with an API key that has not yet been created"
             }
+            Self::AuthDaemonNotProvisioned => {
+                "This daemon must be provisioned before it can register. Provision it in the Scanopy UI and re-run the install command."
+            }
             Self::AuthDemoMode => "This action is disabled in demo mode",
             Self::LicenseLocked => {
                 "Your license has expired or is invalid. The server is in read-only mode."
@@ -372,6 +379,7 @@ impl ErrorCode {
             | Self::AuthPasswordInvalid
             | Self::AuthNotAuthenticated
             | Self::AuthDaemonKeyNotCreated
+            | Self::AuthDaemonNotProvisioned
             | Self::AuthDemoMode
             | Self::LicenseLocked
             | Self::AuthPasswordLoginDisabled

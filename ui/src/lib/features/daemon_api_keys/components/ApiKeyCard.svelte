@@ -2,6 +2,7 @@
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
+	import { toColor } from '$lib/shared/utils/styling';
 	import { Edit, Trash2 } from 'lucide-svelte';
 	import type { ApiKey } from '../types/base';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
@@ -16,7 +17,9 @@
 		common_never,
 		common_no,
 		common_tags,
-		common_yes
+		common_yes,
+		common_unbound,
+		daemons_legacyKeyHelp
 	} from '$lib/paraglide/messages';
 
 	let {
@@ -38,8 +41,17 @@
 	} = $props();
 
 	// Build card data
+	// Keys not bound 1:1 to a daemon predate server-provisioned identity. Since new
+	// keys are only minted through provisioning, an unbound key is a legacy one.
+	let isUnbound = $derived(!apiKey.daemon_id);
+
 	let cardData = $derived({
 		title: apiKey.name,
+		// Mark unbound keys with a tag + hover helptext, mirroring the daemon
+		// card's status tags. Bound 1:1 keys get no tag.
+		status: isUnbound
+			? { label: common_unbound(), color: toColor('gray'), title: daemons_legacyKeyHelp() }
+			: undefined,
 		iconColor: entities.getColorHelper('DaemonApiKey').icon,
 		Icon: entities.getIconComponent('DaemonApiKey'),
 		fields: [

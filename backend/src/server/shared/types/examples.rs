@@ -32,7 +32,7 @@ use crate::server::{
     },
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
-    networks::r#impl::{Network, NetworkBase},
+    networks::r#impl::{DEFAULT_STALE_AFTER_HOURS, Network, NetworkBase},
     organizations::r#impl::base::{Organization, OrganizationBase},
     ports::r#impl::base::{Port, PortBase, PortType, TransportProtocol},
     services::{
@@ -98,7 +98,9 @@ pub fn network() -> Network {
             organization_id: ids::ORGANIZATION,
             tags: vec![],
             credential_ids: vec![],
+            stale_after_hours: None,
         },
+        effective_stale_after_hours: DEFAULT_STALE_AFTER_HOURS,
     }
 }
 
@@ -297,6 +299,7 @@ pub fn daemon_api_key() -> DaemonApiKey {
             expires_at: None,
             is_enabled: true,
             tags: vec![],
+            daemon_id: None,
             plaintext: None,
         },
     }

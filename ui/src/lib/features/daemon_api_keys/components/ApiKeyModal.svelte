@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { createForm } from '@tanstack/svelte-form';
 	import { submitForm } from '$lib/shared/components/forms/form-context';
-	import { required, max } from '$lib/shared/components/forms/validators';
+	import { createApiKeyForm } from '../form';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import { pushError } from '$lib/shared/stores/feedback';
@@ -14,34 +13,19 @@
 	} from '../queries';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
-	import DateInput from '$lib/shared/components/forms/input/DateInput.svelte';
-	import SelectNetwork from '$lib/features/networks/components/SelectNetwork.svelte';
-	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
-	import TagPicker from '$lib/features/tags/components/TagPicker.svelte';
+	import ApiKeyFormFields from './ApiKeyFormFields.svelte';
 	import {
-		common_apiKeyNameHelp,
 		common_close,
 		common_delete,
 		common_deleting,
 		common_editName,
-		common_enableApiKey,
-		common_expirationDateOptional,
-		common_expirationNeverHelp,
 		common_failedGenerateApiKey,
 		common_failedRotateApiKey,
-		common_keyDetails,
-		common_name,
 		common_save,
 		common_saving,
 		daemonApiKeys_createApiKey,
-		daemonApiKeys_enableApiKeyHelp,
-		daemonApiKeys_namePlaceholder,
 		daemonApiKeys_noNetworkAvailable
 	} from '$lib/paraglide/messages';
-
-	// Shared components
-	import ApiKeyGenerator from '$lib/shared/components/api-keys/ApiKeyGenerator.svelte';
 
 	interface Props {
 		isOpen?: boolean;
@@ -78,36 +62,20 @@
 		isEditing ? common_editName({ name: apiKey?.name || 'API Key' }) : daemonApiKeys_createApiKey()
 	);
 
-	// Get minimum date (now) in local time format for datetime-local input
-	function getLocalDateTimeMin(): string {
-		const now = new Date();
-		const year = now.getFullYear();
-		const month = String(now.getMonth() + 1).padStart(2, '0');
-		const day = String(now.getDate()).padStart(2, '0');
-		const hours = String(now.getHours()).padStart(2, '0');
-		const minutes = String(now.getMinutes()).padStart(2, '0');
-		return `${year}-${month}-${day}T${hours}:${minutes}`;
-	}
-	const today = getLocalDateTimeMin();
-
 	function getDefaultValues(): ApiKey {
 		return apiKey ? { ...apiKey } : createEmptyApiKeyFormData(defaultNetworkId);
 	}
 
-	// Create form
-	const form = createForm(() => ({
-		defaultValues: createEmptyApiKeyFormData(''),
-		onSubmit: async ({ value }) => {
-			loading = true;
-			try {
-				if (isEditing) {
-					await onUpdate(value as ApiKey);
-				}
-			} finally {
-				loading = false;
+	const form = createApiKeyForm(async (value) => {
+		loading = true;
+		try {
+			if (isEditing) {
+				await onUpdate(value);
 			}
+		} finally {
+			loading = false;
 		}
-	}));
+	});
 
 	// Reset form when modal opens
 	function handleOpen() {
@@ -204,81 +172,14 @@
 		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="min-h-0 flex-1 overflow-auto p-6">
-			<div class="space-y-6">
-				<!-- Key Details Section -->
-				<div class="space-y-4">
-					<h3 class="text-primary text-lg font-medium">{common_keyDetails()}</h3>
-
-					<form.Field
-						name="name"
-						validators={{
-							onBlur: ({ value }) => required(value) || max(100)(value)
-						}}
-					>
-						{#snippet children(field)}
-							<TextInput
-								label={common_name()}
-								id="name"
-								{field}
-								placeholder={daemonApiKeys_namePlaceholder()}
-								helpText={common_apiKeyNameHelp()}
-								required
-							/>
-						{/snippet}
-					</form.Field>
-
-					<form.Field name="network_id">
-						{#snippet children(field)}
-							<SelectNetwork
-								selectedNetworkId={field.state.value}
-								onNetworkChange={(id) => field.handleChange(id)}
-								disabled={isEditing}
-							/>
-						{/snippet}
-					</form.Field>
-
-					<form.Field name="tags">
-						{#snippet children(field)}
-							<TagPicker
-								selectedTagIds={field.state.value || []}
-								onChange={(tags) => field.handleChange(tags)}
-							/>
-						{/snippet}
-					</form.Field>
-
-					<form.Field name="expires_at">
-						{#snippet children(field)}
-							<DateInput
-								label={common_expirationDateOptional()}
-								id="expires_at"
-								{field}
-								helpText={common_expirationNeverHelp()}
-								min={today}
-							/>
-						{/snippet}
-					</form.Field>
-
-					<form.Field name="is_enabled">
-						{#snippet children(field)}
-							<Checkbox
-								{field}
-								label={common_enableApiKey()}
-								helpText={daemonApiKeys_enableApiKeyHelp()}
-								id="enableApiKey"
-							/>
-						{/snippet}
-					</form.Field>
-				</div>
-
-				<!-- Key generation section -->
-				<ApiKeyGenerator
-					{generatedKey}
-					{isEditing}
-					{loading}
-					onGenerate={handleGenerateKey}
-					onRotate={handleRotateKey}
-				/>
-			</div>
+			<ApiKeyFormFields
+				{form}
+				{isEditing}
+				{generatedKey}
+				{loading}
+				onGenerate={handleGenerateKey}
+				onRotate={handleRotateKey}
+			/>
 		</div>
 
 		{#if isEditing && apiKey}

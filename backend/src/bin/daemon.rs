@@ -8,9 +8,10 @@ use scanopy::{
     daemon::runtime::service::StartupOutcome,
     daemon::shared::api_client::ConnectionError,
     daemon::{
+        install::run_command,
         runtime::types::DaemonAppState,
         shared::{
-            config::{AppConfig, ConfigStore, DaemonCli},
+            config::{AppConfig, ConfigStore, DaemonArgs, DaemonCli},
             handlers::create_router,
             middleware::capture_fixtures_middleware,
         },
@@ -28,18 +29,95 @@ use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 fn main() -> anyhow::Result<()> {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .thread_stack_size(4 * 1024 * 1024) // 4MB stack for deep async scanning
-        .enable_all()
-        .build()?;
+    // Parse CLI. The `install`/`uninstall`/`list` subcommands short-circuit here (own logging to
+    // stdout); with no subcommand we fall through to running the daemon.
+    let cli = DaemonCli::parse();
+    if let Some(command) = cli.command {
+        return build_runtime()?.block_on(run_command(command));
+    }
 
-    runtime.block_on(async_main())
+    // On Windows, when the Service Control Manager launched us (signalled by the hidden `--service`
+    // marker that `daemon install` bakes into the service binPath), run under the service control
+    // dispatcher: it reports RUNNING/STOPPED to the SCM and maps the STOP control to shutdown. We
+    // gate on the marker rather than always probing the SCM, because StartServiceCtrlDispatcher
+    // blocks for ~30s before failing when not launched by the SCM — which would stall every
+    // foreground run. If the dispatcher unexpectedly reports we're not under the SCM, fall through.
+    #[cfg(windows)]
+    if cli.service {
+        match win_service::try_dispatch() {
+            win_service::Dispatch::RanAsService(result) => return result,
+            win_service::Dispatch::NotUnderScm => {}
+        }
+    }
+
+    // Foreground/console: run the daemon, shutting down on Ctrl+C.
+    build_runtime()?.block_on(run_daemon(cli.run_args, async {
+        let _ = tokio::signal::ctrl_c().await;
+    }))
 }
 
-async fn async_main() -> anyhow::Result<()> {
-    // Parse CLI and load config
-    let cli = DaemonCli::parse();
-    let config = AppConfig::load(cli)?;
+/// Raise the process open-file-descriptor soft limit toward its hard limit so discovery
+/// deep-scan concurrency isn't clamped (macOS' 256 default soft limit leaves too few FDs
+/// after reserves, forcing concurrency to 1). Best-effort: logs and continues on failure.
+/// No-op on Windows (handle-based, no RLIMIT_NOFILE).
+#[cfg(unix)]
+fn raise_fd_limit() {
+    // Generous cap. macOS clamps setrlimit at kern.maxfilesperproc and rejects
+    // RLIM_INFINITY, so request min(hard, TARGET) rather than "unlimited".
+    const TARGET: libc::rlim_t = 10_240;
+    let mut lim = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } != 0 {
+        tracing::warn!("Could not read RLIMIT_NOFILE; leaving FD limit unchanged");
+        return;
+    }
+    let old_soft = lim.rlim_cur;
+    let desired = TARGET.min(lim.rlim_max);
+    if old_soft >= desired {
+        tracing::debug!(
+            soft = old_soft,
+            hard = lim.rlim_max,
+            "FD limit already sufficient"
+        );
+        return;
+    }
+    lim.rlim_cur = desired;
+    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &lim) } == 0 {
+        tracing::info!(
+            old_soft,
+            new_soft = desired,
+            hard = lim.rlim_max,
+            "Raised open-file-descriptor limit for scan concurrency"
+        );
+    } else {
+        tracing::warn!(
+            attempted = desired,
+            hard = lim.rlim_max,
+            "Failed to raise FD soft limit; deep-scan concurrency may stay low"
+        );
+    }
+}
+
+#[cfg(not(unix))]
+fn raise_fd_limit() {}
+
+fn build_runtime() -> anyhow::Result<tokio::runtime::Runtime> {
+    Ok(tokio::runtime::Builder::new_multi_thread()
+        .thread_stack_size(4 * 1024 * 1024) // 4MB stack for deep async scanning
+        .enable_all()
+        .build()?)
+}
+
+/// Run the daemon until `shutdown` resolves. The foreground path passes Ctrl+C; the Windows
+/// service path passes the SCM stop signal.
+async fn run_daemon<F: std::future::Future<Output = ()>>(
+    run_args: DaemonArgs,
+    shutdown: F,
+) -> anyhow::Result<()> {
+    // Load config from the daemon run flags
+    let config = AppConfig::load(run_args)?;
 
     // Initialize tracing with stdout + optional file appender
     let log_path = config.resolve_log_path();
@@ -90,8 +168,17 @@ async fn async_main() -> anyhow::Result<()> {
             .init();
     }
 
-    // Get config path using daemon name for namespaced configs
-    let (_, path) = AppConfig::get_config_path_for_name(Some(&config.name))?;
+    // Raise the open-file-descriptor soft limit before anything opens FDs, so discovery's
+    // deep-scan concurrency isn't starved (macOS defaults the soft limit to 256, which
+    // forces deep-scan concurrency down to 1 on large scans — every host scans serially).
+    raise_fd_limit();
+
+    // Use the path AppConfig::load already resolved (honors --config-dir); don't re-derive, which
+    // would re-read $HOME and could point somewhere the config wasn't written.
+    let path = config
+        .config_path
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("config path was not resolved during load"))?;
     let path_str = path.to_str().unwrap_or("<invalid path>");
 
     // Initialize unified storage with full config
@@ -100,7 +187,11 @@ async fn async_main() -> anyhow::Result<()> {
 
     let daemon_id = config_store.get_id().await?;
     let daemon_name = config_store.get_name().await?;
-    let server_addr = config_store.get_server_url().await?;
+    // ServerPoll daemons have no server URL (the server dials them), so this must not
+    // hard-fail — a `?` here would crash-loop a ServerPoll daemon under the service's
+    // KeepAlive before the mode is even checked. It's only needed for the DaemonPoll
+    // connect path (guaranteed present there by mode inference) and the banner.
+    let server_addr = config_store.get_server_url().await.ok();
     let network_id = config_store.get_network_id().await?;
     let api_key = config_store.get_api_key().await?;
     let mode = config_store.get_mode().await?;
@@ -124,10 +215,6 @@ async fn async_main() -> anyhow::Result<()> {
         Some(p) => tracing::info!("  Log file:        {}", p.display()),
         None => tracing::info!("  Log file:        disabled (stdout only)"),
     }
-    tracing::info!(
-        "  OUI database:    {} vendor entries",
-        scanopy::server::shared::oui::entry_count()
-    );
     tracing::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     let state = DaemonAppState::new(config_store.clone(), utils).await?;
@@ -184,7 +271,9 @@ async fn async_main() -> anyhow::Result<()> {
 
     // Configuration summary
     tracing::info!("Configuration:");
-    tracing::info!("  Server:          {}", server_addr);
+    if let Some(addr) = &server_addr {
+        tracing::info!("  Server:          {}", addr);
+    }
     if let Some(nid) = &network_id {
         tracing::info!("  Network ID:      {}", nid);
     }
@@ -238,62 +327,68 @@ async fn async_main() -> anyhow::Result<()> {
 
     let startup_result: Result<(), ()> = match mode {
         DaemonMode::DaemonPoll => {
-            if let Some(network_id) = network_id {
-                if let Some(api_key) = api_key {
-                    tracing::info!("Connecting to server at {}...", server_addr);
-                    let mut result = runtime_service
-                        .initialize_services(network_id, api_key.clone())
-                        .await?;
+            if let Some(api_key) = api_key {
+                // A server-provisioned daemon starts with just a 1:1 key and no
+                // network id — the server derives its identity from the key and
+                // returns it (cached on the register response). Use nil as a
+                // placeholder network id; a legacy daemon still passes its own.
+                let effective_network_id = network_id.unwrap_or_else(uuid::Uuid::nil);
+                tracing::info!(
+                    "Connecting to server at {}...",
+                    server_addr.as_deref().unwrap_or("<server url>")
+                );
+                let mut result = runtime_service
+                    .initialize_services(effective_network_id, api_key.clone())
+                    .await?;
 
-                    if let StartupOutcome::ConnectionFailed(ref e) = result {
-                        log_connection_error(e);
-                        tracing::info!("Retrying connection...");
+                if let StartupOutcome::ConnectionFailed(ref e) = result {
+                    log_connection_error(e);
+                    tracing::info!("Retrying connection...");
 
-                        const RETRY_DELAYS: &[u64] = &[5, 10, 20, 40, 60];
-                        for (i, &delay) in RETRY_DELAYS.iter().enumerate() {
-                            tokio::time::sleep(Duration::from_secs(delay)).await;
-                            tracing::info!(
-                                "Connection attempt {}/{}...",
-                                i + 2,
-                                RETRY_DELAYS.len() + 1
-                            );
-                            result = runtime_service
-                                .initialize_services(network_id, api_key.clone())
-                                .await?;
-                            match &result {
-                                StartupOutcome::Ok => {
-                                    tracing::info!("Connected successfully");
-                                    break;
-                                }
-                                StartupOutcome::ConnectionFailed(e) => {
-                                    tracing::warn!("Still unreachable: {e}");
-                                    if let Some(conn_err) = e.downcast_ref::<ConnectionError>() {
-                                        tracing::warn!("{}", conn_err.cause_and_fix());
-                                    }
-                                }
-                                StartupOutcome::AuthFailed(_) => break,
+                    const RETRY_DELAYS: &[u64] = &[5, 10, 20, 40, 60];
+                    for (i, &delay) in RETRY_DELAYS.iter().enumerate() {
+                        tokio::time::sleep(Duration::from_secs(delay)).await;
+                        tracing::info!(
+                            "Connection attempt {}/{}...",
+                            i + 2,
+                            RETRY_DELAYS.len() + 1
+                        );
+                        result = runtime_service
+                            .initialize_services(effective_network_id, api_key.clone())
+                            .await?;
+                        match &result {
+                            StartupOutcome::Ok => {
+                                tracing::info!("Connected successfully");
+                                break;
                             }
+                            StartupOutcome::ConnectionFailed(e) => {
+                                tracing::warn!("Still unreachable: {e}");
+                                if let Some(conn_err) = e.downcast_ref::<ConnectionError>() {
+                                    tracing::warn!("{}", conn_err.cause_and_fix());
+                                }
+                            }
+                            StartupOutcome::AuthFailed(_) => break,
                         }
                     }
-
-                    match result {
-                        StartupOutcome::Ok => Ok(()),
-                        StartupOutcome::ConnectionFailed(_) => Err(()),
-                        StartupOutcome::AuthFailed(e) => {
-                            tracing::error!(
-                                "API key rejected. Cause: key is invalid or was regenerated. Fix: re-run the install command from the Scanopy UI."
-                            );
-                            tracing::debug!("Auth error detail: {e}");
-                            Err(())
-                        }
-                    }
-                } else {
-                    tracing::error!(
-                        "Daemon is missing an API key. Fix: re-run the install command from the Scanopy UI. Server: {}",
-                        server_addr
-                    );
-                    Err(())
                 }
+
+                match result {
+                    StartupOutcome::Ok => Ok(()),
+                    StartupOutcome::ConnectionFailed(_) => Err(()),
+                    StartupOutcome::AuthFailed(e) => {
+                        // Terminal, server-reachable rejection (bad/regenerated key, or the
+                        // daemon isn't provisioned). Surface the server's actual reason and let
+                        // it speak for itself — it already carries any remedy.
+                        tracing::error!("Registration rejected by the server: {e}");
+                        Err(())
+                    }
+                }
+            } else if network_id.is_some() {
+                tracing::error!(
+                    "Daemon is missing an API key. Fix: re-run the install command from the Scanopy UI. Server: {}",
+                    server_addr.as_deref().unwrap_or("<server url>")
+                );
+                Err(())
             } else {
                 tracing::info!("Missing network ID — waiting for server to hit /api/initialize...");
                 Ok(())
@@ -357,11 +452,134 @@ async fn async_main() -> anyhow::Result<()> {
         }
     }
 
-    // Keep process alive until shutdown signal
-    tokio::signal::ctrl_c().await?;
+    // Keep process alive until the shutdown signal (Ctrl+C in the foreground, or the SCM STOP
+    // control when running as a Windows service).
+    shutdown.await;
 
     tracing::info!("Shutdown signal received");
     tracing::info!("Daemon stopped");
 
     Ok(())
+}
+
+/// Windows Service Control Manager integration. Only compiled on Windows; the daemon runs here
+/// when `daemon install` registered it as a service and the SCM launched the binary.
+#[cfg(windows)]
+mod win_service {
+    use super::{DaemonArgs, build_runtime, run_daemon};
+    use clap::Parser;
+    use scanopy::daemon::shared::config::DaemonCli;
+    use std::{
+        ffi::OsString,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
+    use windows_service::{
+        define_windows_service,
+        service::{
+            ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
+            ServiceType,
+        },
+        service_control_handler::{self, ServiceControlHandlerResult},
+        service_dispatcher,
+    };
+
+    /// The service name is only meaningful for shared-process services; ours is OWN_PROCESS, so
+    /// the SCM ignores it, but the API still requires a value.
+    const SERVICE_NAME: &str = "scanopy-daemon";
+    const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
+    /// ERROR_FAILED_SERVICE_CONTROLLER_CONNECT — returned by StartServiceCtrlDispatcher when the
+    /// process was not launched by the SCM (i.e. we're running from a normal console).
+    const ERROR_FAILED_SERVICE_CONTROLLER_CONNECT: i32 = 1063;
+
+    pub enum Dispatch {
+        /// The SCM launched us and the service ran to completion (or failed).
+        RanAsService(anyhow::Result<()>),
+        /// Not launched by the SCM — the caller should run the daemon in the foreground.
+        NotUnderScm,
+    }
+
+    /// Attempt to connect to the SCM and run as a service. Blocks until the service stops when it
+    /// is a service; returns `NotUnderScm` immediately when running from a console.
+    pub fn try_dispatch() -> Dispatch {
+        match service_dispatcher::start(SERVICE_NAME, ffi_service_main) {
+            Ok(()) => Dispatch::RanAsService(Ok(())),
+            Err(windows_service::Error::Winapi(io))
+                if io.raw_os_error() == Some(ERROR_FAILED_SERVICE_CONTROLLER_CONNECT) =>
+            {
+                Dispatch::NotUnderScm
+            }
+            Err(e) => Dispatch::RanAsService(Err(e.into())),
+        }
+    }
+
+    define_windows_service!(ffi_service_main, service_main);
+
+    fn service_main(_arguments: Vec<OsString>) {
+        // Errors here can't reach the SCM meaningfully; the daemon's own file log (via --log-file
+        // in the service binPath) captures startup failures.
+        if let Err(e) = run_service() {
+            eprintln!("scanopy-daemon service error: {e}");
+        }
+    }
+
+    fn run_service() -> anyhow::Result<()> {
+        // Bridge the SCM STOP control (delivered on an SCM thread) to the async shutdown future.
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
+
+        let event_handler = {
+            let shutdown_tx = shutdown_tx.clone();
+            move |control_event| -> ServiceControlHandlerResult {
+                match control_event {
+                    ServiceControl::Stop => {
+                        if let Some(tx) = shutdown_tx.lock().unwrap().take() {
+                            let _ = tx.send(());
+                        }
+                        ServiceControlHandlerResult::NoError
+                    }
+                    ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+                    _ => ServiceControlHandlerResult::NotImplemented,
+                }
+            }
+        };
+
+        let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
+
+        // Report RUNNING promptly so the SCM start handshake succeeds. The daemon's own
+        // connect/retry loop happens afterwards inside `run_daemon` and must not block this.
+        let running_status = ServiceStatus {
+            service_type: SERVICE_TYPE,
+            current_state: ServiceState::Running,
+            controls_accepted: ServiceControlAccept::STOP,
+            exit_code: ServiceExitCode::Win32(0),
+            checkpoint: 0,
+            wait_hint: Duration::default(),
+            process_id: None,
+        };
+        status_handle.set_service_status(running_status)?;
+
+        // The service binPath carries the daemon flags (--name, --config-dir, --log-file, ...),
+        // so re-parse them from the process command line.
+        let cli = DaemonCli::parse();
+        let run_args: DaemonArgs = cli.run_args;
+
+        let result = build_runtime()?.block_on(run_daemon(run_args, async move {
+            let _ = shutdown_rx.await;
+        }));
+
+        // Always report STOPPED so the SCM doesn't leave the service stuck in STOP_PENDING.
+        let stopped_status = ServiceStatus {
+            service_type: SERVICE_TYPE,
+            current_state: ServiceState::Stopped,
+            controls_accepted: ServiceControlAccept::empty(),
+            exit_code: ServiceExitCode::Win32(if result.is_ok() { 0 } else { 1 }),
+            checkpoint: 0,
+            wait_hint: Duration::default(),
+            process_id: None,
+        };
+        status_handle.set_service_status(stopped_status)?;
+
+        result
+    }
 }

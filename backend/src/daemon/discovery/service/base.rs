@@ -73,6 +73,10 @@ pub struct DiscoverySession {
     pub estimated_remaining_secs: Arc<AtomicU32>,
     pub progress_range_start: Arc<AtomicU8>,
     pub progress_range_end: Arc<AtomicU8>,
+    /// Non-fatal warnings accumulated during the run (e.g. the discovery hit its
+    /// time limit and left hosts un-scanned). Surfaced in the terminal session
+    /// update so the user sees them without the run being marked as failed.
+    pub warnings: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl DiscoverySession {
@@ -86,6 +90,7 @@ impl DiscoverySession {
             estimated_remaining_secs: Arc::new(AtomicU32::new(u32::MAX)),
             progress_range_start: Arc::new(AtomicU8::new(0)),
             progress_range_end: Arc::new(AtomicU8::new(100)),
+            warnings: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 
@@ -107,6 +112,12 @@ pub struct DaemonDiscoveryService {
     /// between polls, we need to retain the terminal state so the server can receive it.
     /// This is cleared when a new session starts.
     pub terminal_payload: Arc<RwLock<Option<DiscoveryUpdatePayload>>>,
+    /// Shared gate that staggers the start of DaemonPoll host-create requests so
+    /// a burst of near-simultaneous deep-scan completions doesn't hammer the
+    /// server's host-create endpoint (where they'd otherwise queue on the
+    /// per-network `HostDedup` advisory lock). Holds the earliest instant the
+    /// next host submission may start; each submission reserves and advances it.
+    pub host_submit_gate: Arc<tokio::sync::Mutex<tokio::time::Instant>>,
 }
 
 impl DaemonDiscoveryService {
@@ -118,6 +129,7 @@ impl DaemonDiscoveryService {
             current_session: Arc::new(RwLock::new(None)),
             entity_buffer,
             terminal_payload: Arc::new(RwLock::new(None)),
+            host_submit_gate: Arc::new(tokio::sync::Mutex::new(tokio::time::Instant::now())),
         }
     }
 

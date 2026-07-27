@@ -106,6 +106,58 @@ mod tests {
         assert_eq!(filter.values().len(), 1);
     }
 
+    // An empty cutoff set must match nothing. Falling through to "no
+    // condition" would silently return every host as stale — the failure mode
+    // that turns a filter bug into a wrong answer rather than an error.
+    #[test]
+    fn stale_by_network_with_no_cutoffs_matches_nothing() {
+        for stale in [true, false] {
+            let filter = StorableFilter::<Host>::new_unfiltered().stale_by_network(&[], stale);
+            assert_eq!(filter.to_where_clause().trim(), "WHERE FALSE");
+            assert!(filter.values().is_empty());
+        }
+    }
+
+    // Each network contributes its own id + cutoff pair, so a host is compared
+    // against its own network's window rather than a single global one.
+    #[test]
+    fn stale_by_network_binds_a_cutoff_per_network() {
+        let cutoffs = vec![
+            (uuid::Uuid::new_v4(), ts(0)),
+            (uuid::Uuid::new_v4(), ts(1)),
+            (uuid::Uuid::new_v4(), ts(2)),
+        ];
+        let filter = StorableFilter::<Host>::new_unfiltered().stale_by_network(&cutoffs, true);
+        assert_eq!(
+            filter.values().len(),
+            cutoffs.len() * 2,
+            "one network id and one cutoff bound per network"
+        );
+        let where_clause = filter.to_where_clause();
+        assert_eq!(
+            where_clause.matches("hosts.last_seen_at").count(),
+            cutoffs.len(),
+            "every network gets its own comparison: {where_clause}"
+        );
+    }
+
+    // Staleness is only meaningful for entities discovery actually refreshes;
+    // both directions of the filter must respect that, or a hand-created host
+    // shows up as stale the moment it ages past the window.
+    #[test]
+    fn stale_by_network_excludes_entities_discovery_never_refreshes() {
+        let cutoffs = vec![(uuid::Uuid::new_v4(), ts(0))];
+        for stale in [true, false] {
+            let where_clause = StorableFilter::<Host>::new_unfiltered()
+                .stale_by_network(&cutoffs, stale)
+                .to_where_clause();
+            assert!(
+                where_clause.contains("hosts.source->>'type'"),
+                "expected the discovery-managed guard in: {where_clause}"
+            );
+        }
+    }
+
     #[test]
     fn live_filter_emits_valid_to_is_null() {
         let filter = StorableFilter::<Tag>::new_unfiltered().live();

@@ -317,7 +317,11 @@ jobs:
             target: x86_64-pc-windows-msvc
             binary: scanopy-daemon-windows-amd64.exe
             use_cross: false
-    
+          - os: ubuntu-latest
+            target: x86_64-unknown-freebsd
+            binary: scanopy-daemon-freebsd-amd64
+            use_cross: true
+
     steps:
       - uses: actions/checkout@v4
 
@@ -376,6 +380,131 @@ jobs:
           name: ${{ matrix.binary }}
           path: ${{ matrix.binary }}
           retention-days: 1
+
+      # ---- Windows MSI (thin front-end over the `install` subcommand) ----
+      # Signing runs only when Certum SimplySign cloud secrets are provisioned, so releases still
+      # succeed (with an unsigned MSI) before the certificate is wired up.
+      - name: Check MSI signing availability
+        id: signing
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        env:
+          CERTUM_STOREPASS: ${{ secrets.CERTUM_STOREPASS }}
+        run: |
+          if [ -n "$CERTUM_STOREPASS" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Certum signing secrets not set — MSI will be built unsigned."
+          fi
+
+      - name: Install cargo-wix
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        run: cargo install cargo-wix --version 0.3.9 --locked
+
+      - name: Setup Java (jsign)
+        if: matrix.target == 'x86_64-pc-windows-msvc' && steps.signing.outputs.enabled == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Stage daemon exe for WiX
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        run: cp backend/target/${{ matrix.target }}/release/daemon.exe backend/wix/scanopy-daemon.exe
+
+      - name: Download jsign
+        if: matrix.target == 'x86_64-pc-windows-msvc' && steps.signing.outputs.enabled == 'true'
+        shell: bash
+        run: curl -fL -o jsign.jar https://github.com/ebourg/jsign/releases/download/6.0/jsign-6.0.jar
+
+      # Sign the .exe BEFORE it is embedded in the MSI so the binary inside is trusted too.
+      - name: Sign daemon exe (Certum SimplySign cloud)
+        if: matrix.target == 'x86_64-pc-windows-msvc' && steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          CERTUM_KEYSTORE: ${{ secrets.CERTUM_KEYSTORE }}
+          CERTUM_KEY_ALIAS: ${{ secrets.CERTUM_KEY_ALIAS }}
+          CERTUM_STOREPASS: ${{ secrets.CERTUM_STOREPASS }}
+        run: |
+          java -jar jsign.jar \
+            --storetype CRYPTOCERTUM \
+            --keystore "$CERTUM_KEYSTORE" \
+            --alias "$CERTUM_KEY_ALIAS" \
+            --storepass "$CERTUM_STOREPASS" \
+            --tsaurl http://time.certum.pl \
+            --tsmode RFC3161 \
+            backend/wix/scanopy-daemon.exe
+
+      - name: Build MSI (cargo-wix)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        working-directory: backend
+        shell: bash
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          # cargo-wix has no --ext flag; it already links WixUtilExtension
+          # (candle+light) and WixUIExtension (light) by default, which is what
+          # main.wxs needs (util namespace + WixUI_InstallDir dialog set).
+          cargo wix --no-build --nocapture \
+            --install-version "$VERSION" \
+            --output "../scanopy-daemon-windows-amd64.msi"
+
+      - name: Sign MSI (Certum SimplySign cloud)
+        if: matrix.target == 'x86_64-pc-windows-msvc' && steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          CERTUM_KEYSTORE: ${{ secrets.CERTUM_KEYSTORE }}
+          CERTUM_KEY_ALIAS: ${{ secrets.CERTUM_KEY_ALIAS }}
+          CERTUM_STOREPASS: ${{ secrets.CERTUM_STOREPASS }}
+        run: |
+          java -jar jsign.jar \
+            --storetype CRYPTOCERTUM \
+            --keystore "$CERTUM_KEYSTORE" \
+            --alias "$CERTUM_KEY_ALIAS" \
+            --storepass "$CERTUM_STOREPASS" \
+            --tsaurl http://time.certum.pl \
+            --tsmode RFC3161 \
+            scanopy-daemon-windows-amd64.msi
+
+      - name: Upload MSI artifact
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanopy-daemon-windows-amd64.msi
+          path: scanopy-daemon-windows-amd64.msi
+          retention-days: 1
+
+  # ============================================
+  # FreeBSD smoke test - run the cross-built binary on a real FreeBSD host
+  # ============================================
+  freebsd-smoke-test:
+    name: FreeBSD Smoke Test
+    runs-on: ubuntu-latest
+    needs: build-binaries
+    permissions:
+      contents: read
+    steps:
+      - name: Download FreeBSD binary
+        uses: actions/download-artifact@v4
+        with:
+          name: scanopy-daemon-freebsd-amd64
+
+      - name: Run binary on FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          # Confirm the cross-built binary loads and executes on a real FreeBSD host: dynamic
+          # linking resolves, syscalls are valid, and the CLI parses. Deeper runtime behaviors
+          # (BPF ARP scan, multi-homed local_ip() selection, netdev gateway discovery) require a
+          # multi-homed host and are tracked as hardware-validation items in TEST_PLAN.json.
+          run: |
+            chmod +x scanopy-daemon-freebsd-amd64
+            ./scanopy-daemon-freebsd-amd64 --version
+            ./scanopy-daemon-freebsd-amd64 --help
+            ./scanopy-daemon-freebsd-amd64 install --help
 
   # ============================================
   # Docker builds - parallelized by image type
@@ -558,6 +687,10 @@ jobs:
       - name: Upload binaries to release
         uses: softprops/action-gh-release@v1
         with:
+          # `scanopy-daemon-*/scanopy-daemon-*` already matches the MSI artifact
+          # (scanopy-daemon-windows-amd64.msi/scanopy-daemon-windows-amd64.msi). A
+          # second `*.msi` glob double-matched it, so softprops uploaded the same
+          # asset twice and the second attempt 404'd. One glob covers everything.
           files: |
             scanopy-daemon-*/scanopy-daemon-*
         env:

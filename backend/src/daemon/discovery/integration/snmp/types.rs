@@ -70,6 +70,17 @@ pub struct LldpNeighbor {
     pub remote_mgmt_addr: Option<IpAddr>,
 }
 
+/// Local port entry from lldpLocPortTable, keyed by lldpLocPortNum.
+/// Used to translate an LLDP-local port number (the local-port index reported in
+/// lldpRemTable) back to the device's real ifIndex.
+#[derive(Debug, Clone, Default)]
+pub struct LldpLocalPort {
+    /// lldpLocPortIdSubtype (5 = interfaceName, 2 = interfaceIndex, ...)
+    pub port_id_subtype: Option<u8>,
+    /// lldpLocPortId rendered as text (e.g. "1:4", "1/1", "mgmt")
+    pub port_id: Option<String>,
+}
+
 /// IP address table entry from ipAddrTable
 #[derive(Debug, Clone)]
 pub struct IpAddrEntry {

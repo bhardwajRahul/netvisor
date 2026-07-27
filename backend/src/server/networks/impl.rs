@@ -43,7 +43,29 @@ pub struct NetworkBase {
     #[serde(default)]
     #[schema(required)]
     pub credential_ids: Vec<Uuid>,
+    /// How long a discovery-managed entity on this network may go unobserved
+    /// before it reads as stale. `None` = unset; callers resolve the effective
+    /// value through [`Network::stale_after`], never by reading this directly.
+    ///
+    /// Network-scoped because staleness is only meaningful relative to scan
+    /// cadence, and cadence is a property of a network's discoveries.
+    #[validate(range(min = 1, max = 87_600))]
+    #[serde(default)]
+    #[schema(required)]
+    pub stale_after_hours: Option<i64>,
 }
+
+/// Effective staleness threshold when a network has not set one: 28 days.
+///
+/// Deliberately generous — a laptop away for a few weeks, a seasonally-powered
+/// lab box or a host behind a scan that has been failing quietly should not be
+/// declared stale before a human would agree. Networks that scan aggressively
+/// can tighten it per-network.
+///
+/// Lives here rather than as a DDL default so it can change without a
+/// migration, and so `NULL` keeps meaning "unset" rather than "explicitly 28
+/// days" — the distinction a future per-org or per-use-case default needs.
+pub const DEFAULT_STALE_AFTER_HOURS: i64 = 24 * 28;
 
 impl NetworkBase {
     pub fn new(organization_id: Uuid) -> Self {
@@ -52,6 +74,7 @@ impl NetworkBase {
             organization_id,
             tags: Vec::new(),
             credential_ids: Vec::new(),
+            stale_after_hours: None,
         }
     }
 }
@@ -70,9 +93,42 @@ pub struct Network {
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// `stale_after_hours` with the server's default already applied.
+    ///
+    /// Computed, never stored (excluded from `to_params`). Published so the
+    /// frontend derives staleness from the *same* number the digest uses rather
+    /// than re-declaring the default in TypeScript, where the two could drift
+    /// and a host could read stale in the app but current in the digest email.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub effective_stale_after_hours: i64,
     #[serde(flatten)]
     #[validate(nested)]
     pub base: NetworkBase,
+}
+
+impl Network {
+    /// Effective staleness window for this network, falling back to
+    /// [`DEFAULT_STALE_AFTER_HOURS`] when unset. The single place the fallback
+    /// is applied — callers must not read `base.stale_after_hours` directly.
+    pub fn stale_after(&self) -> chrono::Duration {
+        // Reads the base field rather than `effective_stale_after_hours` so an
+        // in-memory Network built without going through `from_row` still
+        // resolves correctly.
+        chrono::Duration::hours(
+            self.base
+                .stale_after_hours
+                .unwrap_or(DEFAULT_STALE_AFTER_HOURS),
+        )
+    }
+
+    /// Instant before which a `last_seen_at` on this network counts as stale.
+    /// `reference` is `now()` for the UI/API read path and the discovery
+    /// session's `finished_at` for the digest, so both surfaces derive the same
+    /// verdict from the same rule.
+    pub fn stale_cutoff(&self, reference: DateTime<Utc>) -> DateTime<Utc> {
+        reference - self.stale_after()
+    }
 }
 
 impl Display for Network {
@@ -109,6 +165,9 @@ impl Storable for Network {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            effective_stale_after_hours: base
+                .stale_after_hours
+                .unwrap_or(DEFAULT_STALE_AFTER_HOURS),
             base,
         }
     }
@@ -122,37 +181,51 @@ impl Storable for Network {
             id,
             created_at,
             updated_at,
+            // Derived from `stale_after_hours` for the API response; never stored.
+            effective_stale_after_hours: _,
             base:
                 Self::BaseData {
                     name,
                     organization_id,
                     tags: _,           // Stored in entity_tags junction table
                     credential_ids: _, // Stored in network_credentials junction table
+                    stale_after_hours,
                 },
         } = self.clone();
 
         Ok((
-            vec!["id", "created_at", "updated_at", "name", "organization_id"],
+            vec![
+                "id",
+                "created_at",
+                "updated_at",
+                "name",
+                "organization_id",
+                "stale_after_hours",
+            ],
             vec![
                 SqlValue::Uuid(id),
                 SqlValue::Timestamp(created_at),
                 SqlValue::Timestamp(updated_at),
                 SqlValue::String(name),
                 SqlValue::Uuid(organization_id),
+                SqlValue::OptionalI64(stale_after_hours),
             ],
         ))
     }
 
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error> {
+        let stale_after_hours: Option<i64> = row.get("stale_after_hours");
         Ok(Network {
             id: row.get("id"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
+            effective_stale_after_hours: stale_after_hours.unwrap_or(DEFAULT_STALE_AFTER_HOURS),
             base: NetworkBase {
                 name: row.get("name"),
                 organization_id: row.get("organization_id"),
                 tags: Vec::new(), // Hydrated from entity_tags junction table
                 credential_ids: Vec::new(), // Hydrated from network_credentials junction table
+                stale_after_hours,
             },
         })
     }

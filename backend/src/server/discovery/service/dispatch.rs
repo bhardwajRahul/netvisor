@@ -34,24 +34,32 @@ impl DiscoveryService {
             .map(|(did, _)| *did)
     }
 
-    /// Top-N historical Discovery row IDs for a network, ordered by
-    /// `updated_at DESC` (which equals the session's finished-at timestamp
-    /// for historical records). Used by the digest service to decide
-    /// whether a missing child is "possibly missing" (one of the recent N
-    /// discoveries still references it) or fully "removed."
-    pub async fn get_recent_historical_ids(
+    /// When the most recent historical discovery on `network_id` that finished
+    /// strictly before `before` completed. `None` when there was none — a
+    /// network's first-ever scan.
+    ///
+    /// For historical rows `updated_at` is the session's finished-at timestamp.
+    /// Filtering on `before` rather than skipping the first row keeps this
+    /// correct when the caller's own session row is already persisted (it is,
+    /// by the time the digest runs) and when rows share a timestamp.
+    ///
+    /// The digest uses it to anchor "was this entity still inside its staleness
+    /// window as of the previous scan?", which is what distinguishes an entity
+    /// that just went stale from one that has been stale for weeks.
+    pub async fn previous_historical_finished_at(
         &self,
         network_id: Uuid,
-        limit: usize,
-    ) -> Result<Vec<Uuid>, anyhow::Error> {
+        before: chrono::DateTime<Utc>,
+    ) -> Result<Option<chrono::DateTime<Utc>>, anyhow::Error> {
         let filter = StorableFilter::<Discovery>::new_from_network_ids(&[network_id])
             .historical_discovery()
-            .limit(limit as u32);
+            .updated_before(before)
+            .limit(1);
         let discoveries = self
             .discovery_storage
             .get_all_ordered(filter, "updated_at DESC")
             .await?;
-        Ok(discoveries.into_iter().map(|d| d.id).collect())
+        Ok(discoveries.first().map(|d| d.updated_at))
     }
 
     /// Build a DaemonDiscoveryRequest with all credential mappings resolved.
@@ -243,6 +251,26 @@ impl DiscoveryService {
     /// Update progress for a session
     /// If the session doesn't exist (e.g., server restarted during discovery),
     /// auto-creates it from the payload context to maintain resilience.
+    /// Increment a discovery's `scan_count` (and clear `force_full_scan`)
+    /// atomically: the row is read `FOR UPDATE` inside a transaction so
+    /// concurrent session finalizations serialize instead of losing
+    /// increments.
+    async fn increment_scan_count(&self, discovery_id: &Uuid) -> Result<(), Error> {
+        let mut tx = self.discovery_storage.begin_transaction().await?;
+        let Some(mut parent_discovery) = tx.get_by_id_for_update(discovery_id).await? else {
+            return Ok(());
+        };
+        parent_discovery.scan_count += 1;
+        parent_discovery.force_full_scan = false;
+        // integration_targets persist across scans (per-daemon init-command
+        // targeting), so they are intentionally NOT cleared here — unlike the
+        // old one-shot pending_credential_ids.
+        parent_discovery.updated_at = Utc::now();
+        tx.update(&mut parent_discovery).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn update_session(&self, mut update: DiscoveryUpdatePayload) -> Result<(), Error> {
         // Enrich discovery_id from authoritative server-side map.
         // Daemon-sent payloads won't have this; server always fills it in.
@@ -394,23 +422,17 @@ impl DiscoveryService {
                     .find(|(_, sid)| **sid == session.session_id)
                     .map(|(did, _)| *did);
 
+                // Increment inside one transaction with a row lock: two
+                // finalizations for the same discovery (possible across
+                // backend instances) must not both read N and write N+1.
                 if let Some(discovery_id) = discovery_id
-                    && let Ok(Some(mut parent_discovery)) =
-                        self.discovery_storage.get_by_id(&discovery_id).await
+                    && let Err(e) = self.increment_scan_count(&discovery_id).await
                 {
-                    parent_discovery.scan_count += 1;
-                    parent_discovery.force_full_scan = false;
-                    // integration_targets persist across scans (per-daemon init-command
-                    // targeting), so they are intentionally NOT cleared here — unlike the
-                    // old one-shot pending_credential_ids.
-                    parent_discovery.updated_at = Utc::now();
-                    if let Err(e) = self.discovery_storage.update(&mut parent_discovery).await {
-                        tracing::error!(
-                            "Failed to increment scan_count for discovery {}: {}",
-                            discovery_id,
-                            e
-                        );
-                    }
+                    tracing::error!(
+                        "Failed to increment scan_count for discovery {}: {}",
+                        discovery_id,
+                        e
+                    );
                 }
             }
 
@@ -519,6 +541,7 @@ impl DiscoveryService {
             phase: DiscoveryPhase::Cancelled,
             progress: 0,
             error: None,
+            warnings: Vec::new(),
             started_at: session.started_at,
             finished_at: Some(Utc::now()),
             discovery_type: session.discovery_type,

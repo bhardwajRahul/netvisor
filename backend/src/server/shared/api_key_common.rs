@@ -22,7 +22,10 @@ use crate::server::{
             types::AuthOperation,
         },
         services::traits::{CrudService, EventBusService},
-        storage::traits::Entity,
+        storage::{
+            lock::{DEFAULT_LOCK_TIMEOUT, LockKey},
+            traits::Entity,
+        },
         types::api::ApiError,
     },
 };
@@ -88,6 +91,11 @@ pub trait ApiKeyCommon {
     fn set_key(&mut self, key: String);
     fn set_is_enabled(&mut self, enabled: bool);
     fn set_last_used(&mut self, time: Option<DateTime<Utc>>);
+
+    /// Refresh the server-held plaintext copy after a rotation, for key types
+    /// that keep one (ServerPoll daemon keys, so the poller can present the key).
+    /// Default: no-op — user and DaemonPoll keys never store plaintext.
+    fn refresh_stored_plaintext(&mut self, _plaintext: &str) {}
 
     /// Check if the key has expired
     fn is_expired(&self) -> bool {
@@ -199,6 +207,14 @@ pub trait ApiKeyService: CrudService<Self::Key> + EventBusService<Self::Key> {
         user_agent: Option<String>,
         entity: AuthenticatedEntity,
     ) -> Result<String> {
+        // Serialize concurrent rotations of one key: without this, last
+        // write wins and the losing caller is handed a plaintext that
+        // authenticates nothing. Error paths release via Drop.
+        let lock_guard = self
+            .storage()
+            .session_lock(LockKey::ApiKey(api_key_id), DEFAULT_LOCK_TIMEOUT)
+            .await?;
+
         let mut api_key = self
             .get_by_id(&api_key_id)
             .await?
@@ -210,6 +226,9 @@ pub trait ApiKeyService: CrudService<Self::Key> + EventBusService<Self::Key> {
         // Generate new key with correct prefix based on key type
         let (plaintext, hashed) = generate_api_key_for_storage(Self::Key::KEY_TYPE);
         api_key.set_key(hashed);
+        // Keep the server-held plaintext in sync for ServerPoll keys, or the poller
+        // would present the old (now invalid) key after a rotation.
+        api_key.refresh_stored_plaintext(&plaintext);
 
         // Publish auth event for audit trail
         self.api_key_event_bus()
@@ -231,6 +250,7 @@ pub trait ApiKeyService: CrudService<Self::Key> + EventBusService<Self::Key> {
         // Update the key in storage
         self.update(&mut api_key, entity).await?;
 
+        lock_guard.release().await?;
         Ok(plaintext)
     }
 }

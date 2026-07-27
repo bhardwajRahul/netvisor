@@ -27,6 +27,12 @@ pub struct DaemonApiKeyBase {
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
+    /// Daemon this key is bound to 1:1, when provisioned server-side.
+    /// NULL for legacy network-shared keys created before 1:1 provisioning,
+    /// which resolve daemon identity from the X-Daemon-ID header instead.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub daemon_id: Option<Uuid>,
     /// Plaintext API key for ServerPoll mode daemons only.
     /// Never serialized or logged - wrapped in SecretString for protection.
     /// NULL for DaemonPoll daemons (server doesn't need to send key).
@@ -45,6 +51,7 @@ impl PartialEq for DaemonApiKeyBase {
             && self.network_id == other.network_id
             && self.is_enabled == other.is_enabled
             && self.tags == other.tags
+            && self.daemon_id == other.daemon_id
     }
 }
 
@@ -59,6 +66,7 @@ impl std::hash::Hash for DaemonApiKeyBase {
         self.network_id.hash(state);
         self.is_enabled.hash(state);
         self.tags.hash(state);
+        self.daemon_id.hash(state);
         // plaintext intentionally excluded from hash
     }
 }
@@ -140,5 +148,12 @@ impl ApiKeyCommon for DaemonApiKey {
 
     fn set_last_used(&mut self, time: Option<DateTime<Utc>>) {
         self.base.last_used = time;
+    }
+
+    fn refresh_stored_plaintext(&mut self, plaintext: &str) {
+        // Only ServerPoll keys hold a plaintext copy; leave DaemonPoll keys (None) alone.
+        if self.base.plaintext.is_some() {
+            self.base.plaintext = Some(SecretString::from(plaintext.to_string()));
+        }
     }
 }
