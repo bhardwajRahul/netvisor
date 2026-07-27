@@ -1,4 +1,4 @@
-.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures refresh-vendored-data seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status podman-proxy-up podman-proxy-up-tls podman-proxy-down podman-proxy-status podman-workload-up podman-workload-down issue-license daemon-clean daemon-purge daemon-logs daemon-restart daemon-config
+.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures refresh-vendored-data seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-seed-credentials snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status podman-proxy-up podman-proxy-up-tls podman-proxy-down podman-proxy-status podman-workload-up podman-workload-down issue-license daemon-clean daemon-purge daemon-logs daemon-restart daemon-config
 
 DAYS ?= 365
 
@@ -51,6 +51,7 @@ help:
 	@echo "  make set-plan-enterprise  - Set to Enterprise"
 	@echo ""
 	@echo "Test Environments:"
+	@echo "  make snmp-seed-credentials - Seed the SNMP sim credentials into the DB, assigned to every network"
 	@echo "  make snmp-verify     - Query the SNMP test hosts and check sysName (see tools/snmp/SNMP-TEST-ENV.md)"
 	@echo "  make snmp-status     - Ping the SNMP test hosts to check reachability"
 	@echo "  make docker-proxy-up - Start Docker proxy test environment (HTTP)"
@@ -437,6 +438,14 @@ set-plan-demo:
 	@echo "Done!"
 
 # Test Environments
+
+snmp-seed-credentials:
+	@echo "Seeding SNMP simulation credentials..."
+	@docker exec -i scanopy-postgres psql -U postgres -d scanopy -v ON_ERROR_STOP=1 \
+		< backend/scripts/seed-snmp-credentials.sql
+	@echo ""
+	@echo "Assigned to every network in the database. If 'networks' reads 0 above,"
+	@echo "create a network first — nothing was seeded."
 
 snmp-verify:
 	tools/snmp/snmp-test-env.sh verify

@@ -885,4 +885,50 @@ mod tests {
             _ => panic!("expected PodmanProxy variant"),
         }
     }
+
+    /// The SNMP-sim seed script (`backend/scripts/seed-snmp-credentials.sql`, run by
+    /// `make snmp-seed-credentials`) writes `credential_type` JSONB straight into the table,
+    /// bypassing the API and therefore bypassing serde. Nothing else checks that what it writes
+    /// is a shape the server can read back — a rename or a retagged field would leave rows that
+    /// only fail at credential-load time, as a hand-written credential with a bare `community`
+    /// string already did in the field (GH #611). Parsing the literals out of the script keeps
+    /// this honest: the assertion is against the file the seed actually runs, not a copy of it.
+    #[test]
+    fn seeded_snmp_credential_json_deserializes() {
+        let sql = include_str!("../../../../../scripts/seed-snmp-credentials.sql");
+
+        // The JSONB literals are the single-quoted strings that open with `{"type":`.
+        let literals: Vec<&str> = sql
+            .split('\'')
+            .filter(|chunk| chunk.trim_start().starts_with("{\"type\":"))
+            .collect();
+
+        assert_eq!(
+            literals.len(),
+            5,
+            "expected the five sim credentials; found {} — did the script change shape?",
+            literals.len()
+        );
+
+        let mut seen = std::collections::HashSet::new();
+        for literal in &literals {
+            let parsed: CredentialType = serde_json::from_str(literal).unwrap_or_else(|e| {
+                panic!("seeded credential is not a CredentialType: {e}\n{literal}")
+            });
+            seen.insert(CredentialTypeDiscriminants::from(&parsed));
+        }
+
+        // The sim deliberately spreads devices across all three SNMP versions so a scan
+        // exercises each negotiation path; losing one silently narrows what the env tests.
+        for expected in [
+            CredentialTypeDiscriminants::SnmpV1,
+            CredentialTypeDiscriminants::SnmpV2c,
+            CredentialTypeDiscriminants::SnmpV3,
+        ] {
+            assert!(
+                seen.contains(&expected),
+                "sim seed no longer covers {expected:?}"
+            );
+        }
+    }
 }
