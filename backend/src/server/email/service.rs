@@ -745,9 +745,12 @@ impl EmailService {
         let floor_key = floor.to_string();
         let sunset_display = effective_on.format("%B %-d, %Y").to_string();
 
-        // Active daemons across all orgs; keep those whose recorded version is
-        // below the floor. A daemon with no recorded version is excluded — it is
-        // not a confirmed old daemon (see the provisioning/persistence fixes).
+        // Active daemons across all orgs. Keep those below the floor. A daemon
+        // that reports no version is treated as genuinely old (modern daemons
+        // always report one) and is included — as long as it has actually
+        // connected (has a last_seen); a provisioned-but-never-connected daemon
+        // has no version yet for the benign reason that it hasn't checked in, so
+        // it is skipped rather than emailed about.
         let daemons = self
             .daemon_service
             .get_all(StorableFilter::<Daemon>::new_for_active_daemons())
@@ -755,10 +758,11 @@ impl EmailService {
 
         let mut by_org: HashMap<Uuid, Vec<Daemon>> = HashMap::new();
         for daemon in daemons {
-            let Some(version) = daemon.base.version.as_ref() else {
-                continue;
+            let below_floor = match daemon.base.version.as_ref() {
+                Some(version) => version < &floor,
+                None => daemon.base.last_seen.is_some(),
             };
-            if version >= &floor {
+            if !below_floor {
                 continue;
             }
             let Some(network) = self
