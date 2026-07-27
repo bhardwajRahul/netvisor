@@ -26,6 +26,7 @@ fn edge_type_name(edge_type: &EdgeType) -> &'static str {
         EdgeType::RequestPath { .. } => "Request Path",
         EdgeType::HubAndSpoke { .. } => "Hub & Spoke",
         EdgeType::PhysicalLink { .. } => "Physical Link",
+        EdgeType::NeighborLink { .. } => "Neighbor Link",
     }
 }
 
@@ -111,6 +112,8 @@ pub fn topology_to_mermaid(nodes: &[Node], edges: &[Edge], data: &TopologyData) 
             EdgeType::SameHost { .. }
             | EdgeType::PhysicalLink { .. }
             | EdgeType::SameContainer { .. } => "---",
+            // Dotted: adjacent devices, exact ports unknown.
+            EdgeType::NeighborLink { .. } => "-.-",
             EdgeType::Hypervisor { .. } | EdgeType::ContainerRuntime { .. } => "-.->",
         };
 

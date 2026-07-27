@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use super::{
     context::TopologyContext,
+    edge_builder::EdgeBuilder,
     element_rules::{
         ElementMatchData, InlineContext, TaggableLookups, apply_element_rules,
         resolve_element_tag_ids,
@@ -502,6 +503,23 @@ impl ViewBuilder for WorkloadsBuilder {
                 view_config: EdgeViewConfig::default(),
             });
         }
+
+        // Device-level adjacencies for neighbours that only resolved to a host. Same host
+        // containers, same removal filter — a pair already joined by a physical link above is
+        // skipped, so the precise edge wins wherever we have one.
+        let linked_host_pairs = EdgeBuilder::physical_link_host_pairs(ctx, &edges);
+
+        edges.extend(
+            EdgeBuilder::create_neighbor_link_edges(
+                ctx,
+                Self::container_id_for_host,
+                &linked_host_pairs,
+            )
+            .into_iter()
+            .filter(|edge| {
+                !ids_to_remove.contains(&edge.source) && !ids_to_remove.contains(&edge.target)
+            }),
+        );
 
         // --- Dependency edges (connecting service elements) ---
 

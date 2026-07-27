@@ -208,8 +208,21 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
     tracing::info!("");
     tracing::info!("Scanopy Daemon v{}", env!("CARGO_PKG_VERSION"));
     tracing::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    tracing::info!("  Daemon ID:       {}", daemon_id);
+    // A daemon that has not completed its handshake has no identity yet — the stored id is
+    // `Uuid::nil()` and the server assigns the real one at first contact. Printing the
+    // all-zeros UUID reads as a real id, and operators have chased it as one.
+    if daemon_id.is_nil() {
+        tracing::info!("  Daemon ID:       pending (assigned by the server at first contact)");
+    } else {
+        tracing::info!("  Daemon ID:       {}", daemon_id);
+    }
     tracing::info!("  Name:            {}", daemon_name);
+    match &network_id {
+        Some(nid) => tracing::info!("  Network ID:      {}", nid),
+        None => {
+            tracing::info!("  Network ID:      pending (assigned by the server at first contact)")
+        }
+    }
     tracing::info!("  Config file:     {}", path_str);
     match &log_path {
         Some(p) => tracing::info!("  Log file:        {}", p.display()),
@@ -221,7 +234,7 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
     let runtime_service = state.services.runtime_service.clone();
 
     // Create HTTP server with config values
-    let api_router = create_router(state.clone()).with_state(state);
+    let api_router = create_router(state.clone(), mode).with_state(state);
 
     // Restrict CORS to server URL origin (defense-in-depth against exposed daemon ports)
     let cors = {
@@ -261,37 +274,31 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
         axum::serve(listener, app).await.unwrap();
     });
 
-    // Configuration summary
+    // Configuration summary: how this daemon operates. Every line below is gated on the mode
+    // it is actually true for — a DaemonPoll daemon dials out and is never dialled, so a bind
+    // address or a URL for it describes nothing it does.
     tracing::info!("Configuration:");
-    if let Some(addr) = &server_addr {
-        tracing::info!("  Server:          {}", addr);
-    }
-    if let Some(nid) = &network_id {
-        tracing::info!("  Network ID:      {}", nid);
-    }
     tracing::info!("  Mode:            {:?}", mode);
-    tracing::info!("  Bind address:    {}", bind_addr);
-    // Only a ServerPoll daemon is dialled by the server, and only then is its URL registered
-    // (by an admin, at provisioning time — the daemon never self-reports it). Printing a URL for
-    // a DaemonPoll daemon reads as "this is how the server reaches me", which sent one operator
-    // hunting an empty `daemons.url` column that is empty by design (GH #611).
-    let daemon_url = match mode {
-        DaemonMode::ServerPoll => {
-            let daemon_url = runtime_service.get_daemon_url().await?;
-            let url_source = if config_store.get_daemon_url().await?.is_some() {
-                "configured"
-            } else {
-                "auto-detected"
-            };
-            tracing::info!("  Daemon URL:      {} ({})", daemon_url, url_source);
-            Some(daemon_url)
-        }
+    match mode {
         DaemonMode::DaemonPoll => {
-            tracing::info!("  Reachability:    outbound only (this daemon dials the server)");
-            None
+            if let Some(addr) = &server_addr {
+                tracing::info!("  Connects to:     {}", addr);
+            }
         }
-    };
-    tracing::info!("  Heartbeat:       every {}s", interval_secs);
+        DaemonMode::ServerPoll => {
+            tracing::info!("  Listens on:      {}", bind_addr);
+            // Only the configured URL is a fact: it is captured on the daemon record at
+            // provisioning time, which is the URL the server actually dials — the daemon never
+            // self-reports one (`register_with_server` sends `url: None`). The fallback the
+            // daemon can compute is its own IP and port over plain http, which a proxy, NAT or
+            // TLS terminator makes wrong, so it is not printed as if the server used it. An
+            // invented URL here is what sent one operator hunting an empty `daemons.url`
+            // column that is empty by design (GH #611).
+            if let Some(daemon_url) = config_store.get_daemon_url().await? {
+                tracing::info!("  Daemon URL:      {}", daemon_url);
+            }
+        }
+    }
     let ip_addresses = config_store.get_interfaces().await.unwrap_or_default();
     if ip_addresses.is_empty() {
         tracing::info!("  Interfaces:      all (no restriction)");
@@ -438,11 +445,7 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
         DaemonMode::ServerPoll => {
             tracing::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             tracing::info!("Daemon ready [ServerPoll mode]");
-            tracing::info!(
-                "  Server will poll this daemon at {} for status and discovery",
-                daemon_url.as_deref().unwrap_or(&bind_addr)
-            );
-            tracing::info!("  No outbound connections");
+            tracing::info!("  Waiting for the server to poll for status and discovery work");
             tracing::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         }
         DaemonMode::DaemonPoll => {
@@ -450,7 +453,7 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
             if startup_result.is_ok() {
                 tracing::info!("Daemon ready [DaemonPoll mode]");
                 tracing::info!(
-                    "  Polling server every {}s for discovery work",
+                    "  Polling the server for discovery work every {}s",
                     interval_secs
                 );
             } else {

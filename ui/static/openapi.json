@@ -13908,19 +13908,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-23T16:42:02.495254Z",
+              "created_at": "2026-07-27T20:41:09.357455Z",
               "first_discovery_id": null,
-              "id": "9b3d4d1d-b41c-42c0-b811-a1b83111e9da",
+              "id": "6f8cbc42-10be-4f2f-b8ad-13de80bfc105",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-23T16:42:02.495254Z",
+              "last_seen_at": "2026-07-27T20:41:09.357455Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-23T16:42:02.495254Z",
-              "valid_from": "2026-07-23T16:42:02.495254Z",
+              "updated_at": "2026-07-27T20:41:09.357455Z",
+              "valid_from": "2026-07-27T20:41:09.357455Z",
               "valid_to": null
             }
           },
@@ -15069,19 +15069,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-23T16:42:02.472802Z",
+                      "created_at": "2026-07-27T20:41:09.344409Z",
                       "first_discovery_id": null,
-                      "id": "5cb0e447-879f-4506-ad95-cf72fb7c5804",
+                      "id": "fd33847f-506d-4ffe-b2e7-bf2e37b3000b",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-23T16:42:02.472802Z",
+                      "last_seen_at": "2026-07-27T20:41:09.344409Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-23T16:42:02.472802Z",
-                      "valid_from": "2026-07-23T16:42:02.472802Z",
+                      "updated_at": "2026-07-27T20:41:09.344409Z",
+                      "valid_from": "2026-07-27T20:41:09.344409Z",
                       "valid_to": null
                     }
                   ],
@@ -15095,7 +15095,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Zigbee2MQTT",
+                  "service_definition": "Docmost",
                   "source": {
                     "type": "Manual"
                   },
@@ -16165,19 +16165,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-23T16:42:02.487945Z",
+                  "created_at": "2026-07-27T20:41:09.352822Z",
                   "first_discovery_id": null,
-                  "id": "bb435bf7-e9c4-49ca-817e-5f14e7371d99",
+                  "id": "31f53df2-e13c-401a-aa38-6ec6533e5256",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-23T16:42:02.487945Z",
+                  "last_seen_at": "2026-07-27T20:41:09.352822Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-23T16:42:02.487945Z",
-                  "valid_from": "2026-07-23T16:42:02.487945Z",
+                  "updated_at": "2026-07-27T20:41:09.352822Z",
+                  "valid_from": "2026-07-27T20:41:09.352822Z",
                   "valid_to": null
                 }
               ],
@@ -16191,7 +16191,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Zigbee2MQTT",
+              "service_definition": "Docmost",
               "source": {
                 "type": "Manual"
               },
@@ -18061,19 +18061,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-23T16:42:02.473307Z",
+          "created_at": "2026-07-27T20:41:09.344639Z",
           "first_discovery_id": null,
-          "id": "865e937c-d163-4317-a28c-8376d7de8ae1",
+          "id": "7a13f67d-cdaf-41b4-b95e-8dd2ea3a0fed",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-23T16:42:02.473307Z",
+          "last_seen_at": "2026-07-27T20:41:09.344639Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-23T16:42:02.473307Z",
-          "valid_from": "2026-07-23T16:42:02.473307Z",
+          "updated_at": "2026-07-27T20:41:09.344639Z",
+          "valid_from": "2026-07-27T20:41:09.344639Z",
           "valid_to": null
         }
       },
@@ -18664,7 +18664,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Zigbee2MQTT",
+              "service_definition": "Docmost",
               "tags": [],
               "virtualization": null
             }
@@ -19642,6 +19642,13 @@
           },
           "status": {
             "$ref": "#/components/schemas/VersionHealthStatus"
+          },
+          "sunset_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The date this daemon's version stops being supported, if a sunset is\nscheduled for it. Surfaced top-level (not only inside `warnings`) so the\nUI can render a countdown from the same value the email uses."
           },
           "supports_unified_discovery": {
             "type": "boolean"
@@ -20726,6 +20733,35 @@
                 "format": "uuid"
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Device-level adjacency from LLDP/CDP: the neighbour resolved to a host, but the remote\nport could not be pinned down (a locally-assigned port id that matches nothing, or a\nneighbour entry carrying no port id at all). The two devices are provably adjacent;\nwhich cables they meet on is unknown. `PhysicalLink` is the port-precise sibling.",
+            "required": [
+              "source_host_id",
+              "target_host_id",
+              "protocol",
+              "edge_type"
+            ],
+            "properties": {
+              "edge_type": {
+                "type": "string",
+                "enum": [
+                  "NeighborLink"
+                ]
+              },
+              "protocol": {
+                "$ref": "#/components/schemas/DiscoveryProtocol"
+              },
+              "source_host_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "target_host_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
           }
         ]
       },
@@ -20738,7 +20774,8 @@
           "SameContainer",
           "RequestPath",
           "HubAndSpoke",
-          "PhysicalLink"
+          "PhysicalLink",
+          "NeighborLink"
         ]
       },
       "EdgeViewConfig": {
@@ -21677,19 +21714,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-23T16:42:02.472207Z",
+                  "created_at": "2026-07-27T20:41:09.344144Z",
                   "first_discovery_id": null,
-                  "id": "39cdb8b2-3d9e-4711-871a-a4fb3e21e679",
+                  "id": "0f7b39d7-37b4-41f1-9897-598c486f9e7a",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-23T16:42:02.472207Z",
+                  "last_seen_at": "2026-07-27T20:41:09.344144Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-23T16:42:02.472207Z",
-                  "valid_from": "2026-07-23T16:42:02.472207Z",
+                  "updated_at": "2026-07-27T20:41:09.344144Z",
+                  "valid_from": "2026-07-27T20:41:09.344144Z",
                   "valid_to": null
                 }
               ],
@@ -21703,7 +21740,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Zigbee2MQTT",
+              "service_definition": "Docmost",
               "source": {
                 "type": "Manual"
               },
@@ -24318,19 +24355,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-23T16:42:02.459796Z",
+                        "created_at": "2026-07-27T20:41:09.338316Z",
                         "first_discovery_id": null,
-                        "id": "e3bc7814-668c-4de7-95de-d0f716d5fe8b",
+                        "id": "a2a3a887-2f14-4c35-aebf-690443248fb8",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-23T16:42:02.459796Z",
+                        "last_seen_at": "2026-07-27T20:41:09.338316Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-23T16:42:02.459796Z",
-                        "valid_from": "2026-07-23T16:42:02.459796Z",
+                        "updated_at": "2026-07-27T20:41:09.338316Z",
+                        "valid_from": "2026-07-27T20:41:09.338316Z",
                         "valid_to": null
                       }
                     ],
@@ -24344,7 +24381,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Zigbee2MQTT",
+                    "service_definition": "Docmost",
                     "source": {
                       "type": "Manual"
                     },
@@ -24465,19 +24502,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-23T16:42:02.486527Z",
+                    "created_at": "2026-07-27T20:41:09.351980Z",
                     "first_discovery_id": null,
-                    "id": "e1e603ba-a870-43fe-a7c0-271e03b0a68f",
+                    "id": "f85fb9dc-e1c5-4f20-be08-39f646f1c1d9",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-23T16:42:02.486527Z",
+                    "last_seen_at": "2026-07-27T20:41:09.351980Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-23T16:42:02.486527Z",
-                    "valid_from": "2026-07-23T16:42:02.486527Z",
+                    "updated_at": "2026-07-27T20:41:09.351980Z",
+                    "valid_from": "2026-07-27T20:41:09.351980Z",
                     "valid_to": null
                   }
                 ],
@@ -24491,7 +24528,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Zigbee2MQTT",
+                "service_definition": "Docmost",
                 "source": {
                   "type": "Manual"
                 },
@@ -26194,19 +26231,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-23T16:42:02.473192Z",
+              "created_at": "2026-07-27T20:41:09.344589Z",
               "first_discovery_id": null,
-              "id": "a8529d83-7ca2-4ba2-8f13-59f64235153a",
+              "id": "150bc692-dcbb-4244-8ba6-f00300bfee74",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-23T16:42:02.473192Z",
+              "last_seen_at": "2026-07-27T20:41:09.344589Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-23T16:42:02.473192Z",
-              "valid_from": "2026-07-23T16:42:02.473192Z",
+              "updated_at": "2026-07-27T20:41:09.344589Z",
+              "valid_from": "2026-07-27T20:41:09.344589Z",
               "valid_to": null
             }
           ],
@@ -26220,7 +26257,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Zigbee2MQTT",
+          "service_definition": "Docmost",
           "source": {
             "type": "Manual"
           },
@@ -27352,7 +27389,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "a8f37e45-b92c-44a0-a7f7-eaed64a47cf7",
+                  "id": "a2559ac3-fbc7-46ce-b4cd-7a7c78031784",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -27362,23 +27399,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "f966c31b-9cdf-4bfa-b3db-afb874cec370",
+                  "id": "7275b8d1-c664-40e1-8f16-7420506bc34c",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "6c4de0ee-a067-43bd-ac23-d4160686e69c",
+                  "id": "d786ab1b-9fb6-49a8-bcce-0bb59e24c712",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "46fc0834-f904-4dbd-8383-dfdad740b316",
+                  "id": "36efa415-e1da-4918-95bd-2965260da5b2",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "f966c31b-9cdf-4bfa-b3db-afb874cec370",
+                  "id": "7275b8d1-c664-40e1-8f16-7420506bc34c",
                   "rule": "ByHost"
                 }
               ]
@@ -27407,19 +27444,19 @@
             },
             "default": [
               {
-                "id": "41d85be3-c2f5-4e61-9179-59c20279d60c",
+                "id": "665b5654-251a-4da6-9175-d1845fea794d",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "d680ddeb-942d-4374-832e-1f36922f4633",
+                "id": "b7714aa3-7eee-498b-9366-c37a317e37d3",
                 "rule": "ByVLAN"
               },
               {
-                "id": "09824926-7c07-441c-93c4-648aac0a3cc7",
+                "id": "277e5fdb-5d8d-450c-aa2d-c108bd1baa9b",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "0a4e7b12-f5a2-4c2f-a407-d2cf06c2fa40",
+                "id": "e596657e-19ed-4d98-b13f-22396a1d5f96",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -27437,7 +27474,7 @@
                 }
               },
               {
-                "id": "95af47b2-2823-4aaf-953c-6dc80f1ced65",
+                "id": "bd4c6c1e-7a97-4104-ae10-dc23bf11319d",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -27446,15 +27483,15 @@
                 }
               },
               {
-                "id": "acf506ed-08b4-4c22-aa2e-49d713114c50",
+                "id": "40036cee-53ab-4719-a16e-ba6e0f8ef658",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "9ece7557-7915-4222-8671-64dc9bec059e",
+                "id": "741b8991-cef9-4929-88ef-899c7d7d9522",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "b1453f48-ab53-4d95-b28e-0f501c307647",
+                "id": "9352093e-d103-463b-9e8b-c48c3a5cb9c8",
                 "rule": "ByStack"
               }
             ]
@@ -28021,11 +28058,13 @@
       },
       "VersionHealthStatus": {
         "type": "string",
-        "description": "Health status for daemon versions",
+        "description": "Health status for daemon versions.\n\nLifecycle order: `Current` → `Outdated` → `Deprecated` → `Unsupported`, with\n`Unknown` for daemons whose version the server has no record of.",
         "enum": [
           "Current",
           "Outdated",
-          "Deprecated"
+          "Deprecated",
+          "Unsupported",
+          "Unknown"
         ]
       },
       "VersionInfo": {

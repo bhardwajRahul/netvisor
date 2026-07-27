@@ -543,6 +543,9 @@ impl TopologyView {
                 HubAndSpoke => active(false, Visible, Dashed, WhenVisible, false, true),
                 Hypervisor => active(false, Hidden, Dashed, WhenVisible, true, false),
                 PhysicalLink => active(false, Hidden, Dashed, WhenVisible, false, false),
+                // Connects two hosts, and this view has no host node to land on — its
+                // elements are IP addresses.
+                NeighborLink => EdgeViewConfig::Disabled,
                 // Annotates the graph rather than structuring it: no layout influence, off by
                 // default, and never elevated to the subnet box — the point is that one
                 // container spans them, which is lost if the edge targets the boxes.
@@ -550,6 +553,10 @@ impl TopologyView {
             },
             Self::L2Physical => match edge_type {
                 PhysicalLink => active(true, Visible, Solid, WhenVisible, false, false),
+                // Home view for an adjacency we can only place at device level: dashed marks
+                // it as the approximate one, and it still steers layout so the neighbour is
+                // drawn beside the device it neighbours.
+                NeighborLink => active(true, Visible, Dashed, WhenVisible, false, false),
                 SameHost => active(false, Hidden, Dashed, WhenVisible, false, false),
                 Hypervisor | ContainerRuntime | RequestPath | HubAndSpoke | SameContainer => {
                     EdgeViewConfig::Disabled
@@ -557,6 +564,7 @@ impl TopologyView {
             },
             Self::Workloads => match edge_type {
                 PhysicalLink => active(false, Hidden, Dashed, WhenVisible, false, false),
+                NeighborLink => active(false, Hidden, Dashed, WhenVisible, false, false),
                 RequestPath | HubAndSpoke => {
                     active(false, Hidden, Dashed, WhenVisible, false, true)
                 }
@@ -568,7 +576,9 @@ impl TopologyView {
                 RequestPath => active(true, Visible, Solid, WhenVisible, false, true),
                 HubAndSpoke => active(true, Visible, Solid, WhenVisible, false, true),
                 ContainerRuntime => active(true, Hidden, Dashed, Always, true, false),
-                SameHost | Hypervisor | PhysicalLink | SameContainer => EdgeViewConfig::Disabled,
+                SameHost | Hypervisor | PhysicalLink | SameContainer | NeighborLink => {
+                    EdgeViewConfig::Disabled
+                }
             },
         }
     }

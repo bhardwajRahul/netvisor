@@ -135,6 +135,7 @@
 			case 'Interface':
 				return SameHostEdgeDisplay;
 			case 'PhysicalLink':
+			case 'NeighborLink':
 				return PhysicalLinkEdgeDisplay;
 			case 'Hypervisor':
 				return HypervisorEdgeDisplay;

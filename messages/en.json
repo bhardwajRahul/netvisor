@@ -1893,6 +1893,7 @@
 	"topology_multiSelectPreviewEdge": "Preview Edge",
 	"topology_multiSelectReadOnlyHint": "This is a read-only view.",
 	"topology_nFiltersApplied": "{count} filters applied to {viewName} view",
+	"topology_neighborLinkPortsUnknown": "These devices report each other as neighbors, but the ports connecting them could not be identified.",
 	"topology_noHiddenRules": "No hidden rules",
 	"topology_noNodesToExport": "No nodes to export",
 	"topology_noTopologySelected": "No topology selected. Create one to get started.",

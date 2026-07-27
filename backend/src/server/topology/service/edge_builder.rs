@@ -512,6 +512,105 @@ impl EdgeBuilder {
             .collect()
     }
 
+    /// Order-independent key for a pair of hosts, so an adjacency reported from either end
+    /// collapses to one entry.
+    fn host_pair_key(a: Uuid, b: Uuid) -> (Uuid, Uuid) {
+        if a < b { (a, b) } else { (b, a) }
+    }
+
+    /// The host pairs `edges` already joins with a port-precise `PhysicalLink`. Pass to
+    /// `create_neighbor_link_edges` so the approximate edge is not drawn over the exact one.
+    pub fn physical_link_host_pairs(
+        ctx: &TopologyContext,
+        edges: &[Edge],
+    ) -> HashSet<(Uuid, Uuid)> {
+        edges
+            .iter()
+            .filter_map(|edge| match &edge.edge_type {
+                EdgeType::PhysicalLink {
+                    source_entity_id,
+                    target_entity_id,
+                    ..
+                } => {
+                    let source = ctx.get_interface_by_id(*source_entity_id)?;
+                    let target = ctx.get_interface_by_id(*target_entity_id)?;
+                    Some(Self::host_pair_key(
+                        source.base.host_id,
+                        target.base.host_id,
+                    ))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Create device-level adjacency edges for LLDP/CDP neighbours that resolved to a host but
+    /// not to a port. Without these the neighbour contributes nothing to the graph at all and
+    /// the device it identifies never appears (GH #649).
+    ///
+    /// `node_for_host` maps a host to the node the calling view anchors on — each view renders
+    /// against its own node-id space, so the caller owns that mapping. `linked_host_pairs` are
+    /// pairs already joined by a `PhysicalLink`: the precise edge supersedes the approximate
+    /// one, so those are skipped rather than drawn on top of it.
+    pub fn create_neighbor_link_edges(
+        ctx: &TopologyContext,
+        node_for_host: impl Fn(Uuid) -> Uuid,
+        linked_host_pairs: &HashSet<(Uuid, Uuid)>,
+    ) -> Vec<Edge> {
+        let mut processed_pairs: HashSet<(Uuid, Uuid)> = HashSet::new();
+
+        ctx.get_interfaces_with_host_neighbor()
+            .into_iter()
+            .filter_map(|source_entry| {
+                let target_host_id = match &source_entry.base.neighbor {
+                    Some(Neighbor::Host(id)) => *id,
+                    _ => return None, // Already filtered by get_interfaces_with_host_neighbor
+                };
+                let source_host_id = source_entry.base.host_id;
+                if source_host_id == target_host_id {
+                    return None;
+                }
+
+                // Both ends must be in this topology, or the edge dangles.
+                let source_host = ctx.get_host_by_id(source_host_id)?;
+                let target_host = ctx.get_host_by_id(target_host_id)?;
+
+                let pair_key = Self::host_pair_key(source_host_id, target_host_id);
+                if linked_host_pairs.contains(&pair_key) {
+                    return None;
+                }
+                if !processed_pairs.insert(pair_key) {
+                    return None;
+                }
+
+                let protocol = if source_entry.has_lldp_data() {
+                    DiscoveryProtocol::LLDP
+                } else {
+                    DiscoveryProtocol::CDP
+                };
+
+                Some(Edge {
+                    id: Uuid::new_v4(),
+                    source: node_for_host(source_host_id),
+                    target: node_for_host(target_host_id),
+                    edge_type: EdgeType::NeighborLink {
+                        source_host_id,
+                        target_host_id,
+                        protocol,
+                    },
+                    label: Some(format!(
+                        "{} ↔ {}",
+                        source_host.base.name, target_host.base.name
+                    )),
+                    source_handle: EdgeHandle::Bottom,
+                    target_handle: EdgeHandle::Top,
+                    is_multi_hop: false,
+                    view_config: EdgeViewConfig::default(),
+                })
+            })
+            .collect()
+    }
+
     /// Add edges to a petgraph Graph
     pub fn add_edges_to_graph(
         graph: &mut Graph<Node, Edge>,

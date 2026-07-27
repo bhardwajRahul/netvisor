@@ -9,7 +9,10 @@ use crate::{
         shared::auth::server_auth_middleware,
     },
     server::{
-        daemons::r#impl::api::{FirstContactRequest, LegacyCapabilities},
+        daemons::r#impl::{
+            api::{FirstContactRequest, LegacyCapabilities},
+            base::DaemonMode,
+        },
         shared::types::api::{ApiResponse, ApiResult},
     },
 };
@@ -24,11 +27,21 @@ use std::sync::Arc;
 /// Create daemon HTTP router.
 /// The `state` parameter is required for applying authentication middleware
 /// to ServerPoll mode endpoints.
-pub fn create_router(state: Arc<DaemonAppState>) -> Router<Arc<DaemonAppState>> {
-    // Public routes (no auth required)
+pub fn create_router(state: Arc<DaemonAppState>, mode: DaemonMode) -> Router<Arc<DaemonAppState>> {
+    // Public routes (no auth required). Served in both modes: `/api/health` backs the
+    // container healthchecks (docker-compose.yml, Dockerfile.daemon) and the daemon's own
+    // service detection, and `/api/initialize` is how a server with
+    // SCANOPY_INTEGRATED_DAEMON_URL bootstraps the DaemonPoll daemon it ships alongside.
     let public_routes = Router::new()
         .route("/api/health", get(get_health))
         .route("/api/initialize", post(initialize));
+
+    // The rest of the surface exists solely so the server can drive a daemon it polls, and
+    // the server only ever dials daemons in ServerPoll mode. A DaemonPoll daemon reaches out
+    // for its work instead, so it serves none of them.
+    if mode == DaemonMode::DaemonPoll {
+        return public_routes;
+    }
 
     // Authenticated routes (ServerPoll mode - server must provide valid API key)
     // Discovery initiate/cancel require auth to prevent unauthorized scans
