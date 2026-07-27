@@ -261,14 +261,6 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
         axum::serve(listener, app).await.unwrap();
     });
 
-    // Get daemon URL for display
-    let daemon_url = runtime_service.get_daemon_url().await?;
-    let url_source = if config_store.get_daemon_url().await?.is_some() {
-        "configured"
-    } else {
-        "auto-detected"
-    };
-
     // Configuration summary
     tracing::info!("Configuration:");
     if let Some(addr) = &server_addr {
@@ -279,7 +271,26 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
     }
     tracing::info!("  Mode:            {:?}", mode);
     tracing::info!("  Bind address:    {}", bind_addr);
-    tracing::info!("  Daemon URL:      {} ({})", daemon_url, url_source);
+    // Only a ServerPoll daemon is dialled by the server, and only then is its URL registered
+    // (by an admin, at provisioning time — the daemon never self-reports it). Printing a URL for
+    // a DaemonPoll daemon reads as "this is how the server reaches me", which sent one operator
+    // hunting an empty `daemons.url` column that is empty by design (GH #611).
+    let daemon_url = match mode {
+        DaemonMode::ServerPoll => {
+            let daemon_url = runtime_service.get_daemon_url().await?;
+            let url_source = if config_store.get_daemon_url().await?.is_some() {
+                "configured"
+            } else {
+                "auto-detected"
+            };
+            tracing::info!("  Daemon URL:      {} ({})", daemon_url, url_source);
+            Some(daemon_url)
+        }
+        DaemonMode::DaemonPoll => {
+            tracing::info!("  Reachability:    outbound only (this daemon dials the server)");
+            None
+        }
+    };
     tracing::info!("  Heartbeat:       every {}s", interval_secs);
     let ip_addresses = config_store.get_interfaces().await.unwrap_or_default();
     if ip_addresses.is_empty() {
@@ -414,7 +425,7 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
             tracing::info!("Daemon ready [ServerPoll mode]");
             tracing::info!(
                 "  Server will poll this daemon at {} for status and discovery",
-                daemon_url
+                daemon_url.as_deref().unwrap_or(&bind_addr)
             );
             tracing::info!("  No outbound connections");
             tracing::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");

@@ -18,16 +18,16 @@ impl HostService {
     ///
     /// Returns statistics about the resolution process.
     pub async fn resolve_lldp_links(&self, network_id: Uuid) -> Result<LldpResolutionStats> {
-        use crate::server::interfaces::r#impl::base::Neighbor;
-
         let resolver = LldpResolverImpl::new(
             self.interface_service.clone(),
             self.ip_address_service.clone(),
             self.storage.clone(),
         );
 
-        // Get all interfaces with unresolved LLDP/CDP neighbors in this network
-        let filter = StorableFilter::<Interface>::new_for_unresolved_lldp_in_network(network_id);
+        // Every interface in this network whose remote *port* isn't known yet — including ones
+        // already resolved as far as the remote host, whose port half is retried below.
+        let filter =
+            StorableFilter::<Interface>::new_for_unresolved_lldp_port_in_network(network_id);
         let unresolved = self.interface_service.get_all(filter).await?;
 
         let mut stats = LldpResolutionStats::default();
@@ -35,53 +35,74 @@ impl HostService {
         for mut interface in unresolved {
             stats.total += 1;
 
-            // Try LLDP resolution first (more detailed data)
-            // Only use chassis_id and port_id for neighbor resolution - these represent
-            // actual physical connections. lldp_mgmt_addr is where you manage the device,
-            // not necessarily the physical connection point.
-            let resolved_neighbor = if let Some(ref chassis_id) = interface.base.lldp_chassis_id {
-                // Resolve host from LLDP chassis ID
-                if let Some(host_id) = chassis_id.resolve_host_id(&resolver, network_id).await {
-                    stats.hosts_resolved += 1;
+            // A previous pass may already have identified the remote host but not the port. Keep
+            // that result and retry only the port, so a partial can never regress to nothing.
+            let known_host_id = match interface.base.neighbor {
+                Some(Neighbor::Host(host_id)) => Some(host_id),
+                _ => None,
+            };
 
-                    // Try to resolve specific port
-                    if let Some(ref port_id) = interface.base.lldp_port_id
-                        && let Some(remote_if_entry_id) =
-                            port_id.resolve_if_entry_id(&resolver, host_id).await
-                    {
-                        stats.ports_resolved += 1;
-                        Some(Neighbor::Interface(remote_if_entry_id))
-                    } else {
-                        Some(Neighbor::Host(host_id))
+            // Only chassis_id and port_id are used for neighbor resolution — they represent
+            // actual physical connections. lldp_mgmt_addr / cdp_address are where you manage the
+            // device, not necessarily the physical connection point.
+            let resolved_neighbor = if let Some(ref chassis_id) = interface.base.lldp_chassis_id {
+                let host = match known_host_id {
+                    Some(host_id) => IdentityResolution::Resolved(host_id),
+                    None => {
+                        chassis_id
+                            .resolve_host_id(
+                                &resolver,
+                                network_id,
+                                interface.base.lldp_sys_name.as_deref(),
+                            )
+                            .await
                     }
-                } else {
-                    None
+                };
+                match stats.record_host(host) {
+                    None => None,
+                    Some(host_id) => {
+                        let port = match interface.base.lldp_port_id {
+                            Some(ref port_id) => {
+                                port_id.resolve_if_entry_id(&resolver, host_id).await
+                            }
+                            None => IdentityResolution::NoStrategy,
+                        };
+                        Some(stats.record_port(port, host_id))
+                    }
                 }
             } else if let Some(ref device_id) = interface.base.cdp_device_id {
                 // CDP device_id is typically sysName, resolve against sys_name field
-                // Don't fall back to cdp_address - it's management address, not physical connection
-                if let Some(host_id) = resolver.find_host_by_sys_name(device_id, network_id).await {
-                    stats.hosts_resolved += 1;
-
-                    // Try CDP port resolution using cdp_port_id (long ifDescr format)
-                    if let Some(ref port_id) = interface.base.cdp_port_id
-                        && let Some(remote_if_entry_id) =
-                            resolver.find_if_entry_by_name(port_id, host_id).await
-                    {
-                        stats.ports_resolved += 1;
-                        Some(Neighbor::Interface(remote_if_entry_id))
-                    } else {
-                        Some(Neighbor::Host(host_id))
+                let host = match known_host_id {
+                    Some(host_id) => IdentityResolution::Resolved(host_id),
+                    None => IdentityResolution::found(
+                        resolver.find_host_by_sys_name(device_id, network_id).await,
+                    ),
+                };
+                match stats.record_host(host) {
+                    None => None,
+                    Some(host_id) => {
+                        // CDP port ids are the long ifDescr form
+                        let port = match interface.base.cdp_port_id {
+                            Some(ref port_id) => IdentityResolution::found(
+                                resolver.find_if_entry_by_name(port_id, host_id).await,
+                            ),
+                            None => IdentityResolution::NoStrategy,
+                        };
+                        Some(stats.record_port(port, host_id))
                     }
-                } else {
-                    None
                 }
             } else {
+                // Admitted by the filter on cdp_address alone, which is a management address and
+                // never a physical connection — there is nothing here to resolve.
+                stats.host_no_strategy += 1;
                 None
             };
 
-            // Persist resolved neighbor
-            if let Some(neighbor) = resolved_neighbor {
+            // Persist the resolved neighbor. `None` leaves the row as it was: an existing partial
+            // is preserved, and an unresolved row stays eligible for the next pass.
+            if let Some(neighbor) = resolved_neighbor
+                && Some(&neighbor) != interface.base.neighbor.as_ref()
+            {
                 interface.base.neighbor = Some(neighbor);
                 self.interface_service
                     .update(&mut interface, AuthenticatedEntity::System)
@@ -94,6 +115,10 @@ impl HostService {
             total = stats.total,
             hosts_resolved = stats.hosts_resolved,
             ports_resolved = stats.ports_resolved,
+            host_no_strategy = stats.host_no_strategy,
+            host_not_found = stats.host_not_found,
+            port_no_strategy = stats.port_no_strategy,
+            port_not_found = stats.port_not_found,
             "LLDP/CDP link resolution complete"
         );
 
@@ -104,8 +129,6 @@ impl HostService {
     /// Called after resolve_lldp_links — only processes ports without LLDP/CDP data
     /// that have exactly one learned MAC address (direct physical connection).
     pub async fn resolve_fdb_links(&self, network_id: Uuid) -> Result<u32> {
-        use crate::server::interfaces::r#impl::base::Neighbor;
-
         let resolver = LldpResolverImpl::new(
             self.interface_service.clone(),
             self.ip_address_service.clone(),
@@ -171,8 +194,6 @@ impl HostService {
     /// are interfaces whose neighbor points to an interface id that no longer exists — data that
     /// survived but silently produces no edge, a distinct failure mode from an over-eager prune.
     pub async fn log_l2_topology_summary(&self, network_id: Uuid) {
-        use crate::server::interfaces::r#impl::base::Neighbor;
-
         let filter = StorableFilter::<Interface>::new_from_network_ids(&[network_id]).live();
         let interfaces = match self.interface_service.get_all(filter).await {
             Ok(v) => v,

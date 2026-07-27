@@ -5,13 +5,13 @@ set -euo pipefail
 # SNMP Test Environment — Proxmox VM setup (self-contained)
 #
 # Paste this entire script into a Debian/Ubuntu VM terminal.
-# Creates 10 snmpd instances on secondary IPs, each simulating a
+# Creates 13 snmpd instances on secondary IPs, each simulating a
 # different network device with its own community string.
 #
 # Edit HOSTS/CIDR/IFACE below to match your network.
 # ══════════════════════════════════════════════════════════════════════
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239)
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242)
 CIDR="22"
 IFACE="eth0"
 
@@ -21,8 +21,11 @@ IFACE="eth0"
 # numbers in a namespace distinct from ifIndex and needs lldpLocPortTable to
 # resolve; VOSS reports local-port == ifIndex. Per-host communities are written
 # directly into each snmpd config below.
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c)
-SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01)
+#
+# .240/.241/.242 cover the three L2-resolution defects from GH #664/#649/#614
+# (July 2026) — see the block comments on their MIB data below.
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c)
+SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01)
 
 # SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
 # AuthPriv with SHA-256 / AES-128 — the broadly-supported pure-Rust default.
@@ -171,18 +174,18 @@ cat > "$DATA_DIR/switch-core-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.3.0 string switch-core-01
 .1.0.8802.1.1.2.1.3.4.0 string Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.2(7)E3
 .1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
-.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 0:1a:2b:0:11:0
-.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
-.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/1
-.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/1
-.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-access-01
-.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C3750 Software (C3750-IPSERVICESK9-M), Version 15.0(2)SE11
 .1.0.8802.1.1.2.1.4.1.1.4.0.2.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 0:1a:2b:0:11:0
 .1.0.8802.1.1.2.1.4.1.1.5.0.2.1 string 0:1a:2b:0:12:0
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.0.2.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/1
 .1.0.8802.1.1.2.1.4.1.1.7.0.2.1 string ge-0/0/0
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/1
 .1.0.8802.1.1.2.1.4.1.1.8.0.2.1 string ge-0/0/0
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-access-01
 .1.0.8802.1.1.2.1.4.1.1.9.0.2.1 string router-gw-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C3750 Software (C3750-IPSERVICESK9-M), Version 15.0(2)SE11
 .1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string Juniper Networks, Inc. JunOS 21.4R3-S5, MX204
 EOF
 
@@ -261,18 +264,18 @@ cat > "$DATA_DIR/switch-access-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.3.0 string switch-access-01
 .1.0.8802.1.1.2.1.3.4.0 string Cisco IOS Software, C3750 Software (C3750-IPSERVICESK9-M), Version 15.0(2)SE11
 .1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
-.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 0:1a:2b:0:10:0
-.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
-.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/1
-.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/1
-.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
-.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.2(7)E3
 .1.0.8802.1.1.2.1.4.1.1.4.0.3.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 0:1a:2b:0:10:0
 .1.0.8802.1.1.2.1.4.1.1.5.0.3.1 string 0:1a:2b:0:15:0
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.0.3.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/1
 .1.0.8802.1.1.2.1.4.1.1.7.0.3.1 string eth0
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/1
 .1.0.8802.1.1.2.1.4.1.1.8.0.3.1 string eth0
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
 .1.0.8802.1.1.2.1.4.1.1.9.0.3.1 string ap-wireless-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.2(7)E3
 .1.0.8802.1.1.2.1.4.1.1.10.0.3.1 string Ubiquiti UniFi AP AC Pro, firmware 6.5.28
 EOF
 
@@ -317,18 +320,18 @@ cat > "$DATA_DIR/router-gw-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.3.0 string router-gw-01
 .1.0.8802.1.1.2.1.3.4.0 string Juniper Networks, Inc. JunOS 21.4R3-S5, MX204
 .1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
-.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 0:1a:2b:0:10:0
-.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
-.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/2
-.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/2
-.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
-.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.2(7)E3
 .1.0.8802.1.1.2.1.4.1.1.4.0.2.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 0:1a:2b:0:10:0
 .1.0.8802.1.1.2.1.4.1.1.5.0.2.1 string 0:1a:2b:0:13:0
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.0.2.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/2
 .1.0.8802.1.1.2.1.4.1.1.7.0.2.1 string port1
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/2
 .1.0.8802.1.1.2.1.4.1.1.8.0.2.1 string port1
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
 .1.0.8802.1.1.2.1.4.1.1.9.0.2.1 string firewall-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.2(7)E3
 .1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string Fortinet FortiGate 60F v7.2.6 build1517 (GA.F)
 EOF
 
@@ -668,6 +671,176 @@ cat > "$DATA_DIR/switch-voss-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.10.0.194.1 string Cisco IOS Software, C3750
 EOF
 
+# ══════════════════════════════════════════════════════════════════════
+# switch-netgear-01 / switch-aruba-01 / switch-omada-01 — L2 resolution
+#
+# These three devices exist to reproduce the L2-topology failures reported in
+# GH #664, #649 and #614 on real hardware. They form a connected pair plus one
+# standalone switch:
+#
+#   switch-netgear-01 g1  <->  switch-aruba-01 port 41
+#   switch-netgear-01 g2  <->  switch-aruba-01 port A5 (ifIndex 197)
+#
+# What each one proves is documented above its MIB data.
+# ══════════════════════════════════════════════════════════════════════
+
+# switch-netgear-01 IF-MIB (Netgear GS724Tv3). The device's chassis/management
+# MAC (…:63, in its LLDP local identity below) appears on NO port and NO IP —
+# ports are …:65/:66/:67. A neighbour advertising the chassis MAC is therefore
+# unresolvable by MAC alone and only matches via the host's own chassis_id.
+cat > "$DATA_DIR/switch-netgear-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.1.3 integer 3
+.1.3.6.1.2.1.2.2.1.2.1 string g1
+.1.3.6.1.2.1.2.2.1.2.2 string g2
+.1.3.6.1.2.1.2.2.1.2.3 string g3
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.3.3 integer 6
+.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.3 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.6.1 string 0:1a:2b:3c:4d:65
+.1.3.6.1.2.1.2.2.1.6.2 string 0:1a:2b:3c:4d:66
+.1.3.6.1.2.1.2.2.1.6.3 string 0:1a:2b:3c:4d:67
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.7.3 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.3 integer 2
+.1.3.6.1.2.1.31.1.1.1.1.1 string g1
+.1.3.6.1.2.1.31.1.1.1.1.2 string g2
+.1.3.6.1.2.1.31.1.1.1.1.3 string g3
+EOF
+
+# switch-netgear-01 LLDP. Its own chassis id (…:63) differs from every port MAC
+# — this is what gets recorded as the host's chassis_id and is the ONLY
+# server-side record of that MAC (GH #664).
+#
+# Its two neighbour entries advertise switch-aruba-01's ports with port-ID
+# subtype 7 (locallyAssigned): "41" matches that switch's ifDescr, and "197"
+# matches only its ifIndex. Before the fix both resolved to the host and stopped
+# there, and a host-only neighbour draws no L2 edge at all (GH #649).
+cat > "$DATA_DIR/switch-netgear-01-lldp.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 0:1a:2b:3c:4d:63
+.1.0.8802.1.1.2.1.3.3.0 string switch-netgear-01
+.1.0.8802.1.1.2.1.3.4.0 string NETGEAR GS724Tv3 ProSAFE 24-port Gigabit Smart Switch
+.1.0.8802.1.1.2.1.3.7.1.2.1 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.2 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.3 integer 5
+.1.0.8802.1.1.2.1.3.7.1.3.1 string g1
+.1.0.8802.1.1.2.1.3.7.1.3.2 string g2
+.1.0.8802.1.1.2.1.3.7.1.3.3 string g3
+.1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.0.2.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 0:c:29:aa:bb:c0
+.1.0.8802.1.1.2.1.4.1.1.5.0.2.1 string 0:c:29:aa:bb:c0
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 7
+.1.0.8802.1.1.2.1.4.1.1.6.0.2.1 integer 7
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string 41
+.1.0.8802.1.1.2.1.4.1.1.7.0.2.1 string 197
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string 41
+.1.0.8802.1.1.2.1.4.1.1.8.0.2.1 string A5
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-aruba-01
+.1.0.8802.1.1.2.1.4.1.1.9.0.2.1 string switch-aruba-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string ProCurve J9145A 2910al-24G, revision W.15.16.0007
+.1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string ProCurve J9145A 2910al-24G, revision W.15.16.0007
+EOF
+
+# switch-aruba-01 IF-MIB (HP/Aruba ProCurve). Two port-naming shapes in one
+# device: ports whose ifDescr IS the bare port number ("41", "42"), and a port
+# whose label ("A5") has nothing to do with its ifIndex (197). A locally-assigned
+# port id is one or the other, so both legs need covering.
+cat > "$DATA_DIR/switch-aruba-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.41 integer 41
+.1.3.6.1.2.1.2.2.1.1.42 integer 42
+.1.3.6.1.2.1.2.2.1.1.197 integer 197
+.1.3.6.1.2.1.2.2.1.2.41 string 41
+.1.3.6.1.2.1.2.2.1.2.42 string 42
+.1.3.6.1.2.1.2.2.1.2.197 string A5
+.1.3.6.1.2.1.2.2.1.3.41 integer 6
+.1.3.6.1.2.1.2.2.1.3.42 integer 6
+.1.3.6.1.2.1.2.2.1.3.197 integer 6
+.1.3.6.1.2.1.2.2.1.5.41 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.42 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.197 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.6.41 string 0:c:29:aa:bb:29
+.1.3.6.1.2.1.2.2.1.6.42 string 0:c:29:aa:bb:2a
+.1.3.6.1.2.1.2.2.1.6.197 string 0:c:29:aa:bb:c5
+.1.3.6.1.2.1.2.2.1.7.41 integer 1
+.1.3.6.1.2.1.2.2.1.7.42 integer 1
+.1.3.6.1.2.1.2.2.1.7.197 integer 1
+.1.3.6.1.2.1.2.2.1.8.41 integer 1
+.1.3.6.1.2.1.2.2.1.8.42 integer 2
+.1.3.6.1.2.1.2.2.1.8.197 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.41 string 41
+.1.3.6.1.2.1.31.1.1.1.1.42 string 42
+.1.3.6.1.2.1.31.1.1.1.1.197 string A5
+EOF
+
+# switch-aruba-01 LLDP. The return direction of the same two links, and the
+# GH #664 case seen from this side: both neighbour entries carry
+# switch-netgear-01's CHASSIS mac (…:63), which exists on none of that device's
+# ports — it resolves only through the host's own chassis_id. The remote port is
+# then identified by its real port MAC (…:65 / …:66).
+cat > "$DATA_DIR/switch-aruba-01-lldp.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 0:c:29:aa:bb:c0
+.1.0.8802.1.1.2.1.3.3.0 string switch-aruba-01
+.1.0.8802.1.1.2.1.3.4.0 string ProCurve J9145A 2910al-24G, revision W.15.16.0007
+.1.0.8802.1.1.2.1.3.7.1.2.41 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.42 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.197 integer 5
+.1.0.8802.1.1.2.1.3.7.1.3.41 string 41
+.1.0.8802.1.1.2.1.3.7.1.3.42 string 42
+.1.0.8802.1.1.2.1.3.7.1.3.197 string A5
+.1.0.8802.1.1.2.1.4.1.1.4.0.41.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.0.197.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.41.1 string 0:1a:2b:3c:4d:63
+.1.0.8802.1.1.2.1.4.1.1.5.0.197.1 string 0:1a:2b:3c:4d:63
+.1.0.8802.1.1.2.1.4.1.1.6.0.41.1 integer 3
+.1.0.8802.1.1.2.1.4.1.1.6.0.197.1 integer 3
+.1.0.8802.1.1.2.1.4.1.1.7.0.41.1 string 0:1a:2b:3c:4d:65
+.1.0.8802.1.1.2.1.4.1.1.7.0.197.1 string 0:1a:2b:3c:4d:66
+.1.0.8802.1.1.2.1.4.1.1.8.0.41.1 string g1
+.1.0.8802.1.1.2.1.4.1.1.8.0.197.1 string g2
+.1.0.8802.1.1.2.1.4.1.1.9.0.41.1 string switch-netgear-01
+.1.0.8802.1.1.2.1.4.1.1.9.0.197.1 string switch-netgear-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.41.1 string NETGEAR GS724Tv3 ProSAFE 24-port Gigabit Smart Switch
+.1.0.8802.1.1.2.1.4.1.1.10.0.197.1 string NETGEAR GS724Tv3 ProSAFE 24-port Gigabit Smart Switch
+EOF
+
+# switch-omada-01 IF-MIB (TP-Link Omada TL-SG3216, GH #614). ifIndex 1 is the
+# only interface with a name and the only one bearing an IP; the 16 physical
+# ports live at 49153-49168, report NO ifXTable ifName, and all share the
+# chassis ifPhysAddress. All 17 must survive discovery — before the v0.17.1 fix
+# the 16 nameless ports collapsed onto the management interface via the MAC tier.
+# Emitted column-by-column so the file is in ascending numeric-OID order, which
+# is what the GETNEXT pass handler above requires (it returns the first line
+# greater than the requested OID and stops).
+INDEXES="1 $(seq 49153 49168)"
+{
+    for idx in $INDEXES; do echo ".1.3.6.1.2.1.2.2.1.1.${idx} integer ${idx}"; done
+    for idx in $INDEXES; do
+        if [ "$idx" = 1 ]; then
+            echo ".1.3.6.1.2.1.2.2.1.2.1 string Vlan-interface1"
+        else
+            echo ".1.3.6.1.2.1.2.2.1.2.${idx} string gigabitEthernet 1/0/$((idx - 49152))"
+        fi
+    done
+    for idx in $INDEXES; do echo ".1.3.6.1.2.1.2.2.1.3.${idx} integer 6"; done
+    for idx in $INDEXES; do echo ".1.3.6.1.2.1.2.2.1.5.${idx} gauge 1000000000"; done
+    for idx in $INDEXES; do echo ".1.3.6.1.2.1.2.2.1.6.${idx} string 30:de:4b:30:f0:ac"; done
+    for idx in $INDEXES; do echo ".1.3.6.1.2.1.2.2.1.7.${idx} integer 1"; done
+    for idx in $INDEXES; do echo ".1.3.6.1.2.1.2.2.1.8.${idx} integer 1"; done
+    # ifXTable carries a name for the management interface only — the 16 physical
+    # ports report none, which is the whole point of this profile.
+    echo ".1.3.6.1.2.1.31.1.1.1.1.1 string Vlan-interface1"
+} > "$DATA_DIR/switch-omada-01-iftable.txt"
+
 # ── 5. Write snmpd configs ───────────────────────────────────────────
 echo "Writing snmpd configs..."
 
@@ -827,6 +1000,49 @@ sysservices 6
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-voss-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-voss-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-voss-01-lldp.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-netgear-01.conf" << EOF
+agentAddress udp:${HOSTS[10]}:161
+rocommunity netdefault
+sysdescr NETGEAR GS724Tv3 ProSAFE 24-port Gigabit Smart Switch
+syscontact netops@example.com
+sysname switch-netgear-01
+syslocation Floor 1, IDF A
+sysobjectid .1.3.6.1.4.1.4526.100.4.15
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-netgear-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-netgear-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-netgear-01-lldp.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-aruba-01.conf" << EOF
+agentAddress udp:${HOSTS[11]}:161
+rocommunity netdefault
+sysdescr ProCurve J9145A 2910al-24G, revision W.15.16.0007
+syscontact netops@example.com
+sysname switch-aruba-01
+syslocation Floor 1, IDF B
+sysobjectid .1.3.6.1.4.1.11.2.3.7.11.79
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-aruba-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-aruba-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-aruba-01-lldp.txt
+EOF
+
+# No LLDP subtree: this device reports no neighbours at all (as the #614
+# reporter's did), so it exercises the interface-persistence path in isolation.
+cat > "$CONF_DIR/snmpd-switch-omada-01.conf" << EOF
+agentAddress udp:${HOSTS[12]}:161
+rocommunity public
+sysdescr TP-Link Omada TL-SG3216 JetStream 16-Port Gigabit L2 Managed Switch
+syscontact netops@example.com
+sysname switch
+syslocation Floor 2, Comms Cupboard
+sysobjectid .1.3.6.1.4.1.11863.6.96
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-omada-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-omada-01-iftable.txt
 EOF
 
 # ── 6. Create systemd services ───────────────────────────────────────

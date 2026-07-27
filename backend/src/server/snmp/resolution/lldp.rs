@@ -57,6 +57,33 @@ pub enum LldpPortId {
     LocallyAssigned(String),
 }
 
+/// Outcome of resolving an advertised LLDP identifier to a database entity.
+///
+/// "Didn't resolve" has two causes that call for opposite responses, so they are not collapsed
+/// into a bare `None`: [`Self::NoStrategy`] means the neighbor advertised an identity this system
+/// has no way to look up (a code-side gap, or a subtype that genuinely carries no usable
+/// identity), while [`Self::NotFound`] means the lookup ran correctly and the device simply isn't
+/// in this network's inventory (an operator-side gap — scan it and the link appears).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdentityResolution {
+    /// Matched exactly one entity.
+    Resolved(Uuid),
+    /// No lookup strategy applies to the advertised identifier.
+    NoStrategy,
+    /// A strategy ran and matched nothing, or matched ambiguously.
+    NotFound,
+}
+
+impl IdentityResolution {
+    /// `Resolved(id)` when `found` is `Some`, otherwise [`Self::NotFound`].
+    pub fn found(found: Option<Uuid>) -> Self {
+        match found {
+            Some(id) => Self::Resolved(id),
+            None => Self::NotFound,
+        }
+    }
+}
+
 /// Serde helper for IpAddr as string
 mod ip_addr_serde {
     use serde::{self, Deserialize, Deserializer, Serializer};
@@ -105,20 +132,51 @@ impl LldpChassisId {
         }
     }
 
-    /// Resolve this chassis ID to a host_id using the appropriate lookup strategy.
+    /// The identifier as the remote device advertised it, in the same canonical form the daemon
+    /// stores on `hosts.chassis_id` for a device's own LLDP local identity. Having one definition
+    /// is what lets a neighbor's chassis ID be matched against a scanned host's own chassis ID.
+    pub fn identifier(&self) -> String {
+        match self {
+            Self::NetworkAddress(addr) => addr.to_string(),
+            Self::ChassisComponent(s)
+            | Self::InterfaceAlias(s)
+            | Self::PortComponent(s)
+            | Self::MacAddress(s)
+            | Self::InterfaceName(s)
+            | Self::LocallyAssigned(s) => s.clone(),
+        }
+    }
+
+    /// Resolve this chassis ID to a host_id, trying each applicable strategy in turn.
     ///
-    /// The resolution strategy depends on the chassis ID subtype:
-    /// - MacAddress: Look up via ip_addresses.mac_address → host
-    /// - NetworkAddress: Look up via ip_addresses table (IP address)
-    /// - InterfaceName: Look up via interfaces.if_descr
-    /// - ChassisComponent/LocallyAssigned: Look up via hosts.chassis_id
-    /// - InterfaceAlias/PortComponent: No reliable resolution strategy
+    /// Subtype-specific strategy first — it matches the identifier against the kind of column it
+    /// actually is:
+    /// - MacAddress: `ip_addresses.mac_address`, then `interfaces.mac_address`
+    /// - NetworkAddress: `ip_addresses.ip_address`
+    /// - InterfaceName: `interfaces.if_descr`
+    /// - ChassisComponent/LocallyAssigned: `hosts.chassis_id`
+    /// - InterfaceAlias/PortComponent: nothing reliable
+    ///
+    /// Then two subtype-independent fallbacks, both needed on real hardware:
+    ///
+    /// 1. `hosts.chassis_id`, for *every* subtype. A switch's chassis MAC is not required to be
+    ///    any of its port MACs, and on several vendors it isn't: the Netgear GS724Tv3 advertises a
+    ///    chassis MAC one octet below its port MACs and carries it on no interface and no IP, so
+    ///    the MacAddress strategy above finds nothing (GH #664). The daemon already records each
+    ///    scanned device's own LLDP chassis ID on `hosts.chassis_id` in this same canonical form,
+    ///    which is the only place that MAC exists server-side.
+    /// 2. The neighbor's advertised `sysName` against `hosts.sys_name` — the same last resort CDP
+    ///    has always used, for devices whose chassis identity is unrecoverable but whose name was
+    ///    captured by an SNMP scan. Only accepted when exactly one host matches.
     pub async fn resolve_host_id<R: LldpResolver>(
         &self,
         resolver: &R,
         network_id: Uuid,
-    ) -> Option<Uuid> {
-        match self {
+        sys_name: Option<&str>,
+    ) -> IdentityResolution {
+        let mut strategy_ran = false;
+
+        let by_subtype = match self {
             Self::MacAddress(mac) => resolver.find_host_by_mac(mac, network_id).await,
             Self::NetworkAddress(ip) => resolver.find_host_by_ip(ip, network_id).await,
             Self::InterfaceName(name) => resolver.find_host_by_if_name(name, network_id).await,
@@ -127,6 +185,34 @@ impl LldpChassisId {
             }
             // These subtypes don't have reliable resolution strategies
             Self::InterfaceAlias(_) | Self::PortComponent(_) => None,
+        };
+        strategy_ran |= !matches!(self, Self::InterfaceAlias(_) | Self::PortComponent(_));
+        if by_subtype.is_some() {
+            return IdentityResolution::found(by_subtype);
+        }
+
+        let identifier = self.identifier();
+        if !identifier.is_empty() {
+            strategy_ran = true;
+            if let Some(host_id) = resolver
+                .find_host_by_chassis_id(&identifier, network_id)
+                .await
+            {
+                return IdentityResolution::Resolved(host_id);
+            }
+        }
+
+        if let Some(sys_name) = sys_name.map(str::trim).filter(|s| !s.is_empty()) {
+            strategy_ran = true;
+            if let Some(host_id) = resolver.find_host_by_sys_name(sys_name, network_id).await {
+                return IdentityResolution::Resolved(host_id);
+            }
+        }
+
+        if strategy_ran {
+            IdentityResolution::NotFound
+        } else {
+            IdentityResolution::NoStrategy
         }
     }
 }
@@ -160,25 +246,70 @@ impl LldpPortId {
 
     /// Resolve this port ID to an interface_id using the appropriate lookup strategy.
     ///
-    /// Requires the host_id to be already known (from chassis ID resolution).
+    /// Requires the host_id to be already known (from chassis ID resolution), so every lookup is
+    /// scoped to one device's own interfaces.
     ///
     /// The resolution strategy depends on the port ID subtype:
     /// - MacAddress: Look up via interfaces.mac_address
-    /// - InterfaceName/InterfaceAlias: Look up via interfaces.if_descr
+    /// - InterfaceName: Look up via interfaces.if_descr / if_name
     /// - NetworkAddress: Look up via ip_address_id FK on interfaces
-    /// - PortComponent/AgentCircuitId/LocallyAssigned: No reliable resolution
+    /// - PortComponent/AgentCircuitId/LocallyAssigned: device-local port identifier — see
+    ///   [`Self::resolve_device_local_port`]
+    /// - InterfaceAlias: user-configurable and non-unique, no reliable resolution
     pub async fn resolve_if_entry_id<R: LldpResolver>(
         &self,
         resolver: &R,
         host_id: Uuid,
-    ) -> Option<Uuid> {
+    ) -> IdentityResolution {
         match self {
-            Self::MacAddress(mac) => resolver.find_if_entry_by_mac(mac, host_id).await,
-            Self::InterfaceName(name) => resolver.find_if_entry_by_name(name, host_id).await,
-            Self::InterfaceAlias(_) => None, // user-configurable, non-unique
-            Self::NetworkAddress(ip) => resolver.find_if_entry_by_ip(ip, host_id).await,
-            // These subtypes don't have reliable resolution strategies
-            Self::PortComponent(_) | Self::AgentCircuitId(_) | Self::LocallyAssigned(_) => None,
+            Self::MacAddress(mac) => {
+                IdentityResolution::found(resolver.find_if_entry_by_mac(mac, host_id).await)
+            }
+            Self::InterfaceName(name) => {
+                IdentityResolution::found(resolver.find_if_entry_by_name(name, host_id).await)
+            }
+            Self::InterfaceAlias(_) => IdentityResolution::NoStrategy, // user-configurable, non-unique
+            Self::NetworkAddress(ip) => {
+                IdentityResolution::found(resolver.find_if_entry_by_ip(ip, host_id).await)
+            }
+            Self::PortComponent(id) | Self::AgentCircuitId(id) | Self::LocallyAssigned(id) => {
+                Self::resolve_device_local_port(resolver, id, host_id).await
+            }
+        }
+    }
+
+    /// Resolve a device-local port identifier (subtypes 2, 6 and 7) against one host's interfaces.
+    ///
+    /// These subtypes are "whatever the device calls this port", which sounds unusable but in
+    /// practice is one of two things, both of which the remote host's own ifTable already carries:
+    /// the port's `ifDescr`/`ifName` (Aruba/HP ProCurve advertise bare port numbers such as `"41"`,
+    /// which is exactly that switch's `ifDescr`), or its `ifIndex` as a decimal string.
+    ///
+    /// Treating the whole family as unresolvable is what produced the reported symptom: the
+    /// neighbor resolved as far as the host and stopped, and a host-only neighbor renders no edge,
+    /// so switches were absent from L2 Physical entirely (GH #649). Names are tried before indexes
+    /// because a bare port number is ambiguous between the two and the name is the device's own
+    /// label; both are scoped to the single already-resolved host, so a wrong match cannot reach
+    /// another device.
+    async fn resolve_device_local_port<R: LldpResolver>(
+        resolver: &R,
+        id: &str,
+        host_id: Uuid,
+    ) -> IdentityResolution {
+        let id = id.trim();
+        if id.is_empty() {
+            return IdentityResolution::NoStrategy;
+        }
+
+        if let Some(interface_id) = resolver.find_if_entry_by_name(id, host_id).await {
+            return IdentityResolution::Resolved(interface_id);
+        }
+
+        match id.parse::<i32>() {
+            Ok(if_index) => IdentityResolution::found(
+                resolver.find_if_entry_by_if_index(if_index, host_id).await,
+            ),
+            Err(_) => IdentityResolution::NotFound,
         }
     }
 }
@@ -335,5 +466,319 @@ mod tests {
 
         let deserialized: LldpChassisId = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, chassis_id);
+    }
+}
+
+/// Resolution-strategy tests against an in-memory inventory.
+///
+/// These exercise which identity a neighbor is joined on, which is where the reported "L2
+/// Physical is empty" failures live — a neighbor that resolves only as far as the remote host
+/// draws no edge at all, so a strategy gap and a genuinely unknown device look identical from
+/// the outside.
+#[cfg(test)]
+mod resolution_tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::net::IpAddr;
+
+    #[derive(Default)]
+    struct FakeHost {
+        id: Uuid,
+        chassis_id: Option<String>,
+        sys_name: Option<String>,
+    }
+
+    #[derive(Default)]
+    struct FakeInterface {
+        id: Uuid,
+        host_id: Uuid,
+        if_descr: Option<String>,
+        if_name: Option<String>,
+        if_index: i32,
+        mac: Option<String>,
+    }
+
+    /// Stands in for the database: the same inventory the production resolver queries, matched
+    /// with the same column semantics (exact match, and "exactly one" for the non-unique columns).
+    #[derive(Default)]
+    struct FakeInventory {
+        hosts: Vec<FakeHost>,
+        interfaces: Vec<FakeInterface>,
+    }
+
+    impl FakeInventory {
+        fn only<T>(mut matches: Vec<T>) -> Option<T> {
+            match matches.len() {
+                1 => matches.pop(),
+                _ => None,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl LldpResolver for FakeInventory {
+        async fn find_host_by_mac(&self, mac: &str, _network_id: Uuid) -> Option<Uuid> {
+            self.interfaces
+                .iter()
+                .find(|i| i.mac.as_deref() == Some(mac))
+                .map(|i| i.host_id)
+        }
+
+        async fn find_host_by_ip(&self, _ip: &IpAddr, _network_id: Uuid) -> Option<Uuid> {
+            None
+        }
+
+        async fn find_host_by_if_name(&self, name: &str, _network_id: Uuid) -> Option<Uuid> {
+            self.interfaces
+                .iter()
+                .find(|i| i.if_descr.as_deref() == Some(name))
+                .map(|i| i.host_id)
+        }
+
+        async fn find_host_by_chassis_id(
+            &self,
+            chassis_id: &str,
+            _network_id: Uuid,
+        ) -> Option<Uuid> {
+            Self::only(
+                self.hosts
+                    .iter()
+                    .filter(|h| h.chassis_id.as_deref() == Some(chassis_id))
+                    .collect(),
+            )
+            .map(|h| h.id)
+        }
+
+        async fn find_host_by_sys_name(&self, sys_name: &str, _network_id: Uuid) -> Option<Uuid> {
+            Self::only(
+                self.hosts
+                    .iter()
+                    .filter(|h| h.sys_name.as_deref() == Some(sys_name))
+                    .collect(),
+            )
+            .map(|h| h.id)
+        }
+
+        async fn find_if_entry_by_mac(&self, mac: &str, host_id: Uuid) -> Option<Uuid> {
+            self.interfaces
+                .iter()
+                .find(|i| i.host_id == host_id && i.mac.as_deref() == Some(mac))
+                .map(|i| i.id)
+        }
+
+        async fn find_if_entry_by_name(&self, name: &str, host_id: Uuid) -> Option<Uuid> {
+            self.interfaces
+                .iter()
+                .find(|i| {
+                    i.host_id == host_id
+                        && (i.if_descr.as_deref() == Some(name)
+                            || i.if_name.as_deref() == Some(name))
+                })
+                .map(|i| i.id)
+        }
+
+        async fn find_if_entry_by_if_index(&self, if_index: i32, host_id: Uuid) -> Option<Uuid> {
+            self.interfaces
+                .iter()
+                .find(|i| i.host_id == host_id && i.if_index == if_index)
+                .map(|i| i.id)
+        }
+
+        async fn find_if_entry_by_ip(&self, _ip: &IpAddr, _host_id: Uuid) -> Option<Uuid> {
+            None
+        }
+    }
+
+    /// GH #664: the Netgear GS724Tv3 advertises a chassis MAC that is on none of its ports and
+    /// on no IP — the only server-side record of it is the host's own `chassis_id`, captured
+    /// from its LLDP local identity. Matching MACs against interfaces/IPs alone leaves every
+    /// neighbour of such a switch unresolved and L2 Physical empty.
+    #[tokio::test]
+    async fn chassis_mac_absent_from_ports_resolves_via_the_hosts_own_chassis_id() {
+        let switch = Uuid::new_v4();
+        let inventory = FakeInventory {
+            hosts: vec![FakeHost {
+                id: switch,
+                chassis_id: Some("00:1a:2b:3c:4d:63".to_string()),
+                ..Default::default()
+            }],
+            // Ports carry a different MAC than the chassis — the whole point of the bug.
+            interfaces: vec![FakeInterface {
+                id: Uuid::new_v4(),
+                host_id: switch,
+                mac: Some("00:1a:2b:3c:4d:65".to_string()),
+                ..Default::default()
+            }],
+        };
+
+        let chassis = LldpChassisId::MacAddress("00:1a:2b:3c:4d:63".to_string());
+        assert_eq!(
+            chassis
+                .resolve_host_id(&inventory, Uuid::new_v4(), None)
+                .await,
+            IdentityResolution::Resolved(switch)
+        );
+    }
+
+    #[tokio::test]
+    async fn neighbour_on_a_device_this_network_never_scanned_is_not_found() {
+        let inventory = FakeInventory::default();
+        let chassis = LldpChassisId::MacAddress("00:1a:2b:3c:4d:63".to_string());
+
+        assert_eq!(
+            chassis
+                .resolve_host_id(&inventory, Uuid::new_v4(), Some("some-ap"))
+                .await,
+            IdentityResolution::NotFound
+        );
+    }
+
+    /// sysName is operator-assigned and often left at a vendor default, so two devices sharing
+    /// one is a real configuration. Attaching a physical link to an arbitrary one of them is
+    /// worse than reporting the neighbour unresolved.
+    #[tokio::test]
+    async fn a_sys_name_shared_by_two_hosts_resolves_to_neither() {
+        let inventory = FakeInventory {
+            hosts: vec![
+                FakeHost {
+                    id: Uuid::new_v4(),
+                    sys_name: Some("switch".to_string()),
+                    ..Default::default()
+                },
+                FakeHost {
+                    id: Uuid::new_v4(),
+                    sys_name: Some("switch".to_string()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let chassis = LldpChassisId::MacAddress("00:1a:2b:3c:4d:63".to_string());
+        assert_eq!(
+            chassis
+                .resolve_host_id(&inventory, Uuid::new_v4(), Some("switch"))
+                .await,
+            IdentityResolution::NotFound
+        );
+    }
+
+    /// GH #649: Aruba/HP switches advertise the remote port as subtype 7 (locally assigned)
+    /// carrying the port's own label — which is exactly that device's ifDescr. Treating the
+    /// subtype as unresolvable stopped resolution at the host, and a host-only neighbour renders
+    /// no edge, so whole switches were missing from L2 Physical.
+    #[tokio::test]
+    async fn locally_assigned_port_id_resolves_against_the_remote_ports_own_label() {
+        let switch = Uuid::new_v4();
+        let port_41 = Uuid::new_v4();
+        let inventory = FakeInventory {
+            interfaces: vec![
+                FakeInterface {
+                    id: port_41,
+                    host_id: switch,
+                    if_descr: Some("41".to_string()),
+                    if_index: 41,
+                    ..Default::default()
+                },
+                FakeInterface {
+                    id: Uuid::new_v4(),
+                    host_id: switch,
+                    if_descr: Some("42".to_string()),
+                    if_index: 42,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let port = LldpPortId::LocallyAssigned("41".to_string());
+        assert_eq!(
+            port.resolve_if_entry_id(&inventory, switch).await,
+            IdentityResolution::Resolved(port_41)
+        );
+    }
+
+    /// The other shape of a locally-assigned port id: the remote device's ifIndex, on a switch
+    /// whose port labels are something else entirely (HP A-series reports "A1".."A24" as ifDescr
+    /// while advertising the index).
+    #[tokio::test]
+    async fn locally_assigned_port_id_falls_back_to_the_remote_if_index() {
+        let switch = Uuid::new_v4();
+        let uplink = Uuid::new_v4();
+        let inventory = FakeInventory {
+            interfaces: vec![FakeInterface {
+                id: uplink,
+                host_id: switch,
+                if_descr: Some("A5".to_string()),
+                if_index: 197,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let port = LldpPortId::LocallyAssigned("197".to_string());
+        assert_eq!(
+            port.resolve_if_entry_id(&inventory, switch).await,
+            IdentityResolution::Resolved(uplink)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_locally_assigned_port_id_matching_nothing_stays_unresolved() {
+        let switch = Uuid::new_v4();
+        let inventory = FakeInventory {
+            interfaces: vec![FakeInterface {
+                id: Uuid::new_v4(),
+                host_id: switch,
+                if_descr: Some("1".to_string()),
+                if_index: 1,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let port = LldpPortId::LocallyAssigned("WAN PORT".to_string());
+        assert_eq!(
+            port.resolve_if_entry_id(&inventory, switch).await,
+            IdentityResolution::NotFound
+        );
+    }
+
+    /// A port id is only ever resolved against the host it was already attributed to, so an
+    /// identifier that happens to collide with another device's port cannot cross the boundary.
+    #[tokio::test]
+    async fn port_resolution_cannot_reach_an_interface_on_another_host() {
+        let switch = Uuid::new_v4();
+        let other_switch = Uuid::new_v4();
+        let inventory = FakeInventory {
+            interfaces: vec![FakeInterface {
+                id: Uuid::new_v4(),
+                host_id: other_switch,
+                if_descr: Some("41".to_string()),
+                if_index: 41,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let port = LldpPortId::LocallyAssigned("41".to_string());
+        assert_eq!(
+            port.resolve_if_entry_id(&inventory, switch).await,
+            IdentityResolution::NotFound
+        );
+    }
+
+    /// An ifAlias is an operator-typed description, non-unique and frequently empty — there is
+    /// nothing to look it up against, which is a different situation from "looked and found
+    /// nothing" and is reported as such.
+    #[tokio::test]
+    async fn an_alias_port_id_reports_that_no_strategy_applies() {
+        let inventory = FakeInventory::default();
+        let port = LldpPortId::InterfaceAlias("uplink to core".to_string());
+
+        assert_eq!(
+            port.resolve_if_entry_id(&inventory, Uuid::new_v4()).await,
+            IdentityResolution::NoStrategy
+        );
     }
 }

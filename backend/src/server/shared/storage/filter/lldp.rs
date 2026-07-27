@@ -33,6 +33,15 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// Filter by if_index (for interfaces table)
+    pub fn if_index(mut self, if_index: i32) -> Self {
+        let col = self.qualify_column("if_index");
+        self.conditions
+            .push(format!("{} = ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::I32(if_index));
+        self
+    }
+
     /// Filter by chassis_id (for hosts table)
     pub fn chassis_id(mut self, chassis_id: &str) -> Self {
         let col = self.qualify_column("chassis_id");
@@ -60,31 +69,39 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
-    /// Filter interfaces with unresolved LLDP/CDP neighbors in a network.
-    /// Matches entries that have LLDP or CDP data but no neighbor (neither interface nor host).
-    pub fn unresolved_lldp_in_network(mut self, network_id: Uuid) -> Self {
+    /// Filter interfaces whose LLDP/CDP neighbor is not yet fully resolved, in a network.
+    ///
+    /// Admits both never-resolved rows (no neighbor at all) and *partially* resolved rows
+    /// (`neighbor_host_id` set, remote port still unknown). A partial resolution is invisible in
+    /// the L2 view — only `Neighbor::Interface` renders an edge — so leaving those rows out of the
+    /// pass, as the original "both columns NULL" predicate did, made a partial permanent: a port
+    /// whose remote interface became resolvable later (new port-ID strategy, remote host rescanned)
+    /// was never looked at again. The resolution loop retries only the port half for those rows and
+    /// never downgrades an existing partial.
+    ///
+    /// Scoped to live SCD2 rows: snapshot close-and-clone leaves closed historical copies of these
+    /// interfaces behind, and resolving/updating those would both waste the pass and mutate history.
+    pub fn unresolved_lldp_port_in_network(mut self, network_id: Uuid) -> Self {
         let network_col = self.qualify_column("network_id");
         let lldp_chassis_col = self.qualify_column("lldp_chassis_id");
         let cdp_device_col = self.qualify_column("cdp_device_id");
         let cdp_addr_col = self.qualify_column("cdp_address");
         let neighbor_if_entry_col = self.qualify_column("neighbor_interface_id");
-        let neighbor_host_col = self.qualify_column("neighbor_host_id");
 
         self.conditions
             .push(format!("{} = ${}", network_col, self.values.len() + 1));
         self.values.push(SqlValue::Uuid(network_id));
 
-        // Has LLDP or CDP data but not yet resolved (no neighbor of either type)
+        // Has LLDP or CDP data
         self.conditions.push(format!(
             "({} IS NOT NULL OR {} IS NOT NULL OR {} IS NOT NULL)",
             lldp_chassis_col, cdp_device_col, cdp_addr_col
         ));
+        // ...but no remote port yet (unresolved, or resolved only as far as the host)
         self.conditions
             .push(format!("{} IS NULL", neighbor_if_entry_col));
-        self.conditions
-            .push(format!("{} IS NULL", neighbor_host_col));
 
-        self
+        self.live()
     }
 
     /// Filter interfaces with unresolved single-MAC FDB data in a network.
@@ -115,7 +132,7 @@ impl<T: Storable> StorableFilter<T> {
             .push(format!("{} IS NULL", lldp_chassis_col));
         self.conditions.push(format!("{} IS NULL", cdp_device_col));
 
-        self
+        self.live()
     }
 
     /// Filter interfaces that have any resolved neighbor (full or partial resolution)
