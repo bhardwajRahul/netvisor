@@ -9,6 +9,10 @@ set -euo pipefail
 # different network device with its own community string.
 #
 # Edit HOSTS/CIDR/IFACE below to match your network.
+#
+# EXPECT TRUNCATION WARNINGS. See "Known chaos" at section 3 — a scan of this
+# environment normally reports several incomplete SNMP walks, and that is the
+# simulator, not the product under test.
 # ══════════════════════════════════════════════════════════════════════
 
 HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243)
@@ -64,6 +68,38 @@ for i in "${!HOSTS[@]}"; do
 done
 
 # ── 3. Write pass handler ────────────────────────────────────────────
+#
+# KNOWN CHAOS — read this before chasing a truncation warning.
+#
+# snmpd forks this script, which then forks awk, once per SNMP request. With 14
+# agents on one VM and ~17 column walks per host, a single scan is hundreds of
+# concurrent forks, and under that load the agents answer some requests with the
+# WRONG OID — one belonging to a request the daemon made earlier.
+#
+# Measured 2026-07-27, walking all 12 v2c devices from a single client:
+#
+#   serial      0 of 12 walks truncated
+#   concurrent  4-5 of 12 truncated, a DIFFERENT set of devices each run
+#
+# Every truncation was `StaleResponse`: an in-subtree walk answered with an OID
+# lower than the one requested, e.g. asking for lldpRemChassisId (.5) and getting
+# lldpRemChassisIdSubtype (.4) back, or asking within ifXTable and being handed an
+# LLDP OID that sorts below the entire subtree. A correct agent walking forward
+# cannot produce that. It is not our client desyncing: the responses pass request-id
+# and community validation, each session owns its own connected socket and its own
+# request-id range, and the same walks are clean when run serially.
+#
+# So: a scan here normally emits several "was incomplete" warnings. They mean the
+# simulator is thrashing. Judge a change by whether DATA was lost — interfaces
+# pruned, neighbours wiped, links frozen — not by whether warnings appeared.
+#
+# This misbehaviour is worth keeping. A free adversarial agent surfaced three real
+# defects in July 2026 (a foreign interface appearing on a switch, a chassis id
+# overwritten with NULL leaving a link permanently unresolvable, and a truncated
+# column reported as authoritative). If the noise ever needs quieting, `pass_persist`
+# replaces the fork-per-request with one long-lived handler — but leave a device or
+# two on `pass` deliberately, or the environment loses the property that found those.
+#
 mkdir -p "$CONF_DIR" "$DATA_DIR"
 
 cat > "$CONF_DIR/snmp-pass-handler.sh" << 'PASSEOF'
