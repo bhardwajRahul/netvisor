@@ -36,7 +36,7 @@ use crate::{
             base::{Host, HostBase},
             virtualization::HostVirtualization,
         },
-        interfaces::r#impl::base::Interface,
+        interfaces::r#impl::base::{Interface, InterfaceDataComplete},
         ip_addresses::r#impl::base::IPAddress,
         ports::r#impl::base::{Port, PortType},
         services::{
@@ -103,6 +103,10 @@ pub struct HostData {
     /// Defaults to true — integrations that don't walk the ifTable report an authoritative (usually
     /// empty) interface set, and the empty set is guarded server-side regardless.
     pub interfaces_complete: bool,
+    /// Which groups of per-interface data (LLDP, CDP, FDB, VLAN membership) this scan read in
+    /// full. A group read only partially must not overwrite what the server already holds — an
+    /// empty result from a cut-short walk is indistinguishable from a device reporting nothing.
+    pub interface_data_complete: InterfaceDataComplete,
 }
 
 impl HostData {
@@ -122,6 +126,7 @@ impl HostData {
             interfaces,
             subnets,
             interfaces_complete: true,
+            interface_data_complete: InterfaceDataComplete::default(),
         }
     }
 
@@ -254,6 +259,11 @@ impl HostData {
 
     /// Record whether the collected `interfaces` are a complete ifTable. A partial walk
     /// (`false`) tells the server not to prune interfaces missing from this scan (#649).
+    pub fn set_interface_data_complete(&mut self, complete: InterfaceDataComplete) -> &mut Self {
+        self.interface_data_complete = complete;
+        self
+    }
+
     pub fn set_interfaces_complete(&mut self, complete: bool) -> &mut Self {
         self.interfaces_complete = complete;
         self
@@ -698,6 +708,7 @@ impl DiscoveryOps {
         interfaces: Vec<Interface>,
         subnets: Vec<Subnet>,
         interfaces_complete: bool,
+        interface_data_complete: InterfaceDataComplete,
         cancel: &CancellationToken,
     ) -> Result<HostResponse, Error> {
         let mode = self.config_store.get_mode().await?;
@@ -711,6 +722,7 @@ impl DiscoveryOps {
             interfaces,
             subnets,
             interfaces_complete,
+            interface_data_complete,
         };
 
         self.entity_buffer.push_host(request.clone()).await;

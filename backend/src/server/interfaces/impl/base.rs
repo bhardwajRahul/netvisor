@@ -8,6 +8,55 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
+/// Which groups of per-interface data the daemon read in full during a scan.
+///
+/// Each group comes from its own SNMP walk, and a walk cut short by a timeout yields exactly the
+/// same empty result as a device that genuinely has nothing to report. Without knowing which
+/// happened, the server overwrote good data with NULL on every truncation — and for the neighbour
+/// fields that also dropped the row out of L2 resolution permanently, since the resolution filter
+/// requires a chassis id or CDP device id to be present.
+///
+/// Every field defaults to `true`, so a daemon predating this behaves exactly as before: it
+/// reports everything as authoritative and the server overwrites.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct InterfaceDataComplete {
+    /// `lldp_chassis_id`, `lldp_port_id`, `lldp_sys_name`, `lldp_port_desc`, `lldp_mgmt_addr`,
+    /// `lldp_sys_desc`
+    #[serde(default = "crate::server::interfaces::r#impl::base::complete_default")]
+    pub lldp: bool,
+    /// `cdp_device_id`, `cdp_port_id`, `cdp_platform`, `cdp_address`
+    #[serde(default = "crate::server::interfaces::r#impl::base::complete_default")]
+    pub cdp: bool,
+    /// `fdb_macs`
+    #[serde(default = "crate::server::interfaces::r#impl::base::complete_default")]
+    pub fdb: bool,
+    /// `native_vlan_id`, `vlan_ids`
+    #[serde(default = "crate::server::interfaces::r#impl::base::complete_default")]
+    pub vlan_membership: bool,
+}
+
+pub(crate) fn complete_default() -> bool {
+    true
+}
+
+impl Default for InterfaceDataComplete {
+    fn default() -> Self {
+        Self {
+            lldp: true,
+            cdp: true,
+            fdb: true,
+            vlan_membership: true,
+        }
+    }
+}
+
+impl InterfaceDataComplete {
+    /// Whether every group was read in full.
+    pub fn all(&self) -> bool {
+        self.lldp && self.cdp && self.fdb && self.vlan_membership
+    }
+}
+
 /// Resolved LLDP/CDP neighbor connection.
 ///
 /// Represents the remote endpoint this port connects to, discovered via LLDP or CDP.
@@ -343,6 +392,41 @@ impl Interface {
     /// Returns true if this port has any neighbor discovery data (LLDP or CDP)
     pub fn has_neighbor_discovery_data(&self) -> bool {
         self.has_lldp_data() || self.has_cdp_data()
+    }
+
+    /// Keep the stored values for any group of data this scan did not finish reading.
+    ///
+    /// Each group of neighbour/VLAN fields comes from its own SNMP walk, and a walk cut short by a
+    /// timeout returns exactly what a device with nothing to report returns: nothing. Overwriting
+    /// on that is destructive rather than merely stale — losing `lldp_chassis_id` also drops the
+    /// row out of L2 resolution (the pass requires a chassis id or CDP device id), so the link
+    /// freezes at whatever it last resolved to and no rescan can repair it.
+    ///
+    /// A group the daemon *did* read in full is authoritative in both directions: absence means
+    /// the neighbour is genuinely gone and must be cleared, or a decommissioned link lingers for
+    /// ever.
+    pub fn preserve_uncollected_data(&mut self, existing: &Self, collected: InterfaceDataComplete) {
+        if !collected.lldp {
+            self.base.lldp_chassis_id = existing.base.lldp_chassis_id.clone();
+            self.base.lldp_port_id = existing.base.lldp_port_id.clone();
+            self.base.lldp_sys_name = existing.base.lldp_sys_name.clone();
+            self.base.lldp_port_desc = existing.base.lldp_port_desc.clone();
+            self.base.lldp_mgmt_addr = existing.base.lldp_mgmt_addr;
+            self.base.lldp_sys_desc = existing.base.lldp_sys_desc.clone();
+        }
+        if !collected.cdp {
+            self.base.cdp_device_id = existing.base.cdp_device_id.clone();
+            self.base.cdp_port_id = existing.base.cdp_port_id.clone();
+            self.base.cdp_platform = existing.base.cdp_platform.clone();
+            self.base.cdp_address = existing.base.cdp_address;
+        }
+        if !collected.fdb {
+            self.base.fdb_macs = existing.base.fdb_macs.clone();
+        }
+        if !collected.vlan_membership {
+            self.base.native_vlan_id = existing.base.native_vlan_id;
+            self.base.vlan_ids = existing.base.vlan_ids.clone();
+        }
     }
 
     /// Drop identity fields the device reported blank, so absence is recorded as absence.

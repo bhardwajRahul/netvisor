@@ -637,3 +637,109 @@ mod tests {
         assert_eq!(incoming.created_at, existing.created_at);
     }
 }
+
+/// A scan that could not finish reading a group of data must not erase what is already stored.
+#[cfg(test)]
+mod preserve_uncollected_tests {
+    use super::*;
+    use crate::server::interfaces::r#impl::base::{
+        Interface, InterfaceBase, InterfaceDataComplete,
+    };
+    use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+
+    fn with_lldp(chassis: Option<&str>) -> Interface {
+        let mut base = InterfaceBase::default();
+        base.lldp_chassis_id = chassis.map(|c| LldpChassisId::MacAddress(c.to_string()));
+        base.lldp_port_id = chassis.map(|_| LldpPortId::LocallyAssigned("41".to_string()));
+        base.lldp_sys_name = chassis.map(|_| "switch-core-01".to_string());
+        base.fdb_macs = chassis.map(|_| vec!["00:1a:2b:00:10:00".to_string()]);
+        Interface::new(base)
+    }
+
+    /// The reported failure: a truncated chassis column produced an incoming row with no chassis
+    /// id, which overwrote a good one. That row then no longer matches the L2 resolution filter
+    /// (it requires a chassis id or CDP device id), so the link froze at whatever it had last
+    /// resolved to and no rescan could repair it.
+    #[test]
+    fn an_incomplete_lldp_walk_keeps_the_stored_neighbour() {
+        let existing = with_lldp(Some("00:1a:2b:00:12:00"));
+        let mut incoming = with_lldp(None);
+
+        incoming.preserve_uncollected_data(
+            &existing,
+            InterfaceDataComplete {
+                lldp: false,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            incoming.base.lldp_chassis_id, existing.base.lldp_chassis_id,
+            "a chassis id must survive a walk that never read it"
+        );
+        assert_eq!(incoming.base.lldp_port_id, existing.base.lldp_port_id);
+        assert_eq!(incoming.base.lldp_sys_name, existing.base.lldp_sys_name);
+    }
+
+    /// The other direction, which is why this cannot simply preserve whenever the incoming value
+    /// is absent: a device that genuinely lost its neighbour reports nothing, and that has to
+    /// clear — otherwise a decommissioned link is drawn for ever.
+    #[test]
+    fn a_complete_lldp_walk_clears_a_neighbour_that_is_gone() {
+        let existing = with_lldp(Some("00:1a:2b:00:12:00"));
+        let mut incoming = with_lldp(None);
+
+        incoming.preserve_uncollected_data(&existing, InterfaceDataComplete::default());
+
+        assert!(
+            incoming.base.lldp_chassis_id.is_none(),
+            "a complete walk reporting no neighbour is authoritative"
+        );
+        assert!(incoming.base.lldp_sys_name.is_none());
+    }
+
+    /// FDB has the same exposure and more field evidence: in the #649 export, 18 neighbours are
+    /// resolved from `fdb_macs` alone, and losing it drops them out of FDB re-resolution.
+    #[test]
+    fn an_incomplete_fdb_walk_keeps_the_stored_macs() {
+        let existing = with_lldp(Some("00:1a:2b:00:12:00"));
+        let mut incoming = with_lldp(None);
+
+        incoming.preserve_uncollected_data(
+            &existing,
+            InterfaceDataComplete {
+                fdb: false,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(incoming.base.fdb_macs, existing.base.fdb_macs);
+        assert!(
+            incoming.base.lldp_chassis_id.is_none(),
+            "only the group that was cut short is preserved; LLDP completed and must clear"
+        );
+    }
+
+    /// The guard must not freeze a row: a complete walk carrying new data still replaces the old.
+    #[test]
+    fn a_complete_walk_still_applies_changed_neighbour_data() {
+        let existing = with_lldp(Some("00:1a:2b:00:12:00"));
+        let mut incoming = with_lldp(Some("00:1a:2b:00:99:99"));
+
+        incoming.preserve_uncollected_data(&existing, InterfaceDataComplete::default());
+
+        assert_eq!(
+            incoming.base.lldp_chassis_id,
+            Some(LldpChassisId::MacAddress("00:1a:2b:00:99:99".to_string())),
+            "a device that moved must not be pinned to its old neighbour"
+        );
+    }
+
+    /// An older daemon omits the flags entirely, so serde fills them in as all-complete and the
+    /// upsert overwrites exactly as it did before this existed.
+    #[test]
+    fn an_old_daemon_payload_defaults_to_authoritative() {
+        let parsed: InterfaceDataComplete = serde_json::from_str("{}").unwrap();
+        assert!(parsed.all());
+    }
+}

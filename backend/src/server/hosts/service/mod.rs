@@ -12,7 +12,7 @@ use crate::server::{
         base::{Host, HostBase},
     },
     interfaces::{
-        r#impl::base::{Interface, Neighbor},
+        r#impl::base::{Interface, InterfaceDataComplete, Neighbor},
         service::InterfaceService,
     },
     ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},

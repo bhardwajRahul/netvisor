@@ -280,6 +280,31 @@ pub async fn query_system_info(
     Ok(info)
 }
 
+/// Records from a multi-column SNMP walk, plus whether the walk actually saw everything.
+///
+/// Absent data is ambiguous on its own: "this device has no neighbour on that port" and "we failed
+/// to read it" are both an empty record, and they call for opposite responses server-side — clear
+/// the stored value, or keep it. Only the daemon can tell them apart, so the answer travels with
+/// the data.
+///
+/// `Default` is deliberately `complete: false`. These queries run under `query_or_default`, so a
+/// whole-query timeout yields the default — and an empty result from a query that never finished
+/// must never be mistaken for a device authoritatively reporting nothing.
+#[derive(Debug)]
+pub struct SnmpCollection<T> {
+    pub records: T,
+    pub complete: bool,
+}
+
+impl<T: Default> Default for SnmpCollection<T> {
+    fn default() -> Self {
+        Self {
+            records: T::default(),
+            complete: false,
+        }
+    }
+}
+
 /// The outcome of walking the ifTable/ifXTable columns.
 ///
 /// Two independent notions of "complete", because they answer different questions and only one of
@@ -303,6 +328,23 @@ pub struct IfTableWalk {
 
 // `Default` is the hard-failure outcome (`query_or_default`): no entries, and neither flag set,
 // so a walk that never ran can never be mistaken for an authoritative one.
+
+/// Walk one column, recording in `complete` whether it reached the end.
+///
+/// Every multi-column query needs this and none of them had it: `walk_subtree` never returns
+/// `Err`, so the `?` these call sites used was dead code and a truncated column was invisible.
+async fn walk_column<T, F>(session: &mut T, base_oid_str: &str, complete: &mut bool, on_entry: F)
+where
+    T: SnmpWalkTransport,
+    F: FnMut(&[u64], &Value),
+{
+    if !walk_subtree(session, base_oid_str, on_entry)
+        .await
+        .unwrap_or(false)
+    {
+        *complete = false;
+    }
+}
 
 /// Walk the ifTable/ifXTable columns.
 ///
@@ -468,11 +510,12 @@ pub async fn walk_if_table<T: SnmpWalkTransport>(
 }
 
 /// Query LLDP remote table for neighbor information
-pub async fn query_lldp_neighbors(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
-) -> Result<Vec<LldpNeighbor>> {
+) -> Result<SnmpCollection<Vec<LldpNeighbor>>> {
     let mut neighbors: HashMap<(i32, i32), LldpNeighbor> = HashMap::new();
+    let mut complete = true;
 
     // LLDP remote table uses a complex index: lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex
     // We'll walk the columns and extract the local port from the OID
@@ -502,7 +545,7 @@ pub async fn query_lldp_neighbors(
 
     for (base_oid_str, column_name) in columns {
         // lldpRemEntry index: timeMark.localPortNum.remIndex
-        walk_subtree(session, base_oid_str, |suffix, value| {
+        walk_column(session, base_oid_str, &mut complete, |suffix, value| {
             if suffix.len() < 3 {
                 return;
             }
@@ -545,7 +588,7 @@ pub async fn query_lldp_neighbors(
                 _ => {}
             }
         })
-        .await?;
+        .await;
     }
 
     // Resolve remote management addresses from the separate lldpRemManAddrTable.
@@ -555,34 +598,66 @@ pub async fn query_lldp_neighbors(
     let man_base_oid_str = oids::lldp::remote::entry::LLDP_REM_MAN_ADDR_IF_SUBTYPE;
     // Management address is optional enrichment; ignore walk errors (keeps the
     // neighbours already collected above).
-    let _ = walk_subtree(session, man_base_oid_str, |suffix, _value| {
-        // suffix = timeMark, localPortNum, remIndex, addrSubtype, addrLen, addr...
-        if suffix.len() < 5 {
-            return;
-        }
-        let local_port = suffix[1] as i32;
-        let rem_index = suffix[2] as i32;
-        let addr_subtype = suffix[3];
-        let addr_len = suffix[4] as usize;
-        if suffix.len() < 5 + addr_len || addr_len == 0 {
-            return;
-        }
-        // parse_lldp_mgmt_addr expects [ianaFamily, addr bytes...]
-        let mut buf = Vec::with_capacity(1 + addr_len);
-        buf.push(addr_subtype as u8);
-        buf.extend(suffix[5..5 + addr_len].iter().map(|&b| b as u8));
-        if let Some(addr) = parse_lldp_mgmt_addr(&buf)
-            && let Some(neighbor) = neighbors.get_mut(&(local_port, rem_index))
-        {
-            neighbor.remote_mgmt_addr = Some(addr);
-        }
-    })
+    let mut mgmt_complete = true;
+    walk_column(
+        session,
+        man_base_oid_str,
+        &mut mgmt_complete,
+        |suffix, _value| {
+            // suffix = timeMark, localPortNum, remIndex, addrSubtype, addrLen, addr...
+            if suffix.len() < 5 {
+                return;
+            }
+            let local_port = suffix[1] as i32;
+            let rem_index = suffix[2] as i32;
+            let addr_subtype = suffix[3];
+            let addr_len = suffix[4] as usize;
+            if suffix.len() < 5 + addr_len || addr_len == 0 {
+                return;
+            }
+            // parse_lldp_mgmt_addr expects [ianaFamily, addr bytes...]
+            let mut buf = Vec::with_capacity(1 + addr_len);
+            buf.push(addr_subtype as u8);
+            buf.extend(suffix[5..5 + addr_len].iter().map(|&b| b as u8));
+            if let Some(addr) = parse_lldp_mgmt_addr(&buf)
+                && let Some(neighbor) = neighbors.get_mut(&(local_port, rem_index))
+            {
+                neighbor.remote_mgmt_addr = Some(addr);
+            }
+        },
+    )
     .await;
+    // A missing management address never gates resolution (topology.rs matches on chassis/port
+    // only), so a truncated walk here is not a reason to withhold the neighbours themselves.
+    if !mgmt_complete {
+        debug!(ip = %ip, "LLDP management-address walk was cut short");
+    }
 
-    let result: Vec<LldpNeighbor> = neighbors.into_values().collect();
+    // Per IEEE 802.1AB the chassis ID is a mandatory TLV, so a neighbour record without one is
+    // malformed by construction — in practice, the tail of a cut-short chassis column while the
+    // port-id and sys-name columns completed. Emitting it would overwrite a good chassis ID with
+    // NULL, and a row with no chassis ID is excluded from L2 resolution entirely, so it could
+    // never recover. Drop it and report the walk as partial instead.
+    let before = neighbors.len();
+    let result: Vec<LldpNeighbor> = neighbors
+        .into_values()
+        .filter(|n| n.remote_chassis_id_subtype.is_some() && n.remote_chassis_id_bytes.is_some())
+        .collect();
+    if result.len() != before {
+        complete = false;
+        warn!(
+            ip = %ip,
+            dropped = before - result.len(),
+            "LLDP neighbours missing the mandatory chassis ID; discarding them and marking the \
+             walk partial"
+        );
+    }
     debug!("LLDP query from {} returned {} neighbors", ip, result.len());
 
-    Ok(result)
+    Ok(SnmpCollection {
+        records: result,
+        complete,
+    })
 }
 
 /// Walk lldpLocPortTable, returning `lldpLocPortNum -> LldpLocalPort`.
@@ -696,11 +771,12 @@ pub async fn query_ip_addr_table(
 }
 
 /// Query CDP cache table for neighbor information (Cisco devices)
-pub async fn query_cdp_neighbors(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
-) -> Result<Vec<CdpNeighbor>> {
+) -> Result<SnmpCollection<Vec<CdpNeighbor>>> {
     let mut neighbors: HashMap<(i32, i32), CdpNeighbor> = HashMap::new();
+    let mut complete = true;
 
     let columns = [
         (oids::cdp::entry::CDP_CACHE_DEVICE_ID, "deviceId"),
@@ -711,7 +787,7 @@ pub async fn query_cdp_neighbors(
 
     for (base_oid_str, column_name) in columns {
         // CDP index: cdpCacheIfIndex.cdpCacheDeviceIndex
-        walk_subtree(session, base_oid_str, |suffix, value| {
+        walk_column(session, base_oid_str, &mut complete, |suffix, value| {
             if suffix.len() < 2 {
                 return;
             }
@@ -742,13 +818,30 @@ pub async fn query_cdp_neighbors(
                 _ => {}
             }
         })
-        .await?;
+        .await;
     }
 
-    let result: Vec<CdpNeighbor> = neighbors.into_values().collect();
+    // cdpCacheDeviceId is what L2 resolution matches on, so a record without one is the CDP
+    // analogue of a chassis-less LLDP neighbour: unusable, and destructive if it overwrites.
+    let before = neighbors.len();
+    let result: Vec<CdpNeighbor> = neighbors
+        .into_values()
+        .filter(|n| n.remote_device_id.is_some())
+        .collect();
+    if result.len() != before {
+        complete = false;
+        warn!(
+            ip = %ip,
+            dropped = before - result.len(),
+            "CDP neighbours missing a device id; discarding them and marking the walk partial"
+        );
+    }
     debug!("CDP query from {} returned {} neighbors", ip, result.len());
 
-    Ok(result)
+    Ok(SnmpCollection {
+        records: result,
+        complete,
+    })
 }
 
 /// Query ARP table (ipNetToMediaTable) for IP-to-MAC mappings.
@@ -915,14 +1008,18 @@ pub async fn query_entity_physical(
 
 /// Walk dot1dBasePortIfIndex to build bridge_port → ifIndex mapping.
 /// Shared by query_bridge_fdb() and query_port_vlan_membership().
-async fn walk_bridge_port_mapping(
-    session: &mut Box<snmp2::AsyncSession>,
-) -> Result<HashMap<i32, i32>> {
+/// This is the highest-leverage truncation in the file: both FDB and VLAN-membership collection
+/// key everything off it, so a cut-short walk here silently empties both for the whole switch.
+async fn walk_bridge_port_mapping<T: SnmpWalkTransport>(
+    session: &mut T,
+) -> Result<SnmpCollection<HashMap<i32, i32>>> {
     let mut port_to_if_index: HashMap<i32, i32> = HashMap::new();
+    let mut complete = true;
     // OID suffix is the bridge port number; value is the ifIndex.
-    walk_subtree(
+    walk_column(
         session,
         oids::bridge::DOT1D_BASE_PORT_IF_INDEX,
+        &mut complete,
         |suffix, value| {
             if let Some(&port_u64) = suffix.last()
                 && let Some(if_index) = value_to_i32(value)
@@ -931,9 +1028,12 @@ async fn walk_bridge_port_mapping(
             }
         },
     )
-    .await?;
+    .await;
 
-    Ok(port_to_if_index)
+    Ok(SnmpCollection {
+        records: port_to_if_index,
+        complete,
+    })
 }
 
 /// In-progress FDB row assembled column-by-column across an SNMP walk, keyed by
@@ -952,13 +1052,15 @@ struct FdbBuilder {
 /// VLAN-aware switches (Aruba/HP ProCurve, etc.) populate only the latter and
 /// leave the legacy table empty, so relying on dot1d alone silently produced no
 /// L2 adjacency for them (GH #649).
-pub async fn query_bridge_fdb(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
-) -> Result<Vec<BridgeFdbEntry>> {
+) -> Result<SnmpCollection<Vec<BridgeFdbEntry>>> {
     // Step 1: Walk dot1dBasePortIfIndex to build bridge_port → ifIndex map.
     // Both FDB tables reference this same dot1dBasePort space.
-    let port_to_if_index = walk_bridge_port_mapping(session).await?;
+    let mapping = walk_bridge_port_mapping(session).await?;
+    let mut complete = mapping.complete;
+    let port_to_if_index = mapping.records;
 
     // Step 2: Walk legacy dot1dTpFdbTable columns.
     let mut fdb_entries: HashMap<String, FdbBuilder> = HashMap::new();
@@ -971,7 +1073,7 @@ pub async fn query_bridge_fdb(
 
     for (base_oid_str, column_name) in columns {
         // OID suffix is a 6-octet MAC encoded as 6 sub-ids.
-        walk_subtree(session, base_oid_str, |suffix, value| {
+        walk_column(session, base_oid_str, &mut complete, |suffix, value| {
             if suffix.len() != 6 {
                 return;
             }
@@ -988,7 +1090,7 @@ pub async fn query_bridge_fdb(
                 _ => {}
             }
         })
-        .await?;
+        .await;
     }
 
     // Step 3: Merge in VLAN-aware Q-BRIDGE dot1qTpFdbTable entries. Legacy rows
@@ -996,6 +1098,10 @@ pub async fn query_bridge_fdb(
     // on switches that populate only the Q-BRIDGE table).
     let legacy_count = fdb_entries.len();
     let qbridge = walk_qbridge_fdb(session).await.unwrap_or_default();
+    if !qbridge.complete {
+        complete = false;
+    }
+    let qbridge = qbridge.records;
     let qbridge_count = qbridge.len();
     for (key, builder) in qbridge {
         fdb_entries.entry(key).or_insert(builder);
@@ -1029,10 +1135,14 @@ pub async fn query_bridge_fdb(
         legacy_dot1d = legacy_count,
         qbridge_dot1q = qbridge_count,
         port_mappings = port_to_if_index.len(),
+        complete = complete,
         "Bridge FDB walk finished"
     );
 
-    Ok(result)
+    Ok(SnmpCollection {
+        records: result,
+        complete,
+    })
 }
 
 /// Walk the VLAN-aware Q-BRIDGE FDB (`dot1qTpFdbTable`, RFC 4363) for MAC→port
@@ -1043,10 +1153,11 @@ pub async fn query_bridge_fdb(
 /// suffix. Ports are `dot1dBasePort` numbers, resolved by the caller against the
 /// same `dot1dBasePortIfIndex` map. VLAN-aware switches (Aruba/HP ProCurve, etc.)
 /// often populate only this table (GH #649).
-async fn walk_qbridge_fdb(
-    session: &mut Box<snmp2::AsyncSession>,
-) -> Result<HashMap<String, FdbBuilder>> {
+async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
+    session: &mut T,
+) -> Result<SnmpCollection<HashMap<String, FdbBuilder>>> {
     let mut entries: HashMap<String, FdbBuilder> = HashMap::new();
+    let mut complete = true;
 
     let columns = [
         (oids::bridge::q_fdb_entry::DOT1Q_TP_FDB_PORT, "port"),
@@ -1055,7 +1166,7 @@ async fn walk_qbridge_fdb(
 
     for (base_oid_str, column_name) in columns {
         // Q-BRIDGE index = dot1qFdbId (1 sub-id) + MAC (6 octets).
-        walk_subtree(session, base_oid_str, |suffix, value| {
+        walk_column(session, base_oid_str, &mut complete, |suffix, value| {
             let Some(mac) = qbridge_fdb_index_to_mac(suffix) else {
                 return;
             };
@@ -1077,10 +1188,13 @@ async fn walk_qbridge_fdb(
                 _ => {}
             }
         })
-        .await?;
+        .await;
     }
 
-    Ok(entries)
+    Ok(SnmpCollection {
+        records: entries,
+        complete,
+    })
 }
 
 /// Query local LLDP chassis ID (scalar GETs, not walks).
@@ -1207,27 +1321,33 @@ pub async fn query_vlan_table(
 /// Query per-port VLAN membership from Q-BRIDGE-MIB.
 /// Uses dot1qPvid for native VLANs and dot1qVlanCurrentEgressPorts/UntaggedPorts
 /// for tagged VLAN membership. Resolves bridge ports to ifIndex.
-pub async fn query_port_vlan_membership(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
-) -> Result<Vec<PortVlanMembership>> {
+) -> Result<SnmpCollection<Vec<PortVlanMembership>>> {
     // Step 1: Get bridge port → ifIndex mapping
-    let port_to_if_index = walk_bridge_port_mapping(session).await?;
+    let mapping = walk_bridge_port_mapping(session).await?;
+    let mut complete = mapping.complete;
+    let port_to_if_index = mapping.records;
 
     if port_to_if_index.is_empty() {
         debug!(
             "No bridge port mappings from {} — skipping VLAN membership",
             ip
         );
-        return Ok(Vec::new());
+        return Ok(SnmpCollection {
+            records: Vec::new(),
+            complete,
+        });
     }
 
     // Step 2: Walk dot1qPvid for native VLAN per bridge port. OID suffix is the
     // bridge port number; value is the native VLAN ID.
     let mut native_vlans: HashMap<i32, u16> = HashMap::new();
-    walk_subtree(
+    walk_column(
         session,
         oids::vlan::q_bridge::DOT1Q_PVID,
+        &mut complete,
         |suffix, value| {
             if let Some(&port_u64) = suffix.last()
                 && let Some(vlan_id) = value_to_u16(value)
@@ -1236,14 +1356,15 @@ pub async fn query_port_vlan_membership(
             }
         },
     )
-    .await?;
+    .await;
 
     // Step 3: Walk dot1qVlanCurrentEgressPorts — PortList bitmap per VLAN, indexed
     // by timeFilter.vlanId (last sub-id is the VLAN ID).
     let mut egress_by_port: HashMap<i32, Vec<u16>> = HashMap::new();
-    walk_subtree(
+    walk_column(
         session,
         oids::vlan::q_bridge::DOT1Q_VLAN_CURRENT_EGRESS_PORTS,
+        &mut complete,
         |suffix, value| {
             if let Some(&vlan_u64) = suffix.last()
                 && let Value::OctetString(bytes) = value
@@ -1255,13 +1376,14 @@ pub async fn query_port_vlan_membership(
             }
         },
     )
-    .await?;
+    .await;
 
     // Step 4: Walk dot1qVlanCurrentUntaggedPorts — same bitmap format.
     let mut untagged_by_port: HashMap<i32, Vec<u16>> = HashMap::new();
-    walk_subtree(
+    walk_column(
         session,
         oids::vlan::q_bridge::DOT1Q_VLAN_CURRENT_UNTAGGED_PORTS,
+        &mut complete,
         |suffix, value| {
             if let Some(&vlan_u64) = suffix.last()
                 && let Value::OctetString(bytes) = value
@@ -1273,7 +1395,7 @@ pub async fn query_port_vlan_membership(
             }
         },
     )
-    .await?;
+    .await;
 
     // Step 5: Assemble per-port membership, resolving bridge port → ifIndex
     let mut result: Vec<PortVlanMembership> = Vec::new();
@@ -1315,7 +1437,10 @@ pub async fn query_port_vlan_membership(
         port_to_if_index.len()
     );
 
-    Ok(result)
+    Ok(SnmpCollection {
+        records: result,
+        complete,
+    })
 }
 
 #[cfg(test)]
@@ -1695,6 +1820,71 @@ mod if_table_tests {
             "without the index column we cannot know which interfaces exist, so pruning must \
              stay blocked"
         );
+    }
+
+    /// A neighbour record with no chassis ID is malformed — IEEE 802.1AB makes the chassis ID a
+    /// mandatory TLV — and in practice means the chassis column was cut short while the port-id
+    /// and sys-name columns completed. Emitting it overwrote a good chassis ID with NULL, and a
+    /// row without one is excluded from L2 resolution entirely, so the link could never recover.
+    #[tokio::test]
+    async fn a_neighbour_without_a_chassis_id_is_dropped_and_reported_partial() {
+        // lldpRemTable index is timeMark.localPortNum.remIndex; port id and sys name are present
+        // for remIndex 1, chassis id is not.
+        let mut agent = FakeAgent::new(&[
+            ("1.0.8802.1.1.2.1.4.1.1.7.0.1.1", Canned::Str("41")),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.9.0.1.1",
+                Canned::Str("switch-core-01"),
+            ),
+        ]);
+
+        let walk = query_lldp_neighbors(&mut agent, ip()).await.unwrap();
+
+        assert!(
+            walk.records.is_empty(),
+            "a chassis-less neighbour must not reach the server"
+        );
+        assert!(
+            !walk.complete,
+            "dropping a malformed record means this walk is not authoritative, so the server \
+             must keep what it already has"
+        );
+    }
+
+    /// A complete neighbour record still comes through intact.
+    #[tokio::test]
+    async fn a_complete_neighbour_record_is_collected() {
+        let mut agent = FakeAgent::new(&[
+            ("1.0.8802.1.1.2.1.4.1.1.4.0.1.1", Canned::Int(4)),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.0.1.1",
+                Canned::Str("00:1a:2b:00:10:00"),
+            ),
+            ("1.0.8802.1.1.2.1.4.1.1.6.0.1.1", Canned::Int(7)),
+            ("1.0.8802.1.1.2.1.4.1.1.7.0.1.1", Canned::Str("41")),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.9.0.1.1",
+                Canned::Str("switch-core-01"),
+            ),
+        ]);
+
+        let walk = query_lldp_neighbors(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(walk.records.len(), 1);
+        assert!(walk.complete);
+        let n = &walk.records[0];
+        assert_eq!(n.local_port_index, 1);
+        assert_eq!(n.remote_sys_name.as_deref(), Some("switch-core-01"));
+        assert!(n.remote_chassis_id_bytes.is_some());
+    }
+
+    /// A whole-query timeout yields the `Default`, and that must not read as a device
+    /// authoritatively reporting no neighbours — otherwise one slow switch wipes every link on it.
+    #[test]
+    fn a_defaulted_collection_is_never_authoritative() {
+        let timed_out: SnmpCollection<Vec<LldpNeighbor>> = Default::default();
+        assert!(timed_out.records.is_empty());
+        assert!(!timed_out.complete);
     }
 
     /// A response that leaves the subtree *without advancing* is not this walk's natural end — it

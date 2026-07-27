@@ -132,8 +132,10 @@ impl HostService {
             ConflictBehavior::Error,
             authentication,
             None, // limit checked in handler
-            // A manual API create provides the full, authoritative interface list.
+            // A manual API create provides the full, authoritative interface list...
             true,
+            // ...and carries no SNMP-derived neighbour data, so there is nothing to preserve.
+            InterfaceDataComplete::default(),
         )
         .await
     }
@@ -282,6 +284,7 @@ impl HostService {
         // walk), the stale-interface prune is skipped so a transient partial scan cannot delete
         // interfaces and their resolved L2 neighbors (GH #649).
         interfaces_complete: bool,
+        interface_data_complete: InterfaceDataComplete,
     ) -> Result<HostResponse> {
         // For advancing `last_seen_at` on matched-existing child rows (see the upsert
         // branches below); mirrors how upsert_host refreshes the host's freshness signal.
@@ -1130,7 +1133,12 @@ impl HostService {
 
             match self
                 .interface_service
-                .create_or_update_from_discovery(entry, &claimed, authentication.clone())
+                .create_or_update_from_discovery(
+                    entry,
+                    &claimed,
+                    interface_data_complete,
+                    authentication.clone(),
+                )
                 .await
             {
                 Ok(created) => {

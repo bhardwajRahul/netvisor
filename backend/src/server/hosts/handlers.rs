@@ -497,6 +497,7 @@ async fn create_host(
                 interfaces,
                 subnets,
                 interfaces_complete,
+                interface_data_complete,
             } = discovery_request;
 
             // Capture one scan_time for the whole submission so all entities
@@ -512,6 +513,7 @@ async fn create_host(
                     interfaces,
                     subnets,
                     interfaces_complete,
+                    interface_data_complete,
                     Some(&scan_ctx),
                     entity,
                     None,

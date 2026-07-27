@@ -3127,19 +3127,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-23T16:42:02.495254Z",
+             *       "created_at": "2026-07-27T21:21:58.499643Z",
              *       "first_discovery_id": null,
-             *       "id": "9b3d4d1d-b41c-42c0-b811-a1b83111e9da",
+             *       "id": "0237ac7a-61e4-4bb1-9881-aaf13f317855",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-23T16:42:02.495254Z",
+             *       "last_seen_at": "2026-07-27T21:21:58.499643Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-23T16:42:02.495254Z",
-             *       "valid_from": "2026-07-23T16:42:02.495254Z",
+             *       "updated_at": "2026-07-27T21:21:58.499643Z",
+             *       "valid_from": "2026-07-27T21:21:58.499643Z",
              *       "valid_to": null
              *     }
              */
@@ -3532,19 +3532,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-23T16:42:02.472802Z",
+             *               "created_at": "2026-07-27T21:21:58.484397Z",
              *               "first_discovery_id": null,
-             *               "id": "5cb0e447-879f-4506-ad95-cf72fb7c5804",
+             *               "id": "a4fe36fa-0f2f-4802-984e-dd43fb6b2176",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-23T16:42:02.472802Z",
+             *               "last_seen_at": "2026-07-27T21:21:58.484397Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-23T16:42:02.472802Z",
-             *               "valid_from": "2026-07-23T16:42:02.472802Z",
+             *               "updated_at": "2026-07-27T21:21:58.484397Z",
+             *               "valid_from": "2026-07-27T21:21:58.484397Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3558,7 +3558,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Zigbee2MQTT",
+             *           "service_definition": "Prometheus",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3975,19 +3975,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-23T16:42:02.487945Z",
+             *           "created_at": "2026-07-27T21:21:58.494382Z",
              *           "first_discovery_id": null,
-             *           "id": "bb435bf7-e9c4-49ca-817e-5f14e7371d99",
+             *           "id": "198e7799-2bbe-4ba8-96b2-cf056e4bde02",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-23T16:42:02.487945Z",
+             *           "last_seen_at": "2026-07-27T21:21:58.494382Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-23T16:42:02.487945Z",
-             *           "valid_from": "2026-07-23T16:42:02.487945Z",
+             *           "updated_at": "2026-07-27T21:21:58.494382Z",
+             *           "valid_from": "2026-07-27T21:21:58.494382Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4001,7 +4001,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Zigbee2MQTT",
+             *       "service_definition": "Prometheus",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4505,19 +4505,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-23T16:42:02.473307Z",
+         *       "created_at": "2026-07-27T21:21:58.484708Z",
          *       "first_discovery_id": null,
-         *       "id": "865e937c-d163-4317-a28c-8376d7de8ae1",
+         *       "id": "d6361ac4-5d8b-42b9-b87b-47712e6c10d6",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-23T16:42:02.473307Z",
+         *       "last_seen_at": "2026-07-27T21:21:58.484708Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-23T16:42:02.473307Z",
-         *       "valid_from": "2026-07-23T16:42:02.473307Z",
+         *       "updated_at": "2026-07-27T21:21:58.484708Z",
+         *       "valid_from": "2026-07-27T21:21:58.484708Z",
          *       "valid_to": null
          *     }
          */
@@ -4732,7 +4732,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Zigbee2MQTT",
+         *           "service_definition": "Prometheus",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5289,6 +5289,14 @@ export interface components {
          */
         DiscoveryHostRequest: {
             host: components["schemas"]["Host"];
+            /**
+             * @description Which groups of per-interface data (LLDP, CDP, FDB, VLAN membership) this scan read in
+             *     full. A group the daemon could not finish reading must not overwrite what is already
+             *     stored: a cut-short walk returns the same empty result as a device with nothing to report,
+             *     and for the neighbour fields that also drops the row out of L2 resolution for good.
+             *     Daemons predating this field omit it; it defaults to all-complete so they behave as before.
+             */
+            interface_data_complete?: components["schemas"]["InterfaceDataComplete"];
             /** @description SNMP interface entries (ifTable data) - optional, populated when SNMP is enabled. */
             interfaces?: components["schemas"]["Interface"][];
             /**
@@ -5856,19 +5864,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-23T16:42:02.472207Z",
+         *               "created_at": "2026-07-27T21:21:58.484028Z",
          *               "first_discovery_id": null,
-         *               "id": "39cdb8b2-3d9e-4711-871a-a4fb3e21e679",
+         *               "id": "30b8bd02-3f09-44e2-b479-04d660b493e2",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-23T16:42:02.472207Z",
+         *               "last_seen_at": "2026-07-27T21:21:58.484028Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-23T16:42:02.472207Z",
-         *               "valid_from": "2026-07-23T16:42:02.472207Z",
+         *               "updated_at": "2026-07-27T21:21:58.484028Z",
+         *               "valid_from": "2026-07-27T21:21:58.484028Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5882,7 +5890,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Zigbee2MQTT",
+         *           "service_definition": "Prometheus",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6245,6 +6253,31 @@ export interface components {
             speed_bps?: number | null;
             /** @description Tagged VLAN entity IDs on this port (resolved from Q-BRIDGE dot1qVlanCurrentEgressPorts) */
             vlan_ids?: string[] | null;
+        };
+        /**
+         * @description Which groups of per-interface data the daemon read in full during a scan.
+         *
+         *     Each group comes from its own SNMP walk, and a walk cut short by a timeout yields exactly the
+         *     same empty result as a device that genuinely has nothing to report. Without knowing which
+         *     happened, the server overwrote good data with NULL on every truncation — and for the neighbour
+         *     fields that also dropped the row out of L2 resolution permanently, since the resolution filter
+         *     requires a chassis id or CDP device id to be present.
+         *
+         *     Every field defaults to `true`, so a daemon predating this behaves exactly as before: it
+         *     reports everything as authoritative and the server overwrites.
+         */
+        InterfaceDataComplete: {
+            /** @description `cdp_device_id`, `cdp_port_id`, `cdp_platform`, `cdp_address` */
+            cdp?: boolean;
+            /** @description `fdb_macs` */
+            fdb?: boolean;
+            /**
+             * @description `lldp_chassis_id`, `lldp_port_id`, `lldp_sys_name`, `lldp_port_desc`, `lldp_mgmt_addr`,
+             *     `lldp_sys_desc`
+             */
+            lldp?: boolean;
+            /** @description `native_vlan_id`, `vlan_ids` */
+            vlan_membership?: boolean;
         };
         /**
          * @description Input for creating an SNMP interface entry (ifTable data).
@@ -7507,19 +7540,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-23T16:42:02.473192Z",
+         *           "created_at": "2026-07-27T21:21:58.484640Z",
          *           "first_discovery_id": null,
-         *           "id": "a8529d83-7ca2-4ba2-8f13-59f64235153a",
+         *           "id": "222ca06b-ea4f-472d-85c7-c363d2ed631d",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-23T16:42:02.473192Z",
+         *           "last_seen_at": "2026-07-27T21:21:58.484640Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-23T16:42:02.473192Z",
-         *           "valid_from": "2026-07-23T16:42:02.473192Z",
+         *           "updated_at": "2026-07-27T21:21:58.484640Z",
+         *           "valid_from": "2026-07-27T21:21:58.484640Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7533,7 +7566,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Zigbee2MQTT",
+         *       "service_definition": "Prometheus",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7956,7 +7989,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "a8f37e45-b92c-44a0-a7f7-eaed64a47cf7",
+             *           "id": "aa1f3266-02ef-4337-a3cd-77cf71428405",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7966,23 +7999,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "f966c31b-9cdf-4bfa-b3db-afb874cec370",
+             *           "id": "0b1b76ba-1e67-469c-a31b-a76191269928",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "6c4de0ee-a067-43bd-ac23-d4160686e69c",
+             *           "id": "c97c6410-f2fc-4a43-bb6c-b05cb7a5d0d4",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "46fc0834-f904-4dbd-8383-dfdad740b316",
+             *           "id": "26caf030-f130-4d01-b82c-08925cc0f262",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "f966c31b-9cdf-4bfa-b3db-afb874cec370",
+             *           "id": "0b1b76ba-1e67-469c-a31b-a76191269928",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7994,19 +8027,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "41d85be3-c2f5-4e61-9179-59c20279d60c",
+             *         "id": "48d2b938-45f6-46fa-963a-7f1d4a4e7e25",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "d680ddeb-942d-4374-832e-1f36922f4633",
+             *         "id": "ef57dea7-a461-4373-86e4-6989ebd5f181",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "09824926-7c07-441c-93c4-648aac0a3cc7",
+             *         "id": "2548357f-e3a1-4266-a41a-a27f488de4eb",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "0a4e7b12-f5a2-4c2f-a407-d2cf06c2fa40",
+             *         "id": "bfef63f7-2211-4849-a175-ead0624a61fa",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -8024,7 +8057,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "95af47b2-2823-4aaf-953c-6dc80f1ced65",
+             *         "id": "d4e0a5e9-f7ed-4c38-8139-be168cf342ac",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -8033,15 +8066,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "acf506ed-08b4-4c22-aa2e-49d713114c50",
+             *         "id": "10af1652-8f68-46b6-af09-e0d094579178",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "9ece7557-7915-4222-8671-64dc9bec059e",
+             *         "id": "47fc99df-40c7-494f-916a-60c86675a9e4",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "b1453f48-ab53-4d95-b28e-0f501c307647",
+             *         "id": "aa3c0b55-dafd-4fb1-b564-6661c7d9a27c",
              *         "rule": "ByStack"
              *       }
              *     ]
