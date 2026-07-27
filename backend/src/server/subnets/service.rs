@@ -122,6 +122,20 @@ impl CrudService<Subnet> for SubnetService {
                 // they put on the entity.
                 let mut refreshed = existing_subnet.clone();
                 refreshed.last_seen_at = subnet.last_seen_at;
+
+                // Repair rows left behind by the interface-name heuristic that
+                // used to be able to type a subnet as a container bridge (#663).
+                if subnet.corrects_container_bridge_guess(existing_subnet) {
+                    tracing::info!(
+                        subnet_id = %existing_subnet.id,
+                        subnet_cidr = %existing_subnet.base.cidr,
+                        from = ?existing_subnet.base.subnet_type,
+                        to = ?subnet.base.subnet_type,
+                        "Reclassifying subnet mistyped as a container bridge"
+                    );
+                    refreshed.base.subnet_type = subnet.base.subnet_type;
+                }
+
                 self.storage.update(&mut refreshed).await?;
                 refreshed
             }

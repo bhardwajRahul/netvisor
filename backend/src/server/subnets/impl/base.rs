@@ -126,6 +126,21 @@ impl Subnet {
         self.base.subnet_type == SubnetType::VpnTunnel
     }
 
+    /// Whether this fresh observation should correct `existing`'s container-bridge
+    /// classification.
+    ///
+    /// Bridge types are produced only by `ContainerRuntime::subnet_from_network`,
+    /// which always stamps `virtualization` to scope the bridge to its owning
+    /// runtime service. A bridge row without one therefore predates that rule and
+    /// can only have come from the interface-name heuristic that used to type an
+    /// access point's `br-`-prefixed guest bridge as Docker (#663) — so a current
+    /// non-bridge observation of the same CIDR supersedes it.
+    pub fn corrects_container_bridge_guess(&self, existing: &Subnet) -> bool {
+        existing.base.subnet_type.is_container_bridge()
+            && existing.base.virtualization.is_none()
+            && !self.base.subnet_type.is_container_bridge()
+    }
+
     pub fn from_discovery(
         interface_name: String,
         ip_network: &IpNetwork,
@@ -225,6 +240,7 @@ impl ChangeTriggersTopologyStaleness<Subnet> for Subnet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::subnets::r#impl::virtualization::DockerSubnetVirtualization;
     use pnet::ipnetwork::IpNetwork;
     use std::str::FromStr;
 
@@ -240,6 +256,48 @@ mod tests {
         let ip = IpNetwork::from_str("10.0.0.0/2").unwrap();
         let result = Subnet::from_discovery("eth0".to_string(), &ip, Uuid::nil());
         assert!(result.is_some(), "/2 prefix should be accepted");
+    }
+
+    fn subnet(subnet_type: SubnetType, virtualization: Option<SubnetVirtualization>) -> Subnet {
+        Subnet::new(SubnetBase {
+            cidr: cidr::IpCidr::from_str("172.30.10.0/24").unwrap(),
+            network_id: Uuid::nil(),
+            name: "172.30.10.0/24".into(),
+            description: None,
+            subnet_type,
+            virtualization,
+            source: EntitySource::Discovery,
+            tags: Vec::new(),
+        })
+    }
+
+    /// #663: the reporter's access-point guest subnet was already stored as
+    /// `DockerBridge`, so the classification fix alone would never reach them —
+    /// rediscovery dedups into the stale row. A bridge row with no virtualization
+    /// can only be a name-derived guess, so a current non-bridge observation
+    /// corrects it.
+    #[test]
+    fn stale_bridge_guess_is_corrected_by_a_fresh_observation() {
+        let guess = subnet(SubnetType::DockerBridge, None);
+        assert!(subnet(SubnetType::Guest, None).corrects_container_bridge_guess(&guess));
+    }
+
+    /// A bridge carrying virtualization came from the runtime API, so nothing
+    /// derived from an interface name may downgrade it.
+    #[test]
+    fn authoritative_bridge_is_never_downgraded() {
+        let authoritative = subnet(
+            SubnetType::DockerBridge,
+            Some(SubnetVirtualization::Docker(DockerSubnetVirtualization {
+                service_id: Uuid::new_v4(),
+            })),
+        );
+        assert!(!subnet(SubnetType::Guest, None).corrects_container_bridge_guess(&authoritative));
+        // Nor may one bridge observation replace another.
+        assert!(
+            !subnet(SubnetType::DockerBridge, None)
+                .corrects_container_bridge_guess(&subnet(SubnetType::DockerBridge, None))
+        );
     }
 
     /// Guards the invariants `HostService::seed_loopback` depends on: the daemon-host
