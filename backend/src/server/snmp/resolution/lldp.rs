@@ -321,15 +321,35 @@ impl LldpPortId {
 /// `"48:A9:8A:BD:B4:7D"`. Accept both shapes and normalize to the same canonical
 /// lowercase colon-separated form (`format_mac`) so downstream MAC matching is
 /// independent of the wire encoding. Returns `None` for values that are neither.
+///
+/// The ASCII form is accepted with or without zero-padded octets: firmware that renders a MAC as
+/// a string rather than emitting octets is formatting it itself, and `%x` ("0:1a:2b:0:10:0" —
+/// also net-snmp's own display format) is as likely as `%02x`. Being strict here is not a
+/// partial loss but a total one: an unparseable chassis ID makes `from_snmp` return `None`, the
+/// neighbor record is never stored, and the device silently contributes nothing to L2 topology
+/// at all — indistinguishable from a switch that advertises no neighbors.
 fn parse_mac_id(value: &[u8]) -> Option<String> {
     if value.len() == 6 {
-        Some(format_mac(value))
-    } else {
-        // Vendor quirk: MAC encoded as an ASCII string instead of 6 raw octets.
-        let s = std::str::from_utf8(value).ok()?.trim();
-        let mac: mac_address::MacAddress = s.parse().ok()?;
-        Some(format_mac(&mac.bytes()))
+        return Some(format_mac(value));
     }
+
+    // Vendor quirk: MAC encoded as an ASCII string instead of 6 raw octets.
+    let s = std::str::from_utf8(value).ok()?.trim();
+    if let Ok(mac) = s.parse::<mac_address::MacAddress>() {
+        return Some(format_mac(&mac.bytes()));
+    }
+
+    // Same string form, octets not zero-padded. Six colon-separated groups of one or two hex
+    // digits is a MAC under any reading, and this is only reached once the spec-compliant and
+    // padded parses have both failed, so there is nothing else it could be mistaken for.
+    let octets: Vec<u8> = s
+        .split(':')
+        .map(|group| match group.len() {
+            1 | 2 => u8::from_str_radix(group, 16).ok(),
+            _ => None,
+        })
+        .collect::<Option<Vec<u8>>>()?;
+    (octets.len() == 6).then(|| format_mac(&octets))
 }
 
 /// Format MAC address bytes as colon-separated hex string.
@@ -393,6 +413,60 @@ mod tests {
             chassis_id,
             Some(LldpChassisId::MacAddress("48:a9:8a:bd:b4:7d".to_string()))
         );
+    }
+
+    /// Firmware that renders a MAC as a string rather than emitting octets formats it itself, and
+    /// abbreviated octets are as likely as padded ones. Rejecting the abbreviated form does not
+    /// degrade the record — it discards the whole neighbor, so the device contributes nothing to
+    /// L2 topology and looks identical to one advertising no neighbors at all.
+    #[test]
+    fn test_chassis_id_from_snmp_mac_ascii_unpadded() {
+        let ascii = b"0:1a:2b:0:10:0";
+        assert_eq!(
+            LldpChassisId::from_snmp(4, ascii),
+            Some(LldpChassisId::MacAddress("00:1a:2b:00:10:00".to_string())),
+            "an unpadded ASCII MAC must normalize to the same canonical form as a padded one"
+        );
+    }
+
+    /// Both wire encodings of one address must land on the same string, or a neighbor advertising
+    /// the abbreviated form would never match the host that reported the padded form.
+    #[test]
+    fn test_mac_encodings_agree_on_one_canonical_form() {
+        let raw = LldpChassisId::from_snmp(4, &[0x00, 0x1a, 0x2b, 0x00, 0x10, 0x00]);
+        let padded = LldpChassisId::from_snmp(4, b"00:1a:2b:00:10:00");
+        let unpadded = LldpChassisId::from_snmp(4, b"0:1a:2b:0:10:0");
+        assert_eq!(raw, padded);
+        assert_eq!(raw, unpadded);
+    }
+
+    #[test]
+    fn test_port_id_from_snmp_mac_ascii_unpadded() {
+        assert_eq!(
+            LldpPortId::from_snmp(3, b"0:c:29:aa:bb:c0"),
+            Some(LldpPortId::MacAddress("00:0c:29:aa:bb:c0".to_string()))
+        );
+    }
+
+    /// The tolerance must not swallow things that merely look colon-separated. (A value of exactly
+    /// six bytes is deliberately absent: the spec defines subtype 4 as six binary octets, so six
+    /// bytes are octets by definition and no heuristic can second-guess that.)
+    #[test]
+    fn test_chassis_id_from_snmp_mac_rejects_non_macs() {
+        for not_a_mac in [
+            &b"0:1a:2b:0:10"[..],     // five groups
+            &b"0:1a:2b:0:10:0:5"[..], // seven groups
+            &b"0:1a:2b:0:10:zz"[..],  // non-hex group
+            &b"0:1a:2b:0:10:000"[..], // over-long group
+            &b"not-a-mac-at-all"[..],
+        ] {
+            assert_eq!(
+                LldpChassisId::from_snmp(4, not_a_mac),
+                None,
+                "expected {:?} to be rejected",
+                String::from_utf8_lossy(not_a_mac)
+            );
+        }
     }
 
     #[test]
