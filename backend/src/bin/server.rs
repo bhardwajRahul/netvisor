@@ -176,6 +176,19 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // One-shot daemon-sunset announcement at boot. Emails orgs whose active
+    // daemons run a version below the announced sunset floor; an org-level
+    // ratchet suppresses re-sends across restarts. The eligible set only changes
+    // when the server binary (and thus its release-line table) changes, so boot
+    // is the natural trigger. No-op while the sunset machinery is dormant.
+    if let Some(sunset_email) = state.services.email_service.clone() {
+        tokio::spawn(async move {
+            if let Err(e) = sunset_email.announce_daemon_sunsets().await {
+                tracing::error!(error = %e, "Daemon sunset announcement sweep failed");
+            }
+        });
+    }
+
     // Snapshot retention sweep (daily). Deletes snapshots past the per-plan
     // retention window; the FK cascade reaps closed entity rows + topology
     // rows tied to each deleted snapshot.

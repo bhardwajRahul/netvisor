@@ -157,6 +157,14 @@
 		@apply disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-blue-600 dark:disabled:hover:text-blue-400;
 	}
 
+	/* Icon button - warning variant */
+	.btn-icon-warning {
+		@apply rounded p-2 text-orange-600 hover:text-orange-500 dark:text-orange-400 dark:hover:text-orange-300;
+		@apply transition-colors duration-150;
+		@apply inline-flex items-center justify-center;
+		@apply disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-orange-600 dark:disabled:hover:text-orange-400;
+	}
+
 	/* Icon button - success variant */
 	.btn-icon-success {
 		@apply rounded p-2 text-green-600 hover:text-green-500 dark:text-green-400 dark:hover:text-green-300;

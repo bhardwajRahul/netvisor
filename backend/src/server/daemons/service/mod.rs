@@ -50,7 +50,6 @@ use crate::server::hosts::r#impl::base::{Host, HostBase};
 use crate::server::hosts::service::{HostLimitContext, HostService};
 use crate::server::networks::r#impl::Network;
 use crate::server::networks::service::NetworkService;
-use crate::server::openapi::SERVER_VERSION;
 use crate::server::organizations::service::OrganizationService;
 use crate::server::shared::api_key_common::{ApiKeyType, generate_api_key_for_storage};
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;

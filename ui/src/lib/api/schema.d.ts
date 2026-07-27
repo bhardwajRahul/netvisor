@@ -3104,19 +3104,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-22T18:58:51.216657Z",
+             *       "created_at": "2026-07-27T13:34:17.973667Z",
              *       "first_discovery_id": null,
-             *       "id": "5b5a34e0-493f-4b12-a260-1cef006aa089",
+             *       "id": "897342f0-c756-46f4-8bb4-1555256a3a22",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-22T18:58:51.216657Z",
+             *       "last_seen_at": "2026-07-27T13:34:17.973667Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-22T18:58:51.216657Z",
-             *       "valid_from": "2026-07-22T18:58:51.216657Z",
+             *       "updated_at": "2026-07-27T13:34:17.973667Z",
+             *       "valid_from": "2026-07-27T13:34:17.973667Z",
              *       "valid_to": null
              *     }
              */
@@ -3457,6 +3457,7 @@ export interface components {
              *           "valid_to": null
              *         }
              *       ],
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
              *       "name": "web-server-01",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "ports": [
@@ -3481,19 +3482,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-22T18:58:51.198634Z",
+             *               "created_at": "2026-07-27T13:34:17.956130Z",
              *               "first_discovery_id": null,
-             *               "id": "43113784-e98c-45c7-af76-0451de6b4d77",
+             *               "id": "c0c3a283-3be0-48de-94de-f71975370608",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-22T18:58:51.198634Z",
+             *               "last_seen_at": "2026-07-27T13:34:17.956130Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-22T18:58:51.198634Z",
-             *               "valid_from": "2026-07-22T18:58:51.198634Z",
+             *               "updated_at": "2026-07-27T13:34:17.956130Z",
+             *               "valid_from": "2026-07-27T13:34:17.956130Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3507,7 +3508,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Proxmox Datacenter Manager",
+             *           "service_definition": "Nest Thermostat",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3539,6 +3540,13 @@ export interface components {
                 /** @description SNMP ifTable entries */
                 interfaces: components["schemas"]["Interface"][];
                 ip_addresses: components["schemas"]["IPAddress"][];
+                /**
+                 * Format: date-time
+                 * @description Last time discovery observed this host. User-facing (drives the "Last
+                 *     seen" column and the stale badge), which is why it is carried here while
+                 *     the rest of the SCD2/audit columns are not.
+                 */
+                last_seen_at: string;
                 management_url?: string | null;
                 name: string;
                 /** Format: uuid */
@@ -3917,19 +3925,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-22T18:58:51.210748Z",
+             *           "created_at": "2026-07-27T13:34:17.967837Z",
              *           "first_discovery_id": null,
-             *           "id": "a2e0560c-9bea-43a4-a9bd-416abc35ee72",
+             *           "id": "f8ec2d74-52e8-4d21-84e3-0a710ac599da",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-22T18:58:51.210748Z",
+             *           "last_seen_at": "2026-07-27T13:34:17.967837Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-22T18:58:51.210748Z",
-             *           "valid_from": "2026-07-22T18:58:51.210748Z",
+             *           "updated_at": "2026-07-27T13:34:17.967837Z",
+             *           "valid_from": "2026-07-27T13:34:17.967837Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3943,7 +3951,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Proxmox Datacenter Manager",
+             *       "service_definition": "Nest Thermostat",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4447,19 +4455,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-22T18:58:51.199026Z",
+         *       "created_at": "2026-07-27T13:34:17.956506Z",
          *       "first_discovery_id": null,
-         *       "id": "e7aca420-b75a-4608-8777-dcfe4cf89bda",
+         *       "id": "2189e3c4-0131-48b8-9b4c-690aa626109e",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-22T18:58:51.199026Z",
+         *       "last_seen_at": "2026-07-27T13:34:17.956506Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-22T18:58:51.199026Z",
-         *       "valid_from": "2026-07-22T18:58:51.199026Z",
+         *       "updated_at": "2026-07-27T13:34:17.956506Z",
+         *       "valid_from": "2026-07-27T13:34:17.956506Z",
          *       "valid_to": null
          *     }
          */
@@ -4674,7 +4682,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Proxmox Datacenter Manager",
+         *           "service_definition": "Nest Thermostat",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5062,6 +5070,12 @@ export interface components {
         DaemonVersionStatus: {
             has_correct_docker_volume_mount?: boolean;
             status: components["schemas"]["VersionHealthStatus"];
+            /**
+             * @description The date this daemon's version stops being supported, if a sunset is
+             *     scheduled for it. Surfaced top-level (not only inside `warnings`) so the
+             *     UI can render a countdown from the same value the email uses.
+             */
+            sunset_date?: string | null;
             supports_unified_discovery?: boolean;
             version?: string | null;
             warnings?: components["schemas"]["DeprecationWarning"][];
@@ -5751,6 +5765,7 @@ export interface components {
          *           "valid_to": null
          *         }
          *       ],
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
          *       "name": "web-server-01",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "ports": [
@@ -5775,19 +5790,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-22T18:58:51.198174Z",
+         *               "created_at": "2026-07-27T13:34:17.955672Z",
          *               "first_discovery_id": null,
-         *               "id": "0e418f70-f489-4a05-897f-e7387d8835dc",
+         *               "id": "0993e400-36e6-48fe-88e2-7542808daeff",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-22T18:58:51.198174Z",
+         *               "last_seen_at": "2026-07-27T13:34:17.955672Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-22T18:58:51.198174Z",
-         *               "valid_from": "2026-07-22T18:58:51.198174Z",
+         *               "updated_at": "2026-07-27T13:34:17.955672Z",
+         *               "valid_from": "2026-07-27T13:34:17.955672Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5801,7 +5816,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Proxmox Datacenter Manager",
+         *           "service_definition": "Nest Thermostat",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5833,6 +5848,13 @@ export interface components {
             /** @description SNMP ifTable entries */
             interfaces: components["schemas"]["Interface"][];
             ip_addresses: components["schemas"]["IPAddress"][];
+            /**
+             * Format: date-time
+             * @description Last time discovery observed this host. User-facing (drives the "Last
+             *     seen" column and the stale badge), which is why it is carried here while
+             *     the rest of the SCD2/audit columns are not.
+             */
+            last_seen_at: string;
             management_url?: string | null;
             name: string;
             /** Format: uuid */
@@ -6704,6 +6726,13 @@ export interface components {
                 /** @description SNMP ifTable entries */
                 interfaces: components["schemas"]["Interface"][];
                 ip_addresses: components["schemas"]["IPAddress"][];
+                /**
+                 * Format: date-time
+                 * @description Last time discovery observed this host. User-facing (drives the "Last
+                 *     seen" column and the stale badge), which is why it is carried here while
+                 *     the rest of the SCD2/audit columns are not.
+                 */
+                last_seen_at: string;
                 management_url?: string | null;
                 name: string;
                 /** Format: uuid */
@@ -7412,19 +7441,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-22T18:58:51.198941Z",
+         *           "created_at": "2026-07-27T13:34:17.956430Z",
          *           "first_discovery_id": null,
-         *           "id": "d1bfd1fd-cc6c-4233-b784-b7a0bc5de20d",
+         *           "id": "87d8632d-f170-4ffb-92c8-022ae9642f6e",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-22T18:58:51.198941Z",
+         *           "last_seen_at": "2026-07-27T13:34:17.956430Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-22T18:58:51.198941Z",
-         *           "valid_from": "2026-07-22T18:58:51.198941Z",
+         *           "updated_at": "2026-07-27T13:34:17.956430Z",
+         *           "valid_from": "2026-07-27T13:34:17.956430Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7438,7 +7467,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Proxmox Datacenter Manager",
+         *       "service_definition": "Nest Thermostat",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7861,7 +7890,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "10b02d38-a519-4c27-a680-fe04e85a6553",
+             *           "id": "79a8f6ec-b878-4bdd-8bc6-c5a8a2edfd1f",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7871,23 +7900,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "9c4332aa-9c70-42c8-a040-2fc50417c3e2",
+             *           "id": "a43ab264-63a9-4289-95a5-0e8c4434dba6",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "fa2e26ab-9be1-498b-96b6-5ba76e1dc1f4",
+             *           "id": "1af45b82-f570-48b1-836b-35c43ef1df6a",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "a9c04512-8e08-43aa-9c99-b3a42212c214",
+             *           "id": "239d10ea-424e-428a-8e2b-e700f19d463d",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "9c4332aa-9c70-42c8-a040-2fc50417c3e2",
+             *           "id": "a43ab264-63a9-4289-95a5-0e8c4434dba6",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7899,19 +7928,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "b768e641-adf5-4d6c-bcbb-74d9b17f6452",
+             *         "id": "f05d1960-c22e-4c05-8acf-0f526cd39bd0",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "8be65a89-95ae-4098-bf9e-d7ce91ea4b95",
+             *         "id": "d88dbf84-a98c-421c-ac34-b0a6de772529",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "241724e8-8b1a-4512-8b7a-28a971c02b36",
+             *         "id": "a01b47df-2f54-41d9-b335-d3bb4de1b9cf",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "74b9a6a6-c982-4a09-84cd-17116c0e4a6d",
+             *         "id": "9adffeb3-2d0c-4b7a-822c-9ae7c51f6291",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7929,7 +7958,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "c726e21e-35c1-4e72-adec-f47211886d28",
+             *         "id": "bf1c3f8c-6498-4f28-99cc-c33d09f11a2f",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7938,15 +7967,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "4d25d181-511a-42dd-a153-1cb69d25c1ae",
+             *         "id": "53025820-d702-4bdd-895e-6473c58a8135",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "e211fcdd-db05-4f26-8cee-5b77d5b0dc1f",
+             *         "id": "7469a68f-fccc-404c-a214-d614e146230d",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "ee9f3f19-74d9-4d8a-8b9c-7b314d5b0c75",
+             *         "id": "9a92b799-7545-450a-b30f-652eeba2ea01",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -8159,10 +8188,13 @@ export interface components {
             token: string;
         };
         /**
-         * @description Health status for daemon versions
+         * @description Health status for daemon versions.
+         *
+         *     Lifecycle order: `Current` → `Outdated` → `Deprecated` → `Unsupported`, with
+         *     `Unknown` for daemons whose version the server has no record of.
          * @enum {string}
          */
-        VersionHealthStatus: "Current" | "Outdated" | "Deprecated";
+        VersionHealthStatus: "Current" | "Outdated" | "Deprecated" | "Unsupported" | "Unknown";
         /** @description Version information for API compatibility checking */
         VersionInfo: {
             /**

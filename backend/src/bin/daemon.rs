@@ -367,7 +367,9 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
                                     tracing::warn!("{}", conn_err.cause_and_fix());
                                 }
                             }
-                            StartupOutcome::AuthFailed(_) => break,
+                            StartupOutcome::AuthFailed(_) | StartupOutcome::VersionRejected(_) => {
+                                break;
+                            }
                         }
                     }
                 }
@@ -381,6 +383,19 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
                         // it speak for itself — it already carries any remedy.
                         tracing::error!("Registration rejected by the server: {e}");
                         Err(())
+                    }
+                    StartupOutcome::VersionRejected(e) => {
+                        // The server rejected this daemon's version as unsupported. This is
+                        // terminal — exit non-zero so the service manager surfaces a failure
+                        // instead of the process parking 'active (running)' forever. With
+                        // Restart=always this becomes a visible restart loop until updated.
+                        tracing::error!(
+                            "This daemon's version is no longer supported and was rejected by the \
+                             server: {e}. Update the daemon binary to the latest version from the \
+                             Scanopy UI under Discover > Daemons, then restart. The daemon will not \
+                             run until it is updated."
+                        );
+                        std::process::exit(1);
                     }
                 }
             } else if network_id.is_some() {

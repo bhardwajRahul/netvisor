@@ -116,10 +116,25 @@ impl Storable for Daemon {
         let mode: DaemonMode = serde_json::from_str(&row.get::<String, _>("mode"))
             .map_err(|e| anyhow::anyhow!("Failed to deserialize mode: {}", e))?;
 
-        // Parse version from string, ignoring parse errors (version may be invalid)
-        let version: Option<Version> = row
-            .get::<Option<String>, _>("version")
-            .and_then(|s| Version::parse(&s).ok());
+        // Parse the stored version. A stored-but-unparseable string is logged
+        // (not silently dropped) so a corrupt row is visible rather than quietly
+        // read as `None` — which would then be treated as an Unknown/unsupported
+        // daemon once the floor advances.
+        let version: Option<Version> = match row.get::<Option<String>, _>("version") {
+            Some(s) => match Version::parse(&s) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    tracing::warn!(
+                        daemon_id = %row.get::<Uuid, _>("id"),
+                        stored_version = %s,
+                        error = %e,
+                        "Stored daemon version is not valid semver; treating as unknown"
+                    );
+                    None
+                }
+            },
+            None => None,
+        };
 
         Ok(Daemon {
             id: row.get("id"),

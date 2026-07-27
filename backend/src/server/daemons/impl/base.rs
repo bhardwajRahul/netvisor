@@ -96,12 +96,10 @@ impl Daemon {
     ///
     /// Returns `false` for daemons without a version (assume legacy).
     pub fn supports_full_server_poll(&self) -> bool {
-        const SERVER_POLL_VERSION: Version = Version::new(0, 14, 0);
-        self.base
-            .version
-            .as_ref()
-            .map(|v| v >= &SERVER_POLL_VERSION)
-            .unwrap_or(false)
+        // Floor owned by the version registry (single source of truth).
+        crate::server::daemons::r#impl::version::supports_full_server_poll(
+            self.base.version.as_ref(),
+        )
     }
 }
 

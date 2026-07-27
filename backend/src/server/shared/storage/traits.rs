@@ -23,7 +23,7 @@ use crate::server::{
     hosts::r#impl::{base::Host, virtualization::HostVirtualization},
     interfaces::r#impl::base::Interface,
     ip_addresses::r#impl::base::IPAddress,
-    organizations::r#impl::base::PlanLimitNotifications,
+    organizations::r#impl::base::OrgNotifications,
     ports::r#impl::base::Port,
     services::r#impl::{definitions::ServiceDefinition, virtualization::ServiceVirtualization},
     shared::{storage::filter::StorableFilter, types::entities::EntitySource},
@@ -273,7 +273,7 @@ pub enum SqlValue {
     Interfaces(Vec<Interface>),
     Tags(Vec<Tag>),
     Vlans(Vec<Vlan>),
-    PlanLimitNotifications(PlanLimitNotifications),
+    OrgNotifications(OrgNotifications),
     OptionalUuidVec(Option<Vec<Uuid>>),
     IntegrationTargets(Vec<IntegrationTarget>),
 }
@@ -394,7 +394,7 @@ impl_db_enum_contributor_empty!(
     EmailSettings,
     TopologyOptions,
     ShareOptions,
-    PlanLimitNotifications,
+    OrgNotifications,
     Port,
     IPAddress,
     Host,
@@ -589,9 +589,7 @@ impl SqlValue {
             SqlValueDiscriminants::Interfaces => Interface::contribute(out),
             SqlValueDiscriminants::Tags => Tag::contribute(out),
             SqlValueDiscriminants::Vlans => Vlan::contribute(out),
-            SqlValueDiscriminants::PlanLimitNotifications => {
-                PlanLimitNotifications::contribute(out)
-            }
+            SqlValueDiscriminants::OrgNotifications => OrgNotifications::contribute(out),
             SqlValueDiscriminants::IntegrationTargets => IntegrationTarget::contribute(out),
         }
     }

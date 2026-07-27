@@ -11177,19 +11177,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-22T18:58:51.216655Z",
+              "created_at": "2026-07-27T13:34:17.973662Z",
               "first_discovery_id": null,
-              "id": "a74f523b-7793-4074-85c3-5f03cc821559",
+              "id": "d70a6be3-f842-42e5-b38c-491418d53588",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-22T18:58:51.216655Z",
+              "last_seen_at": "2026-07-27T13:34:17.973662Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-22T18:58:51.216655Z",
-              "valid_from": "2026-07-22T18:58:51.216655Z",
+              "updated_at": "2026-07-27T13:34:17.973662Z",
+              "valid_from": "2026-07-27T13:34:17.973662Z",
               "valid_to": null
             }
           },
@@ -12024,6 +12024,7 @@
               "id",
               "created_at",
               "updated_at",
+              "last_seen_at",
               "name",
               "network_id",
               "source",
@@ -12082,6 +12083,11 @@
                 "items": {
                   "$ref": "#/components/schemas/IPAddress"
                 }
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Last time discovery observed this host. User-facing (drives the \"Last\nseen\" column and the stale badge), which is why it is carried here while\nthe rest of the SCD2/audit columns are not."
               },
               "management_url": {
                 "type": [
@@ -12220,6 +12226,7 @@
                   "valid_to": null
                 }
               ],
+              "last_seen_at": "2026-01-15T10:30:00Z",
               "name": "web-server-01",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "ports": [
@@ -12244,19 +12251,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-22T18:58:51.198601Z",
+                      "created_at": "2026-07-27T13:34:17.956118Z",
                       "first_discovery_id": null,
-                      "id": "c47d9f5e-60cb-47e5-8415-a025c635e4d1",
+                      "id": "5a86cea1-5460-4ef6-a6ac-0750e23837ba",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-22T18:58:51.198601Z",
+                      "last_seen_at": "2026-07-27T13:34:17.956118Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-22T18:58:51.198601Z",
-                      "valid_from": "2026-07-22T18:58:51.198601Z",
+                      "updated_at": "2026-07-27T13:34:17.956118Z",
+                      "valid_from": "2026-07-27T13:34:17.956118Z",
                       "valid_to": null
                     }
                   ],
@@ -12270,7 +12277,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Proxmox Datacenter Manager",
+                  "service_definition": "Nest Thermostat",
                   "source": {
                     "type": "Manual"
                   },
@@ -13340,19 +13347,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-22T18:58:51.210744Z",
+                  "created_at": "2026-07-27T13:34:17.967846Z",
                   "first_discovery_id": null,
-                  "id": "a2f452c4-bf39-42f6-9e26-3e24130c9fe2",
+                  "id": "582d994f-34eb-418b-8404-08a5ad50b708",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-22T18:58:51.210744Z",
+                  "last_seen_at": "2026-07-27T13:34:17.967846Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-22T18:58:51.210744Z",
-                  "valid_from": "2026-07-22T18:58:51.210744Z",
+                  "updated_at": "2026-07-27T13:34:17.967846Z",
+                  "valid_from": "2026-07-27T13:34:17.967846Z",
                   "valid_to": null
                 }
               ],
@@ -13366,7 +13373,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Proxmox Datacenter Manager",
+              "service_definition": "Nest Thermostat",
               "source": {
                 "type": "Manual"
               },
@@ -15236,19 +15243,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-22T18:58:51.198982Z",
+          "created_at": "2026-07-27T13:34:17.956489Z",
           "first_discovery_id": null,
-          "id": "a2797f32-2a6e-4c91-b48d-d5ac929a26f1",
+          "id": "55d4b5e3-a291-4f95-bbf3-5b318e72520a",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-22T18:58:51.198982Z",
+          "last_seen_at": "2026-07-27T13:34:17.956489Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-22T18:58:51.198982Z",
-          "valid_from": "2026-07-22T18:58:51.198982Z",
+          "updated_at": "2026-07-27T13:34:17.956489Z",
+          "valid_from": "2026-07-27T13:34:17.956489Z",
           "valid_to": null
         }
       },
@@ -15839,7 +15846,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Proxmox Datacenter Manager",
+              "service_definition": "Nest Thermostat",
               "tags": [],
               "virtualization": null
             }
@@ -16817,6 +16824,13 @@
           },
           "status": {
             "$ref": "#/components/schemas/VersionHealthStatus"
+          },
+          "sunset_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The date this daemon's version stops being supported, if a sunset is\nscheduled for it. Surfaced top-level (not only inside `warnings`) so the\nUI can render a countdown from the same value the email uses."
           },
           "supports_unified_discovery": {
             "type": "boolean"
@@ -18559,6 +18573,7 @@
           "id",
           "created_at",
           "updated_at",
+          "last_seen_at",
           "name",
           "network_id",
           "source",
@@ -18617,6 +18632,11 @@
             "items": {
               "$ref": "#/components/schemas/IPAddress"
             }
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last time discovery observed this host. User-facing (drives the \"Last\nseen\" column and the stale badge), which is why it is carried here while\nthe rest of the SCD2/audit columns are not."
           },
           "management_url": {
             "type": [
@@ -18755,6 +18775,7 @@
               "valid_to": null
             }
           ],
+          "last_seen_at": "2026-01-15T10:30:00Z",
           "name": "web-server-01",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "ports": [
@@ -18779,19 +18800,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-22T18:58:51.198162Z",
+                  "created_at": "2026-07-27T13:34:17.955667Z",
                   "first_discovery_id": null,
-                  "id": "16d4f394-d07f-424c-9e58-8f81385ee3dc",
+                  "id": "156a68f3-83ef-4d00-bf44-3a2b42adb6b8",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-22T18:58:51.198162Z",
+                  "last_seen_at": "2026-07-27T13:34:17.955667Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-22T18:58:51.198162Z",
-                  "valid_from": "2026-07-22T18:58:51.198162Z",
+                  "updated_at": "2026-07-27T13:34:17.955667Z",
+                  "valid_from": "2026-07-27T13:34:17.955667Z",
                   "valid_to": null
                 }
               ],
@@ -18805,7 +18826,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Proxmox Datacenter Manager",
+              "service_definition": "Nest Thermostat",
               "source": {
                 "type": "Manual"
               },
@@ -21193,6 +21214,7 @@
                 "id",
                 "created_at",
                 "updated_at",
+                "last_seen_at",
                 "name",
                 "network_id",
                 "source",
@@ -21251,6 +21273,11 @@
                   "items": {
                     "$ref": "#/components/schemas/IPAddress"
                   }
+                },
+                "last_seen_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Last time discovery observed this host. User-facing (drives the \"Last\nseen\" column and the stale badge), which is why it is carried here while\nthe rest of the SCD2/audit columns are not."
                 },
                 "management_url": {
                   "type": [
@@ -21389,6 +21416,7 @@
                     "valid_to": null
                   }
                 ],
+                "last_seen_at": "2026-01-15T10:30:00Z",
                 "name": "web-server-01",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "ports": [
@@ -21413,19 +21441,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-22T18:58:51.187567Z",
+                        "created_at": "2026-07-27T13:34:17.945846Z",
                         "first_discovery_id": null,
-                        "id": "eceed8ac-b1e1-4368-ae9a-e92e193f5d1c",
+                        "id": "389ee235-45af-49e9-ba47-59029b0d696c",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-22T18:58:51.187567Z",
+                        "last_seen_at": "2026-07-27T13:34:17.945846Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-22T18:58:51.187567Z",
-                        "valid_from": "2026-07-22T18:58:51.187567Z",
+                        "updated_at": "2026-07-27T13:34:17.945846Z",
+                        "valid_from": "2026-07-27T13:34:17.945846Z",
                         "valid_to": null
                       }
                     ],
@@ -21439,7 +21467,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Proxmox Datacenter Manager",
+                    "service_definition": "Nest Thermostat",
                     "source": {
                       "type": "Manual"
                     },
@@ -21560,19 +21588,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-22T18:58:51.209610Z",
+                    "created_at": "2026-07-27T13:34:17.966736Z",
                     "first_discovery_id": null,
-                    "id": "2bcac8fa-a2a7-49f7-8186-f3d023eb8bcc",
+                    "id": "a59fcb65-453a-4aca-a784-49020618ffa7",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-22T18:58:51.209610Z",
+                    "last_seen_at": "2026-07-27T13:34:17.966736Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-22T18:58:51.209610Z",
-                    "valid_from": "2026-07-22T18:58:51.209610Z",
+                    "updated_at": "2026-07-27T13:34:17.966736Z",
+                    "valid_from": "2026-07-27T13:34:17.966736Z",
                     "valid_to": null
                   }
                 ],
@@ -21586,7 +21614,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Proxmox Datacenter Manager",
+                "service_definition": "Nest Thermostat",
                 "source": {
                   "type": "Manual"
                 },
@@ -23289,19 +23317,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-22T18:58:51.198897Z",
+              "created_at": "2026-07-27T13:34:17.956416Z",
               "first_discovery_id": null,
-              "id": "3a37d9e6-39b9-4894-a48a-fa1bdae53477",
+              "id": "e02d5503-fea4-41cb-b153-4670ba1e9435",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-22T18:58:51.198897Z",
+              "last_seen_at": "2026-07-27T13:34:17.956416Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-22T18:58:51.198897Z",
-              "valid_from": "2026-07-22T18:58:51.198897Z",
+              "updated_at": "2026-07-27T13:34:17.956416Z",
+              "valid_from": "2026-07-27T13:34:17.956416Z",
               "valid_to": null
             }
           ],
@@ -23315,7 +23343,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Proxmox Datacenter Manager",
+          "service_definition": "Nest Thermostat",
           "source": {
             "type": "Manual"
           },
@@ -24447,7 +24475,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "6ad8ac61-1ec0-4d0f-b487-c2b24003e274",
+                  "id": "3fdab359-0ac9-4233-a880-e20edfbd3d5d",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24457,23 +24485,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "f4521ed8-af41-4e71-9424-fd58d16c92cd",
+                  "id": "3468a5b6-29ff-4c28-85f8-9e5d38397bfa",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "102e6ed6-f80f-4816-99a4-a13e3ff57309",
+                  "id": "8541d3a1-6e7f-49b8-a648-b0a00ae72262",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "a6e55f78-4a93-4c82-b948-48271f08a73a",
+                  "id": "9f9bcabb-84af-48f2-9e69-d042d4f1584f",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "f4521ed8-af41-4e71-9424-fd58d16c92cd",
+                  "id": "3468a5b6-29ff-4c28-85f8-9e5d38397bfa",
                   "rule": "ByHost"
                 }
               ]
@@ -24502,19 +24530,19 @@
             },
             "default": [
               {
-                "id": "5962e9d5-77f1-4740-ae17-3c40a6a2de07",
+                "id": "bf8e51a4-3193-4810-9563-b7fccf7823bc",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "22ee2610-f428-4720-93b2-61461839ea1f",
+                "id": "36b8651c-1ddd-4a8b-89af-f428d193e602",
                 "rule": "ByVLAN"
               },
               {
-                "id": "6ee38b1b-eba3-4178-a2c7-44f6f743b44d",
+                "id": "2e8075f9-dd2e-40db-bdba-441a31394dd4",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "571c14da-e052-46d0-83cb-4e9e45624892",
+                "id": "1eecf3a9-c45b-4b9b-83fc-75639f023c4d",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24532,7 +24560,7 @@
                 }
               },
               {
-                "id": "6ba9679a-d437-4770-8652-348f2c0822e1",
+                "id": "3a31a096-2e10-4c91-9b82-58f50a0c3164",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24541,15 +24569,15 @@
                 }
               },
               {
-                "id": "89be9dd3-e827-47ec-9133-9a0815547897",
+                "id": "39e45602-d3fd-44df-9f09-3ac1e98b4300",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "989e0944-d805-46bb-8b00-11e9dba542d3",
+                "id": "0ef9b391-4a89-483e-8060-292415801662",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "204d6ef7-988c-4d79-9e34-7c7d9b7f4952",
+                "id": "63a410a3-8f37-4673-879b-bea203e9e0ae",
                 "rule": "ByStack"
               }
             ]
@@ -24623,7 +24651,8 @@
                   "description": "The kind of metadata filter. One variant per conceptually-distinct filter\nacross the app — Category (on Service), Virtualization (on Host), and so\non. Kept narrow on purpose: adding a new filter means adding a variant\nhere + a `HasFilterValues` impl on the relevant entity.",
                   "enum": [
                     "Category",
-                    "Virtualization"
+                    "Virtualization",
+                    "Staleness"
                   ]
                 }
               },
@@ -25115,11 +25144,13 @@
       },
       "VersionHealthStatus": {
         "type": "string",
-        "description": "Health status for daemon versions",
+        "description": "Health status for daemon versions.\n\nLifecycle order: `Current` → `Outdated` → `Deprecated` → `Unsupported`, with\n`Unknown` for daemons whose version the server has no record of.",
         "enum": [
           "Current",
           "Outdated",
-          "Deprecated"
+          "Deprecated",
+          "Unsupported",
+          "Unknown"
         ]
       },
       "VersionInfo": {

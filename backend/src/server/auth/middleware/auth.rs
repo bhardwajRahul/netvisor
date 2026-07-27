@@ -39,6 +39,40 @@ impl IntoResponse for AuthError {
     }
 }
 
+/// Reject a daemon whose version is below the enforced support floor. Applied to
+/// every daemon-authenticated request (see the `ApiKeyType::Daemon` arm), so an
+/// unsupported daemon is turned away before it can poll, register, or discover —
+/// not only at the handshake.
+///
+/// Returns the same `DaemonVersionTooOld` error the handshake uses, so the
+/// daemon's existing error handling surfaces the prescriptive upgrade message.
+///
+/// Semantics:
+/// - A parseable version below the floor is rejected.
+/// - An absent/unparseable version is rejected only once the floor has advanced
+///   past the version header's own floor (0.14.10): before that, a missing header
+///   legitimately means "old but still allowed" and must not be blocked. This is
+///   also what makes the check dormant pre-launch (floor 0.12.0 ⇒ absent is fine).
+fn enforce_daemon_version(
+    version: Option<&str>,
+    now: chrono::DateTime<Utc>,
+) -> Result<(), AuthError> {
+    use crate::server::daemons::r#impl::version::enforced_floor;
+    let floor = enforced_floor(now);
+    let too_old = |reported: &str| {
+        AuthError(ApiError::daemon_version_too_old(
+            reported,
+            &floor.to_string(),
+        ))
+    };
+    match version.and_then(|v| semver::Version::parse(v).ok()) {
+        Some(v) if v < floor => Err(too_old(&v.to_string())),
+        Some(_) => Ok(()),
+        None if floor > semver::Version::new(0, 14, 10) => Err(too_old("unknown")),
+        None => Ok(()),
+    }
+}
+
 /// Represents how an entity authenticated - used for audit logging
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -501,6 +535,13 @@ impl AuthenticatedEntity {
                         .get("X-Daemon-Version")
                         .and_then(|h| h.to_str().ok())
                         .map(|s| s.to_string());
+
+                    // Enforce the support floor on EVERY daemon-authenticated request
+                    // (not just the handshake): a daemon below the enforced floor is
+                    // rejected here, before it can poll, register, or run discovery.
+                    // Dormant until the v1.0 launch date is set — the floor is 0.12.0
+                    // until then, so this changes nothing for the installed base.
+                    enforce_daemon_version(daemon_version.as_deref(), Utc::now())?;
 
                     let daemon_api_key_service = &app_state.services.daemon_api_key_service;
 
