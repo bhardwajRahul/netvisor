@@ -62,6 +62,19 @@
 	// Any daemon with a scheduled/active sunset. Drives a non-dismissable banner
 	// so the warning re-arms as long as an affected daemon exists.
 	let hasSunsetDaemons = $derived(daemonsData.some(hasSunsetWarning));
+	// The shared sunset date across affected daemons (server-published, same value
+	// the email uses), formatted for display. All below-floor daemons share the
+	// one announced date.
+	let sunsetDateDisplay = $derived.by(() => {
+		const iso = daemonsData.find(hasSunsetWarning)?.version_status.sunset_date;
+		if (!iso) return null;
+		return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', {
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric',
+			timeZone: 'UTC'
+		});
+	});
 	let networksData = $derived(networksQuery.data ?? []);
 	let isLoading = $derived(daemonsQuery.isPending || networksQuery.isPending);
 
@@ -194,9 +207,12 @@
 			cta={common_create()}
 		/>
 	{:else}
-		{#if hasSunsetDaemons}
+		{#if hasSunsetDaemons && sunsetDateDisplay}
 			<div class="mb-4">
-				<InlineWarning title={daemons_sunsetBannerTitle()} body={daemons_sunsetBannerBody()} />
+				<InlineWarning
+					title={daemons_sunsetBannerTitle()}
+					body={daemons_sunsetBannerBody({ date: sunsetDateDisplay })}
+				/>
 			</div>
 		{/if}
 		<DataControls
