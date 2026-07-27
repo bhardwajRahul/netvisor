@@ -7,6 +7,9 @@
 	import { billingPlans, entities } from '$lib/shared/stores/metadata';
 	import { useActiveSessionsQuery } from '$lib/features/discovery/queries';
 	import { useApiKeysQuery } from '$lib/features/daemon_api_keys/queries';
+	import { useDaemonsQuery } from '$lib/features/daemons/queries';
+	import { hasSunsetWarning } from '$lib/features/daemons/utils';
+	import { createColorHelper } from '$lib/shared/utils/styling';
 	import { modalState } from '$lib/shared/stores/modal-registry';
 	import { entityUIConfig, TAB_LABELS } from '$lib/shared/entity-ui-config';
 	import type { EntityDiscriminants } from '$lib/api/entities';
@@ -147,6 +150,11 @@
 	// Active discovery sessions — used for notification dot on sidebar and sub-tabs
 	const activeSessionsQuery = useActiveSessionsQuery(() => true);
 	let hasActiveSessions = $derived((activeSessionsQuery.data?.length ?? 0) > 0);
+
+	// Daemons needing a version update (Deprecated/Unsupported) — drives the
+	// Daemons nav dot, same mechanism as the Scans active-sessions dot.
+	const daemonsQuery = useDaemonsQuery();
+	let hasDaemonUpdatesNeeded = $derived((daemonsQuery.data ?? []).some(hasSunsetWarning));
 
 	// Legacy (unbound) daemon API keys. When none exist, the Daemon API Keys sub-tab is
 	// hidden and the Daemons group collapses to a single-entity page (no tab strip).
@@ -637,6 +645,19 @@
 		return activeTab === item.id;
 	}
 
+	// Notification-dot color for a nav item, or null for none. One place that maps
+	// an item to its dot so the same rendering covers every item that has one
+	// (Scans → active sessions; Daemons → updates needed).
+	function itemNotificationColor(item: NavItem): string | null {
+		if (item.id === 'discovery' && hasActiveSessions) {
+			return entities.getColorHelper('Discovery').rgb;
+		}
+		if (item.id === 'daemons-group' && hasDaemonUpdatesNeeded) {
+			return createColorHelper('Yellow').rgb;
+		}
+		return null;
+	}
+
 	const inactiveButtonClass =
 		'text-tertiary hover:text-secondary hover:bg-gray-100 dark:hover:bg-gray-800 border border-[var(--color-bg-sidebar)]';
 
@@ -712,6 +733,7 @@
 							{#if !sectionStates[configItem.id] || collapsed}
 								<ul class="mt-1 space-y-1" class:mt-0={collapsed}>
 									{#each configItem.items as item (item.id)}
+										{@const dotColor = itemNotificationColor(item)}
 										<li>
 											<button
 												onclick={() => handleItemClick(item)}
@@ -723,10 +745,10 @@
 											>
 												<span class="relative">
 													<item.icon class="h-4 w-4 flex-shrink-0" />
-													{#if item.id === 'discovery' && hasActiveSessions}
+													{#if dotColor}
 														<span
 															class="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full"
-															style="background-color: {entities.getColorHelper('Discovery').rgb}"
+															style="background-color: {dotColor}"
 														></span>
 													{/if}
 												</span>

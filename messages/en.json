@@ -672,7 +672,7 @@
 	"daemons_reconfigureSectionTitle": "Reconfigure command",
 	"daemons_reconfigureTitle": "Run this on the daemon machine",
 	"daemons_seedCredentialsFailed": "Could not update this daemon's integrations. Check them in the daemon's discovery settings before scanning.",
-	"daemons_sunsetBannerBody": "One or more of your daemons run a version that is losing support. Update them to keep discovery running.",
+	"daemons_sunsetBannerBody": "One or more of your daemons run a version that is losing support on {date}. Update them to keep discovery running.",
 	"daemons_sunsetBannerTitle": "Daemon updates needed",
 	"daemons_sunsetDeprecatedBody": "Support for this version ends on {date}, {days} days from now. Update before then to avoid interruption to discovery.",
 	"daemons_sunsetDeprecatedTitle": "Update required before support ends",

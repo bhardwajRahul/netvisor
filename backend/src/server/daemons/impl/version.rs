@@ -206,15 +206,18 @@ pub fn announced_sunset() -> Option<(Version, DateTime<Utc>)> {
     v1.effective_on.map(|eff| (v1.floor, eff))
 }
 
-/// Whether an announced-but-not-yet-past sunset covers `v`, with its date.
-/// Returns the covering floor and its effective date. `None` when no announced
-/// cutover applies (either dormant, or `v` is at/above every announced floor).
-fn announced_sunset_for(v: &Version) -> Option<(Version, DateTime<Utc>)> {
-    let v1 = v1_sunset();
-    match v1.effective_on {
-        Some(eff) if v < &v1.floor => Some((v1.floor, eff)),
-        _ => None,
-    }
+/// Whether the announced sunset `announced` covers version `v`, with its date.
+/// A version-less daemon (`None`) is treated as **below** any floor: a daemon
+/// that reports no version is almost always genuinely old (modern daemons always
+/// report one), so it is covered by the sunset just like an old versioned daemon.
+/// Returns `None` when no sunset is announced (dormant) or `v` is at/above the floor.
+fn announced_sunset_for(
+    announced: &Option<(Version, DateTime<Utc>)>,
+    v: Option<&Version>,
+) -> Option<(Version, DateTime<Utc>)> {
+    let (floor, eff) = announced.as_ref()?;
+    let below = v.is_none_or(|v| v < floor);
+    below.then(|| (floor.clone(), *eff))
 }
 
 // ===========================================================================
@@ -317,6 +320,9 @@ pub struct DaemonVersionPolicy {
     pub recommended: Version,
     pub latest: Version,
     pub now: DateTime<Utc>,
+    /// The announced sunset (floor, effective date), or `None` while dormant.
+    /// Captured on construction so evaluation is deterministic and testable.
+    announced_sunset: Option<(Version, DateTime<Utc>)>,
 }
 
 impl Default for DaemonVersionPolicy {
@@ -334,76 +340,106 @@ impl DaemonVersionPolicy {
             recommended: current.clone(),
             latest: current,
             now,
+            announced_sunset: announced_sunset(),
+        }
+    }
+
+    /// Test-only constructor pinning both the clock and the announced sunset, so
+    /// every lifecycle branch (Deprecated / Unsupported / version-less) can be
+    /// exercised without depending on the hard-coded `v1_launch()` sentinel.
+    #[cfg(test)]
+    fn at_with_sunset(now: DateTime<Utc>, announced: Option<(Version, DateTime<Utc>)>) -> Self {
+        let current = own_version();
+        Self {
+            minimum_supported: baseline_floor(),
+            recommended: current.clone(),
+            latest: current,
+            now,
+            announced_sunset: announced,
         }
     }
 
     pub fn evaluate(&self, version: Option<&Version>) -> DaemonVersionStatus {
-        match version {
-            None => self.evaluate_unknown(),
-            Some(v) => self.evaluate_known(v),
-        }
-    }
+        let supports_unified = supports_unified_discovery(version);
+        let has_correct_mount = has_correct_docker_volume_mount(version);
 
-    /// No recorded version. Distinct `Unknown` stage (no longer conflated with
-    /// `Outdated`): the server genuinely cannot tell what this daemon is.
-    fn evaluate_unknown(&self) -> DaemonVersionStatus {
+        let (status, warnings, sunset_date) = self.lifecycle(version);
+
         DaemonVersionStatus {
-            version: None,
-            status: VersionHealthStatus::Unknown,
-            warnings: vec![DeprecationWarning {
-                message: format!(
-                    "Daemon version unknown. Update to {} or later.",
-                    self.recommended
-                ),
-                sunset_date: None,
-                severity: DeprecationSeverity::Warning,
-            }],
-            sunset_date: None,
-            supports_unified_discovery: false,
-            has_correct_docker_volume_mount: false,
+            version: version.map(|v| v.to_string()),
+            status,
+            warnings,
+            sunset_date,
+            supports_unified_discovery: supports_unified,
+            has_correct_docker_volume_mount: has_correct_mount,
         }
     }
 
-    fn evaluate_known(&self, v: &Version) -> DaemonVersionStatus {
-        let supports_unified = supports_unified_discovery(Some(v));
-        let has_correct_mount = has_correct_docker_volume_mount(Some(v));
+    /// The lifecycle stage, warnings, and sunset date for a (possibly absent)
+    /// version. A version-less daemon flows through the same sunset logic as an
+    /// old versioned one — it is treated as genuinely old — and only degrades to
+    /// the benign `Unknown` stage when no sunset is announced (dormant).
+    fn lifecycle(
+        &self,
+        v: Option<&Version>,
+    ) -> (VersionHealthStatus, Vec<DeprecationWarning>, Option<String>) {
+        let label = match v {
+            Some(v) => format!("Daemon {v}"),
+            None => "This daemon (no reported version)".to_string(),
+        };
 
-        let (status, warnings, sunset_date) = if let Some((_floor, effective_on)) =
-            announced_sunset_for(v)
-        {
+        if let Some((_floor, effective_on)) = announced_sunset_for(&self.announced_sunset, v) {
             let sunset_str = effective_on.format("%Y-%m-%d").to_string();
-            if effective_on <= self.now {
+            let (status, message) = if effective_on <= self.now {
                 // Past its announced cutover — unsupported and rejected.
                 (
                     VersionHealthStatus::Unsupported,
-                    vec![DeprecationWarning {
-                        message: format!(
-                            "Daemon {v} is no longer supported (support ended {sunset_str}). \
-                             Update to {} or later to reconnect.",
-                            self.recommended
-                        ),
-                        sunset_date: Some(sunset_str.clone()),
-                        severity: DeprecationSeverity::Critical,
-                    }],
-                    Some(sunset_str),
+                    format!(
+                        "{label} is no longer supported (support ended {sunset_str}). \
+                         Update to {} or later to reconnect.",
+                        self.recommended
+                    ),
                 )
             } else {
                 // Announced but still in the window — deprecated, with a date.
                 (
                     VersionHealthStatus::Deprecated,
-                    vec![DeprecationWarning {
-                        message: format!(
-                            "Daemon {v} is deprecated and support ends {sunset_str}. \
-                             Update to {} or later before then to avoid interruption.",
-                            self.recommended
-                        ),
-                        sunset_date: Some(sunset_str.clone()),
-                        severity: DeprecationSeverity::Critical,
-                    }],
-                    Some(sunset_str),
+                    format!(
+                        "{label} is deprecated and support ends {sunset_str}. \
+                         Update to {} or later before then to avoid interruption.",
+                        self.recommended
+                    ),
                 )
-            }
-        } else if v < &self.minimum_supported {
+            };
+            return (
+                status,
+                vec![DeprecationWarning {
+                    message,
+                    sunset_date: Some(sunset_str.clone()),
+                    severity: DeprecationSeverity::Critical,
+                }],
+                Some(sunset_str),
+            );
+        }
+
+        // No sunset covers this daemon.
+        let Some(v) = v else {
+            // Version-less and nothing announced (dormant) — benign Unknown.
+            return (
+                VersionHealthStatus::Unknown,
+                vec![DeprecationWarning {
+                    message: format!(
+                        "Daemon version unknown. Update to {} or later.",
+                        self.recommended
+                    ),
+                    sunset_date: None,
+                    severity: DeprecationSeverity::Warning,
+                }],
+                None,
+            );
+        };
+
+        if v < &self.minimum_supported {
             // Below the enforced floor without an explicit announced schedule
             // (e.g. a future auto-advanced floor). Unsupported.
             (
@@ -433,15 +469,6 @@ impl DaemonVersionPolicy {
             )
         } else {
             (VersionHealthStatus::Current, vec![], None)
-        };
-
-        DaemonVersionStatus {
-            version: Some(v.to_string()),
-            status,
-            warnings,
-            sunset_date,
-            supports_unified_discovery: supports_unified,
-            has_correct_docker_volume_mount: has_correct_mount,
         }
     }
 }
@@ -542,10 +569,53 @@ mod tests {
 
     #[test]
     fn unknown_version_is_unknown_not_outdated() {
+        // Dormant (no announced sunset): a version-less daemon is a benign Unknown.
         let policy = policy_at(dt(2026, 7, 27));
         let status = policy.evaluate(None);
         assert_eq!(status.status, VersionHealthStatus::Unknown);
         assert!(status.version.is_none());
+    }
+
+    #[test]
+    fn announced_sunset_deprecates_old_and_versionless() {
+        // Future sunset date: an old versioned daemon AND a version-less one are
+        // both Deprecated with that date (a version-less daemon is treated as
+        // genuinely old). A current daemon is unaffected.
+        let policy = DaemonVersionPolicy::at_with_sunset(
+            dt(2026, 7, 27),
+            Some((Version::new(0, 17, 5), dt(2026, 10, 1))),
+        );
+
+        let old = policy.evaluate(Some(&Version::new(0, 16, 0)));
+        assert_eq!(old.status, VersionHealthStatus::Deprecated);
+        assert_eq!(old.sunset_date.as_deref(), Some("2026-10-01"));
+
+        let versionless = policy.evaluate(None);
+        assert_eq!(versionless.status, VersionHealthStatus::Deprecated);
+        assert_eq!(versionless.sunset_date.as_deref(), Some("2026-10-01"));
+
+        assert_eq!(
+            policy.evaluate(Some(&own_version())).status,
+            VersionHealthStatus::Current
+        );
+    }
+
+    #[test]
+    fn passed_sunset_is_unsupported_including_versionless() {
+        // Sunset date already elapsed: both an old versioned daemon and a
+        // version-less one are Unsupported.
+        let policy = DaemonVersionPolicy::at_with_sunset(
+            dt(2026, 11, 1),
+            Some((Version::new(0, 17, 5), dt(2026, 10, 1))),
+        );
+        assert_eq!(
+            policy.evaluate(Some(&Version::new(0, 16, 0))).status,
+            VersionHealthStatus::Unsupported
+        );
+        assert_eq!(
+            policy.evaluate(None).status,
+            VersionHealthStatus::Unsupported
+        );
     }
 
     // --- Once the launch anchor is set: the real transitions. ----------------
