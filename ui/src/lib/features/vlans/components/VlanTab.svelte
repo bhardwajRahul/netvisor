@@ -10,7 +10,6 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useVlansQuery } from '../queries';
-	import { sourceLabel } from '../source';
 	import type { Vlan, VlanOrderField } from '../types/base';
 	import type { components } from '$lib/api/schema';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
@@ -21,7 +20,6 @@
 		common_name,
 		common_network,
 		common_noEntityYet,
-		common_source,
 		common_subnets,
 		common_unknownNetwork,
 		common_updated,
@@ -85,13 +83,6 @@
 					filterable: true,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
-				},
-				{
-					key: 'source',
-					label: common_source(),
-					type: 'string',
-					filterable: true,
-					getValue: (item) => sourceLabel(item.source)
 				},
 				{
 					key: 'subnet_ids',

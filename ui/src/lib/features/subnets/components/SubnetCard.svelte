@@ -5,10 +5,13 @@
 	import { isContainerSubnet } from '../queries';
 	import type { Subnet } from '../types/base';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
+	import { formatRelativeTime } from '$lib/shared/utils/formatting';
 	import {
 		common_delete,
 		common_description,
 		common_edit,
+		common_lastSeen,
+		common_never,
 		common_noTypeSpecified,
 		common_tags,
 		subnets_subnetType
@@ -51,6 +54,10 @@
 					}
 				],
 				emptyText: common_noTypeSpecified()
+			},
+			{
+				label: common_lastSeen(),
+				value: subnet.last_seen_at ? formatRelativeTime(subnet.last_seen_at) : common_never()
 			},
 			{ label: common_tags(), snippet: tagsSnippet }
 		],
