@@ -6,7 +6,7 @@ use crate::server::shared::handlers::query::{
 use crate::server::shared::handlers::traits::create_handler;
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
-use crate::server::shared::storage::traits::{Entity, Storable, Storage};
+use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, PaginatedApiResponse};
 use crate::server::vlans::r#impl::base::Vlan;
 use crate::server::{
@@ -159,11 +159,12 @@ async fn get_all_vlans(
 
     let (filter, order_by) = query.apply_ordering(filter);
 
+    // Through the service, not `storage()`, so each VLAN's `subnet_ids` are
+    // hydrated from the `subnet_vlans` junction.
     let result = state
         .services
         .vlan_service
-        .storage()
-        .get_paginated(filter, &order_by)
+        .get_paginated_ordered(filter, &order_by)
         .await?;
 
     let limit = pagination.effective_limit().unwrap_or(0);

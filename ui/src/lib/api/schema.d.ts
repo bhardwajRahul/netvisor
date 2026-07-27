@@ -4438,6 +4438,13 @@ export interface components {
                 readonly last_seen_at?: string;
                 /** Format: uuid */
                 readonly lineage_id?: string | null;
+                /**
+                 * @description Subnets associated with this VLAN, derived from discovered interface
+                 *     native-VLAN data via the `subnet_vlans` junction. Hydrated by
+                 *     `VlanService` on read — it is not a column on `vlans`, and it is never
+                 *     accepted on create/update (which take `VlanBase`).
+                 */
+                subnet_ids?: string[];
                 /** Format: date-time */
                 readonly updated_at: string;
                 /** Format: date-time */
@@ -5120,6 +5127,12 @@ export interface components {
         DaemonVersionStatus: {
             has_correct_docker_volume_mount?: boolean;
             status: components["schemas"]["VersionHealthStatus"];
+            /**
+             * @description The date this daemon's version stops being supported, if a sunset is
+             *     scheduled for it. Surfaced top-level (not only inside `warnings`) so the
+             *     UI can render a countdown from the same value the email uses.
+             */
+            sunset_date?: string | null;
             supports_unified_discovery?: boolean;
             version?: string | null;
             warnings?: components["schemas"]["DeprecationWarning"][];
@@ -6948,6 +6961,13 @@ export interface components {
                 readonly last_seen_at?: string;
                 /** Format: uuid */
                 readonly lineage_id?: string | null;
+                /**
+                 * @description Subnets associated with this VLAN, derived from discovered interface
+                 *     native-VLAN data via the `subnet_vlans` junction. Hydrated by
+                 *     `VlanService` on read — it is not a column on `vlans`, and it is never
+                 *     accepted on create/update (which take `VlanBase`).
+                 */
+                subnet_ids?: string[];
                 /** Format: date-time */
                 readonly updated_at: string;
                 /** Format: date-time */
@@ -8254,10 +8274,13 @@ export interface components {
             token: string;
         };
         /**
-         * @description Health status for daemon versions
+         * @description Health status for daemon versions.
+         *
+         *     Lifecycle order: `Current` → `Outdated` → `Deprecated` → `Unsupported`, with
+         *     `Unknown` for daemons whose version the server has no record of.
          * @enum {string}
          */
-        VersionHealthStatus: "Current" | "Outdated" | "Deprecated";
+        VersionHealthStatus: "Current" | "Outdated" | "Deprecated" | "Unsupported" | "Unknown";
         /** @description Version information for API compatibility checking */
         VersionInfo: {
             /**
@@ -8286,6 +8309,13 @@ export interface components {
             readonly last_seen_at?: string;
             /** Format: uuid */
             readonly lineage_id?: string | null;
+            /**
+             * @description Subnets associated with this VLAN, derived from discovered interface
+             *     native-VLAN data via the `subnet_vlans` junction. Hydrated by
+             *     `VlanService` on read — it is not a column on `vlans`, and it is never
+             *     accepted on create/update (which take `VlanBase`).
+             */
+            subnet_ids?: string[];
             /** Format: date-time */
             readonly updated_at: string;
             /** Format: date-time */

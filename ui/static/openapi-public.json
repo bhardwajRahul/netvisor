@@ -14914,6 +14914,15 @@
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "subnet_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "description": "Subnets associated with this VLAN, derived from discovered interface\nnative-VLAN data via the `subnet_vlans` junction. Hydrated by\n`VlanService` on read — it is not a column on `vlans`, and it is never\naccepted on create/update (which take `VlanBase`)."
+                  },
                   "updated_at": {
                     "type": "string",
                     "format": "date-time",
@@ -16911,6 +16920,13 @@
           },
           "status": {
             "$ref": "#/components/schemas/VersionHealthStatus"
+          },
+          "sunset_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The date this daemon's version stops being supported, if a sunset is\nscheduled for it. Surfaced top-level (not only inside `warnings`) so the\nUI can render a countdown from the same value the email uses."
           },
           "supports_unified_discovery": {
             "type": "boolean"
@@ -22235,6 +22251,15 @@
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "subnet_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                      },
+                      "description": "Subnets associated with this VLAN, derived from discovered interface\nnative-VLAN data via the `subnet_vlans` junction. Hydrated by\n`VlanService` on read — it is not a column on `vlans`, and it is never\naccepted on create/update (which take `VlanBase`)."
+                    },
                     "updated_at": {
                       "type": "string",
                       "format": "date-time",
@@ -25290,11 +25315,13 @@
       },
       "VersionHealthStatus": {
         "type": "string",
-        "description": "Health status for daemon versions",
+        "description": "Health status for daemon versions.\n\nLifecycle order: `Current` → `Outdated` → `Deprecated` → `Unsupported`, with\n`Unknown` for daemons whose version the server has no record of.",
         "enum": [
           "Current",
           "Outdated",
-          "Deprecated"
+          "Deprecated",
+          "Unsupported",
+          "Unknown"
         ]
       },
       "VersionInfo": {
@@ -25376,6 +25403,15 @@
                 ],
                 "format": "uuid",
                 "readOnly": true
+              },
+              "subnet_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "readOnly": true
+                },
+                "description": "Subnets associated with this VLAN, derived from discovered interface\nnative-VLAN data via the `subnet_vlans` junction. Hydrated by\n`VlanService` on read — it is not a column on `vlans`, and it is never\naccepted on create/update (which take `VlanBase`)."
               },
               "updated_at": {
                 "type": "string",

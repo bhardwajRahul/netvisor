@@ -107,6 +107,11 @@ export const queryKeys = {
 		byNetwork: (networkId: string) => [...queryKeys.subnets.all, 'network', networkId] as const,
 		detail: (id: string) => [...queryKeys.subnets.all, 'detail', id] as const
 	},
+	vlans: {
+		all: ['vlans'] as const,
+		byNetwork: (networkId: string) => [...queryKeys.vlans.all, 'network', networkId] as const,
+		detail: (id: string) => [...queryKeys.vlans.all, 'detail', id] as const
+	},
 	dependencies: {
 		all: ['dependencies'] as const,
 		detail: (id: string) => [...queryKeys.dependencies.all, 'detail', id] as const

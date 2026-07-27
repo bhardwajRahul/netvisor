@@ -5,13 +5,14 @@ use crate::server::{
         storage::{
             filter::StorableFilter,
             generic::GenericPostgresStorage,
-            traits::{Storable, Storage},
+            traits::{PaginatedResult, Storable, Storage},
         },
         types::entities::EntitySource,
     },
     vlans::r#impl::{base::Vlan, subnet_vlans::SubnetVlanStorage},
 };
 use anyhow::Result;
+use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -35,6 +36,23 @@ impl EventBusService<Vlan> for VlanService {
     }
 }
 
+/// Helper: hydrate associated subnet IDs for a batch of VLANs.
+async fn hydrate_subnet_ids_for_batch(
+    subnet_vlan_storage: &SubnetVlanStorage,
+    vlans: &mut [Vlan],
+) -> Result<()> {
+    if vlans.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<Uuid> = vlans.iter().map(|v| v.id).collect();
+    let subnets_map = subnet_vlan_storage.get_for_vlans(&ids).await?;
+    for vlan in vlans.iter_mut() {
+        vlan.subnet_ids = subnets_map.get(&vlan.id).cloned().unwrap_or_default();
+    }
+    Ok(())
+}
+
+#[async_trait]
 impl CrudService<Vlan> for VlanService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Vlan>> {
         &self.storage
@@ -44,6 +62,55 @@ impl CrudService<Vlan> for VlanService {
         &self,
     ) -> Option<&Arc<crate::server::tags::entity_tags::EntityTagService>> {
         None
+    }
+
+    async fn get_by_id(&self, id: &Uuid) -> Result<Option<Vlan>, anyhow::Error> {
+        match self.storage().get_by_id(id).await? {
+            Some(mut vlan) => {
+                vlan.subnet_ids = self
+                    .subnet_vlan_storage
+                    .get_subnet_ids_for_vlan(&vlan.id)
+                    .await?;
+                Ok(Some(vlan))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn get_all(&self, filter: StorableFilter<Vlan>) -> Result<Vec<Vlan>, anyhow::Error> {
+        let mut vlans = self.storage().get_all(filter).await?;
+        hydrate_subnet_ids_for_batch(&self.subnet_vlan_storage, &mut vlans).await?;
+        Ok(vlans)
+    }
+
+    async fn get_one(&self, filter: StorableFilter<Vlan>) -> Result<Option<Vlan>, anyhow::Error> {
+        match self.storage().get_one(filter).await? {
+            Some(mut vlan) => {
+                vlan.subnet_ids = self
+                    .subnet_vlan_storage
+                    .get_subnet_ids_for_vlan(&vlan.id)
+                    .await?;
+                Ok(Some(vlan))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn get_paginated(
+        &self,
+        filter: StorableFilter<Vlan>,
+    ) -> Result<PaginatedResult<Vlan>, anyhow::Error> {
+        self.get_paginated_ordered(filter, "created_at ASC").await
+    }
+
+    async fn get_paginated_ordered(
+        &self,
+        filter: StorableFilter<Vlan>,
+        order_by: &str,
+    ) -> Result<PaginatedResult<Vlan>, anyhow::Error> {
+        let mut paginated = self.storage().get_paginated(filter, order_by).await?;
+        hydrate_subnet_ids_for_batch(&self.subnet_vlan_storage, &mut paginated.items).await?;
+        Ok(paginated)
     }
 }
 
