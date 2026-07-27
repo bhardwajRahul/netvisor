@@ -112,11 +112,12 @@ where
     let mut current_parts = base_parts.clone();
     let mut count = 0usize;
     let mut use_bulk = true;
-    let mut truncated = false;
+    let mut stop = WalkStop::EndOfSubtree;
+    let mut stop_detail: Option<String> = None;
 
     'walk: loop {
         if count >= MAX_WALK_ENTRIES {
-            truncated = true;
+            stop = WalkStop::EntryCap;
             break;
         }
 
@@ -133,8 +134,8 @@ where
                     continue 'walk;
                 }
                 Err(e) => {
-                    debug!(?current_parts, error = %e, "SNMP walk getbulk stopped");
-                    truncated = true;
+                    stop = WalkStop::Transport;
+                    stop_detail = Some(e.to_string());
                     break;
                 }
             }
@@ -142,8 +143,8 @@ where
             match session.walk_getnext(&current_parts).await {
                 Ok(v) => v,
                 Err(e) => {
-                    debug!(?current_parts, error = %e, "SNMP walk column stopped");
-                    truncated = true;
+                    stop = WalkStop::Transport;
+                    stop_detail = Some(e.to_string());
                     break;
                 }
             }
@@ -152,7 +153,7 @@ where
         // Empty response mid-walk is abnormal (getbulk) or an exhausted column
         // (getnext) — treat as partial either way.
         if varbinds.is_empty() {
-            truncated = true;
+            stop = WalkStop::EmptyResponse;
             break;
         }
 
@@ -164,6 +165,7 @@ where
                 value,
                 Value::EndOfMibView | Value::NoSuchObject | Value::NoSuchInstance
             ) {
+                stop = WalkStop::EndOfMibView;
                 done = true;
                 break;
             }
@@ -174,15 +176,12 @@ where
                 // over from a cancelled request reads exactly like this), and calling it a
                 // natural end would report a column that stopped early as authoritative, which
                 // then re-enables the server-side prune #649 exists to suppress.
-                if resp_parts <= current_parts {
-                    debug!(
-                        ?resp_parts,
-                        ?current_parts,
-                        base = base_oid_str,
-                        "SNMP walk stopped: response left the subtree without advancing"
-                    );
-                    truncated = true;
-                }
+                stop = if resp_parts <= current_parts {
+                    stop_detail = Some(format!("responded with {resp_parts:?}"));
+                    WalkStop::StaleResponse
+                } else {
+                    WalkStop::EndOfSubtree
+                };
                 done = true;
                 break;
             }
@@ -190,7 +189,7 @@ where
             count += 1;
             next_parts = Some(resp_parts);
             if count >= MAX_WALK_ENTRIES {
-                truncated = true;
+                stop = WalkStop::EntryCap;
                 done = true;
                 break;
             }
@@ -207,24 +206,34 @@ where
                 // page until MAX_WALK_ENTRIES or the integration timeout. `Vec<u64>`
                 // compares lexicographically, matching SNMP OID ordering.
                 if parts <= current_parts {
-                    debug!(
-                        ?parts,
-                        ?current_parts,
-                        "SNMP walk stopped: OID did not advance"
-                    );
-                    truncated = true;
+                    stop_detail = Some(format!("responded with {parts:?}"));
+                    stop = WalkStop::NonAdvancingOid;
                     break;
                 }
                 current_parts = parts;
             }
             None => {
-                truncated = true;
+                stop = WalkStop::EmptyResponse;
                 break;
             }
         }
     }
 
-    Ok(!truncated)
+    // A truncated column is why interfaces and neighbours go missing, and until now the reason was
+    // invisible — a timeout and a session reading stale answers produce identical data. Logged at
+    // info because it is both rare on a healthy network and the first thing worth knowing when it
+    // is not; a clean walk stays silent.
+    if stop.is_truncation() {
+        tracing::info!(
+            base = base_oid_str,
+            ?stop,
+            detail = stop_detail.as_deref().unwrap_or(""),
+            entries = count,
+            "SNMP walk truncated"
+        );
+    }
+
+    Ok(!stop.is_truncation())
 }
 
 /// Query system MIB information from a device
@@ -328,6 +337,37 @@ pub struct IfTableWalk {
 
 // `Default` is the hard-failure outcome (`query_or_default`): no entries, and neither flag set,
 // so a walk that never ran can never be mistaken for an authoritative one.
+
+/// Why a column walk stopped.
+///
+/// Only the first two are a genuine end; the rest are truncation, and telling them apart is the
+/// whole diagnostic. "The device is slow" (`Timeout`) and "this session is reading answers to
+/// questions it already gave up on" (`SessionDesync`) look identical in the data — both just
+/// produce a short column — but they call for completely different responses.
+#[derive(Debug, Clone, Copy)]
+enum WalkStop {
+    /// Responses moved past the requested subtree — the column is finished.
+    EndOfSubtree,
+    /// Agent signalled end-of-MIB / no-such-object.
+    EndOfMibView,
+    /// Hit `MAX_WALK_ENTRIES`.
+    EntryCap,
+    /// getbulk/getnext returned an error. The message distinguishes a timeout from a
+    /// request-id or community mismatch.
+    Transport,
+    /// Agent answered with no varbinds at all mid-walk.
+    EmptyResponse,
+    /// Agent answered with an OID that did not advance — it would loop for ever.
+    NonAdvancingOid,
+    /// Left the subtree without advancing: not this walk's continuation at all.
+    StaleResponse,
+}
+
+impl WalkStop {
+    fn is_truncation(self) -> bool {
+        !matches!(self, Self::EndOfSubtree | Self::EndOfMibView)
+    }
+}
 
 /// Walk one column, recording in `complete` whether it reached the end.
 ///
@@ -448,7 +488,12 @@ pub async fn walk_if_table<T: SnmpWalkTransport>(
 
         if column_name == "ifIndex" {
             index_column_complete = Some(walked);
-            if walked && !column_indexes.is_empty() {
+            // A column cut short still names the indexes it *did* return, and a row outside that
+            // set is not an interface this device listed — truncated or not. Only a column that
+            // returned nothing leaves no basis to judge, and that is the sole case that falls back
+            // to accepting whatever the other columns mint. Requiring the column to have finished
+            // let a foreign ifIndex through on exactly the scan where the guard was needed most.
+            if !column_indexes.is_empty() {
                 known_if_indexes = Some(column_indexes);
             }
         }
@@ -1707,6 +1752,75 @@ mod if_table_tests {
             !walk.set_complete,
             "a table carrying rows the device never listed is not authoritative, so the server \
              must not prune against it"
+        );
+    }
+
+    /// The gap that let a foreign interface onto switch-exos-01: the guard used to engage only
+    /// when the index column *finished*, so on the one scan where that column was cut short — the
+    /// scan most likely to be carrying stray responses — it switched itself off and a row for an
+    /// ifIndex the device never listed became an interface.
+    ///
+    /// A truncated column still names the indexes it did return, and those are still the only
+    /// interfaces the device claimed.
+    #[tokio::test]
+    async fn a_truncated_index_column_still_rejects_indexes_it_never_reported() {
+        struct TruncatedIndexWithGhost {
+            agent: FakeAgent,
+        }
+
+        #[async_trait::async_trait]
+        impl SnmpWalkTransport for TruncatedIndexWithGhost {
+            async fn walk_getbulk<'a>(
+                &'a mut self,
+                from: &[u64],
+                max: u32,
+            ) -> Result<WalkPage<'a>> {
+                // The index column answers once, then dies — so it reports 1 and 49153 only.
+                if from == [1, 3, 6, 1, 2, 1, 2, 2, 1, 1] {
+                    return Ok(WalkPage::Varbinds(vec![
+                        (vec![1, 3, 6, 1, 2, 1, 2, 2, 1, 1, 1], Value::Integer(1)),
+                        (
+                            vec![1, 3, 6, 1, 2, 1, 2, 2, 1, 1, 49153],
+                            Value::Integer(49153),
+                        ),
+                    ]));
+                }
+                if from.starts_with(&[1, 3, 6, 1, 2, 1, 2, 2, 1, 1]) {
+                    return Err(anyhow::anyhow!("getbulk timed out"));
+                }
+                self.agent.walk_getbulk(from, max).await
+            }
+
+            async fn walk_getnext<'a>(&'a mut self, from: &[u64]) -> Result<Varbinds<'a>> {
+                if from.starts_with(&[1, 3, 6, 1, 2, 1, 2, 2, 1, 1]) {
+                    return Err(anyhow::anyhow!("getnext timed out"));
+                }
+                self.agent.walk_getnext(from).await
+            }
+        }
+
+        // The ifDescr column carries a row for ifIndex 2, which the index column never named.
+        let mut rows = FakeAgent::omada();
+        rows.push(("1.3.6.1.2.1.2.2.1.2.2", Canned::Str("ge-0/0/1")));
+        let mut session = TruncatedIndexWithGhost {
+            agent: FakeAgent::new(&rows),
+        };
+
+        let walk = walk_if_table(&mut session, ip()).await.unwrap();
+
+        assert!(
+            !walk.entries.iter().any(|e| e.if_index == 2),
+            "a row the index column never named must be rejected even when that column was cut \
+             short — that is precisely when stray responses are in play"
+        );
+        assert_eq!(
+            walk.entries.iter().map(|e| e.if_index).collect::<Vec<_>>(),
+            vec![1, 49153],
+            "only the indexes the device actually reported survive"
+        );
+        assert!(
+            !walk.set_complete,
+            "a cut-short index column is never an authoritative set"
         );
     }
 
