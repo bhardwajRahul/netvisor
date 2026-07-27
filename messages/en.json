@@ -234,6 +234,7 @@
 	"common_details": "Details",
 	"common_detection": "Detection",
 	"common_disable": "Disable",
+	"common_discovered": "Discovered",
 	"common_disabled": "Disabled",
 	"common_discovery": "Discovery",
 	"common_dismiss": "Dismiss",
@@ -326,6 +327,7 @@
 	"common_maintainerHelp": "User responsible for this daemon. Used for deprecation and upgrade notifications.",
 	"common_makesRequestTo": "makes a request to",
 	"common_manage": "Manage",
+	"common_manual": "Manual",
 	"common_marketing": "Marketing",
 	"common_message": "Message",
 	"common_modal": "Modal",
@@ -486,6 +488,7 @@
 	"common_version": "Version",
 	"common_viewTopology": "View Topology",
 	"common_visual": "Visual",
+	"common_vlans": "VLANs",
 	"common_warn": "Warn",
 	"common_wed": "Wed",
 	"common_width": "Width",
@@ -649,6 +652,7 @@
 	"daemons_installPromptServices": "Install a daemon to start discovering services on your network.",
 	"daemons_installPromptSubnets": "Install a daemon to start discovering subnets on your network.",
 	"daemons_installPromptTopology": "Install a daemon to start mapping your network topology.",
+	"daemons_installPromptVlans": "Install a daemon to start discovering VLANs on your network.",
 	"daemons_installReturnToCommands": "Return to install commands",
 	"daemons_integrationsSubtitle": "Select the integrations this daemon should use to gather deeper detail from your devices.",
 	"daemons_lastSeen": "Last Seen",
@@ -1992,5 +1996,7 @@
 	"verifyEmail_verified": "Email Verified!",
 	"verifyEmail_verifiedBody": "Your email has been verified. Redirecting you now...",
 	"verifyEmail_verifying": "Verifying your email...",
-	"verifyEmail_verifyingBody": "Please wait while we verify your email address."
+	"verifyEmail_verifyingBody": "Please wait while we verify your email address.",
+	"vlans_emptySubtitle": "VLANs are discovered automatically from your network devices.",
+	"vlans_vlanNumber": "VLAN Number"
 }

@@ -53,6 +53,7 @@
 	import DiscoveryHistoryTab from '$lib/features/discovery/components/tabs/DiscoveryHistoryTab.svelte';
 	import NetworksTab from '$lib/features/networks/components/NetworksTab.svelte';
 	import SubnetTab from '$lib/features/subnets/components/SubnetTab.svelte';
+	import VlanTab from '$lib/features/vlans/components/VlanTab.svelte';
 	import HostTab from '$lib/features/hosts/components/HostTab.svelte';
 	import ServiceTab from '$lib/features/services/components/ServiceTab.svelte';
 	import DaemonTab from '$lib/features/daemons/components/DaemonTab.svelte';
@@ -307,6 +308,13 @@
 					icon: entities.getIconComponent('Subnet'),
 					entityType: 'Subnet',
 					component: SubnetTab
+				},
+				{
+					id: entityUIConfig.Vlan!.tabId,
+					label: TAB_LABELS[entityUIConfig.Vlan!.tabId],
+					icon: entities.getIconComponent('Vlan'),
+					entityType: 'Vlan',
+					component: VlanTab
 				},
 				{
 					id: entityUIConfig.Host!.tabId,
