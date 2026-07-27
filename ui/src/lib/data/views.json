@@ -17,6 +17,15 @@
         "Hypervisor": {
           "type": "disabled"
         },
+        "NeighborLink": {
+          "affects_layout": true,
+          "default_visibility": "visible",
+          "highlight_behavior": "when_visible",
+          "show_directionality": false,
+          "stroke": "dashed",
+          "type": "active",
+          "will_target_container": false
+        },
         "PhysicalLink": {
           "affects_layout": true,
           "default_visibility": "visible",
@@ -100,6 +109,9 @@
           "stroke": "dashed",
           "type": "active",
           "will_target_container": true
+        },
+        "NeighborLink": {
+          "type": "disabled"
         },
         "PhysicalLink": {
           "affects_layout": false,
@@ -446,6 +458,15 @@
         },
         "Hypervisor": {
           "type": "disabled"
+        },
+        "NeighborLink": {
+          "affects_layout": false,
+          "default_visibility": "hidden",
+          "highlight_behavior": "when_visible",
+          "show_directionality": false,
+          "stroke": "dashed",
+          "type": "active",
+          "will_target_container": false
         },
         "PhysicalLink": {
           "affects_layout": false,
@@ -827,6 +848,9 @@
           "will_target_container": false
         },
         "Hypervisor": {
+          "type": "disabled"
+        },
+        "NeighborLink": {
           "type": "disabled"
         },
         "PhysicalLink": {

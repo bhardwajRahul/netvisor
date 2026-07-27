@@ -135,5 +135,24 @@
         "type": "segment"
       }
     }
+  },
+  {
+    "id": "NeighborLink",
+    "name": "Neighbor Link",
+    "description": null,
+    "category": null,
+    "icon": "server",
+    "color": "Amber",
+    "metadata": {
+      "edge_style": "Bezier",
+      "has_end_marker": false,
+      "has_start_marker": false,
+      "is_dependency_edge": false,
+      "is_host_edge": false,
+      "is_physical_edge": true,
+      "selection_scope": {
+        "type": "segment"
+      }
+    }
   }
 ]

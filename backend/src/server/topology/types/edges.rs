@@ -216,6 +216,15 @@ pub enum EdgeType {
         target_entity_id: Uuid,
         protocol: DiscoveryProtocol,
     },
+    /// Device-level adjacency from LLDP/CDP: the neighbour resolved to a host, but the remote
+    /// port could not be pinned down (a locally-assigned port id that matches nothing, or a
+    /// neighbour entry carrying no port id at all). The two devices are provably adjacent;
+    /// which cables they meet on is unknown. `PhysicalLink` is the port-precise sibling.
+    NeighborLink {
+        source_host_id: Uuid,
+        target_host_id: Uuid,
+        protocol: DiscoveryProtocol,
+    },
 }
 
 impl HasId for EdgeType {
@@ -249,7 +258,8 @@ impl EdgeType {
             // link is likewise the whole relationship, not a segment of one.
             EdgeType::ContainerRuntime { .. }
             | EdgeType::Hypervisor { .. }
-            | EdgeType::PhysicalLink { .. } => Segment,
+            | EdgeType::PhysicalLink { .. }
+            | EdgeType::NeighborLink { .. } => Segment,
         }
     }
 }
@@ -264,6 +274,9 @@ impl EntityMetadataProvider for EdgeType {
             EdgeType::ContainerRuntime { .. } => Concept::Containerization.color(),
             EdgeType::SameContainer { .. } => Concept::Containerization.color(),
             EdgeType::PhysicalLink { .. } => EntityDiscriminants::Interface.color(),
+            // Joins two hosts, not two ports — colouring it as a host also keeps it visually
+            // distinct from the port-precise link it sits beside.
+            EdgeType::NeighborLink { .. } => EntityDiscriminants::Host.color(),
         }
     }
 
@@ -276,6 +289,7 @@ impl EntityMetadataProvider for EdgeType {
             EdgeType::ContainerRuntime { .. } => Concept::Containerization.icon(),
             EdgeType::SameContainer { .. } => Concept::Containerization.icon(),
             EdgeType::PhysicalLink { .. } => EntityDiscriminants::Interface.icon(),
+            EdgeType::NeighborLink { .. } => EntityDiscriminants::Host.icon(),
         }
     }
 }
@@ -290,6 +304,7 @@ impl TypeMetadataProvider for EdgeType {
             EdgeType::ContainerRuntime { .. } => "Container Runtime",
             EdgeType::SameContainer { .. } => "Same Container",
             EdgeType::PhysicalLink { .. } => "Physical Link",
+            EdgeType::NeighborLink { .. } => "Neighbor Link",
         }
     }
 
@@ -302,6 +317,7 @@ impl TypeMetadataProvider for EdgeType {
             EdgeType::ContainerRuntime { .. } => EdgeStyle::Bezier.into(),
             EdgeType::SameContainer { .. } => EdgeStyle::Bezier.into(),
             EdgeType::PhysicalLink { .. } => EdgeStyle::Bezier.into(),
+            EdgeType::NeighborLink { .. } => EdgeStyle::Bezier.into(),
         };
 
         let has_start_marker = false;
@@ -314,6 +330,7 @@ impl TypeMetadataProvider for EdgeType {
             EdgeType::ContainerRuntime { .. } => false,
             EdgeType::SameContainer { .. } => false,
             EdgeType::PhysicalLink { .. } => false, // No markers - bidirectional link
+            EdgeType::NeighborLink { .. } => false, // No markers - bidirectional adjacency
         };
 
         let is_host_edge = matches!(
@@ -324,7 +341,10 @@ impl TypeMetadataProvider for EdgeType {
             self,
             EdgeType::RequestPath { .. } | EdgeType::HubAndSpoke { .. }
         );
-        let is_physical_edge = matches!(self, EdgeType::PhysicalLink { .. });
+        let is_physical_edge = matches!(
+            self,
+            EdgeType::PhysicalLink { .. } | EdgeType::NeighborLink { .. }
+        );
 
         serde_json::json!({
             "has_start_marker": has_start_marker,
