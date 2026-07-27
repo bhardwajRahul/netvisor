@@ -23,6 +23,38 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m'
 
+# ap-wireless-01 advertises 172.30.10.1/24 on a `br-` prefixed interface — the
+# #663 fixture, where an access point's NAT guest network was misclassified as a
+# Docker bridge. It's the only agent serving its own ipAddrTable, which means it
+# is also the only one that breaks silently: if snmpd fails to displace its
+# built-in IP module, the `pass` directive loses the duplicate registration and
+# the agent quietly falls back to reporting only the scanned subnet. Check it
+# explicitly so a scan is never run against a fixture that isn't there.
+verify_guest_subnet_fixture() {
+    local host="${HOSTS[5]}" community="${COMMUNITIES[5]}"
+    local if_index="4" guest_ip="172.30.10.1" if_name="br-guest"
+
+    local got_index got_name
+    got_index=$("$SNMPGET" -v2c -c "$community" -t 2 -r 1 -Ovq \
+        "$host" ".1.3.6.1.2.1.4.20.1.2.${guest_ip}" 2>/dev/null || echo "FAILED")
+    got_name=$("$SNMPGET" -v2c -c "$community" -t 2 -r 1 -Ovq \
+        "$host" ".1.3.6.1.2.1.31.1.1.1.1.${if_index}" 2>/dev/null | tr -d '"' || echo "FAILED")
+
+    if [ "$(echo "$got_index" | tr -d ' ')" = "$if_index" ] &&
+        [ "$(echo "$got_name" | tr -d ' ')" = "$if_name" ]; then
+        printf "  ${GREEN}✓${NC} %-18s  %-20s  %s/24 on %s (#663 fixture)\n" \
+            "$host" "guest-subnet" "$guest_ip" "$if_name"
+        return 0
+    fi
+
+    printf "  ${RED}✗${NC} %-18s  %-20s  ipAdEntIfIndex=%s ifName=%s\n" \
+        "$host" "guest-subnet" "$got_index" "$got_name"
+    printf "      expected ipAdEntIfIndex=%s and ifName=%s\n" "$if_index" "$if_name"
+    printf "      check for a duplicate registration:\n"
+    printf "      ssh root@%s 'journalctl -u snmpd-ap-wireless-01 | grep -i duplicate'\n" "${HOSTS[0]}"
+    return 1
+}
+
 cmd_verify() {
     echo "Verifying SNMP test hosts..."
     echo ""
@@ -56,6 +88,9 @@ cmd_verify() {
             all_ok=false
         fi
     done
+
+    echo ""
+    verify_guest_subnet_fixture || all_ok=false
 
     echo ""
     if $all_ok; then
