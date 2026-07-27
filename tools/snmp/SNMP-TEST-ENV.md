@@ -1,6 +1,6 @@
 # SNMP Test Environment
 
-13 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614.
+14 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record.
 
 | IP | Host | Version | Credential | Device |
 |---|---|---|---|---|
@@ -17,6 +17,7 @@
 | 192.168.7.240 | switch-netgear-01 | v2c | community `netdefault` | Netgear GS724Tv3 |
 | 192.168.7.241 | switch-aruba-01 | v2c | community `netdefault` | HP/Aruba ProCurve 2910al |
 | 192.168.7.242 | switch (Omada) | v2c | community `public` | TP-Link Omada TL-SG3216 |
+| 192.168.7.243 | switch-flaky-01 | v2c | community `netdefault` | Malformed-LLDP profile (see below) |
 
 **LLDP local-port remap (`.238`/`.239`).** ExtremeXOS reports its `lldpRemTable` local-port index as an `lldpLocPortNum` (1..N) that is a **separate namespace from `ifIndex`** (switch-exos-01 uses ifIndex 1001+, ifName `1:N`), so neighbours only resolve if the daemon walks `lldpLocPortTable` (`1.0.8802.1.1.2.1.3.7`) and suffix-matches `lldpLocPortId` against `ifName`. Before the Issue 2 fix, switch-exos-01 yields **zero** LLDP neighbours. Extreme VOSS (switch-voss-01) reports local-port == ifIndex with `lldpLocPortId` matching `ifName` exactly, so it stays correct on both old and new code — the regression guard for the fix.
 
@@ -30,6 +31,24 @@ Both links should render in L2 Physical, and the server's `LLDP/CDP link resolut
 **High-ifIndex interface persistence (`.242`).** The Omada TL-SG3216 puts its 16 physical ports at ifIndex 49153–49168, reports **no** ifXTable `ifName` for any of them, and returns the same chassis `ifPhysAddress` on every port; only ifIndex 1 (`Vlan-interface1`) carries a name and an IP. All 17 must persist as distinct interfaces. It advertises no LLDP neighbours at all — deliberately, so it exercises the interface-persistence path in isolation. Note its `sysName` is the literal `switch`, matching the reporter's device.
 
 > **MAC octet padding.** Every fixture wrote MACs abbreviated (`0:1a:2b:0:10:0`) until 2026-07-27, and the daemon's string-parsing fallback rejected that form outright — so no LLDP data persisted for *any* sim device and no host ever got a `chassis_id`. Silently: an unparseable chassis id discards the whole neighbour record, which is indistinguishable from a switch that advertises none. The daemon now accepts both forms, and the fixtures are padded **except switch-exos-01's own chassis id**, deliberately left abbreviated as the standing guard for that tolerance (ExtremeXOS is one of the two vendors known to send this identifier as a string rather than octets).
+
+**Malformed neighbour records (`.243`).** A truncated `lldpRemChassisId` column and a device that simply serves no chassis ID are indistinguishable to the daemon — both yield a neighbour carrying a port ID and a system name but no chassis ID. The first is a transient nobody can schedule; the second is static and reproduces on every scan, which is what makes this path testable at all.
+
+Taken at face value that record is destructive: the chassis ID is a mandatory TLV (IEEE 802.1AB), so it is malformed, but writing it through overwrites a good chassis ID with NULL — and a row without one is excluded from L2 resolution entirely, freezing the link at whatever it last resolved to with no way back. That is what stranded `router-gw-01` in July 2026.
+
+`switch-flaky-01` links to `switch-core-01`'s `Gi0/3` (the one port on that switch with no other neighbour) and ships two LLDP variants. The agent serves whichever is copied over `-lldp-active.txt`, and the `pass` handler re-reads its file per request, so swapping takes effect immediately with **no snmpd restart**:
+
+```bash
+# on the VM — serve the chassis-less record
+cp /etc/snmp-test/data/switch-flaky-01-lldp-nochassis.txt \
+   /etc/snmp-test/data/switch-flaky-01-lldp-active.txt
+
+# ...and restore the well-formed one
+cp /etc/snmp-test/data/switch-flaky-01-lldp-complete.txt \
+   /etc/snmp-test/data/switch-flaky-01-lldp-active.txt
+```
+
+Re-running `lxc/setup.sh` also resets it, which is the simplest way to undo a test that left the device broken.
 
 **What a scan exercises (session-reuse + getbulk).** Every device is scanned with a single reused SNMP session across all ~11 queries (one v3 engine discovery instead of ~12), and each table is walked with `getbulk` (v1 falls back to `getnext`). To make the getbulk walks land on real data for the subtrees stock `snmpd` does **not** implement:
 - **switch-core-01** additionally serves BRIDGE-MIB / Q-BRIDGE (`dot1dBasePortIfIndex`, `dot1qVlanStaticName` → VLANs "DATA"/"VOICE", `dot1qPvid`), ENTITY-MIB (chassis inventory) and CDP (a `router-gw-01` neighbour) — exercising those getbulk walks end-to-end.

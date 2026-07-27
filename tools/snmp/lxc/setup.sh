@@ -5,13 +5,13 @@ set -euo pipefail
 # SNMP Test Environment — Proxmox VM setup (self-contained)
 #
 # Paste this entire script into a Debian/Ubuntu VM terminal.
-# Creates 13 snmpd instances on secondary IPs, each simulating a
+# Creates 14 snmpd instances on secondary IPs, each simulating a
 # different network device with its own community string.
 #
 # Edit HOSTS/CIDR/IFACE below to match your network.
 # ══════════════════════════════════════════════════════════════════════
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242)
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243)
 CIDR="22"
 IFACE="eth0"
 
@@ -24,8 +24,8 @@ IFACE="eth0"
 #
 # .240/.241/.242 cover the three L2-resolution defects from GH #664/#649/#614
 # (July 2026) — see the block comments on their MIB data below.
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c)
-SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01)
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c)
+SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01)
 
 # SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
 # AuthPriv with SHA-256 / AES-128 — the broadly-supported pure-Rust default.
@@ -887,6 +887,85 @@ INDEXES="1 $(seq 49153 49168)"
     echo ".1.3.6.1.2.1.31.1.1.1.1.1 string Vlan-interface1"
 } > "$DATA_DIR/switch-omada-01-iftable.txt"
 
+# ══════════════════════════════════════════════════════════════════════
+# switch-flaky-01 — a neighbour record that is missing its chassis ID
+#
+# A truncated lldpRemChassisId column and a device that simply serves no chassis
+# ID are indistinguishable to the daemon: both yield a neighbour with a port ID
+# and a system name but no chassis ID. The second is static, so it reproduces on
+# every scan where the first is a transient nobody can schedule.
+#
+# That shape is destructive if taken at face value. The chassis ID is a mandatory
+# TLV (IEEE 802.1AB), so the record is malformed — but written through it would
+# overwrite a good chassis ID with NULL, and a row without one is excluded from L2
+# resolution entirely, freezing the link at whatever it last resolved to with no
+# way back. This device exists to prove that does not happen.
+#
+# Two LLDP variants are written; the agent serves whichever is copied over
+# `-lldp-active.txt`. The `pass` handler re-reads the file per request, so
+# swapping takes effect immediately with NO snmpd restart:
+#
+#   cp /etc/snmp-test/data/switch-flaky-01-lldp-nochassis.txt \
+#      /etc/snmp-test/data/switch-flaky-01-lldp-active.txt     # break it
+#   cp /etc/snmp-test/data/switch-flaky-01-lldp-complete.txt \
+#      /etc/snmp-test/data/switch-flaky-01-lldp-active.txt     # restore it
+# ══════════════════════════════════════════════════════════════════════
+
+cat > "$DATA_DIR/switch-flaky-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.2.1 string uplink0
+.1.3.6.1.2.1.2.2.1.2.2 string uplink1
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.6.1 string 00:1a:2b:00:1f:01
+.1.3.6.1.2.1.2.2.1.6.2 string 00:1a:2b:00:1f:02
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string uplink0
+.1.3.6.1.2.1.31.1.1.1.1.2 string uplink1
+EOF
+
+# Complete: a well-formed neighbour on port 1, pointing at switch-core-01's Gi0/3
+# (the one port on that switch with no other neighbour). Resolves port-to-port.
+cat > "$DATA_DIR/switch-flaky-01-lldp-complete.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 00:1a:2b:00:1f:00
+.1.0.8802.1.1.2.1.3.3.0 string switch-flaky-01
+.1.0.8802.1.1.2.1.3.4.0 string Scanopy SNMP simulator, flaky-LLDP profile
+.1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 00:1a:2b:00:10:00
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/3
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/3
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
+EOF
+
+# Chassis-less: the SAME neighbour minus lldpRemChassisIdSubtype (.4) and
+# lldpRemChassisId (.5). Everything else is unchanged, which is exactly what a
+# cut-short chassis column leaves behind. The device's own local chassis id
+# (.3.2.0) stays, so only the *neighbour* record is malformed.
+cat > "$DATA_DIR/switch-flaky-01-lldp-nochassis.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 00:1a:2b:00:1f:00
+.1.0.8802.1.1.2.1.3.3.0 string switch-flaky-01
+.1.0.8802.1.1.2.1.3.4.0 string Scanopy SNMP simulator, flaky-LLDP profile
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/3
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/3
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
+EOF
+
+# Start healthy. Re-running setup.sh resets it, which is the intended way to undo
+# a test that left the device broken.
+cp "$DATA_DIR/switch-flaky-01-lldp-complete.txt" "$DATA_DIR/switch-flaky-01-lldp-active.txt"
+
 # ── 5. Write snmpd configs ───────────────────────────────────────────
 echo "Writing snmpd configs..."
 
@@ -1106,6 +1185,20 @@ sysobjectid .1.3.6.1.4.1.11863.6.96
 sysservices 2
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-omada-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-omada-01-iftable.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-flaky-01.conf" << EOF
+agentAddress udp:${HOSTS[13]}:161
+rocommunity netdefault
+sysdescr Scanopy SNMP simulator, flaky-LLDP profile
+syscontact netops@example.com
+sysname switch-flaky-01
+syslocation Lab
+sysobjectid .1.3.6.1.4.1.99999.1
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-flaky-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-flaky-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-flaky-01-lldp-active.txt
 EOF
 
 # ── 6. Create systemd services ───────────────────────────────────────
