@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use semver::Version;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Display;
 use strum::{Display, IntoStaticStr};
@@ -70,11 +71,15 @@ pub struct OrgNotifications {
     pub hosts: LimitNotificationLevel,
     pub networks: LimitNotificationLevel,
     pub seats: LimitNotificationLevel,
-    /// The announced daemon-sunset floor this org has already been emailed about
-    /// (e.g. "0.17.5"). Ratchets so the boot-time sweep emails each org at most
-    /// once per announced floor. `None` until the first sunset email is sent.
+    /// The **highest** announced daemon-sunset floor this org has already been
+    /// emailed about (e.g. "0.17.5"); every cutover at or below it counts as
+    /// communicated. Because floors are totally ordered, a higher floor always
+    /// supersedes a lower one, so this single value ratchets monotonically even
+    /// when several announced cutovers affect one org at once — the boot-time
+    /// sweep emails each org at most once per floor and never oscillates.
+    /// `None` until the first sunset email is sent.
     #[serde(default)]
-    pub sunset_notified_floor: Option<String>,
+    pub sunset_notified_floor: Option<Version>,
 }
 
 #[derive(

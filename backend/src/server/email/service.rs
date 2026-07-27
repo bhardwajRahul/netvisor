@@ -3,7 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use email_address::EmailAddress;
+use semver::Version;
 use uuid::Uuid;
 
 use super::messages::{
@@ -728,43 +730,49 @@ impl EmailService {
     // Daemon sunset sweep (boot-time)
     // ========================================================================
 
-    /// Email each organization whose active daemons run a version below the
-    /// announced sunset floor. One aggregated email per org (naming every
-    /// affected daemon), sent to the org owner plus each distinct daemon
-    /// maintainer. An org-level ratchet keyed on the announced floor means each
-    /// org is emailed at most once per floor, so this is safe to run on every
-    /// server boot.
+    /// Email each organization whose active daemons face an announced sunset
+    /// cutover. Each daemon is matched to the cutover it actually faces — the
+    /// soonest one whose floor is above it — and daemons are grouped per (org,
+    /// floor), so one aggregated email per group (naming every affected daemon)
+    /// goes to the org owner plus each distinct daemon maintainer. An org-level
+    /// ratchet on the highest floor already announced to that org means each org
+    /// is emailed at most once per floor, so this is safe to run on every server
+    /// boot — including after a new cutover is appended to the list.
     ///
-    /// No-op while the sunset machinery is dormant (no launch date baked in).
+    /// No-op while the sunset machinery is dormant (no cutover has a date yet).
     pub async fn announce_daemon_sunsets(&self) -> Result<()> {
-        use crate::server::daemons::r#impl::version::announced_sunset;
+        use crate::server::daemons::r#impl::version::applicable_sunset;
 
-        let Some((floor, effective_on)) = announced_sunset() else {
+        // Nothing announced at all — skip the sweep entirely rather than query
+        // every daemon to learn that. A version-less daemon counts as below every
+        // floor, so "not even that faces a cutover" means no cutover has a date.
+        if applicable_sunset(None).is_none() {
             return Ok(());
-        };
-        let floor_key = floor.to_string();
-        let sunset_display = effective_on.format("%B %-d, %Y").to_string();
+        }
 
-        // Active daemons across all orgs. Keep those below the floor. A daemon
-        // that reports no version is treated as genuinely old (modern daemons
-        // always report one) and is included — as long as it has actually
-        // connected (has a last_seen); a provisioned-but-never-connected daemon
-        // has no version yet for the benign reason that it hasn't checked in, so
-        // it is skipped rather than emailed about.
+        // Active daemons across all orgs. A daemon that reports no version is
+        // treated as genuinely old (modern daemons always report one) and is
+        // included — as long as it has actually connected (has a last_seen); a
+        // provisioned-but-never-connected daemon has no version yet for the
+        // benign reason that it hasn't checked in, so it is skipped rather than
+        // emailed about.
         let daemons = self
             .daemon_service
             .get_all(StorableFilter::<Daemon>::new_for_active_daemons())
             .await?;
 
-        let mut by_org: HashMap<Uuid, Vec<Daemon>> = HashMap::new();
+        let mut by_org_floor: HashMap<(Uuid, Version), (DateTime<Utc>, Vec<Daemon>)> =
+            HashMap::new();
         for daemon in daemons {
-            let below_floor = match daemon.base.version.as_ref() {
-                Some(version) => version < &floor,
-                None => daemon.base.last_seen.is_some(),
-            };
-            if !below_floor {
+            let version = daemon.base.version.as_ref();
+            if version.is_none() && daemon.base.last_seen.is_none() {
                 continue;
             }
+            // Dormant cutovers yield None here, which is what makes the whole
+            // sweep a no-op before a launch date is baked in.
+            let Some((floor, effective_on)) = applicable_sunset(version) else {
+                continue;
+            };
             let Some(network) = self
                 .network_service
                 .get_by_id(&daemon.base.network_id)
@@ -772,15 +780,23 @@ impl EmailService {
             else {
                 continue;
             };
-            by_org
-                .entry(network.base.organization_id)
-                .or_default()
+            by_org_floor
+                .entry((network.base.organization_id, floor))
+                .or_insert_with(|| (effective_on, Vec::new()))
+                .1
                 .push(daemon);
         }
 
-        for (org_id, affected) in by_org {
+        // Ascending floor order, so if a send fails partway through an org's
+        // groups the ratchet is left at the highest floor actually emailed and
+        // the rest are retried on the next boot.
+        let mut groups: Vec<_> = by_org_floor.into_iter().collect();
+        groups.sort_by(|((_, a_floor), _), ((_, b_floor), _)| a_floor.cmp(b_floor));
+
+        for ((org_id, floor), (effective_on, affected)) in groups {
+            let sunset_display = effective_on.format("%B %-d, %Y").to_string();
             if let Err(e) = self
-                .announce_org_sunset(org_id, &affected, &floor_key, &sunset_display)
+                .announce_org_sunset(org_id, &affected, &floor, &sunset_display)
                 .await
             {
                 tracing::warn!(org_id = %org_id, error = %e, "Failed to send daemon sunset notification");
@@ -796,15 +812,23 @@ impl EmailService {
         &self,
         org_id: Uuid,
         affected: &[Daemon],
-        floor_key: &str,
+        floor: &Version,
         sunset_display: &str,
     ) -> Result<()> {
         let mut org = match self.organization_service.get_by_id(&org_id).await? {
             Some(o) => o,
             None => return Ok(()),
         };
-        // Ratchet: already emailed for this announced floor.
-        if org.base.notifications.sunset_notified_floor.as_deref() == Some(floor_key) {
+        // Ratchet: the stored value is the highest floor this org has been told
+        // about, and floors are totally ordered, so anything at or below it has
+        // already been communicated.
+        if org
+            .base
+            .notifications
+            .sunset_notified_floor
+            .as_ref()
+            .is_some_and(|notified| floor <= notified)
+        {
             return Ok(());
         }
 
@@ -837,8 +861,9 @@ impl EmailService {
             }
         }
 
-        // Advance the ratchet so subsequent boots don't re-send for this floor.
-        org.base.notifications.sunset_notified_floor = Some(floor_key.to_string());
+        // Advance the ratchet so subsequent boots don't re-send for this floor
+        // (or any lower one). Monotonic: it only ever moves up.
+        org.base.notifications.sunset_notified_floor = Some(floor.clone());
         self.organization_service
             .update(&mut org, AuthenticatedEntity::System)
             .await?;
