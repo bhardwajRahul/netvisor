@@ -35,6 +35,13 @@ Both links should render in L2 Physical, and the server's `LLDP/CDP link resolut
 - **switch-core-01** additionally serves BRIDGE-MIB / Q-BRIDGE (`dot1dBasePortIfIndex`, `dot1qVlanStaticName` → VLANs "DATA"/"VOICE", `dot1qPvid`), ENTITY-MIB (chassis inventory) and CDP (a `router-gw-01` neighbour) — exercising those getbulk walks end-to-end.
 - **legacy-switch-01 (v1-only)** additionally serves a small bridge table, so the **getbulk → getnext fallback** is exercised on a non-ifTable walk, not just ifTable/LLDP.
 - `ipAddrTable` and `ipNetToMedia` (ARP) are answered by snmpd's built-in IP module, so those walks run on every device already. (net-snmp `pass` can't emit binary MAC octet-strings, so FDB/ARP MAC *rows* aren't simulated — the daemon still walks those subtrees and terminates cleanly.)
+- **ap-wireless-01** is the one exception: it serves its own `ipAddrTable` so it can advertise a second subnet (see below).
+
+**Access-point guest subnet (`.235`) — #663.** The built-in IP module answers `ipAddrTable` from the VM's real kernel state, so every other agent only ever reports addresses inside the scanned `192.168.4.0/22`. `ap-wireless-01` displaces that module (`-I …,-ipAddr` in its systemd unit) and serves the table from `ap-wireless-01-ipaddr.txt`, advertising **172.30.10.1/24 on ifIndex 4**, whose `ifName` is **`br-guest`** — the built-in NAT guest network of a real access point.
+
+That combination is what issue #663 reported: a `br-` prefixed `ifName` on a remote device used to be classified as a Docker bridge, so the AP's guest subnet rendered as "Docker @ *AP*" in Topology. A scan of `.235` should now discover `172.30.10.0/24` as a **Guest** subnet, with no Docker/container label anywhere.
+
+Because `.235` is the only agent serving its own `ipAddrTable`, it is also the only one that can fail *silently* — if the module displacement doesn't take, the `pass` directive loses the duplicate registration and the agent quietly reports just the scanned subnet. `make snmp-verify` checks this fixture explicitly for that reason; don't run a scan against it until that check passes.
 
 The two version-locked hosts use net-snmp VACM/USM so the other protocol versions are genuinely refused (a plain `rocommunity` answers both v1 and v2c, which wouldn't prove version negotiation):
 
@@ -83,9 +90,7 @@ for f in /etc/systemd/system/snmpd-*.service; do sed -i 's|snmpd -f -Lo -C|snmpd
 
 ## Updating an already-running VM
 
-`lxc/setup.sh` is idempotent (existing macvlan interfaces and services are skipped), so the simplest update path adds the new hosts without disturbing the ones already running. MIB data files and snmpd configs are rewritten on every run, so a re-run also picks up corrections to existing devices.
-
-**Option 1 — full re-run (recommended).** Copy the updated `tools/snmp/` to the VM and re-run the setup script as root:
+`lxc/setup.sh` is idempotent — existing macvlan interfaces are left alone, while MIB data files, snmpd configs and systemd units are rewritten and every agent is restarted. So a full re-run is always the update path; there is no separate partial script.
 
 ```bash
 # from your Mac
@@ -94,11 +99,11 @@ scp -r tools/snmp root@192.168.7.230:/root/snmp-test
 bash /root/snmp-test/lxc/setup.sh
 ```
 
-Hosts that already exist are no-ops; any newly added ones come up. Data files and snmpd configs are rewritten every run, so corrections to existing devices land too.
+Hosts that gained nothing are effectively no-ops; anything whose data file, config or unit changed comes back with the new content.
 
-**Option 2 — paste instead of copy.** Paste `lxc/setup.sh` into a root shell as in Option 1 — there is no separate partial script. Only the macvlan/service steps for hosts that don't yet exist create anything new; the rest short-circuit.
+Afterwards, flush the scanning host's ARP cache (`sudo arp -a -d` on macOS) so any new MACs are learned, then run `make snmp-verify` from your Mac.
 
-After either option, flush the scanning host's ARP cache (`sudo arp -a -d` on macOS) so any new MACs are learned.
+> Re-running is required after any change to the MIB data or a systemd unit — including the `ap-wireless-01` guest-subnet fixture (#663), which changes both its `ipAddrTable` data and its `ExecStart` module exclusions.
 
 ## Verify
 

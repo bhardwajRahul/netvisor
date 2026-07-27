@@ -193,7 +193,9 @@ EOF
 # shared per-host session) for the subtrees stock snmpd does NOT answer itself:
 # BRIDGE-MIB/Q-BRIDGE (17), ENTITY-MIB (47) and CDP (enterprise). ipAddrTable and
 # ipNetToMedia (ARP) are already answered by snmpd's built-in IP module, so those
-# walks are exercised on every device without extra data here.
+# walks are exercised on every device without extra data here. (ap-wireless-01 is
+# the one exception — it serves its own ipAddrTable so it can advertise a guest
+# subnet the VM's kernel doesn't have; see the #663 fixture below.)
 # (net-snmp `pass` can't emit binary MAC octet-strings, so dot1dTpFdb/dot1qTpFdb
 # rows and ARP MACs are not simulated; the daemon still walks those subtrees via
 # getbulk and terminates cleanly — the walk mechanism is what we're covering.)
@@ -409,37 +411,74 @@ cat > "$DATA_DIR/printer-lobby-iftable.txt" << 'EOF'
 EOF
 
 # ap-wireless-01 IF-MIB
+#
+# ifIndex 4 is `br-guest`: an access point's built-in NAT guest network, bridged
+# onto its own subnet. This is the #663 fixture — the reporter's Araknis
+# AN-810-AP-I-AC advertised exactly this shape, and a `br-` prefixed ifName used
+# to be classified as a Docker bridge. See the ipAddrTable data below, which
+# hangs 172.30.10.1/24 off this ifIndex.
 cat > "$DATA_DIR/ap-wireless-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.2.2.1.1.1 integer 1
 .1.3.6.1.2.1.2.2.1.1.2 integer 2
 .1.3.6.1.2.1.2.2.1.1.3 integer 3
+.1.3.6.1.2.1.2.2.1.1.4 integer 4
 .1.3.6.1.2.1.2.2.1.2.1 string eth0
 .1.3.6.1.2.1.2.2.1.2.2 string ath0
 .1.3.6.1.2.1.2.2.1.2.3 string ath1
+.1.3.6.1.2.1.2.2.1.2.4 string br-guest
 .1.3.6.1.2.1.2.2.1.3.1 integer 6
 .1.3.6.1.2.1.2.2.1.3.2 integer 71
 .1.3.6.1.2.1.2.2.1.3.3 integer 71
+.1.3.6.1.2.1.2.2.1.3.4 integer 209
 .1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
 .1.3.6.1.2.1.2.2.1.5.2 gauge 0
 .1.3.6.1.2.1.2.2.1.5.3 gauge 0
+.1.3.6.1.2.1.2.2.1.5.4 gauge 0
 .1.3.6.1.2.1.2.2.1.6.1 string 00:1a:2b:00:15:01
 .1.3.6.1.2.1.2.2.1.6.2 string 00:1a:2b:00:15:02
 .1.3.6.1.2.1.2.2.1.6.3 string 00:1a:2b:00:15:03
+.1.3.6.1.2.1.2.2.1.6.4 string 00:1a:2b:00:15:04
 .1.3.6.1.2.1.2.2.1.7.1 integer 1
 .1.3.6.1.2.1.2.2.1.7.2 integer 1
 .1.3.6.1.2.1.2.2.1.7.3 integer 1
+.1.3.6.1.2.1.2.2.1.7.4 integer 1
 .1.3.6.1.2.1.2.2.1.8.1 integer 1
 .1.3.6.1.2.1.2.2.1.8.2 integer 1
 .1.3.6.1.2.1.2.2.1.8.3 integer 1
+.1.3.6.1.2.1.2.2.1.8.4 integer 1
 .1.3.6.1.2.1.31.1.1.1.1.1 string eth0
 .1.3.6.1.2.1.31.1.1.1.1.2 string ath0
 .1.3.6.1.2.1.31.1.1.1.1.3 string ath1
+.1.3.6.1.2.1.31.1.1.1.1.4 string br-guest
 .1.3.6.1.2.1.31.1.1.1.15.1 gauge 1000
 .1.3.6.1.2.1.31.1.1.1.15.2 gauge 867
 .1.3.6.1.2.1.31.1.1.1.15.3 gauge 400
+.1.3.6.1.2.1.31.1.1.1.15.4 gauge 0
 .1.3.6.1.2.1.31.1.1.1.18.1 string Uplink to switch-access-01
 .1.3.6.1.2.1.31.1.1.1.18.2 string 5GHz radio
 .1.3.6.1.2.1.31.1.1.1.18.3 string 2.4GHz radio
+.1.3.6.1.2.1.31.1.1.1.18.4 string NAT guest network
+EOF
+
+# ap-wireless-01 ipAddrTable (#663 fixture)
+#
+# Every other agent lets snmpd's built-in IP module answer ipAddrTable from the
+# VM's real kernel state, which only ever yields addresses inside the scanned
+# 192.168.4.0/22 — so no agent advertises a second subnet, and the misclassified
+# guest network from #663 can't be reproduced. This host displaces that module
+# (see DISABLED_MIB_MODULES below) and serves the table itself, so it can report
+# 172.30.10.1/24 on the `br-guest` interface the way a real AP does.
+#
+# Rows must stay in numeric OID order (column-major, then ascending IP): the pass
+# handler answers GETNEXT by returning the first line greater than the request,
+# scanning the file top-down.
+cat > "$DATA_DIR/ap-wireless-01-ipaddr.txt" << EOF
+.1.3.6.1.2.1.4.20.1.1.172.30.10.1 ipaddress 172.30.10.1
+.1.3.6.1.2.1.4.20.1.1.${HOSTS[5]} ipaddress ${HOSTS[5]}
+.1.3.6.1.2.1.4.20.1.2.172.30.10.1 integer 4
+.1.3.6.1.2.1.4.20.1.2.${HOSTS[5]} integer 1
+.1.3.6.1.2.1.4.20.1.3.172.30.10.1 ipaddress 255.255.255.0
+.1.3.6.1.2.1.4.20.1.3.${HOSTS[5]} ipaddress 255.255.252.0
 EOF
 
 # ap-wireless-01 LLDP
@@ -937,6 +976,7 @@ sysobjectid .1.3.6.1.4.1.41112.1.6.1
 sysservices 6
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/ap-wireless-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/ap-wireless-01-iftable.txt
+pass .1.3.6.1.2.1.4.20 /bin/bash $H $D/ap-wireless-01-ipaddr.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/ap-wireless-01-lldp.txt
 EOF
 
@@ -1053,9 +1093,22 @@ pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-omada-01-iftable.txt
 EOF
 
 # ── 6. Create systemd services ───────────────────────────────────────
+#
+# A built-in MIB module and a `pass` directive cannot both own an OID subtree —
+# snmpd logs "duplicate registration" and the pass loses. So every subtree served
+# by pass needs its built-in module disabled via `-I`. All hosts displace
+# ifTable/ifXTable; ap-wireless-01 additionally displaces ipAddr (the
+# kernel-backed ipAddrTable) so it can advertise its own guest subnet (#663).
 echo "Creating systemd services..."
+BASE_DISABLED_MIB_MODULES="-ifTable,-ifXTable"
+declare -A EXTRA_DISABLED_MIB_MODULES=( [ap-wireless-01]="-ipAddr" )
 for i in "${!SYSNAMES[@]}"; do
     name="${SYSNAMES[$i]}"
+    disabled="$BASE_DISABLED_MIB_MODULES"
+    extra="${EXTRA_DISABLED_MIB_MODULES[$name]:-}"
+    if [ -n "$extra" ]; then
+        disabled="${disabled},${extra}"
+    fi
     cat > "/etc/systemd/system/snmpd-${name}.service" << EOF
 [Unit]
 Description=SNMP Test Agent — ${name} (${HOSTS[$i]})
@@ -1063,7 +1116,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/snmpd -f -Lo -I -ifTable,-ifXTable -C -c ${CONF_DIR}/snmpd-${name}.conf
+ExecStart=/usr/sbin/snmpd -f -Lo -I ${disabled} -C -c ${CONF_DIR}/snmpd-${name}.conf
 Restart=on-failure
 RestartSec=2
 
