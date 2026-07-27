@@ -1,12 +1,10 @@
 use anyhow::Error;
 use futures::future::try_join_all;
-use strum::IntoDiscriminant;
 use tokio_util::sync::CancellationToken;
 
 use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::utils::base::{DaemonUtils, PlatformDaemonUtils};
 use crate::server::subnets::r#impl::base::Subnet;
-use crate::server::subnets::r#impl::types::SubnetTypeDiscriminants;
 
 use super::NetworkScan;
 
@@ -50,8 +48,8 @@ impl NetworkScan {
             let subnets: Vec<Subnet> = subnets
                 .into_iter()
                 .filter(|s| {
-                    if s.base.subnet_type.discriminant() == SubnetTypeDiscriminants::DockerBridge {
-                        tracing::warn!("Skipping {} with CIDR {}, docker bridge subnets are scanned in docker discovery", s.base.name, s.base.cidr);
+                    if s.is_container_bridge_subnet() {
+                        tracing::warn!("Skipping {} with CIDR {}, container bridge subnets are scanned in container discovery", s.base.name, s.base.cidr);
                         return false
                     }
 
