@@ -42,17 +42,23 @@ export async function executeLayout(
 		(n) => n.node_type === 'Container' && !n.parent_container_id
 	);
 	// Force-directed "overview mode" is for a handful of collapsed roots, where a
-	// cloud reads better than a column. It is not appropriate — or affordable, at
-	// 300 synchronous ticks — for the hundreds of roots that scale auto-collapse
-	// produces, and switching engines there would change the diagram rather than
-	// just densify it. Above this many roots, stay on ELK.
+	// cloud reads better than a column. It is also affordable only there: it runs
+	// 300 synchronous simulation ticks.
 	const FORCE_LAYOUT_MAX_ROOTS = 50;
 	const allRootCollapsed =
 		rootContainerNodes.length > 0 &&
 		rootContainerNodes.length <= FORCE_LAYOUT_MAX_ROOTS &&
 		rootContainerNodes.every((n) => collapsed.has(n.id));
 
-	if (allRootCollapsed && currentView !== 'Workloads') {
+	// L2 Physical always lays out with ELK, at every collapse level. Its identity
+	// is the structured column of hosts under a switch; swapping to a force
+	// simulation when the last container collapses makes the fully-collapsed view
+	// a different diagram rather than a denser one, and reads worse. Workloads is
+	// excluded for the same reason.
+	const useForceLayout =
+		allRootCollapsed && currentView !== 'Workloads' && currentView !== 'L2Physical';
+
+	if (useForceLayout) {
 		// Force layout for all-collapsed overview mode
 		visibleNodes = executeForceLayout(
 			state,

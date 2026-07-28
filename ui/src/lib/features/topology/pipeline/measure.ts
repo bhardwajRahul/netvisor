@@ -43,16 +43,34 @@ export async function resolveNodeSizes(
 	const expandCachedSizes =
 		needsElkForExpand && !isNewStructure ? state.viewSizeCache.get(viewCacheKey) : undefined;
 
+	// A cache hit is only usable if it actually covers the visible nodes. The
+	// `{ x: 250, y: 100 }` fallback below is a placeholder, not a measurement:
+	// handing it to ELK for a card whose real height differs lays the graph out
+	// wrongly, which surfaces as overlapping nodes. This bites when containers
+	// start collapsed at scale, because their element cards have never been
+	// mounted and so were never cached — expanding one found nothing.
+	//
+	// So: fill from cache, and if anything was missing, discard the lot and take
+	// the full measurement path instead of laying out against placeholders.
+	const fillFromCache = (cache: Map<string, XY>): boolean => {
+		let complete = true;
+		for (const node of visibleNodes) {
+			const cached = cache.get(node.id);
+			if (cached) {
+				elementNodeSizes.set(node.id, cached);
+			} else {
+				complete = false;
+				break;
+			}
+		}
+		if (!complete) elementNodeSizes.clear();
+		return complete;
+	};
+
 	if (isViewTransition && cachedSizes) {
-		for (const node of visibleNodes) {
-			const cached = cachedSizes.get(node.id);
-			elementNodeSizes.set(node.id, cached ?? { x: 250, y: 100 });
-		}
+		if (!fillFromCache(cachedSizes)) perf.count('measure.cache-incomplete:view');
 	} else if (expandCachedSizes) {
-		for (const node of visibleNodes) {
-			const cached = expandCachedSizes.get(node.id);
-			elementNodeSizes.set(node.id, cached ?? { x: 250, y: 100 });
-		}
+		if (!fillFromCache(expandCachedSizes)) perf.count('measure.cache-incomplete:expand');
 	} else if (state.containerSizeCache.size > 0) {
 		// Use cached container sizes + SvelteFlow computed element sizes
 		// Read element sizes from SvelteFlow computed state.
