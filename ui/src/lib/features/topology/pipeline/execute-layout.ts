@@ -114,7 +114,6 @@ export async function executeLayout(
 				state.containerSizeCache.set(id, entry);
 			}
 		}
-
 	}
 
 	// Cache measured sizes for this view

@@ -396,15 +396,14 @@
 				multiSelected,
 				opts.local.hide_edge_types ?? []
 			);
-			baseFlowEdges.set(
-				computeEdgeDisplayUpdates(
-					currentBaseEdges,
-					curSelectedNode,
-					curSelectedEdge,
-					searchHidden,
-					tagHidden
-				)
+			const updatedEdges = computeEdgeDisplayUpdates(
+				currentBaseEdges,
+				curSelectedNode,
+				curSelectedEdge,
+				searchHidden,
+				tagHidden
 			);
+			if (updatedEdges !== currentBaseEdges) baseFlowEdges.set(updatedEdges);
 		}
 	});
 
@@ -749,15 +748,17 @@
 	}
 
 	function syncEdgeDisplayState() {
-		baseFlowEdges.set(
-			computeEdgeDisplayUpdates(
-				get(baseFlowEdges),
-				get(selectionStores.selectedNode),
-				get(selectionStores.selectedEdge),
-				get(searchHiddenNodeIds),
-				get(tagHiddenNodeIds)
-			)
+		const current = get(baseFlowEdges);
+		const updated = computeEdgeDisplayUpdates(
+			current,
+			get(selectionStores.selectedNode),
+			get(selectionStores.selectedEdge),
+			get(searchHiddenNodeIds),
+			get(tagHiddenNodeIds)
 		);
+		// Identity means nothing changed. Skipping the write matters on the hover
+		// path, which calls this on every pointer enter/leave.
+		if (updated !== current) baseFlowEdges.set(updated);
 	}
 
 	function handlePaneClick() {
