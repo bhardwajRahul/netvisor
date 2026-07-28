@@ -3102,7 +3102,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.6"
+         *       "server_version": "0.17.7"
          *     }
          */
         ApiMeta: {
@@ -3113,7 +3113,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.6
+             * @example 0.17.7
              */
             server_version: string;
         };
@@ -3127,19 +3127,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-28T15:55:58.901441Z",
+             *       "created_at": "2026-07-28T19:29:37.330439Z",
              *       "first_discovery_id": null,
-             *       "id": "68e53066-a4ae-4613-9989-640bd5a41a1a",
+             *       "id": "c3abe680-a82b-4e63-a7ad-d439a65c161e",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-28T15:55:58.901441Z",
+             *       "last_seen_at": "2026-07-28T19:29:37.330439Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-28T15:55:58.901441Z",
-             *       "valid_from": "2026-07-28T15:55:58.901441Z",
+             *       "updated_at": "2026-07-28T19:29:37.330439Z",
+             *       "valid_from": "2026-07-28T19:29:37.330439Z",
              *       "valid_to": null
              *     }
              */
@@ -3532,19 +3532,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-28T15:55:58.883692Z",
+             *               "created_at": "2026-07-28T19:29:37.315887Z",
              *               "first_discovery_id": null,
-             *               "id": "e31ed177-2b55-4886-ab18-85a358dd916a",
+             *               "id": "b2cb789e-6f6a-4e54-8c63-896dca6dacbf",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-28T15:55:58.883692Z",
+             *               "last_seen_at": "2026-07-28T19:29:37.315887Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-28T15:55:58.883692Z",
-             *               "valid_from": "2026-07-28T15:55:58.883692Z",
+             *               "updated_at": "2026-07-28T19:29:37.315887Z",
+             *               "valid_from": "2026-07-28T19:29:37.315887Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3558,7 +3558,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Nvidia GPU Exporter",
+             *           "service_definition": "Zigbee2MQTT",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3975,19 +3975,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-28T15:55:58.895458Z",
+             *           "created_at": "2026-07-28T19:29:37.324203Z",
              *           "first_discovery_id": null,
-             *           "id": "f9245d7c-dab1-4373-8b87-e662f579645a",
+             *           "id": "220af323-f9ee-4ec0-aabb-baeb388b7142",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-28T15:55:58.895458Z",
+             *           "last_seen_at": "2026-07-28T19:29:37.324203Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-28T15:55:58.895458Z",
-             *           "valid_from": "2026-07-28T15:55:58.895458Z",
+             *           "updated_at": "2026-07-28T19:29:37.324203Z",
+             *           "valid_from": "2026-07-28T19:29:37.324203Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4001,7 +4001,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Nvidia GPU Exporter",
+             *       "service_definition": "Zigbee2MQTT",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4505,19 +4505,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-28T15:55:58.884046Z",
+         *       "created_at": "2026-07-28T19:29:37.316124Z",
          *       "first_discovery_id": null,
-         *       "id": "7808cabb-e3b0-40e6-a539-0d0f3e6728fe",
+         *       "id": "ffa8408b-471a-488c-b97a-919474214744",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-28T15:55:58.884046Z",
+         *       "last_seen_at": "2026-07-28T19:29:37.316124Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-28T15:55:58.884046Z",
-         *       "valid_from": "2026-07-28T15:55:58.884046Z",
+         *       "updated_at": "2026-07-28T19:29:37.316124Z",
+         *       "valid_from": "2026-07-28T19:29:37.316124Z",
          *       "valid_to": null
          *     }
          */
@@ -4732,7 +4732,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Nvidia GPU Exporter",
+         *           "service_definition": "Zigbee2MQTT",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5913,19 +5913,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-28T15:55:58.883275Z",
+         *               "created_at": "2026-07-28T19:29:37.315609Z",
          *               "first_discovery_id": null,
-         *               "id": "e68385e9-a37b-449a-b8fb-58940d3906ad",
+         *               "id": "d874574c-ef89-442d-b9db-3f612999116f",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-28T15:55:58.883275Z",
+         *               "last_seen_at": "2026-07-28T19:29:37.315609Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-28T15:55:58.883275Z",
-         *               "valid_from": "2026-07-28T15:55:58.883275Z",
+         *               "updated_at": "2026-07-28T19:29:37.315609Z",
+         *               "valid_from": "2026-07-28T19:29:37.315609Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5939,7 +5939,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Nvidia GPU Exporter",
+         *           "service_definition": "Zigbee2MQTT",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6786,7 +6786,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.6"
+         *       "server_version": "0.17.7"
          *     }
          */
         PaginatedApiMeta: {
@@ -6799,7 +6799,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.6
+             * @example 0.17.7
              */
             server_version: string;
         };
@@ -7589,19 +7589,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-28T15:55:58.883972Z",
+         *           "created_at": "2026-07-28T19:29:37.316074Z",
          *           "first_discovery_id": null,
-         *           "id": "23fbab3e-d93a-4aee-8ecb-7d8884ccf1af",
+         *           "id": "72900be7-dfb5-4722-9232-a38eda27f5d4",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-28T15:55:58.883972Z",
+         *           "last_seen_at": "2026-07-28T19:29:37.316074Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-28T15:55:58.883972Z",
-         *           "valid_from": "2026-07-28T15:55:58.883972Z",
+         *           "updated_at": "2026-07-28T19:29:37.316074Z",
+         *           "valid_from": "2026-07-28T19:29:37.316074Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7615,7 +7615,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Nvidia GPU Exporter",
+         *       "service_definition": "Zigbee2MQTT",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -8038,7 +8038,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "f802a729-25be-4125-a332-139ebc776737",
+             *           "id": "28b8e09e-4fa5-46a5-8856-2bfcfdacb299",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -8048,23 +8048,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "dc40dfe9-26f8-4774-95a5-9a469b6260ec",
+             *           "id": "b5ccc1b2-b1bc-41d4-b708-cfb62f589d32",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "72a030ee-640d-48c1-af0d-06b943143cae",
+             *           "id": "21d14cb9-4446-4b1a-9c90-7729fb9246ee",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "b80ea64a-f6cb-4e11-b157-2ead3386ad34",
+             *           "id": "cca30ea8-24bb-4568-ab77-b7551f3a8f0f",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "dc40dfe9-26f8-4774-95a5-9a469b6260ec",
+             *           "id": "b5ccc1b2-b1bc-41d4-b708-cfb62f589d32",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -8076,19 +8076,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "72d7871c-de23-4741-9ca9-a1c38878e5de",
+             *         "id": "6e98ad1d-8498-4616-a19d-a454417eb9ee",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "83a3d919-9d65-445d-a2f1-411598c7a203",
+             *         "id": "d57be837-f24c-44b8-8b3f-b08e6f6fcbcf",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "d95060eb-759e-4b9a-be86-9860ee0bf290",
+             *         "id": "8103ab00-1c5a-4fac-99c8-5b2834471d50",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "00ed55fd-984b-4679-896f-f0e2ab1262d8",
+             *         "id": "2cabcee3-7f37-494f-9da0-a486aaeaf47b",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -8106,7 +8106,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "b36d0239-9241-4a96-8845-822d59ff7def",
+             *         "id": "9e442808-d473-4922-a68c-deda3a9c44cf",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -8115,15 +8115,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "89f2f22d-e40d-4a87-9c74-a5214af77a91",
+             *         "id": "91a602e3-dcd6-4567-a72e-ed76c415bbc0",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "661e0771-e347-421a-8b2b-8b16ee43294f",
+             *         "id": "4292ead8-7d89-4a85-a3fa-03dc896c7b01",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "bc1111d9-7f39-4ffb-8bac-4ef7a866bfba",
+             *         "id": "8e168007-0092-486e-a513-050e41ee9b60",
              *         "rule": "ByStack"
              *       }
              *     ]

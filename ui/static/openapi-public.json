@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.6\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.6\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.6)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.7\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.7\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.7)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -11056,12 +11056,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.6"
+            "example": "0.17.7"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.6"
+          "server_version": "0.17.7"
         }
       },
       "ApiResponse": {
@@ -11177,19 +11177,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-28T15:55:58.901446Z",
+              "created_at": "2026-07-28T19:29:37.328889Z",
               "first_discovery_id": null,
-              "id": "2d459d11-ac7f-4ae1-86a8-fdc16c465ff1",
+              "id": "6de5140b-2648-47b8-ba5f-9e8026d4b9f7",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T15:55:58.901446Z",
+              "last_seen_at": "2026-07-28T19:29:37.328889Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T15:55:58.901446Z",
-              "valid_from": "2026-07-28T15:55:58.901446Z",
+              "updated_at": "2026-07-28T19:29:37.328889Z",
+              "valid_from": "2026-07-28T19:29:37.328889Z",
               "valid_to": null
             }
           },
@@ -12338,19 +12338,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-28T15:55:58.883697Z",
+                      "created_at": "2026-07-28T19:29:37.315871Z",
                       "first_discovery_id": null,
-                      "id": "80034587-f02e-48ca-b65a-8bfae6d593e5",
+                      "id": "66c272e1-a841-493e-acf2-0d1357790fca",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-28T15:55:58.883697Z",
+                      "last_seen_at": "2026-07-28T19:29:37.315871Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-28T15:55:58.883697Z",
-                      "valid_from": "2026-07-28T15:55:58.883697Z",
+                      "updated_at": "2026-07-28T19:29:37.315871Z",
+                      "valid_from": "2026-07-28T19:29:37.315871Z",
                       "valid_to": null
                     }
                   ],
@@ -12364,7 +12364,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Nvidia GPU Exporter",
+                  "service_definition": "Zigbee2MQTT",
                   "source": {
                     "type": "Manual"
                   },
@@ -13434,19 +13434,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T15:55:58.895462Z",
+                  "created_at": "2026-07-28T19:29:37.324190Z",
                   "first_discovery_id": null,
-                  "id": "e0302162-ba18-47ec-a212-e128c46dec38",
+                  "id": "cdc977e0-c7c6-43a2-968f-11d6c5c9012b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T15:55:58.895462Z",
+                  "last_seen_at": "2026-07-28T19:29:37.324190Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T15:55:58.895462Z",
-                  "valid_from": "2026-07-28T15:55:58.895462Z",
+                  "updated_at": "2026-07-28T19:29:37.324190Z",
+                  "valid_from": "2026-07-28T19:29:37.324190Z",
                   "valid_to": null
                 }
               ],
@@ -13460,7 +13460,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Nvidia GPU Exporter",
+              "service_definition": "Zigbee2MQTT",
               "source": {
                 "type": "Manual"
               },
@@ -15330,19 +15330,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-28T15:55:58.884060Z",
+          "created_at": "2026-07-28T19:29:37.316103Z",
           "first_discovery_id": null,
-          "id": "3619e36b-4e13-46e6-b87c-5ecdf9f72d20",
+          "id": "1db05feb-5bd1-44ac-8815-93a496e645fd",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-28T15:55:58.884060Z",
+          "last_seen_at": "2026-07-28T19:29:37.316103Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-28T15:55:58.884060Z",
-          "valid_from": "2026-07-28T15:55:58.884060Z",
+          "updated_at": "2026-07-28T19:29:37.316103Z",
+          "valid_from": "2026-07-28T19:29:37.316103Z",
           "valid_to": null
         }
       },
@@ -15933,7 +15933,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Nvidia GPU Exporter",
+              "service_definition": "Zigbee2MQTT",
               "tags": [],
               "virtualization": null
             }
@@ -19058,19 +19058,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T15:55:58.883282Z",
+                  "created_at": "2026-07-28T19:29:37.315607Z",
                   "first_discovery_id": null,
-                  "id": "bc68c84a-c1b6-4c9e-9e0f-0bb1e3060d55",
+                  "id": "b42c1d48-030e-4639-8be7-dade65bfdd7a",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T15:55:58.883282Z",
+                  "last_seen_at": "2026-07-28T19:29:37.315607Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T15:55:58.883282Z",
-                  "valid_from": "2026-07-28T15:55:58.883282Z",
+                  "updated_at": "2026-07-28T19:29:37.315607Z",
+                  "valid_from": "2026-07-28T19:29:37.315607Z",
                   "valid_to": null
                 }
               ],
@@ -19084,7 +19084,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Nvidia GPU Exporter",
+              "service_definition": "Zigbee2MQTT",
               "source": {
                 "type": "Manual"
               },
@@ -21233,7 +21233,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.6"
+            "example": "0.17.7"
           }
         },
         "example": {
@@ -21244,7 +21244,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.6"
+          "server_version": "0.17.7"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -21721,19 +21721,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-28T15:55:58.873134Z",
+                        "created_at": "2026-07-28T19:29:37.309664Z",
                         "first_discovery_id": null,
-                        "id": "2ba3882c-1c22-410a-921e-6b958d7919a7",
+                        "id": "694de50d-6d98-43ce-bd22-17d2acdd9e7e",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-28T15:55:58.873134Z",
+                        "last_seen_at": "2026-07-28T19:29:37.309664Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-28T15:55:58.873134Z",
-                        "valid_from": "2026-07-28T15:55:58.873134Z",
+                        "updated_at": "2026-07-28T19:29:37.309664Z",
+                        "valid_from": "2026-07-28T19:29:37.309664Z",
                         "valid_to": null
                       }
                     ],
@@ -21747,7 +21747,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Nvidia GPU Exporter",
+                    "service_definition": "Zigbee2MQTT",
                     "source": {
                       "type": "Manual"
                     },
@@ -21868,19 +21868,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-28T15:55:58.894361Z",
+                    "created_at": "2026-07-28T19:29:37.323372Z",
                     "first_discovery_id": null,
-                    "id": "2c42bea2-96f4-4f8f-8083-97567dbb457a",
+                    "id": "e97047d8-2e3d-4e80-bb3a-a741e423aaca",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-28T15:55:58.894361Z",
+                    "last_seen_at": "2026-07-28T19:29:37.323372Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-28T15:55:58.894361Z",
-                    "valid_from": "2026-07-28T15:55:58.894361Z",
+                    "updated_at": "2026-07-28T19:29:37.323372Z",
+                    "valid_from": "2026-07-28T19:29:37.323372Z",
                     "valid_to": null
                   }
                 ],
@@ -21894,7 +21894,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Nvidia GPU Exporter",
+                "service_definition": "Zigbee2MQTT",
                 "source": {
                   "type": "Manual"
                 },
@@ -23597,19 +23597,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-28T15:55:58.883984Z",
+              "created_at": "2026-07-28T19:29:37.316054Z",
               "first_discovery_id": null,
-              "id": "c57c6961-e37c-4f7d-97ac-2ff52c6b3198",
+              "id": "c8fee7de-e2a8-43d4-bef6-b657df0dd365",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T15:55:58.883984Z",
+              "last_seen_at": "2026-07-28T19:29:37.316054Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T15:55:58.883984Z",
-              "valid_from": "2026-07-28T15:55:58.883984Z",
+              "updated_at": "2026-07-28T19:29:37.316054Z",
+              "valid_from": "2026-07-28T19:29:37.316054Z",
               "valid_to": null
             }
           ],
@@ -23623,7 +23623,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Nvidia GPU Exporter",
+          "service_definition": "Zigbee2MQTT",
           "source": {
             "type": "Manual"
           },
@@ -24755,7 +24755,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "914fb57c-af7a-4315-b625-0f3e2656c071",
+                  "id": "c0c572d5-3d2a-4f29-a96c-7aef53edad8b",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24765,23 +24765,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "69a27b2f-a169-4773-8838-afc7020a8a51",
+                  "id": "479f28ef-bbe7-46f1-b637-247916a5907a",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "aa8ce85a-065c-485c-802a-727b1d4fa947",
+                  "id": "396842d7-04a2-4aad-8bfb-dc1777406cf7",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "8c16680c-f24e-4b61-ad07-62776a8ca794",
+                  "id": "4a854c01-8c00-4616-9d17-a73c5dd4f0a8",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "69a27b2f-a169-4773-8838-afc7020a8a51",
+                  "id": "479f28ef-bbe7-46f1-b637-247916a5907a",
                   "rule": "ByHost"
                 }
               ]
@@ -24810,19 +24810,19 @@
             },
             "default": [
               {
-                "id": "539f3e47-4cff-469a-8e59-68ba0668df8d",
+                "id": "d5570b47-6e25-431f-a95b-724a0ed13df2",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "25a5ac34-b674-40d1-ac1e-202168cf8dad",
+                "id": "7df790ca-ec85-4344-b1ff-5c93c1978753",
                 "rule": "ByVLAN"
               },
               {
-                "id": "d77b54e8-c579-4e58-8839-3a22af4d4255",
+                "id": "92f2157d-feca-4a7f-9fd8-11b0796984ee",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "486d0b0f-b3b7-466e-a617-450e66777c1b",
+                "id": "ed9216a0-74ea-481f-8f16-750cf4c06f1b",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24840,7 +24840,7 @@
                 }
               },
               {
-                "id": "3a272403-c0b6-4025-9bbf-775c0c460633",
+                "id": "d5334d04-8891-4c8e-8a0f-ca9a631bf6e4",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24849,15 +24849,15 @@
                 }
               },
               {
-                "id": "1d707db3-d75a-48eb-b59b-cd35e5e5863d",
+                "id": "6ebb696b-5f18-4833-bc48-aa348828cc68",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "633a6119-cd47-4f83-8f3a-8ea6ea518373",
+                "id": "950270b8-21cd-464d-a892-7f01d4aa4c73",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "601c9f7c-3209-43d5-8583-369e7de032da",
+                "id": "f8995191-724e-491e-9cc5-0e339d5dc79d",
                 "rule": "ByStack"
               }
             ]
