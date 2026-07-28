@@ -11,7 +11,6 @@
 	import { useTopology, selectedTopologyId } from '../../context';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { getFreshnessTag } from '$lib/shared/utils/freshness';
 
 	const networksQuery = useNetworksQuery();
 	import type { TopologyNode, ElementRenderData, RenderableTopology } from '../../types/base';
@@ -71,45 +70,11 @@
 	) as Edge | null;
 
 	let resolved = $derived(topology ? resolveElementNode(id, data as TopologyNode, topology) : null);
-	let host = $derived(resolved?.host);
 
-	// Staleness marker. Deliberately additive rather than an opacity change:
-	// node opacity is already the filter/search dimming channel (see
-	// `nodeOpacity`), so fading stale nodes would make "stale" and "filtered
-	// out" indistinguishable — and a node that is both, invisible as either.
+	// Networks are still needed locally for the metadata-filter extractors below.
 	let networksData = $derived(networksQuery.data ?? []);
 	const networkFor = (entity: { network_id?: string } | undefined | null) =>
 		networksData.find((n) => n.id === entity?.network_id);
-
-	// The entity this node actually depicts.
-	let elementEntity = $derived.by(() => {
-		switch (resolved?.elementType) {
-			case 'Service':
-				return resolved.services[0];
-			case 'IPAddress':
-				return resolved.ipAddress;
-			case 'Interface':
-				return resolved.snmpInterface;
-			default:
-				return host;
-		}
-	});
-
-	// The verdict applies the digest's parent/child rule via `resolvedFreshness`,
-	// so a child of a stale host inherits rather than claiming its own decay.
-	// Judged on the node's own entity, with no inheritance from its host — the
-	// same rule the inventory cards apply, so the two surfaces agree and the
-	// tooltip's timestamp can never contradict the tag. Type names come from
-	// the entity metadata fixture, so they stay localized and in step with the
-	// backend.
-	let subject = $derived(elementEntity ?? host);
-	let staleTag = $derived(
-		subject
-			? getFreshnessTag(subject, networkFor(subject), {
-					entityTypeLabel: entities.getName(resolved?.elementType ?? 'Host') || undefined
-				})
-			: null
-	);
 
 	let effectiveWidth = $derived(width ? width : 0);
 
@@ -128,7 +93,8 @@
 					topology,
 					activeView: $activeView,
 					options: $topologyOptions,
-					hiddenServiceIds: hiddenServices
+					hiddenServiceIds: hiddenServices,
+					networks: networksData
 				})
 			: null
 	);
@@ -138,6 +104,9 @@
 	let serviceInlineHidden = $derived(elementRender?.flags.serviceInlineHidden ?? false);
 	let portInlineHidden = $derived(elementRender?.flags.portInlineHidden ?? false);
 	let inlineForThisElement = $derived(elementRender?.flags.inlineEntities ?? []);
+	// Staleness pill — computed with the rest of the card content because it
+	// renders in flow and therefore affects card height.
+	let staleTag = $derived(elementRender?.staleTag ?? null);
 
 	// Called once per service binding while rendering, so this must not scan
 	// `topology.ports` — on a large graph that is nodes x bindings x ports.

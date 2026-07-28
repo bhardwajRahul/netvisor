@@ -27,7 +27,9 @@ import type {
 } from './types/base';
 import { resolveElementNode } from './resolvers';
 import { getTopologyIndex } from './entity-index';
-import { serviceDefinitions, views } from '$lib/shared/stores/metadata';
+import { entities, serviceDefinitions, views } from '$lib/shared/stores/metadata';
+import { getFreshnessTag } from '$lib/shared/utils/freshness';
+import type { Network } from '$lib/features/networks/types';
 
 /**
  * Whether the active view inlines services / ports on this element, and whether
@@ -46,6 +48,12 @@ export interface ElementInlineFlags {
 export interface ElementRenderResult {
 	data: ElementRenderData | null;
 	flags: ElementInlineFlags;
+	/**
+	 * Staleness pill, or null. Rendered in flow at the top of the card, so its
+	 * presence changes the card's height — which is why it belongs here and not
+	 * in the component.
+	 */
+	staleTag: ReturnType<typeof getFreshnessTag>;
 }
 
 export interface ElementRenderInputs {
@@ -56,8 +64,9 @@ export interface ElementRenderInputs {
 	options: TopologyOptions;
 	/** Service ids hidden by tag filtering (`tagHiddenServiceIds`). */
 	hiddenServiceIds: Set<string>;
+	/** Networks, for resolving each entity's staleness window. */
+	networks: Network[];
 }
-
 
 type ViewElementConfig = {
 	element_config?: {
@@ -104,6 +113,37 @@ export function elementInlineFlags(
 	};
 }
 
+/**
+ * Staleness pill for the entity this card depicts.
+ *
+ * Judged on the node's own entity with no inheritance from its host — the same
+ * rule the inventory cards apply, so the two surfaces agree and the tooltip's
+ * timestamp can never contradict the tag. Type names come from the entity
+ * metadata fixture so they stay localized and in step with the backend.
+ */
+function resolveStaleTag(
+	resolved: ReturnType<typeof resolveElementNode>,
+	networks: Network[]
+): ReturnType<typeof getFreshnessTag> {
+	// The entity this node actually depicts.
+	const entity =
+		resolved.elementType === 'Service'
+			? resolved.services[0]
+			: resolved.elementType === 'IPAddress'
+				? resolved.ipAddress
+				: resolved.elementType === 'Interface'
+					? resolved.snmpInterface
+					: resolved.host;
+
+	const subject = entity ?? resolved.host;
+	if (!subject) return null;
+	return getFreshnessTag(
+		subject,
+		networks.find((n) => n.id === subject.network_id),
+		{ entityTypeLabel: entities.getName(resolved.elementType ?? 'Host') || undefined }
+	);
+}
+
 export function buildElementRender(inputs: ElementRenderInputs): ElementRenderResult {
 	const { nodeId, node, topology, activeView, options, hiddenServiceIds } = inputs;
 
@@ -112,6 +152,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 
 	const elementType = resolved.elementType ?? 'Interface';
 	const host = resolved.host;
+	const staleTag = resolveStaleTag(resolved, inputs.networks);
 	const ipAddress = resolved.ipAddress ?? null;
 	const servicesForHost = resolved.services ?? [];
 
@@ -125,6 +166,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 		const showHostname = viewConfigFor(activeView)?.element_config?.container_entity !== 'Host';
 		return {
 			flags,
+			staleTag,
 			data: {
 				elementType,
 				footerText: null,
@@ -143,7 +185,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 
 	// Host elements: show host name with services
 	if (elementType === 'Host') {
-		if (!host || !resolved.hostId) return { data: null, flags };
+		if (!host || !resolved.hostId) return { data: null, flags, staleTag };
 
 		const hiddenCategories = hiddenServiceCategories(options, activeView);
 
@@ -177,6 +219,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 
 		return {
 			flags,
+			staleTag,
 			data: {
 				elementType,
 				footerText: null,
@@ -210,6 +253,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 
 		return {
 			flags,
+			staleTag,
 			data: {
 				elementType,
 				headerText: node.header ?? null,
@@ -233,7 +277,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 	}
 
 	// IPAddress elements
-	if (!host || !resolved.hostId) return { data: null, flags };
+	if (!host || !resolved.hostId) return { data: null, flags, staleTag };
 
 	const hiddenCategories = hiddenServiceCategories(options, activeView);
 
@@ -243,7 +287,9 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 
 	// All services bound to this interface (after tag filtering)
 	const allServicesOnIPAddress = servicesForHost.filter((s) =>
-		s.bindings.some((b) => b.ip_address_id == null || (ipAddress && b.ip_address_id == ipAddress.id))
+		s.bindings.some(
+			(b) => b.ip_address_id == null || (ipAddress && b.ip_address_id == ipAddress.id)
+		)
 	);
 
 	// Filter = structural remove (see Host branch for context).
@@ -274,6 +320,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 
 	return {
 		flags,
+		staleTag,
 		data: {
 			elementType,
 			footerText: null,
@@ -291,4 +338,59 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 			ip_address_id: resolved.ipAddressId ?? ''
 		} as ElementRenderData
 	};
+}
+
+/**
+ * A key identifying cards that render to the same height.
+ *
+ * Two element nodes whose keys match are assumed to measure identically, which
+ * is what lets the pipeline mount one representative per key instead of every
+ * node.
+ *
+ * Derived structurally from `ElementRenderResult` — counts, presence flags and
+ * text-length buckets — rather than from a hand-picked list of fields, so a new
+ * field added to the render data participates by default instead of being
+ * silently ignored.
+ *
+ * Text contributes a *bucket*, not its content: cards are fixed-width, so a
+ * long label wraps to another line while a short one does not. Bucketing by
+ * rough length approximates the wrap point without making every distinct string
+ * its own shape (which would defeat the sampling entirely).
+ *
+ * This is a heuristic, and the verification mode in the measure pass exists to
+ * catch it being wrong: it re-measures nodes and reports any whose actual
+ * height disagrees with the height predicted for their key.
+ */
+export function elementShapeKey(result: ElementRenderResult): string {
+	const d = result.data;
+	if (!d) return 'null';
+
+	// ~28 characters fit on a line at the fixed card width; bucket by line count
+	// rather than raw length so near-identical labels share a key.
+	const lines = (text: string | null | undefined): number =>
+		text ? Math.ceil(text.length / 28) : 0;
+
+	const parts: (string | number)[] = [
+		d.elementType,
+		lines(d.headerText),
+		lines(d.subtitleText),
+		lines(d.bodyText),
+		lines(d.footerText),
+		d.showServices ? 1 : 0,
+		d.isVirtualized ? 1 : 0,
+		d.isContainerized ? 1 : 0,
+		d.hiddenOpenPorts.length,
+		result.staleTag ? 1 : 0,
+		d.portStatus ? 1 : 0,
+		// Each service renders its own row, and a row's height depends on its
+		// name length and how many port lines it carries.
+		result.flags.inlinesService && !result.flags.serviceInlineHidden ? 1 : 0,
+		result.flags.inlinesPort && !result.flags.portInlineHidden ? 1 : 0,
+		d.services.length,
+		...d.services.map(
+			(s) => `${lines(s.name)}:${s.bindings.filter((b) => b.type === 'Port').length}`
+		)
+	];
+
+	return parts.join('|');
 }
