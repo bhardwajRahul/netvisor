@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.6\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.6\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.6)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.7\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.7\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.7)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -4916,6 +4916,68 @@
           },
           "409": {
             "description": "Host has associated daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/hosts/{id}/rescan": {
+      "post": {
+        "tags": [
+          "Hosts"
+        ],
+        "summary": "Rescan a host",
+        "description": "Starts a one-shot scan of this host's addresses and nothing else, answering\n\"is this host still there, and is its data current?\" without sweeping the\nwhole subnet.\n\nThe scan runs on the daemon that last discovered this host — evidence it can\nreach the address — and only if that daemon still has an interface on a\nsubnet containing one of the host's IPs. That constraint is what lets the\ndaemon ARP the target rather than fall back to a TCP probe, which would\nreport a live but firewalled host as unresponsive. When it can't be met the\nrequest is refused with the specific reason rather than run at lower fidelity.\n\nReturns the session, which streams progress over `/api/v1/discovery/stream`\nlike any other scan. A `Queued` phase means the daemon is busy; it will start\nwhen the running scan finishes.",
+        "operationId": "rescan_host",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Host ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rescan session started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_DiscoveryUpdatePayload"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host cannot be rescanned (never scanned, daemon gone, daemon unreachable, or daemon too old)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Host not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -11056,12 +11118,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.6"
+            "example": "0.17.7"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.6"
+          "server_version": "0.17.7"
         }
       },
       "ApiResponse": {
@@ -11177,19 +11239,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-28T15:55:58.901446Z",
+              "created_at": "2026-07-28T19:53:59.979244Z",
               "first_discovery_id": null,
-              "id": "2d459d11-ac7f-4ae1-86a8-fdc16c465ff1",
+              "id": "4b8f2a04-d66c-4f06-9702-4154977e9529",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T15:55:58.901446Z",
+              "last_seen_at": "2026-07-28T19:53:59.979244Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T15:55:58.901446Z",
-              "valid_from": "2026-07-28T15:55:58.901446Z",
+              "updated_at": "2026-07-28T19:53:59.979244Z",
+              "valid_from": "2026-07-28T19:53:59.979244Z",
               "valid_to": null
             }
           },
@@ -12074,6 +12136,10 @@
                 ],
                 "format": "date-time"
               },
+              "targeted": {
+                "type": "boolean",
+                "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
+              },
               "warnings": {
                 "type": "array",
                 "items": {
@@ -12338,19 +12404,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-28T15:55:58.883697Z",
+                      "created_at": "2026-07-28T19:53:59.961233Z",
                       "first_discovery_id": null,
-                      "id": "80034587-f02e-48ca-b65a-8bfae6d593e5",
+                      "id": "da432882-f8b4-49f3-824d-73a608d9b2d1",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-28T15:55:58.883697Z",
+                      "last_seen_at": "2026-07-28T19:53:59.961233Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-28T15:55:58.883697Z",
-                      "valid_from": "2026-07-28T15:55:58.883697Z",
+                      "updated_at": "2026-07-28T19:53:59.961233Z",
+                      "valid_from": "2026-07-28T19:53:59.961233Z",
                       "valid_to": null
                     }
                   ],
@@ -12364,7 +12430,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Nvidia GPU Exporter",
+                  "service_definition": "Beszel Agent",
                   "source": {
                     "type": "Manual"
                   },
@@ -13434,19 +13500,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T15:55:58.895462Z",
+                  "created_at": "2026-07-28T19:53:59.973399Z",
                   "first_discovery_id": null,
-                  "id": "e0302162-ba18-47ec-a212-e128c46dec38",
+                  "id": "4f273e6f-7f21-447b-9af0-473468e60cc3",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T15:55:58.895462Z",
+                  "last_seen_at": "2026-07-28T19:53:59.973399Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T15:55:58.895462Z",
-                  "valid_from": "2026-07-28T15:55:58.895462Z",
+                  "updated_at": "2026-07-28T19:53:59.973399Z",
+                  "valid_from": "2026-07-28T19:53:59.973399Z",
                   "valid_to": null
                 }
               ],
@@ -13460,7 +13526,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Nvidia GPU Exporter",
+              "service_definition": "Beszel Agent",
               "source": {
                 "type": "Manual"
               },
@@ -14726,6 +14792,10 @@
                   ],
                   "format": "date-time"
                 },
+                "targeted": {
+                  "type": "boolean",
+                  "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
+                },
                 "warnings": {
                   "type": "array",
                   "items": {
@@ -15330,19 +15400,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-28T15:55:58.884060Z",
+          "created_at": "2026-07-28T19:53:59.961620Z",
           "first_discovery_id": null,
-          "id": "3619e36b-4e13-46e6-b87c-5ecdf9f72d20",
+          "id": "a30878f6-680f-4dc8-a29d-4a569d9b66af",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-28T15:55:58.884060Z",
+          "last_seen_at": "2026-07-28T19:53:59.961620Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-28T15:55:58.884060Z",
-          "valid_from": "2026-07-28T15:55:58.884060Z",
+          "updated_at": "2026-07-28T19:53:59.961620Z",
+          "valid_from": "2026-07-28T19:53:59.961620Z",
           "valid_to": null
         }
       },
@@ -15933,7 +16003,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Nvidia GPU Exporter",
+              "service_definition": "Beszel Agent",
               "tags": [],
               "virtualization": null
             }
@@ -16990,6 +17060,10 @@
             ],
             "description": "The date this daemon's version stops being supported, if a sunset is\nscheduled for it. Surfaced top-level (not only inside `warnings`) so the\nUI can render a countdown from the same value the email uses."
           },
+          "supports_targeted_rescan": {
+            "type": "boolean",
+            "description": "Whether this daemon can run a single-host rescan. Server-computed so the\nfrontend never has to hardcode a version floor."
+          },
           "supports_unified_discovery": {
             "type": "boolean"
           },
@@ -17719,6 +17793,10 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "targeted": {
+            "type": "boolean",
+            "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
           },
           "warnings": {
             "type": "array",
@@ -19058,19 +19136,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T15:55:58.883282Z",
+                  "created_at": "2026-07-28T19:53:59.960773Z",
                   "first_discovery_id": null,
-                  "id": "bc68c84a-c1b6-4c9e-9e0f-0bb1e3060d55",
+                  "id": "e69ad9f5-ad33-4503-809d-070812349780",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T15:55:58.883282Z",
+                  "last_seen_at": "2026-07-28T19:53:59.960773Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T15:55:58.883282Z",
-                  "valid_from": "2026-07-28T15:55:58.883282Z",
+                  "updated_at": "2026-07-28T19:53:59.960773Z",
+                  "valid_from": "2026-07-28T19:53:59.960773Z",
                   "valid_to": null
                 }
               ],
@@ -19084,7 +19162,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Nvidia GPU Exporter",
+              "service_definition": "Beszel Agent",
               "source": {
                 "type": "Manual"
               },
@@ -21233,7 +21311,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.6"
+            "example": "0.17.7"
           }
         },
         "example": {
@@ -21244,7 +21322,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.6"
+          "server_version": "0.17.7"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -21721,19 +21799,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-28T15:55:58.873134Z",
+                        "created_at": "2026-07-28T19:53:59.951039Z",
                         "first_discovery_id": null,
-                        "id": "2ba3882c-1c22-410a-921e-6b958d7919a7",
+                        "id": "bca9303a-7901-4460-8ddd-3a15a5d54421",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-28T15:55:58.873134Z",
+                        "last_seen_at": "2026-07-28T19:53:59.951039Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-28T15:55:58.873134Z",
-                        "valid_from": "2026-07-28T15:55:58.873134Z",
+                        "updated_at": "2026-07-28T19:53:59.951039Z",
+                        "valid_from": "2026-07-28T19:53:59.951039Z",
                         "valid_to": null
                       }
                     ],
@@ -21747,7 +21825,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Nvidia GPU Exporter",
+                    "service_definition": "Beszel Agent",
                     "source": {
                       "type": "Manual"
                     },
@@ -21868,19 +21946,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-28T15:55:58.894361Z",
+                    "created_at": "2026-07-28T19:53:59.972267Z",
                     "first_discovery_id": null,
-                    "id": "2c42bea2-96f4-4f8f-8083-97567dbb457a",
+                    "id": "122ffb85-74b3-4cac-a479-b115bcdeb493",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-28T15:55:58.894361Z",
+                    "last_seen_at": "2026-07-28T19:53:59.972267Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-28T15:55:58.894361Z",
-                    "valid_from": "2026-07-28T15:55:58.894361Z",
+                    "updated_at": "2026-07-28T19:53:59.972267Z",
+                    "valid_from": "2026-07-28T19:53:59.972267Z",
                     "valid_to": null
                   }
                 ],
@@ -21894,7 +21972,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Nvidia GPU Exporter",
+                "service_definition": "Beszel Agent",
                 "source": {
                   "type": "Manual"
                 },
@@ -23274,6 +23352,30 @@
                 ]
               }
             }
+          },
+          {
+            "type": "object",
+            "title": "Targeted",
+            "description": "A one-shot rescan of specific targets. Created by the server (never via\nAPI) and deleted when its session reaches a terminal phase, so it is not\na discovery configuration the user owns or sees in their scan list.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "last_run": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "readOnly": true
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Targeted"
+                ]
+              }
+            }
           }
         ]
       },
@@ -23597,19 +23699,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-28T15:55:58.883984Z",
+              "created_at": "2026-07-28T19:53:59.961533Z",
               "first_discovery_id": null,
-              "id": "c57c6961-e37c-4f7d-97ac-2ff52c6b3198",
+              "id": "169ed92a-ca3f-47c2-aeaa-457970ae247c",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T15:55:58.883984Z",
+              "last_seen_at": "2026-07-28T19:53:59.961533Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T15:55:58.883984Z",
-              "valid_from": "2026-07-28T15:55:58.883984Z",
+              "updated_at": "2026-07-28T19:53:59.961533Z",
+              "valid_from": "2026-07-28T19:53:59.961533Z",
               "valid_to": null
             }
           ],
@@ -23623,7 +23725,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Nvidia GPU Exporter",
+          "service_definition": "Beszel Agent",
           "source": {
             "type": "Manual"
           },
@@ -24316,6 +24418,7 @@
           "Management",
           "Storage",
           "Loopback",
+          "ScanTarget",
           "Unknown"
         ]
       },
@@ -24755,7 +24858,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "914fb57c-af7a-4315-b625-0f3e2656c071",
+                  "id": "1a0587b5-e9ae-4624-9770-a09257b23bfc",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24765,23 +24868,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "69a27b2f-a169-4773-8838-afc7020a8a51",
+                  "id": "a1ca9a2b-2003-4474-8ab5-f3397c9b379c",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "aa8ce85a-065c-485c-802a-727b1d4fa947",
+                  "id": "a6a3dda3-3c58-48fe-b785-ca7482c601b4",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "8c16680c-f24e-4b61-ad07-62776a8ca794",
+                  "id": "1bf2b86d-5304-41ee-8d67-b220c6ffd847",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "69a27b2f-a169-4773-8838-afc7020a8a51",
+                  "id": "a1ca9a2b-2003-4474-8ab5-f3397c9b379c",
                   "rule": "ByHost"
                 }
               ]
@@ -24810,19 +24913,19 @@
             },
             "default": [
               {
-                "id": "539f3e47-4cff-469a-8e59-68ba0668df8d",
+                "id": "0cd3ad45-ccae-41b6-9d90-58a3262d3254",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "25a5ac34-b674-40d1-ac1e-202168cf8dad",
+                "id": "7d58d864-01b7-4ab3-9dbf-08bba1436c32",
                 "rule": "ByVLAN"
               },
               {
-                "id": "d77b54e8-c579-4e58-8839-3a22af4d4255",
+                "id": "2ad8e384-e80b-4999-8eb5-1c18d370d7fe",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "486d0b0f-b3b7-466e-a617-450e66777c1b",
+                "id": "e6d69728-4ff7-448b-b82c-591ec6ad5f87",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24840,7 +24943,7 @@
                 }
               },
               {
-                "id": "3a272403-c0b6-4025-9bbf-775c0c460633",
+                "id": "21bac3aa-8208-452e-9cea-ae2d458be837",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24849,15 +24952,15 @@
                 }
               },
               {
-                "id": "1d707db3-d75a-48eb-b59b-cd35e5e5863d",
+                "id": "6c14321a-e1b1-4206-bf68-2bd7b10cbd74",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "633a6119-cd47-4f83-8f3a-8ea6ea518373",
+                "id": "bd5babf0-3ff3-4d99-92a6-c269e3f45559",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "601c9f7c-3209-43d5-8583-369e7de032da",
+                "id": "acbda155-d469-4321-b6bf-0577dbb3b7ac",
                 "rule": "ByStack"
               }
             ]

@@ -1736,6 +1736,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hosts/{id}/rescan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rescan a host
+         * @description Starts a one-shot scan of this host's addresses and nothing else, answering
+         *     "is this host still there, and is its data current?" without sweeping the
+         *     whole subnet.
+         *
+         *     The scan runs on the daemon that last discovered this host — evidence it can
+         *     reach the address — and only if that daemon still has an interface on a
+         *     subnet containing one of the host's IPs. That constraint is what lets the
+         *     daemon ARP the target rather than fall back to a TCP probe, which would
+         *     report a live but firewalled host as unresponsive. When it can't be met the
+         *     request is refused with the specific reason rather than run at lower fidelity.
+         *
+         *     Returns the session, which streams progress over `/api/v1/discovery/stream`
+         *     like any other scan. A `Queued` phase means the daemon is busy; it will start
+         *     when the running scan finishes.
+         */
+        post: operations["rescan_host"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/if-entries": {
         parameters: {
             query?: never;
@@ -3102,7 +3135,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.6"
+         *       "server_version": "0.17.7"
          *     }
          */
         ApiMeta: {
@@ -3113,7 +3146,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.6
+             * @example 0.17.7
              */
             server_version: string;
         };
@@ -3127,19 +3160,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-28T15:55:58.901441Z",
+             *       "created_at": "2026-07-28T19:53:59.979256Z",
              *       "first_discovery_id": null,
-             *       "id": "68e53066-a4ae-4613-9989-640bd5a41a1a",
+             *       "id": "aef71a39-9a2b-4beb-a711-7900655a077d",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-28T15:55:58.901441Z",
+             *       "last_seen_at": "2026-07-28T19:53:59.979256Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-28T15:55:58.901441Z",
-             *       "valid_from": "2026-07-28T15:55:58.901441Z",
+             *       "updated_at": "2026-07-28T19:53:59.979256Z",
+             *       "valid_from": "2026-07-28T19:53:59.979256Z",
              *       "valid_to": null
              *     }
              */
@@ -3431,6 +3464,17 @@ export interface components {
                 /** Format: date-time */
                 started_at?: string | null;
                 /**
+                 * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
+                 *     rather than a discovery the user configured. Set server-side at session
+                 *     creation; daemons do not send it.
+                 *
+                 *     It rides into the historical Discovery row's `results`, which is the only
+                 *     way downstream consumers can tell a rescan apart: the terminal path mints
+                 *     a plain `RunType::Historical` row and the transient parent is deleted, so
+                 *     there is nothing left to look up. Used to keep rescans out of the digest.
+                 */
+                targeted?: boolean;
+                /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
                  *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
                  */
@@ -3532,19 +3576,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-28T15:55:58.883692Z",
+             *               "created_at": "2026-07-28T19:53:59.961225Z",
              *               "first_discovery_id": null,
-             *               "id": "e31ed177-2b55-4886-ab18-85a358dd916a",
+             *               "id": "be8e903f-49e6-4dbd-9489-408982699df4",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-28T15:55:58.883692Z",
+             *               "last_seen_at": "2026-07-28T19:53:59.961225Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-28T15:55:58.883692Z",
-             *               "valid_from": "2026-07-28T15:55:58.883692Z",
+             *               "updated_at": "2026-07-28T19:53:59.961225Z",
+             *               "valid_from": "2026-07-28T19:53:59.961225Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3558,7 +3602,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Nvidia GPU Exporter",
+             *           "service_definition": "Beszel Agent",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3975,19 +4019,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-28T15:55:58.895458Z",
+             *           "created_at": "2026-07-28T19:53:59.973382Z",
              *           "first_discovery_id": null,
-             *           "id": "f9245d7c-dab1-4373-8b87-e662f579645a",
+             *           "id": "cf02f364-70c1-4df3-bbf3-394d4a3ff91b",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-28T15:55:58.895458Z",
+             *           "last_seen_at": "2026-07-28T19:53:59.973382Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-28T15:55:58.895458Z",
-             *           "valid_from": "2026-07-28T15:55:58.895458Z",
+             *           "updated_at": "2026-07-28T19:53:59.973382Z",
+             *           "valid_from": "2026-07-28T19:53:59.973382Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4001,7 +4045,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Nvidia GPU Exporter",
+             *       "service_definition": "Beszel Agent",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4382,6 +4426,17 @@ export interface components {
                 /** Format: date-time */
                 started_at?: string | null;
                 /**
+                 * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
+                 *     rather than a discovery the user configured. Set server-side at session
+                 *     creation; daemons do not send it.
+                 *
+                 *     It rides into the historical Discovery row's `results`, which is the only
+                 *     way downstream consumers can tell a rescan apart: the terminal path mints
+                 *     a plain `RunType::Historical` row and the transient parent is deleted, so
+                 *     there is nothing left to look up. Used to keep rescans out of the digest.
+                 */
+                targeted?: boolean;
+                /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
                  *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
                  */
@@ -4505,19 +4560,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-28T15:55:58.884046Z",
+         *       "created_at": "2026-07-28T19:53:59.961611Z",
          *       "first_discovery_id": null,
-         *       "id": "7808cabb-e3b0-40e6-a539-0d0f3e6728fe",
+         *       "id": "aca1bf73-2f14-40ad-9143-8958eee8de27",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-28T15:55:58.884046Z",
+         *       "last_seen_at": "2026-07-28T19:53:59.961611Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-28T15:55:58.884046Z",
-         *       "valid_from": "2026-07-28T15:55:58.884046Z",
+         *       "updated_at": "2026-07-28T19:53:59.961611Z",
+         *       "valid_from": "2026-07-28T19:53:59.961611Z",
          *       "valid_to": null
          *     }
          */
@@ -4732,7 +4787,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Nvidia GPU Exporter",
+         *           "service_definition": "Beszel Agent",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5161,6 +5216,11 @@ export interface components {
              *     UI can render a countdown from the same value the email uses.
              */
             sunset_date?: string | null;
+            /**
+             * @description Whether this daemon can run a single-host rescan. Server-computed so the
+             *     frontend never has to hardcode a version floor.
+             */
+            supports_targeted_rescan?: boolean;
             supports_unified_discovery?: boolean;
             version?: string | null;
             warnings?: components["schemas"]["DeprecationWarning"][];
@@ -5427,6 +5487,17 @@ export interface components {
             session_id: string;
             /** Format: date-time */
             started_at?: string | null;
+            /**
+             * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
+             *     rather than a discovery the user configured. Set server-side at session
+             *     creation; daemons do not send it.
+             *
+             *     It rides into the historical Discovery row's `results`, which is the only
+             *     way downstream consumers can tell a rescan apart: the terminal path mints
+             *     a plain `RunType::Historical` row and the transient parent is deleted, so
+             *     there is nothing left to look up. Used to keep rescans out of the digest.
+             */
+            targeted?: boolean;
             /**
              * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
              *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
@@ -5913,19 +5984,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-28T15:55:58.883275Z",
+         *               "created_at": "2026-07-28T19:53:59.960763Z",
          *               "first_discovery_id": null,
-         *               "id": "e68385e9-a37b-449a-b8fb-58940d3906ad",
+         *               "id": "0dd0f8d0-e017-4c6c-ba6b-84c1f7488be3",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-28T15:55:58.883275Z",
+         *               "last_seen_at": "2026-07-28T19:53:59.960763Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-28T15:55:58.883275Z",
-         *               "valid_from": "2026-07-28T15:55:58.883275Z",
+         *               "updated_at": "2026-07-28T19:53:59.960763Z",
+         *               "valid_from": "2026-07-28T19:53:59.960763Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5939,7 +6010,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Nvidia GPU Exporter",
+         *           "service_definition": "Beszel Agent",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6786,7 +6857,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.6"
+         *       "server_version": "0.17.7"
          *     }
          */
         PaginatedApiMeta: {
@@ -6799,7 +6870,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.6
+             * @example 0.17.7
              */
             server_version: string;
         };
@@ -7450,6 +7521,11 @@ export interface components {
             readonly last_run?: string | null;
             /** @enum {string} */
             type: "AdHoc";
+        } | {
+            /** Format: date-time */
+            readonly last_run?: string | null;
+            /** @enum {string} */
+            type: "Targeted";
         };
         /**
          * @description Save-offer choices presented during in-app cancellation (Phase 5).
@@ -7589,19 +7665,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-28T15:55:58.883972Z",
+         *           "created_at": "2026-07-28T19:53:59.961525Z",
          *           "first_discovery_id": null,
-         *           "id": "23fbab3e-d93a-4aee-8ecb-7d8884ccf1af",
+         *           "id": "f1e43525-26a6-486c-bf11-7b9befda7040",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-28T15:55:58.883972Z",
+         *           "last_seen_at": "2026-07-28T19:53:59.961525Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-28T15:55:58.883972Z",
-         *           "valid_from": "2026-07-28T15:55:58.883972Z",
+         *           "updated_at": "2026-07-28T19:53:59.961525Z",
+         *           "valid_from": "2026-07-28T19:53:59.961525Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7615,7 +7691,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Nvidia GPU Exporter",
+         *       "service_definition": "Beszel Agent",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7881,7 +7957,7 @@ export interface components {
          */
         SubnetOrderField: "created_at" | "name" | "cidr" | "subnet_type" | "updated_at" | "network_id" | "last_seen_at";
         /** @enum {string} */
-        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "Unknown";
+        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "ScanTarget" | "Unknown";
         /**
          * @description Virtualization metadata for subnets that belong to a virtual infrastructure.
          *     Consistent with HostVirtualization and ServiceVirtualization patterns.
@@ -8038,7 +8114,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "f802a729-25be-4125-a332-139ebc776737",
+             *           "id": "c9920fa7-3938-4d8a-885a-aef9bae5961b",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -8048,23 +8124,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "dc40dfe9-26f8-4774-95a5-9a469b6260ec",
+             *           "id": "c00e7c63-35a0-4582-afc0-094b97031cd9",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "72a030ee-640d-48c1-af0d-06b943143cae",
+             *           "id": "63ac29ab-61a1-4479-8c9b-48559e486e28",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "b80ea64a-f6cb-4e11-b157-2ead3386ad34",
+             *           "id": "1a1261f8-dfba-4f09-a3ad-ba325ed0275d",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "dc40dfe9-26f8-4774-95a5-9a469b6260ec",
+             *           "id": "c00e7c63-35a0-4582-afc0-094b97031cd9",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -8076,19 +8152,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "72d7871c-de23-4741-9ca9-a1c38878e5de",
+             *         "id": "cb51eff8-8fe6-4b37-82aa-22119288f0c6",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "83a3d919-9d65-445d-a2f1-411598c7a203",
+             *         "id": "5f8fff6b-caf2-4fed-aff5-d315f955f42b",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "d95060eb-759e-4b9a-be86-9860ee0bf290",
+             *         "id": "74229ca0-fb83-4917-8eb3-e92f392542f2",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "00ed55fd-984b-4679-896f-f0e2ab1262d8",
+             *         "id": "e52b5592-7e43-47c3-bbc5-1a6f3c01b319",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -8106,7 +8182,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "b36d0239-9241-4a96-8845-822d59ff7def",
+             *         "id": "a2bc8cec-85c5-41a6-a146-447bdbe9e1ff",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -8115,15 +8191,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "89f2f22d-e40d-4a87-9c74-a5214af77a91",
+             *         "id": "b4273ef5-1de8-4970-a006-95da0b1f7664",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "661e0771-e347-421a-8b2b-8b16ee43294f",
+             *         "id": "b9378d41-a56b-4fc9-95f2-a062e1b718c7",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "bc1111d9-7f39-4ffb-8bac-4ef7a866bfba",
+             *         "id": "eec5fb5f-d363-425f-abca-fff7436410b2",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -12232,6 +12308,47 @@ export interface operations {
             };
             /** @description Host has associated daemon */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    rescan_host: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Host ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rescan session started */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DiscoveryUpdatePayload"];
+                };
+            };
+            /** @description Host cannot be rescanned (never scanned, daemon gone, daemon unreachable, or daemon too old) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Host not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
