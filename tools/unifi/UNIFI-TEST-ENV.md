@@ -82,9 +82,16 @@ version-specific, so it has to be copied from Ubiquiti's page each time:
 ```bash
 mkdir -p ~/uos && cd ~/uos
 wget '<paste-the-URL>'           # quote it: the URL contains & and ?
-chmod +x unifi-os-server*
-sudo ./unifi-os-server*
+ls -la                           # expect ~880 MB; a few KB means an HTML error page
+file ./*-linux-*                 # must NOT report "HTML document"
+chmod +x ./*-linux-*
+sudo ./*-linux-*
 ```
+
+The CDN names the file opaquely — something like
+`f5e2-linux-x64-5.1.21-a400c9c6-8328-4634-b223-ebfcf742720a.21-x64`, not `unifi-os-server.sh`.
+Match on `*-linux-*` rather than the product name, and check the size: the installer is several
+hundred MB, so anything small is a redirect to a login or expiry page.
 
 Then, in a browser at `https://<vm-ip>:11443`:
 
