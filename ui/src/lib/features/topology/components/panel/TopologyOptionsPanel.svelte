@@ -152,7 +152,7 @@
 						<InspectorEdge edge={$selectedEdge} />
 					{/key}
 				{:else}
-					<OptionsContent {activeTab} />
+					<OptionsContent {activeTab} renderableTopology={effectiveTopology} />
 				{/if}
 			</div>
 		{:else if !isTutorial}
