@@ -117,20 +117,25 @@ export async function resolveNodeSizes(
 		perf.count('full-measure-pass');
 		callbacks.setMeasuring(true);
 		callbacks.setEdges([]);
+		const buildDone = perf.stage('measure.build-nodes');
 		const measureNodes = callbacks.buildMeasureNodes();
 		callbacks.setNodes(measureNodes);
+		buildDone();
 		// Wait for SvelteFlow to render every measure-pass node in the DOM.
 		// Waiting only for "any node present" returns stale matches from the
 		// previous render and lets newly-added nodes (fresh SSE hosts during
 		// discovery) miss measurement — ELK then falls back to metadata
 		// defaults and positions the new container's siblings too close.
 		const expectedIds = new Set(measureNodes.map((n) => n.id));
+		const renderWaitDone = perf.stage('measure.render-wait');
 		await callbacks.waitForNodesRendered(expectedIds);
+		renderWaitDone();
 		if (isStale()) {
 			callbacks.setMeasuring(false);
 			return null;
 		}
 
+		const readDone = perf.stage('measure.dom-read');
 		if (containerElement) {
 			const nodeEls = containerElement.querySelectorAll('.svelte-flow__node');
 			for (const el of nodeEls) {
@@ -144,6 +149,8 @@ export async function resolveNodeSizes(
 				}
 			}
 		}
+
+		readDone();
 
 		// Populate container size cache from this measurement.
 		// During deferred collapse, everything was measured EXPANDED

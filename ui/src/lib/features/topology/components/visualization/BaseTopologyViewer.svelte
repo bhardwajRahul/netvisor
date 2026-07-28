@@ -582,27 +582,37 @@
 						// Poll for DOM nodes with a short timeout — nodesInitialized
 						// can hang indefinitely for large topologies.
 						const start = performance.now();
+						const expectedCount = expectedIds?.size ?? 0;
 						while (performance.now() - start < 2000) {
 							const nodeEls = containerElement?.querySelectorAll('.svelte-flow__node');
 							if (nodeEls && nodeEls.length > 0) {
-								if (!expectedIds || expectedIds.size === 0) break;
-								// Require every expected id to be present before breaking.
-								// Breaking on the first node (old-render leftovers) lets a
-								// newly-added SSE host miss measurement, so ELK falls back
-								// to metadata defaults and positions siblings too close.
-								const present = new Set(
-									Array.from(nodeEls)
-										.map((el) => (el as HTMLElement).dataset.id)
-										.filter((id): id is string => !!id)
-								);
-								let allPresent = true;
-								for (const id of expectedIds) {
-									if (!present.has(id)) {
-										allPresent = false;
-										break;
+								if (expectedCount === 0) break;
+								// Cheap gate first. Verifying every expected id means building
+								// a Set of all rendered ids, which is O(nodes) — doing that on
+								// every frame of a wait that can span a hundred frames is
+								// itself a meaningful cost at a thousand-plus nodes. The DOM
+								// can only hold every expected node once it holds at least
+								// that many, so the count check rules out almost every frame
+								// for the price of a property read.
+								if (nodeEls.length >= expectedCount) {
+									// Require every expected id to be present before breaking.
+									// Breaking on the first node (old-render leftovers) lets a
+									// newly-added SSE host miss measurement, so ELK falls back
+									// to metadata defaults and positions siblings too close.
+									const present = new Set(
+										Array.from(nodeEls)
+											.map((el) => (el as HTMLElement).dataset.id)
+											.filter((id): id is string => !!id)
+									);
+									let allPresent = true;
+									for (const id of expectedIds!) {
+										if (!present.has(id)) {
+											allPresent = false;
+											break;
+										}
 									}
+									if (allPresent) break;
 								}
-								if (allPresent) break;
 							}
 							await new Promise((r) => requestAnimationFrame(r));
 						}
