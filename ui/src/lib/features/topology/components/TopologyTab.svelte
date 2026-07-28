@@ -12,6 +12,7 @@
 	import { SvelteFlowProvider } from '@xyflow/svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { onMount, onDestroy, setContext } from 'svelte';
+	import { preloadElk } from '$lib/features/topology/layout/elk-layout';
 	import { get, writable } from 'svelte/store';
 	import {
 		useTopologiesQuery,
@@ -597,6 +598,13 @@
 	}
 
 	onMount(() => {
+		// Start loading ELK as soon as the tab opens, not when the pipeline runs.
+		// The module costs ~1s to parse and is the largest single stage of a cold
+		// load; kicking it off here lets it overlap the topology data fetch, which
+		// is otherwise idle main-thread time. Starting it at pipeline start (as
+		// BaseTopologyViewer also does, harmlessly) is too late to overlap
+		// anything — the measure pass begins immediately after.
+		preloadElk();
 		window.addEventListener('popstate', handlePopState);
 	});
 
