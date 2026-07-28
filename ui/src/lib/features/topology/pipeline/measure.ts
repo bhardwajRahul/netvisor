@@ -1,6 +1,8 @@
 import type { Node, Edge } from '@xyflow/svelte';
 import type { LayoutState, PrepareResult, XY } from './types';
+import type { RenderableTopology } from '../types/base';
 import * as perf from '../perf';
+import { reportShapeVerification, shapeVerifyEnabled } from './shape-verify';
 
 export interface MeasureCallbacks {
 	setMeasuring: (v: boolean) => void;
@@ -25,6 +27,7 @@ export interface MeasureCallbacks {
 export async function resolveNodeSizes(
 	state: LayoutState,
 	prep: PrepareResult,
+	topology: RenderableTopology,
 	getNodes: () => Node[],
 	containerElement: HTMLDivElement,
 	isStale: () => boolean,
@@ -151,6 +154,13 @@ export async function resolveNodeSizes(
 		}
 
 		readDone();
+
+		// Validate the shape key against this full measurement — every element
+		// sharing a key must have measured to the same height. Runs here, on the
+		// unsampled path, so it checks the key rather than the sampling.
+		if (shapeVerifyEnabled()) {
+			reportShapeVerification(visibleNodes, topology, elementNodeSizes);
+		}
 
 		// Populate container size cache from this measurement.
 		// During deferred collapse, everything was measured EXPANDED

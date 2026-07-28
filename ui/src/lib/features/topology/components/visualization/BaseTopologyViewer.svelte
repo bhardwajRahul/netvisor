@@ -547,6 +547,7 @@
 			const elementNodeSizes = await resolveNodeSizes(
 				layoutState,
 				prep,
+				topology,
 				getNodes,
 				containerElement,
 				isStale,

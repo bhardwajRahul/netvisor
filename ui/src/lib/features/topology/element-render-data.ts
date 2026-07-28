@@ -30,6 +30,10 @@ import { getTopologyIndex } from './entity-index';
 import { entities, serviceDefinitions, views } from '$lib/shared/stores/metadata';
 import { getFreshnessTag } from '$lib/shared/utils/freshness';
 import type { Network } from '$lib/features/networks/types';
+import { get } from 'svelte/store';
+import { activeView, topologyOptions } from './queries';
+import { tagHiddenServiceIds } from './interactions';
+import { queryClient, queryKeys } from '$lib/api/query-client';
 
 /**
  * Whether the active view inlines services / ports on this element, and whether
@@ -381,16 +385,49 @@ export function elementShapeKey(result: ElementRenderResult): string {
 		d.isContainerized ? 1 : 0,
 		d.hiddenOpenPorts.length,
 		result.staleTag ? 1 : 0,
-		d.portStatus ? 1 : 0,
+		// Not just presence: the block renders status, speed and MAC on separate
+		// lines, so two interface cards can both "have a port status" and still
+		// differ in height. Verification caught exactly this — 1600 synthetic
+		// interfaces without MACs measured 54px against 56 demo interfaces with
+		// them at 70px, under one key.
+		d.portStatus
+			? `p${d.portStatus.operStatus ? 1 : 0}${d.portStatus.speed ? 1 : 0}${d.portStatus.macAddress ? 1 : 0}`
+			: 'p-',
 		// Each service renders its own row, and a row's height depends on its
 		// name length and how many port lines it carries.
 		result.flags.inlinesService && !result.flags.serviceInlineHidden ? 1 : 0,
 		result.flags.inlinesPort && !result.flags.portInlineHidden ? 1 : 0,
 		d.services.length,
+		// `service_definition` decides whether the row renders a definition icon,
+		// and an icon row is not the same height as a bare text row. Keying on the
+		// id rather than on "has an icon" over-discriminates a little — two
+		// different definitions that both render an icon get separate keys — which
+		// is the safe direction: an extra key costs one more measured node, a
+		// missed distinction lays cards out at the wrong height.
 		...d.services.map(
-			(s) => `${lines(s.name)}:${s.bindings.filter((b) => b.type === 'Port').length}`
+			(s) =>
+				`${lines(s.name)}:${s.bindings.filter((b) => b.type === 'Port').length}:${s.service_definition ?? ''}`
 		)
 	];
 
 	return parts.join('|');
+}
+
+/**
+ * Assemble the non-node inputs from the current store state.
+ *
+ * The render pipeline needs to compute shape keys outside a component, where
+ * the `$store` shorthand is unavailable. Reading them in one place keeps the
+ * pipeline and the component agreed on what "current" means.
+ */
+export function currentElementRenderContext(): Omit<
+	ElementRenderInputs,
+	'nodeId' | 'node' | 'topology'
+> {
+	return {
+		activeView: get(activeView),
+		options: get(topologyOptions),
+		hiddenServiceIds: get(tagHiddenServiceIds),
+		networks: queryClient.getQueryData<Network[]>(queryKeys.networks.all) ?? []
+	};
 }
