@@ -49,13 +49,41 @@ Requirements per Ubiquiti:
 - ≥ 20 GB free disk
 - Ports: 3478, 5005, 5514, 6789, 8080, 8444, 8880, 8881, 8882, 9543, 10003, **11443**
 
+**Networking first.** If the VM was installed without a network, it will come up with only
+`lo` and no default route, and every later step fails in a confusing way (`apt` reports packages
+as "not available" when it really has no package lists at all). Verify before anything else:
+
+```bash
+ip -4 addr show && ip route      # expect an address on ens18 and a default route
+ping -c1 archive.ubuntu.com
+```
+
+If `ens18` has no address, write `/etc/netplan/01-netcfg.yaml` with `dhcp4: true` (or a static
+`addresses:` / `routes:` / `nameservers:` block), `sudo netplan apply`, and re-check. If the link
+shows `NO-CARRIER`, it is the hypervisor side — check the VM's NIC is on the right bridge/VLAN.
+
 ```bash
 sudo apt-get update
 sudo apt-get install -y podman slirp4netns curl
+podman --version                 # must be >= 4.3.1; Docker is NOT a supported substitute
+```
 
-# Fetch the installer from Ubiquiti's UniFi OS Server download page
-# (https://ui.com/download/software/unifi-os-server) and run it:
-sudo ./unifi-os-server-installer.sh
+`podman` lives in `universe`; if it is missing, `sudo add-apt-repository universe` first.
+
+**Then download the installer** — it is not bundled with anything and the URL is
+version-specific, so it has to be copied from Ubiquiti's page each time:
+
+1. Open <https://ui.com/download/software/unifi-os-server> in a browser.
+2. Pick the Linux build matching the VM's architecture (`uname -m` → `x86_64` or `aarch64`).
+3. Right-click the download button → **Copy Link Address** (a
+   `https://fw-download.ubnt.com/data/unifi-os-server/…` URL). These expire, so fetch a fresh
+   one rather than reusing an old link.
+
+```bash
+mkdir -p ~/uos && cd ~/uos
+wget '<paste-the-URL>'           # quote it: the URL contains & and ?
+chmod +x unifi-os-server*
+sudo ./unifi-os-server*
 ```
 
 Then, in a browser at `https://<vm-ip>:11443`:
