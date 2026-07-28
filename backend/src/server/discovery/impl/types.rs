@@ -166,11 +166,106 @@ pub enum RunType {
         #[schema(read_only)]
         last_run: Option<DateTime<Utc>>,
     },
+    /// A one-shot rescan of specific targets. Created by the server (never via
+    /// API) and deleted when its session reaches a terminal phase, so it is not
+    /// a discovery configuration the user owns or sees in their scan list.
+    #[schema(title = "Targeted")]
+    Targeted {
+        #[serde(default)]
+        #[schema(read_only)]
+        last_run: Option<DateTime<Utc>>,
+    },
 }
 
 impl Default for RunType {
     fn default() -> Self {
         Self::AdHoc { last_run: None }
+    }
+}
+
+/// The parts of a `Scheduled` run needed to drive the cron scheduler.
+pub struct ScheduleParts<'a> {
+    pub cron_schedule: &'a str,
+    pub enabled: bool,
+    pub timezone: Option<&'a str>,
+}
+
+impl RunType {
+    /// When this discovery last started a session, if it tracks that.
+    pub fn last_run(&self) -> Option<DateTime<Utc>> {
+        match self {
+            RunType::Scheduled { last_run, .. }
+            | RunType::AdHoc { last_run }
+            | RunType::Targeted { last_run } => *last_run,
+            // Historical runs *are* a completed run; `results.finished_at` is the
+            // timestamp that means anything for them.
+            RunType::Historical { .. } => None,
+        }
+    }
+
+    /// Stamp the time a session started. No-op for variants that don't track it.
+    pub fn set_last_run(&mut self, at: DateTime<Utc>) {
+        match self {
+            RunType::Scheduled { last_run, .. }
+            | RunType::AdHoc { last_run }
+            | RunType::Targeted { last_run } => *last_run = Some(at),
+            RunType::Historical { .. } => {}
+        }
+    }
+
+    /// Cron parameters, for the variants the scheduler drives.
+    pub fn schedule(&self) -> Option<ScheduleParts<'_>> {
+        match self {
+            RunType::Scheduled {
+                cron_schedule,
+                enabled,
+                timezone,
+                ..
+            } => Some(ScheduleParts {
+                cron_schedule,
+                enabled: *enabled,
+                timezone: timezone.as_deref(),
+            }),
+            RunType::Historical { .. } | RunType::AdHoc { .. } | RunType::Targeted { .. } => None,
+        }
+    }
+
+    /// Whether the cron scheduler should hold a job for this discovery.
+    pub fn is_scheduled_enabled(&self) -> bool {
+        self.schedule().is_some_and(|s| s.enabled)
+    }
+
+    /// Created by the server only — rejected on the public create/update routes.
+    pub fn is_server_managed(&self) -> bool {
+        match self {
+            RunType::Historical { .. } | RunType::Targeted { .. } => true,
+            RunType::Scheduled { .. } | RunType::AdHoc { .. } => false,
+        }
+    }
+
+    /// Whether this row is a discovery configuration a user owns and sees —
+    /// i.e. not a historical record and not a transient rescan. Mirrors the
+    /// `exclude_ephemeral` storage filter.
+    pub fn is_live_config(&self) -> bool {
+        !self.is_server_managed()
+    }
+
+    /// The completed session this row records, for historical runs.
+    pub fn historical_results(&self) -> Option<&DiscoveryUpdatePayload> {
+        match self {
+            RunType::Historical { results } => Some(results),
+            RunType::Scheduled { .. } | RunType::AdHoc { .. } | RunType::Targeted { .. } => None,
+        }
+    }
+
+    /// Whether this discovery has never started a session.
+    pub fn never_ran(&self) -> bool {
+        match self {
+            RunType::Scheduled { last_run, .. }
+            | RunType::AdHoc { last_run }
+            | RunType::Targeted { last_run } => last_run.is_none(),
+            RunType::Historical { .. } => false,
+        }
     }
 }
 

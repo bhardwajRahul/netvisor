@@ -4,9 +4,7 @@ use super::*;
 impl DiscoveryService {
     /// Validate timezone string if present on a scheduled discovery
     pub(crate) fn validate_timezone(run_type: &RunType) -> Result<()> {
-        if let RunType::Scheduled {
-            timezone: Some(tz), ..
-        } = run_type
+        if let Some(tz) = run_type.schedule().and_then(|s| s.timezone)
             && tz.parse::<chrono_tz::Tz>().is_err()
         {
             bail_validation!(
@@ -47,7 +45,7 @@ impl DiscoveryService {
         }
 
         // If it's a scheduled discovery, add it to the scheduler
-        if matches!(created_discovery.base.run_type, RunType::Scheduled { .. })
+        if created_discovery.base.run_type.schedule().is_some()
             && let Err(e) = Self::schedule_discovery(self, &created_discovery).await
         {
             // Disable and save to DB
@@ -101,7 +99,7 @@ impl DiscoveryService {
             .ok_or_else(|| anyhow::anyhow!("Discovery not found"))?;
 
         // If it's scheduled, remove from scheduler first (with timeout to prevent deadlock)
-        if matches!(discovery.base.run_type, RunType::Scheduled { .. }) {
+        if discovery.base.run_type.schedule().is_some() {
             self.remove_scheduled_job(id).await;
             tracing::debug!("Removed scheduled job for discovery {}", id);
         }

@@ -39,10 +39,41 @@ mod organization;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::discovery::r#impl::base::Discovery;
+    use crate::server::discovery::r#impl::types::RunType;
     use crate::server::hosts::r#impl::base::Host;
     use crate::server::snapshots::types::base::Snapshot;
     use crate::server::tags::r#impl::base::Tag;
     use chrono::TimeZone;
+    use strum::VariantNames;
+
+    /// `live_configs` matches the serde tag as a raw string in JSONB, so no
+    /// amount of Rust exhaustiveness covers it. Drive the check off
+    /// `RunType::VARIANTS` (derived, so it grows automatically) to force whoever
+    /// adds a variant to decide whether it is a live discovery configuration.
+    #[test]
+    fn live_configs_classifies_every_run_type() {
+        let sql = StorableFilter::<Discovery>::new_unfiltered()
+            .live_configs()
+            .to_where_clause();
+
+        for name in RunType::VARIANTS {
+            let expected_excluded = match *name {
+                "Historical" | "Targeted" => true,
+                "Scheduled" | "AdHoc" => false,
+                other => panic!(
+                    "RunType::{other} is not classified by live_configs. Decide whether it \
+                     is a discovery configuration a user owns (leave it in) or a server-managed \
+                     row (add it to the filter), then update this test."
+                ),
+            };
+            assert_eq!(
+                sql.contains(&format!("'{name}'")),
+                expected_excluded,
+                "RunType::{name} exclusion mismatch in: {sql}"
+            );
+        }
+    }
 
     fn ts(secs: i64) -> DateTime<Utc> {
         Utc.timestamp_opt(secs, 0).unwrap()

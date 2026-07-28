@@ -741,7 +741,6 @@ pub fn extract_scanned_from_discovery_event(
         crate::server::shared::events::types::EntityOperation,
     >,
 ) -> Option<(&crate::server::daemons::r#impl::api::ScannedEntityIds, Uuid)> {
-    use crate::server::discovery::r#impl::types::RunType;
     use crate::server::shared::entities::{Entity, EntityDiscriminants};
 
     if event.scope.entity_discriminant() != EntityDiscriminants::Discovery {
@@ -750,9 +749,7 @@ pub fn extract_scanned_from_discovery_event(
     let Entity::Discovery(discovery) = event.scope.entity_type() else {
         return None;
     };
-    let RunType::Historical { results } = &discovery.base.run_type else {
-        return None;
-    };
+    let results = discovery.base.run_type.historical_results()?;
     let scanned = results.scanned.as_ref()?;
     Some((scanned, event.scope.entity_id()))
 }

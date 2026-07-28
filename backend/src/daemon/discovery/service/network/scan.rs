@@ -43,6 +43,7 @@ impl NetworkScan {
     pub async fn scan_and_process_hosts(
         &self,
         subnets: Vec<Subnet>,
+        target_ips: Option<HashSet<IpAddr>>,
         cancel: CancellationToken,
         ops: &DiscoveryOps,
         utils: &PlatformDaemonUtils,
@@ -54,11 +55,18 @@ impl NetworkScan {
             .get_own_interfaces(session.info.network_id, &interface_filter)
             .await?;
 
-        // Filter out loopback subnets — they are not scannable
+        // Filter out subnets that are not scannable: loopback, and any transient
+        // `ScanTarget` row that survived substitution in resolve_scan_subnets
+        // (which should be none — a /32 reaching here would be swept as its own
+        // subnet rather than as a target within its real one).
         let subnets: Vec<Subnet> = subnets
             .into_iter()
-            .filter(|s| !s.base.subnet_type.is_loopback())
+            .filter(|s| !s.base.subnet_type.is_loopback() && !s.base.subnet_type.is_ephemeral())
             .collect();
+
+        // A targeted rescan narrows enumeration to specific addresses within the
+        // subnets above. `None` means sweep them entirely.
+        let is_targeted = |ip: &IpAddr| target_ips.as_ref().is_none_or(|t| t.contains(ip));
 
         // Get scan settings from discovery request, falling back to defaults
         let use_npcap = self.scan_settings.use_npcap_arp;
@@ -100,13 +108,8 @@ impl NetworkScan {
             (Vec::new(), subnets)
         };
 
-        // Compute IP counts from prefix lengths without materializing all IPs
-        let count_ips = |subnets: &[Subnet]| -> u64 {
-            subnets
-                .iter()
-                .map(|s| 1u64 << (32 - s.base.cidr.network_length() as u64))
-                .sum()
-        };
+        let count_ips =
+            |subnets: &[Subnet]| -> u64 { count_scan_ips(subnets, target_ips.as_ref()) };
         let interfaced_ip_count = count_ips(&interfaced_subnets);
         let non_interfaced_ip_count = count_ips(&non_interfaced_subnets);
         let total_ips = interfaced_ip_count + non_interfaced_ip_count;
@@ -180,6 +183,9 @@ impl NetworkScan {
                     .entry(subnet.base.cidr)
                     .or_insert_with(|| (subnet.clone(), Vec::new()));
                 for addr in subnet.base.cidr.iter().map(|a| a.address()) {
+                    if !is_targeted(&addr) {
+                        continue;
+                    }
                     if let IpAddr::V4(ipv4) = addr {
                         entry.1.push(ipv4);
                         if entry.1.len() >= max_arp_targets {
@@ -355,9 +361,13 @@ impl NetworkScan {
             // Stream IPs directly from CIDR iterators — zero allocation.
             // Each IP is generated on-the-fly and sent through the channel.
             let host_tx = host_tx.clone();
+            let stream_targets = target_ips.clone();
             tokio::spawn(async move {
                 for subnet in non_interfaced_subnets {
                     for addr in subnet.base.cidr.iter().map(|a| a.address()) {
+                        if stream_targets.as_ref().is_some_and(|t| !t.contains(&addr)) {
+                            continue;
+                        }
                         if host_tx.send((addr, subnet.clone(), None)).await.is_err() {
                             return; // Receiver dropped
                         }
@@ -1353,5 +1363,83 @@ impl NetworkScan {
         }
 
         Ok(None)
+    }
+}
+
+/// Number of addresses a scan will actually probe across `subnets`.
+///
+/// Without a target filter this is the full address space of each CIDR, derived
+/// from the prefix so nothing is materialized. With one — a rescan, which
+/// substitutes its /32 for the real subnet containing it — the prefix says
+/// nothing about the work: counting it would seed the progress budget with a
+/// whole subnet's worth of scanning for a single address, pinning the bar near
+/// zero and reporting an ETA in minutes for a job that takes seconds.
+pub(crate) fn count_scan_ips(subnets: &[Subnet], target_ips: Option<&HashSet<IpAddr>>) -> u64 {
+    match target_ips {
+        Some(targets) => subnets
+            .iter()
+            .map(|s| targets.iter().filter(|ip| s.base.cidr.contains(ip)).count() as u64)
+            .sum(),
+        None => subnets
+            .iter()
+            .map(|s| 1u64 << (32 - s.base.cidr.network_length() as u64))
+            .sum(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::shared::storage::traits::Storable;
+    use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::types::SubnetType;
+    use std::str::FromStr;
+
+    fn subnet(cidr: &str) -> Subnet {
+        Subnet::new(SubnetBase {
+            cidr: cidr::IpCidr::from_str(cidr).unwrap(),
+            network_id: uuid::Uuid::new_v4(),
+            name: cidr.to_string(),
+            description: None,
+            subnet_type: SubnetType::Lan,
+            virtualization: None,
+            source: crate::server::shared::types::entities::EntitySource::System,
+            tags: Vec::new(),
+        })
+    }
+
+    fn ip(s: &str) -> IpAddr {
+        IpAddr::from_str(s).unwrap()
+    }
+
+    #[test]
+    fn unfiltered_count_is_the_whole_address_space() {
+        let subnets = [subnet("10.0.5.0/24"), subnet("10.0.6.0/30")];
+        assert_eq!(count_scan_ips(&subnets, None), 256 + 4);
+    }
+
+    #[test]
+    fn a_rescan_costs_one_address_not_the_subnet_it_sits_in() {
+        // The substituted subnet is the real /24, so an unfiltered count would
+        // budget 256 addresses of work for a single-host rescan.
+        let subnets = [subnet("10.0.5.0/24")];
+        let targets = HashSet::from([ip("10.0.5.7")]);
+        assert_eq!(count_scan_ips(&subnets, Some(&targets)), 1);
+    }
+
+    #[test]
+    fn targets_outside_the_scanned_subnets_are_not_counted() {
+        let subnets = [subnet("10.0.5.0/24")];
+        let targets = HashSet::from([ip("10.0.5.7"), ip("192.168.1.9")]);
+        assert_eq!(count_scan_ips(&subnets, Some(&targets)), 1);
+    }
+
+    #[test]
+    fn multiple_targets_in_one_subnet_each_count() {
+        // A host with several addresses on the same NIC mints one /32 per
+        // address; all substitute to the same parent subnet.
+        let subnets = [subnet("10.0.5.0/24")];
+        let targets = HashSet::from([ip("10.0.5.7"), ip("10.0.5.8")]);
+        assert_eq!(count_scan_ips(&subnets, Some(&targets)), 2);
     }
 }

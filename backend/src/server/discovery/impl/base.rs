@@ -62,11 +62,12 @@ pub struct Discovery {
 
 impl Discovery {
     pub fn disable(&mut self) {
-        if let RunType::Scheduled {
-            ref mut enabled, ..
-        } = self.base.run_type
-        {
-            *enabled = false;
+        match self.base.run_type {
+            RunType::Scheduled {
+                ref mut enabled, ..
+            } => *enabled = false,
+            // Nothing to disable — these are not scheduler-driven.
+            RunType::Historical { .. } | RunType::AdHoc { .. } | RunType::Targeted { .. } => {}
         }
     }
 }

@@ -33,6 +33,47 @@ impl DiscoveryService {
         }
     }
 
+    /// Delete transient rescan discoveries whose session never finished — a
+    /// server restart mid-rescan, or a failed delete at terminal.
+    ///
+    /// Left in place, these read as live discovery configurations to
+    /// `exclude_ephemeral`'s call sites and clutter the daemon's row set.
+    /// `older_than_hours` must exceed the longest a session can legitimately
+    /// live (a queued rescan waits on `max_discovery_duration`, 6h by default).
+    pub async fn sweep_orphaned_targeted_discoveries(&self, older_than_hours: i64) {
+        let cutoff = Utc::now() - chrono::Duration::hours(older_than_hours);
+        let filter = StorableFilter::<Discovery>::new()
+            .targeted_discovery()
+            .updated_before(cutoff);
+
+        let orphaned = match self.discovery_storage.get_all(filter).await {
+            Ok(discoveries) => discoveries,
+            Err(e) => {
+                tracing::warn!(error = ?e, "Failed to scan for orphaned rescan discoveries");
+                return;
+            }
+        };
+
+        let active = self.discovery_sessions.read().await;
+        let ids: Vec<Uuid> = orphaned
+            .iter()
+            .filter(|d| !active.contains_key(&d.id))
+            .map(|d| d.id)
+            .collect();
+        drop(active);
+
+        if ids.is_empty() {
+            return;
+        }
+
+        tracing::info!(count = ids.len(), "Sweeping orphaned rescan discoveries");
+        for id in ids {
+            if let Err(e) = self.discovery_storage.delete(&id).await {
+                tracing::warn!(discovery_id = %id, error = ?e, "Failed to delete orphaned rescan discovery");
+            }
+        }
+    }
+
     /// Cleanup stalled sessions (called periodically from background task)
     pub async fn cleanup_stalled_sessions(&self) {
         let now = Utc::now();
@@ -109,6 +150,7 @@ impl DiscoveryService {
                 hosts_discovered: None,
                 estimated_remaining_secs: None,
                 discovery_id,
+                targeted: session.targeted,
                 scanned: None,
             };
 

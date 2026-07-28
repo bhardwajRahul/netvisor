@@ -432,6 +432,41 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// Transient one-shot rescan configurations only.
+    pub fn targeted_discovery(mut self) -> Self {
+        self.conditions
+            .push("run_type->>'type' = 'Targeted'".to_string());
+        self
+    }
+
+    /// Exclude historical rows produced by a one-shot rescan.
+    ///
+    /// The flag lives inside the persisted session payload
+    /// (`run_type.results.targeted`) because the transient `Targeted` parent is
+    /// deleted at terminal, leaving the historical row's own `run_type` as a
+    /// plain `Historical`.
+    pub fn exclude_targeted_results(mut self) -> Self {
+        self.conditions.push(
+            "COALESCE((run_type->'results'->>'targeted')::boolean, false) = false".to_string(),
+        );
+        self
+    }
+
+    /// Discovery *configurations* a user owns — excludes `Historical` records of
+    /// past runs and transient `Targeted` rescan rows, neither of which is
+    /// something anyone configured. Mirrors `RunType::is_live_config`.
+    ///
+    /// Prefer this over [`Self::exclude_historical`] anywhere the question is
+    /// "does this daemon have discoveries the user configured": a `Targeted` row
+    /// left behind by a crashed session would otherwise read as one, and at
+    /// `create_default_discovery_jobs` that permanently blocks the daemon from
+    /// ever getting its default discovery.
+    pub fn live_configs(mut self) -> Self {
+        self.conditions
+            .push("run_type->>'type' NOT IN ('Historical', 'Targeted')".to_string());
+        self
+    }
+
     pub fn oidc_subject(mut self, subject: String) -> Self {
         let col = self.qualify_column("oidc_subject");
         self.conditions
@@ -507,6 +542,16 @@ impl<T: Storable> StorableFilter<T> {
         self.conditions
             .push(format!("{} < ${}", col, self.values.len() + 1));
         self.values.push(SqlValue::Timestamp(timestamp));
+        self
+    }
+
+    /// Restrict to subnets of a given type. `subnet_type` is a plain text column
+    /// holding the variant name (see `SubnetType::id`).
+    pub fn subnet_type(mut self, subnet_type: &str) -> Self {
+        let col = self.qualify_column("subnet_type");
+        self.conditions
+            .push(format!("{} = ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::String(subnet_type.to_string()));
         self
     }
 

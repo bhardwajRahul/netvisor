@@ -2,6 +2,11 @@ use crate::daemon::runtime::state::BufferedEntities;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Or, Viewer};
 use crate::server::billing::types::base::{LimitSource, LimitType};
+use crate::server::daemons::r#impl::api::DiscoveryUpdatePayload;
+use crate::server::daemons::r#impl::version::{minimum_targeted_rescan, supports_targeted_rescan};
+use crate::server::discovery::r#impl::base::{Discovery, DiscoveryBase};
+use crate::server::discovery::r#impl::scan_settings::ScanSettings;
+use crate::server::discovery::r#impl::types::{DiscoveryType, HostNamingFallback, RunType};
 use crate::server::interfaces::r#impl::base::Interface;
 use crate::server::ip_addresses::r#impl::base::IPAddress;
 use crate::server::ports::r#impl::base::Port;
@@ -21,8 +26,11 @@ use crate::server::shared::services::{csv::build_csv, traits::CrudService};
 use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::storage::{filter::StorableFilter, traits::Storable};
 use crate::server::shared::types::api::{ApiErrorResponse, EmptyApiResponse};
+use crate::server::shared::types::entities::EntitySource;
 use crate::server::shared::types::error_codes::ErrorCode;
 use crate::server::shared::validation::{validate_network_access, validate_read_access};
+use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
+use crate::server::subnets::r#impl::types::SubnetType;
 use crate::server::{
     config::AppState,
     daemons::r#impl::{base::Daemon, version::pre_interface_to_ip_address_rename},
@@ -194,6 +202,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(export_hosts_zip))
         .routes(routes!(consolidate_hosts))
         .routes(routes!(create_host_discovery))
+        .routes(routes!(rescan_host))
 }
 
 /// List all hosts
@@ -710,6 +719,236 @@ async fn create_host_discovery(
         serde_json::to_value(ApiResponse::success(host_response))
             .map_err(|e| ApiError::internal_error(&e.to_string()))?,
     ))
+}
+
+/// Rescan a host
+///
+/// Starts a one-shot scan of this host's addresses and nothing else, answering
+/// "is this host still there, and is its data current?" without sweeping the
+/// whole subnet.
+///
+/// The scan runs on the daemon that last discovered this host — evidence it can
+/// reach the address — and only if that daemon still has an interface on a
+/// subnet containing one of the host's IPs. That constraint is what lets the
+/// daemon ARP the target rather than fall back to a TCP probe, which would
+/// report a live but firewalled host as unresponsive. When it can't be met the
+/// request is refused with the specific reason rather than run at lower fidelity.
+///
+/// Returns the session, which streams progress over `/api/v1/discovery/stream`
+/// like any other scan. A `Queued` phase means the daemon is busy; it will start
+/// when the running scan finishes.
+#[utoipa::path(
+    post,
+    path = "/{id}/rescan",
+    tag = Host::ENTITY_NAME_PLURAL,
+    params(("id" = uuid::Uuid, Path, description = "Host ID")),
+    responses(
+        (status = 200, description = "Rescan session started", body = ApiResponse<DiscoveryUpdatePayload>),
+        (status = 404, description = "Host not found", body = ApiErrorResponse),
+        (status = 400, description = "Host cannot be rescanned (never scanned, daemon gone, daemon unreachable, or daemon too old)", body = ApiErrorResponse),
+    ),
+     security(("user_api_key" = []), ("session" = []))
+)]
+async fn rescan_host(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Member>,
+    Path(host_id): Path<Uuid>,
+) -> ApiResult<Json<ApiResponse<DiscoveryUpdatePayload>>> {
+    let network_ids = auth.network_ids();
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    let host = state
+        .services
+        .host_service
+        .get_by_id(&host_id)
+        .await?
+        .ok_or_else(|| ApiError::entity_not_found::<Host>(host_id))?;
+
+    validate_read_access(
+        Some(host.base.network_id),
+        None,
+        &network_ids,
+        organization_id,
+    )?;
+
+    let ip_addresses = state
+        .services
+        .ip_address_service
+        .get_for_host(&host_id)
+        .await?;
+    if ip_addresses.is_empty() {
+        return Err(ApiError::bad_request(
+            "This host has no IP addresses to scan.",
+        ));
+    }
+
+    let daemon = resolve_rescan_daemon(&state, &host).await?;
+
+    // Only the addresses this daemon can actually ARP. Anything else would be
+    // scanned at lower fidelity, which is the outcome this endpoint refuses.
+    let interfaced = state
+        .services
+        .daemon_service
+        .get_interfaced_subnet_ids(&daemon.id)
+        .await;
+    let reachable: Vec<&IPAddress> = ip_addresses
+        .iter()
+        .filter(|ip| interfaced.contains(&ip.base.subnet_id))
+        .collect();
+
+    if reachable.is_empty() {
+        return Err(ApiError::bad_request(&format!(
+            "Daemon \"{}\" last scanned this host but no longer has an interface on any subnet \
+             holding its addresses, so it can't scan them directly. Run a full discovery to \
+             refresh which subnets the daemon reaches.",
+            daemon.base.name
+        )));
+    }
+
+    // One transient /32 per reachable address. The daemon swaps each for the real
+    // subnet containing it, so these never become an address's home subnet, and
+    // they are reaped when the session ends.
+    let mut target_subnet_ids = Vec::with_capacity(reachable.len());
+    for ip in &reachable {
+        let subnet = state
+            .services
+            .subnet_service
+            .create(
+                scan_target_subnet(host.base.network_id, ip.base.ip_address),
+                AuthenticatedEntity::System,
+            )
+            .await
+            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+        target_subnet_ids.push(subnet.id);
+    }
+
+    let mut discovery = Discovery::new(DiscoveryBase {
+        run_type: RunType::Targeted { last_run: None },
+        discovery_type: DiscoveryType::Unified {
+            host_id: daemon.base.host_id,
+            subnet_ids: Some(target_subnet_ids),
+            host_naming_fallback: HostNamingFallback::BestService,
+            scan_settings: ScanSettings::default(),
+        },
+        name: format!("Rescan of {}", host.base.name),
+        daemon_id: daemon.id,
+        network_id: host.base.network_id,
+        tags: Vec::new(),
+    });
+    // Never promote a rescan to a 65535-port sweep: scan_count starts at 0 on a
+    // fresh row, and nothing here sets force_full_scan.
+    discovery.force_full_scan = false;
+
+    let discovery = state
+        .services
+        .discovery_service
+        .create_discovery(discovery, AuthenticatedEntity::System)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+    // Auto-wake the daemon, matching POST /discovery/start-session — start_session
+    // itself doesn't clear standby, and a standby daemon never picks up the work.
+    let mut daemon = daemon;
+    if daemon.base.standby {
+        daemon.base.standby = false;
+        daemon.base.standby_cleared_at = Some(chrono::Utc::now());
+        state
+            .services
+            .daemon_service
+            .update(&mut daemon, AuthenticatedEntity::System)
+            .await?;
+        tracing::info!(daemon_id = %daemon.id, "Cleared daemon standby (rescan started)");
+    }
+
+    let update = state
+        .services
+        .discovery_service
+        .start_session(discovery, auth.into_entity())
+        .await?;
+
+    Ok(Json(ApiResponse::success(update)))
+}
+
+/// The daemon that last discovered this host, validated as usable for a rescan.
+///
+/// Provenance beats inference here: the daemon that produced this host's data
+/// demonstrably reached the address, which is a stronger signal than any
+/// subnet-membership calculation over the interfaced-subnet junction.
+async fn resolve_rescan_daemon(state: &Arc<AppState>, host: &Host) -> Result<Daemon, ApiError> {
+    let Some(discovery_id) = host.last_discovery_id else {
+        return Err(ApiError::bad_request(
+            "This host hasn't been scanned yet, so there is no daemon known to reach it. \
+             Run a discovery first.",
+        ));
+    };
+
+    // The FK is ON DELETE SET NULL, so a pruned historical row lands above rather
+    // than here; this covers a row that vanished between reads.
+    let last_scan = state
+        .services
+        .discovery_service
+        .get_by_id(&discovery_id)
+        .await?
+        .ok_or_else(|| {
+            ApiError::bad_request(
+                "The scan that last found this host is no longer on record, so its daemon \
+                 can't be identified. Run a discovery first.",
+            )
+        })?;
+
+    let daemon = state
+        .services
+        .daemon_service
+        .get_by_id(&last_scan.base.daemon_id)
+        .await?
+        .ok_or_else(|| {
+            ApiError::bad_request(
+                "The daemon that last scanned this host no longer exists. Run a discovery from \
+                 another daemon to refresh it.",
+            )
+        })?;
+
+    if daemon.base.network_id != host.base.network_id {
+        return Err(ApiError::bad_request(&format!(
+            "Daemon \"{}\" has moved to a different network and can no longer reach this host.",
+            daemon.base.name
+        )));
+    }
+
+    if !supports_targeted_rescan(daemon.base.version.as_ref()) {
+        return Err(match daemon.base.version {
+            None => ApiError::bad_request(&format!(
+                "Daemon \"{}\" has not connected to the server yet, so its version is unknown. \
+                 Wait for it to check in, then try again.",
+                daemon.base.name
+            )),
+            Some(_) => ApiError::bad_request(&format!(
+                "Daemon \"{}\" does not support rescanning a single host. Upgrade it to version \
+                 {} or later.",
+                daemon.base.name,
+                minimum_targeted_rescan()
+            )),
+        });
+    }
+
+    Ok(daemon)
+}
+
+/// A transient single-address subnet used only to aim a rescan.
+fn scan_target_subnet(network_id: Uuid, ip: std::net::IpAddr) -> Subnet {
+    let cidr = cidr::IpCidr::new_host(ip);
+    Subnet::new(SubnetBase {
+        name: cidr.to_string(),
+        network_id,
+        tags: Vec::new(),
+        cidr,
+        description: None,
+        subnet_type: SubnetType::ScanTarget,
+        virtualization: None,
+        source: EntitySource::System,
+    })
 }
 
 /// Consolidate hosts

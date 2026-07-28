@@ -13,7 +13,9 @@ import {
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import { pushSuccess } from '$lib/shared/stores/feedback';
-import { hosts_consolidatedToast } from '$lib/paraglide/messages';
+import { hosts_consolidatedToast, hosts_rescanStartedToast } from '$lib/paraglide/messages';
+import { discoverySSEManager } from '$lib/features/discovery/queries';
+import type { DiscoveryUpdatePayload } from '$lib/features/discovery/types/api';
 import type {
 	Host,
 	HostResponse,
@@ -603,6 +605,44 @@ export function useConsolidateHostsMutation() {
 			if (otherHostName) {
 				pushSuccess(hosts_consolidatedToast({ source: otherHostName, destination: response.name }));
 			}
+		}
+	}));
+}
+
+/**
+ * Rescan a single host.
+ *
+ * Returns a discovery session, so the result streams over the same SSE channel
+ * as any other scan — seed the sessions cache and connect, or the UI won't see
+ * it until the next poll. Refusals (never scanned, daemon gone, daemon too old,
+ * daemon not on a subnet holding the host's IPs) come back as a 400 whose
+ * message the API client toasts automatically.
+ */
+export function useRescanHostMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async ({ id }: { id: string; name?: string }) => {
+			const { data } = await apiClient.POST('/api/v1/hosts/{id}/rescan', {
+				params: { path: { id } }
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to start rescan');
+			}
+			return data.data as DiscoveryUpdatePayload;
+		},
+		onSuccess: (session: DiscoveryUpdatePayload, { name }) => {
+			queryClient.setQueryData<DiscoveryUpdatePayload[]>(queryKeys.discovery.sessions(), (old) => {
+				if (!old) return [session];
+				const exists = old.find((s) => s.session_id === session.session_id);
+				return exists
+					? old.map((s) => (s.session_id === session.session_id ? session : s))
+					: [...old, session];
+			});
+
+			discoverySSEManager.connect();
+
+			pushSuccess(hosts_rescanStartedToast({ name: name ?? '' }));
 		}
 	}));
 }

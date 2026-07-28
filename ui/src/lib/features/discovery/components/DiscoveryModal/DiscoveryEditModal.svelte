@@ -507,7 +507,9 @@
 
 		form.reset({
 			name: formData.name,
-			run_type_type: formData.run_type.type === 'Historical' ? 'AdHoc' : formData.run_type.type,
+			// This form only edits user-owned config. Server-managed run types
+			// (Historical, Targeted) never open here, so fall back to AdHoc.
+			run_type_type: formData.run_type.type === 'Scheduled' ? 'Scheduled' : 'AdHoc',
 			discovery_type_type: formData.discovery_type.type,
 			host_naming_fallback: hostNamingFallback,
 			schedule_days_of_week: scheduleDaysOfWeek,

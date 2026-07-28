@@ -162,8 +162,7 @@ impl DaemonService {
 
         // If daemon has no non-historical discoveries, create defaults
         // (e.g. daemon reconnecting after discoveries were deleted)
-        let filter =
-            StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).exclude_historical();
+        let filter = StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).live_configs();
         let existing_discoveries = self.discovery_service.get_all(filter).await?;
         if existing_discoveries.is_empty() {
             let network = self
@@ -803,8 +802,7 @@ impl DaemonService {
     /// — the initial run — after which the schedule (or one-shot adhoc) takes over.
     /// Infallible on purpose (get_pending_work has no error channel): failures are logged.
     async fn start_initial_discovery_sessions(&self, daemon_id: Uuid) {
-        let filter =
-            StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).exclude_historical();
+        let filter = StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).live_configs();
         let discoveries = match self.discovery_service.get_all(filter).await {
             Ok(d) => d,
             Err(e) => {
@@ -814,11 +812,7 @@ impl DaemonService {
         };
 
         for discovery in discoveries {
-            let never_ran = matches!(
-                discovery.base.run_type,
-                RunType::Scheduled { last_run: None, .. } | RunType::AdHoc { last_run: None }
-            );
-            if !never_ran {
+            if !discovery.base.run_type.never_ran() {
                 continue;
             }
             if let Err(e) = self
@@ -862,9 +856,7 @@ impl DaemonService {
         // would get a duplicate discovery. Skip if any live discovery exists.
         let existing = self
             .discovery_service
-            .get_all(
-                StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).exclude_historical(),
-            )
+            .get_all(StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).live_configs())
             .await?;
         if !existing.is_empty() {
             tracing::info!(
@@ -935,8 +927,7 @@ impl DaemonService {
         host_id: Uuid,
         network_id: Uuid,
     ) -> Result<(), ApiError> {
-        let filter =
-            StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).exclude_historical();
+        let filter = StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).live_configs();
         let discoveries = self.discovery_service.get_all(filter).await?;
 
         // Skip if any are already Unified
@@ -957,7 +948,7 @@ impl DaemonService {
             .iter()
             .filter(|d| {
                 matches!(d.base.discovery_type, DiscoveryType::Network { .. })
-                    && matches!(d.base.run_type, RunType::Scheduled { enabled: true, .. })
+                    && d.base.run_type.is_scheduled_enabled()
             })
             .max_by_key(|d| d.updated_at)
             .or_else(|| discoveries.iter().max_by_key(|d| d.updated_at));
