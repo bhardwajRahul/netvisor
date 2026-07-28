@@ -241,6 +241,34 @@
 		return values;
 	}
 
+	/**
+	 * Field values read from an existing credential's stored `credential_type`, so
+	 * a referenced credential's read-only form shows its actual values (secrets
+	 * arrive redacted from the server) instead of the type's placeholder defaults.
+	 * Mirrors `CredentialForm.initFieldValues`.
+	 */
+	function fieldValuesFromCredential(cred: Credential): Record<string, string> {
+		const raw = cred.credential_type as unknown as Record<string, unknown>;
+		const fields = credentialTypes.getMetadata(raw.type as string)?.fields ?? [];
+		const fieldMap = new Map(fields.map((f) => [f.id, f]));
+		const values: Record<string, string> = {};
+		for (const [key, val] of Object.entries(raw)) {
+			if (key === 'type') continue;
+			const fieldDef = fieldMap.get(key);
+			if (
+				(fieldDef?.field_type === 'secretpathorinline' ||
+					fieldDef?.field_type === 'pathorinline') &&
+				val != null &&
+				typeof val === 'object'
+			) {
+				values[key] = JSON.stringify(val);
+			} else {
+				values[key] = val != null ? String(val) : '';
+			}
+		}
+		return values;
+	}
+
 	// Auto-generate a stable name: the type kebab-cased plus the next free number
 	// (e.g. docker-proxy-1, docker-proxy-2). Avoids collisions on remove/re-add.
 	function nextCredentialName(typeId: string): string {
@@ -325,7 +353,12 @@
 		if (!existing) return;
 		pendingCredentials = [
 			...pendingCredentials,
-			{ credential: existing, targetIps: [''], fieldValues: {}, isExisting: true }
+			{
+				credential: existing,
+				targetIps: [''],
+				fieldValues: fieldValuesFromCredential(existing),
+				isExisting: true
+			}
 		];
 		syncFormDefaults();
 	}
