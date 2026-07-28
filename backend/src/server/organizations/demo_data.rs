@@ -3465,6 +3465,16 @@ fn generate_subnet_vlan_records(
     records
 }
 
+/// Build the SNMP interface rows for the demo hosts, plus the neighbor links
+/// that `run_populate_demo` resolves to IDs once the hosts exist.
+///
+/// `neighbor_interface_id` is a self-FK to `interfaces(id)`, and the whole set is
+/// inserted by one non-transactional `create_many`. That resolves today only
+/// because all ~85 rows fit in a single chunk (36 bound columns per row, so
+/// 65535 / 36 = 1820 rows per chunk), leaving a row free to reference a later row
+/// in the same statement. Adding switches past that boundary would make a chunk-1
+/// row pointing at a chunk-2 row fail deterministically — at which point the
+/// insert needs one shared transaction with the FK deferred, not smaller chunks.
 fn generate_interfaces(
     networks: &[Network],
     hosts: &[&Host],
