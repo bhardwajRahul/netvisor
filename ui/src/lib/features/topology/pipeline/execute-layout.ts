@@ -4,6 +4,7 @@ import { LayoutGraph } from '../layout/layout-graph';
 import { ElkLayoutEngine } from '../layout/engine';
 import { computeForceLayout, type ForceNode, type ForceLink } from '../layout/force-layout';
 import { containerTypes } from '$lib/shared/stores/metadata';
+import * as perf from '../perf';
 
 const layoutEngine = new ElkLayoutEngine();
 
@@ -60,6 +61,7 @@ export async function executeLayout(
 		const elkCollapsed = deferCollapse ? new Set<string>() : collapsed;
 		const elkNodes = deferCollapse ? layoutNodes : visibleNodes;
 
+		const elkComputeDone = perf.stage('layout.elk-compute');
 		const elkResult = await layoutEngine.compute({
 			nodes: elkNodes,
 			edges: elevatedEdges,
@@ -71,12 +73,14 @@ export async function executeLayout(
 			elementNodeSizes,
 			hiddenEdgeTypes
 		});
+		elkComputeDone();
 		if (isStale()) return null;
 
 		state.sessionStructureKey = structureKey;
 		state.sessionBaseKey = baseKey;
 
 		// Rebuild graph and apply ELK result
+		const graphBuildDone = perf.stage('layout.graph-build');
 		state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
 		if (!deferCollapse) {
 			state.layoutGraph.syncCollapseState(collapsed);
@@ -87,19 +91,25 @@ export async function executeLayout(
 				state.layoutGraph.restoreContainerChildPositions(prevChildPositions);
 			}
 		}
+		graphBuildDone();
+		const applyDone = perf.stage('layout.apply-elk');
 		state.layoutGraph.applyElkResult(
 			elkResult.nodePositions,
 			elkResult.containerSizes,
 			elkResult.elementNodeSizes
 		);
+		applyDone();
 
 		// When collapse was deferred, apply it AFTER ELK result
 		if (deferCollapse) {
+			const visibleDone = perf.stage('layout.visible-nodes');
 			state.layoutGraph.syncCollapseState(collapsed);
 			visibleNodes = state.layoutGraph.getVisibleNodes(layoutNodes);
+			visibleDone();
 		}
 
 		// Cache container sizes from ELK result
+		const cacheDone = perf.stage('layout.cache-sizes');
 		for (const [id, size] of elkResult.containerSizes) {
 			if (state.layoutGraph?.containers.has(id)) {
 				const entry = state.containerSizeCache.get(id) ?? {};
@@ -111,6 +121,7 @@ export async function executeLayout(
 				state.containerSizeCache.set(id, entry);
 			}
 		}
+		cacheDone();
 	}
 
 	// Cache measured sizes for this view

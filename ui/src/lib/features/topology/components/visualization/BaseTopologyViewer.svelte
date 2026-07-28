@@ -77,6 +77,7 @@
 	import { prepareTopologyData } from '../../pipeline/prepare';
 	import { resolveNodeSizes } from '../../pipeline/measure';
 	import { executeLayout, handlePortExpansion } from '../../pipeline/execute-layout';
+	import { preloadElk } from '../../layout/elk-layout';
 	import { buildFlowNodes, sortFlowNodes } from '../../pipeline/build-flow-nodes';
 	import { buildFlowEdges } from '../../pipeline/build-flow-edges';
 	import { cacheCollapsedSizes } from '../../pipeline/post-render';
@@ -509,6 +510,10 @@
 
 		if (!topology || (!topology.edges && !topology.nodes)) return;
 		perf.beginRun();
+		// Fire-and-forget: elkjs is a large module and the measure pass below takes
+		// far longer than loading it, so the two should overlap rather than run
+		// back to back.
+		preloadElk();
 
 		const prepareDone = perf.stage('prepare');
 		const prep = prepareTopologyData(topology, layoutState, getInfrastructureRuleId);
