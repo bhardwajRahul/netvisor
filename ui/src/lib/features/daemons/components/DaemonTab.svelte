@@ -17,7 +17,7 @@
 		useBulkDeleteDaemonsMutation
 	} from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
 	import DaemonEditModal from './DaemonEditModal.svelte';
 	import type { TabProps } from '$lib/shared/types';
@@ -48,8 +48,6 @@
 	const tagsQuery = useTagsQuery();
 	const daemonsQuery = useDaemonsQuery();
 	const networksQuery = useNetworksQuery();
-	// Hosts query to ensure data is loaded (needed for daemon display)
-	useHostsQuery({ limit: 0 });
 
 	// Mutations
 	const deleteDaemonMutation = useDeleteDaemonMutation();
@@ -58,6 +56,17 @@
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
+
+	// Only the hosts the daemons actually run on. This was an unpaginated
+	// org-wide hosts query (~1.9MB on a few hundred hosts) issued to resolve one
+	// name per daemon card — and because TanStack dedupes by key, it was shared
+	// with every other consumer, so it loaded on pages that never showed a
+	// daemon. Scoped to the ids in hand and passed down to the cards.
+	let daemonHostIds = $derived([
+		...new Set(daemonsData.map((d) => d.host_id).filter((id): id is string => !!id))
+	]);
+	const daemonHostsQuery = useHostsByIds(() => daemonHostIds);
+	let daemonHosts = $derived(daemonHostsQuery.data ?? []);
 
 	// Any daemon with a scheduled/active sunset. Drives a non-dismissable banner
 	// so the warning re-arms as long as an affected daemon exists.
@@ -233,6 +242,7 @@
 			)}
 				<DaemonCard
 					daemon={item}
+					hosts={daemonHosts}
 					{viewMode}
 					onDelete={isReadOnly ? undefined : handleDeleteDaemon}
 					onEdit={isReadOnly ? undefined : handleEditDaemon}
