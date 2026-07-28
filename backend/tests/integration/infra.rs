@@ -566,7 +566,8 @@ pub async fn wait_for_serverpoll_daemon_version(
 
             if daemon.base.version.is_none() {
                 return Err(
-                    "ServerPoll daemon provisioned but has not reported its version yet".to_string(),
+                    "ServerPoll daemon provisioned but has not reported its version yet"
+                        .to_string(),
                 );
             }
 

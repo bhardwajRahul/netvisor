@@ -24,9 +24,8 @@ mod validations;
 
 use infra::{
     ContainerManager, TestClient, TestContext, clear_discovery_data, create_test_db_pool,
-    provision_serverpoll_daemon, setup_authenticated_user, wait_for_daemon,
-    wait_for_serverpoll_daemon_version, wait_for_network,
-    wait_for_organization,
+    provision_serverpoll_daemon, setup_authenticated_user, wait_for_daemon, wait_for_network,
+    wait_for_organization, wait_for_serverpoll_daemon_version,
 };
 
 /// Single integration test that runs all test categories with shared containers.
