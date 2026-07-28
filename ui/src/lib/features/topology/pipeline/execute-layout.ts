@@ -115,22 +115,6 @@ export async function executeLayout(
 			}
 		}
 
-		// Log size mismatches between DOM-measured and ELK-computed
-		{
-			const mismatches: string[] = [];
-			for (const [id, elkSize] of elkResult.containerSizes) {
-				const measured = elementNodeSizes.get(id);
-				if (measured) {
-					const dw = Math.abs(measured.x - elkSize.width);
-					const dh = Math.abs(measured.y - elkSize.height);
-					if (dw > 10 || dh > 10) {
-						mismatches.push(
-							`${id.substring(0, 8)}: DOM=${measured.x}x${measured.y} ELK=${elkSize.width}x${elkSize.height}`
-						);
-					}
-				}
-			}
-		}
 	}
 
 	// Cache measured sizes for this view

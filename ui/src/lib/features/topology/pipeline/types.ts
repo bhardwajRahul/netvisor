@@ -1,8 +1,5 @@
 import type { LayoutGraph } from '../layout/layout-graph';
-import type { RenderableTopology, TopologyNode, TopologyEdge } from '../types/base';
-import type { SelectionStores } from '../selection';
-import type { Node, Edge } from '@xyflow/svelte';
-import type { Writable } from 'svelte/store';
+import type { TopologyNode, TopologyEdge } from '../types/base';
 import type { AggregatedEdge } from '../collapse';
 import type { TopologyParentIndex } from '../topology-parent-index';
 import type { TopologyView } from '../queries';
@@ -27,20 +24,6 @@ export interface LayoutState {
 	lastRenderedTopoKey: string;
 	lastRenderedView: string;
 	layoutGeneration: number;
-}
-
-/**
- * Immutable inputs for a single pipeline run.
- */
-export interface PipelineContext {
-	topology: RenderableTopology;
-	containerElement: HTMLDivElement;
-	getNodes: () => Node[];
-	selectionStores: SelectionStores;
-	nodes: Writable<Node[]>;
-	edges: Writable<Edge[]>;
-	isStale: () => boolean;
-	getInfrastructureRuleId: () => string | null;
 }
 
 /**

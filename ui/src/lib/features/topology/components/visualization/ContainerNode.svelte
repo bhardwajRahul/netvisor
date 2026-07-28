@@ -3,7 +3,6 @@
 		Handle,
 		NodeResizeControl,
 		Position,
-		useViewport,
 		type NodeProps,
 		type ResizeDragEvent,
 		type ResizeParams
@@ -25,58 +24,25 @@
 	import { resolveContainerNode } from '../../resolvers';
 	import { queryClient, queryKeys } from '$lib/api/query-client';
 	import type { Tag } from '$lib/features/tags/types/base';
-	import { type Writable, get } from 'svelte/store';
+	import type { Writable } from 'svelte/store';
 	import { getContext } from 'svelte';
 	import { editModeEnabled } from '../../state';
-	import {
-		connectedNodeIds,
-		isExporting,
-		searchHiddenNodeIds,
-		searchMatchContainerMap,
-		hoveredTag,
-		UNTAGGED_SENTINEL
-	} from '../../interactions';
-	import { collapsedContainers, toggleCollapse } from '../../collapse';
+	import { UNTAGGED_SENTINEL } from '../../interactions';
+	import * as sharedStores from '../../reactive-stores.svelte';
+	import { toggleCollapse } from '../../collapse';
 	import type { Node, Edge } from '@xyflow/svelte';
 	import { createIconComponent } from '$lib/shared/utils/styling';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import ContainerHeader, { type SubgroupRow } from './ContainerHeader.svelte';
 
-	// Subscribe to connectedNodeIds for reactivity
-	let connectedNodes = $state(get(connectedNodeIds));
-	connectedNodeIds.subscribe((value) => {
-		connectedNodes = value;
-	});
-
-	// Subscribe to isExporting for reactivity
-	let isExportingValue = $state(get(isExporting));
-	isExporting.subscribe((value) => {
-		isExportingValue = value;
-	});
-
-	// Subscribe to search filter store for reactivity
-	let searchHiddenNodes = $state(get(searchHiddenNodeIds));
-	searchHiddenNodeIds.subscribe((value) => {
-		searchHiddenNodes = value;
-	});
-
-	// Subscribe to search match container map for collapsed container highlighting
-	let searchContainerMap = $state(get(searchMatchContainerMap));
-	searchMatchContainerMap.subscribe((value) => {
-		searchContainerMap = value;
-	});
-
-	// Subscribe to tag hover state
-	let currentHoveredTag = $state(get(hoveredTag));
-	hoveredTag.subscribe((value) => {
-		currentHoveredTag = value;
-	});
-
-	// Subscribe to collapse state
-	let collapsedNodes = $state(get(collapsedContainers));
-	collapsedContainers.subscribe((value) => {
-		collapsedNodes = value;
-	});
+	// Shared, refcounted views over the module-level stores — see
+	// `reactive-stores.svelte.ts`. One subscription serves every node component.
+	let connectedNodes = $derived(sharedStores.connectedNodes.current);
+	let isExportingValue = $derived(sharedStores.exporting.current);
+	let searchHiddenNodes = $derived(sharedStores.searchHiddenNodes.current);
+	let searchContainerMap = $derived(sharedStores.searchContainerMatches.current);
+	let currentHoveredTag = $derived(sharedStores.currentHoveredTag.current);
+	let collapsedNodes = $derived(sharedStores.collapsedNodes.current);
 
 	let { id, data, selected, width, height }: NodeProps = $props();
 
@@ -325,9 +291,6 @@
 		return [];
 	});
 
-	const viewport = useViewport();
-	let resizeHandleZoomLevel = $derived(viewport.current.zoom > 0.5);
-
 	const grayColorHelper = createColorHelper('Gray');
 
 	// Track pointer position to distinguish clicks from drags
@@ -481,7 +444,11 @@
 				style="background: var(--color-topology-node-bg); width: 100%; height: 100%; position: relative; overflow: hidden; transition: box-shadow 0.15s ease-in-out; border-top: 2px solid {colorHelper.rgb}; {tagHoverRingStyle}"
 			></div>
 
-			{#if resizeHandleZoomLevel && $editModeEnabled}
+			<!-- Resize handles are gated on edit mode alone. They used to also test
+			     `viewport.zoom > 0.5`, but reading the viewport here subscribed every
+			     container node to every pan/zoom frame — a per-frame invalidation of
+			     the whole graph to hide controls that are already hidden. -->
+			{#if $editModeEnabled}
 				<NodeResizeControl
 					position="bottom-right"
 					onResizeEnd={onResize}
