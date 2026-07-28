@@ -208,6 +208,13 @@ test('topology layout quality evaluation', async ({ page, context }) => {
 		}
 	]);
 
+	// Layout quality is scored from the DOM, so every node has to be present.
+	// Without this, culling would silently reduce the sample to whatever is
+	// on screen and report a clean score for a graph it never measured.
+	await page.addInitScript(() => {
+		(window as unknown as { __topoNoCull: boolean }).__topoNoCull = true;
+	});
+
 	// Navigate to topology page
 	await page.goto('/#topology');
 

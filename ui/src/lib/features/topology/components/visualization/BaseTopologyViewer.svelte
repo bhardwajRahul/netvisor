@@ -82,6 +82,7 @@
 	import { buildFlowEdges } from '../../pipeline/build-flow-edges';
 	import { cacheCollapsedSizes } from '../../pipeline/post-render';
 	import { computeEdgeDisplayUpdates } from '../../pipeline/sync-edge-display';
+	import { shouldCull } from '../../pipeline/render-mode';
 	import * as perf from '../../perf';
 	import {
 		reloadInputsDiff,
@@ -309,6 +310,16 @@
 	const layoutState = createInitialState();
 	let isMeasuring = $state(false);
 	let animatingCollapse = $state(false);
+
+	// Cull off-screen nodes once the graph is big enough — see
+	// `pipeline/render-mode.ts` for why measuring and exporting must suspend it.
+	let cullOffscreen = $derived(
+		shouldCull({
+			renderedCount: $nodes.length,
+			measuring: isMeasuring,
+			exporting: $isExporting
+		})
+	);
 
 	// --- Reactive triggers ---
 
@@ -1045,6 +1056,7 @@
 		onmove={handleMove}
 		onmoveend={handleMoveEnd}
 		fitView={true}
+		onlyRenderVisibleElements={cullOffscreen}
 		minZoom={0.1}
 		noPanClass="nopan"
 		snapGrid={[25, 25]}
