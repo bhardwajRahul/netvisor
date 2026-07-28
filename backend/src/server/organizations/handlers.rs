@@ -701,14 +701,14 @@ async fn run_populate_demo(
     // 5. Hosts + children — bypass discover_host (no collisions in fresh org)
     // Flatten hosts, ip_addresses, ports, services from HostWithServices bundles
     let mut all_hosts = Vec::new();
-    let mut all_interfaces = Vec::new();
+    let mut all_ip_addresses = Vec::new();
     let mut all_ports = Vec::new();
     let mut all_services: Vec<Service> = Vec::new();
     for hws in &demo_data.hosts_with_services {
         let host_id = hws.host.id;
         let network_id = hws.host.base.network_id;
         all_hosts.push(hws.host.clone());
-        all_interfaces.extend(hws.ip_addresses.clone());
+        all_ip_addresses.extend(hws.ip_addresses.clone());
         all_ports.extend(
             hws.ports
                 .iter()
@@ -725,11 +725,8 @@ async fn run_populate_demo(
         .await?;
     collect_entity_tags(&created_hosts, &mut all_entity_tags);
 
-    // 5.3–5.5. Resolve interface (if_entry) neighbor links in memory (so
-    // neighbor_interface_id is set at insert time, avoiding N post-insert
-    // UPDATEs), then insert the four host-children that depend only on
-    // hosts/vlans concurrently — each takes its own pooled connection. The
-    // services result is needed downstream for bindings + entity tags.
+    // 5.3. Resolve interface neighbor links in memory, so neighbor_interface_id
+    // is set at insert time and we avoid N post-insert UPDATEs.
     let interfaces = {
         use crate::server::interfaces::r#impl::base::Neighbor;
         use std::collections::HashMap;
@@ -775,15 +772,22 @@ async fn run_populate_demo(
         interfaces
     };
 
-    let (_, _, created_services, _) = tokio::try_join!(
-        async {
-            state
-                .services
-                .ip_address_service
-                .create_many(&all_interfaces, entity.clone())
-                .await
-                .map_err(ApiError::from)
-        },
+    // 5.4. ip_addresses must be committed before interfaces: interfaces.ip_address_id
+    // FKs into ip_addresses(id), and create_many is not transactional — each chunk
+    // autocommits on its own pooled connection. Run concurrently, the child batch can
+    // reach the server before the parent rows exist and fail the FK, which is exactly
+    // what connection-acquisition skew against a remote database produces. Awaiting
+    // here makes the ordering unconditional, at the cost of one serialized round trip.
+    state
+        .services
+        .ip_address_service
+        .create_many(&all_ip_addresses, entity.clone())
+        .await?;
+
+    // 5.5. The remaining three host-children have no interdependency, so they stay
+    // concurrent — each takes its own pooled connection. The services result is
+    // needed downstream for bindings + entity tags.
+    let (_, created_services, _) = tokio::try_join!(
         async {
             state
                 .services
