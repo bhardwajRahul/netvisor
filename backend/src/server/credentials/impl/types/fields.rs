@@ -340,7 +340,7 @@ fn unifi_connection_fields() -> Vec<FieldDefinition> {
             secret: false,
             optional: true,
             help_text: Some(
-                "443 for a UniFi OS console (Dream Machine, Cloud Key, Cloud Gateway), 11443 for a self-hosted UniFi OS Server, or 8443 for the legacy self-hosted Network Application.",
+                "443 for a UniFi OS console (Dream Machine, Cloud Key, Cloud Gateway), 11443 for a self-hosted UniFi OS Server, or 8443 for the legacy self-hosted Network Application. Check the port in your controller's URL — the wrong port fails to connect.",
             ),
             options: None,
             default_value: Some("443"),
