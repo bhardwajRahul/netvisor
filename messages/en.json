@@ -516,6 +516,7 @@
 	"credentials_assignHostPlaceholder": "Select a host to add",
 	"credentials_assignNetworkEmpty": "Not assigned to any network",
 	"credentials_assignNetworkPlaceholder": "Select a network to add",
+	"credentials_assignmentsClearedOnTypeChange": "Assignments that the new credential type does not support were removed.",
 	"credentials_betaTooltip": "This integration is in beta. Please report any issues you encounter. Its settings may change in a future release.",
 	"credentials_bulkDeleteConfirm": "Delete {count} credential(s)? This action cannot be undone.",
 	"credentials_bulkDeleteImpact": "These credentials are assigned to {networkCount} network(s) and {hostCount} host(s).",

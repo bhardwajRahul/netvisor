@@ -402,21 +402,39 @@
 		return `${credName}: ${fieldLabel}`;
 	}
 
-	/** Validate all fields across all credentials. Returns true if valid. */
-	export async function validate(): Promise<boolean> {
-		// validateForm surfaces field errors as a toast itself.
-		const fieldsValid = await validateForm(form, undefined, credentialFieldLabel);
-		// "Target Specific Hosts" requires at least one host. Auto-local items have no
-		// form ref (undefined) and are skipped. (Daemon-host conflicts are prevented
-		// proactively at input — the "Add daemon host" button is disabled.) Surface a
-		// toast on advance, naming the credentials that need a target.
-		const missingTargets = credentialFormRefs
-			.map((ref, i) => (ref && !ref.validateTarget() ? credentialName(i) : null))
+	/**
+	 * Validate every credential's target selection. Returns true if valid.
+	 *
+	 * "Target Specific Hosts" requires at least one host. Auto-local items have no form ref
+	 * (undefined) and are skipped. (Daemon-host conflicts are prevented proactively at input —
+	 * the "Add daemon host" button is disabled.) Surfaces a toast naming the credentials that
+	 * need a target.
+	 *
+	 * Split out from `validate` because this must run even when there is nothing new to create:
+	 * an already-persisted credential whose targets were emptied would otherwise be serialized
+	 * with no scope its type permits, and silently never run.
+	 */
+	export function validateTargets(): boolean {
+		// Iterate the credentials, not the ref array: `handleRemoveCredential` never truncates
+		// `credentialFormRefs`, so a stale entry past the end would report a phantom failure
+		// against a row that no longer exists.
+		const missingTargets = pendingCredentials
+			.map((p, i) =>
+				!p.isManaged && credentialFormRefs[i]?.validateTarget() === false ? credentialName(i) : null
+			)
 			.filter((n): n is string => n !== null);
-		if (fieldsValid && missingTargets.length > 0) {
+		if (missingTargets.length > 0) {
 			pushError(daemons_credentialWizardTargetRequired({ credentials: missingTargets.join(', ') }));
 		}
-		return fieldsValid && missingTargets.length === 0;
+		return missingTargets.length === 0;
+	}
+
+	/** Validate all fields and targets across all credentials. Returns true if valid. */
+	export async function validate(): Promise<boolean> {
+		// validateForm surfaces field errors as a toast itself. Only report missing targets
+		// once the fields are clean, so one advance doesn't stack two toasts.
+		const fieldsValid = await validateForm(form, undefined, credentialFieldLabel);
+		return fieldsValid && validateTargets();
 	}
 
 	/** Get new credentials ready for bulk creation (with built credential_type from fieldValues).

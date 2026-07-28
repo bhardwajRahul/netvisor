@@ -7,9 +7,10 @@
 	import type { components } from '$lib/api/schema';
 	import type { Credential } from '../types/base';
 	import { createDefaultCredential, getCredentialTypeId } from '../types/base';
-	import { entities } from '$lib/shared/stores/metadata';
+	import { credentialTypes, entities } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { pushError } from '$lib/shared/stores/feedback';
+	import { pushError, pushWarning } from '$lib/shared/stores/feedback';
+	import { pruneAssignmentsForTargets } from '../utils/credentialTargets';
 	import CredentialForm from './CredentialForm.svelte';
 	import CredentialAssignmentsSection from './CredentialAssignmentsSection.svelte';
 	import { submitForm } from '$lib/shared/components/forms/form-context';
@@ -25,6 +26,7 @@
 		common_editName,
 		common_saving,
 		common_update,
+		credentials_assignmentsClearedOnTypeChange,
 		credentials_createCredential,
 		credentials_description,
 		credentials_docsGuide,
@@ -98,12 +100,21 @@
 			const credentialType = credentialFormRef?.buildCredentialType();
 			if (!credentialType) return;
 
+			// Final gate on what the type actually permits. `handleTypeChange` already prunes
+			// so the user sees a warning when they switch, but this is the choke point every
+			// assignment edit passes through — it holds regardless of effect ordering, and of
+			// any future surface that mutates the assignment state.
+			const permitted = pruneAssignmentsForTargets(
+				credentialTypes.getMetadata(credentialType.type)?.targets,
+				{ assignedNetworkIds, hostAssignments }
+			);
+
 			const credentialData: Credential = {
 				...(value as Credential),
 				organization_id: organization.id,
 				credential_type: credentialType,
-				assigned_network_ids: assignedNetworkIds,
-				host_assignments: hostAssignments
+				assigned_network_ids: permitted.assignedNetworkIds,
+				host_assignments: permitted.hostAssignments
 			};
 
 			if (isEditing && credential) {
@@ -113,6 +124,32 @@
 			}
 		}
 	}));
+
+	/**
+	 * Adopt a newly selected credential type, dropping any assignment the new type's
+	 * `targets` don't permit.
+	 *
+	 * The assignment surfaces are chosen by `targets`, so switching type hides a surface
+	 * without clearing it — and the hidden value is still submitted. Guarded on an actual
+	 * change because CredentialForm reports its type on mount too, which must not prune a
+	 * credential that was just loaded for editing.
+	 */
+	function handleTypeChange(typeId: string) {
+		const previous = selectedTypeId;
+		selectedTypeId = typeId;
+		// The type selector is disabled while editing, so a real switch only ever happens on a
+		// new credential; re-notifications during open/reset report the id unchanged.
+		if (isEditing || typeId === previous) return;
+
+		const pruned = pruneAssignmentsForTargets(credentialTypes.getMetadata(typeId)?.targets, {
+			assignedNetworkIds,
+			hostAssignments
+		});
+		if (!pruned.changed) return;
+		assignedNetworkIds = pruned.assignedNetworkIds;
+		hostAssignments = pruned.hostAssignments;
+		pushWarning(credentials_assignmentsClearedOnTypeChange());
+	}
 
 	function handleOpen() {
 		activeTab = 'details';
@@ -176,7 +213,7 @@
 				bind:this={credentialFormRef}
 				{form}
 				{credential}
-				onTypeChange={(id) => (selectedTypeId = id)}
+				onTypeChange={handleTypeChange}
 			/>
 		</div>
 

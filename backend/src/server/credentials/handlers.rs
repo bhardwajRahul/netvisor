@@ -1,5 +1,6 @@
 use crate::server::auth::middleware::permissions::{Admin, Authorized, Viewer};
 use crate::server::credentials::r#impl::base::Credential;
+use crate::server::credentials::r#impl::mapping::Target;
 use crate::server::credentials::service::CredentialService;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::shared::handlers::ordering::OrderField;
@@ -200,6 +201,37 @@ async fn enforce_single_endpoint(
     Ok(())
 }
 
+/// Reject a create/update whose assignments contradict the credential type's `targets()`.
+///
+/// `targets()` is the single source of truth for where a type may apply, and it is load-bearing:
+/// a controller type deliberately excludes `Network` because a network assignment is dispatched
+/// as the default credential for every IP in the subnet, spraying that controller's secret at
+/// unrelated hosts. Only the per-daemon `integration_targets` path was checked (and there only by
+/// skipping, at scan time) — the junction assignments written here reached dispatch unchecked, so
+/// this is the authoritative "prevent writing it" for every client, UI or API.
+fn enforce_supported_targets(credential: &Credential) -> Result<(), ApiError> {
+    let permitted = credential.base.credential_type.targets();
+    let integration =
+        ServiceDefinition::name(&*credential.base.credential_type.associated_service());
+
+    if !credential.base.assigned_network_ids.is_empty() && !permitted.contains(&Target::Network) {
+        return Err(ApiError::bad_request(&format!(
+            "{integration} credentials cannot be assigned to a network — a network assignment is offered to every host on the subnet. Assign it to specific hosts instead."
+        )));
+    }
+
+    if !credential.base.host_assignments.is_empty()
+        && !permitted.contains(&Target::Hosts)
+        && !permitted.contains(&Target::DaemonHost)
+    {
+        return Err(ApiError::bad_request(&format!(
+            "{integration} credentials cannot be assigned to hosts."
+        )));
+    }
+
+    Ok(())
+}
+
 async fn save_assignments(
     state: &AppState,
     credential: &mut Credential,
@@ -295,6 +327,7 @@ async fn update_credential(
     let host_assignments = entity.base.host_assignments.clone();
     let network_ids = auth.network_ids();
 
+    enforce_supported_targets(&entity)?;
     enforce_single_endpoint(&state, &entity).await?;
 
     let mut response = update_handler::<Credential>(
@@ -445,6 +478,7 @@ pub async fn create_credential(
     let host_assignments = credential.base.host_assignments.clone();
     let network_ids = auth.network_ids();
 
+    enforce_supported_targets(&credential)?;
     enforce_single_endpoint(&state, &credential).await?;
 
     let mut response = create_handler::<Credential>(
@@ -493,13 +527,15 @@ async fn bulk_create_credentials(
         return Ok(Json(ApiResponse::success(vec![])));
     }
 
-    // Validate all credential types
+    // Validate all credential types and their assignments up front, so a batch containing one
+    // contradicting credential creates none of them.
     for credential in &credentials {
         credential
             .base
             .credential_type
             .validate()
             .map_err(|e| ApiError::bad_request(&e.to_string()))?;
+        enforce_supported_targets(credential)?;
     }
 
     // This path calls credential_service.create directly (bypassing the generic

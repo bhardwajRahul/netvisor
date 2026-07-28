@@ -59,8 +59,9 @@ export interface FieldDefinition {
 
 export interface CredentialTypeMetadata {
 	fields: FieldDefinition[];
-	/** Where this credential type can apply: 'DaemonHost' | 'Hosts' | 'Network' */
-	targets?: ('DaemonHost' | 'Hosts' | 'Network')[];
+	/** Where this credential type can apply. Union derived from the backend
+	 *  `IntegrationTarget` scope discriminant, never hand-written. */
+	targets?: components['schemas']['IntegrationTarget']['scope'][];
 	/** Whether the user must provide config/fields (false ⇒ rendered as a toggle, not a form) */
 	requires_config?: boolean;
 	/** Single service instance per host ⇒ access methods at a target are mutually exclusive */

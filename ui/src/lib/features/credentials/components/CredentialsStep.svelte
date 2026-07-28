@@ -110,6 +110,12 @@
 		const existingCreds = credentialWizardRef.getExistingCredentials();
 		const existingIds = existingCreds.map((c) => c.credentialId);
 
+		// Targeting is validated for every row, saved or not. An already-persisted credential
+		// whose target IPs were cleared still gets re-serialized into the daemon's integration
+		// targets, and a type that can't broadcast has no scope left to fall back on — so
+		// skipping this for a batch with nothing new to create would let it silently never run.
+		if (!credentialWizardRef.validateTargets()) return null;
+
 		const unsaved = pendingCredentials.filter(
 			(p) => !p.isExisting && !credentialIds.includes(p.credential.id)
 		);
