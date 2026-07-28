@@ -51,10 +51,10 @@
 		"svelte": "$svelte",
 		"protobufjs": "7.6.4",
 		"@protobufjs/utf8": "1.1.1",
-		"dompurify": "3.4.11",
-		"fast-uri": "3.1.2",
+		"dompurify": "3.4.12",
+		"fast-uri": "3.1.4",
 		"js-cookie": "3.0.8",
-		"js-yaml": "4.2.0",
+		"js-yaml": "4.3.0",
 		"kysely": "0.28.17",
 		"@opentelemetry/core": "2.8.0",
 		"esbuild": "0.28.1",
@@ -63,8 +63,11 @@
 		},
 		"eslint": {
 			"minimatch": {
-				"brace-expansion": "5.0.6"
+				"brace-expansion": "5.0.8"
 			}
+		},
+		"@redocly/openapi-core": {
+			"minimatch": "10.2.6"
 		}
 	},
 	"dependencies": {
