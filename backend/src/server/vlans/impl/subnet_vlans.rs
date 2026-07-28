@@ -228,6 +228,18 @@ impl SubnetVlanStorage {
         Ok(result)
     }
 
+    /// Bulk-insert pre-built subnet↔VLAN links in a single INSERT, with no
+    /// per-subnet lock or delete-first pass. For seed paths (demo populate) on a
+    /// freshly reset org. Callers must pre-dedup on `(subnet_id, vlan_id)` (the
+    /// partial unique index allows at most one live link per pair).
+    pub async fn create_many(&self, records: &[SubnetVlanRecord]) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        self.storage.create_many(records).await?;
+        Ok(())
+    }
+
     /// Link a subnet to a VLAN (idempotent against live rows; the partial
     /// unique index `(subnet_id, vlan_id) WHERE valid_to IS NULL` enforces
     /// at-most-one live link per pair).

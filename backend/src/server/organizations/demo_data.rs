@@ -61,6 +61,7 @@ use crate::server::{
     user_api_keys::r#impl::base::{UserApiKey, UserApiKeyBase},
     users::r#impl::permissions::UserOrgPermissions,
     vlans::r#impl::base::{Vlan, VlanBase},
+    vlans::r#impl::subnet_vlans::{SubnetVlanRecord, SubnetVlanRecordBase},
 };
 use chrono::{DateTime, Duration, Utc};
 use cidr::{IpCidr, Ipv4Cidr};
@@ -143,6 +144,10 @@ pub struct DemoData {
     /// [`generate_recent_hosts`].
     pub recent_hosts_with_services: Vec<HostWithServices>,
     pub vlans: Vec<Vlan>,
+    /// Subnet↔VLAN junction rows, derived from the interface `native_vlan_id`
+    /// and IP↔subnet relationships (the same rule the server's discovery
+    /// reconciler uses). See [`generate_subnet_vlan_records`].
+    pub subnet_vlan_records: Vec<SubnetVlanRecord>,
     pub interfaces: Vec<Interface>,
     pub neighbor_updates: Vec<NeighborUpdate>,
     pub daemons: Vec<Daemon>,
@@ -214,6 +219,8 @@ impl DemoData {
         let vlans = generate_vlans(&networks, organization_id, now);
         let (interfaces, neighbor_updates) =
             generate_interfaces(&networks, &hosts, &ip_addresses, &vlans, now);
+        let subnet_vlan_records =
+            generate_subnet_vlan_records(&interfaces, &hosts_with_services, now);
         let daemons = generate_daemons(&networks, &hosts, &subnets, now, user_id);
         let api_keys = generate_api_keys(&networks, now);
         let topologies = generate_topologies(&networks, &tags, now);
@@ -231,6 +238,7 @@ impl DemoData {
             networks,
             subnets,
             vlans,
+            subnet_vlan_records,
             hosts_with_services,
             recent_hosts_with_services,
             interfaces,
@@ -3417,6 +3425,46 @@ fn generate_vlans(networks: &[Network], organization_id: Uuid, now: DateTime<Utc
     vlans
 }
 
+/// Derive subnet↔VLAN junction rows the same way the server's
+/// `reconcile_subnet_vlans_for_host` does at discovery time: a VLAN links to a
+/// subnet when an interface whose `native_vlan_id` is that VLAN is attached
+/// (via `ip_address_id`) to an IP address on that subnet. Only `native_vlan_id`
+/// counts — tagged/trunk `vlan_ids` do not create subnet links. Deduped on
+/// `(subnet_id, vlan_id)`.
+fn generate_subnet_vlan_records(
+    interfaces: &[Interface],
+    hosts_with_services: &[HostWithServices],
+    now: DateTime<Utc>,
+) -> Vec<SubnetVlanRecord> {
+    use std::collections::{HashMap, HashSet};
+
+    // ip_address_id → subnet_id, from every host's IP addresses.
+    let ip_to_subnet: HashMap<Uuid, Uuid> = hosts_with_services
+        .iter()
+        .flat_map(|h| h.ip_addresses.iter())
+        .map(|ip| (ip.id, ip.base.subnet_id))
+        .collect();
+
+    let mut seen: HashSet<(Uuid, Uuid)> = HashSet::new();
+    let mut records = Vec::new();
+    for iface in interfaces {
+        if let (Some(vlan_id), Some(ip_id)) = (iface.base.native_vlan_id, iface.base.ip_address_id)
+            && let Some(&subnet_id) = ip_to_subnet.get(&ip_id)
+            && seen.insert((subnet_id, vlan_id))
+        {
+            records.push(SubnetVlanRecord {
+                id: Uuid::new_v4(),
+                created_at: now,
+                valid_from: now,
+                valid_to: None,
+                lineage_id: None,
+                base: SubnetVlanRecordBase::new(subnet_id, vlan_id),
+            });
+        }
+    }
+    records
+}
+
 fn generate_interfaces(
     networks: &[Network],
     hosts: &[&Host],
@@ -5426,4 +5474,41 @@ fn generate_dependencies(
     });
 
     dependencies
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn subnet_vlan_records_are_derived_and_reference_valid_entities() {
+        let demo = DemoData::generate(Uuid::new_v4(), Uuid::new_v4());
+
+        // The derivation should link at least the subnets whose hosts carry a
+        // native VLAN (otherwise the junction is silently empty and demo
+        // subnets show no VLANs).
+        assert!(
+            !demo.subnet_vlan_records.is_empty(),
+            "expected derived subnet↔vlan links"
+        );
+
+        let subnet_ids: HashSet<Uuid> = demo.subnets.iter().map(|s| s.id).collect();
+        let vlan_ids: HashSet<Uuid> = demo.vlans.iter().map(|v| v.id).collect();
+        let mut pairs: HashSet<(Uuid, Uuid)> = HashSet::new();
+        for r in &demo.subnet_vlan_records {
+            assert!(
+                subnet_ids.contains(&r.base.subnet_id),
+                "subnet_vlan references unknown subnet"
+            );
+            assert!(
+                vlan_ids.contains(&r.base.vlan_id),
+                "subnet_vlan references unknown vlan"
+            );
+            assert!(
+                pairs.insert((r.base.subnet_id, r.base.vlan_id)),
+                "duplicate subnet↔vlan link"
+            );
+        }
+    }
 }

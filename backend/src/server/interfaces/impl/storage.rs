@@ -490,10 +490,30 @@ impl Snapshotable for Interface {
         {
             self.base.native_vlan_id = Some(*closed);
         }
-        // neighbor (Interface(id) | Host(id)) and vlan_ids JSONB array stay
-        // as-is — they're cross-host references that may point at entities
-        // outside this network's snapshot. Closed rows reference live ids
-        // for these; as-of joins handle resolution.
+        // An Interface→Host `neighbor` can be remapped here (hosts clone before
+        // interfaces, so `maps.hosts` is ready). An Interface→Interface neighbor
+        // self-references the set being cloned, so it's deferred to
+        // `remap_own_clone_refs` once the full interface map exists. `vlan_ids`
+        // (JSONB array) stays as-is — a cross-host reference that may point
+        // outside this network's snapshot; as-of joins handle resolution.
+        if let Some(Neighbor::Host(host_id)) = self.base.neighbor
+            && let Some(closed) = maps.hosts.get(&host_id)
+        {
+            self.base.neighbor = Some(Neighbor::Host(*closed));
+        }
+    }
+
+    fn remap_own_clone_refs(&mut self, own_map: &std::collections::HashMap<Uuid, Uuid>) {
+        // LLDP/CDP `neighbor` pointing at another interface in this same clone
+        // batch → its closed copy. Without this, a snapshot interface's neighbor
+        // keeps a live id absent from the snapshot, and the topology read's
+        // `get_interface_by_id` lookup misses, dropping the PhysicalLink edge.
+        // A neighbor outside this snapshot (absent from `own_map`) is left as-is.
+        if let Some(Neighbor::Interface(live_id)) = self.base.neighbor
+            && let Some(closed) = own_map.get(&live_id)
+        {
+            self.base.neighbor = Some(Neighbor::Interface(*closed));
+        }
     }
 }
 
@@ -741,5 +761,65 @@ mod preserve_uncollected_tests {
     fn an_old_daemon_payload_defaults_to_authoritative() {
         let parsed: InterfaceDataComplete = serde_json::from_str("{}").unwrap();
         assert!(parsed.all());
+    }
+}
+
+#[cfg(test)]
+mod clone_remap_tests {
+    use super::*;
+    use crate::server::shared::storage::snapshot::{FkMaps, Snapshotable};
+    use std::collections::HashMap;
+
+    fn iface_with(neighbor: Option<Neighbor>) -> Interface {
+        Interface::new(InterfaceBase {
+            neighbor,
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn remaps_interface_neighbor_self_reference_to_closed_copy() {
+        let live = Uuid::new_v4();
+        let closed = Uuid::new_v4();
+        let own_map = HashMap::from([(live, closed)]);
+
+        let mut iface = iface_with(Some(Neighbor::Interface(live)));
+        iface.remap_own_clone_refs(&own_map);
+        assert_eq!(iface.base.neighbor, Some(Neighbor::Interface(closed)));
+    }
+
+    #[test]
+    fn leaves_cross_snapshot_interface_neighbor_unchanged() {
+        // A neighbor pointing outside this clone batch (e.g. a cross-network
+        // LLDP link) is absent from the map and left as-is.
+        let outside = Uuid::new_v4();
+        let mut iface = iface_with(Some(Neighbor::Interface(outside)));
+        iface.remap_own_clone_refs(&HashMap::new());
+        assert_eq!(iface.base.neighbor, Some(Neighbor::Interface(outside)));
+    }
+
+    #[test]
+    fn remaps_host_neighbor_via_parent_maps() {
+        let live = Uuid::new_v4();
+        let closed = Uuid::new_v4();
+        let maps = FkMaps {
+            hosts: HashMap::from([(live, closed)]),
+            ..Default::default()
+        };
+        let mut iface = iface_with(Some(Neighbor::Host(live)));
+        iface.remap_fks_for_clone(&maps);
+        assert_eq!(iface.base.neighbor, Some(Neighbor::Host(closed)));
+    }
+
+    #[test]
+    fn own_refs_is_noop_without_an_interface_neighbor() {
+        let mut iface = iface_with(None);
+        iface.remap_own_clone_refs(&HashMap::new());
+        assert_eq!(iface.base.neighbor, None);
+
+        let mut host_neighbor = iface_with(Some(Neighbor::Host(Uuid::new_v4())));
+        let before = host_neighbor.base.neighbor.clone();
+        host_neighbor.remap_own_clone_refs(&HashMap::from([(Uuid::new_v4(), Uuid::new_v4())]));
+        assert_eq!(host_neighbor.base.neighbor, before);
     }
 }

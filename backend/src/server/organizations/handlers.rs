@@ -687,6 +687,17 @@ async fn run_populate_demo(
         .create_many(&demo_data.vlans)
         .await?;
 
+    // 4.6. Subnet↔VLAN junction rows (depend on subnets + VLANs). One bulk
+    // insert, no per-subnet lock (fresh org). Derived to mirror the discovery
+    // reconciler, so demo subnets show their VLANs like a real deployment.
+    state
+        .services
+        .vlan_service
+        .subnet_vlan_storage
+        .create_many(&demo_data.subnet_vlan_records)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
     // 5. Hosts + children — bypass discover_host (no collisions in fresh org)
     // Flatten hosts, ip_addresses, ports, services from HostWithServices bundles
     let mut all_hosts = Vec::new();

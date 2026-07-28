@@ -63,26 +63,7 @@ fn dt(year: i32, month: u32, day: u32) -> DateTime<Utc> {
 #[derive(Clone)]
 struct ScheduledFloor {
     floor: Version,
-    effective_on: Option<DateTime<Utc>>,
-}
-
-/// Months of lead time between the v1.0 launch and the first enforced cutover.
-const V1_SUNSET_LEAD_MONTHS: i64 = 3;
-
-/// The v1.0 launch anchor — the single place the launch date lives. The v1
-/// cutover's date (and so every `Deprecated` sunset date it shows in UI/email)
-/// derives from this one value. It exists for the v1 entry alone: cutovers
-/// announced after launch carry absolute dates instead.
-///
-/// `None` is the dormant sentinel: keep it `None` in development so the whole
-/// sunset machinery stays off and CI is green. Bake in the real launch date as
-/// `Some(dt(YYYY, MM, DD))` immediately before the release build. The
-/// `release_build_has_launch_date_set` test guards against shipping it dormant.
-//
-// TODO(release): set to Some(dt(<v1.0 launch year>, <month>, <day>)) before the
-// release build. Until then the machinery is intentionally dormant.
-fn v1_launch() -> Option<DateTime<Utc>> {
-    None
+    effective_on: DateTime<Utc>,
 }
 
 /// Every announced daemon-sunset cutover, oldest floor first. Add one entry per
@@ -90,25 +71,15 @@ fn v1_launch() -> Option<DateTime<Utc>> {
 /// absolute effective date; there is no automatic window or version-count policy.
 fn scheduled_sunsets() -> Vec<ScheduledFloor> {
     vec![
-        // v1.0: everything below 0.17.5, 3 months after launch. This entry is the
-        // one exception to "absolute dates" — it genuinely derives from the launch
-        // anchor, and stays dormant (`None`) until that date is baked in.
-        ScheduledFloor {
-            floor: Version::new(0, 17, 5),
-            effective_on: v1_launch().map(|launch| add_months(launch, V1_SUNSET_LEAD_MONTHS)),
-        },
+        // ScheduledFloor {
+        //     floor: Version::new(0, 17, 5),
+        //     effective_on: dt(2026,11,1)
+        // },
+
         // Future announcements are appended here with an absolute effective date —
         // do the "release + N months" math when you announce, not in code, e.g.:
-        // ScheduledFloor { floor: Version::new(1, 2, 0), effective_on: Some(dt(2027, 8, 1)) },
+        // ScheduledFloor { floor: Version::new(1, 2, 0), effective_on: dt(2027, 8, 1)) ,
     ]
-}
-
-/// Add whole months to a timestamp (day clamped to the target month's length via
-/// chrono's checked arithmetic; falls back to the original on overflow, which
-/// cannot happen for the dates in play).
-fn add_months(base: DateTime<Utc>, months: i64) -> DateTime<Utc> {
-    base.checked_add_months(chrono::Months::new(months as u32))
-        .unwrap_or(base)
 }
 
 /// The enforced support floor at `now`: daemons below it are rejected (once the
@@ -132,7 +103,7 @@ pub fn enforced_floor(now: DateTime<Utc>) -> Version {
 fn floor_from(sunsets: &[ScheduledFloor], now: DateTime<Utc>) -> Version {
     let effective_floors = sunsets
         .iter()
-        .filter(|s| s.effective_on.is_some_and(|eff| eff <= now))
+        .filter(|s| s.effective_on <= now)
         .map(|s| s.floor.clone());
 
     // Safety cap: never enforce a floor newer than this binary.
@@ -165,8 +136,8 @@ fn applicable_sunset_in(
 ) -> Option<(Version, DateTime<Utc>)> {
     sunsets
         .iter()
-        .filter_map(|s| s.effective_on.map(|eff| (s.floor.clone(), eff)))
-        .filter(|(floor, _)| v.is_none_or(|v| v < floor))
+        .map(|s| (s.floor.clone(), s.effective_on))
+        .filter(|(floor, _)| v < Some(floor))
         // Soonest deadline wins; the lower floor breaks a date tie so the result
         // never depends on the order entries happen to be written in.
         .min_by(|(a_floor, a_eff), (b_floor, b_eff)| {
@@ -532,32 +503,6 @@ mod tests {
     }
 
     #[test]
-    fn dormant_list_has_no_applicable_sunset() {
-        // Every entry dormant (no date baked in) — nothing applies to anything,
-        // however old, so the whole machinery stays off.
-        let dormant = vec![
-            ScheduledFloor {
-                floor: Version::new(0, 17, 5),
-                effective_on: None,
-            },
-            ScheduledFloor {
-                floor: Version::new(1, 2, 0),
-                effective_on: None,
-            },
-        ];
-        for v in [
-            None,
-            Some(Version::new(0, 1, 0)),
-            Some(Version::new(0, 16, 0)),
-            Some(Version::new(1, 0, 0)),
-        ] {
-            assert!(applicable_sunset_in(&dormant, v.as_ref()).is_none());
-        }
-        // ...and it never raises the floor.
-        assert_eq!(floor_from(&dormant, dt(2030, 1, 1)), baseline_floor());
-    }
-
-    #[test]
     fn announced_sunset_deprecates_old_and_versionless() {
         // Future sunset date: an old versioned daemon AND a version-less one are
         // both Deprecated with that date (a version-less daemon is treated as
@@ -566,7 +511,7 @@ mod tests {
             dt(2026, 7, 27),
             vec![ScheduledFloor {
                 floor: Version::new(0, 17, 5),
-                effective_on: Some(dt(2026, 10, 1)),
+                effective_on: dt(2026, 10, 1),
             }],
         );
 
@@ -592,7 +537,7 @@ mod tests {
             dt(2026, 11, 1),
             vec![ScheduledFloor {
                 floor: Version::new(0, 17, 5),
-                effective_on: Some(dt(2026, 10, 1)),
+                effective_on: dt(2026, 10, 1),
             }],
         );
         assert_eq!(
@@ -605,69 +550,15 @@ mod tests {
         );
     }
 
-    // --- Once the launch anchor is set: the real transitions. ----------------
-    //
-    // These drive the production derivations (`floor_from` / `applicable_sunset_in`)
-    // off explicit `ScheduledFloor` lists instead of the `v1_launch()` sentinel,
-    // so they exercise the real date logic without depending on an unset launch
-    // date.
-
-    /// The v1 cutover as it will be once a launch date is baked in.
-    fn v1_cutover(launch: DateTime<Utc>) -> ScheduledFloor {
-        ScheduledFloor {
-            floor: Version::new(0, 17, 5),
-            effective_on: Some(add_months(launch, V1_SUNSET_LEAD_MONTHS)),
-        }
-    }
-
-    #[test]
-    fn floor_moves_only_after_cutover() {
-        let sunsets = vec![v1_cutover(dt(2026, 9, 1))]; // effective 2026-12-01
-        // Before the cutover: still baseline.
-        assert_eq!(floor_from(&sunsets, dt(2026, 11, 30)), baseline_floor());
-        // On/after the cutover: 0.17.5.
-        assert_eq!(
-            floor_from(&sunsets, dt(2026, 12, 1)),
-            Version::new(0, 17, 5)
-        );
-        assert_eq!(floor_from(&sunsets, dt(2027, 6, 1)), Version::new(0, 17, 5));
-    }
-
     #[test]
     fn floor_capped_at_own_version() {
         // A cutover naming a version newer than this binary is capped down —
         // a server never enforces a floor it can't reason about.
         let sunsets = vec![ScheduledFloor {
             floor: Version::new(9, 9, 9),
-            effective_on: Some(dt(2026, 1, 1)),
+            effective_on: dt(2026, 1, 1),
         }];
         assert_eq!(floor_from(&sunsets, dt(2027, 1, 1)), own_version());
-    }
-
-    #[test]
-    fn add_months_is_three_month_lead() {
-        assert_eq!(add_months(dt(2026, 9, 1), 3), dt(2026, 12, 1));
-        assert_eq!(add_months(dt(2026, 11, 15), 3), dt(2027, 2, 15));
-    }
-
-    #[test]
-    fn v1_cutover_behavior_is_preserved() {
-        // Behavior preservation: with only the v1 cutover active, a daemon below
-        // 0.17.5 resolves exactly as it did under the single-sunset model —
-        // Deprecated with the cutover date before it, Unsupported after.
-        let sunsets = vec![v1_cutover(dt(2026, 9, 1))]; // effective 2026-12-01
-        let old = Version::new(0, 16, 0);
-
-        let before = DaemonVersionPolicy::at_with_sunsets(dt(2026, 11, 30), sunsets.clone());
-        let status = before.evaluate(Some(&old));
-        assert_eq!(status.status, VersionHealthStatus::Deprecated);
-        assert_eq!(status.sunset_date.as_deref(), Some("2026-12-01"));
-
-        let after = DaemonVersionPolicy::at_with_sunsets(dt(2026, 12, 2), sunsets);
-        assert_eq!(
-            after.evaluate(Some(&old)).status,
-            VersionHealthStatus::Unsupported
-        );
     }
 
     // --- Multiple announced cutovers -----------------------------------------
@@ -677,11 +568,11 @@ mod tests {
         vec![
             ScheduledFloor {
                 floor: Version::new(0, 17, 5),
-                effective_on: Some(dt(2026, 12, 1)),
+                effective_on: dt(2026, 12, 1),
             },
             ScheduledFloor {
                 floor: Version::new(1, 2, 0),
-                effective_on: Some(dt(2027, 8, 1)),
+                effective_on: dt(2027, 8, 1),
             },
         ]
     }
@@ -758,40 +649,5 @@ mod tests {
                  version this build doesn't know; move the floor or delete the shim"
             );
         }
-    }
-
-    /// Only asserts in a release build (when `SCANOPY_RELEASE_BUILD` is set), so
-    /// dev CI stays green while the launch date is intentionally unset, but the
-    /// release build cannot ship with the sunset machinery dormant.
-    #[test]
-    fn release_build_has_launch_date_set() {
-        if option_env!("SCANOPY_RELEASE_BUILD").is_some() {
-            assert!(
-                v1_launch().is_some(),
-                "SCANOPY_RELEASE_BUILD is set but v1_launch() is None — bake in the v1.0 launch \
-                 date in version.rs before shipping"
-            );
-        }
-    }
-
-    // --- Capability helpers (unchanged behavior) -----------------------------
-
-    #[test]
-    fn supports_unified_discovery_floor() {
-        assert!(!supports_unified_discovery(None));
-        assert!(!supports_unified_discovery(Some(&Version::new(0, 14, 0))));
-        assert!(supports_unified_discovery(Some(&Version::new(0, 15, 0))));
-        assert!(supports_unified_discovery(Some(&Version::new(1, 0, 0))));
-    }
-
-    #[test]
-    fn has_correct_docker_volume_mount_floor() {
-        assert!(!has_correct_docker_volume_mount(None));
-        assert!(!has_correct_docker_volume_mount(Some(&Version::new(
-            0, 16, 0
-        ))));
-        assert!(has_correct_docker_volume_mount(Some(&Version::new(
-            0, 16, 1
-        ))));
     }
 }

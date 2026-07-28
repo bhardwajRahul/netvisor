@@ -61,6 +61,18 @@ pub trait Snapshotable: Storable {
     /// Default: no FKs to remap. Used by hosts, subnets, vlans (top-level
     /// entities with no within-tracked FKs).
     fn remap_fks_for_clone(&mut self, _maps: &FkMaps) {}
+
+    /// Rewrite this row's *self*-references — FK columns that point at another
+    /// row of the **same** type in this clone batch — using `own_map`
+    /// (live_id → closed_id for this type). Runs after `remap_fks_for_clone`,
+    /// once every row of this type has a closed id, because a self-reference
+    /// can't be resolved in the per-row pass (the target may not be cloned yet).
+    /// The closed rows are inserted in one bulk statement, so a self-reference
+    /// to another row in the same batch resolves at statement end.
+    ///
+    /// Default: no self-references. Overridden by `Interface` (LLDP/CDP
+    /// `neighbor` pointing at another interface).
+    fn remap_own_clone_refs(&mut self, _own_map: &std::collections::HashMap<Uuid, Uuid>) {}
 }
 
 /// Accessors for the discovery-driven audit columns.
