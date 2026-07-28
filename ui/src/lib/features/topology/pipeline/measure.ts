@@ -57,10 +57,14 @@ export async function resolveNodeSizes(
 		const liveNodes = getNodes();
 		for (const n of liveNodes) {
 			if (state.layoutGraph?.containers.has(n.id)) continue;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- @xyflow Node has runtime .computed not in type defs
-			const w = (n as any).computed?.width ?? n.width;
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- @xyflow Node has runtime .computed not in type defs
-			const h = (n as any).computed?.height ?? n.height;
+			// `measured` is where @xyflow/svelte v1 puts the rendered size.
+			// This previously read `computed`, which was the v0 name and does not
+			// exist in v1 — so `w`/`h` always fell back to the literal node props
+			// (a hardcoded 250 for elements, undefined for heights), the guard
+			// below was false for essentially every node, and this whole
+			// cached-size fast path silently did nothing.
+			const w = n.measured?.width ?? n.width;
+			const h = n.measured?.height ?? n.height;
 			if (w && h) {
 				elementNodeSizes.set(n.id, { x: w, y: h });
 			}
