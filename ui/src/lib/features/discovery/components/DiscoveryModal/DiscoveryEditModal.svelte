@@ -5,7 +5,10 @@
 	import type { ModalTab } from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import { entities, credentialTypes } from '$lib/shared/stores/metadata';
-	import { isDaemonHostOnly } from '$lib/features/credentials/types/base';
+	import {
+		integrationTargetFor,
+		supportsTarget
+	} from '$lib/features/credentials/utils/credentialTargets';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import DiscoveryDetailsForm from './DiscoveryDetailsForm.svelte';
 	import DiscoveryTargetsForm from './DiscoveryTargetsForm.svelte';
@@ -51,6 +54,7 @@
 		common_detection,
 		common_performance,
 		common_targets,
+		daemons_credentialWizardTargetRequired,
 		discovery_couldNotGetNetworkId,
 		discovery_createDiscovery,
 		discovery_createScheduled,
@@ -391,30 +395,36 @@
 				}
 				try {
 					// Per-credential targeting comes from the wizard and is delivered as per-daemon
-					// integration targets on the Discovery. Parity with the daemon-create modal: a
-					// daemon-host-only credential (e.g. a Docker/Podman socket) OR a loopback-only IP
-					// target → DaemonHost scope; explicit non-loopback IPs → Hosts; otherwise Network.
-					// The backend (apply_integration_targets) merges DaemonHost targets into the
-					// host_credentials junction and keeps Network/Hosts on the Discovery — so adding a
-					// socket here works exactly like the create modal / host modal.
+					// integration targets on the Discovery. Parity with the daemon-create modal: the
+					// scope comes from the type's `targets` metadata, so a type that excludes Network
+					// (e.g. a UniFi controller) can never be emitted as a network-wide broadcast the
+					// server would drop at dispatch. The backend (apply_integration_targets) merges
+					// DaemonHost targets into the host_credentials junction and keeps Network/Hosts on
+					// the Discovery — so adding a socket here works exactly like the create modal.
 					const persisted = new Set(ids ?? []);
 					// Managed (already-junction-assigned) daemon-host cards are read-only here.
-					formData.integration_targets = pendingCredentials
+					const targeted = pendingCredentials
 						.filter((p) => !p.isManaged && persisted.has(p.credential.id))
-						.map((p) => {
-							const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
-							const isDaemonHost =
-								isDaemonHostOnly(
-									credentialTypes.getMetadata(p.credential.credential_type.type)?.targets
-								) ||
-								(ips.length > 0 && ips.every(ipIsLoopback));
-							if (isDaemonHost) {
-								return { scope: 'DaemonHost' as const, credential_id: p.credential.id };
-							}
-							return ips.length > 0
-								? { scope: 'Hosts' as const, credential_id: p.credential.id, ips }
-								: { scope: 'Network' as const, credential_id: p.credential.id };
-						});
+						.map((p) => ({
+							name: p.credential.name,
+							target: integrationTargetFor(
+								p.credential.id,
+								credentialTypes.getMetadata(p.credential.credential_type.type)?.targets,
+								p.targetIps
+							)
+						}));
+					// The wizard validates targets first, so a credential with no permitted scope
+					// should be unreachable. Fail closed rather than saving a discovery that quietly
+					// drops it — a credential targeted nowhere never runs, with nothing to show why.
+					const untargetable = targeted.filter((t) => t.target === null).map((t) => t.name);
+					if (untargetable.length > 0) {
+						pushError(
+							daemons_credentialWizardTargetRequired({ credentials: untargetable.join(', ') })
+						);
+						loading = false;
+						return;
+					}
+					formData.integration_targets = targeted.flatMap((t) => (t.target ? [t.target] : []));
 					if (isEditing && discovery) {
 						await onUpdate(discovery.id, formData);
 					} else {
@@ -447,6 +457,12 @@
 				if (t.scope === 'Hosts' && t.ips.length > 0 && t.ips.every(ipIsLoopback)) return [];
 				const c = credMap.get(t.credential_id);
 				if (!c) return [];
+				// Drop a target whose scope the credential's type doesn't permit — rows written
+				// before the scope was gated. Such a target is already discarded at dispatch, and
+				// seeding it would surface as a row with no valid selection that blocks the save.
+				// Omitting it here lets the submit mapping rewrite the record without it.
+				if (!supportsTarget(credentialTypes.getMetadata(c.credential_type.type)?.targets, t.scope))
+					return [];
 				const ips = t.scope === 'Hosts' ? t.ips : [];
 				return [
 					{ credential: c, targetIps: ips.length ? ips : [''], fieldValues: {}, isExisting: true }

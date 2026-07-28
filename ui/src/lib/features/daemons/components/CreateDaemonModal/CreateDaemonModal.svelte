@@ -57,6 +57,7 @@
 		isDaemonHostOnly as isDaemonHostOnlyTargets,
 		type IntegrationTarget
 	} from '$lib/features/credentials/types/base';
+	import { integrationTargetFor } from '$lib/features/credentials/utils/credentialTargets';
 	import { useDiscoveriesQuery, useUpdateDiscoveryMutation } from '$lib/features/discovery/queries';
 	import {
 		common_close,
@@ -69,6 +70,7 @@
 		daemons_createDaemon,
 		daemons_credentialWizardReturn,
 		daemons_credentialWizardReturnToInstall,
+		daemons_credentialWizardTargetRequired,
 		daemons_provisioningDaemon,
 		daemons_seedCredentialsFailed,
 		daemons_emailInstallCommand,
@@ -167,9 +169,6 @@
 		(credentialsQuery.data?.length ?? 0) > 0 ? 'wizard' : 'typeSelect'
 	);
 
-	function isDaemonHostOnly(id: string): boolean {
-		return isDaemonHostOnlyTargets(credentialTypes.getMetadata(id)?.targets);
-	}
 	// Daemon-host-only integrations (e.g. the Docker/Podman socket) are selected by default in
 	// the Integrations grid; they target only the daemon host (a `<uuid>@127.0.0.1` token).
 	function daemonHostOnlyTypeIds(): string[] {
@@ -320,22 +319,37 @@
 	//
 	// Integration targeting for this daemon, seeded onto its discovery row at provision
 	// (`seed_credential_refs`) so the credential is probed on the first scan and assigned to a
-	// host only once that probe succeeds. Daemon-host-only credentials (local sockets) resolve to
-	// the DaemonHost scope; a credential with target IPs pins to those hosts; one with none is a
-	// network-wide default.
+	// host only once that probe succeeds. The scope is derived from the type's `targets`
+	// metadata, not from the IP count alone — "no IPs" means network-wide for a broadcast-capable
+	// type but "nothing chosen" for one that excludes Network, which yields no target at all.
+	// The wizard validates the selection first, so a dropped target means an unusable one.
 	let seedCredentialRefs = $derived(
 		pendingCredentials.flatMap((p): IntegrationTarget[] => {
 			// Only persisted credentials can be referenced (sockets are created too now).
 			if (!credentialIds.includes(p.credential.id)) return [];
-			const credential_id = p.credential.id;
-			if (isDaemonHostOnly(p.credential.credential_type.type)) {
-				return [{ credential_id, scope: 'DaemonHost' }];
-			}
-			const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
-			return ips.length > 0
-				? [{ credential_id, ips, scope: 'Hosts' }]
-				: [{ credential_id, scope: 'Network' }];
+			const target = integrationTargetFor(
+				p.credential.id,
+				credentialTypes.getMetadata(p.credential.credential_type.type)?.targets,
+				p.targetIps
+			);
+			return target ? [target] : [];
 		})
+	);
+	// Persisted credentials whose current selection maps to no scope their type permits. A
+	// `$derived` can't raise an error, so the write paths check this and refuse rather than
+	// silently pushing a ref list with the credential missing.
+	let untargetableCredentialNames = $derived(
+		pendingCredentials
+			.filter(
+				(p) =>
+					credentialIds.includes(p.credential.id) &&
+					integrationTargetFor(
+						p.credential.id,
+						credentialTypes.getMetadata(p.credential.credential_type.type)?.targets,
+						p.targetIps
+					) === null
+			)
+			.map((p) => p.credential.name)
 	);
 	let runCommand = $derived(
 		buildRunCommand(serverUrl, selectedNetworkId, key, formValues, null, currentUserId, selectedOS)
@@ -441,6 +455,17 @@
 	 * refs would silently keep the state they had at provision time.
 	 */
 	async function syncSeededCredentialRefs() {
+		// Reachable without going through the wizard's validation — the Install tab can be
+		// clicked directly after a credential's targets were edited. Refuse rather than write a
+		// ref list that has quietly dropped it.
+		if (untargetableCredentialNames.length > 0) {
+			pushError(
+				daemons_credentialWizardTargetRequired({
+					credentials: untargetableCredentialNames.join(', ')
+				})
+			);
+			return;
+		}
 		const refs = seedCredentialRefs;
 		const discoveries = await discoveriesQuery.refetch();
 		const discovery = (discoveries.data ?? []).find((d) => d.daemon_id === provisionedDaemonId);

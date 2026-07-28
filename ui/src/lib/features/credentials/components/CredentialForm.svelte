@@ -326,9 +326,32 @@
 	// Initialize on mount (called once, not reactively)
 	reset();
 
+	/**
+	 * Reset the target selection to the new type's default.
+	 *
+	 * Reads `targets` inline rather than through the `supportedTargets` derived, which is
+	 * still stale at this point in the update (same reason `reset()` computes it inline).
+	 * Without this a broadcast mode chosen for a Network-capable type would survive a switch
+	 * to one that excludes Network: the toggle hides, but the mode — and the scope it emits —
+	 * stays broadcast, producing a target the server discards.
+	 */
+	function applyDefaultTargetForType(typeId: string) {
+		const supported = (credentialTypes.getMetadata(typeId)?.targets ?? []) as string[];
+		targetMode = supported.includes('Network') ? 'broadcast' : 'per_host';
+		// When the daemon host is the only per-host target, preselect it (the disabled
+		// 127.0.0.1 row) so there's nothing for the user to add.
+		targetIpValues =
+			targetMode === 'per_host' && supported.includes('DaemonHost') && !supported.includes('Hosts')
+				? [DAEMON_HOST_IP]
+				: [];
+		form.setFieldValue?.(`${fieldPrefix}targetIps`, [...targetIpValues]);
+		onChange?.({ targetIps: [...targetIpValues], scope: targetMode });
+	}
+
 	function handleTypeChange(typeId: string) {
 		selectedTypeId = typeId;
 		initDefaultFieldValues(selectedTypeId);
+		if (compact) applyDefaultTargetForType(selectedTypeId);
 	}
 
 	async function handleSubmit() {
@@ -524,7 +547,9 @@
 	 * always valid. The caller surfaces failures via a toast on advance.
 	 */
 	export function validateTarget(): boolean {
-		if (!compact || targetMode === 'broadcast') return true;
+		// A hidden picker can never be a failure the user could act on: `hideTargets` types
+		// (the daemon-host socket, managed references) carry an implicit 127.0.0.1 target.
+		if (!compact || hideTargets || targetMode === 'broadcast') return true;
 		return targetIpValues.some((ip) => ip.trim() !== '');
 	}
 
