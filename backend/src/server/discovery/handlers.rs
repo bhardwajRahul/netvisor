@@ -6,10 +6,7 @@ use crate::server::{
     config::AppState,
     credentials::r#impl::types::CredentialTypeDiscriminants,
     daemons::r#impl::{api::DiscoveryUpdatePayload, version::supports_unified_discovery},
-    discovery::r#impl::{
-        base::Discovery,
-        types::{DiscoveryType, RunType},
-    },
+    discovery::r#impl::{base::Discovery, types::DiscoveryType},
     networks::r#impl::Network,
     shared::{
         handlers::traits::{create_handler, update_handler},
@@ -157,13 +154,18 @@ pub async fn create_discovery(
     Json(discovery): Json<Discovery>,
 ) -> ApiResult<Json<ApiResponse<Discovery>>> {
     if discovery.base.run_type.is_server_managed() {
-        return Err(match discovery.base.run_type {
-            RunType::Historical { .. } => ApiError::discovery_historical_read_only(),
-            _ => ApiError::bad_request(
-                "Targeted discoveries are created by the server for a single rescan and \
-                 cannot be submitted via the API.",
-            ),
-        });
+        return Err(ApiError::discovery_historical_read_only());
+    }
+    if discovery
+        .base
+        .discovery_type
+        .rescan_target_host_id()
+        .is_some()
+    {
+        return Err(ApiError::bad_request(
+            "Rescans are created by the server for a single host and cannot be submitted \
+             via the API.",
+        ));
     }
 
     // Reject legacy discovery types — only Unified can be created
@@ -175,7 +177,7 @@ pub async fn create_discovery(
     }
 
     // For Unified: check daemon version supports it
-    if let DiscoveryType::Unified { .. } = &discovery.base.discovery_type {
+    if discovery.base.discovery_type.runs_network_scan() {
         let daemon = state
             .services
             .daemon_service
@@ -246,13 +248,18 @@ pub async fn update_discovery(
     discovery: Json<Discovery>,
 ) -> ApiResult<Json<ApiResponse<Discovery>>> {
     if discovery.base.run_type.is_server_managed() {
-        return Err(match discovery.base.run_type {
-            RunType::Historical { .. } => ApiError::discovery_historical_read_only(),
-            _ => ApiError::bad_request(
-                "Targeted discoveries are created by the server for a single rescan and \
-                 cannot be submitted via the API.",
-            ),
-        });
+        return Err(ApiError::discovery_historical_read_only());
+    }
+    if discovery
+        .base
+        .discovery_type
+        .rescan_target_host_id()
+        .is_some()
+    {
+        return Err(ApiError::bad_request(
+            "Rescans are created by the server for a single host and cannot be submitted \
+             via the API.",
+        ));
     }
 
     // Reject changing a legacy discovery's type

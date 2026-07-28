@@ -683,9 +683,8 @@ impl SubnetType {
             SubnetType::Management => 3,
             SubnetType::Storage => 3,
 
-            // Special — excluded from topology, so the value is never read
+            // Special
             SubnetType::Loopback => 999,
-            SubnetType::ScanTarget => 999,
             SubnetType::Unknown => 999,
         }
     }
@@ -715,9 +714,8 @@ impl SubnetType {
             SubnetType::MacVlan => 3,
             SubnetType::IpVlan => 4,
 
-            // Special — excluded from topology, so the value is never read
+            // Special
             SubnetType::Loopback => 999,
-            SubnetType::ScanTarget => 999,
             SubnetType::Unknown => 999,
         }
     }

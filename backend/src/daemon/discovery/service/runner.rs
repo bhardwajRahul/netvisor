@@ -387,6 +387,8 @@ impl DiscoveryRunner {
             self.host_naming_fallback,
             self.scan_settings.clone(),
             self.credential_mappings.clone(),
+            self.target_ips.clone(),
+            self.extra_ports.clone(),
         );
 
         let ops = super::ops::DiscoveryOps::new(&self.service, DiscoveryType::from(self));

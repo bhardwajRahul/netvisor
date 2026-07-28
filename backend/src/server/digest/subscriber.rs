@@ -37,9 +37,9 @@ impl Subscriber<EntityOperation> for DiscoveryDigestService {
                 continue;
             }
             // A rescan is user-initiated and watched live in the UI; mailing a
-            // digest about one address is noise. Scheduled sweeps are what the
+            // digest about one host is noise. Scheduled sweeps are what the
             // digest summarises.
-            if results.targeted {
+            if results.discovery_type.rescan_target_host_id().is_some() {
                 continue;
             }
             // ScannedEntityIds carries the daemon-reported, server-resolved

@@ -122,12 +122,7 @@ async fn main() -> anyhow::Result<()> {
             discovery_cleanup_state
                 .services
                 .discovery_service
-                .sweep_orphaned_targeted_discoveries(24)
-                .await;
-            discovery_cleanup_state
-                .services
-                .subnet_service
-                .sweep_orphaned_scan_targets(24)
+                .sweep_orphaned_rescans(24)
                 .await;
         }
     });

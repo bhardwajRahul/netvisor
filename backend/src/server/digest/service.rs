@@ -568,8 +568,8 @@ fn compute_digest_status<T: DiscoveryTracked>(
 enum ScanCoverage {
     /// Swept these subnets. A host is covered iff it holds a live IP in one.
     Subnets(HashSet<Uuid>),
-    /// Touched only the daemon's own host — no subnet sweep at all
-    /// (`DiscoveryType::Docker` / `SelfReport`).
+    /// Touched a single host — no subnet sweep at all. A rescan, or the frozen
+    /// `Docker` / `SelfReport` types.
     SingleHost(Uuid),
 }
 
@@ -579,6 +579,10 @@ impl ScanCoverage {
             DiscoveryType::Docker { host_id, .. } | DiscoveryType::SelfReport { host_id } => {
                 Self::SingleHost(*host_id)
             }
+            // Unreachable while the digest skips rescans outright, but it stops
+            // the fallback below from claiming subnet-wide coverage for a run
+            // that touched one host, should that suppression ever be relaxed.
+            DiscoveryType::Rescan { target_host_id, .. } => Self::SingleHost(*target_host_id),
             // An explicit subnet list is the user's stated target. Otherwise
             // fall back to the subnets the daemon actually confirmed this run.
             DiscoveryType::Network {

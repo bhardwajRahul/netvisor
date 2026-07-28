@@ -23,43 +23,89 @@ use crate::server::daemons::r#impl::api::DiscoveryUpdatePayload;
 pub struct DiscoveryRunner {
     pub service: Arc<DaemonDiscoveryService>,
     pub manager: Arc<DaemonDiscoverySessionManager>,
+    /// The type this run was dispatched as, echoed back verbatim on every
+    /// progress update. Kept whole rather than reconstructed, so the server's
+    /// stored session keeps the kind it started with.
+    pub discovery_type: DiscoveryType,
     pub host_id: Uuid,
     pub subnet_ids: Option<Vec<Uuid>>,
+    /// Specific addresses to scan (a rescan). `None` sweeps the subnets.
+    pub target_ips: Option<std::collections::HashSet<std::net::IpAddr>>,
+    /// TCP ports already known on the rescan target, scanned in addition to the
+    /// standard discovery set.
+    pub extra_ports: Vec<u16>,
     pub host_naming_fallback: HostNamingFallback,
     pub scan_settings: ScanSettings,
     pub credential_mappings: Vec<CredentialMapping<CredentialQueryPayload>>,
 }
 
 impl DiscoveryRunner {
+    /// Build a runner from the dispatched discovery type.
+    ///
+    /// Returns `None` for the frozen legacy types, which the manager stubs out
+    /// rather than running.
     pub fn new(
         service: Arc<DaemonDiscoveryService>,
         manager: Arc<DaemonDiscoverySessionManager>,
-        host_id: Uuid,
-        subnet_ids: Option<Vec<Uuid>>,
-        host_naming_fallback: HostNamingFallback,
-        scan_settings: ScanSettings,
+        discovery_type: DiscoveryType,
         credential_mappings: Vec<CredentialMapping<CredentialQueryPayload>>,
-    ) -> Self {
-        Self {
+    ) -> Option<Self> {
+        let (host_id, subnet_ids, target_ips, extra_ports, host_naming_fallback, scan_settings) =
+            match &discovery_type {
+                DiscoveryType::Unified {
+                    host_id,
+                    subnet_ids,
+                    host_naming_fallback,
+                    scan_settings,
+                } => (
+                    *host_id,
+                    subnet_ids.clone(),
+                    None,
+                    Vec::new(),
+                    *host_naming_fallback,
+                    scan_settings.clone(),
+                ),
+                DiscoveryType::Rescan {
+                    host_id,
+                    ips,
+                    ports,
+                    settings,
+                    ..
+                } => (
+                    *host_id,
+                    None,
+                    Some(ips.iter().copied().collect()),
+                    ports
+                        .iter()
+                        .filter(|p| p.is_tcp())
+                        .map(|p| p.number())
+                        .collect(),
+                    HostNamingFallback::default(),
+                    ScanSettings::from(settings),
+                ),
+                DiscoveryType::SelfReport { .. }
+                | DiscoveryType::Network { .. }
+                | DiscoveryType::Docker { .. } => return None,
+            };
+
+        Some(Self {
             service,
             manager,
+            discovery_type,
             host_id,
             subnet_ids,
+            target_ips,
+            extra_ports,
             host_naming_fallback,
             scan_settings,
             credential_mappings,
-        }
+        })
     }
 }
 
 impl From<&DiscoveryRunner> for DiscoveryType {
     fn from(runner: &DiscoveryRunner) -> Self {
-        DiscoveryType::Unified {
-            host_id: runner.host_id,
-            subnet_ids: runner.subnet_ids.clone(),
-            host_naming_fallback: runner.host_naming_fallback,
-            scan_settings: runner.scan_settings.clone(),
-        }
+        runner.discovery_type.clone()
     }
 }
 

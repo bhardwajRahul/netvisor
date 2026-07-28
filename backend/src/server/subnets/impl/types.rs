@@ -49,12 +49,6 @@ pub enum SubnetType {
     Storage,
     Loopback,
 
-    /// Transient single-address subnet minted to target one host for a rescan,
-    /// and reaped when that session reaches a terminal phase. Hidden from the
-    /// subnet list, topology, and the discovery target picker — it is an
-    /// addressing vehicle, not a network anyone models.
-    ScanTarget,
-
     // `other` makes any variant a newer server emits that this build doesn't
     // know (the production `unknown variant 'Loopback'` failure) degrade to
     // `Unknown` instead of hard-erroring. Subsumes the former `alias = "None"`.
@@ -84,7 +78,6 @@ impl FromStr for SubnetType {
             "Management" => Ok(SubnetType::Management),
             "Storage" => Ok(SubnetType::Storage),
             "Loopback" => Ok(SubnetType::Loopback),
-            "ScanTarget" => Ok(SubnetType::ScanTarget),
             "Unknown" | "None" => Ok(SubnetType::Unknown),
             // Degrade rather than error, matching the `#[serde(other)]` behaviour on
             // the enum. This path is the DB read (`Subnet::from_row`), where an
@@ -228,30 +221,18 @@ impl SubnetType {
     }
 
     pub fn exclude_from_topology(&self) -> bool {
-        matches!(self, SubnetType::Loopback | SubnetType::ScanTarget)
+        matches!(self, SubnetType::Loopback)
     }
 
     pub fn hide_from_subnet_list(&self) -> bool {
         matches!(
             self,
-            SubnetType::Loopback
-                | SubnetType::Internet
-                | SubnetType::Remote
-                | SubnetType::ScanTarget
+            SubnetType::Loopback | SubnetType::Internet | SubnetType::Remote
         )
     }
 
     pub fn show_label(&self) -> bool {
-        !matches!(
-            self,
-            SubnetType::Unknown | SubnetType::Loopback | SubnetType::ScanTarget
-        )
-    }
-
-    /// Transient rows the server mints and reaps around a single operation,
-    /// rather than networks discovered or modelled by a user.
-    pub fn is_ephemeral(&self) -> bool {
-        matches!(self, SubnetType::ScanTarget)
+        !matches!(self, SubnetType::Unknown | SubnetType::Loopback)
     }
 }
 
@@ -283,7 +264,6 @@ impl EntityMetadataProvider for SubnetType {
             SubnetType::IpVlan => Concept::Containerization.color(),
             SubnetType::Storage => Concept::Storage.color(),
             SubnetType::Loopback => Color::Gray,
-            SubnetType::ScanTarget => Color::Gray,
 
             SubnetType::Unknown => Color::Gray,
         }
@@ -309,7 +289,6 @@ impl EntityMetadataProvider for SubnetType {
             SubnetType::IpVlan => Icon::Network,
             SubnetType::Storage => Concept::Storage.icon(),
             SubnetType::Loopback => Icon::Network,
-            SubnetType::ScanTarget => EntityDiscriminants::Subnet.icon(),
 
             SubnetType::Unknown => EntityDiscriminants::Subnet.icon(),
         }
@@ -338,7 +317,6 @@ impl TypeMetadataProvider for SubnetType {
             SubnetType::IpVlan => "IpVLAN",
             SubnetType::Storage => "Storage",
             SubnetType::Loopback => "Loopback",
-            SubnetType::ScanTarget => "Scan Target",
 
             SubnetType::Unknown => "Unknown",
         }
@@ -365,9 +343,6 @@ impl TypeMetadataProvider for SubnetType {
             SubnetType::IpVlan => "IpVLAN network",
             SubnetType::Storage => "Storage network",
             SubnetType::Loopback => "Host-local loopback, excluded from topology and scans",
-            SubnetType::ScanTarget => {
-                "Transient single-address target for a host rescan, removed when the scan ends"
-            }
 
             SubnetType::Unknown => "Unknown network type",
         }
@@ -381,7 +356,6 @@ impl TypeMetadataProvider for SubnetType {
                 | SubnetType::DockerBridge
                 | SubnetType::PodmanBridge
                 | SubnetType::Loopback
-                | SubnetType::ScanTarget
         );
 
         let is_for_containers = matches!(

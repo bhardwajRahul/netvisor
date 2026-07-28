@@ -195,16 +195,6 @@ pub struct DiscoveryUpdatePayload {
     /// Always enriched server-side; daemons do not send this field.
     #[serde(default)]
     pub discovery_id: Option<Uuid>,
-    /// Whether this session came from a one-shot rescan (`RunType::Targeted`)
-    /// rather than a discovery the user configured. Set server-side at session
-    /// creation; daemons do not send it.
-    ///
-    /// It rides into the historical Discovery row's `results`, which is the only
-    /// way downstream consumers can tell a rescan apart: the terminal path mints
-    /// a plain `RunType::Historical` row and the transient parent is deleted, so
-    /// there is nothing left to look up. Used to keep rescans out of the digest.
-    #[serde(default)]
-    pub targeted: bool,
     /// Canonical IDs of entities scanned in this session, populated daemon-
     /// side at terminal. **Transient**: stripped at `SqlValue::RunType` bind
     /// time so it doesn't persist into the historical Discovery row's JSONB.
@@ -264,7 +254,6 @@ impl DiscoveryUpdatePayload {
             hosts_discovered: None,
             estimated_remaining_secs: None,
             discovery_id,
-            targeted: false,
             scanned: None,
         }
     }
@@ -290,7 +279,6 @@ impl DiscoveryUpdatePayload {
             discovery_id: Some(info.discovery_id),
             // Daemon-side reconstruction; the server re-applies the flag from the
             // session it owns (see `DiscoveryService::update_session`).
-            targeted: false,
             scanned: None,
         }
     }

@@ -67,7 +67,7 @@ impl Discovery {
                 ref mut enabled, ..
             } => *enabled = false,
             // Nothing to disable — these are not scheduler-driven.
-            RunType::Historical { .. } | RunType::AdHoc { .. } | RunType::Targeted { .. } => {}
+            RunType::Historical { .. } | RunType::AdHoc { .. } => {}
         }
     }
 }

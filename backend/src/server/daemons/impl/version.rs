@@ -191,15 +191,12 @@ pub fn supports_server_provisioned_identity(version: Option<&Version>) -> bool {
     version.is_some_and(|v| v >= &minimum_server_provisioned_identity())
 }
 
-/// Minimum daemon version that resolves a transient `ScanTarget` /32 to the
-/// interfaced subnet containing it, so a single-host rescan is ARP'd from the
-/// right interface.
+/// Minimum daemon version that understands `DiscoveryType::Rescan`.
 ///
-/// This gate is not cosmetic. An older daemon would treat the /32 as its own
-/// non-interfaced subnet: no ARP, no MAC, the TCP responsiveness gate applied,
-/// and the resulting IP attributed to the /32 rather than the real subnet. That
-/// yields a rescan that both churns data and can report a live but TCP-silent
-/// host as gone.
+/// This gate is not cosmetic — it is required for correctness. `DiscoveryType`
+/// has no `#[serde(other)]` fallback (see `daemon/shared/forward_compat.rs`:
+/// an unknown discovery kind is not actionable and must be rejected, not
+/// degraded), so an older daemon cannot deserialize a rescan request at all.
 pub fn minimum_targeted_rescan() -> Version {
     Version::new(0, 17, 7)
 }

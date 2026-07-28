@@ -9,6 +9,7 @@
 	import type { DiscoveryUpdatePayload } from '../../types/api';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
 	import { useSubnetsQuery, getSubnetById } from '$lib/features/subnets/queries';
+	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import scanSettingsFields from '$lib/data/scan-settings.json';
 	import {
 		discovery_runDetails,
@@ -25,7 +26,12 @@
 		discovery_scanMode,
 		discovery_scanTuning,
 		discovery_selfReportDetails,
+		discovery_rescanDetails,
+		discovery_portsVerified,
 		common_duration,
+		common_host,
+		common_ipAddresses,
+		common_unknownEntity,
 		common_finished,
 		common_hostId,
 		common_ipAddress,
@@ -42,6 +48,8 @@
 	// TanStack Query for subnets
 	const subnetsQuery = useSubnetsQuery();
 	let subnetsData = $derived(subnetsQuery.data ?? []);
+	const hostsQuery = useHostsQuery({ limit: 0 });
+	let hostsData = $derived(hostsQuery.data?.items ?? []);
 
 	let duration = $derived(
 		payload.started_at && payload.finished_at
@@ -83,6 +91,13 @@
 		}
 		return result;
 	});
+
+	// Hoisted: narrowing on `payload.discovery_type` doesn't survive into the
+	// nested callback, and `ports` is optional in the generated type.
+	let rescan = $derived(payload.discovery_type.type === 'Rescan' ? payload.discovery_type : null);
+	let rescanHostName = $derived(
+		rescan ? (hostsData.find((h) => h.id === rescan.target_host_id)?.name ?? null) : null
+	);
 
 	let hostNamingLabel = $derived(
 		payload.discovery_type.type === 'Unified'
@@ -135,8 +150,18 @@
 		{/if}
 	</InfoCard>
 
-	<!-- Settings for Unified -->
-	{#if payload.discovery_type.type === 'Unified'}
+	<!-- A rescan names its target directly, so there are no subnets to resolve -->
+	{#if rescan}
+		<InfoCard title={discovery_rescanDetails()}>
+			<InfoRow label={common_host()}>
+				{rescanHostName ?? common_unknownEntity({ entity: common_host() })}
+			</InfoRow>
+			<InfoRow label={common_ipAddresses()}>{rescan.ips.join(', ')}</InfoRow>
+			<InfoRow label={discovery_portsVerified()}>{(rescan.ports ?? []).length}</InfoRow>
+		</InfoCard>
+
+		<!-- Settings for Unified -->
+	{:else if payload.discovery_type.type === 'Unified'}
 		<InfoCard title={discovery_scanSettings()}>
 			<InfoRow label={discovery_subnetsScanned()}>
 				{#if payload.discovery_type.subnet_ids === null}

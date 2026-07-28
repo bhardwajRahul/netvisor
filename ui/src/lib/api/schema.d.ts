@@ -3160,19 +3160,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-28T19:10:16.153218Z",
+             *       "created_at": "2026-07-28T21:37:57.095298Z",
              *       "first_discovery_id": null,
-             *       "id": "c502bfa8-a442-47f2-91b0-7ec2fa58d64f",
+             *       "id": "70759eac-59a6-47d2-81f4-30c88a8eec0f",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-28T19:10:16.153218Z",
+             *       "last_seen_at": "2026-07-28T21:37:57.095298Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-28T19:10:16.153218Z",
-             *       "valid_from": "2026-07-28T19:10:16.153218Z",
+             *       "updated_at": "2026-07-28T21:37:57.095298Z",
+             *       "valid_from": "2026-07-28T21:37:57.095298Z",
              *       "valid_to": null
              *     }
              */
@@ -3464,17 +3464,6 @@ export interface components {
                 /** Format: date-time */
                 started_at?: string | null;
                 /**
-                 * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
-                 *     rather than a discovery the user configured. Set server-side at session
-                 *     creation; daemons do not send it.
-                 *
-                 *     It rides into the historical Discovery row's `results`, which is the only
-                 *     way downstream consumers can tell a rescan apart: the terminal path mints
-                 *     a plain `RunType::Historical` row and the transient parent is deleted, so
-                 *     there is nothing left to look up. Used to keep rescans out of the digest.
-                 */
-                targeted?: boolean;
-                /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
                  *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
                  */
@@ -3576,19 +3565,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-28T19:10:16.139475Z",
+             *               "created_at": "2026-07-28T21:37:57.076124Z",
              *               "first_discovery_id": null,
-             *               "id": "c1472770-7b05-44fd-9e38-ecd5b47994ae",
+             *               "id": "3fa75e56-62f1-42e1-8efb-8547fbdcb958",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-28T19:10:16.139475Z",
+             *               "last_seen_at": "2026-07-28T21:37:57.076124Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-28T19:10:16.139475Z",
-             *               "valid_from": "2026-07-28T19:10:16.139475Z",
+             *               "updated_at": "2026-07-28T21:37:57.076124Z",
+             *               "valid_from": "2026-07-28T21:37:57.076124Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3602,7 +3591,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "mailcow",
+             *           "service_definition": "Oracle Database",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -4019,19 +4008,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-28T19:10:16.148222Z",
+             *           "created_at": "2026-07-28T21:37:57.089242Z",
              *           "first_discovery_id": null,
-             *           "id": "14a6e4e4-9677-434e-8807-578ff612cee4",
+             *           "id": "a0206350-6912-4c9d-a743-29b2a0416b4e",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-28T19:10:16.148222Z",
+             *           "last_seen_at": "2026-07-28T21:37:57.089242Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-28T19:10:16.148222Z",
-             *           "valid_from": "2026-07-28T19:10:16.148222Z",
+             *           "updated_at": "2026-07-28T21:37:57.089242Z",
+             *           "valid_from": "2026-07-28T21:37:57.089242Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4045,7 +4034,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "mailcow",
+             *       "service_definition": "Oracle Database",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4426,17 +4415,6 @@ export interface components {
                 /** Format: date-time */
                 started_at?: string | null;
                 /**
-                 * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
-                 *     rather than a discovery the user configured. Set server-side at session
-                 *     creation; daemons do not send it.
-                 *
-                 *     It rides into the historical Discovery row's `results`, which is the only
-                 *     way downstream consumers can tell a rescan apart: the terminal path mints
-                 *     a plain `RunType::Historical` row and the transient parent is deleted, so
-                 *     there is nothing left to look up. Used to keep rescans out of the digest.
-                 */
-                targeted?: boolean;
-                /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
                  *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
                  */
@@ -4560,19 +4538,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-28T19:10:16.139711Z",
+         *       "created_at": "2026-07-28T21:37:57.076549Z",
          *       "first_discovery_id": null,
-         *       "id": "e15ceb58-7321-4e0d-8ee4-2391b7b9b578",
+         *       "id": "619dfcb9-5e6e-4ada-b6e7-8e20daa01785",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-28T19:10:16.139711Z",
+         *       "last_seen_at": "2026-07-28T21:37:57.076549Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-28T19:10:16.139711Z",
-         *       "valid_from": "2026-07-28T19:10:16.139711Z",
+         *       "updated_at": "2026-07-28T21:37:57.076549Z",
+         *       "valid_from": "2026-07-28T21:37:57.076549Z",
          *       "valid_to": null
          *     }
          */
@@ -4787,7 +4765,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "mailcow",
+         *           "service_definition": "Oracle Database",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5412,6 +5390,29 @@ export interface components {
         } | {
             /**
              * Format: uuid
+             * @description ID of the host that the daemon is running on — same meaning as every
+             *     other variant. The host being rescanned is `target_host_id`.
+             */
+            host_id: string;
+            /** @description Addresses to scan on that host. */
+            ips: string[];
+            /**
+             * @description Ports already known on that host, re-checked to confirm they are
+             *     still open. Scanned in addition to the standard discovery set, so a
+             *     rescan also surfaces newly-opened services.
+             */
+            ports?: components["schemas"]["PortType"][];
+            settings?: components["schemas"]["RescanSettings"];
+            /**
+             * Format: uuid
+             * @description The host being rescanned.
+             */
+            target_host_id: string;
+            /** @enum {string} */
+            type: "Rescan";
+        } | {
+            /**
+             * Format: uuid
              * @description ID of the host that the daemon is running on
              */
             host_id: string;
@@ -5452,17 +5453,6 @@ export interface components {
             session_id: string;
             /** Format: date-time */
             started_at?: string | null;
-            /**
-             * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
-             *     rather than a discovery the user configured. Set server-side at session
-             *     creation; daemons do not send it.
-             *
-             *     It rides into the historical Discovery row's `results`, which is the only
-             *     way downstream consumers can tell a rescan apart: the terminal path mints
-             *     a plain `RunType::Historical` row and the transient parent is deleted, so
-             *     there is nothing left to look up. Used to keep rescans out of the digest.
-             */
-            targeted?: boolean;
             /**
              * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
              *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
@@ -5949,19 +5939,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-28T19:10:16.139202Z",
+         *               "created_at": "2026-07-28T21:37:57.075664Z",
          *               "first_discovery_id": null,
-         *               "id": "99a1677b-9162-4ccd-b5ac-045ce38323ee",
+         *               "id": "7800da52-fa24-4028-b5dc-ef24f92b67bb",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-28T19:10:16.139202Z",
+         *               "last_seen_at": "2026-07-28T21:37:57.075664Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-28T19:10:16.139202Z",
-         *               "valid_from": "2026-07-28T19:10:16.139202Z",
+         *               "updated_at": "2026-07-28T21:37:57.075664Z",
+         *               "valid_from": "2026-07-28T21:37:57.075664Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5975,7 +5965,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "mailcow",
+         *           "service_definition": "Oracle Database",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -7459,6 +7449,39 @@ export interface components {
             /** Format: email */
             new_email: string;
         };
+        /**
+         * @description Scan settings that apply to a single-host rescan.
+         *
+         *     Deliberately narrower than [`ScanSettings`]: a rescan verifies a known host
+         *     against a known port set, so the full-scan mechanism (`is_full_scan`,
+         *     `full_scan_interval`) must not be expressible — promoting a rescan to a
+         *     65,535-port sweep defeats the feature. The remaining omissions are settings
+         *     that cannot bind on a one-or-two address target.
+         */
+        RescanSettings: {
+            /**
+             * Format: int32
+             * @description ARP retry rounds. Matters more here than in a sweep: for a rescan, "did
+             *     it answer" is the entire answer, so a missed round reads as a dead host.
+             */
+            arp_retries?: number | null;
+            /** @description Ports scanned concurrently per host. */
+            port_scan_batch_size?: number | null;
+            /**
+             * @description Whether to probe raw-socket ports 9100-9107. Correctness-affecting: with
+             *     this off the scanner drops those ports from its results, so a printer's
+             *     known JetDirect port would look like it had disappeared.
+             */
+            probe_raw_socket_ports?: boolean;
+            /**
+             * Format: int32
+             * @description Port scan probes per second. Operators lower this for fragile devices or
+             *     noisy IDS, and a rescan must respect that as much as a discovery does.
+             */
+            scan_rate_pps?: number | null;
+            /** @description On Windows, use Npcap broadcast ARP instead of SendARP. */
+            use_npcap_arp?: boolean;
+        };
         /** @description Request to resend verification email */
         ResendVerificationRequest: {
             /** Format: email */
@@ -7486,11 +7509,6 @@ export interface components {
             readonly last_run?: string | null;
             /** @enum {string} */
             type: "AdHoc";
-        } | {
-            /** Format: date-time */
-            readonly last_run?: string | null;
-            /** @enum {string} */
-            type: "Targeted";
         };
         /**
          * @description Save-offer choices presented during in-app cancellation (Phase 5).
@@ -7630,19 +7648,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-28T19:10:16.139661Z",
+         *           "created_at": "2026-07-28T21:37:57.076461Z",
          *           "first_discovery_id": null,
-         *           "id": "cf5d1203-a94d-4649-8bcc-6bac7e951f72",
+         *           "id": "4bc2aacc-66cb-4908-aa9a-4a33620a6bd8",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-28T19:10:16.139661Z",
+         *           "last_seen_at": "2026-07-28T21:37:57.076461Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-28T19:10:16.139661Z",
-         *           "valid_from": "2026-07-28T19:10:16.139661Z",
+         *           "updated_at": "2026-07-28T21:37:57.076461Z",
+         *           "valid_from": "2026-07-28T21:37:57.076461Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7656,7 +7674,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "mailcow",
+         *       "service_definition": "Oracle Database",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7922,7 +7940,7 @@ export interface components {
          */
         SubnetOrderField: "created_at" | "name" | "cidr" | "subnet_type" | "updated_at" | "network_id" | "last_seen_at";
         /** @enum {string} */
-        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "ScanTarget" | "Unknown";
+        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "Unknown";
         /**
          * @description Virtualization metadata for subnets that belong to a virtual infrastructure.
          *     Consistent with HostVirtualization and ServiceVirtualization patterns.
@@ -8079,7 +8097,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "3967fedc-d627-42a7-a7dc-8fa739a9216d",
+             *           "id": "567c29c3-caed-41c8-99df-bc1d1af216ee",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -8089,23 +8107,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "05eb32a8-ea61-4bb6-9cad-7d6dfd36c305",
+             *           "id": "1e5038d8-6320-49ab-9f47-375db1ec3959",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "31cc9637-e0cf-4e50-adf5-84a1d7b08d9a",
+             *           "id": "d8d1329c-cb61-48f0-aaac-e69a41c3ee33",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "0e7461b9-dd60-4e53-9cb8-d46d15f084a8",
+             *           "id": "b47ba552-38db-4667-b191-19cb80dd7860",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "05eb32a8-ea61-4bb6-9cad-7d6dfd36c305",
+             *           "id": "1e5038d8-6320-49ab-9f47-375db1ec3959",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -8117,19 +8135,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "8281f32d-4fff-4790-960c-88fddb27c2d1",
+             *         "id": "d85e0a41-dd51-4c3b-8220-6349a7cdae1d",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "a6f271f9-d0c8-4fa0-b284-808228701a7b",
+             *         "id": "ef48ceda-9190-4644-91b5-04509c8293e7",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "400344ac-8225-405d-86e6-e2c28cc87c2b",
+             *         "id": "0529fa81-828f-411a-8284-4b07ef92125c",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "5f0de03c-5773-4a7b-9105-dd96df5456a2",
+             *         "id": "6c90c9d2-b393-46db-a9d6-255010a46098",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -8147,7 +8165,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "5834848f-bd18-4bea-b465-f6f515a9f773",
+             *         "id": "4bcc707a-9604-4de0-a9f1-ecc3a39c3cfc",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -8156,15 +8174,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "19626c31-cfe5-441d-9fe7-04a8eee2fa0c",
+             *         "id": "4e3957e5-a4a0-43a0-953f-fe6ba999c63b",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "6841cc98-bc74-40a5-8a7a-2409f8853e94",
+             *         "id": "87e26285-38de-445c-8570-eec898121095",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "7c9b2fcb-f7f5-45c2-9ecb-37f86195e9c3",
+             *         "id": "310bf06a-4eb9-4eec-ae26-89c9fbe929a6",
              *         "rule": "ByStack"
              *       }
              *     ]
