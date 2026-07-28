@@ -543,6 +543,39 @@ pub async fn wait_for_daemon(client: &TestClient) -> Result<Daemon, String> {
     .await
 }
 
+/// Wait until a provisioned ServerPoll daemon has been polled by the server and
+/// has reported its version. Provisioning intentionally leaves the version `None`
+/// (an unconnected daemon's version is genuinely unknown), so it is only populated
+/// after the server's first status poll — and unified discovery cannot be triggered
+/// until then. Mirrors `wait_for_daemon`, but keys on the specific daemon and its
+/// version rather than the DaemonPoll daemon's `last_seen`.
+pub async fn wait_for_serverpoll_daemon_version(
+    client: &TestClient,
+    daemon_id: Uuid,
+) -> Result<Daemon, String> {
+    retry(
+        "wait for ServerPoll daemon to report its version",
+        30,
+        2,
+        || async {
+            let daemons: Vec<Daemon> = client.get("/api/v1/daemons").await?;
+            let daemon = daemons
+                .into_iter()
+                .find(|d| d.id == daemon_id)
+                .ok_or_else(|| "ServerPoll daemon record not found".to_string())?;
+
+            if daemon.base.version.is_none() {
+                return Err(
+                    "ServerPoll daemon provisioned but has not reported its version yet".to_string(),
+                );
+            }
+
+            Ok(daemon)
+        },
+    )
+    .await
+}
+
 /// Provision and initialize the ServerPoll daemon.
 ///
 /// This follows the proper ServerPoll provisioning flow:

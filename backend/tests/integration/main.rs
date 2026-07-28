@@ -24,7 +24,8 @@ mod validations;
 
 use infra::{
     ContainerManager, TestClient, TestContext, clear_discovery_data, create_test_db_pool,
-    provision_serverpoll_daemon, setup_authenticated_user, wait_for_daemon, wait_for_network,
+    provision_serverpoll_daemon, setup_authenticated_user, wait_for_daemon,
+    wait_for_serverpoll_daemon_version, wait_for_network,
     wait_for_organization,
 };
 
@@ -118,6 +119,13 @@ async fn integration_tests() {
 
     // Clear any leftover discovery data from previous test runs
     clear_discovery_data().expect("Failed to clear discovery data");
+
+    // The ServerPoll daemon is provisioned with no version — it's only recorded once
+    // the server has polled it. Unified discovery requires a known version, so wait for
+    // that first poll before triggering, otherwise we race it and the trigger 400s.
+    wait_for_serverpoll_daemon_version(&client, serverpoll_daemon_id)
+        .await
+        .expect("ServerPoll daemon never reported its version");
 
     // Trigger discovery for the ServerPoll daemon and get the session_id
     let serverpoll_host_id = serverpoll_provision.daemon.base.host_id;

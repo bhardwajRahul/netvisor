@@ -178,9 +178,21 @@ pub async fn create_discovery(
             .ok_or_else(|| ApiError::not_found("Daemon not found".to_string()))?;
 
         if !supports_unified_discovery(daemon.base.version.as_ref()) {
-            return Err(ApiError::bad_request(
-                "Daemon does not support unified discovery. Upgrade to version 0.15.0 or later.",
-            ));
+            // Distinguish "we don't know the version yet" from "the version is too
+            // old". A provisioned daemon carries no version until it first contacts
+            // the server (provisioning no longer writes one optimistically), so a
+            // never-connected daemon lands here with `None` — telling that operator
+            // to "upgrade to 0.15.0" is misleading; the daemon simply hasn't checked
+            // in yet.
+            return Err(match daemon.base.version {
+                None => ApiError::bad_request(
+                    "Daemon has not connected to the server yet, so its version is unknown. \
+                     Wait for it to contact the server, then trigger discovery again.",
+                ),
+                Some(_) => ApiError::bad_request(
+                    "Daemon does not support unified discovery. Upgrade to version 0.15.0 or later.",
+                ),
+            });
         }
     }
 
