@@ -58,6 +58,21 @@ async function getElk(): Promise<import('elkjs/lib/elk-api')['default']> {
 	return elkPromise;
 }
 
+/**
+ * Begin loading elkjs without waiting for it.
+ *
+ * `elk.bundled.js` is large, and the import was previously first awaited at the
+ * top of `computeElkLayout` — i.e. *after* the DOM measure pass had finished.
+ * Loading it is independent of measuring, so serialising them added the full
+ * module cost to time-to-interactive (measured at ~1.1s on a large L2 view).
+ *
+ * Call this as early as a layout is anticipated; the two then overlap. Safe to
+ * call repeatedly — `getElk` memoizes, so extra calls are no-ops.
+ */
+export function preloadElk(): void {
+	void getElk();
+}
+
 /** Root-level ELK layout options for layered compound layout. */
 const ROOT_LAYOUT_OPTIONS: Record<string, string> = {
 	'elk.algorithm': 'layered',
@@ -1494,11 +1509,15 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 		};
 	}
 
+	const elkLoadDone = perf.stage('elk.module-load');
 	const elk = await getElk();
+	elkLoadDone();
 
 	// Pass 1: compute layout with FIXED_SIDE ports (no position info).
 	// This gives us actual element positions within box-packed containers.
+	const build1Done = perf.stage('elk.build-graph');
 	const { graph: graph1, containerIds } = buildElkGraph(input);
+	build1Done();
 	const elkPass1Done = perf.stage('elk.layout');
 	const result1 = await elk.layout(graph1);
 	elkPass1Done();
@@ -1535,11 +1554,13 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 	if (result1.children) extractPositions(result1.children);
 
 	// Pass 2: rebuild graph with FIXED_POS ports at actual element positions
+	const build2Done = perf.stage('elk.build-graph');
 	const { graph: graph2, containerIds: cids2 } = buildElkGraph(
 		input,
 		elementPositions,
 		subcontainerPositions
 	);
+	build2Done();
 	const elkPass2Done = perf.stage('elk.layout');
 	const result2 = await elk.layout(graph2);
 	elkPass2Done();

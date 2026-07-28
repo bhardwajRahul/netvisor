@@ -1,11 +1,10 @@
-import { get } from 'svelte/store';
 import type { RenderableTopology, TopologyNode, TopologyEdge } from '../types/base';
 import type { LayoutState, PrepareResult, XY } from './types';
 import { LayoutGraph } from '../layout/layout-graph';
 import { ElkLayoutEngine } from '../layout/engine';
 import { computeForceLayout, type ForceNode, type ForceLink } from '../layout/force-layout';
-import { collapsedContainers, collapseLevel, inferCurrentLevel } from '../collapse';
 import { containerTypes } from '$lib/shared/stores/metadata';
+import * as perf from '../perf';
 
 const layoutEngine = new ElkLayoutEngine();
 
@@ -22,8 +21,7 @@ export async function executeLayout(
 	state: LayoutState,
 	prep: PrepareResult,
 	elementNodeSizes: Map<string, XY>,
-	isStale: () => boolean,
-	getInfrastructureRuleId: () => string | null
+	isStale: () => boolean
 ): Promise<{ visibleNodes: TopologyNode[] } | null> {
 	const {
 		layoutNodes,
@@ -63,6 +61,7 @@ export async function executeLayout(
 		const elkCollapsed = deferCollapse ? new Set<string>() : collapsed;
 		const elkNodes = deferCollapse ? layoutNodes : visibleNodes;
 
+		const elkComputeDone = perf.stage('layout.elk-compute');
 		const elkResult = await layoutEngine.compute({
 			nodes: elkNodes,
 			edges: elevatedEdges,
@@ -74,12 +73,14 @@ export async function executeLayout(
 			elementNodeSizes,
 			hiddenEdgeTypes
 		});
+		elkComputeDone();
 		if (isStale()) return null;
 
 		state.sessionStructureKey = structureKey;
 		state.sessionBaseKey = baseKey;
 
 		// Rebuild graph and apply ELK result
+		const graphBuildDone = perf.stage('layout.graph-build');
 		state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
 		if (!deferCollapse) {
 			state.layoutGraph.syncCollapseState(collapsed);
@@ -90,19 +91,25 @@ export async function executeLayout(
 				state.layoutGraph.restoreContainerChildPositions(prevChildPositions);
 			}
 		}
+		graphBuildDone();
+		const applyDone = perf.stage('layout.apply-elk');
 		state.layoutGraph.applyElkResult(
 			elkResult.nodePositions,
 			elkResult.containerSizes,
 			elkResult.elementNodeSizes
 		);
+		applyDone();
 
 		// When collapse was deferred, apply it AFTER ELK result
 		if (deferCollapse) {
+			const visibleDone = perf.stage('layout.visible-nodes');
 			state.layoutGraph.syncCollapseState(collapsed);
 			visibleNodes = state.layoutGraph.getVisibleNodes(layoutNodes);
+			visibleDone();
 		}
 
 		// Cache container sizes from ELK result
+		const cacheDone = perf.stage('layout.cache-sizes');
 		for (const [id, size] of elkResult.containerSizes) {
 			if (state.layoutGraph?.containers.has(id)) {
 				const entry = state.containerSizeCache.get(id) ?? {};
@@ -114,6 +121,7 @@ export async function executeLayout(
 				state.containerSizeCache.set(id, entry);
 			}
 		}
+		cacheDone();
 	}
 
 	// Cache measured sizes for this view
@@ -126,9 +134,6 @@ export async function executeLayout(
 	} else {
 		state.viewSizeCache.set(viewCacheKey, new Map(elementNodeSizes));
 	}
-
-	// Auto-collapse containers whose type has collapsed_by_default metadata
-	applyAutoCollapse(topology, state, collapsed, getInfrastructureRuleId);
 
 	return { visibleNodes };
 }
@@ -229,51 +234,4 @@ function executeForceLayout(
 
 	// Recompute visible nodes after force layout rebuilds the graph
 	return state.layoutGraph.getVisibleNodes(layoutNodes);
-}
-
-function applyAutoCollapse(
-	topology: RenderableTopology,
-	state: LayoutState,
-	collapsed: Set<string>,
-	getInfrastructureRuleId: () => string | null
-) {
-	const currentLevel = get(collapseLevel);
-	const infraRuleId = getInfrastructureRuleId();
-
-	const allCandidates = topology.nodes.filter((n) => {
-		if (n.node_type !== 'Container') return false;
-		const data = n as Record<string, unknown>;
-		const ct = data.container_type as string | undefined;
-		return (
-			(ct && containerTypes.getMetadata(ct).collapsed_by_default === true) ||
-			(infraRuleId && data.element_rule_id === infraRuleId)
-		);
-	});
-
-	const userExplicitlyExpandedAll = currentLevel === 4 && state.collapseLevelInferred;
-	const autoCollapseIds = userExplicitlyExpandedAll
-		? []
-		: allCandidates
-				.filter((n) => !collapsed.has(n.id) && !state.seenAutoCollapseIds.has(n.id))
-				.map((n) => n.id);
-
-	if (autoCollapseIds.length > 0) {
-		for (const id of autoCollapseIds) state.seenAutoCollapseIds.add(id);
-		const next = new Set(collapsed);
-		for (const id of autoCollapseIds) next.add(id);
-		collapsedContainers.set(next);
-	}
-
-	// Re-infer level after auto-collapse
-	if (!state.collapseLevelInferred) {
-		state.collapseLevelInferred = true;
-		const newCollapsed = get(collapsedContainers);
-		const inferred = inferCurrentLevel(
-			newCollapsed,
-			topology.nodes,
-			containerTypes,
-			getInfrastructureRuleId()
-		);
-		collapseLevel.set(inferred);
-	}
 }

@@ -144,8 +144,18 @@ export async function resolveNodeSizes(
 		// Populate container size cache from this measurement.
 		// During deferred collapse, everything was measured EXPANDED
 		// regardless of the collapsed store — categorize accordingly.
+		//
+		// Containers are identified from the nodes being laid out, not from
+		// `state.layoutGraph`: the graph is built later, in executeLayout, so on a
+		// cold load it is still null here. Gating on it meant nothing was cached on
+		// the very pass that measures everything — and the post-render self-heal
+		// then saw every collapsed container as new and triggered a full corrective
+		// re-layout (two more elk.layout() calls) on every first render.
+		const containerIds = new Set(
+			visibleNodes.filter((n) => n.node_type === 'Container').map((n) => n.id)
+		);
 		for (const [id, size] of elementNodeSizes) {
-			if (state.layoutGraph?.containers.has(id)) {
+			if (containerIds.has(id)) {
 				const entry = state.containerSizeCache.get(id) ?? {};
 				const wasExpandedInMeasurement = prep.deferCollapse || !collapsed.has(id);
 				if (wasExpandedInMeasurement) {

@@ -637,8 +637,24 @@ export function hydrateStoresFromTopology(
 		}
 	} finally {
 		hydrating = false;
+		topologyOptionsHydrated.set(true);
 	}
 }
+
+/**
+ * True once `hydrateStoresFromTopology` has run at least once.
+ *
+ * The render pipeline reads `hide_edge_types` and the element rules out of
+ * these stores, but hydration happens in an effect — so the viewer's own effect
+ * could start a full layout against pre-hydration defaults, then be forced to
+ * throw it away and re-run once the real options landed. That cost two
+ * `elk.layout()` calls and a full DOM measure pass on every cold load.
+ *
+ * Deliberately latched rather than reset per topology: the race only exists
+ * before the first hydration. Later option changes are ordinary input changes
+ * and are handled by the pipeline's reload guard.
+ */
+export const topologyOptionsHydrated = writable<boolean>(false);
 
 export const optionsPanelExpanded = writable<boolean>(loadExpandedFromStorage());
 

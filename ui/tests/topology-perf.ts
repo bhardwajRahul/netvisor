@@ -39,6 +39,7 @@ interface FrameStats {
 
 interface PerfReport {
 	label: string;
+	view: string;
 	nodeCount: number;
 	edgeCount: number;
 	domNodeCount: number;
@@ -62,32 +63,57 @@ async function readPipelinePerf(page: Page): Promise<PerfSnapshot> {
 }
 
 /**
- * Wait until node positions stop changing.
+ * Wait until the render pipeline is genuinely idle.
  *
- * Deliberately does not key off `.svelte-flow__node` count alone: with viewport
- * culling the rendered set changes as the graph settles, so we compare a
- * position fingerprint and require two identical consecutive samples.
+ * Three conditions, all required — getting this wrong silently invalidates a
+ * comparison rather than failing it:
+ *
+ *  1. **No pipeline run in flight.** The app reports this via `runStartedAt`.
+ *     Node positions can be stable *between* stages of a run that is about to
+ *     re-layout, and a cold load legitimately runs the pipeline more than once.
+ *  2. **Edges are present.** Edges are flushed only once `nodesInitialized`
+ *     fires, so a node-only fingerprint can settle while zero edges are drawn —
+ *     which measures a strictly cheaper page than the one under test.
+ *  3. **Node positions unchanged** across consecutive samples.
+ *
+ * Deliberately does not key off node *count* alone: with viewport culling the
+ * rendered set changes as the graph settles.
  */
-async function waitForStableLayout(page: Page, timeoutMs = 60_000): Promise<void> {
+async function waitForStableLayout(page: Page, timeoutMs = 90_000): Promise<void> {
 	const started = Date.now();
 	let previous = '';
 	let stableSamples = 0;
 
 	while (Date.now() - started < timeoutMs) {
-		const fingerprint = await page.evaluate(() =>
-			Array.from(document.querySelectorAll('.svelte-flow__node'))
-				.map((el) => `${(el as HTMLElement).dataset.id}:${(el as HTMLElement).style.transform}`)
-				.sort()
-				.join('|')
-		);
+		const sample = await page.evaluate(() => {
+			const api = (
+				window as unknown as {
+					__scanopyTopologyPerf?: { snapshot: () => { runStartedAt: number | null } };
+				}
+			).__scanopyTopologyPerf;
+			return {
+				running: api ? api.snapshot().runStartedAt !== null : false,
+				edges: document.querySelectorAll('.svelte-flow__edge').length,
+				fingerprint: Array.from(document.querySelectorAll('.svelte-flow__node'))
+					.map((el) => `${(el as HTMLElement).dataset.id}:${(el as HTMLElement).style.transform}`)
+					.sort()
+					.join('|')
+			};
+		});
 
-		if (fingerprint !== '' && fingerprint === previous) {
+		const settled =
+			!sample.running &&
+			sample.edges > 0 &&
+			sample.fingerprint !== '' &&
+			sample.fingerprint === previous;
+
+		if (settled) {
 			stableSamples += 1;
 			if (stableSamples >= 2) return;
 		} else {
 			stableSamples = 0;
 		}
-		previous = fingerprint;
+		previous = sample.fingerprint;
 		await page.waitForTimeout(250);
 	}
 	throw new Error(`Layout did not settle within ${timeoutMs}ms`);
@@ -182,8 +208,14 @@ test('topology render performance', async ({ page, context }) => {
 		(window as unknown as { __topoPerf: boolean }).__topoPerf = true;
 	});
 
+	// Pin the view explicitly. `?view=` is read on load (queries.ts
+	// getTopologyParamsFromUrl), so without it we would measure whichever view
+	// happens to be default or persisted — usually L3 Logical, not the one under
+	// investigation. Override with TOPOLOGY_VIEW.
+	const view = process.env.TOPOLOGY_VIEW ?? 'L2Physical';
+
 	const navigationStart = Date.now();
-	await page.goto('/#topology');
+	await page.goto(`/?view=${view}#topology`);
 	await page.waitForSelector('.svelte-flow__node', { timeout: 60_000 });
 	await waitForStableLayout(page);
 	const timeToInteractiveMs = Date.now() - navigationStart;
@@ -203,6 +235,7 @@ test('topology render performance', async ({ page, context }) => {
 
 	const report: PerfReport = {
 		label: process.env.PERF_LABEL ?? 'unlabelled',
+		view,
 		nodeCount,
 		edgeCount,
 		domNodeCount,
