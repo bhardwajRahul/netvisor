@@ -133,6 +133,9 @@ pub struct ServiceMatchBaselineParams<'a> {
         crate::server::services::r#impl::patterns::ClientProbe,
         Vec<PortType>,
     >,
+    /// Set when this host came from a management controller's device inventory rather than
+    /// from a direct network probe. Read by [`Pattern::ManagedDeviceType`].
+    pub managed_device: &'a Option<crate::server::services::r#impl::patterns::ManagedDevice>,
 }
 
 #[derive(Debug, Clone)]

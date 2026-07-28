@@ -280,6 +280,8 @@ impl<'a> ContainerScanner<'a> {
                     ),
                 ),
                 client_responses: &empty_client_responses,
+                // Container inventory, not a management controller's device inventory.
+                managed_device: &None,
             };
 
             if let Ok(Some(host_data)) = self
@@ -422,6 +424,8 @@ impl<'a> ContainerScanner<'a> {
                             ),
                         ),
                         client_responses: &empty_client_responses,
+                        // Container inventory, not a management controller's device inventory.
+                        managed_device: &None,
                     },
                     None,
                     self.host_naming_fallback,

@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 // Re-export type-specific types so external imports don't break
 pub use super::types::container_proxy::ContainerProxyQueryCredential;
+pub use super::types::unifi::{UnifiAuth, UnifiQueryCredential};
 
 /// Container-runtime (Docker/Podman) socket query credential. The daemon connects via a local
 /// Unix socket; `socket_path` optionally repoints it (e.g. rootless Podman at
@@ -182,6 +183,9 @@ pub enum CredentialQueryPayload {
     DockerSocket(ContainerSocketQueryCredential),
     PodmanProxy(ContainerProxyQueryCredential),
     PodmanSocket(ContainerSocketQueryCredential),
+    /// Both UniFi transports (API key and local admin) share this payload; the auth
+    /// material is discriminated inside `UnifiAuth`.
+    UnifiController(UnifiQueryCredential),
     /// Forward-compat fallback: a credential type from a newer server that this
     /// daemon doesn't recognize. `#[serde(other)]` deserializes any unknown `type`
     /// tag here (a unit variant, the only shape allowed for `other` on an
@@ -205,6 +209,9 @@ impl From<CredentialQueryPayloadDiscriminants> for super::types::CredentialTypeD
             CredentialQueryPayloadDiscriminants::DockerSocket => Self::DockerSocket,
             CredentialQueryPayloadDiscriminants::PodmanProxy => Self::PodmanProxy,
             CredentialQueryPayloadDiscriminants::PodmanSocket => Self::PodmanSocket,
+            // Lossy but harmless: this reverse map only picks a representative
+            // `CredentialType` for a wire tag, and both UniFi transports share one.
+            CredentialQueryPayloadDiscriminants::UnifiController => Self::UnifiApiKey,
             // `Unknown` is the daemon-side forward-compat sentinel; the server only
             // ever builds `CredentialQueryPayload` from a known `CredentialType`, so
             // this reverse conversion never sees it. Fall back to the SNMP default to
@@ -231,6 +238,7 @@ impl CredentialQueryPayload {
             Self::Snmp(_) => vec![161, 1161],
             Self::DockerProxy(d) | Self::PodmanProxy(d) => vec![d.port],
             Self::DockerSocket(_) | Self::PodmanSocket(_) => vec![],
+            Self::UnifiController(u) => vec![u.port],
             Self::Unknown => vec![],
         }
     }
@@ -242,6 +250,7 @@ impl CredentialQueryPayload {
             Self::DockerSocket(_) => "Docker socket connection",
             Self::PodmanProxy(_) => "Podman proxy connection",
             Self::PodmanSocket(_) => "Podman socket connection",
+            Self::UnifiController(_) => "UniFi controller connection",
             Self::Unknown => "unknown credential",
         }
     }
@@ -320,6 +329,20 @@ impl CredentialQueryPayload {
             }
             Self::DockerSocket(d) => Ok(Self::DockerSocket(d.clone())),
             Self::PodmanSocket(d) => Ok(Self::PodmanSocket(d.clone())),
+            // No PEM validation — UniFi secrets are opaque plain strings.
+            Self::UnifiController(u) => Ok(Self::UnifiController(UnifiQueryCredential {
+                port: u.port,
+                site: u.site.clone(),
+                auth: match &u.auth {
+                    UnifiAuth::ApiKey { api_key } => UnifiAuth::ApiKey {
+                        api_key: api_key.resolve_to_value("api_key", label)?,
+                    },
+                    UnifiAuth::LocalAdmin { username, password } => UnifiAuth::LocalAdmin {
+                        username: username.clone(),
+                        password: password.resolve_to_value("password", label)?,
+                    },
+                },
+            })),
             Self::Unknown => Ok(Self::Unknown),
         }
     }
@@ -329,6 +352,7 @@ impl CredentialQueryPayload {
             Self::Snmp(snmp) => snmp.banner_lines(),
             Self::DockerProxy(c) | Self::PodmanProxy(c) => c.banner_lines(),
             Self::DockerSocket(_) | Self::PodmanSocket(_) => vec![],
+            Self::UnifiController(u) => u.banner_lines(),
             Self::Unknown => vec![],
         }
     }

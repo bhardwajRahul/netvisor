@@ -59,6 +59,7 @@ pub async fn probe_integrations(
     skip_gate: bool,
     cancel: &CancellationToken,
     utils: &PlatformDaemonUtils,
+    accept_invalid_certs: bool,
 ) -> Result<IntegrationProbeResults, Error> {
     let mut results = IntegrationProbeResults {
         client_responses: HashMap::new(),
@@ -137,6 +138,7 @@ pub async fn probe_integrations(
                         credential_id: *cred_id,
                         cancel,
                         utils,
+                        accept_invalid_certs,
                     })
                     .await
                 {

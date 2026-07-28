@@ -1,0 +1,119 @@
+{
+  "meta": { "rc": "ok" },
+  "data": [
+    {
+      "_id": "6512a1b2c3d4e5f600000001",
+      "mac": "78:8a:20:11:22:33",
+      "ip": "192.168.20.10",
+      "name": "Core Switch",
+      "model": "USL24P",
+      "serial": "788A20112233",
+      "version": "7.0.21",
+      "type": "usw",
+      "adopted": true,
+      "state": 1,
+      "uplink": {
+        "name": "eth24",
+        "mac": "78:8a:20:11:22:47",
+        "port_idx": 24,
+        "uplink_mac": "0:1A:2b:3C:4d:5E",
+        "uplink_remote_port": 4,
+        "uplink_device_name": "Border Gateway"
+      },
+      "lldp_table": [
+        {
+          "chassis_id": "b4:fb:e4:aa:bb:cc",
+          "port_id": "GigabitEthernet0/12",
+          "local_port_idx": 12,
+          "local_port_name": "Port 12",
+          "is_wired": true
+        }
+      ],
+      "port_table": [
+        {
+          "port_idx": 1,
+          "name": "Port 1",
+          "up": true,
+          "enable": true,
+          "speed": 1000,
+          "mac": "78:8a:20:11:22:33",
+          "is_uplink": false,
+          "mac_table": [{ "mac": "aa:bb:cc:00:00:01", "vlan": 1, "age": 30, "static": false }]
+        },
+        {
+          "port_idx": 2,
+          "name": "Port 2",
+          "up": true,
+          "enable": true,
+          "speed": 1000,
+          "mac": "78:8a:20:11:22:33",
+          "is_uplink": false,
+          "mac_table": [
+            { "mac": "aa:bb:cc:00:00:02", "vlan": 1, "age": 12, "static": false },
+            { "mac": "aa:bb:cc:00:00:03", "vlan": 1, "age": 15, "static": false }
+          ]
+        },
+        {
+          "port_idx": 3,
+          "name": "Port 3",
+          "up": false,
+          "enable": true,
+          "speed": 0,
+          "mac": "78:8a:20:11:22:33",
+          "is_uplink": false,
+          "mac_table": []
+        },
+        {
+          "port_idx": 4,
+          "name": "Port 4",
+          "up": false,
+          "enable": false,
+          "speed": 0,
+          "mac": "78:8a:20:11:22:33",
+          "is_uplink": false,
+          "mac_table": []
+        },
+        {
+          "port_idx": 12,
+          "name": "Port 12",
+          "up": true,
+          "enable": true,
+          "speed": 1000,
+          "mac": "78:8a:20:11:22:33",
+          "is_uplink": false,
+          "mac_table": [{ "mac": "b4:fb:e4:aa:bb:cc", "vlan": 1, "age": 5, "static": false }]
+        },
+        {
+          "port_idx": 22,
+          "name": "",
+          "up": false,
+          "enable": true,
+          "speed": 0,
+          "mac": "78:8a:20:11:22:33",
+          "is_uplink": false,
+          "mac_table": []
+        },
+        {
+          "port_idx": 23,
+          "name": "Port 23",
+          "up": false,
+          "enable": true,
+          "speed": 0,
+          "mac": "78:8a:20:11:22:33",
+          "is_uplink": false,
+          "mac_table": []
+        },
+        {
+          "port_idx": 24,
+          "name": "Port 24",
+          "up": true,
+          "enable": true,
+          "speed": 1000,
+          "mac": "78:8a:20:11:22:47",
+          "is_uplink": true,
+          "mac_table": []
+        }
+      ]
+    }
+  ]
+}

@@ -8,6 +8,8 @@ export type CredentialType = components['schemas']['CredentialType'];
 export type CredentialOrderField = components['schemas']['CredentialOrderField'];
 /** Which integrations run on a daemon, and against which hosts. */
 export type IntegrationTarget = components['schemas']['IntegrationTarget'];
+/** Release maturity of a credential type's integration. Derived from the backend enum. */
+export type CredentialStability = components['schemas']['CredentialStability'];
 
 // Re-export SNMP types still used by other features (Interface display, etc.)
 export type Interface = components['schemas']['Interface'];
@@ -17,9 +19,11 @@ export type IfOperStatus = components['schemas']['IfOperStatus'];
 import type { Color } from '$lib/shared/utils/styling';
 import type { TagProps } from '$lib/shared/components/data/types';
 import {
+	common_beta,
 	common_network,
 	common_testing,
 	common_unknown,
+	credentials_betaTooltip,
 	credentials_targetNetworkTooltip,
 	credentials_targetDaemonHost,
 	credentials_targetDaemonHostTooltip,
@@ -136,6 +140,23 @@ export function getTargetTagProps(target: string): TagProps {
 		label: credentials_targetHost(),
 		color: 'Purple' as Color,
 		title: credentials_targetHostTooltip()
+	};
+}
+
+/**
+ * Tag marking a credential type whose integration is still in beta, or `null` for stable
+ * types. Beta is presentation only — the type stays selectable and usable; it is flagged so
+ * users know the integration is unvalidated and its fields may still change.
+ *
+ * Lives here rather than in the template so the i18n lookup sits next to `getTargetTagProps`,
+ * the other producer of credential-type tags.
+ */
+export function getStabilityTagProps(stability: CredentialStability | undefined): TagProps | null {
+	if (stability !== 'Beta') return null;
+	return {
+		label: common_beta(),
+		color: 'Amber' as Color,
+		title: credentials_betaTooltip()
 	};
 }
 

@@ -132,6 +132,24 @@ impl LldpChassisId {
         }
     }
 
+    /// Build a chassis ID from an identifier string, for sources that report LLDP neighbor data
+    /// without the IEEE subtype byte.
+    ///
+    /// The UniFi controller API is the motivating case: `lldp_table[].chassis_id` is already a
+    /// decoded string, so there is no subtype to dispatch on. MAC-shaped values canonicalize to
+    /// the same lowercase colon form [`Self::from_snmp`] produces — which is what lets the
+    /// raw-string `hosts.chassis_id` fallback in [`Self::resolve_host_id`] match a device
+    /// regardless of whether SNMP or a controller recorded it. Anything else is
+    /// [`Self::LocallyAssigned`], the honest label for "device-specific identifier, subtype
+    /// unknown"; it resolves by name and then by `ifIndex`, which is strictly more than
+    /// `InterfaceName` would attempt.
+    pub fn from_identifier_str(value: &str) -> Self {
+        match canonical_mac(value) {
+            Some(mac) => Self::MacAddress(mac),
+            None => Self::LocallyAssigned(value.to_string()),
+        }
+    }
+
     /// The identifier as the remote device advertised it, in the same canonical form the daemon
     /// stores on `hosts.chassis_id` for a device's own LLDP local identity. Having one definition
     /// is what lets a neighbor's chassis ID be matched against a scanned host's own chassis ID.
@@ -244,6 +262,15 @@ impl LldpPortId {
         }
     }
 
+    /// Build a port ID from an identifier string, for sources that report LLDP neighbor data
+    /// without the IEEE subtype byte. See [`LldpChassisId::from_identifier_str`] — same rationale.
+    pub fn from_identifier_str(value: &str) -> Self {
+        match canonical_mac(value) {
+            Some(mac) => Self::MacAddress(mac),
+            None => Self::LocallyAssigned(value.to_string()),
+        }
+    }
+
     /// Resolve this port ID to an interface_id using the appropriate lookup strategy.
     ///
     /// Requires the host_id to be already known (from chassis ID resolution), so every lookup is
@@ -334,14 +361,29 @@ fn parse_mac_id(value: &[u8]) -> Option<String> {
     }
 
     // Vendor quirk: MAC encoded as an ASCII string instead of 6 raw octets.
-    let s = std::str::from_utf8(value).ok()?.trim();
+    canonical_mac(std::str::from_utf8(value).ok()?)
+}
+
+/// Canonicalize a MAC rendered as text into the same lowercase colon-separated form
+/// [`format_mac`] produces, or `None` if the value is not a MAC.
+///
+/// This is the text-only half of [`parse_mac_id`], split out because sources that report
+/// identifiers as strings rather than raw TLV octets must not go through the 6-raw-octet
+/// branch: a six-character name such as `"Switch"` is six bytes, and would otherwise be
+/// silently reinterpreted as the MAC `53:77:69:74:63:68`.
+///
+/// Accepts the form with or without zero-padded octets: firmware that renders a MAC as a
+/// string is formatting it itself, and `%x` ("0:1a:2b:0:10:0" — also net-snmp's own display
+/// format) is as likely as `%02x`.
+pub fn canonical_mac(value: &str) -> Option<String> {
+    let s = value.trim();
     if let Ok(mac) = s.parse::<mac_address::MacAddress>() {
         return Some(format_mac(&mac.bytes()));
     }
 
     // Same string form, octets not zero-padded. Six colon-separated groups of one or two hex
-    // digits is a MAC under any reading, and this is only reached once the spec-compliant and
-    // padded parses have both failed, so there is nothing else it could be mistaken for.
+    // digits is a MAC under any reading, and this is only reached once the padded parse has
+    // failed, so there is nothing else it could be mistaken for.
     let octets: Vec<u8> = s
         .split(':')
         .map(|group| match group.len() {
@@ -438,6 +480,48 @@ mod tests {
         let unpadded = LldpChassisId::from_snmp(4, b"0:1a:2b:0:10:0");
         assert_eq!(raw, padded);
         assert_eq!(raw, unpadded);
+    }
+
+    /// The whole point of `from_identifier_str`: a controller-sourced neighbor and an
+    /// SNMP-sourced one must produce byte-identical chassis IDs, because `resolve_host_id`
+    /// falls back to raw string equality against `hosts.chassis_id`.
+    #[test]
+    fn test_identifier_str_agrees_with_snmp_canonical_form() {
+        let from_snmp = LldpChassisId::from_snmp(4, &[0x00, 0x1a, 0x2b, 0x3c, 0x4d, 0x5e]);
+        assert_eq!(
+            LldpChassisId::from_identifier_str("0:1A:2b:3C:4d:5E"),
+            from_snmp.unwrap()
+        );
+        assert_eq!(
+            LldpPortId::from_identifier_str("00:1A:2B:3C:4D:5E"),
+            LldpPortId::from_snmp(3, &[0x00, 0x1a, 0x2b, 0x3c, 0x4d, 0x5e]).unwrap()
+        );
+    }
+
+    /// A string source has no subtype byte, so it must never take the six-raw-octets branch:
+    /// plenty of device names are exactly six characters, and reading one as a MAC would
+    /// invent a neighbor that does not exist.
+    #[test]
+    fn test_identifier_str_does_not_read_short_names_as_macs() {
+        for name in ["Switch", "ap-101", "core01"] {
+            assert_eq!(
+                LldpChassisId::from_identifier_str(name),
+                LldpChassisId::LocallyAssigned(name.to_string()),
+                "expected {name:?} to stay an opaque identifier"
+            );
+        }
+    }
+
+    #[test]
+    fn test_identifier_str_non_mac_is_locally_assigned() {
+        assert_eq!(
+            LldpChassisId::from_identifier_str("edge-switch.lan"),
+            LldpChassisId::LocallyAssigned("edge-switch.lan".to_string())
+        );
+        assert_eq!(
+            LldpPortId::from_identifier_str("Port 7"),
+            LldpPortId::LocallyAssigned("Port 7".to_string())
+        );
     }
 
     #[test]
