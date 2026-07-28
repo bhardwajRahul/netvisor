@@ -42,12 +42,38 @@ transport. To also exercise the legacy path, additionally run a Network Applicat
 
 ## Provisioning UniFi OS Server (Proxmox VM)
 
-Requirements per Ubiquiti:
+Requirements:
 
 - Ubuntu 24.04+ or Debian 13+ (a Proxmox VM is fine; Hyper-V guests are explicitly unsupported)
-- Podman ≥ 4.3.1 and slirp4netns ≥ 1.2
-- ≥ 20 GB free disk
+- Podman ≥ 4.3.1 and slirp4netns ≥ 1.2 (**Docker is not a supported substitute**)
 - Ports: 3478, 5005, 5514, 6789, 8080, 8444, 8880, 8881, 8882, 9543, 10003, **11443**
+
+**Size the VM at 40 GB disk / 8 GB RAM / 2 vCPU.** Ubiquiti's headline "20 GB" figure is not
+what the installer actually checks — its preflight wants **15 GB free on `/home` alone**, plus
+1 GB on `/var/lib/uosserver` and 2 GB on `/tmp`, on top of the OS and the ~880 MB installer. A
+20 GB disk fails that check.
+
+RAM matters for a non-obvious reason: `/tmp` is a RAM-backed tmpfs sized from total memory, so a
+2 GB VM gets a ~1 GB `/tmp` and fails the 2 GB `/tmp` check no matter how large the disk is.
+
+Also **configure 2 GB of swap** — the installer warns if there is none:
+
+```bash
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+echo 'vm.swappiness=15' | sudo tee /etc/sysctl.d/99-swappiness.conf
+```
+
+If the disk needs growing after the fact, Ubuntu Server's LVM default takes two steps beyond
+resizing it in Proxmox:
+
+```bash
+sudo growpart /dev/sda 3          # confirm the partition number with `lsblk`
+sudo pvresize /dev/sda3
+sudo lvextend -l +100%FREE /dev/ubuntu-vg/ubuntu-lv
+sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
+```
 
 **Networking first.** If the VM was installed without a network, it will come up with only
 `lo` and no default route, and every later step fails in a confusing way (`apt` reports packages
