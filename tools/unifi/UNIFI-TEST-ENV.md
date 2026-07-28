@@ -26,6 +26,21 @@ fields Ubiquiti does not document and that we inferred from the unpoller Go stru
 unvalidated until either real hardware is adopted here or the customer's captured `stat/device`
 arrives. This is why the credential type ships as `stability: Beta`.
 
+### Measured behaviour (UniFi OS Server 5.1.21 / Network Application 10.4.57)
+
+Facts established against a real controller, not inferred:
+
+- Envelope is `{"meta":{"rc":"ok"},"data":[…]}`, exactly as modelled. `meta.rc` is `"ok"` on
+  success.
+- Both transports authenticate under the **UniFi OS layout** (`/proxy/network` prefix).
+- **A site-scoped request with an unknown site name returns 401, not 404.** This is why the
+  daemon validates the site against `api/self/sites` (which is *not* site-scoped) rather than
+  reading status codes: a 401 from a site-scoped call cannot distinguish "wrong site" from
+  "wrong credential", so a typo'd site name would otherwise be reported to the user as a
+  rejected API key.
+- `api/self/sites` works under both transports and returns each site's internal `name`, which
+  is what lets the daemon name the valid sites back to the user.
+
 ## Which controller to install
 
 API-key support is **UniFi OS only**:

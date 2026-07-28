@@ -45,27 +45,41 @@ curl_base() { curl -sk --connect-timeout 5 --max-time 30 "$@"; }
 # Transport probes
 # ---------------------------------------------------------------------------------------------
 
-# api_key_get <base_path> <endpoint> -> body on stdout, HTTP status on fd 3
-api_key_get() {
-  local base_path="$1" endpoint="$2"
+# Body on stdout with the HTTP status as the final line. `path` is relative to the network
+# app's base path, i.e. exactly what the daemon's `UnifiClient::get` takes.
+
+# api_key_get_path <base_path> <path>
+api_key_get_path() {
+  local base_path="$1" path="$2"
   curl_base -w '\n%{http_code}' \
     -H "X-API-KEY: ${UNIFI_API_KEY}" \
-    "$(origin)${base_path}/api/s/${UNIFI_SITE}/${endpoint}"
+    "$(origin)${base_path}/${path}"
 }
 
-# local_admin_get <base_path> <login_path> <endpoint>
-local_admin_get() {
-  local base_path="$1" login_path="$2" endpoint="$3"
-  local jar; jar="$(mktemp)"
-  trap 'rm -f "$jar"' RETURN
+# local_admin_get_path <base_path> <login_path> <path>
+local_admin_get_path() {
+  local base_path="$1" login_path="$2" path="$3"
+  # No RETURN trap: it would evaluate "$jar" after the local has gone out of scope, which
+  # trips `set -u`. There is no early return here, so an explicit cleanup is enough.
+  local jar out
+  jar="$(mktemp)"
 
   curl_base -o /dev/null -c "$jar" \
     -H 'Content-Type: application/json' \
     -d "{\"username\":\"${UNIFI_USERNAME}\",\"password\":\"${UNIFI_PASSWORD}\"}" \
     "$(origin)${login_path}" || true
 
-  curl_base -w '\n%{http_code}' -b "$jar" \
-    "$(origin)${base_path}/api/s/${UNIFI_SITE}/${endpoint}"
+  out="$(curl_base -w '\n%{http_code}' -b "$jar" "$(origin)${base_path}/${path}")"
+  rm -f "$jar"
+  printf '%s\n' "$out"
+}
+
+# Site-scoped wrappers, mirroring `UnifiClient::get_site`.
+api_key_get() {
+  api_key_get_path "$1" "api/s/${UNIFI_SITE}/$2"
+}
+local_admin_get() {
+  local_admin_get_path "$1" "$2" "api/s/${UNIFI_SITE}/$3"
 }
 
 status_of() { tail -n1 <<<"$1"; }
@@ -139,20 +153,37 @@ cmd_status() {
 
   [[ "$any" == "1" ]] || die "no transport authenticated"
 
-  # A bad site name is the most common misconfiguration and returns 404, not 401 — the daemon
-  # reports these differently, so check the distinction actually holds.
-  local response status
+  # The daemon validates the site name against the site *list* rather than by reading the
+  # status code of a site-scoped call. That is not a stylistic choice: measured against UniFi
+  # OS Server 5.1.21, an unknown site returns 401, which is indistinguishable from a rejected
+  # credential — a typo'd site name would be reported to the user as a bad API key. So the
+  # contract to verify here is that the non-site-scoped site list is reachable and names the
+  # configured site.
+  local response status body sites
   if [[ -n "$UNIFI_API_KEY" ]]; then
-    response="$(UNIFI_SITE=definitely-not-a-site api_key_get "/proxy/network" "stat/sysinfo")"
+    response="$(api_key_get_path "/proxy/network" "api/self/sites")"
   else
-    response="$(UNIFI_SITE=definitely-not-a-site local_admin_get "/proxy/network" "/api/auth/login" "stat/sysinfo")"
+    response="$(local_admin_get_path "/proxy/network" "/api/auth/login" "api/self/sites")"
   fi
   status="$(status_of "$response")"
-  if [[ "$status" == "404" ]]; then
-    ok "unknown site returns 404 (distinguishable from a rejected credential)"
+  body="$(body_of "$response")"
+
+  if [[ "$status" != "200" ]]; then
+    warn "site list (api/self/sites) returned HTTP ${status} — the daemon will fall back to"
+    warn "probing a site-scoped endpoint, so a bad site name may report as a bad credential"
+    return
+  fi
+
+  if command -v jq >/dev/null 2>&1; then
+    sites="$(jq -r '[.data[].name] | join(", ")' <<<"$body")"
+    ok "site list reachable: ${sites}"
+    if jq -e --arg s "$UNIFI_SITE" '[.data[].name] | index($s)' <<<"$body" >/dev/null; then
+      ok "configured site '${UNIFI_SITE}' exists"
+    else
+      bad "configured site '${UNIFI_SITE}' is not in the list above"
+    fi
   else
-    warn "unknown site returned HTTP ${status}, not 404 — the daemon's error message for"
-    warn "a bad site name may be misleading on this controller version"
+    ok "site list reachable (install jq to see the site names)"
   fi
 }
 

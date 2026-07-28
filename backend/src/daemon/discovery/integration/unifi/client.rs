@@ -133,18 +133,59 @@ impl UnifiClient {
             .unwrap_or_else(|| anyhow!("Could not determine UniFi controller API layout")))
     }
 
-    /// Log in (if the transport is stateful) and confirm the site exists.
+    /// Log in (if the transport is stateful) and confirm the requested site exists.
     ///
-    /// `stat/sysinfo` rather than `stat/device`: it is tiny, present on every version, and
-    /// **site-scoped**, so one call validates the credential *and* the user-entered site name.
-    /// A 404 here means "no such site", not "no such endpoint".
+    /// Verifies via the **site list** rather than by probing a site-scoped endpoint and reading
+    /// the status code. Measured against UniFi OS Server 5.1.21, a site-scoped call with an
+    /// unknown site name returns **401, not 404** — indistinguishable from a rejected
+    /// credential, so a typo'd site would be reported to the user as a bad API key.
+    ///
+    /// `api/self/sites` is not site-scoped, so one call settles both questions: a 401 there is
+    /// genuinely a bad credential, and if it succeeds the site name can be checked against the
+    /// returned list and the valid names offered back to the user.
     async fn authenticate_and_verify(
         &self,
         credential: &UnifiQueryCredential,
     ) -> Result<(), Error> {
         self.login(credential).await?;
-        let _: UnifiEnvelope<serde_json::Value> = self.get_site("stat/sysinfo").await?;
-        Ok(())
+
+        match self.list_sites().await {
+            Ok(sites) => {
+                if sites.iter().any(|s| s == &self.site) {
+                    return Ok(());
+                }
+                bail!(
+                    "UniFi site '{}' was not found on this controller. Available sites: {}. \
+                     Use the internal site name from the controller URL \
+                     (/manage/site/<name>), not its display name.",
+                    self.site,
+                    if sites.is_empty() {
+                        "none visible to this account".to_string()
+                    } else {
+                        sites.join(", ")
+                    }
+                );
+            }
+            // Older controllers may not expose the site list. Fall back to probing a
+            // site-scoped endpoint: less precise, but better than refusing to connect.
+            Err(e) if e.to_string().contains("HTTP 404") => {
+                let _: UnifiEnvelope<serde_json::Value> = self.get_site("stat/sysinfo").await?;
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Internal names of the sites this credential can see.
+    async fn list_sites(&self) -> Result<Vec<String>, Error> {
+        #[derive(serde::Deserialize)]
+        struct SiteEntry {
+            /// The internal site name — what a credential's `site` field must hold.
+            name: Option<String>,
+        }
+
+        let envelope: UnifiEnvelope<SiteEntry> = self.get("api/self/sites").await?;
+        Ok(envelope.data.into_iter().filter_map(|s| s.name).collect())
     }
 
     /// Establish a session for the local-admin transport. No-op for API keys.
@@ -177,17 +218,19 @@ impl UnifiClient {
     }
 
     /// GET a site-scoped endpoint (e.g. `stat/device`) and decode its envelope.
+    ///
+    /// The site is validated up front by [`Self::authenticate_and_verify`], so a 401 reaching
+    /// here really is a credential problem rather than an unknown site.
     pub async fn get_site<T: DeserializeOwned>(
         &self,
         endpoint: &str,
     ) -> Result<UnifiEnvelope<T>, Error> {
-        let url = format!(
-            "{}{}/api/s/{}/{}",
-            self.origin,
-            self.flavor.base_path(),
-            self.site,
-            endpoint
-        );
+        self.get(&format!("api/s/{}/{}", self.site, endpoint)).await
+    }
+
+    /// GET any endpoint under the controller's network-app base path and decode its envelope.
+    async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<UnifiEnvelope<T>, Error> {
+        let url = format!("{}{}/{}", self.origin, self.flavor.base_path(), path);
 
         let response = self
             .client
@@ -196,16 +239,12 @@ impl UnifiClient {
             .await
             .map_err(|e| anyhow!("Could not reach UniFi controller: {e}"))?;
 
+        let endpoint = path;
         match response.status() {
             s if s.is_success() => {}
             StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
                 bail!("{}", self.rejected_credential_message())
             }
-            StatusCode::NOT_FOUND => bail!(
-                "UniFi site '{}' was not found on this controller. Use the internal site name \
-                 from the controller URL (/manage/site/<name>), not its display name.",
-                self.site
-            ),
             s => bail!("UniFi controller returned HTTP {s} for {endpoint}"),
         }
 
