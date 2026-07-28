@@ -81,6 +81,11 @@
 	import { cacheCollapsedSizes } from '../../pipeline/post-render';
 	import { computeEdgeDisplayUpdates } from '../../pipeline/sync-edge-display';
 	import * as perf from '../../perf';
+	import {
+		reloadInputsDiff,
+		snapshotReloadInputs,
+		type ReloadInputs
+	} from '../../pipeline/reload-guard';
 
 	// Props
 	let {
@@ -325,11 +330,38 @@
 
 	let loadInProgress = false;
 	let pendingReload = false;
-	function triggerLoad() {
+	/**
+	 * The store values the in-flight run actually consumed, snapshotted once
+	 * `prepare` has returned. A pending reload is honoured only if the current
+	 * values differ from these — see `pipeline/reload-guard.ts`.
+	 */
+	let inFlightInputs: ReloadInputs | null = null;
+
+	function currentReloadInputs(): ReloadInputs {
+		return {
+			collapsed: get(collapsedContainers),
+			expandedBundles: get(expandedBundles),
+			expandedPorts: get(expandedPortNodeIds),
+			bundleEdges: get(topologyOptions).local.bundle_edges ?? false,
+			hiddenEdgeTypes: (get(topologyOptions).local.hide_edge_types ?? []).join(','),
+			tagHidden: get(tagHiddenNodeIds)
+		};
+	}
+	function triggerLoad(source = 'unknown') {
 		if (!topology || loadInProgress) {
-			if (topology && loadInProgress) pendingReload = true;
+			if (topology && loadInProgress) {
+				// A store wrote while the pipeline was mid-flight, so the whole run
+				// will be repeated. Attributed by source because each one costs a
+				// full re-layout (two elk.layout() calls).
+				perf.count(`pending-reload:${source}`);
+				pendingReload = true;
+			}
 			return;
 		}
+		// Counted at the point a run actually begins (as opposed to being queued),
+		// so each full pipeline execution — two elk.layout() calls — is attributable
+		// to what started it.
+		perf.count(`run-start:${source}`);
 		loadInProgress = true;
 		pendingReload = false;
 		void loadTopologyData()
@@ -341,37 +373,53 @@
 				loadInProgress = false;
 				if (pendingReload) {
 					pendingReload = false;
-					triggerLoad();
+					// Only re-run if an input actually differs from what the run
+					// consumed. Most mid-run writes are the pipeline's own (prepare
+					// seeding collapse state) or derived stores re-emitting an
+					// identical value during option hydration — re-running for those
+					// costs two elk.layout() calls and changes nothing.
+					const consumed = inFlightInputs;
+					inFlightInputs = null;
+					if (consumed) {
+						const changed = reloadInputsDiff(consumed, currentReloadInputs());
+						if (changed.length === 0) {
+							perf.count('reload-suppressed');
+							return;
+						}
+						for (const field of changed) perf.count(`reload-cause:${field}`);
+					}
+					triggerLoad('pending');
 				}
+				inFlightInputs = null;
 			});
 	}
 
 	let storesInitialized = false;
 	collapsedContainers.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('collapsed');
 	});
 	expandedBundles.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('bundles');
 	});
 	expandedPortNodeIds.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('ports');
 	});
 	bundleEdgesStore.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('bundle-option');
 	});
 	hideEdgeTypesStore.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('hidden-edge-types');
 	});
 	// Filter changes (tag / metadata / entity-hide all funnel through here)
 	// must re-run the pipeline so ELK sees the new node set and containers
 	// reflow around the removed cards.
 	tagHiddenNodeIds.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('tag-filter');
 	});
 	storesInitialized = true;
 
 	$effect(() => {
-		if (topology) triggerLoad();
+		if (topology) triggerLoad('topology');
 	});
 
 	// Update edges when selection or search/tag filter changes
@@ -432,6 +480,10 @@
 		const prepareDone = perf.stage('prepare');
 		const prep = prepareTopologyData(topology, layoutState, getInfrastructureRuleId);
 		prepareDone();
+		// Inputs are fixed once prepare has run — it is the last stage that writes
+		// to the watched stores as part of its own work. Snapshot here so those
+		// self-writes don't read as external change at the end of the run.
+		inFlightInputs = snapshotReloadInputs(currentReloadInputs());
 		if (!prep) return;
 		const { needsElk, collapsed, visibleNodes: initialVisibleNodes } = prep;
 		let visibleNodes = initialVisibleNodes;
@@ -531,8 +583,7 @@
 				layoutState,
 				prep,
 				elementNodeSizes,
-				isStale,
-				getInfrastructureRuleId
+				isStale
 			);
 			layoutDone();
 			if (!layoutResult) {

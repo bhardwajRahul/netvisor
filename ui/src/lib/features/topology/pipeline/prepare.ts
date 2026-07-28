@@ -91,6 +91,66 @@ function getHideStateKey(): string {
 	return [...hidden].sort().join(',');
 }
 
+/**
+ * Collapse containers marked `collapsed_by_default`, plus the infrastructure
+ * subcontainer, and return the resulting collapsed set.
+ *
+ * Returns the set rather than relying on the store write alone: the caller must
+ * use this value for the rest of the run, so that the run it belongs to already
+ * reflects it and no corrective re-layout is needed.
+ *
+ * `seenAutoCollapseIds` makes this one-shot per container — a container the user
+ * has since expanded is never re-collapsed behind them.
+ */
+function applyAutoCollapse(
+	topology: RenderableTopology,
+	state: LayoutState,
+	collapsed: Set<string>,
+	getInfrastructureRuleId: () => string | null
+): Set<string> {
+	const currentLevel = get(collapseLevel);
+	const infraRuleId = getInfrastructureRuleId();
+
+	const allCandidates = topology.nodes.filter((n) => {
+		if (n.node_type !== 'Container') return false;
+		const data = n as Record<string, unknown>;
+		const ct = data.container_type as string | undefined;
+		return (
+			(ct && containerTypes.getMetadata(ct).collapsed_by_default === true) ||
+			(infraRuleId && data.element_rule_id === infraRuleId)
+		);
+	});
+
+	const userExplicitlyExpandedAll = currentLevel === 4 && state.collapseLevelInferred;
+	const autoCollapseIds = userExplicitlyExpandedAll
+		? []
+		: allCandidates
+				.filter((n) => !collapsed.has(n.id) && !state.seenAutoCollapseIds.has(n.id))
+				.map((n) => n.id);
+
+	let next = collapsed;
+	if (autoCollapseIds.length > 0) {
+		for (const id of autoCollapseIds) state.seenAutoCollapseIds.add(id);
+		next = new Set(collapsed);
+		for (const id of autoCollapseIds) next.add(id);
+		collapsedContainers.set(next);
+	}
+
+	// Re-infer level after auto-collapse
+	if (!state.collapseLevelInferred) {
+		state.collapseLevelInferred = true;
+		const inferred = inferCurrentLevel(
+			next,
+			topology.nodes,
+			containerTypes,
+			getInfrastructureRuleId()
+		);
+		collapseLevel.set(inferred);
+	}
+
+	return next;
+}
+
 function getStructureKey(topo: RenderableTopology, view: string): string {
 	const nodeKeys = topo.nodes
 		.map((n) => {
@@ -247,6 +307,17 @@ export function prepareTopologyData(
 		}
 	}
 	state.lastSeenTopologyId = topologyId;
+
+	// Collapse containers whose type is marked collapsed_by_default (plus the
+	// infrastructure subcontainer).
+	//
+	// This runs here, before layout, rather than after it. It depends only on
+	// node metadata and collapse state — never on layout output — and doing it
+	// afterwards meant writing `collapsedContainers` once ELK had already laid
+	// the graph out expanded, which the viewer saw as an external change and
+	// answered with a second complete pipeline run: another full DOM measure
+	// pass and two more elk.layout() calls, on every cold load.
+	collapsed = applyAutoCollapse(topology, state, collapsed, getInfrastructureRuleId);
 
 	// Filter out nodes hidden by any filter source (tag, category/metadata,
 	// entity-hide). Filter = structural remove, uniformly across sources —
