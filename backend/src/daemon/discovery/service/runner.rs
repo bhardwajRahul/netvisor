@@ -268,6 +268,7 @@ impl DiscoveryRunner {
             true, // skip the probe-gate: daemon-host integrations (e.g. a proxy) always self-probe here
             cancel,
             &self.service.utils,
+            ops.config_store.get_accept_invalid_scan_certs().await?,
         )
         .await?;
 
@@ -315,6 +316,8 @@ impl DiscoveryRunner {
             endpoint_responses: &vec![],
             virtualization: &None,
             client_responses: &probe_results.client_responses,
+            // The daemon's own host, probed locally.
+            managed_device: &None,
         };
 
         let mut host_data = match ops

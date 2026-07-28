@@ -1154,6 +1154,10 @@ impl NetworkScan {
         .await?;
         open_ports.extend(udp_ports);
 
+        // Read once here rather than at the endpoint scan below: integration probes make their
+        // own TLS calls and need the same policy.
+        let accept_invalid_certs = ops.config_store.get_accept_invalid_scan_certs().await?;
+
         // Integration probes — each checks connectivity and returns a ClientProbe for service matching
         use crate::daemon::discovery::integration::dispatch;
         let probe_results = dispatch::probe_integrations(
@@ -1163,6 +1167,7 @@ impl NetworkScan {
             false, // network scan: keep the probe-gate (cheap broad scan)
             &cancel,
             utils,
+            accept_invalid_certs,
         )
         .await?;
         open_ports.extend(probe_results.additional_ports.iter());
@@ -1184,8 +1189,6 @@ impl NetworkScan {
         ports_to_check.extend(endpoint_only_ports);
         ports_to_check.sort_by_key(|p| (p.number(), p.protocol()));
         ports_to_check.dedup();
-
-        let accept_invalid_certs = ops.config_store.get_accept_invalid_scan_certs().await?;
 
         let endpoint_responses = scan_endpoints(
             ip,
@@ -1247,6 +1250,8 @@ impl NetworkScan {
                     endpoint_responses: &endpoint_responses,
                     virtualization: &None,
                     client_responses,
+                    // Directly scanned, not reported by a controller.
+                    managed_device: &None,
                 },
                 hostname,
                 self.host_naming_fallback,

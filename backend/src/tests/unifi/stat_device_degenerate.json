@@ -1,0 +1,48 @@
+{
+  "meta": { "rc": "ok" },
+  "data": [
+    {
+      "mac": "78:8a:20:99:88:77",
+      "ip": "192.168.20.50",
+      "name": "",
+      "type": "usw",
+      "port_table": [
+        {
+          "port_idx": 3,
+          "up": true,
+          "enable": true,
+          "speed": 1000,
+          "mac": "78:8a:20:99:88:77",
+          "mac_table": []
+        },
+        {
+          "port_idx": 8,
+          "name": "Port 8",
+          "up": true,
+          "enable": true,
+          "speed": 1000,
+          "mac": "78:8a:20:99:88:aa",
+          "mac_table": [{ "mac": "78:8a:20:99:88:77" }]
+        }
+      ],
+      "lldp_table": [
+        {
+          "chassis_id": "legacy-switch.lan",
+          "port_id": "1/1/8",
+          "local_port_idx": 8
+        }
+      ]
+    },
+    {
+      "mac": "78:8a:20:00:00:99",
+      "name": "Unreachable Device",
+      "type": "uap"
+    },
+    {
+      "mac": "78:8a:20:00:00:aa",
+      "ip": "10.99.99.99",
+      "name": "Device On Unknown Subnet",
+      "type": "usw"
+    }
+  ]
+}

@@ -13,6 +13,7 @@ pub mod dispatch;
 pub mod docker;
 pub mod podman;
 pub mod snmp;
+pub mod unifi;
 
 use std::any::Any;
 use std::net::IpAddr;
@@ -92,6 +93,12 @@ pub struct ProbeContext<'a> {
     pub credential_id: Option<Uuid>,
     pub cancel: &'a CancellationToken,
     pub utils: &'a PlatformDaemonUtils,
+    /// Whether to accept self-signed / otherwise invalid TLS certificates, from the daemon's
+    /// `accept_invalid_scan_certs` config. Mirrors [`IntegrationContext::accept_invalid_certs`]:
+    /// integrations that authenticate over HTTPS make their *first* call here, so the probe needs
+    /// the same policy the execute phase gets. Appliance controllers (UniFi and friends) ship
+    /// self-signed certs by default, so without this the probe fails before execute is reached.
+    pub accept_invalid_certs: bool,
 }
 
 /// Successful probe — service responds with this credential.
@@ -164,6 +171,9 @@ impl IntegrationRegistry {
             CredentialQueryPayloadDiscriminants::PodmanProxy => Box::new(podman::PodmanIntegration),
             CredentialQueryPayloadDiscriminants::PodmanSocket => {
                 Box::new(podman::PodmanSocketIntegration)
+            }
+            CredentialQueryPayloadDiscriminants::UnifiController => {
+                Box::new(unifi::UnifiIntegration)
             }
             CredentialQueryPayloadDiscriminants::Unknown => return None,
         })

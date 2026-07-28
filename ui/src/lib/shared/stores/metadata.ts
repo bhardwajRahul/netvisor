@@ -71,6 +71,9 @@ export interface CredentialTypeMetadata {
 	 *  discovery credential picker compares the selected daemon's `version` against
 	 *  this to disable too-new types (and to build the requirement tooltip). */
 	minimum_daemon_version?: string;
+	/** Release maturity of this type's integration. Beta types render a "Beta" tag in the
+	 *  picker but stay selectable. Union derived from the backend enum, never hand-written. */
+	stability?: components['schemas']['CredentialStability'];
 	/** Whether the associated service has a logo */
 	has_logo?: boolean;
 	/** Whether the logo needs a white background */

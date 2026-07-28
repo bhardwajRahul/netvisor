@@ -3102,7 +3102,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.5"
+         *       "server_version": "0.17.6"
          *     }
          */
         ApiMeta: {
@@ -3113,7 +3113,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.5
+             * @example 0.17.6
              */
             server_version: string;
         };
@@ -3127,19 +3127,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-27T21:36:40.032494Z",
+             *       "created_at": "2026-07-28T15:55:58.901441Z",
              *       "first_discovery_id": null,
-             *       "id": "2b97b333-2f15-4bde-bd31-729db438f6bf",
+             *       "id": "68e53066-a4ae-4613-9989-640bd5a41a1a",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-27T21:36:40.032494Z",
+             *       "last_seen_at": "2026-07-28T15:55:58.901441Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-27T21:36:40.032494Z",
-             *       "valid_from": "2026-07-27T21:36:40.032494Z",
+             *       "updated_at": "2026-07-28T15:55:58.901441Z",
+             *       "valid_from": "2026-07-28T15:55:58.901441Z",
              *       "valid_to": null
              *     }
              */
@@ -3532,19 +3532,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-27T21:36:40.012673Z",
+             *               "created_at": "2026-07-28T15:55:58.883692Z",
              *               "first_discovery_id": null,
-             *               "id": "6fd65318-d4f9-497b-b456-347d5a8ecea2",
+             *               "id": "e31ed177-2b55-4886-ab18-85a358dd916a",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-27T21:36:40.012673Z",
+             *               "last_seen_at": "2026-07-28T15:55:58.883692Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-27T21:36:40.012673Z",
-             *               "valid_from": "2026-07-27T21:36:40.012673Z",
+             *               "updated_at": "2026-07-28T15:55:58.883692Z",
+             *               "valid_from": "2026-07-28T15:55:58.883692Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3558,7 +3558,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Jitsi Meet",
+             *           "service_definition": "Nvidia GPU Exporter",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3975,19 +3975,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-27T21:36:40.026075Z",
+             *           "created_at": "2026-07-28T15:55:58.895458Z",
              *           "first_discovery_id": null,
-             *           "id": "d61733d2-d7f9-46f0-9c85-3af911628398",
+             *           "id": "f9245d7c-dab1-4373-8b87-e662f579645a",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-27T21:36:40.026075Z",
+             *           "last_seen_at": "2026-07-28T15:55:58.895458Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-27T21:36:40.026075Z",
-             *           "valid_from": "2026-07-27T21:36:40.026075Z",
+             *           "updated_at": "2026-07-28T15:55:58.895458Z",
+             *           "valid_from": "2026-07-28T15:55:58.895458Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4001,7 +4001,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Jitsi Meet",
+             *       "service_definition": "Nvidia GPU Exporter",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4505,19 +4505,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-27T21:36:40.013101Z",
+         *       "created_at": "2026-07-28T15:55:58.884046Z",
          *       "first_discovery_id": null,
-         *       "id": "928fb596-549d-40d7-8cbc-ca4ecedb135b",
+         *       "id": "7808cabb-e3b0-40e6-a539-0d0f3e6728fe",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-27T21:36:40.013101Z",
+         *       "last_seen_at": "2026-07-28T15:55:58.884046Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-27T21:36:40.013101Z",
-         *       "valid_from": "2026-07-27T21:36:40.013101Z",
+         *       "updated_at": "2026-07-28T15:55:58.884046Z",
+         *       "valid_from": "2026-07-28T15:55:58.884046Z",
          *       "valid_to": null
          *     }
          */
@@ -4732,7 +4732,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Jitsi Meet",
+         *           "service_definition": "Nvidia GPU Exporter",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4846,6 +4846,17 @@ export interface components {
         /** @enum {string} */
         CredentialOrderField: "created_at" | "name" | "updated_at";
         /**
+         * @description Release maturity of a credential type's integration.
+         *
+         *     Additive and exhaustive: a new credential variant will not compile until it declares its
+         *     stability, and every existing type is `Stable` by explicit arm rather than by wildcard, so
+         *     promoting an integration is a one-line reviewable change rather than a deletion nobody
+         *     notices. This is presentation metadata about the *code*, like `minimum_daemon_version` —
+         *     it is never stored on a credential row, so it carries no deploy-coexistence obligation.
+         * @enum {string}
+         */
+        CredentialStability: "Stable" | "Beta";
+        /**
          * @description Universal credential type — tagged enum stored as JSONB.
          *     Each variant represents a different credential protocol/method.
          */
@@ -4901,6 +4912,30 @@ export interface components {
             socket_path?: string | null;
             /** @enum {string} */
             type: "PodmanSocket";
+        } | {
+            /** @description Network Application API key, sent as `X-API-KEY`. */
+            api_key: components["schemas"]["SecretValue"];
+            /**
+             * Format: int32
+             * @description Controller HTTPS port. 443 for a UniFi OS console, 11443 for UniFi OS Server.
+             */
+            port?: number;
+            /** @description Internal site name from the controller URL (`/manage/site/<name>`). */
+            site?: string;
+            /** @enum {string} */
+            type: "UnifiApiKey";
+        } | {
+            password: components["schemas"]["SecretValue"];
+            /**
+             * Format: int32
+             * @description Controller HTTPS port. 443 UniFi OS console, 11443 UniFi OS Server, 8443 legacy.
+             */
+            port?: number;
+            /** @description Internal site name from the controller URL (`/manage/site/<name>`). */
+            site?: string;
+            /** @enum {string} */
+            type: "UnifiLocalAdmin";
+            username: string;
         };
         Daemon: components["schemas"]["DaemonBase"] & {
             /** Format: date-time */
@@ -5878,19 +5913,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-27T21:36:40.012161Z",
+         *               "created_at": "2026-07-28T15:55:58.883275Z",
          *               "first_discovery_id": null,
-         *               "id": "55f29c63-7e88-41f6-a91a-eb81ab91fe87",
+         *               "id": "e68385e9-a37b-449a-b8fb-58940d3906ad",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-27T21:36:40.012161Z",
+         *               "last_seen_at": "2026-07-28T15:55:58.883275Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-27T21:36:40.012161Z",
-         *               "valid_from": "2026-07-27T21:36:40.012161Z",
+         *               "updated_at": "2026-07-28T15:55:58.883275Z",
+         *               "valid_from": "2026-07-28T15:55:58.883275Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5904,7 +5939,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Jitsi Meet",
+         *           "service_definition": "Nvidia GPU Exporter",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6751,7 +6786,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.5"
+         *       "server_version": "0.17.6"
          *     }
          */
         PaginatedApiMeta: {
@@ -6764,7 +6799,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.5
+             * @example 0.17.6
              */
             server_version: string;
         };
@@ -7554,19 +7589,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-27T21:36:40.013007Z",
+         *           "created_at": "2026-07-28T15:55:58.883972Z",
          *           "first_discovery_id": null,
-         *           "id": "67786d1a-eba4-48ec-adbb-959d3ddf1565",
+         *           "id": "23fbab3e-d93a-4aee-8ecb-7d8884ccf1af",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-27T21:36:40.013007Z",
+         *           "last_seen_at": "2026-07-28T15:55:58.883972Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-27T21:36:40.013007Z",
-         *           "valid_from": "2026-07-27T21:36:40.013007Z",
+         *           "updated_at": "2026-07-28T15:55:58.883972Z",
+         *           "valid_from": "2026-07-28T15:55:58.883972Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7580,7 +7615,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Jitsi Meet",
+         *       "service_definition": "Nvidia GPU Exporter",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -8003,7 +8038,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "60b54e9c-0470-43e2-913a-e75911bb100b",
+             *           "id": "f802a729-25be-4125-a332-139ebc776737",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -8013,23 +8048,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "3d578b7e-fc8c-40ed-a3bf-7b2d8a91c1dd",
+             *           "id": "dc40dfe9-26f8-4774-95a5-9a469b6260ec",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "3907df19-76a5-4f9a-a0a9-2191f71780f7",
+             *           "id": "72a030ee-640d-48c1-af0d-06b943143cae",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "c458e9bc-37fd-4f7c-a694-278c5b5e75a7",
+             *           "id": "b80ea64a-f6cb-4e11-b157-2ead3386ad34",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "3d578b7e-fc8c-40ed-a3bf-7b2d8a91c1dd",
+             *           "id": "dc40dfe9-26f8-4774-95a5-9a469b6260ec",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -8041,19 +8076,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "2a7499ff-9bff-4648-bd45-c2ce6abdfc94",
+             *         "id": "72d7871c-de23-4741-9ca9-a1c38878e5de",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "62cbcfe7-2af6-4994-9f36-eae2e12ed0a8",
+             *         "id": "83a3d919-9d65-445d-a2f1-411598c7a203",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "b5c7d7ac-50ec-4b56-a1ed-b39ccdd0f1da",
+             *         "id": "d95060eb-759e-4b9a-be86-9860ee0bf290",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "849c54d6-b797-45ae-881d-709e9f46659a",
+             *         "id": "00ed55fd-984b-4679-896f-f0e2ab1262d8",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -8071,7 +8106,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "b85bb788-09ec-4f8b-874f-84f4f4a2bb3b",
+             *         "id": "b36d0239-9241-4a96-8845-822d59ff7def",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -8080,15 +8115,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "3e1169dd-5da2-4f2e-bcde-b69fb62ce0f7",
+             *         "id": "89f2f22d-e40d-4a87-9c74-a5214af77a91",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "88c52188-65d7-452e-86c3-292610e9fd49",
+             *         "id": "661e0771-e347-421a-8b2b-8b16ee43294f",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "d939d378-c5fc-4d0c-a548-308dc7609b3e",
+             *         "id": "bc1111d9-7f39-4ffb-8bac-4ef7a866bfba",
              *         "rule": "ByStack"
              *       }
              *     ]

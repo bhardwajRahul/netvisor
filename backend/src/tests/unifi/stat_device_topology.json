@@ -1,0 +1,89 @@
+{
+  "meta": { "rc": "ok" },
+  "data": [
+    {
+      "mac": "00:1a:2b:3c:4d:5e",
+      "ip": "192.168.20.1",
+      "name": "Border Gateway",
+      "model": "UDMPROSE",
+      "serial": "001A2B3C4D5E",
+      "version": "4.0.6",
+      "type": "udm",
+      "port_table": [
+        {
+          "port_idx": 4,
+          "name": "Port 4",
+          "up": true,
+          "enable": true,
+          "speed": 1000,
+          "mac": "00:1a:2b:3c:4d:5e",
+          "is_uplink": false,
+          "mac_table": []
+        }
+      ],
+      "downlink_table": [{ "mac": "78:8a:20:11:22:33", "port_idx": 4, "speed": 1000 }],
+      "lldp_table": []
+    },
+    {
+      "mac": "78:8a:20:11:22:33",
+      "ip": "192.168.20.10",
+      "name": "Core Switch",
+      "model": "USL24P",
+      "serial": "788A20112233",
+      "version": "7.0.21",
+      "type": "usw",
+      "uplink": {
+        "name": "eth24",
+        "mac": "78:8a:20:11:22:47",
+        "port_idx": 24,
+        "uplink_mac": "00:1a:2b:3c:4d:5e",
+        "uplink_remote_port": 4,
+        "uplink_device_name": "Border Gateway"
+      },
+      "port_table": [
+        {
+          "port_idx": 7,
+          "name": "Port 7",
+          "up": true,
+          "enable": true,
+          "speed": 1000,
+          "mac": "78:8a:20:11:22:33",
+          "is_uplink": false,
+          "mac_table": []
+        },
+        {
+          "port_idx": 24,
+          "name": "Port 24",
+          "up": true,
+          "enable": true,
+          "speed": 1000,
+          "mac": "78:8a:20:11:22:47",
+          "is_uplink": true,
+          "mac_table": []
+        }
+      ],
+      "downlink_table": [{ "mac": "f0:9f:c2:aa:00:11", "port_idx": 7, "speed": 1000 }],
+      "lldp_table": []
+    },
+    {
+      "mac": "f0:9f:c2:aa:00:11",
+      "ip": "192.168.20.40",
+      "name": "Office AP",
+      "model": "U6PRO",
+      "serial": "F09FC2AA0011",
+      "version": "6.6.65",
+      "type": "uap",
+      "uplink": {
+        "name": "eth0",
+        "mac": "f0:9f:c2:aa:00:12",
+        "port_idx": 1,
+        "uplink_mac": "78:8a:20:11:22:33",
+        "uplink_remote_port": 7,
+        "uplink_device_name": "Core Switch"
+      },
+      "port_table": [],
+      "downlink_table": [],
+      "lldp_table": []
+    }
+  ]
+}

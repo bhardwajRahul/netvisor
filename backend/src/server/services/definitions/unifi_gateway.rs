@@ -1,32 +1,31 @@
-use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::definitions::{ServiceDefinitionFactory, create_service};
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::services::r#impl::patterns::{Pattern, UnifiDeviceType, Vendor};
 
 #[derive(Default, Clone, Eq, PartialEq, Hash)]
-pub struct UnifiAccessPoint;
+pub struct UnifiGateway;
 
-impl ServiceDefinition for UnifiAccessPoint {
+impl ServiceDefinition for UnifiGateway {
     fn name(&self) -> &'static str {
-        "Unifi Access Point"
+        "UniFi Gateway"
     }
     fn description(&self) -> &'static str {
-        "Ubiquiti UniFi wireless access point"
+        "Ubiquiti UniFi security gateway or Dream Machine"
     }
     fn category(&self) -> ServiceCategory {
-        ServiceCategory::NetworkAccess
+        ServiceCategory::NetworkCore
     }
 
+    /// Covers both the standalone security gateway (`ugw`) and the Dream Machine family
+    /// (`udm`), which is a gateway that also hosts the controller. A UDM therefore matches
+    /// this *and* `UnifiController`, which is correct — it is both things.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        // Either the AP answers an HTTP probe itself, or a UniFi controller we authenticated
-        // to reports it as an AP. Adopted APs commonly serve no useful management page, so
-        // the controller is the only evidence available for most of them.
         Pattern::AllOf(vec![
             Pattern::MacVendor(Vendor::UBIQUITI),
             Pattern::AnyOf(vec![
-                Pattern::Endpoint(PortType::Http, "/", "Unifi", None),
-                Pattern::ManagedDeviceType(UnifiDeviceType::ACCESS_POINT),
+                Pattern::ManagedDeviceType(UnifiDeviceType::GATEWAY),
+                Pattern::ManagedDeviceType(UnifiDeviceType::DREAM_MACHINE),
             ]),
         ])
     }
@@ -37,5 +36,5 @@ impl ServiceDefinition for UnifiAccessPoint {
 }
 
 inventory::submit!(ServiceDefinitionFactory::new(
-    create_service::<UnifiAccessPoint>
+    create_service::<UnifiGateway>
 ));

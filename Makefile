@@ -1,4 +1,4 @@
-.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures refresh-vendored-data seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-seed-credentials snmp-deploy snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status podman-proxy-up podman-proxy-up-tls podman-proxy-down podman-proxy-status podman-workload-up podman-workload-down issue-license daemon-clean daemon-purge daemon-logs daemon-restart daemon-config
+.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures refresh-vendored-data seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-seed-credentials snmp-deploy snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status podman-proxy-up podman-proxy-up-tls podman-proxy-down podman-proxy-status podman-workload-up podman-workload-down unifi-status unifi-capture issue-license daemon-clean daemon-purge daemon-logs daemon-restart daemon-config
 
 DAYS ?= 365
 
@@ -65,6 +65,8 @@ help:
 	@echo "  make podman-proxy-status - Show Podman proxy status"
 	@echo "  make podman-workload-up  - Seed a discoverable Podman pod + containers"
 	@echo "  make podman-workload-down - Remove the Podman test workload"
+	@echo "  make unifi-status    - Check both UniFi auth transports (see tools/unifi/UNIFI-TEST-ENV.md)"
+	@echo "  make unifi-capture   - Capture stat/sysinfo + stat/device from the UniFi controller"
 
 fresh-db:
 	make clean-db
@@ -481,6 +483,12 @@ podman-proxy-down:
 
 podman-proxy-status:
 	tools/podman-proxy/podman-proxy-test-env.sh status
+
+unifi-status:
+	tools/unifi/unifi-test-env.sh status
+
+unifi-capture:
+	tools/unifi/unifi-test-env.sh capture
 
 podman-workload-up:
 	tools/podman-proxy/podman-proxy-test-env.sh workload up
