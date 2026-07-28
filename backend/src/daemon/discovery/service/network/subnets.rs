@@ -13,20 +13,19 @@ use super::NetworkScan;
 
 /// Outcome of network-phase target resolution.
 ///
-/// `target_ips` is `Some` only for a targeted rescan, where the requested
-/// `ScanTarget` /32s have been substituted for the real subnets that contain
-/// them (see [`NetworkScan::resolve_scan_subnets`]). Everything downstream then
-/// treats `subnets` as an ordinary scan list and narrows enumeration to
-/// `target_ips`.
+/// `target_ips` is `Some` only for a rescan, which names its addresses directly
+/// rather than sweeping subnets. The subnets returned alongside are the real
+/// ones containing those addresses, so everything downstream — the
+/// interfaced/non-interfaced partition, the ARP source lookups, IP attribution —
+/// works exactly as it does for a normal scan.
 pub struct ResolvedScanTargets {
     pub subnets: Vec<Subnet>,
     pub target_ips: Option<HashSet<IpAddr>>,
 }
 
 impl NetworkScan {
-    /// Network-phase subnet resolution. Supports optional subnet_id filtering for
-    /// targeted scans. Does not include Docker subnet merging (handled by
-    /// create_initial_subnets before session start).
+    /// Network-phase target resolution: either the subnets to sweep, or the
+    /// specific addresses a rescan is verifying.
     pub async fn resolve_scan_subnets(
         &self,
         ops: &DiscoveryOps,
@@ -39,44 +38,23 @@ impl NetworkScan {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Network ID not set"))?;
 
+        // A rescan names its targets, so resolve each to the subnet that holds it.
+        if let Some(target_ips) = &self.target_ips {
+            return self
+                .resolve_rescan_targets(target_ips, ops, utils, network_id)
+                .await;
+        }
+
         // Target specific subnets if provided in discovery type
         let subnets = if let Some(subnet_ids) = &self.subnet_ids {
             let all_subnets: Vec<Subnet> = ops
                 .api_client
                 .get("/api/v1/subnets", "Failed to get subnets")
                 .await?;
-            let requested: Vec<Subnet> = all_subnets
-                .iter()
-                .filter(|s| subnet_ids.contains(&s.id))
-                .cloned()
-                .collect();
-
-            // A rescan targets one address, expressed as a transient `ScanTarget`
-            // /32. Substitute each for the real subnet that contains it so the rest
-            // of the pipeline — the interfaced/non-interfaced partition, the ARP
-            // source lookups, and IP attribution — works unchanged, and the target
-            // is genuinely ARP'd rather than falling to the TCP-only path.
-            let (scan_targets, regular): (Vec<Subnet>, Vec<Subnet>) = requested
+            all_subnets
                 .into_iter()
-                .partition(|s| s.base.subnet_type.is_ephemeral());
-
-            if scan_targets.is_empty() {
-                return Ok(ResolvedScanTargets {
-                    subnets: regular,
-                    target_ips: None,
-                });
-            }
-
-            return self
-                .substitute_scan_targets(
-                    scan_targets,
-                    regular,
-                    &all_subnets,
-                    ops,
-                    utils,
-                    network_id,
-                )
-                .await;
+                .filter(|s| subnet_ids.contains(&s.id))
+                .collect()
 
         // Target all interfaced subnets if not
         } else {
@@ -111,21 +89,17 @@ impl NetworkScan {
         })
     }
 
-    /// Replace each `ScanTarget` /32 with the interfaced subnet that contains it,
-    /// collecting the targeted addresses into a filter.
+    /// Map each rescan target to the interfaced subnet containing it.
     ///
     /// Fails the session if a target has no containing interfaced subnet. The
     /// server only accepts a rescan when the chosen daemon is interfaced on a
-    /// subnet holding the host's IP, so reaching this error means the daemon's
-    /// live interfaces have diverged from the server's junction. Falling through
-    /// to the non-interfaced path instead would scan without ARP and could report
-    /// a live but TCP-silent host as unresponsive — the exact answer this feature
-    /// exists to avoid giving.
-    async fn substitute_scan_targets(
+    /// subnet holding the host's IP, so reaching this means the daemon's live
+    /// interfaces have diverged from the server's junction. Scanning anyway
+    /// would skip ARP and could report a live but TCP-silent host as
+    /// unresponsive — the exact answer this feature exists to avoid giving.
+    async fn resolve_rescan_targets(
         &self,
-        scan_targets: Vec<Subnet>,
-        mut subnets: Vec<Subnet>,
-        all_subnets: &[Subnet],
+        target_ips: &HashSet<IpAddr>,
         ops: &DiscoveryOps,
         utils: &PlatformDaemonUtils,
         network_id: uuid::Uuid,
@@ -135,17 +109,20 @@ impl NetworkScan {
             .get_own_interfaces(network_id, &interface_filter)
             .await?;
 
-        let mut target_ips: HashSet<IpAddr> = HashSet::new();
+        let all_subnets: Vec<Subnet> = ops
+            .api_client
+            .get("/api/v1/subnets", "Failed to get subnets")
+            .await?;
 
-        for target in scan_targets {
-            let ip = target.base.cidr.first_address();
+        let mut subnets: Vec<Subnet> = Vec::new();
 
+        for ip in target_ips {
             let containing = longest_prefix_containing(
                 subnet_cidr_to_mac
                     .iter()
                     .filter(|(_, mac)| mac.is_some())
                     .map(|(cidr, _)| *cidr),
-                ip,
+                *ip,
             );
 
             let Some(containing_cidr) = containing else {
@@ -166,11 +143,10 @@ impl NetworkScan {
 
             tracing::info!(
                 target = %ip,
-                substituted_for = %containing_cidr,
+                subnet = %containing_cidr,
                 "Resolved rescan target to its containing interfaced subnet"
             );
 
-            target_ips.insert(ip);
             if !subnets.iter().any(|s| s.id == parent.id) {
                 subnets.push(parent);
             }
@@ -178,7 +154,7 @@ impl NetworkScan {
 
         Ok(ResolvedScanTargets {
             subnets,
-            target_ips: Some(target_ips),
+            target_ips: Some(target_ips.clone()),
         })
     }
 }

@@ -523,10 +523,12 @@
 
 		form.reset({
 			name: formData.name,
-			// This form only edits user-owned config. Server-managed run types
-			// (Historical, Targeted) never open here, so fall back to AdHoc.
+			// This form only edits user-owned config. Server-managed rows —
+			// Historical runs and Rescans — never open here, so coerce both
+			// fields to the editable options rather than widening the form type.
 			run_type_type: formData.run_type.type === 'Scheduled' ? 'Scheduled' : 'AdHoc',
-			discovery_type_type: formData.discovery_type.type,
+			discovery_type_type:
+				formData.discovery_type.type === 'Rescan' ? 'Unified' : formData.discovery_type.type,
 			host_naming_fallback: hostNamingFallback,
 			schedule_days_of_week: scheduleDaysOfWeek,
 			schedule_time: scheduleTime,

@@ -5,11 +5,11 @@ use crate::server::billing::types::base::{LimitSource, LimitType};
 use crate::server::daemons::r#impl::api::DiscoveryUpdatePayload;
 use crate::server::daemons::r#impl::version::{minimum_targeted_rescan, supports_targeted_rescan};
 use crate::server::discovery::r#impl::base::{Discovery, DiscoveryBase};
-use crate::server::discovery::r#impl::scan_settings::ScanSettings;
-use crate::server::discovery::r#impl::types::{DiscoveryType, HostNamingFallback, RunType};
+use crate::server::discovery::r#impl::scan_settings::{RescanSettings, ScanSettings};
+use crate::server::discovery::r#impl::types::{DiscoveryType, RunType};
 use crate::server::interfaces::r#impl::base::Interface;
 use crate::server::ip_addresses::r#impl::base::IPAddress;
-use crate::server::ports::r#impl::base::Port;
+use crate::server::ports::r#impl::base::{Port, PortType};
 use crate::server::services::r#impl::base::Service;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::events::traits::{Event, OrgScope};
@@ -26,11 +26,8 @@ use crate::server::shared::services::{csv::build_csv, traits::CrudService};
 use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::storage::{filter::StorableFilter, traits::Storable};
 use crate::server::shared::types::api::{ApiErrorResponse, EmptyApiResponse};
-use crate::server::shared::types::entities::EntitySource;
 use crate::server::shared::types::error_codes::ErrorCode;
 use crate::server::shared::validation::{validate_network_access, validate_read_access};
-use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
-use crate::server::subnets::r#impl::types::SubnetType;
 use crate::server::{
     config::AppState,
     daemons::r#impl::{base::Daemon, version::pre_interface_to_ip_address_rename},
@@ -807,39 +804,55 @@ async fn rescan_host(
         )));
     }
 
-    // One transient /32 per reachable address. The daemon swaps each for the real
-    // subnet containing it, so these never become an address's home subnet, and
-    // they are reaped when the session ends.
-    let mut target_subnet_ids = Vec::with_capacity(reachable.len());
-    for ip in &reachable {
-        let subnet = state
-            .services
-            .subnet_service
-            .create(
-                scan_target_subnet(host.base.network_id, ip.base.ip_address),
-                AuthenticatedEntity::System,
-            )
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-        target_subnet_ids.push(subnet.id);
-    }
+    // The ports already recorded on this host. `get_for_hosts` applies the live
+    // filter; `get_for_host` does not, and would resurrect historically-closed
+    // ports into the scan list.
+    let ports: Vec<PortType> = state
+        .services
+        .port_service
+        .get_for_hosts(&[host_id], None)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?
+        .remove(&host_id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| p.base.port_type)
+        .collect();
 
-    let mut discovery = Discovery::new(DiscoveryBase {
-        run_type: RunType::Targeted { last_run: None },
-        discovery_type: DiscoveryType::Unified {
+    // Inherit the daemon's configured scan settings so a deliberately lowered
+    // scan rate — or raw-socket probing the operator turned on — carries over.
+    // The conversion drops the full-scan fields, which a rescan must not have.
+    let settings = RescanSettings::from(
+        &daemon_scan_settings(&state, daemon.id)
+            .await
+            .unwrap_or_default(),
+    );
+
+    let discovery = Discovery::new(DiscoveryBase {
+        run_type: RunType::AdHoc { last_run: None },
+        discovery_type: DiscoveryType::Rescan {
             host_id: daemon.base.host_id,
-            subnet_ids: Some(target_subnet_ids),
-            host_naming_fallback: HostNamingFallback::BestService,
-            scan_settings: ScanSettings::default(),
+            target_host_id: host.id,
+            ips: reachable.iter().map(|ip| ip.base.ip_address).collect(),
+            ports,
+            settings,
         },
-        name: format!("Rescan of {}", host.base.name),
+        // Both the host name and the addresses are only known here, and the
+        // historical record inherits this name — so it carries the address the
+        // scan actually aimed at, not just the host's current name.
+        name: format!(
+            "Rescan of {} ({})",
+            host.base.name,
+            reachable
+                .iter()
+                .map(|ip| ip.base.ip_address.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         daemon_id: daemon.id,
         network_id: host.base.network_id,
         tags: Vec::new(),
     });
-    // Never promote a rescan to a 65535-port sweep: scan_count starts at 0 on a
-    // fresh row, and nothing here sets force_full_scan.
-    discovery.force_full_scan = false;
 
     let discovery = state
         .services
@@ -869,6 +882,23 @@ async fn rescan_host(
         .await?;
 
     Ok(Json(ApiResponse::success(update)))
+}
+
+/// The scan settings on this daemon's own discovery configuration, if it has one.
+async fn daemon_scan_settings(state: &Arc<AppState>, daemon_id: Uuid) -> Option<ScanSettings> {
+    let filter = StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).live_configs();
+    let discoveries = state
+        .services
+        .discovery_service
+        .get_all(filter)
+        .await
+        .ok()?;
+    discoveries
+        .into_iter()
+        .find_map(|d| match d.base.discovery_type {
+            DiscoveryType::Unified { scan_settings, .. } => Some(scan_settings),
+            _ => None,
+        })
 }
 
 /// The daemon that last discovered this host, validated as usable for a rescan.
@@ -934,21 +964,6 @@ async fn resolve_rescan_daemon(state: &Arc<AppState>, host: &Host) -> Result<Dae
     }
 
     Ok(daemon)
-}
-
-/// A transient single-address subnet used only to aim a rescan.
-fn scan_target_subnet(network_id: Uuid, ip: std::net::IpAddr) -> Subnet {
-    let cidr = cidr::IpCidr::new_host(ip);
-    Subnet::new(SubnetBase {
-        name: cidr.to_string(),
-        network_id,
-        tags: Vec::new(),
-        cidr,
-        description: None,
-        subnet_type: SubnetType::ScanTarget,
-        virtualization: None,
-        source: EntitySource::System,
-    })
 }
 
 /// Consolidate hosts

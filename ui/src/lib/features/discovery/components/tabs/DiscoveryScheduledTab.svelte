@@ -270,16 +270,21 @@
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
+				{@const isRescan = item.discovery_type.type === 'Rescan'}
 				<DiscoveryRunCard
 					discovery={item}
 					activeSession={getActiveSession(item)}
 					selected={isSelected}
 					{onSelectionChange}
 					onDelete={isReadOnly ? undefined : handleDeleteDiscovery}
-					onEdit={isReadOnly ? undefined : handleEditDiscovery}
-					onRun={isReadOnly ? undefined : handleDiscoveryRun}
+					{...isRescan
+						? {}
+						: {
+								onEdit: isReadOnly ? undefined : handleEditDiscovery,
+								onRun: isReadOnly ? undefined : handleDiscoveryRun,
+								onToggleEnabled: isReadOnly ? undefined : handleToggleEnabled
+							}}
 					onCancel={isReadOnly ? undefined : handleCancelDiscovery}
-					onToggleEnabled={isReadOnly ? undefined : handleToggleEnabled}
 					{viewMode}
 				/>
 			{/snippet}

@@ -27,6 +27,15 @@
     "metadata": null
   },
   {
+    "id": "Rescan",
+    "name": "Rescan",
+    "description": "Re-check a single host's known addresses and ports",
+    "category": null,
+    "icon": "radar",
+    "color": "Green",
+    "metadata": null
+  },
+  {
     "id": "Unified",
     "name": "Unified",
     "description": "Unified discovery combining self-report, network scanning, and Docker container detection",

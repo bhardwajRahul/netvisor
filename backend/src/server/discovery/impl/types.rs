@@ -6,8 +6,11 @@ use strum::{Display, EnumDiscriminants, EnumIter, IntoStaticStr, VariantNames};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use std::net::IpAddr;
+
 use crate::server::credentials::r#impl::mapping::SnmpCredentialMapping;
-use crate::server::discovery::r#impl::scan_settings::ScanSettings;
+use crate::server::discovery::r#impl::scan_settings::{RescanSettings, ScanSettings};
+use crate::server::ports::r#impl::base::PortType;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::{
     daemons::r#impl::api::DiscoveryUpdatePayload,
@@ -59,6 +62,30 @@ pub enum DiscoveryType {
         #[schema(required)]
         host_naming_fallback: HostNamingFallback,
     },
+    /// A one-shot verification of a single host: re-check the addresses and
+    /// ports already recorded for it, rather than sweeping a subnet.
+    ///
+    /// Created by the server only (never via the API) and deleted once its
+    /// session reaches a terminal phase, so it is not a discovery configuration
+    /// anyone owns or sees in their scan list.
+    #[schema(title = "Rescan")]
+    Rescan {
+        /// ID of the host that the daemon is running on — same meaning as every
+        /// other variant. The host being rescanned is `target_host_id`.
+        host_id: Uuid,
+        /// The host being rescanned.
+        target_host_id: Uuid,
+        /// Addresses to scan on that host.
+        #[schema(value_type = Vec<String>)]
+        ips: Vec<IpAddr>,
+        /// Ports already known on that host, re-checked to confirm they are
+        /// still open. Scanned in addition to the standard discovery set, so a
+        /// rescan also surfaces newly-opened services.
+        #[serde(default)]
+        ports: Vec<PortType>,
+        #[serde(default)]
+        settings: RescanSettings,
+    },
     #[schema(title = "Unified")]
     Unified {
         /// ID of the host that the daemon is running on
@@ -96,6 +123,27 @@ impl DiscoveryType {
         )
     }
 
+    /// The host a one-shot rescan is verifying. `None` for every other type,
+    /// so `Some` also answers "is this a rescan".
+    pub fn rescan_target_host_id(&self) -> Option<Uuid> {
+        match self {
+            DiscoveryType::Rescan { target_host_id, .. } => Some(*target_host_id),
+            DiscoveryType::SelfReport { .. }
+            | DiscoveryType::Network { .. }
+            | DiscoveryType::Docker { .. }
+            | DiscoveryType::Unified { .. } => None,
+        }
+    }
+
+    /// Whether the daemon runs the full scan pipeline for this type — i.e. it
+    /// needs credential mappings and the settings the server computes.
+    pub fn runs_network_scan(&self) -> bool {
+        matches!(
+            self,
+            DiscoveryType::Unified { .. } | DiscoveryType::Rescan { .. }
+        )
+    }
+
     /// Serialize with SNMP credentials exposed as plaintext.
     /// Used only for daemon transmission where the daemon needs actual credentials.
     ///
@@ -127,6 +175,7 @@ impl Display for DiscoveryType {
             DiscoveryType::SelfReport { .. } => write!(f, "Self Report"),
             DiscoveryType::Network { .. } => write!(f, "Network Discovery"),
             DiscoveryType::Docker { .. } => write!(f, "Docker Discovery"),
+            DiscoveryType::Rescan { .. } => write!(f, "Rescan"),
             DiscoveryType::Unified { .. } => write!(f, "Unified Discovery"),
         }
     }
@@ -166,15 +215,6 @@ pub enum RunType {
         #[schema(read_only)]
         last_run: Option<DateTime<Utc>>,
     },
-    /// A one-shot rescan of specific targets. Created by the server (never via
-    /// API) and deleted when its session reaches a terminal phase, so it is not
-    /// a discovery configuration the user owns or sees in their scan list.
-    #[schema(title = "Targeted")]
-    Targeted {
-        #[serde(default)]
-        #[schema(read_only)]
-        last_run: Option<DateTime<Utc>>,
-    },
 }
 
 impl Default for RunType {
@@ -194,9 +234,7 @@ impl RunType {
     /// When this discovery last started a session, if it tracks that.
     pub fn last_run(&self) -> Option<DateTime<Utc>> {
         match self {
-            RunType::Scheduled { last_run, .. }
-            | RunType::AdHoc { last_run }
-            | RunType::Targeted { last_run } => *last_run,
+            RunType::Scheduled { last_run, .. } | RunType::AdHoc { last_run } => *last_run,
             // Historical runs *are* a completed run; `results.finished_at` is the
             // timestamp that means anything for them.
             RunType::Historical { .. } => None,
@@ -206,9 +244,9 @@ impl RunType {
     /// Stamp the time a session started. No-op for variants that don't track it.
     pub fn set_last_run(&mut self, at: DateTime<Utc>) {
         match self {
-            RunType::Scheduled { last_run, .. }
-            | RunType::AdHoc { last_run }
-            | RunType::Targeted { last_run } => *last_run = Some(at),
+            RunType::Scheduled { last_run, .. } | RunType::AdHoc { last_run } => {
+                *last_run = Some(at)
+            }
             RunType::Historical { .. } => {}
         }
     }
@@ -226,7 +264,7 @@ impl RunType {
                 enabled: *enabled,
                 timezone: timezone.as_deref(),
             }),
-            RunType::Historical { .. } | RunType::AdHoc { .. } | RunType::Targeted { .. } => None,
+            RunType::Historical { .. } | RunType::AdHoc { .. } => None,
         }
     }
 
@@ -238,7 +276,7 @@ impl RunType {
     /// Created by the server only — rejected on the public create/update routes.
     pub fn is_server_managed(&self) -> bool {
         match self {
-            RunType::Historical { .. } | RunType::Targeted { .. } => true,
+            RunType::Historical { .. } => true,
             RunType::Scheduled { .. } | RunType::AdHoc { .. } => false,
         }
     }
@@ -254,16 +292,14 @@ impl RunType {
     pub fn historical_results(&self) -> Option<&DiscoveryUpdatePayload> {
         match self {
             RunType::Historical { results } => Some(results),
-            RunType::Scheduled { .. } | RunType::AdHoc { .. } | RunType::Targeted { .. } => None,
+            RunType::Scheduled { .. } | RunType::AdHoc { .. } => None,
         }
     }
 
     /// Whether this discovery has never started a session.
     pub fn never_ran(&self) -> bool {
         match self {
-            RunType::Scheduled { last_run, .. }
-            | RunType::AdHoc { last_run }
-            | RunType::Targeted { last_run } => last_run.is_none(),
+            RunType::Scheduled { last_run, .. } | RunType::AdHoc { last_run } => last_run.is_none(),
             RunType::Historical { .. } => false,
         }
     }
@@ -300,6 +336,7 @@ impl TypeMetadataProvider for DiscoveryType {
             DiscoveryType::SelfReport { .. } => {
                 "The daemon reports its own host configuration and network details"
             }
+            DiscoveryType::Rescan { .. } => "Re-check a single host's known addresses and ports",
             DiscoveryType::Unified { .. } => {
                 "Unified discovery combining self-report, network scanning, and Docker container detection"
             }

@@ -40,26 +40,29 @@ mod organization;
 mod tests {
     use super::*;
     use crate::server::discovery::r#impl::base::Discovery;
-    use crate::server::discovery::r#impl::types::RunType;
+    use crate::server::discovery::r#impl::types::{DiscoveryType, RunType};
     use crate::server::hosts::r#impl::base::Host;
     use crate::server::snapshots::types::base::Snapshot;
     use crate::server::tags::r#impl::base::Tag;
     use chrono::TimeZone;
     use strum::VariantNames;
 
-    /// `live_configs` matches the serde tag as a raw string in JSONB, so no
-    /// amount of Rust exhaustiveness covers it. Drive the check off
-    /// `RunType::VARIANTS` (derived, so it grows automatically) to force whoever
-    /// adds a variant to decide whether it is a live discovery configuration.
+    /// `live_configs` matches serde tags as raw strings in JSONB, so no amount
+    /// of Rust exhaustiveness covers it. Drive the check off the derived
+    /// `VARIANTS` lists — they grow automatically — so whoever adds a variant
+    /// must decide whether it is a discovery configuration a user owns.
+    ///
+    /// Both enums matter: a rescan's *run* type is `AdHoc`, so only its
+    /// discovery type marks it transient.
     #[test]
-    fn live_configs_classifies_every_run_type() {
+    fn live_configs_classifies_every_run_and_discovery_type() {
         let sql = StorableFilter::<Discovery>::new_unfiltered()
             .live_configs()
             .to_where_clause();
 
         for name in RunType::VARIANTS {
             let expected_excluded = match *name {
-                "Historical" | "Targeted" => true,
+                "Historical" => true,
                 "Scheduled" | "AdHoc" => false,
                 other => panic!(
                     "RunType::{other} is not classified by live_configs. Decide whether it \
@@ -71,6 +74,23 @@ mod tests {
                 sql.contains(&format!("'{name}'")),
                 expected_excluded,
                 "RunType::{name} exclusion mismatch in: {sql}"
+            );
+        }
+
+        for name in DiscoveryType::VARIANTS {
+            let expected_excluded = match *name {
+                "Rescan" => true,
+                "SelfReport" | "Network" | "Docker" | "Unified" => false,
+                other => panic!(
+                    "DiscoveryType::{other} is not classified by live_configs. Decide whether a \
+                     row of this type is a configuration a user owns (leave it in) or a transient \
+                     server-minted row (add it to the filter), then update this test."
+                ),
+            };
+            assert_eq!(
+                sql.contains(&format!("'{name}'")),
+                expected_excluded,
+                "DiscoveryType::{name} exclusion mismatch in: {sql}"
             );
         }
     }

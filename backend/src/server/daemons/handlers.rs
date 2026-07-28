@@ -6,7 +6,6 @@ use crate::server::daemons::r#impl::api::{
     DaemonDiscoveryRequest, DaemonHeartbeatPayload, ProvisionDaemonRequest,
     ProvisionDaemonResponse, TestReachabilityRequest, TestReachabilityResponse,
 };
-use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::ordering::OrderField;
@@ -833,7 +832,7 @@ async fn receive_work_request(
     // Unified: build credential_mappings via discovery_service and use with_exposed_credentials()
     // Legacy: use with_exposed_snmp() (SNMP inline in DiscoveryType::Network)
     let next_session_value = match next_session {
-        Some(payload) if matches!(payload.discovery_type, DiscoveryType::Unified { .. }) => {
+        Some(payload) if payload.discovery_type.runs_network_scan() => {
             let integration_targets = state
                 .services
                 .discovery_service

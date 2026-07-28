@@ -311,3 +311,93 @@ impl ScanSettings {
         ]
     }
 }
+
+/// Scan settings that apply to a single-host rescan.
+///
+/// Deliberately narrower than [`ScanSettings`]: a rescan verifies a known host
+/// against a known port set, so the full-scan mechanism (`is_full_scan`,
+/// `full_scan_interval`) must not be expressible — promoting a rescan to a
+/// 65,535-port sweep defeats the feature. The remaining omissions are settings
+/// that cannot bind on a one-or-two address target.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema)]
+pub struct RescanSettings {
+    /// ARP retry rounds. Matters more here than in a sweep: for a rescan, "did
+    /// it answer" is the entire answer, so a missed round reads as a dead host.
+    #[serde(default)]
+    pub arp_retries: Option<u32>,
+
+    /// Port scan probes per second. Operators lower this for fragile devices or
+    /// noisy IDS, and a rescan must respect that as much as a discovery does.
+    #[serde(default)]
+    pub scan_rate_pps: Option<u32>,
+
+    /// Ports scanned concurrently per host.
+    #[serde(default)]
+    pub port_scan_batch_size: Option<usize>,
+
+    /// Whether to probe raw-socket ports 9100-9107. Correctness-affecting: with
+    /// this off the scanner drops those ports from its results, so a printer's
+    /// known JetDirect port would look like it had disappeared.
+    #[serde(default)]
+    pub probe_raw_socket_ports: bool,
+
+    /// On Windows, use Npcap broadcast ARP instead of SendARP.
+    #[serde(default)]
+    pub use_npcap_arp: bool,
+}
+
+impl From<&ScanSettings> for RescanSettings {
+    fn from(settings: &ScanSettings) -> Self {
+        // Exhaustive destructure on purpose: a new `ScanSettings` field must be
+        // classified here — carried into a rescan, or dropped with the reason
+        // beside it — rather than silently never reaching one.
+        let ScanSettings {
+            arp_retries,
+            scan_rate_pps,
+            port_scan_batch_size,
+            probe_raw_socket_ports,
+            use_npcap_arp,
+            arp_rate_pps: _,           // inert: can't bind on a 1-2 address list
+            arp_scan_cutoff: _,        // inert: an explicit IP list can't hit the cap
+            max_discovery_duration: _, // inert: the 6h ceiling never fires on one host
+            full_scan_interval: _,     // full-scan mechanism — must not apply
+            is_full_scan: _,
+        } = settings;
+
+        Self {
+            arp_retries: *arp_retries,
+            scan_rate_pps: *scan_rate_pps,
+            port_scan_batch_size: *port_scan_batch_size,
+            probe_raw_socket_ports: *probe_raw_socket_ports,
+            use_npcap_arp: *use_npcap_arp,
+        }
+    }
+}
+
+impl From<&RescanSettings> for ScanSettings {
+    fn from(settings: &RescanSettings) -> Self {
+        // Widening back for the daemon's scan pipeline, which is parameterised
+        // by `ScanSettings`. Exhaustive for the same reason as above.
+        let RescanSettings {
+            arp_retries,
+            scan_rate_pps,
+            port_scan_batch_size,
+            probe_raw_socket_ports,
+            use_npcap_arp,
+        } = settings;
+
+        Self {
+            arp_retries: *arp_retries,
+            scan_rate_pps: *scan_rate_pps,
+            port_scan_batch_size: *port_scan_batch_size,
+            probe_raw_socket_ports: *probe_raw_socket_ports,
+            use_npcap_arp: *use_npcap_arp,
+            // A rescan is never a full scan — that is the point of the narrower type.
+            is_full_scan: false,
+            full_scan_interval: None,
+            arp_rate_pps: None,
+            arp_scan_cutoff: None,
+            max_discovery_duration: None,
+        }
+    }
+}

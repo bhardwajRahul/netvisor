@@ -1,8 +1,6 @@
 use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
-use crate::server::shared::types::metadata::HasId;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
-    ip_addresses::service::IPAddressService,
     shared::{
         entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
         events::{bus::EventBus, types::EntityOperation},
@@ -14,7 +12,7 @@ use crate::server::{
         },
         types::entities::EntitySource,
     },
-    subnets::r#impl::{base::Subnet, types::SubnetType},
+    subnets::r#impl::base::Subnet,
     tags::entity_tags::EntityTagService,
 };
 use anyhow::Result;
@@ -26,9 +24,6 @@ pub struct SubnetService {
     storage: Arc<GenericPostgresStorage<Subnet>>,
     event_bus: Arc<EventBus>,
     entity_tag_service: Arc<EntityTagService>,
-    /// Only for the scan-target reaper's safety check — deleting a subnet
-    /// cascades to its `ip_addresses`, so we confirm none are attached first.
-    ip_address_service: Arc<IPAddressService>,
 }
 
 impl EventBusService<Subnet> for SubnetService {
@@ -202,111 +197,12 @@ impl SubnetService {
         storage: Arc<GenericPostgresStorage<Subnet>>,
         event_bus: Arc<EventBus>,
         entity_tag_service: Arc<EntityTagService>,
-        ip_address_service: Arc<IPAddressService>,
     ) -> Self {
         Self {
             storage,
             event_bus,
             entity_tag_service,
-            ip_address_service,
         }
-    }
-
-    /// Delete the transient `ScanTarget` subnets a finished rescan targeted.
-    ///
-    /// Called from the historical-Discovery subscriber, so it covers every
-    /// terminal phase — a cancelled or failed rescan must not leak its rows.
-    pub async fn reap_scan_targets(&self, subnet_ids: &[Uuid]) {
-        if subnet_ids.is_empty() {
-            return;
-        }
-
-        let subnets = match self
-            .get_all(StorableFilter::<Subnet>::new_from_entity_ids(subnet_ids).live())
-            .await
-        {
-            Ok(subnets) => subnets,
-            Err(e) => {
-                tracing::warn!(error = ?e, "Failed to load scan-target subnets for cleanup");
-                return;
-            }
-        };
-
-        let mut reapable = Vec::new();
-        for subnet in subnets.iter().filter(|s| s.base.subnet_type.is_ephemeral()) {
-            // Deleting a subnet cascades to its ip_addresses. Nothing should ever
-            // be attached to a scan target — the daemon substitutes the real
-            // subnet before attributing addresses — so if something is, that is a
-            // substitution bug and deleting would take a host's address with it.
-            match self.ip_address_service.get_for_subnet(&subnet.id).await {
-                Ok(ips) if !ips.is_empty() => {
-                    tracing::error!(
-                        subnet_id = %subnet.id,
-                        cidr = %subnet.base.cidr,
-                        ip_addresses = ips.len(),
-                        "Scan-target subnet has attached IP addresses; leaving it in place. \
-                         Daemon-side target substitution did not run — investigate before \
-                         these rows are cleaned up."
-                    );
-                }
-                Ok(_) => reapable.push(subnet.id),
-                Err(e) => {
-                    tracing::warn!(
-                        subnet_id = %subnet.id,
-                        error = ?e,
-                        "Could not verify scan-target subnet is unreferenced; leaving it in place"
-                    );
-                }
-            }
-        }
-
-        if reapable.is_empty() {
-            return;
-        }
-
-        match self
-            .delete_many(&reapable, AuthenticatedEntity::System)
-            .await
-        {
-            Ok(count) => {
-                tracing::debug!(count, "Reaped scan-target subnets")
-            }
-            Err(e) => {
-                tracing::warn!(error = ?e, "Failed to reap scan-target subnets")
-            }
-        }
-    }
-
-    /// Delete scan-target subnets left behind by a session that never reached a
-    /// terminal phase — a server restart mid-rescan, or a reap that failed.
-    ///
-    /// `older_than_hours` must exceed the longest a session can legitimately
-    /// live: a queued rescan waits behind a running discovery, which is capped
-    /// at `max_discovery_duration` (6h by default).
-    pub async fn sweep_orphaned_scan_targets(&self, older_than_hours: i64) {
-        let cutoff = chrono::Utc::now() - chrono::Duration::hours(older_than_hours);
-        let filter = StorableFilter::<Subnet>::new()
-            .subnet_type(SubnetType::ScanTarget.id())
-            .created_before(cutoff)
-            .live();
-
-        let orphaned = match self.get_all(filter).await {
-            Ok(subnets) => subnets,
-            Err(e) => {
-                tracing::warn!(error = ?e, "Failed to scan for orphaned scan-target subnets");
-                return;
-            }
-        };
-        if orphaned.is_empty() {
-            return;
-        }
-
-        tracing::info!(
-            count = orphaned.len(),
-            "Sweeping orphaned scan-target subnets"
-        );
-        let ids: Vec<Uuid> = orphaned.iter().map(|s| s.id).collect();
-        self.reap_scan_targets(&ids).await;
     }
 
     /// Update container-runtime bridge subnets (Docker/Podman) that reference an

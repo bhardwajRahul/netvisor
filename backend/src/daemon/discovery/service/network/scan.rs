@@ -55,13 +55,10 @@ impl NetworkScan {
             .get_own_interfaces(session.info.network_id, &interface_filter)
             .await?;
 
-        // Filter out subnets that are not scannable: loopback, and any transient
-        // `ScanTarget` row that survived substitution in resolve_scan_subnets
-        // (which should be none — a /32 reaching here would be swept as its own
-        // subnet rather than as a target within its real one).
+        // Filter out loopback subnets — they are not scannable
         let subnets: Vec<Subnet> = subnets
             .into_iter()
-            .filter(|s| !s.base.subnet_type.is_loopback() && !s.base.subnet_type.is_ephemeral())
+            .filter(|s| !s.base.subnet_type.is_loopback())
             .collect();
 
         // A targeted rescan narrows enumeration to specific addresses within the

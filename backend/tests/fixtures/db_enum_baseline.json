@@ -58,7 +58,8 @@
     "SelfReport",
     "Network",
     "Docker",
-    "Unified"
+    "Unified",
+    "Rescan"
   ],
   "EdgeStyle": [
     "Straight",
@@ -151,8 +152,7 @@
   "RunType": [
     "Scheduled",
     "Historical",
-    "AdHoc",
-    "Targeted"
+    "AdHoc"
   ],
   "ServiceVirtualization": [
     "Docker",
@@ -168,5 +168,5 @@
     "Workloads",
     "Application"
   ],
-  "_note": "Extra variants beyond the current binary's VARIANTS list are preserved across regens for #[serde(alias = \"…\")] tolerance. To accept a breaking rename, delete the old entry from this file manually and declare Deploy-Mode: downtime for the release."
+  "_note": "Extra variants beyond the current binary's VARIANTS list are preserved across regens for #[serde(alias = \"\u2026\")] tolerance. To accept a breaking rename, delete the old entry from this file manually and declare Deploy-Mode: downtime for the release."
 }

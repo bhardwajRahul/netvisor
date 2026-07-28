@@ -227,8 +227,6 @@ impl DaemonState {
                     if v != u32::MAX { Some(v) } else { None }
                 },
                 discovery_id: Some(s.info.discovery_id),
-                // Server-owned flag; the daemon never sets it.
-                targeted: false,
                 scanned: None,
             });
         }

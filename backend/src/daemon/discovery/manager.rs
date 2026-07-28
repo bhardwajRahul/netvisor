@@ -125,22 +125,16 @@ impl DaemonDiscoverySessionManager {
                     cancel_token,
                 )
             }
-            DiscoveryType::Unified {
-                host_id,
-                subnet_ids,
-                host_naming_fallback,
-                scan_settings,
-                ..
-            } => {
-                let runner = DiscoveryRunner::new(
+            DiscoveryType::Unified { .. } | DiscoveryType::Rescan { .. } => {
+                // `new` returns None only for the legacy types handled above.
+                let Some(runner) = DiscoveryRunner::new(
                     self.discovery_service.clone(),
                     self.clone(),
-                    *host_id,
-                    subnet_ids.clone(),
-                    *host_naming_fallback,
-                    scan_settings.clone(),
+                    request.discovery_type.clone(),
                     request.credential_mappings.clone(),
-                );
+                ) else {
+                    unreachable!("legacy discovery types are stubbed in the arm above")
+                };
                 self.clone()
                     .spawn_discovery(runner, request.clone(), cancel_token)
             }

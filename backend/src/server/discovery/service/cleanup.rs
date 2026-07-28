@@ -40,10 +40,10 @@ impl DiscoveryService {
     /// `exclude_ephemeral`'s call sites and clutter the daemon's row set.
     /// `older_than_hours` must exceed the longest a session can legitimately
     /// live (a queued rescan waits on `max_discovery_duration`, 6h by default).
-    pub async fn sweep_orphaned_targeted_discoveries(&self, older_than_hours: i64) {
+    pub async fn sweep_orphaned_rescans(&self, older_than_hours: i64) {
         let cutoff = Utc::now() - chrono::Duration::hours(older_than_hours);
         let filter = StorableFilter::<Discovery>::new()
-            .targeted_discovery()
+            .rescan_discovery()
             .updated_before(cutoff);
 
         let orphaned = match self.discovery_storage.get_all(filter).await {
@@ -150,7 +150,6 @@ impl DiscoveryService {
                 hosts_discovered: None,
                 estimated_remaining_secs: None,
                 discovery_id,
-                targeted: session.targeted,
                 scanned: None,
             };
 
