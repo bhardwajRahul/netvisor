@@ -13,6 +13,8 @@
 		"format": "prettier --write .",
 		"lint": "prettier --check . && eslint .",
 		"test": "vitest run",
+		"test:topology-perf": "playwright test tests/topology-perf.ts",
+		"test:topology-layout": "playwright test tests/topology-layout-eval.ts",
 		"generate:api": "npx tsx scripts/generate-api-types.ts"
 	},
 	"devDependencies": {

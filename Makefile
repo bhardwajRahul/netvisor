@@ -231,6 +231,16 @@ dev-container-rebuild-clean:
 dev-down:
 	docker compose -f docker-compose.test.yml down --volumes --rmi local
 
+# Topology harnesses. Both drive a real browser against a running dev stack
+# (make dev-server + make dev-ui) and need SESSION_ID in the environment, taken
+# from a logged-in browser session. topology-perf additionally wants a large
+# dataset — see backend/scripts/seed-l2-perf.sql.
+topology-perf:
+	cd ui && npm run test:topology-perf
+
+topology-layout-eval:
+	cd ui && npm run test:topology-layout
+
 test-unit:
 	cd ui && npx vite-node scripts/export-daemon-field-defs.ts --output=../backend/src/tests/daemon-config-frontend-fields.json 2>/dev/null
 	@echo "Running frontend tests..."

@@ -8,6 +8,7 @@ import {
 } from '$lib/shared/stores/metadata';
 import type { LayoutInput, LayoutResult } from './engine';
 import { getOrgUseCase } from '../queries';
+import * as perf from '../perf';
 import { resolveCollapsedAncestor } from '../collapse';
 
 /**
@@ -1498,7 +1499,9 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 	// Pass 1: compute layout with FIXED_SIDE ports (no position info).
 	// This gives us actual element positions within box-packed containers.
 	const { graph: graph1, containerIds } = buildElkGraph(input);
+	const elkPass1Done = perf.stage('elk.layout');
 	const result1 = await elk.layout(graph1);
+	elkPass1Done();
 
 	// Extract actual element AND subcontainer positions from pass 1
 	const elementPositions = new Map<
@@ -1537,7 +1540,9 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 		elementPositions,
 		subcontainerPositions
 	);
+	const elkPass2Done = perf.stage('elk.layout');
 	const result2 = await elk.layout(graph2);
+	elkPass2Done();
 
 	// L2: top-align layers by shifting each layer's top node to the same Y.
 	// ELK centers layers independently, causing vertical misalignment.
