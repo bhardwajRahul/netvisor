@@ -37,7 +37,8 @@
 		MINIMAP_OFFSET_PX,
 		aggregatedEdgeOriginals,
 		getInfrastructureRuleIdForTopology,
-		topologyReadOnly
+		topologyReadOnly,
+		topologyOptionsHydrated
 	} from '../../queries';
 	import { isExporting, expandedPortNodeIds } from '../../interactions';
 
@@ -331,6 +332,14 @@
 	let loadInProgress = false;
 	let pendingReload = false;
 	/**
+	 * Escape hatch for the hydration gate below.
+	 *
+	 * If `hydrateStoresFromTopology` never runs on some path, the view must still
+	 * render — a blank topology is a far worse failure than one wasted layout. The
+	 * timeout only ever costs something when hydration is genuinely absent.
+	 */
+	let hydrationWaivedAt = $state(false);
+	/**
 	 * The store values the in-flight run actually consumed, snapshotted once
 	 * `prepare` has returned. A pending reload is honoured only if the current
 	 * values differ from these — see `pipeline/reload-guard.ts`.
@@ -348,6 +357,14 @@
 		};
 	}
 	function triggerLoad(source = 'unknown') {
+		// Hold every entry point, not just the topology effect: the option stores
+		// fire during hydration too, and any one of them starting the pipeline
+		// early would defeat the gate. The effect below re-triggers once hydration
+		// lands, so nothing is lost by returning here.
+		if (topology && !loadInProgress && !$topologyOptionsHydrated && !hydrationWaivedAt) {
+			perf.count(`deferred-until-hydration:${source}`);
+			return;
+		}
 		if (!topology || loadInProgress) {
 			if (topology && loadInProgress) {
 				// A store wrote while the pipeline was mid-flight, so the whole run
@@ -418,8 +435,24 @@
 	});
 	storesInitialized = true;
 
+	onMount(() => {
+		if (get(topologyOptionsHydrated)) return;
+		const timer = setTimeout(() => {
+			// Re-check rather than waive blindly: on a slow first load hydration may
+			// simply not have arrived yet when the timer was armed, and waiving then
+			// would reintroduce the pre-hydration layout this gate exists to avoid.
+			if (get(topologyOptionsHydrated)) return;
+			perf.count('hydration-gate-waived');
+			hydrationWaivedAt = true;
+		}, 2000);
+		return () => clearTimeout(timer);
+	});
+
+	// Wait for options to hydrate before the first layout. Without this the
+	// pipeline races hydration and discards its first full run — see
+	// `topologyOptionsHydrated`.
 	$effect(() => {
-		if (topology) triggerLoad('topology');
+		if (topology && ($topologyOptionsHydrated || hydrationWaivedAt)) triggerLoad('topology');
 	});
 
 	// Update edges when selection or search/tag filter changes
