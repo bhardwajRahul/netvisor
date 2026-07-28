@@ -767,12 +767,14 @@
 		// nodes are in the DOM by the time we measure.
 		if (containerElement && layoutState.layoutGraph) {
 			await tick();
+			const cacheSizesDone = perf.stage('post-render.cache-collapsed');
 			const newEntries = cacheCollapsedSizes(
 				containerElement,
 				layoutState.layoutGraph,
 				collapsed,
 				layoutState.containerSizeCache
 			);
+			cacheSizesDone();
 			if (newEntries > 0 && !isStale()) {
 				// Counted because on a cold load with many collapsed containers this
 				// self-heal fires every time, and each recursion is a full pipeline

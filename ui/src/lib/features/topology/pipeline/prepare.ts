@@ -92,6 +92,16 @@ function getHideStateKey(): string {
 }
 
 /**
+ * Element count above which containers start collapsed. See `applyAutoCollapse`.
+ */
+const SCALE_COLLAPSE_ELEMENTS = 300;
+
+/** Whether this graph is large enough for containers to start collapsed. */
+function isScaleCollapsed(topology: RenderableTopology): boolean {
+	return topology.nodes.filter((n) => n.node_type === 'Element').length >= SCALE_COLLAPSE_ELEMENTS;
+}
+
+/**
  * Collapse containers marked `collapsed_by_default`, plus the infrastructure
  * subcontainer, and return the resulting collapsed set.
  *
@@ -111,10 +121,21 @@ function applyAutoCollapse(
 	const currentLevel = get(collapseLevel);
 	const infraRuleId = getInfrastructureRuleId();
 
+	// Above a size threshold, containers also start collapsed regardless of type.
+	// At a few hundred hosts the expanded graph mounts thousands of element
+	// cards — the dominant cost of a cold load — and at the zoom needed to see
+	// it all, their contents are illegible anyway. Collapsing is the only lever
+	// that reduces the node *count* rather than the cost per node.
+	//
+	// Routed through the same candidate/seen machinery as `collapsed_by_default`
+	// so a container the user expands is never re-collapsed behind them.
+	const collapseForScale = isScaleCollapsed(topology);
+
 	const allCandidates = topology.nodes.filter((n) => {
 		if (n.node_type !== 'Container') return false;
 		const data = n as Record<string, unknown>;
 		const ct = data.container_type as string | undefined;
+		if (collapseForScale && containerTypes.getMetadata(ct ?? 'Subnet').is_collapsible) return true;
 		return (
 			(ct && containerTypes.getMetadata(ct).collapsed_by_default === true) ||
 			(infraRuleId && data.element_rule_id === infraRuleId)
@@ -413,8 +434,15 @@ export function prepareTopologyData(
 
 	// Defer collapse so ELK runs with everything expanded — only if
 	// no expanded size is available from either the graph or the cache.
+	//
+	// Skipped entirely when collapse is scale-driven. Deferring means mounting
+	// every element card in the graph purely to learn expanded container sizes
+	// for containers we are about to collapse — the dominant cost of a cold load
+	// — and then discovering their collapsed sizes afterwards, which triggers a
+	// corrective re-layout. At scale it is far cheaper to learn a container's
+	// expanded size lazily, if and when the user expands it.
 	let deferCollapse = false;
-	if (isNewStructure && collapsed.size > 0) {
+	if (isNewStructure && collapsed.size > 0 && !isScaleCollapsed(topology)) {
 		for (const id of collapsed) {
 			const hasChildren = layoutNodes.some(
 				(n) =>

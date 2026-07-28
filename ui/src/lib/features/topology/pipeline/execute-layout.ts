@@ -41,8 +41,16 @@ export async function executeLayout(
 	const rootContainerNodes = visibleNodes.filter(
 		(n) => n.node_type === 'Container' && !n.parent_container_id
 	);
+	// Force-directed "overview mode" is for a handful of collapsed roots, where a
+	// cloud reads better than a column. It is not appropriate — or affordable, at
+	// 300 synchronous ticks — for the hundreds of roots that scale auto-collapse
+	// produces, and switching engines there would change the diagram rather than
+	// just densify it. Above this many roots, stay on ELK.
+	const FORCE_LAYOUT_MAX_ROOTS = 50;
 	const allRootCollapsed =
-		rootContainerNodes.length > 0 && rootContainerNodes.every((n) => collapsed.has(n.id));
+		rootContainerNodes.length > 0 &&
+		rootContainerNodes.length <= FORCE_LAYOUT_MAX_ROOTS &&
+		rootContainerNodes.every((n) => collapsed.has(n.id));
 
 	if (allRootCollapsed && currentView !== 'Workloads') {
 		// Force layout for all-collapsed overview mode
