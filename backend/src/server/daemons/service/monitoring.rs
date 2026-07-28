@@ -40,13 +40,7 @@ impl DaemonService {
             // Find the most recent finished_at from Historical discoveries
             let last_finished = discoveries
                 .iter()
-                .filter_map(|d| {
-                    if let RunType::Historical { ref results } = d.base.run_type {
-                        results.finished_at
-                    } else {
-                        None
-                    }
-                })
+                .filter_map(|d| d.base.run_type.historical_results()?.finished_at)
                 .max();
 
             let should_standby = match last_finished {

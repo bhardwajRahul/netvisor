@@ -60,17 +60,12 @@ impl DiscoveryService {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Scheduler not initialized"))?;
 
-        let RunType::Scheduled {
-            cron_schedule,
-            enabled,
-            timezone,
-            ..
-        } = &discovery.base.run_type
-        else {
+        let Some(schedule) = discovery.base.run_type.schedule() else {
             return Err(anyhow::anyhow!("Discovery is not scheduled"));
         };
+        let (cron_schedule, timezone) = (schedule.cron_schedule, schedule.timezone);
 
-        if !enabled {
+        if !schedule.enabled {
             return Err(anyhow::anyhow!("Discovery is not enabled"));
         }
 
@@ -79,11 +74,7 @@ impl DiscoveryService {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Scheduler not initialized"))?;
 
-        let tz: chrono_tz::Tz = timezone
-            .as_deref()
-            .unwrap_or("UTC")
-            .parse()
-            .unwrap_or(chrono_tz::UTC);
+        let tz: chrono_tz::Tz = timezone.unwrap_or("UTC").parse().unwrap_or(chrono_tz::UTC);
 
         let discovery = discovery.clone();
         let discovery_id = discovery.id;
@@ -95,7 +86,7 @@ impl DiscoveryService {
         let job = JobBuilder::new()
             .with_timezone(tz)
             .with_cron_job_type()
-            .with_schedule(cron_schedule.as_str())?
+            .with_schedule(cron_schedule)?
             .with_run_async(Box::new(move |_uuid, _lock| {
                 let discovery = discovery.clone();
                 let storage = storage.clone();
@@ -105,14 +96,7 @@ impl DiscoveryService {
                     // Check if discovery is still enabled before running — cron jobs
                     // may linger after failed removals
                     let fresh = match storage.get_by_id(&discovery_id).await {
-                        Ok(Some(fresh))
-                            if matches!(
-                                fresh.base.run_type,
-                                RunType::Scheduled { enabled: true, .. }
-                            ) =>
-                        {
-                            fresh
-                        }
+                        Ok(Some(fresh)) if fresh.base.run_type.is_scheduled_enabled() => fresh,
                         _ => {
                             tracing::debug!("Skipping disabled/deleted discovery {}", discovery_id);
                             return;
@@ -190,17 +174,9 @@ impl DiscoveryService {
                             // Reload fresh discovery from DB to avoid overwriting fields
                             match storage.get_by_id(&discovery_id).await {
                                 Ok(Some(mut fresh)) => {
-                                    if let RunType::Scheduled {
-                                        ref mut last_run, ..
-                                    } = fresh.base.run_type
-                                    {
-                                        *last_run = Some(Utc::now());
-                                        if let Err(e) = storage.update(&mut fresh).await {
-                                            tracing::error!(
-                                                "Failed to update schedule times: {}",
-                                                e
-                                            );
-                                        }
+                                    fresh.base.run_type.set_last_run(Utc::now());
+                                    if let Err(e) = storage.update(&mut fresh).await {
+                                        tracing::error!("Failed to update schedule times: {}", e);
                                     }
                                 }
                                 _ => {

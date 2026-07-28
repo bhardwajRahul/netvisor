@@ -1736,6 +1736,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hosts/{id}/rescan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rescan a host
+         * @description Starts a one-shot scan of this host's addresses and nothing else, answering
+         *     "is this host still there, and is its data current?" without sweeping the
+         *     whole subnet.
+         *
+         *     The scan runs on the daemon that last discovered this host — evidence it can
+         *     reach the address — and only if that daemon still has an interface on a
+         *     subnet containing one of the host's IPs. That constraint is what lets the
+         *     daemon ARP the target rather than fall back to a TCP probe, which would
+         *     report a live but firewalled host as unresponsive. When it can't be met the
+         *     request is refused with the specific reason rather than run at lower fidelity.
+         *
+         *     Returns the session, which streams progress over `/api/v1/discovery/stream`
+         *     like any other scan. A `Queued` phase means the daemon is busy; it will start
+         *     when the running scan finishes.
+         */
+        post: operations["rescan_host"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/if-entries": {
         parameters: {
             query?: never;
@@ -3102,7 +3135,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.5"
+         *       "server_version": "0.17.7"
          *     }
          */
         ApiMeta: {
@@ -3113,7 +3146,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.5
+             * @example 0.17.7
              */
             server_version: string;
         };
@@ -3127,19 +3160,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-27T21:36:40.032494Z",
+             *       "created_at": "2026-07-28T19:10:16.153218Z",
              *       "first_discovery_id": null,
-             *       "id": "2b97b333-2f15-4bde-bd31-729db438f6bf",
+             *       "id": "c502bfa8-a442-47f2-91b0-7ec2fa58d64f",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-27T21:36:40.032494Z",
+             *       "last_seen_at": "2026-07-28T19:10:16.153218Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-27T21:36:40.032494Z",
-             *       "valid_from": "2026-07-27T21:36:40.032494Z",
+             *       "updated_at": "2026-07-28T19:10:16.153218Z",
+             *       "valid_from": "2026-07-28T19:10:16.153218Z",
              *       "valid_to": null
              *     }
              */
@@ -3431,6 +3464,17 @@ export interface components {
                 /** Format: date-time */
                 started_at?: string | null;
                 /**
+                 * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
+                 *     rather than a discovery the user configured. Set server-side at session
+                 *     creation; daemons do not send it.
+                 *
+                 *     It rides into the historical Discovery row's `results`, which is the only
+                 *     way downstream consumers can tell a rescan apart: the terminal path mints
+                 *     a plain `RunType::Historical` row and the transient parent is deleted, so
+                 *     there is nothing left to look up. Used to keep rescans out of the digest.
+                 */
+                targeted?: boolean;
+                /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
                  *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
                  */
@@ -3532,19 +3576,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-27T21:36:40.012673Z",
+             *               "created_at": "2026-07-28T19:10:16.139475Z",
              *               "first_discovery_id": null,
-             *               "id": "6fd65318-d4f9-497b-b456-347d5a8ecea2",
+             *               "id": "c1472770-7b05-44fd-9e38-ecd5b47994ae",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-27T21:36:40.012673Z",
+             *               "last_seen_at": "2026-07-28T19:10:16.139475Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-27T21:36:40.012673Z",
-             *               "valid_from": "2026-07-27T21:36:40.012673Z",
+             *               "updated_at": "2026-07-28T19:10:16.139475Z",
+             *               "valid_from": "2026-07-28T19:10:16.139475Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3558,7 +3602,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Jitsi Meet",
+             *           "service_definition": "mailcow",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3975,19 +4019,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-27T21:36:40.026075Z",
+             *           "created_at": "2026-07-28T19:10:16.148222Z",
              *           "first_discovery_id": null,
-             *           "id": "d61733d2-d7f9-46f0-9c85-3af911628398",
+             *           "id": "14a6e4e4-9677-434e-8807-578ff612cee4",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-27T21:36:40.026075Z",
+             *           "last_seen_at": "2026-07-28T19:10:16.148222Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-27T21:36:40.026075Z",
-             *           "valid_from": "2026-07-27T21:36:40.026075Z",
+             *           "updated_at": "2026-07-28T19:10:16.148222Z",
+             *           "valid_from": "2026-07-28T19:10:16.148222Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4001,7 +4045,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Jitsi Meet",
+             *       "service_definition": "mailcow",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4382,6 +4426,17 @@ export interface components {
                 /** Format: date-time */
                 started_at?: string | null;
                 /**
+                 * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
+                 *     rather than a discovery the user configured. Set server-side at session
+                 *     creation; daemons do not send it.
+                 *
+                 *     It rides into the historical Discovery row's `results`, which is the only
+                 *     way downstream consumers can tell a rescan apart: the terminal path mints
+                 *     a plain `RunType::Historical` row and the transient parent is deleted, so
+                 *     there is nothing left to look up. Used to keep rescans out of the digest.
+                 */
+                targeted?: boolean;
+                /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
                  *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
                  */
@@ -4505,19 +4560,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-27T21:36:40.013101Z",
+         *       "created_at": "2026-07-28T19:10:16.139711Z",
          *       "first_discovery_id": null,
-         *       "id": "928fb596-549d-40d7-8cbc-ca4ecedb135b",
+         *       "id": "e15ceb58-7321-4e0d-8ee4-2391b7b9b578",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-27T21:36:40.013101Z",
+         *       "last_seen_at": "2026-07-28T19:10:16.139711Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-27T21:36:40.013101Z",
-         *       "valid_from": "2026-07-27T21:36:40.013101Z",
+         *       "updated_at": "2026-07-28T19:10:16.139711Z",
+         *       "valid_from": "2026-07-28T19:10:16.139711Z",
          *       "valid_to": null
          *     }
          */
@@ -4732,7 +4787,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Jitsi Meet",
+         *           "service_definition": "mailcow",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5126,6 +5181,11 @@ export interface components {
              *     UI can render a countdown from the same value the email uses.
              */
             sunset_date?: string | null;
+            /**
+             * @description Whether this daemon can run a single-host rescan. Server-computed so the
+             *     frontend never has to hardcode a version floor.
+             */
+            supports_targeted_rescan?: boolean;
             supports_unified_discovery?: boolean;
             version?: string | null;
             warnings?: components["schemas"]["DeprecationWarning"][];
@@ -5392,6 +5452,17 @@ export interface components {
             session_id: string;
             /** Format: date-time */
             started_at?: string | null;
+            /**
+             * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
+             *     rather than a discovery the user configured. Set server-side at session
+             *     creation; daemons do not send it.
+             *
+             *     It rides into the historical Discovery row's `results`, which is the only
+             *     way downstream consumers can tell a rescan apart: the terminal path mints
+             *     a plain `RunType::Historical` row and the transient parent is deleted, so
+             *     there is nothing left to look up. Used to keep rescans out of the digest.
+             */
+            targeted?: boolean;
             /**
              * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
              *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
@@ -5878,19 +5949,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-27T21:36:40.012161Z",
+         *               "created_at": "2026-07-28T19:10:16.139202Z",
          *               "first_discovery_id": null,
-         *               "id": "55f29c63-7e88-41f6-a91a-eb81ab91fe87",
+         *               "id": "99a1677b-9162-4ccd-b5ac-045ce38323ee",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-27T21:36:40.012161Z",
+         *               "last_seen_at": "2026-07-28T19:10:16.139202Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-27T21:36:40.012161Z",
-         *               "valid_from": "2026-07-27T21:36:40.012161Z",
+         *               "updated_at": "2026-07-28T19:10:16.139202Z",
+         *               "valid_from": "2026-07-28T19:10:16.139202Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5904,7 +5975,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Jitsi Meet",
+         *           "service_definition": "mailcow",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6751,7 +6822,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.5"
+         *       "server_version": "0.17.7"
          *     }
          */
         PaginatedApiMeta: {
@@ -6764,7 +6835,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.5
+             * @example 0.17.7
              */
             server_version: string;
         };
@@ -7415,6 +7486,11 @@ export interface components {
             readonly last_run?: string | null;
             /** @enum {string} */
             type: "AdHoc";
+        } | {
+            /** Format: date-time */
+            readonly last_run?: string | null;
+            /** @enum {string} */
+            type: "Targeted";
         };
         /**
          * @description Save-offer choices presented during in-app cancellation (Phase 5).
@@ -7554,19 +7630,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-27T21:36:40.013007Z",
+         *           "created_at": "2026-07-28T19:10:16.139661Z",
          *           "first_discovery_id": null,
-         *           "id": "67786d1a-eba4-48ec-adbb-959d3ddf1565",
+         *           "id": "cf5d1203-a94d-4649-8bcc-6bac7e951f72",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-27T21:36:40.013007Z",
+         *           "last_seen_at": "2026-07-28T19:10:16.139661Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-27T21:36:40.013007Z",
-         *           "valid_from": "2026-07-27T21:36:40.013007Z",
+         *           "updated_at": "2026-07-28T19:10:16.139661Z",
+         *           "valid_from": "2026-07-28T19:10:16.139661Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7580,7 +7656,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Jitsi Meet",
+         *       "service_definition": "mailcow",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7846,7 +7922,7 @@ export interface components {
          */
         SubnetOrderField: "created_at" | "name" | "cidr" | "subnet_type" | "updated_at" | "network_id" | "last_seen_at";
         /** @enum {string} */
-        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "Unknown";
+        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "ScanTarget" | "Unknown";
         /**
          * @description Virtualization metadata for subnets that belong to a virtual infrastructure.
          *     Consistent with HostVirtualization and ServiceVirtualization patterns.
@@ -8003,7 +8079,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "60b54e9c-0470-43e2-913a-e75911bb100b",
+             *           "id": "3967fedc-d627-42a7-a7dc-8fa739a9216d",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -8013,23 +8089,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "3d578b7e-fc8c-40ed-a3bf-7b2d8a91c1dd",
+             *           "id": "05eb32a8-ea61-4bb6-9cad-7d6dfd36c305",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "3907df19-76a5-4f9a-a0a9-2191f71780f7",
+             *           "id": "31cc9637-e0cf-4e50-adf5-84a1d7b08d9a",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "c458e9bc-37fd-4f7c-a694-278c5b5e75a7",
+             *           "id": "0e7461b9-dd60-4e53-9cb8-d46d15f084a8",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "3d578b7e-fc8c-40ed-a3bf-7b2d8a91c1dd",
+             *           "id": "05eb32a8-ea61-4bb6-9cad-7d6dfd36c305",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -8041,19 +8117,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "2a7499ff-9bff-4648-bd45-c2ce6abdfc94",
+             *         "id": "8281f32d-4fff-4790-960c-88fddb27c2d1",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "62cbcfe7-2af6-4994-9f36-eae2e12ed0a8",
+             *         "id": "a6f271f9-d0c8-4fa0-b284-808228701a7b",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "b5c7d7ac-50ec-4b56-a1ed-b39ccdd0f1da",
+             *         "id": "400344ac-8225-405d-86e6-e2c28cc87c2b",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "849c54d6-b797-45ae-881d-709e9f46659a",
+             *         "id": "5f0de03c-5773-4a7b-9105-dd96df5456a2",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -8071,7 +8147,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "b85bb788-09ec-4f8b-874f-84f4f4a2bb3b",
+             *         "id": "5834848f-bd18-4bea-b465-f6f515a9f773",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -8080,15 +8156,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "3e1169dd-5da2-4f2e-bcde-b69fb62ce0f7",
+             *         "id": "19626c31-cfe5-441d-9fe7-04a8eee2fa0c",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "88c52188-65d7-452e-86c3-292610e9fd49",
+             *         "id": "6841cc98-bc74-40a5-8a7a-2409f8853e94",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "d939d378-c5fc-4d0c-a548-308dc7609b3e",
+             *         "id": "7c9b2fcb-f7f5-45c2-9ecb-37f86195e9c3",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -12197,6 +12273,47 @@ export interface operations {
             };
             /** @description Host has associated daemon */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    rescan_host: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Host ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rescan session started */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DiscoveryUpdatePayload"];
+                };
+            };
+            /** @description Host cannot be rescanned (never scanned, daemon gone, daemon unreachable, or daemon too old) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Host not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -115,6 +115,20 @@ async fn main() -> anyhow::Result<()> {
                 .discovery_service
                 .cleanup_old_sessions(24)
                 .await;
+
+            // Sweep transient rescan rows whose session never reached a terminal
+            // phase (server restart mid-scan). 24h is comfortably past the 6h
+            // max_discovery_duration a queued rescan could wait on.
+            discovery_cleanup_state
+                .services
+                .discovery_service
+                .sweep_orphaned_targeted_discoveries(24)
+                .await;
+            discovery_cleanup_state
+                .services
+                .subnet_service
+                .sweep_orphaned_scan_targets(24)
+                .await;
         }
     });
 

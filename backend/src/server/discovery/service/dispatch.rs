@@ -53,6 +53,10 @@ impl DiscoveryService {
     ) -> Result<Option<chrono::DateTime<Utc>>, anyhow::Error> {
         let filter = StorableFilter::<Discovery>::new_from_network_ids(&[network_id])
             .historical_discovery()
+            // A rescan touches one host, so letting it anchor "the previous scan"
+            // would make the next scheduled digest under-report everything that
+            // changed since the last real sweep.
+            .exclude_targeted_results()
             .updated_before(before)
             .limit(1);
         let discoveries = self
@@ -107,12 +111,10 @@ impl DiscoveryService {
             ));
         }
 
+        let is_targeted = matches!(discovery.base.run_type, RunType::Targeted { .. });
+
         // Update last_run on the discovery (covers all code paths: handler, scheduler, registration)
-        match &mut discovery.base.run_type {
-            RunType::Scheduled { last_run, .. } => *last_run = Some(Utc::now()),
-            RunType::AdHoc { last_run, .. } => *last_run = Some(Utc::now()),
-            _ => {}
-        }
+        discovery.base.run_type.set_last_run(Utc::now());
         discovery.updated_at = Utc::now();
         if let Err(e) = self.discovery_storage.update(&mut discovery).await {
             tracing::error!(
@@ -151,6 +153,9 @@ impl DiscoveryService {
             discovery_type,
             Some(discovery.id),
         );
+        // The transient parent is deleted at terminal, so stamp this now — it is
+        // the only trace that the resulting historical row came from a rescan.
+        session_payload.targeted = is_targeted;
 
         // Compute whether this scan should be a full port scan and set on scan_settings
         if let DiscoveryType::Unified {
@@ -331,6 +336,12 @@ impl DiscoveryService {
 
         let session = sessions.get_mut(&update.session_id).unwrap();
 
+        // `targeted` is server-owned — daemons never send it, and the update
+        // below replaces the stored session wholesale. Carry it forward, or the
+        // terminal payload (which becomes the historical row) would forget that
+        // this session was a rescan.
+        update.targeted |= session.targeted;
+
         let daemon_id = session.daemon_id;
         let network_id = session.network_id;
 
@@ -410,22 +421,24 @@ impl DiscoveryService {
                 integration_targets: vec![],
             };
 
+            // Reverse-lookup: find discovery_id from session_id
+            let parent_discovery_id = self
+                .discovery_sessions
+                .read()
+                .await
+                .iter()
+                .find(|(_, sid)| **sid == session.session_id)
+                .map(|(did, _)| *did);
+
             // Increment scan_count and clear ephemeral fields only on successful completion.
             // Failures/cancellations preserve these so the next retry uses the same config.
-            if session.phase == DiscoveryPhase::Complete {
-                // Reverse-lookup: find discovery_id from session_id
-                let discovery_id = self
-                    .discovery_sessions
-                    .read()
-                    .await
-                    .iter()
-                    .find(|(_, sid)| **sid == session.session_id)
-                    .map(|(did, _)| *did);
-
+            // A targeted rescan's parent is deleted below, so there is nothing to
+            // carry forward and the write would be wasted.
+            if session.phase == DiscoveryPhase::Complete && !session.targeted {
                 // Increment inside one transaction with a row lock: two
                 // finalizations for the same discovery (possible across
                 // backend instances) must not both read N and write N+1.
-                if let Some(discovery_id) = discovery_id
+                if let Some(discovery_id) = parent_discovery_id
                     && let Err(e) = self.increment_scan_count(&discovery_id).await
                 {
                     tracing::error!(
@@ -455,6 +468,22 @@ impl DiscoveryService {
                             .with_flags(EntityEventFlags::default()),
                     )
                     .await?;
+            }
+
+            // A rescan's parent exists only to carry the targets to the daemon.
+            // Delete it now that the historical row (which the user actually sees)
+            // is persisted and its subscribers — including the scan-target subnet
+            // reaper — have run. Discovery FKs on scanned entities point at the
+            // historical row, not this one, and are ON DELETE SET NULL regardless.
+            if session.targeted
+                && let Some(discovery_id) = parent_discovery_id
+                && let Err(e) = self.discovery_storage.delete(&discovery_id).await
+            {
+                tracing::warn!(
+                    discovery_id = %discovery_id,
+                    error = ?e,
+                    "Failed to delete transient rescan discovery; the startup sweeper will retry"
+                );
             }
 
             // Get next session info BEFORE trying to send request
@@ -548,6 +577,9 @@ impl DiscoveryService {
             hosts_discovered: None,
             estimated_remaining_secs: None,
             discovery_id,
+            // Preserve it: a cancelled rescan still needs its transient subnet
+            // reaped and its digest suppressed.
+            targeted: session.targeted,
             scanned: None,
         };
 

@@ -52,6 +52,7 @@
 		useDeleteHostMutation,
 		useBulkDeleteHostsMutation,
 		useConsolidateHostsMutation,
+		useRescanHostMutation,
 		type HostQueryOptions
 	} from '../queries';
 	import { useServicesByIds, useServicesCacheQuery } from '$lib/features/services/queries';
@@ -121,6 +122,7 @@
 	const deleteHostMutation = useDeleteHostMutation();
 	const bulkDeleteHostsMutation = useBulkDeleteHostsMutation();
 	const consolidateHostsMutation = useConsolidateHostsMutation();
+	const rescanHostMutation = useRescanHostMutation();
 
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
@@ -311,6 +313,10 @@
 		showHostConsolidationModal = true;
 	}
 
+	function handleRescanHost(host: Host) {
+		rescanHostMutation.mutate({ id: host.id, name: host.name });
+	}
+
 	function handleDeleteHost(host: Host) {
 		if (confirm(common_confirmDeleteName({ name: host.name }))) {
 			deleteHostMutation.mutate(host.id);
@@ -455,6 +461,7 @@
 					{onSelectionChange}
 					onEdit={isReadOnly ? undefined : handleEditHost}
 					onDelete={isReadOnly ? undefined : handleDeleteHost}
+					onRescan={isReadOnly ? undefined : handleRescanHost}
 					onConsolidate={isReadOnly ? undefined : handleStartConsolidate}
 					onHide={isReadOnly ? undefined : handleHostHide}
 				/>

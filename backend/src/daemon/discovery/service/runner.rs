@@ -392,19 +392,26 @@ impl DiscoveryRunner {
         let ops = super::ops::DiscoveryOps::new(&self.service, DiscoveryType::from(self));
         let utils = &self.service.utils;
 
-        let network_subnets = network_discovery
+        let resolved = network_discovery
             .resolve_scan_subnets(&ops, utils, cancel)
             .await?;
 
         tracing::info!(
-            cidrs = ?network_subnets.iter().map(|s| s.base.cidr.to_string()).collect::<Vec<_>>(),
+            cidrs = ?resolved.subnets.iter().map(|s| s.base.cidr.to_string()).collect::<Vec<_>>(),
+            targets = ?resolved.target_ips.as_ref().map(|t| t.len()),
             "Running network scan phase"
         );
 
         // scan_and_process_hosts uses the active session
         // (set by our start_discovery call above)
         let network_result = network_discovery
-            .scan_and_process_hosts(network_subnets, cancel.clone(), &ops, utils)
+            .scan_and_process_hosts(
+                resolved.subnets,
+                resolved.target_ips,
+                cancel.clone(),
+                &ops,
+                utils,
+            )
             .await;
 
         match &network_result {

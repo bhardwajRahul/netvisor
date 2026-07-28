@@ -191,6 +191,24 @@ pub fn supports_server_provisioned_identity(version: Option<&Version>) -> bool {
     version.is_some_and(|v| v >= &minimum_server_provisioned_identity())
 }
 
+/// Minimum daemon version that resolves a transient `ScanTarget` /32 to the
+/// interfaced subnet containing it, so a single-host rescan is ARP'd from the
+/// right interface.
+///
+/// This gate is not cosmetic. An older daemon would treat the /32 as its own
+/// non-interfaced subnet: no ARP, no MAC, the TCP responsiveness gate applied,
+/// and the resulting IP attributed to the /32 rather than the real subnet. That
+/// yields a rescan that both churns data and can report a live but TCP-silent
+/// host as gone.
+pub fn minimum_targeted_rescan() -> Version {
+    Version::new(0, 17, 7)
+}
+
+/// Returns true if the daemon version supports single-host rescan (>= 0.17.7).
+pub fn supports_targeted_rescan(version: Option<&Version>) -> bool {
+    version.is_some_and(|v| v >= &minimum_targeted_rescan())
+}
+
 /// Returns true if the daemon predates the Interface → IPAddress binding type rename (< 0.16.0).
 /// These daemons expect `"type": "Interface"` / `"interface_id"` in binding responses.
 /// Legacy cleanup: remove once minimum_supported >= 0.16.0
@@ -227,6 +245,7 @@ fn capability_floors() -> Vec<Version> {
         minimum_full_server_poll(),
         minimum_server_provisioned_identity(),
         minimum_correct_docker_volume_mount(),
+        minimum_targeted_rescan(),
     ]
 }
 
@@ -287,6 +306,7 @@ impl DaemonVersionPolicy {
     pub fn evaluate(&self, version: Option<&Version>) -> DaemonVersionStatus {
         let supports_unified = supports_unified_discovery(version);
         let has_correct_mount = has_correct_docker_volume_mount(version);
+        let supports_rescan = supports_targeted_rescan(version);
 
         let (status, warnings, sunset_date) = self.lifecycle(version);
 
@@ -297,6 +317,7 @@ impl DaemonVersionPolicy {
             sunset_date,
             supports_unified_discovery: supports_unified,
             has_correct_docker_volume_mount: has_correct_mount,
+            supports_targeted_rescan: supports_rescan,
         }
     }
 
@@ -438,6 +459,10 @@ pub struct DaemonVersionStatus {
     pub supports_unified_discovery: bool,
     #[serde(default)]
     pub has_correct_docker_volume_mount: bool,
+    /// Whether this daemon can run a single-host rescan. Server-computed so the
+    /// frontend never has to hardcode a version floor.
+    #[serde(default)]
+    pub supports_targeted_rescan: bool,
 }
 
 /// Health status for daemon versions.
@@ -582,7 +607,7 @@ mod tests {
         let sunsets = two_cutovers();
         // Neither in force yet.
         assert_eq!(floor_from(&sunsets, dt(2026, 11, 1)), baseline_floor());
-        // Only the first — capped at own_version, which is exactly 0.17.5 today.
+        // Only the first — capped at own_version, which sits above it today.
         assert_eq!(
             floor_from(&sunsets, dt(2027, 1, 1)),
             Version::new(0, 17, 5).min(own_version())

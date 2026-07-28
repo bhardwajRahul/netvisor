@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.5\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.5\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.5)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.7\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.7\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.7)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -6805,6 +6805,68 @@
           },
           "409": {
             "description": "Host has associated daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/hosts/{id}/rescan": {
+      "post": {
+        "tags": [
+          "Hosts"
+        ],
+        "summary": "Rescan a host",
+        "description": "Starts a one-shot scan of this host's addresses and nothing else, answering\n\"is this host still there, and is its data current?\" without sweeping the\nwhole subnet.\n\nThe scan runs on the daemon that last discovered this host — evidence it can\nreach the address — and only if that daemon still has an interface on a\nsubnet containing one of the host's IPs. That constraint is what lets the\ndaemon ARP the target rather than fall back to a TCP probe, which would\nreport a live but firewalled host as unresponsive. When it can't be met the\nrequest is refused with the specific reason rather than run at lower fidelity.\n\nReturns the session, which streams progress over `/api/v1/discovery/stream`\nlike any other scan. A `Queued` phase means the daemon is busy; it will start\nwhen the running scan finishes.",
+        "operationId": "rescan_host",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Host ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rescan session started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_DiscoveryUpdatePayload"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Host cannot be rescanned (never scanned, daemon gone, daemon unreachable, or daemon too old)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Host not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -13787,12 +13849,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.5"
+            "example": "0.17.7"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.5"
+          "server_version": "0.17.7"
         }
       },
       "ApiResponse": {
@@ -13908,19 +13970,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-27T21:36:40.032494Z",
+              "created_at": "2026-07-28T19:10:16.153218Z",
               "first_discovery_id": null,
-              "id": "2b97b333-2f15-4bde-bd31-729db438f6bf",
+              "id": "c502bfa8-a442-47f2-91b0-7ec2fa58d64f",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-27T21:36:40.032494Z",
+              "last_seen_at": "2026-07-28T19:10:16.153218Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-27T21:36:40.032494Z",
-              "valid_from": "2026-07-27T21:36:40.032494Z",
+              "updated_at": "2026-07-28T19:10:16.153218Z",
+              "valid_from": "2026-07-28T19:10:16.153218Z",
               "valid_to": null
             }
           },
@@ -14805,6 +14867,10 @@
                 ],
                 "format": "date-time"
               },
+              "targeted": {
+                "type": "boolean",
+                "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
+              },
               "warnings": {
                 "type": "array",
                 "items": {
@@ -15069,19 +15135,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-27T21:36:40.012673Z",
+                      "created_at": "2026-07-28T19:10:16.139475Z",
                       "first_discovery_id": null,
-                      "id": "6fd65318-d4f9-497b-b456-347d5a8ecea2",
+                      "id": "c1472770-7b05-44fd-9e38-ecd5b47994ae",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-27T21:36:40.012673Z",
+                      "last_seen_at": "2026-07-28T19:10:16.139475Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-27T21:36:40.012673Z",
-                      "valid_from": "2026-07-27T21:36:40.012673Z",
+                      "updated_at": "2026-07-28T19:10:16.139475Z",
+                      "valid_from": "2026-07-28T19:10:16.139475Z",
                       "valid_to": null
                     }
                   ],
@@ -15095,7 +15161,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Jitsi Meet",
+                  "service_definition": "mailcow",
                   "source": {
                     "type": "Manual"
                   },
@@ -16165,19 +16231,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-27T21:36:40.026075Z",
+                  "created_at": "2026-07-28T19:10:16.148222Z",
                   "first_discovery_id": null,
-                  "id": "d61733d2-d7f9-46f0-9c85-3af911628398",
+                  "id": "14a6e4e4-9677-434e-8807-578ff612cee4",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-27T21:36:40.026075Z",
+                  "last_seen_at": "2026-07-28T19:10:16.148222Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-27T21:36:40.026075Z",
-                  "valid_from": "2026-07-27T21:36:40.026075Z",
+                  "updated_at": "2026-07-28T19:10:16.148222Z",
+                  "valid_from": "2026-07-28T19:10:16.148222Z",
                   "valid_to": null
                 }
               ],
@@ -16191,7 +16257,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Jitsi Meet",
+              "service_definition": "mailcow",
               "source": {
                 "type": "Manual"
               },
@@ -17457,6 +17523,10 @@
                   ],
                   "format": "date-time"
                 },
+                "targeted": {
+                  "type": "boolean",
+                  "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
+                },
                 "warnings": {
                   "type": "array",
                   "items": {
@@ -18061,19 +18131,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-27T21:36:40.013101Z",
+          "created_at": "2026-07-28T19:10:16.139711Z",
           "first_discovery_id": null,
-          "id": "928fb596-549d-40d7-8cbc-ca4ecedb135b",
+          "id": "e15ceb58-7321-4e0d-8ee4-2391b7b9b578",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-27T21:36:40.013101Z",
+          "last_seen_at": "2026-07-28T19:10:16.139711Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-27T21:36:40.013101Z",
-          "valid_from": "2026-07-27T21:36:40.013101Z",
+          "updated_at": "2026-07-28T19:10:16.139711Z",
+          "valid_from": "2026-07-28T19:10:16.139711Z",
           "valid_to": null
         }
       },
@@ -18664,7 +18734,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Jitsi Meet",
+              "service_definition": "mailcow",
               "tags": [],
               "virtualization": null
             }
@@ -19650,6 +19720,10 @@
             ],
             "description": "The date this daemon's version stops being supported, if a sunset is\nscheduled for it. Surfaced top-level (not only inside `warnings`) so the\nUI can render a countdown from the same value the email uses."
           },
+          "supports_targeted_rescan": {
+            "type": "boolean",
+            "description": "Whether this daemon can run a single-host rescan. Server-computed so the\nfrontend never has to hardcode a version floor."
+          },
           "supports_unified_discovery": {
             "type": "boolean"
           },
@@ -20379,6 +20453,10 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "targeted": {
+            "type": "boolean",
+            "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
           },
           "warnings": {
             "type": "array",
@@ -21718,19 +21796,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-27T21:36:40.012161Z",
+                  "created_at": "2026-07-28T19:10:16.139202Z",
                   "first_discovery_id": null,
-                  "id": "55f29c63-7e88-41f6-a91a-eb81ab91fe87",
+                  "id": "99a1677b-9162-4ccd-b5ac-045ce38323ee",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-27T21:36:40.012161Z",
+                  "last_seen_at": "2026-07-28T19:10:16.139202Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-27T21:36:40.012161Z",
-                  "valid_from": "2026-07-27T21:36:40.012161Z",
+                  "updated_at": "2026-07-28T19:10:16.139202Z",
+                  "valid_from": "2026-07-28T19:10:16.139202Z",
                   "valid_to": null
                 }
               ],
@@ -21744,7 +21822,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Jitsi Meet",
+              "service_definition": "mailcow",
               "source": {
                 "type": "Manual"
               },
@@ -23893,7 +23971,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.5"
+            "example": "0.17.7"
           }
         },
         "example": {
@@ -23904,7 +23982,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.5"
+          "server_version": "0.17.7"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -24381,19 +24459,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-27T21:36:40.000571Z",
+                        "created_at": "2026-07-28T19:10:16.133195Z",
                         "first_discovery_id": null,
-                        "id": "86f1aae4-2554-4235-a213-9fbab9b85bc0",
+                        "id": "67d90fc2-85ec-4860-8400-db210d3e75e4",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-27T21:36:40.000571Z",
+                        "last_seen_at": "2026-07-28T19:10:16.133195Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-27T21:36:40.000571Z",
-                        "valid_from": "2026-07-27T21:36:40.000571Z",
+                        "updated_at": "2026-07-28T19:10:16.133195Z",
+                        "valid_from": "2026-07-28T19:10:16.133195Z",
                         "valid_to": null
                       }
                     ],
@@ -24407,7 +24485,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Jitsi Meet",
+                    "service_definition": "mailcow",
                     "source": {
                       "type": "Manual"
                     },
@@ -24528,19 +24606,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-27T21:36:40.024861Z",
+                    "created_at": "2026-07-28T19:10:16.147229Z",
                     "first_discovery_id": null,
-                    "id": "077cd57b-f50f-4437-8570-725fe4990dc7",
+                    "id": "fde65189-1a79-4a86-9222-72e6920ca346",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-27T21:36:40.024861Z",
+                    "last_seen_at": "2026-07-28T19:10:16.147229Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-27T21:36:40.024861Z",
-                    "valid_from": "2026-07-27T21:36:40.024861Z",
+                    "updated_at": "2026-07-28T19:10:16.147229Z",
+                    "valid_from": "2026-07-28T19:10:16.147229Z",
                     "valid_to": null
                   }
                 ],
@@ -24554,7 +24632,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Jitsi Meet",
+                "service_definition": "mailcow",
                 "source": {
                   "type": "Manual"
                 },
@@ -25934,6 +26012,30 @@
                 ]
               }
             }
+          },
+          {
+            "type": "object",
+            "title": "Targeted",
+            "description": "A one-shot rescan of specific targets. Created by the server (never via\nAPI) and deleted when its session reaches a terminal phase, so it is not\na discovery configuration the user owns or sees in their scan list.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "last_run": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "readOnly": true
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Targeted"
+                ]
+              }
+            }
           }
         ]
       },
@@ -26257,19 +26359,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-27T21:36:40.013007Z",
+              "created_at": "2026-07-28T19:10:16.139661Z",
               "first_discovery_id": null,
-              "id": "67786d1a-eba4-48ec-adbb-959d3ddf1565",
+              "id": "cf5d1203-a94d-4649-8bcc-6bac7e951f72",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-27T21:36:40.013007Z",
+              "last_seen_at": "2026-07-28T19:10:16.139661Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-27T21:36:40.013007Z",
-              "valid_from": "2026-07-27T21:36:40.013007Z",
+              "updated_at": "2026-07-28T19:10:16.139661Z",
+              "valid_from": "2026-07-28T19:10:16.139661Z",
               "valid_to": null
             }
           ],
@@ -26283,7 +26385,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Jitsi Meet",
+          "service_definition": "mailcow",
           "source": {
             "type": "Manual"
           },
@@ -26976,6 +27078,7 @@
           "Management",
           "Storage",
           "Loopback",
+          "ScanTarget",
           "Unknown"
         ]
       },
@@ -27415,7 +27518,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "60b54e9c-0470-43e2-913a-e75911bb100b",
+                  "id": "3967fedc-d627-42a7-a7dc-8fa739a9216d",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -27425,23 +27528,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "3d578b7e-fc8c-40ed-a3bf-7b2d8a91c1dd",
+                  "id": "05eb32a8-ea61-4bb6-9cad-7d6dfd36c305",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "3907df19-76a5-4f9a-a0a9-2191f71780f7",
+                  "id": "31cc9637-e0cf-4e50-adf5-84a1d7b08d9a",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "c458e9bc-37fd-4f7c-a694-278c5b5e75a7",
+                  "id": "0e7461b9-dd60-4e53-9cb8-d46d15f084a8",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "3d578b7e-fc8c-40ed-a3bf-7b2d8a91c1dd",
+                  "id": "05eb32a8-ea61-4bb6-9cad-7d6dfd36c305",
                   "rule": "ByHost"
                 }
               ]
@@ -27470,19 +27573,19 @@
             },
             "default": [
               {
-                "id": "2a7499ff-9bff-4648-bd45-c2ce6abdfc94",
+                "id": "8281f32d-4fff-4790-960c-88fddb27c2d1",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "62cbcfe7-2af6-4994-9f36-eae2e12ed0a8",
+                "id": "a6f271f9-d0c8-4fa0-b284-808228701a7b",
                 "rule": "ByVLAN"
               },
               {
-                "id": "b5c7d7ac-50ec-4b56-a1ed-b39ccdd0f1da",
+                "id": "400344ac-8225-405d-86e6-e2c28cc87c2b",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "849c54d6-b797-45ae-881d-709e9f46659a",
+                "id": "5f0de03c-5773-4a7b-9105-dd96df5456a2",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -27500,7 +27603,7 @@
                 }
               },
               {
-                "id": "b85bb788-09ec-4f8b-874f-84f4f4a2bb3b",
+                "id": "5834848f-bd18-4bea-b465-f6f515a9f773",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -27509,15 +27612,15 @@
                 }
               },
               {
-                "id": "3e1169dd-5da2-4f2e-bcde-b69fb62ce0f7",
+                "id": "19626c31-cfe5-441d-9fe7-04a8eee2fa0c",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "88c52188-65d7-452e-86c3-292610e9fd49",
+                "id": "6841cc98-bc74-40a5-8a7a-2409f8853e94",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "d939d378-c5fc-4d0c-a548-308dc7609b3e",
+                "id": "7c9b2fcb-f7f5-45c2-9ecb-37f86195e9c3",
                 "rule": "ByStack"
               }
             ]

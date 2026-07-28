@@ -156,8 +156,14 @@ pub async fn create_discovery(
     auth: Authorized<Member>,
     Json(discovery): Json<Discovery>,
 ) -> ApiResult<Json<ApiResponse<Discovery>>> {
-    if let RunType::Historical { .. } = discovery.base.run_type {
-        return Err(ApiError::discovery_historical_read_only());
+    if discovery.base.run_type.is_server_managed() {
+        return Err(match discovery.base.run_type {
+            RunType::Historical { .. } => ApiError::discovery_historical_read_only(),
+            _ => ApiError::bad_request(
+                "Targeted discoveries are created by the server for a single rescan and \
+                 cannot be submitted via the API.",
+            ),
+        });
     }
 
     // Reject legacy discovery types — only Unified can be created
@@ -239,8 +245,14 @@ pub async fn update_discovery(
     id: Path<Uuid>,
     discovery: Json<Discovery>,
 ) -> ApiResult<Json<ApiResponse<Discovery>>> {
-    if let RunType::Historical { .. } = discovery.base.run_type {
-        return Err(ApiError::discovery_historical_read_only());
+    if discovery.base.run_type.is_server_managed() {
+        return Err(match discovery.base.run_type {
+            RunType::Historical { .. } => ApiError::discovery_historical_read_only(),
+            _ => ApiError::bad_request(
+                "Targeted discoveries are created by the server for a single rescan and \
+                 cannot be submitted via the API.",
+            ),
+        });
     }
 
     // Reject changing a legacy discovery's type

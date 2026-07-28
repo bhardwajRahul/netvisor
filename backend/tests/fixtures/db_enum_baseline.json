@@ -149,7 +149,8 @@
   "RunType": [
     "Scheduled",
     "Historical",
-    "AdHoc"
+    "AdHoc",
+    "Targeted"
   ],
   "ServiceVirtualization": [
     "Docker",
