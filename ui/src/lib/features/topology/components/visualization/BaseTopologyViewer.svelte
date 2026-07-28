@@ -80,6 +80,7 @@
 	import { buildFlowEdges } from '../../pipeline/build-flow-edges';
 	import { cacheCollapsedSizes } from '../../pipeline/post-render';
 	import { computeEdgeDisplayUpdates } from '../../pipeline/sync-edge-display';
+	import * as perf from '../../perf';
 
 	// Props
 	let {
@@ -395,15 +396,14 @@
 				multiSelected,
 				opts.local.hide_edge_types ?? []
 			);
-			baseFlowEdges.set(
-				computeEdgeDisplayUpdates(
-					currentBaseEdges,
-					curSelectedNode,
-					curSelectedEdge,
-					searchHidden,
-					tagHidden
-				)
+			const updatedEdges = computeEdgeDisplayUpdates(
+				currentBaseEdges,
+				curSelectedNode,
+				curSelectedEdge,
+				searchHidden,
+				tagHidden
 			);
+			if (updatedEdges !== currentBaseEdges) baseFlowEdges.set(updatedEdges);
 		}
 	});
 
@@ -427,8 +427,11 @@
 		const isStale = (): boolean => thisGeneration !== layoutState.layoutGeneration;
 
 		if (!topology || (!topology.edges && !topology.nodes)) return;
+		perf.beginRun();
 
+		const prepareDone = perf.stage('prepare');
 		const prep = prepareTopologyData(topology, layoutState, getInfrastructureRuleId);
+		prepareDone();
 		if (!prep) return;
 		const { needsElk, collapsed, visibleNodes: initialVisibleNodes } = prep;
 		let visibleNodes = initialVisibleNodes;
@@ -450,6 +453,7 @@
 			);
 
 		if (needsElk) {
+			const measureDone = perf.stage('measure');
 			const elementNodeSizes = await resolveNodeSizes(
 				layoutState,
 				prep,
@@ -515,11 +519,13 @@
 					}
 				}
 			);
+			measureDone();
 			if (!elementNodeSizes) {
 				isMeasuring = false;
 				return;
 			}
 
+			const layoutDone = perf.stage('layout');
 			const layoutResult = await executeLayout(
 				topology,
 				layoutState,
@@ -528,6 +534,7 @@
 				isStale,
 				getInfrastructureRuleId
 			);
+			layoutDone();
 			if (!layoutResult) {
 				isMeasuring = false;
 				return;
@@ -553,6 +560,7 @@
 		const needsLayout = needsElk || portsChanged || prep.collapseChanged;
 		const allNodes = makeNodes(needsLayout);
 
+		const buildEdgesDone = perf.stage('build-edges');
 		const { flowEdges, originalsMap } = buildFlowEdges({
 			elevatedEdges: prep.elevatedEdges,
 			collapsed,
@@ -566,6 +574,7 @@
 			currentExpandedBundles: get(expandedBundles),
 			selectionStores
 		});
+		buildEdgesDone();
 		aggregatedEdgeOriginals.set(originalsMap);
 
 		// Render
@@ -654,6 +663,10 @@
 				layoutState.containerSizeCache
 			);
 			if (newEntries > 0 && !isStale()) {
+				// Counted because on a cold load with many collapsed containers this
+				// self-heal fires every time, and each recursion is a full pipeline
+				// run including two more elk.layout() calls.
+				perf.count('post-render-relayout');
 				// Invalidate structureKey to force ELK re-run. Do NOT
 				// invalidate baseKey — base structure hasn't changed, and
 				// clearing it would delete viewSizeCache (element sizes).
@@ -679,8 +692,16 @@
 			layoutState.fitViewPending = false;
 			// Double rAF: first lets SvelteFlow process node positions, second triggers fitView
 			requestAnimationFrame(() =>
-				requestAnimationFrame(() => fitView({ padding: getFitViewPadding() }))
+				requestAnimationFrame(() => {
+					fitView({ padding: getFitViewPadding() });
+					// fitView is the last thing a cold load does, so this is the
+					// point the harness treats as "interactive".
+					perf.count('fit-view');
+					perf.endRun();
+				})
 			);
+		} else {
+			perf.endRun();
 		}
 	}
 
@@ -727,15 +748,17 @@
 	}
 
 	function syncEdgeDisplayState() {
-		baseFlowEdges.set(
-			computeEdgeDisplayUpdates(
-				get(baseFlowEdges),
-				get(selectionStores.selectedNode),
-				get(selectionStores.selectedEdge),
-				get(searchHiddenNodeIds),
-				get(tagHiddenNodeIds)
-			)
+		const current = get(baseFlowEdges);
+		const updated = computeEdgeDisplayUpdates(
+			current,
+			get(selectionStores.selectedNode),
+			get(selectionStores.selectedEdge),
+			get(searchHiddenNodeIds),
+			get(tagHiddenNodeIds)
 		);
+		// Identity means nothing changed. Skipping the write matters on the hover
+		// path, which calls this on every pointer enter/leave.
+		if (updated !== current) baseFlowEdges.set(updated);
 	}
 
 	function handlePaneClick() {

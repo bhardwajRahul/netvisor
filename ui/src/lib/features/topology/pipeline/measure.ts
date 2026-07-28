@@ -1,5 +1,6 @@
 import type { Node, Edge } from '@xyflow/svelte';
 import type { LayoutState, PrepareResult, XY } from './types';
+import * as perf from '../perf';
 
 export interface MeasureCallbacks {
 	setMeasuring: (v: boolean) => void;
@@ -106,6 +107,10 @@ export async function resolveNodeSizes(
 
 	// Full DOM measurement pass if no cache
 	if (elementNodeSizes.size === 0) {
+		// The expensive path: every node is mounted into the live canvas and
+		// measured. Counted separately from the cached paths so the harness can
+		// tell a cold load from a cache miss.
+		perf.count('full-measure-pass');
 		callbacks.setMeasuring(true);
 		callbacks.setEdges([]);
 		const measureNodes = callbacks.buildMeasureNodes();

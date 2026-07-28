@@ -5,7 +5,6 @@
 	import {
 		selectedEdge as globalSelectedEdge,
 		selectedNode as globalSelectedNode,
-		selectedNodes as globalSelectedNodes,
 		topologyOptions,
 		activeView
 	} from '../../queries';
@@ -17,21 +16,16 @@
 	const networksQuery = useNetworksQuery();
 	import type { TopologyNode, ElementRenderData, RenderableTopology } from '../../types/base';
 	import { resolveElementNode } from '../../resolvers';
-	import { type Writable, get } from 'svelte/store';
+	import { getTopologyIndex } from '../../entity-index';
+	import type { Writable } from 'svelte/store';
 	import { formatPort } from '$lib/shared/utils/formatting';
 	import {
-		connectedNodeIds,
-		isExporting,
-		newNodeIds,
-		tagHiddenServiceIds,
-		searchHiddenNodeIds,
-		hoveredTag,
-		hoveredMetadata,
 		FILTER_VALUE_EXTRACTORS,
 		expandedPortNodeIds,
 		toggleExpandedPorts,
 		UNTAGGED_SENTINEL
 	} from '../../interactions';
+	import * as sharedStores from '../../reactive-stores.svelte';
 	import { createColorHelper } from '$lib/shared/utils/styling';
 	import { getContext } from 'svelte';
 	import type { Port } from '$lib/features/hosts/types/base';
@@ -40,55 +34,20 @@
 
 	let { id, data, width }: NodeProps = $props();
 
-	// Subscribe to isExporting for reactivity
-	let isExportingValue = $state(get(isExporting));
-	isExporting.subscribe((value) => {
-		isExportingValue = value;
-	});
-
-	// Subscribe to tag filter stores for reactivity
-	let hiddenServices = $state(get(tagHiddenServiceIds));
-	tagHiddenServiceIds.subscribe((value) => {
-		hiddenServices = value;
-	});
-
-	// Subscribe to search filter store for reactivity
-	let searchHiddenNodes = $state(get(searchHiddenNodeIds));
-	searchHiddenNodeIds.subscribe((value) => {
-		searchHiddenNodes = value;
-	});
-
-	// Subscribe to connected node IDs for reactivity (manual subscription needed
-	// because $derived.by may not read this store on initial evaluation, so auto-
-	// subscription via $connectedNodeIds would miss the first update)
-	let connectedNodes = $state(get(connectedNodeIds));
-	connectedNodeIds.subscribe((value) => {
-		connectedNodes = value;
-	});
-
-	// Subscribe to new node highlight store
-	let highlightedNewNodes = $state(get(newNodeIds));
-	newNodeIds.subscribe((value) => {
-		highlightedNewNodes = value;
-	});
-
-	// Subscribe to multi-select store
-	let multiSelectedNodes = $state(get(globalSelectedNodes));
-	globalSelectedNodes.subscribe((value) => {
-		multiSelectedNodes = value;
-	});
-
-	// Subscribe to tag hover state
-	let currentHoveredTag = $state(get(hoveredTag));
-	hoveredTag.subscribe((value) => {
-		currentHoveredTag = value;
-	});
-
-	// Subscribe to service category hover state
-	let currentHoveredMetadata = $state(get(hoveredMetadata));
-	hoveredMetadata.subscribe((value) => {
-		currentHoveredMetadata = value;
-	});
+	// Shared, refcounted views over the module-level stores — see
+	// `reactive-stores.svelte.ts`. One subscription serves every node component,
+	// and it tears down with the component instead of leaking on every unmount.
+	// `.current` falls back to `get(store)` outside a tracking context, so the
+	// first value can't be missed — which is what the previous hand-rolled
+	// subscriptions existed to work around.
+	let isExportingValue = $derived(sharedStores.exporting.current);
+	let hiddenServices = $derived(sharedStores.hiddenServices.current);
+	let searchHiddenNodes = $derived(sharedStores.searchHiddenNodes.current);
+	let connectedNodes = $derived(sharedStores.connectedNodes.current);
+	let highlightedNewNodes = $derived(sharedStores.highlightedNewNodes.current);
+	let multiSelectedNodes = $derived(sharedStores.multiSelectedNodes.current);
+	let currentHoveredTag = $derived(sharedStores.currentHoveredTag.current);
+	let currentHoveredMetadata = $derived(sharedStores.currentHoveredMetadata.current);
 
 	const topo = useTopology();
 	const topoStore = topo.fromContext ? topo.store : null;
@@ -188,13 +147,16 @@
 
 	// Reactively subscribe to the container subnet store
 	let isContainerSubnetValue = $derived(
-		ipAddress
-			? topology?.subnets.find((s) => s.id == ipAddress.subnet_id)?.cidr == '0.0.0.0/0'
+		ipAddress && topology
+			? getTopologyIndex(topology).subnetsById.get(ipAddress.subnet_id)?.cidr == '0.0.0.0/0'
 			: false
 	);
 
+	// Called once per service binding while rendering, so this must not scan
+	// `topology.ports` — on a large graph that is nodes x bindings x ports.
+	let portsById = $derived(topology ? getTopologyIndex(topology).portsById : null);
 	function getPortById(portId: string): Port | null {
-		return topology?.ports.find((p) => p.id == portId) ?? null;
+		return portsById?.get(portId) ?? null;
 	}
 
 	// Compute nodeRenderData reactively
