@@ -47,27 +47,47 @@ export type ElkLayoutResult = LayoutResult;
 // @ts-expect-error -- elkjs module import type works at runtime but svelte-check disagrees
 let elkPromise: Promise<import('elkjs')['default']> | null = null;
 
+/**
+ * Load ELK in-process.
+ *
+ * NOTE: elkjs also ships a web-worker build (`elk-worker.min.js` + `elk-api`),
+ * and it was tried here — loading ELK is the largest single stage of a cold
+ * load (~900ms on a production build of a 440-host L2 view), so moving it off
+ * the main thread looked like the obvious win. **It measured worse and was
+ * reverted.** On that same view:
+ *
+ *   TTI              7007ms -> 7982ms
+ *   elk.module-load   908ms ->  959ms   (unchanged: ELK still awaits worker
+ *                                        readiness before it can lay out, so
+ *                                        the load stays on the critical path)
+ *   elk.layout        802ms -> 1116ms   (structured-cloning a 1246-node graph
+ *                                        twice per layout costs more than
+ *                                        running it in-process saves)
+ *
+ * Pan frame times did not improve either. Don't re-attempt without a way to
+ * avoid re-serialising the whole graph per pass.
+ */
+async function loadBundledElk() {
+	const mod = await import('elkjs/lib/elk.bundled.js');
+	return new mod.default();
+}
+
 // @ts-expect-error -- elkjs module import type works at runtime but svelte-check disagrees
 async function getElk(): Promise<import('elkjs/lib/elk-api')['default']> {
 	if (!elkPromise) {
-		elkPromise = import('elkjs/lib/elk.bundled.js').then((mod) => {
-			const ELK = mod.default;
-			return new ELK();
-		});
+		elkPromise = loadBundledElk();
 	}
 	return elkPromise;
 }
 
 /**
- * Begin loading elkjs without waiting for it.
+ * Begin loading ELK without waiting for it.
  *
- * `elk.bundled.js` is large, and the import was previously first awaited at the
- * top of `computeElkLayout` — i.e. *after* the DOM measure pass had finished.
- * Loading it is independent of measuring, so serialising them added the full
- * module cost to time-to-interactive (measured at ~1.1s on a large L2 view).
- *
- * Call this as early as a layout is anticipated; the two then overlap. Safe to
- * call repeatedly — `getElk` memoizes, so extra calls are no-ops.
+ * Started at the top of the pipeline so the import overlaps the measure pass
+ * rather than following it. Measured as no better in practice — the parse is
+ * main-thread-bound and the measure pass saturates that thread — but it cannot
+ * be worse, and it pays off if the measure pass ever stops being the blocker.
+ * Safe to call repeatedly; `getElk` memoizes.
  */
 export function preloadElk(): void {
 	void getElk();
