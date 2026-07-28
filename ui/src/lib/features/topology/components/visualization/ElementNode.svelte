@@ -16,6 +16,7 @@
 	const networksQuery = useNetworksQuery();
 	import type { TopologyNode, ElementRenderData, RenderableTopology } from '../../types/base';
 	import { resolveElementNode } from '../../resolvers';
+	import { getTopologyIndex } from '../../entity-index';
 	import type { Writable } from 'svelte/store';
 	import { formatPort } from '$lib/shared/utils/formatting';
 	import {
@@ -146,13 +147,16 @@
 
 	// Reactively subscribe to the container subnet store
 	let isContainerSubnetValue = $derived(
-		ipAddress
-			? topology?.subnets.find((s) => s.id == ipAddress.subnet_id)?.cidr == '0.0.0.0/0'
+		ipAddress && topology
+			? getTopologyIndex(topology).subnetsById.get(ipAddress.subnet_id)?.cidr == '0.0.0.0/0'
 			: false
 	);
 
+	// Called once per service binding while rendering, so this must not scan
+	// `topology.ports` — on a large graph that is nodes x bindings x ports.
+	let portsById = $derived(topology ? getTopologyIndex(topology).portsById : null);
 	function getPortById(portId: string): Port | null {
-		return topology?.ports.find((p) => p.id == portId) ?? null;
+		return portsById?.get(portId) ?? null;
 	}
 
 	// Compute nodeRenderData reactively

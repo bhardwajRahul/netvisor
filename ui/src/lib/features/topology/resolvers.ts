@@ -1,6 +1,7 @@
 import type { components } from '$lib/api/schema';
 import type { RenderableTopology, TopologyNode } from './types/base';
 import { entities } from '$lib/shared/stores/metadata';
+import { getTopologyIndex, type ContainerContents } from './entity-index';
 
 type ElementEntityType = components['schemas']['ElementEntityType'];
 type ElementEntityTypeDiscriminant = ElementEntityType['element_type'];
@@ -31,20 +32,20 @@ const elementResolvers: Record<
 	(nodeId: string, node: TopologyNode, topology: RenderableTopology) => ElementRenderContext
 > = {
 	IPAddress: (_nodeId, node, topology) => {
+		const index = getTopologyIndex(topology);
 		const hostId = 'host_id' in node ? (node.host_id as string) : undefined;
 		const ipAddressId =
 			'ip_address_id' in node ? (node.ip_address_id as string | undefined) : undefined;
 		const subnetId = 'subnet_id' in node ? (node.subnet_id as string) : '';
 		const isInfra = 'is_infra' in node ? (node.is_infra as boolean) : false;
 
-		const host = topology.hosts.find((h) => h.id === hostId);
-		const ipAddress = ipAddressId
-			? topology.ip_addresses.find((i) => i.id === ipAddressId)
-			: undefined;
-		const services = topology.services.filter(
-			(s) =>
-				s.host_id === hostId &&
-				s.bindings.some((b) => b.ip_address_id === ipAddressId || b.ip_address_id === null)
+		const host = hostId ? index.hostsById.get(hostId) : undefined;
+		const ipAddress = ipAddressId ? index.ipAddressesById.get(ipAddressId) : undefined;
+		// Narrowed to this host's services first, then the same binding predicate
+		// as before — so ordering and semantics are unchanged, but the scan is
+		// over one host's services rather than every service in the topology.
+		const services = (hostId ? (index.servicesByHostId.get(hostId) ?? []) : []).filter((s) =>
+			s.bindings.some((b) => b.ip_address_id === ipAddressId || b.ip_address_id === null)
 		);
 
 		return {
@@ -61,9 +62,10 @@ const elementResolvers: Record<
 		};
 	},
 	Service: (nodeId, node, topology) => {
+		const index = getTopologyIndex(topology);
 		const hostId = 'host_id' in node ? (node.host_id as string) : undefined;
-		const host = topology.hosts.find((h) => h.id === hostId);
-		const service = topology.services.find((s) => s.id === nodeId);
+		const host = hostId ? index.hostsById.get(hostId) : undefined;
+		const service = index.servicesById.get(nodeId);
 		const services = service ? [service] : [];
 
 		return {
@@ -80,9 +82,10 @@ const elementResolvers: Record<
 		};
 	},
 	Host: (_nodeId, node, topology) => {
+		const index = getTopologyIndex(topology);
 		const hostId = 'host_id' in node ? (node.host_id as string) : undefined;
-		const host = topology.hosts.find((h) => h.id === hostId);
-		const services = topology.services.filter((s) => s.host_id === hostId);
+		const host = hostId ? index.hostsById.get(hostId) : undefined;
+		const services = hostId ? (index.servicesByHostId.get(hostId) ?? []) : [];
 
 		return {
 			elementType: 'Host' as ElementEntityTypeDiscriminant,
@@ -98,12 +101,11 @@ const elementResolvers: Record<
 		};
 	},
 	Interface: (_nodeId, node, topology) => {
+		const index = getTopologyIndex(topology);
 		const hostId = 'host_id' in node ? (node.host_id as string) : undefined;
 		const interfaceId = 'interface_id' in node ? (node.interface_id as string) : undefined;
-		const host = topology.hosts.find((h) => h.id === hostId);
-		const snmpInterface = interfaceId
-			? topology.interfaces.find((e) => e.id === interfaceId)
-			: undefined;
+		const host = hostId ? index.hostsById.get(hostId) : undefined;
+		const snmpInterface = interfaceId ? index.interfacesById.get(interfaceId) : undefined;
 		return {
 			elementType: 'Interface' as ElementEntityTypeDiscriminant,
 			host,
@@ -142,10 +144,7 @@ function resolveContainerTags(
 	node: TopologyNode,
 	topology: RenderableTopology
 ): string[] {
-	const entityTags = new Map<string, string[]>();
-	for (const h of topology.hosts) entityTags.set(h.id, h.tags);
-	for (const s of topology.subnets) entityTags.set(s.id, s.tags);
-	for (const s of topology.services) entityTags.set(s.id, s.tags);
+	const { entityTags, containerContents } = getTopologyIndex(topology);
 
 	// Use entity_id for direct entity lookup (set by builders on all containers)
 	const entityId = 'entity_id' in node ? (node.entity_id as string | undefined) : undefined;
@@ -155,7 +154,7 @@ function resolveContainerTags(
 	if (entityTags.has(nodeId)) return entityTags.get(nodeId)!;
 
 	// Indirect: find entities inside this container, return first match
-	const contents = getContainerContents(nodeId, topology.nodes);
+	const contents = containerContents(nodeId);
 	for (const id of contents.hostIds) {
 		if (entityTags.has(id)) return entityTags.get(id)!;
 	}
@@ -356,13 +355,7 @@ export function getNodeSelectionIds(
 }
 
 // Container contents — shared utility for fading, hiding, counting
-export interface ContainerContents {
-	hostIds: Set<string>;
-	serviceIds: Set<string>;
-	interfaceIds: Set<string>;
-	elementNodeIds: Set<string>;
-	subcontainerIds: Set<string>;
-}
+export type { ContainerContents };
 
 /**
  * Walk topology nodes and return all entities inside a container,
@@ -435,33 +428,33 @@ export function resolveInlineServiceIds(
 	topology: RenderableTopology
 ): Set<string> {
 	const out = new Set<string>();
+	const { nodesById, servicesByHostId } = getTopologyIndex(topology);
 
 	const elementServiceIds = new Set<string>();
 	for (const id of elementNodeIds) {
-		const node = topology.nodes.find((n) => n.id === id);
+		const node = nodesById.get(id);
 		if (node?.node_type === 'Element' && node.element_type === 'Service') {
 			elementServiceIds.add(id);
 		}
 	}
 
 	for (const id of elementNodeIds) {
-		const node = topology.nodes.find((n) => n.id === id);
+		const node = nodesById.get(id);
 		if (!node || node.node_type !== 'Element') continue;
 		const hostId = (node as { host_id?: string }).host_id;
+		if (!hostId) continue;
+		const hostServices = servicesByHostId.get(hostId) ?? [];
 
 		if (node.element_type === 'IPAddress') {
 			const ipAddressId = (node as { ip_address_id?: string }).ip_address_id;
-			const matching = topology.services.filter(
-				(s) =>
-					s.host_id === hostId &&
-					s.bindings.some((b) => b.ip_address_id === ipAddressId || b.ip_address_id === null)
-			);
-			for (const s of matching) {
+			for (const s of hostServices) {
+				if (!s.bindings.some((b) => b.ip_address_id === ipAddressId || b.ip_address_id === null)) {
+					continue;
+				}
 				if (!elementServiceIds.has(s.id)) out.add(s.id);
 			}
 		} else if (node.element_type === 'Host') {
-			const matching = topology.services.filter((s) => s.host_id === hostId);
-			for (const s of matching) {
+			for (const s of hostServices) {
 				if (!elementServiceIds.has(s.id)) out.add(s.id);
 			}
 		}

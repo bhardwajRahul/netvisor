@@ -4,7 +4,8 @@ import type { RenderableTopology, TopologyNode } from './types/base';
 import { entities, views } from '$lib/shared/stores/metadata';
 import { lowercasePreservingAcronyms } from '$lib/shared/utils/formatting';
 import { tags_entityTags, tags_noCommonTagsHint } from '$lib/paraglide/messages';
-import { getContainerContents, resolveInlineServiceIds } from './resolvers';
+import { resolveInlineServiceIds } from './resolvers';
+import { getTopologyIndex } from './entity-index';
 
 type Entity = components['schemas']['EntityDiscriminants'];
 
@@ -99,8 +100,14 @@ export function tallyContainerElements(
 	containerId: string,
 	topology: RenderableTopology
 ): Map<Entity, number> {
-	const { elementNodeIds } = getContainerContents(containerId, topology.nodes);
-	const counts = tallyByEntityType(topology.nodes.filter((n) => elementNodeIds.has(n.id)));
+	const index = getTopologyIndex(topology);
+	const { elementNodeIds } = index.containerContents(containerId);
+	const elementNodes: TopologyNode[] = [];
+	for (const id of elementNodeIds) {
+		const node = index.nodesById.get(id);
+		if (node) elementNodes.push(node);
+	}
+	const counts = tallyByEntityType(elementNodes);
 	const inlineServices = resolveInlineServiceIds(elementNodeIds, topology);
 	if (inlineServices.size > 0) {
 		counts.set('Service', (counts.get('Service') ?? 0) + inlineServices.size);
@@ -116,15 +123,10 @@ export function tallyDirectElements(
 	containerId: string,
 	topology: RenderableTopology
 ): Map<Entity, number> {
-	const directElementIds = new Set<string>(
-		topology.nodes
-			.filter(
-				(n) =>
-					n.node_type === 'Element' && (n as { container_id?: string }).container_id === containerId
-			)
-			.map((n) => n.id)
-	);
-	const counts = tallyByEntityType(topology.nodes.filter((n) => directElementIds.has(n.id)));
+	const index = getTopologyIndex(topology);
+	const directElements = index.directElementsByContainerId.get(containerId) ?? [];
+	const directElementIds = new Set<string>(directElements.map((n) => n.id));
+	const counts = tallyByEntityType(directElements);
 	const inlineServices = resolveInlineServiceIds(directElementIds, topology);
 	if (inlineServices.size > 0) {
 		counts.set('Service', (counts.get('Service') ?? 0) + inlineServices.size);
