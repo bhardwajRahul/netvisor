@@ -42,6 +42,7 @@ pub struct InlineGroup {
     pub entity_id: Uuid,
     /// Shared by all members of the visual group.
     pub group_id: Uuid,
+    /// Whether this entity heads the inline group or is a member of it.
     pub role: InlineGroupRole,
 }
 
@@ -87,7 +88,9 @@ pub trait GraphRule {
 /// Generic wrapper that gives any rule type a stable UUID identity.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 pub struct IdentifiedRule<T: GraphRule> {
+    /// Server-assigned unique identifier.
     pub id: Uuid,
+    /// The rule being applied.
     pub rule: T,
 }
 
@@ -106,13 +109,22 @@ impl<T: GraphRule> IdentifiedRule<T> {
     Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema, EnumIter, IntoStaticStr,
 )]
 pub enum ContainerRule {
+    /// One container per subnet.
+    #[schema(title = "BySubnet")]
     BySubnet,
+    /// Draw a host's container bridges as a single box rather than one each.
+    #[schema(title = "MergeContainerBridges")]
     #[serde(alias = "MergeDockerBridges")]
     MergeContainerBridges,
+    /// One container per application tag.
+    #[schema(title = "ByApplication")]
     ByApplication {
+        /// Application tags to draw containers for. Empty means every application tag.
         #[serde(default)]
         tag_ids: Vec<Uuid>,
     },
+    /// One container per host.
+    #[schema(title = "ByHost")]
     ByHost,
 }
 
@@ -236,8 +248,12 @@ impl TypeMetadataProvider for ContainerRule {
     Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema, EnumIter, IntoStaticStr,
 )]
 pub enum ElementRule {
+    /// One subcontainer per group of service categories.
+    #[schema(title = "ByServiceCategory")]
     ByServiceCategory {
+        /// Service categories to group into this subcontainer.
         categories: Vec<ServiceCategory>,
+        /// Heading for the subcontainer. Defaults to the category name.
         title: Option<String>,
         /// Set by the backend on the default infrastructure rule.
         /// Frontend uses this to identify the infra container for auto-collapse.
@@ -245,8 +261,12 @@ pub enum ElementRule {
         #[schema(read_only)]
         is_infra_rule: bool,
     },
+    /// One subcontainer per group of tags.
+    #[schema(title = "ByTag")]
     ByTag {
+        /// Tags to group into this subcontainer.
         tag_ids: Vec<Uuid>,
+        /// Heading for the subcontainer. Defaults to the tag name.
         title: Option<String>,
     },
     ByHypervisor,

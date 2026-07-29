@@ -509,7 +509,7 @@ pub enum OnboardingOperation {
         company_size: Option<String>,
     },
     ReferralSourceCompleted {
-        referral_source: String,
+        referral_source: crate::server::organizations::handlers::ReferralSource,
         referral_source_other: Option<String>,
     },
 }

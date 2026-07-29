@@ -81,6 +81,7 @@ mod generated {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ShareQuery {
+    /// Return the share prepared for embedding in another page.
     #[serde(default)]
     pub embed: bool,
 }

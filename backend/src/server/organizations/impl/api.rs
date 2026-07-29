@@ -6,9 +6,13 @@ use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateInviteRequest {
+    /// How long the invite stays valid, in hours.
     pub expiration_hours: Option<i64>,
+    /// Role the invited user gets on acceptance.
     pub permissions: UserOrgPermissions,
+    /// The networks this entity applies to.
     pub network_ids: Vec<Uuid>,
+    /// Address to email the invite to. Omit to create a link without sending.
     #[schema(value_type = Option<String>)]
     pub send_to: Option<EmailAddress>,
 }

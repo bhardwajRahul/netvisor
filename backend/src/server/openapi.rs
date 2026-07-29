@@ -16,7 +16,7 @@ use utoipa::openapi::{Components, OpenApi, PathItem};
 use crate::server::bindings::r#impl::base::Binding;
 use crate::server::credentials::handlers::CredentialOrderField;
 use crate::server::credentials::r#impl::base::Credential;
-use crate::server::credentials::r#impl::types::CredentialStability;
+use crate::server::credentials::r#impl::types::{CredentialStability, CredentialTypeDiscriminants};
 use crate::server::daemon_api_keys::r#impl::base::DaemonApiKey;
 use crate::server::daemons::handlers::DaemonOrderField;
 use crate::server::daemons::r#impl::base::Daemon;
@@ -83,7 +83,10 @@ pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
         // frontend must derive its union from here rather than hand-maintaining one.
         CredentialStability,
         // Referenced by the install-command query parameter, so it needs a registered schema.
-        InstallCommandKind
+        InstallCommandKind,
+        // Referenced by the credential-list `?type` filter, which utoipa collects from
+        // `IntoParams` without registering the schema it points at.
+        CredentialTypeDiscriminants
     )),
     info(
         title = "Scanopy API",
@@ -193,6 +196,19 @@ Resources are scoped to your **organization** and **network(s)**:
 "#,
         license(name = "Dual (AGPL3.0, Commercial License Available)")
     ),
+    // Documentation renderers build their request examples from these. Without them
+    // they fall back to a placeholder host, which also breaks static-render hydration.
+    servers(
+        (url = "https://app.scanopy.net", description = "Scanopy Cloud"),
+        (
+            url = "{scheme}://{host}",
+            description = "Self-hosted server",
+            variables(
+                ("scheme" = (default = "https", enum_values("https", "http"))),
+                ("host" = (default = "scanopy.example.com", description = "Host and optional port of your Scanopy server"))
+            )
+        )
+    ),
     tags(
         // Entity tags - descriptions sourced from Entity trait for consistency
         (name = Binding::ENTITY_NAME_PLURAL, description = Binding::ENTITY_DESCRIPTION),
@@ -264,6 +280,12 @@ pub fn build_openapi(paths_from_handlers: OpenApi) -> OpenApi {
     // Fix schema examples that utoipa doesn't handle well
     fix_schema_examples(&mut base);
 
+    // Carry the response-envelope docs onto every generic instantiation
+    propagate_envelope_descriptions(&mut base);
+
+    // Define the unit-type schema utoipa references but never emits
+    add_unit_schema(&mut base);
+
     // Sanitize operationIds: CRUD macros build them from ENTITY_NAME constants which
     // contain spaces for multi-word entities (e.g. "list_Daemon API Keys"). Normalize
     // to lowercase with underscores so they're valid identifiers.
@@ -287,6 +309,77 @@ fn fix_schema_examples(spec: &mut OpenApi) {
             "has_more": true
         }));
     }
+}
+
+/// Copy the response-envelope field descriptions onto every generic instantiation.
+///
+/// `ApiResponse<T>`/`PaginatedApiResponse<T>` document their own fields, but utoipa
+/// emits one schema per `T` and only carries the doc comments through for some of
+/// them. Without this, `data` shows up undescribed on most endpoints even though the
+/// Rust field is documented.
+fn propagate_envelope_descriptions(spec: &mut OpenApi) {
+    const FIELD_DOCS: [(&str, &str); 4] = [
+        (
+            "success",
+            "`true` when the request succeeded. `false` responses carry `error` instead of `data`.",
+        ),
+        ("data", "The result payload. Omitted on failure."),
+        (
+            "error",
+            "Human-readable failure message. Omitted on success.",
+        ),
+        ("meta", "API and server version metadata."),
+    ];
+
+    let Some(ref mut components) = spec.components else {
+        return;
+    };
+
+    for (name, schema) in components.schemas.iter_mut() {
+        if !(name.starts_with("ApiResponse") || name.starts_with("PaginatedApiResponse")) {
+            continue;
+        }
+        let RefOr::T(Schema::Object(object)) = schema else {
+            continue;
+        };
+        for (field, doc) in FIELD_DOCS {
+            let Some(RefOr::T(property)) = object.properties.get_mut(field) else {
+                continue;
+            };
+            let description = match property {
+                Schema::Object(o) => &mut o.description,
+                Schema::Array(a) => &mut a.description,
+                Schema::OneOf(o) => &mut o.description,
+                Schema::AllOf(a) => &mut a.description,
+                Schema::AnyOf(a) => &mut a.description,
+                _ => continue,
+            };
+            if description.is_none() {
+                *description = Some(doc.to_string());
+            }
+        }
+    }
+}
+
+/// Register the schema utoipa references but never emits for the unit type.
+///
+/// `ApiResponse<()>` (the empty-success envelope) points `data` at a `TupleUnit`
+/// component that nothing defines, leaving a dangling `$ref` that breaks renderers
+/// and generated clients.
+fn add_unit_schema(spec: &mut OpenApi) {
+    let Some(ref mut components) = spec.components else {
+        return;
+    };
+    components
+        .schemas
+        .entry("TupleUnit".to_string())
+        .or_insert(RefOr::T(Schema::Object(
+            utoipa::openapi::ObjectBuilder::new()
+                .description(Some(
+                    "No payload. Present only so the envelope keeps its shape.",
+                ))
+                .build(),
+        )));
 }
 
 /// Normalize operationIds: lowercase and replace spaces with underscores.

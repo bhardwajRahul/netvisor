@@ -18,14 +18,21 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum DemoPopulateStatus {
+    #[schema(title = "Running")]
     Running {
+        /// When population began.
         started_at: DateTime<Utc>,
     },
+    #[schema(title = "Complete")]
     Complete {
+        /// When population finished.
         finished_at: DateTime<Utc>,
     },
+    #[schema(title = "Failed")]
     Failed {
+        /// Why population failed.
         error: String,
+        /// When it gave up.
         finished_at: DateTime<Utc>,
     },
 }

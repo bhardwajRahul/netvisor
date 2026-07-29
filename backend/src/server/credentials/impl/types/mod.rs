@@ -67,21 +67,36 @@ fn default_docker_port() -> u16 {
 #[serde(tag = "type")]
 pub enum CredentialType {
     /// SNMPv1 community string — for legacy devices that only speak v1.
-    SnmpV1 { community: SecretValue },
+    #[schema(title = "SnmpV1")]
+    SnmpV1 {
+        /// SNMPv1 community string.
+        community: SecretValue,
+    },
     /// SNMPv2c community string for querying network devices
-    SnmpV2c { community: SecretValue },
+    #[schema(title = "SnmpV2c")]
+    SnmpV2c {
+        /// SNMPv2c community string.
+        community: SecretValue,
+    },
     /// SNMPv3 USM AuthPriv — security name + auth/priv protocols and passwords.
+    #[schema(title = "SnmpV3")]
     SnmpV3 {
+        /// USM security (user) name.
         security_name: String,
+        /// Hash algorithm used for authentication.
         auth_protocol: SnmpV3AuthProtocol,
+        /// Authentication passphrase.
         auth_password: SecretValue,
+        /// Cipher used for privacy (encryption).
         priv_protocol: SnmpV3PrivProtocol,
+        /// Privacy passphrase.
         priv_password: SecretValue,
         /// Optional context name (default/empty context used if unset).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         context_name: Option<String>,
     },
     /// Docker API proxy credentials. Target IP determined from host ip_addresses at scan time.
+    #[schema(title = "DockerProxy")]
     DockerProxy {
         /// Port for the Docker API proxy (default 2375)
         #[serde(default = "default_docker_port")]
@@ -113,13 +128,16 @@ pub enum CredentialType {
     },
     /// Local Docker socket access on the daemon host. `socket_path` optionally repoints the
     /// socket (non-default `DOCKER_HOST`); blank ⇒ the daemon auto-detects (bollard defaults).
+    #[schema(title = "DockerSocket")]
     DockerSocket {
+        /// Path to the Docker socket. Blank lets the daemon auto-detect it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         socket_path: Option<String>,
     },
     /// Podman API proxy credentials. Podman exposes a Docker-compatible REST API,
     /// so the fields mirror `DockerProxy`. Target IP determined from host
     /// ip_addresses at scan time.
+    #[schema(title = "PodmanProxy")]
     PodmanProxy {
         /// Port for the Podman API proxy (default 2375)
         #[serde(default = "default_docker_port")]
@@ -153,7 +171,9 @@ pub enum CredentialType {
     /// socket (e.g. rootful `/run/podman/podman.sock` vs rootless
     /// `$XDG_RUNTIME_DIR/podman/podman.sock`); blank ⇒ the daemon auto-detects via
     /// `resolve_podman_socket_path()`.
+    #[schema(title = "PodmanSocket")]
     PodmanSocket {
+        /// Path to the Podman socket. Blank lets the daemon auto-detect it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         socket_path: Option<String>,
     },
@@ -162,6 +182,7 @@ pub enum CredentialType {
     /// **UniFi OS only** — a UniFi OS console (443) or UniFi OS Server (11443). The legacy
     /// self-hosted Network Application on 8443 does not support API keys; use
     /// [`CredentialType::UnifiLocalAdmin`] there.
+    #[schema(title = "UnifiApiKey")]
     UnifiApiKey {
         /// Controller HTTPS port. 443 for a UniFi OS console, 11443 for UniFi OS Server.
         #[serde(default = "default_unifi_port")]
@@ -176,6 +197,7 @@ pub enum CredentialType {
     ///
     /// Works on every controller type, including the legacy self-hosted Network Application on
     /// 8443. Use a local-only admin account so MFA does not block the login.
+    #[schema(title = "UnifiLocalAdmin")]
     UnifiLocalAdmin {
         /// Controller HTTPS port. 443 UniFi OS console, 11443 UniFi OS Server, 8443 legacy.
         #[serde(default = "default_unifi_port")]
@@ -183,7 +205,9 @@ pub enum CredentialType {
         /// Internal site name from the controller URL (`/manage/site/<name>`).
         #[serde(default = "default_unifi_site")]
         site: String,
+        /// Local admin account on the controller.
         username: String,
+        /// Password for that account.
         password: SecretValue,
     },
 }

@@ -1166,7 +1166,7 @@ pub async fn delete_host(
     post,
     path = "/bulk-delete",
     tag = Host::ENTITY_NAME_PLURAL,
-    request_body(content = Vec<Uuid>, description = "Array of host IDs to delete"),
+    request_body(content = Vec<Uuid>, description = "Array of Host IDs to delete"),
     responses(
         (status = 200, description = "Hosts deleted successfully", body = ApiResponse<BulkDeleteResponse>),
         (status = 409, description = "One or more hosts has an associated daemon - delete daemons first", body = ApiErrorResponse),
@@ -1210,7 +1210,7 @@ pub async fn bulk_delete_hosts(
     operation_id = "export_hosts_zip",
     params(HostFilterQuery),
     responses(
-        (status = 200, description = "ZIP file containing CSVs", content_type = "application/zip"),
+        (status = 200, description = "ZIP file containing CSVs", content_type = "application/zip", body = String),
     ),
     security(("user_api_key" = []), ("session" = []))
 )]

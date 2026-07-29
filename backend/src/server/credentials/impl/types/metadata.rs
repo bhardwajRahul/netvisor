@@ -54,9 +54,23 @@ pub enum CredentialStability {
     Beta,
 }
 
+/// `Beta < Stable`. Not derived: declaration order puts `Stable` first, which would order
+/// these the other way round.
+impl PartialOrd for CredentialStability {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        use std::cmp::Ordering;
+        Some(match (self, other) {
+            (Self::Beta, Self::Stable) => Ordering::Less,
+            (Self::Stable, Self::Beta) => Ordering::Greater,
+            (Self::Beta, Self::Beta) | (Self::Stable, Self::Stable) => Ordering::Equal,
+        })
+    }
+}
+
 /// A credential assigned to a host, optionally limited to specific ip_addresses.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct CredentialAssignment {
+    /// The credential this entity refers to.
     pub credential_id: Uuid,
     /// Interface IDs to limit this credential to. None = all host ip_addresses.
     #[serde(default, alias = "interface_ids")]
@@ -69,6 +83,7 @@ pub struct CredentialAssignment {
 /// credential from the `host_credentials` junction (PerHost scope).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct CredentialHostAssignment {
+    /// The host this entity belongs to.
     pub host_id: Uuid,
     /// IP address IDs to limit this credential to on the host. None = all host ip_addresses.
     #[serde(default)]

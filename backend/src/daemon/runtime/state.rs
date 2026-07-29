@@ -32,7 +32,9 @@ pub struct DaemonStatus {
     /// Server never updates daemon URL from status (URL is set during provisioning).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// Name the daemon reports for itself.
     pub name: String,
+    /// How the daemon connects: it polls the server, or the server polls it.
     pub mode: DaemonMode,
     /// Daemon software version (semver format)
     #[serde(default, skip_serializing_if = "Option::is_none")]

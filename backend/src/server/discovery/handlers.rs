@@ -305,7 +305,7 @@ async fn delete_discovery(
     tag = Discovery::ENTITY_NAME_PLURAL,
     operation_id = "bulk_delete_discoveries",
     summary = "Bulk delete discoveries",
-    request_body(content = Vec<Uuid>, description = "Array of discovery IDs to delete"),
+    request_body(content = Vec<Uuid>, description = "Array of Discovery IDs to delete"),
     responses(
         (status = 200, description = "discoveries deleted", body = ApiResponse<crate::server::shared::handlers::traits::BulkDeleteResponse>),
         (status = 409, description = "discovery has active session", body = ApiErrorResponse),

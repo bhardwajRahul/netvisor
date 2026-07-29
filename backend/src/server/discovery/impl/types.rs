@@ -38,13 +38,15 @@ use crate::server::{
 pub enum DiscoveryType {
     #[schema(title = "SelfReport")]
     SelfReport {
-        // ID of the host that the daemon is running on
+        /// The host the daemon is running on.
         host_id: Uuid,
     },
     #[schema(title = "Network")]
     Network {
+        /// Subnets to sweep. `null` sweeps every subnet on the network.
         #[schema(required)]
         subnet_ids: Option<Vec<Uuid>>,
+        /// What to name a host by when reverse DNS gives nothing.
         #[serde(default)]
         #[schema(required)]
         host_naming_fallback: HostNamingFallback,
@@ -56,8 +58,9 @@ pub enum DiscoveryType {
     },
     #[schema(title = "Docker")]
     Docker {
-        // ID of the host that the daemon is running on
+        /// The host the daemon is running on.
         host_id: Uuid,
+        /// What to name a host by when reverse DNS gives nothing.
         #[serde(default)]
         #[schema(required)]
         host_naming_fallback: HostNamingFallback,
@@ -195,10 +198,13 @@ pub enum HostNamingFallback {
 pub enum RunType {
     #[schema(title = "Scheduled")]
     Scheduled {
+        /// Cron expression deciding when the scan runs.
         cron_schedule: String,
+        /// When the scan last ran.
         #[serde(default)]
         #[schema(read_only)]
         last_run: Option<DateTime<Utc>>,
+        /// Whether the schedule is active.
         enabled: bool,
         /// IANA timezone for cron evaluation, e.g. "America/New_York". None = UTC.
         #[serde(default)]
@@ -207,10 +213,12 @@ pub enum RunType {
     #[schema(title = "Historical")]
     /// Historical discovery runs are created by the server and cannot be submitted via API
     Historical {
+        /// The recorded outcome of the run.
         results: Box<DiscoveryUpdatePayload>,
     },
     #[schema(title = "AdHoc")]
     AdHoc {
+        /// When the scan last ran.
         #[serde(default)]
         #[schema(read_only)]
         last_run: Option<DateTime<Utc>>,

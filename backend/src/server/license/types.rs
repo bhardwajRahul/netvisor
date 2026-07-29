@@ -45,7 +45,12 @@ pub struct LicenseClaims {
 /// Runtime license state of a configured key, checked by middleware on every
 /// request. A deployment with no license key has no `LicenseService` at all
 /// (the community/cloud case), so there is no "not required" variant here.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, strum_macros::EnumDiscriminants)]
+#[strum_discriminants(
+    derive(Serialize, Deserialize, utoipa::ToSchema),
+    serde(rename_all = "lowercase"),
+    doc = "Runtime license state as reported by the public config endpoint."
+)]
 pub enum LicenseStatus {
     /// Valid commercial license
     Valid(LicenseClaims),
@@ -68,6 +73,11 @@ impl LicenseStatus {
             LicenseStatus::Expired(_) => "expired",
             LicenseStatus::Invalid(_) => "invalid",
         }
+    }
+
+    /// Data-free view of the status, as published by the public config endpoint.
+    pub fn kind(&self) -> LicenseStatusDiscriminants {
+        LicenseStatusDiscriminants::from(self)
     }
 
     /// Hard expiry date as ISO date string (e.g. "2027-04-11"), if available.

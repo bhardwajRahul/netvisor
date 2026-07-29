@@ -238,7 +238,7 @@ pub async fn delete_ip_address(
     post,
     path = "/bulk-delete",
     tag = IPAddress::ENTITY_NAME_PLURAL,
-    request_body = Vec<Uuid>,
+    request_body(content = Vec<Uuid>, description = "Array of IP Address IDs to delete"),
     responses(
         (status = 200, description = "IP addresses deleted successfully", body = ApiResponse<BulkDeleteResponse>),
         (status = 400, description = "No IDs provided", body = ApiErrorResponse),

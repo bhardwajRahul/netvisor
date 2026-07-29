@@ -420,9 +420,12 @@ impl DaemonVersionPolicy {
 /// Deprecation warning for daemon version
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DeprecationWarning {
+    /// What the operator needs to do, and by when.
     pub message: String,
+    /// Date after which this daemon version stops being supported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sunset_date: Option<String>,
+    /// How urgent the upgrade is.
     pub severity: DeprecationSeverity,
 }
 
@@ -443,8 +446,11 @@ pub enum DeprecationSeverity {
 /// Daemon version status including health and any warnings
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DaemonVersionStatus {
+    /// Version the daemon reports.
     pub version: Option<String>,
+    /// Whether that version is current, ageing, or out of support.
     pub status: VersionHealthStatus,
+    /// Upgrade warnings that apply to this version.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<DeprecationWarning>,
     /// The date this daemon's version stops being supported, if a sunset is
@@ -452,8 +458,10 @@ pub struct DaemonVersionStatus {
     /// UI can render a countdown from the same value the email uses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sunset_date: Option<String>,
+    /// Whether the daemon can run a combined discovery pass.
     #[serde(default)]
     pub supports_unified_discovery: bool,
+    /// Whether a containerized daemon is mounted so it can read the Docker socket.
     #[serde(default)]
     pub has_correct_docker_volume_mount: bool,
     /// Whether this daemon can run a single-host rescan. Server-computed so the

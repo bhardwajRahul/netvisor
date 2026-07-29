@@ -35,9 +35,12 @@ pub struct UserCsvRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, PartialEq, Eq, Hash, ToSchema)]
 pub struct UserBase {
-    #[schema(value_type = String)]
+    /// The user's email address, also their login identifier.
+    #[schema(value_type = String, format = "email")]
     pub email: EmailAddress,
+    /// The organization that owns this record.
     pub organization_id: Uuid,
+    /// The user's role within the organization.
     pub permissions: UserOrgPermissions,
     /// Password hash - None for legacy users created before auth migration or users using OIDC
     #[serde(skip)] // Never send to client, never accept from client
@@ -46,15 +49,20 @@ pub struct UserBase {
     #[serde(default)]
     #[schema(read_only)]
     pub has_password: bool,
+    /// Slug of the identity provider this account signs in through, when linked.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_provider: Option<String>,
+    /// The provider's stable identifier for this user.
     #[serde(skip)]
     pub oidc_subject: Option<String>,
+    /// When the account was linked to the identity provider.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_linked_at: Option<DateTime<Utc>>,
+    /// The networks this entity applies to.
     #[serde(default)]
     #[schema(required)]
     pub network_ids: Vec<Uuid>,
+    /// When the user accepted the terms of service.
     #[serde(default)]
     #[schema(read_only)]
     pub terms_accepted_at: Option<DateTime<Utc>>,
@@ -181,12 +189,15 @@ impl UserBase {
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema, Validate,
 )]
 pub struct User {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,

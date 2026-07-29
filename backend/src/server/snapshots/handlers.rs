@@ -41,6 +41,7 @@ use crate::server::{
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateSnapshotRequest {
+    /// The network this entity belongs to.
     pub network_id: Uuid,
 }
 

@@ -159,11 +159,15 @@ impl PaginatedApiMeta {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ApiResponse<T> {
+    /// `true` when the request succeeded. `false` responses carry `error` instead of `data`.
     pub success: bool,
+    /// The result payload. Omitted on failure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<T>,
+    /// Human-readable failure message. Omitted on success.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// API and server version metadata.
     pub meta: ApiMeta,
 }
 
@@ -172,7 +176,9 @@ pub type EmptyApiResponse = ApiResponse<()>;
 /// Error response type for API errors (no data field)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ApiErrorResponse {
+    /// Always `false` on this response shape.
     pub success: bool,
+    /// Human-readable failure message.
     pub error: Option<String>,
     /// Machine-readable error code for i18n translation
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -225,9 +231,13 @@ impl<T> ApiResponse<T> {
 /// Response type for paginated list endpoints (pagination is always present in meta)
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PaginatedApiResponse<T> {
+    /// `true` when the request succeeded. `false` responses carry `error` instead of `data`.
     pub success: bool,
+    /// The page of results. Empty when nothing matched the query.
     pub data: Vec<T>,
+    /// API and server version metadata, plus pagination counters.
     pub meta: PaginatedApiMeta,
+    /// Human-readable failure message. Omitted on success.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }

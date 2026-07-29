@@ -65,8 +65,10 @@ impl InterfaceDataComplete {
 #[serde(tag = "type", content = "id")]
 pub enum Neighbor {
     /// Full resolution - the specific remote port was identified
+    #[schema(title = "Interface")]
     Interface(Uuid),
     /// Partial resolution - the remote device was identified but not the specific port
+    #[schema(title = "Host")]
     Host(Uuid),
 }
 
@@ -166,7 +168,9 @@ impl From<IfOperStatus> for i32 {
 
 #[derive(Debug, Clone, Validate, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct InterfaceBase {
+    /// The host this entity belongs to.
     pub host_id: Uuid,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
     /// SNMP ifIndex - stable identifier within device
     pub if_index: i32,
@@ -189,7 +193,7 @@ pub struct InterfaceBase {
     // Local links
     /// MAC address from SNMP ifPhysAddress - immutable once set
     #[serde(default)]
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, pattern = r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$", example = "a4:bb:6d:12:34:56")]
     pub mac_address: Option<MacAddress>,
     /// FK to IPAddress entity - this port's IP assignment (must be on same host).
     /// Old daemons send this as "interface_id".
@@ -209,8 +213,8 @@ pub struct InterfaceBase {
     pub lldp_sys_name: Option<String>,
     /// Remote port description from LLDP neighbor (lldpRemPortDesc)
     pub lldp_port_desc: Option<String>,
-    /// Remote management IP from LLDP neighbor (lldpRemManAddr)
-    #[schema(value_type = Option<String>)]
+    /// Remote management IP from LLDP neighbor (lldpRemManAddr). IPv4 or IPv6.
+    #[schema(value_type = Option<String>, example = "192.168.1.1")]
     pub lldp_mgmt_addr: Option<std::net::IpAddr>,
     /// Remote system description from LLDP neighbor (lldpRemSysDesc) - platform info
     pub lldp_sys_desc: Option<String>,
@@ -222,8 +226,8 @@ pub struct InterfaceBase {
     pub cdp_port_id: Option<String>,
     /// Remote platform from CDP (e.g., "Cisco IOS")
     pub cdp_platform: Option<String>,
-    /// Remote management IP from CDP (cdpCacheAddress)
-    #[schema(value_type = Option<String>)]
+    /// Remote management IP from CDP (cdpCacheAddress). IPv4 or IPv6.
+    #[schema(value_type = Option<String>, example = "192.168.1.1")]
     pub cdp_address: Option<std::net::IpAddr>,
 
     /// Bridge FDB: learned MAC addresses on this switch port.
@@ -278,30 +282,39 @@ impl Default for InterfaceBase {
     Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Default, ToSchema, Validate,
 )]
 pub struct Interface {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// Start of the interval this revision was current for (SCD2 history).
     #[serde(default)]
     #[schema(read_only)]
     pub valid_from: DateTime<Utc>,
+    /// End of the interval this revision was current for. `null` while it is the live revision.
     #[serde(default)]
     #[schema(read_only)]
     pub valid_to: Option<DateTime<Utc>>,
+    /// Stable identifier shared by every revision of the same entity across its history.
     #[serde(default)]
     #[schema(read_only)]
     pub lineage_id: Option<Uuid>,
+    /// When a discovery last observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_seen_at: DateTime<Utc>,
+    /// The most recent discovery that observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_discovery_id: Option<Uuid>,
+    /// The discovery that first observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub first_discovery_id: Option<Uuid>,

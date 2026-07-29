@@ -33,7 +33,9 @@ pub struct MatchResult {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct MatchDetails {
+    /// Why the service was matched to this definition.
     pub reason: MatchReason,
+    /// How strong the match is.
     pub confidence: MatchConfidence,
 }
 
@@ -72,6 +74,7 @@ impl utoipa::PartialSchema for MatchReason {
 
         // Variant 1: { type: "reason", data: string }
         let reason_variant = ObjectBuilder::new()
+            .title(Some("Reason"))
             .property(
                 "type",
                 ObjectBuilder::new()
@@ -81,7 +84,9 @@ impl utoipa::PartialSchema for MatchReason {
             .required("type")
             .property(
                 "data",
-                ObjectBuilder::new().schema_type(SchemaType::new(Type::String)),
+                ObjectBuilder::new()
+                    .schema_type(SchemaType::new(Type::String))
+                    .description(Some("Why the service was matched.")),
             )
             .required("data")
             .build();
@@ -89,6 +94,7 @@ impl utoipa::PartialSchema for MatchReason {
         // Variant 2: { type: "container", data: [string, MatchReason[]] }
         // Note: JSON Schema doesn't perfectly represent Rust tuples, so we use an array
         let container_variant = ObjectBuilder::new()
+            .title(Some("Container"))
             .property(
                 "type",
                 ObjectBuilder::new()

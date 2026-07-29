@@ -18,16 +18,27 @@ use super::*;
 #[strum_discriminants(derive(IntoStaticStr, Serialize))]
 #[serde(tag = "type")]
 pub enum BillingPlan {
+    #[schema(title = "Community")]
     Community(PlanConfig),
+    #[schema(title = "Free")]
     Free(PlanConfig),
+    #[schema(title = "Starter")]
     Starter(PlanConfig),
+    #[schema(title = "Pro")]
     Pro(PlanConfig),
+    #[schema(title = "Team")]
     Team(PlanConfig),
+    #[schema(title = "Business")]
     Business(PlanConfig),
+    #[schema(title = "Enterprise")]
     Enterprise(PlanConfig),
+    #[schema(title = "Demo")]
     Demo(PlanConfig),
+    #[schema(title = "CommercialSelfHosted")]
     CommercialSelfHosted(PlanConfig),
+    #[schema(title = "SelfHostedStandard")]
     SelfHostedStandard(PlanConfig),
+    #[schema(title = "SelfHostedPlus")]
     SelfHostedPlus(PlanConfig),
 }
 
@@ -134,18 +145,27 @@ impl BillingPlan {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq, Eq, Default, Hash, ToSchema)]
 pub struct PlanConfig {
+    /// Fixed charge per billing period, in cents.
     pub base_cents: i64,
+    /// Billing interval this configuration is priced for.
     pub rate: BillingRate,
+    /// Length of the free trial, in days. Zero when the plan has no trial.
     pub trial_days: u32,
 
     // None = can't pay for more
+    /// Charge per seat beyond `included_seats`, in cents.
     pub seat_cents: Option<i64>,
+    /// Charge per network beyond `included_networks`, in cents.
     pub network_cents: Option<i64>,
+    /// Charge per host beyond `included_hosts`, in cents.
     pub host_cents: Option<i64>,
 
     // None = unlimited
+    /// Seats included before per-seat charges apply.
     pub included_seats: Option<u64>,
+    /// Networks included before per-network charges apply.
     pub included_networks: Option<u64>,
+    /// Hosts included before per-host charges apply.
     pub included_hosts: Option<u64>,
     /// Organizations allowed on one self-hosted server instance. `None` =
     /// unlimited. Only enforced for self-hosted deployments (see

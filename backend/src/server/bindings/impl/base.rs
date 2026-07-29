@@ -30,6 +30,7 @@ pub enum BindingType {
     /// IP address binding: Service is present at an IP address without a specific port.
     /// Used for non-port-bound services like gateways. Conflicts with port bindings on the same IP address.
     IPAddress {
+        /// The IP address the service is present at.
         #[serde(alias = "interface_id")]
         ip_address_id: Uuid,
     },
@@ -38,6 +39,7 @@ pub enum BindingType {
     /// If `ip_address_id` is `null`, the service listens on this port across all IP addresses,
     /// which supersedes any specific-IP-address bindings for the same port.
     Port {
+        /// The port the service listens on.
         port_id: Uuid,
         #[serde(skip_serializing_if = "Option::is_none", alias = "interface_id")]
         #[schema(required)]
@@ -59,8 +61,11 @@ impl Default for BindingType {
 /// The base data for a Binding entity (everything except id, created_at, updated_at)
 #[derive(Copy, Debug, Clone, Eq, Serialize, Deserialize, ToSchema, Validate)]
 pub struct BindingBase {
+    /// The service this entity refers to.
     pub service_id: Uuid,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// What the service is bound to — a port, or an IP address on its own.
     #[serde(flatten)]
     pub binding_type: BindingType,
 }
@@ -125,30 +130,39 @@ impl Hash for BindingType {
 #[derive(Copy, Debug, Clone, Eq, Serialize, Deserialize, ToSchema, Validate)]
 #[schema(example = crate::server::shared::types::examples::binding)]
 pub struct Binding {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default = "Utc::now")]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default = "Utc::now")]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// Start of the interval this revision was current for (SCD2 history).
     #[serde(default = "Utc::now")]
     #[schema(read_only)]
     pub valid_from: DateTime<Utc>,
+    /// End of the interval this revision was current for. `null` while it is the live revision.
     #[serde(default)]
     #[schema(read_only)]
     pub valid_to: Option<DateTime<Utc>>,
+    /// Stable identifier shared by every revision of the same entity across its history.
     #[serde(default)]
     #[schema(read_only)]
     pub lineage_id: Option<Uuid>,
+    /// When a discovery last observed this entity.
     #[serde(default = "Utc::now")]
     #[schema(read_only)]
     pub last_seen_at: DateTime<Utc>,
+    /// The most recent discovery that observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_discovery_id: Option<Uuid>,
+    /// The discovery that first observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub first_discovery_id: Option<Uuid>,

@@ -9,6 +9,7 @@ use crate::server::organizations::r#impl::base::UseCase;
 /// Login request from client
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct LoginRequest {
+    /// Email address of the account to sign in to.
     #[schema(value_type = String, format = "email")]
     pub email: EmailAddress,
 
@@ -16,19 +17,26 @@ pub struct LoginRequest {
     // (e.g. the minimum length) to unauthenticated callers — that leaks a
     // password-spraying hint. A too-short/wrong password just fails auth
     // generically. The policy is enforced on register / update / reset instead.
+    /// The account password.
+    #[schema(format = "password", write_only)]
     pub password: String,
 }
 
 /// Registration request from client
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct RegisterRequest {
+    /// Email address for the new account. Must be deliverable.
     #[schema(value_type = String, format = "email")]
     pub email: EmailAddress,
 
+    /// Password for the new account. Minimum 10 characters.
     #[validate(length(min = 10, message = "Password must be at least 10 characters"))]
     #[validate(custom(function = "validate_password_complexity"))]
+    #[schema(format = "password", write_only)]
     pub password: String,
+    /// Must be `true` — records that the user accepted the terms of service.
     pub terms_accepted: bool,
+    /// Whether the user agreed to receive product and marketing email.
     #[serde(default)]
     pub marketing_opt_in: bool,
     /// Honeypot field for bot detection
@@ -54,6 +62,7 @@ fn validate_password_complexity(password: &str) -> Result<(), validator::Validat
 /// Check email availability request
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CheckEmailRequest {
+    /// Email address to check for an existing account.
     #[schema(value_type = String, format = "email")]
     pub email: EmailAddress,
 }
@@ -75,10 +84,12 @@ pub struct OidcCallbackParams {
 pub struct UpdatePasswordRequest {
     /// Current password — required if the user already has a password set.
     /// Not required for OIDC-only users adding their first password.
+    #[schema(format = "password", write_only)]
     pub current_password: Option<String>,
     /// New password to set
     #[validate(length(min = 10, message = "Password must be at least 10 characters"))]
     #[validate(custom(function = "validate_password_complexity"))]
+    #[schema(format = "password", write_only)]
     pub new_password: String,
 }
 
@@ -86,7 +97,9 @@ pub struct UpdatePasswordRequest {
 pub struct RequestEmailChangeRequest {
     /// Current password — required if the user already has a password set.
     /// Not required for OIDC-only users.
+    #[schema(format = "password", write_only)]
     pub current_password: Option<String>,
+    /// Address to move the account to. A confirmation link is sent there.
     #[schema(value_type = String, format = "email")]
     pub new_email: EmailAddress,
 }
@@ -101,46 +114,57 @@ pub struct OidcAuthorizeParams {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ForgotPasswordRequest {
+    /// Email address to send the password-reset link to.
     #[schema(value_type = String, format = "email")]
     pub email: EmailAddress,
 }
 
 #[derive(Debug, Deserialize, ToSchema, Validate)]
 pub struct ResetPasswordRequest {
+    /// Single-use token from the password-reset email.
+    #[schema(write_only)]
     pub token: String,
+    /// The new password. Minimum 10 characters.
     #[validate(length(min = 10, message = "Password must be at least 10 characters"))]
     #[validate(custom(function = "validate_password_complexity"))]
+    #[schema(format = "password", write_only)]
     pub password: String,
 }
 
 /// Network configuration for setup
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NetworkSetup {
+    /// Name for the network created during setup.
     pub name: String,
 }
 
 /// Setup request for pre-registration org/network configuration
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SetupRequest {
+    /// Name for the organization created during setup.
     pub organization_name: String,
+    /// The first network to create alongside the organization.
     pub network: NetworkSetup,
 }
 
 /// Response from setup endpoint
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SetupResponse {
+    /// The network this entity belongs to.
     pub network_id: Uuid,
 }
 
 /// Request to verify email using token
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct VerifyEmailRequest {
+    /// Single-use token from the verification email.
     pub token: String,
 }
 
 /// Request to resend verification email
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ResendVerificationRequest {
+    /// Address to resend the verification email to.
     #[schema(value_type = String, format = "email")]
     pub email: EmailAddress,
 }
@@ -148,6 +172,7 @@ pub struct ResendVerificationRequest {
 /// Request to save onboarding step
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct OnboardingStepRequest {
+    /// Identifier of the onboarding step the user has reached.
     pub step: String,
     /// Use case selection (homelab, company, msp)
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -135,6 +135,13 @@ jobs:
           cp ui/src/lib/data/features.json website/src/lib/fixtures/
           cp ui/src/lib/data/billing-plans.json website/src/lib/fixtures/
           cp ui/src/lib/data/integrations.json website/src/lib/fixtures/
+          # Rendered directly by docs pages instead of being restated in prose
+          # (website/docs/src/components/). generate-fixtures emits more than we
+          # sync — add a line here when a docs page starts consuming one.
+          cp ui/src/lib/data/permissions.json website/src/lib/fixtures/
+          cp ui/src/lib/data/scan-settings.json website/src/lib/fixtures/
+          cp ui/src/lib/data/element-rule-types.json website/src/lib/fixtures/
+          cp ui/src/lib/data/views.json website/src/lib/fixtures/
           cp ui/static/openapi-public.json website/src/lib/fixtures/openapi.json
           cp ui/static/schema.mermaid website/src/lib/fixtures/schema.mermaid
           cp ui/static/schema-er.mermaid website/src/lib/fixtures/schema-er.mermaid

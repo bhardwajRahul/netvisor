@@ -1,6 +1,7 @@
 use crate::server::auth::middleware::permissions::{Admin, Authorized, Viewer};
 use crate::server::credentials::r#impl::base::Credential;
 use crate::server::credentials::r#impl::mapping::Target;
+use crate::server::credentials::r#impl::types::CredentialTypeDiscriminants;
 use crate::server::credentials::service::CredentialService;
 use crate::server::daemons::r#impl::base::Daemon;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
@@ -71,9 +72,9 @@ impl OrderField for CredentialOrderField {
 
 #[derive(Deserialize, Default, Debug, Clone, IntoParams)]
 pub struct CredentialFilterQuery {
-    /// Filter by credential type (e.g. "Snmp", "DockerProxy")
+    /// Filter by credential type (e.g. `SnmpV2c`, `DockerProxy`).
     #[serde(rename = "type")]
-    pub credential_type: Option<String>,
+    pub credential_type: Option<CredentialTypeDiscriminants>,
     /// Primary ordering field (used for grouping). Always sorts ASC to keep groups together.
     pub group_by: Option<CredentialOrderField>,
     /// Secondary ordering field (sorting within groups or standalone sort).
@@ -110,8 +111,9 @@ impl FilterQueryExtractor for CredentialFilterQuery {
         _user_network_ids: &[Uuid],
         _user_organization_id: Uuid,
     ) -> StorableFilter<T> {
-        if let Some(ref cred_type) = self.credential_type {
-            filter = filter.json_field_eq("credential_type", "type", cred_type);
+        if let Some(cred_type) = self.credential_type {
+            // The JSONB tag is the variant name, which is what `IntoStaticStr` yields.
+            filter = filter.json_field_eq("credential_type", "type", cred_type.into());
         }
         filter
     }
@@ -421,7 +423,7 @@ async fn delete_credential(
     post,
     path = "/bulk-delete",
     tag = Credential::ENTITY_NAME_PLURAL,
-    request_body = Vec<Uuid>,
+    request_body(content = Vec<Uuid>, description = "Array of Credential IDs to delete"),
     responses(
         (status = 200, description = "Credentials deleted successfully", body = ApiResponse<BulkDeleteResponse>),
         (status = 400, description = "Validation error", body = ApiErrorResponse),
@@ -444,7 +446,7 @@ async fn bulk_delete_credentials(
 /// List all Credentials
 ///
 /// Returns all credentials in the authenticated user's organization.
-/// Optionally filter by type (e.g. ?type=Snmp).
+/// Optionally filter by type (e.g. `?type=SnmpV2c`).
 #[utoipa::path(
     get,
     path = "",

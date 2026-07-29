@@ -12,11 +12,15 @@ use crate::server::email::messages::{EmailPreference, PausableCategory};
 /// JSON.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct EmailSettings {
+    /// Send a periodic summary of what discovery found.
     pub discovery_digest: bool,
+    /// Send getting-started guidance.
     #[serde(default = "default_true")]
     pub product_onboarding: bool,
+    /// Send an alert when a daemon stops reporting.
     #[serde(default = "default_true")]
     pub daemon_alerts: bool,
+    /// Send trial reminders and plan-usage warnings.
     #[serde(default = "default_true")]
     pub trial_and_usage: bool,
 }

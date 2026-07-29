@@ -81,8 +81,10 @@ pub enum EdgeSelectionScope {
 pub enum EdgeViewConfig {
     /// Edge is not available in this view
     #[default]
+    #[schema(title = "Disabled")]
     Disabled,
     /// Edge is active in this view with specific properties
+    #[schema(title = "Active")]
     Active {
         /// Whether ELK should use this edge for layout positioning
         affects_layout: bool,
@@ -102,16 +104,25 @@ pub enum EdgeViewConfig {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
 pub struct Edge {
+    /// Server-assigned unique identifier.
     pub id: Uuid,
+    /// Node the edge starts at.
     pub source: Uuid,
+    /// Node the edge ends at.
     pub target: Uuid,
+    /// What relationship this edge represents, and the entities behind it.
     #[serde(flatten)]
     pub edge_type: EdgeType,
+    /// Text drawn on the edge.
     #[schema(required)]
     pub label: Option<String>,
+    /// Which side of the source node the edge leaves from.
     pub source_handle: EdgeHandle,
+    /// Which side of the target node the edge arrives at.
     pub target_handle: EdgeHandle,
+    /// Whether the edge stands in for a path that crosses intermediate nodes.
     pub is_multi_hop: bool,
+    /// Per-view overrides for how this edge is drawn.
     #[serde(default)]
     pub view_config: EdgeViewConfig,
     /// Identity of the relation this edge stands for — see [`EdgeType::relation_key`]. Stamped
@@ -184,14 +195,21 @@ pub enum EdgeStyle {
 #[strum_discriminants(derive(Display, Hash, Serialize, Deserialize, EnumIter, ToSchema))]
 #[serde(tag = "edge_type")]
 pub enum EdgeType {
+    #[schema(title = "SameHost")]
     SameHost {
+        /// The host both endpoints sit on.
         host_id: Uuid,
     },
+    #[schema(title = "Hypervisor")]
     Hypervisor {
+        /// The hypervisor service running the guest.
         hypervisor_service_id: Uuid,
     },
+    #[schema(title = "ContainerRuntime")]
     ContainerRuntime {
+        /// The host running the container runtime.
         host_id: Uuid,
+        /// The container runtime service itself.
         service_id: Uuid,
         /// The bridge subnet(s) this edge reaches: one when they render as their own boxes,
         /// all of them when merged into a single box. Resolved here rather than in the
@@ -203,32 +221,50 @@ pub enum EdgeType {
     /// One container reachable at several of its host's container-bridge subnets. Ties the
     /// container's addresses together so a multi-attached container reads as one thing rather
     /// than as unrelated cards in separate subnet boxes.
+    #[schema(title = "SameContainer")]
     SameContainer {
+        /// The containerized service reachable at several addresses.
         service_id: Uuid,
     },
+    #[schema(title = "RequestPath")]
     RequestPath {
+        /// The dependency this edge was drawn from.
         dependency_id: Uuid,
+        /// Member the request starts at.
         source_id: Uuid,
+        /// Member the request arrives at.
         target_id: Uuid,
     },
+    #[schema(title = "HubAndSpoke")]
     HubAndSpoke {
+        /// The dependency this edge was drawn from.
         dependency_id: Uuid,
+        /// The hub member.
         source_id: Uuid,
+        /// The spoke member.
         target_id: Uuid,
     },
     /// Physical link discovered via LLDP/CDP neighbor discovery
+    #[schema(title = "PhysicalLink")]
     PhysicalLink {
+        /// Interface at one end of the cable.
         source_entity_id: Uuid,
+        /// Interface at the other end.
         target_entity_id: Uuid,
+        /// Neighbour-discovery protocol the link was learned from.
         protocol: DiscoveryProtocol,
     },
     /// Device-level adjacency from LLDP/CDP: the neighbour resolved to a host, but the remote
     /// port could not be pinned down (a locally-assigned port id that matches nothing, or a
     /// neighbour entry carrying no port id at all). The two devices are provably adjacent;
     /// which cables they meet on is unknown. `PhysicalLink` is the port-precise sibling.
+    #[schema(title = "NeighborLink")]
     NeighborLink {
+        /// One of the adjacent devices.
         source_host_id: Uuid,
+        /// The other adjacent device.
         target_host_id: Uuid,
+        /// Neighbour-discovery protocol the adjacency was learned from.
         protocol: DiscoveryProtocol,
     },
 }

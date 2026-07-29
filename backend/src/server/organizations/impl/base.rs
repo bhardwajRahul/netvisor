@@ -89,19 +89,25 @@ pub struct OrganizationBase {
     /// Stripe customer ID - internal, not exposed to API
     #[serde(default, skip_serializing)]
     pub stripe_customer_id: Option<String>,
+    /// Human-facing name for this organization.
     #[validate(length(min = 0, max = 100))]
     pub name: String,
+    /// The plan this organization is on.
     #[serde(default)]
     #[schema(read_only, required)]
     pub plan: Option<BillingPlan>,
+    /// Current billing state of that plan.
     #[serde(default)]
     #[schema(read_only, required)]
     pub plan_status: Option<PlanStatus>,
+    /// Progress through first-run setup.
     #[schema(read_only, required)]
     pub onboarding: Vec<OnboardingOperationDiscriminants>,
+    /// Whether a payment method is on file.
     #[serde(default)]
     #[schema(read_only)]
     pub has_payment_method: bool,
+    /// When the free trial ends, if one is running.
     #[serde(default)]
     #[schema(read_only)]
     pub trial_end_date: Option<DateTime<Utc>>,
@@ -167,12 +173,15 @@ pub struct OrganizationBase {
     Debug, Clone, Validate, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema,
 )]
 pub struct Organization {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,

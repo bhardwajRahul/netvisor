@@ -124,7 +124,9 @@ pub async fn update_org_name(
 /// Request to update user profile (deferred marketing fields)
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ProfileUpdateRequest {
+    /// The user's job title, collected during onboarding.
     pub job_title: Option<String>,
+    /// Company size bracket, collected during onboarding.
     pub company_size: Option<String>,
 }
 
@@ -167,10 +169,31 @@ async fn update_profile(
     Ok(Json(ApiResponse::success(())))
 }
 
+/// How a user first heard about Scanopy, as offered by the onboarding prompt.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferralSource {
+    SearchEngine,
+    AiAssistant,
+    Youtube,
+    Tiktok,
+    BlogArticle,
+    Reddit,
+    HackerNews,
+    SocialMedia,
+    WordOfMouth,
+    ProxmoxCommunityScripts,
+    SelfHosted,
+    Other,
+    PreferNotToSay,
+}
+
 /// Request to submit referral source
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ReferralSourceRequest {
-    pub referral_source: String,
+    /// How the user heard about Scanopy.
+    pub referral_source: ReferralSource,
+    /// Free-text detail, sent when `referral_source` is `other`.
     pub referral_source_other: Option<String>,
 }
 
@@ -224,6 +247,7 @@ pub enum DaemonPromptAction {
 /// Request recording the user's response to the "Start Discovering Your Network" prompt.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DaemonPromptResponseRequest {
+    /// What the user chose to do about the daemon prompt.
     pub action: DaemonPromptAction,
 }
 

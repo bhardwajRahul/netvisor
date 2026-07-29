@@ -16,20 +16,28 @@ use validator::Validate;
 /// and queried by `host_id`. They are NOT stored on the host.
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct HostBase {
+    /// Human-facing name for the host.
     #[validate(length(min = 0, max = 100))]
     pub name: String,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Hostname as resolved or reported by the host.
     #[schema(required)]
     pub hostname: Option<String>,
+    /// Free-text notes about the host.
     #[validate(length(min = 0, max = 500))]
     #[serde(deserialize_with = "deserialize_empty_string_as_none")]
     #[schema(required)]
     pub description: Option<String>,
+    /// How this host came to be known — discovered, imported, or created by hand.
     #[schema(read_only)]
     pub source: EntitySource,
+    /// How the host is virtualized, when it is a VM or container guest.
     #[schema(required)]
     pub virtualization: Option<HostVirtualization>,
+    /// Whether the host is hidden from topology views.
     pub hidden: bool,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -48,6 +56,7 @@ pub struct HostBase {
     pub sys_contact: Option<String>,
     /// URL for device management interface (manual or discovered)
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(format = "uri")]
     pub management_url: Option<String>,
     /// LLDP lldpLocChassisId - globally unique device identifier for deduplication
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -99,12 +108,15 @@ impl Default for HostBase {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, Default, ToSchema, Validate)]
 #[schema(example = crate::server::shared::types::examples::host)]
 pub struct Host {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,

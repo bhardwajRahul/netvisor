@@ -59,11 +59,17 @@ pub struct MsiInstall {
 /// filled in client-side); docker and msi carry their own structured content.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct InstallArtifacts {
+    /// Download for Linux.
     pub linux: String,
+    /// Download for macOS.
     pub macos: String,
+    /// Download for Windows.
     pub windows: String,
+    /// Download for FreeBSD.
     pub freebsd: String,
+    /// Container image reference.
     pub docker: DockerInstall,
+    /// Windows installer package.
     pub msi: MsiInstall,
 }
 

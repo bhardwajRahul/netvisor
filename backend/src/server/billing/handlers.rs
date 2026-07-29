@@ -21,26 +21,61 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
+/// Company size bracket offered by the plan-inquiry form.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+pub enum TeamSize {
+    #[serde(rename = "1-10")]
+    Upto10,
+    #[serde(rename = "11-25")]
+    Upto25,
+    #[serde(rename = "26-50")]
+    Upto50,
+    #[serde(rename = "51-100")]
+    Upto100,
+    #[serde(rename = "101-250")]
+    Upto250,
+    #[serde(rename = "251-500")]
+    Upto500,
+    #[serde(rename = "501-1000")]
+    Upto1000,
+    #[serde(rename = "1001+")]
+    Over1000,
+}
+
+/// How soon the enquirer wants to move.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum InquiryTimeline {
+    Immediately,
+    #[serde(rename = "1-3 months")]
+    OneToThreeMonths,
+    #[serde(rename = "3-6 months")]
+    ThreeToSixMonths,
+    Exploring,
+}
+
 /// Enterprise plan inquiry request
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EnterpriseInquiryRequest {
     /// Contact email
+    #[schema(format = "email")]
     pub email: String,
     /// Contact name
     pub name: String,
     /// Company name
     pub company: String,
-    /// Team/company size: 1-10, 11-25, 26-50, 51-100, 101-250, 251-500, 501-1000, 1001+
-    pub team_size: String,
+    /// Team/company size
+    pub team_size: TeamSize,
     /// Message/use case description
     pub message: String,
-    /// Urgency: immediately, 1-3 months, 3-6 months, exploring
+    /// How soon they want to move
     #[serde(default)]
-    pub urgency: Option<String>,
+    pub urgency: Option<InquiryTimeline>,
     /// Number of networks/sites
     #[serde(default)]
     pub network_count: Option<i64>,
-    /// Plan type being inquired about
+    /// Plan the enquiry is about — the `type` tag of a `BillingPlan`
+    /// (e.g. `Team`, `Business`, `Enterprise`).
     #[serde(default)]
     pub plan_type: Option<String>,
 }

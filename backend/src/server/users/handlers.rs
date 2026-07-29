@@ -390,7 +390,7 @@ async fn admin_update_user(
     post,
     path = "/bulk-delete",
     tag = User::ENTITY_NAME_PLURAL,
-    request_body(content = Vec<Uuid>, description = "Array of user IDs to delete"),
+    request_body(content = Vec<Uuid>, description = "Array of User IDs to delete"),
     responses(
         (status = 200, description = "Users deleted successfully", body = ApiResponse<BulkDeleteResponse>),
         (status = 403, description = "Cannot delete users with higher permissions", body = ApiErrorResponse),

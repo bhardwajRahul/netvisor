@@ -39,18 +39,24 @@ where
 
 #[derive(Debug, Clone, Validate, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct SubnetBase {
-    #[schema(value_type = String)]
+    /// Subnet in CIDR notation, IPv4 or IPv6.
+    #[schema(value_type = String, pattern = r"^[0-9A-Fa-f.:]+/\d{1,3}$", example = "192.168.1.0/24")]
     #[serde(deserialize_with = "deserialize_cidr")]
     pub cidr: IpCidr,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Human-facing name for this subnet.
     #[validate(length(min = 0, max = 100))]
     pub name: String,
+    /// Free-text notes about the subnet.
     #[serde(deserialize_with = "deserialize_empty_string_as_none")]
     #[validate(length(min = 0, max = 500))]
     pub description: Option<String>,
+    /// What kind of subnet this is — physical, virtual, container bridge, and so on.
     pub subnet_type: SubnetType,
     /// Virtualization provider that owns this subnet.
     /// Docker bridge subnets use this for per-host dedup (same CIDR on different hosts = distinct).
+    /// Virtualization platform that owns the subnet, when it is virtual.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -61,6 +67,7 @@ pub struct SubnetBase {
     #[schema(required)]
     /// Will be automatically set to Manual for creation through API
     pub source: EntitySource,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -84,30 +91,39 @@ impl Default for SubnetBase {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, Default, ToSchema, Validate)]
 #[schema(example = crate::server::shared::types::examples::subnet)]
 pub struct Subnet {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// Start of the interval this revision was current for (SCD2 history).
     #[serde(default)]
     #[schema(read_only)]
     pub valid_from: DateTime<Utc>,
+    /// End of the interval this revision was current for. `null` while it is the live revision.
     #[serde(default)]
     #[schema(read_only)]
     pub valid_to: Option<DateTime<Utc>>,
+    /// Stable identifier shared by every revision of the same entity across its history.
     #[serde(default)]
     #[schema(read_only)]
     pub lineage_id: Option<Uuid>,
+    /// When a discovery last observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_seen_at: DateTime<Utc>,
+    /// The most recent discovery that observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_discovery_id: Option<Uuid>,
+    /// The discovery that first observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub first_discovery_id: Option<Uuid>,

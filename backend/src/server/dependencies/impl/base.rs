@@ -21,9 +21,17 @@ use validator::Validate;
 #[serde(tag = "type")]
 pub enum DependencyMembers {
     /// Application-level only. Ordered list of service IDs.
-    Services { service_ids: Vec<Uuid> },
+    #[schema(title = "Services")]
+    Services {
+        /// The services in the chain, in order.
+        service_ids: Vec<Uuid>,
+    },
     /// Full L3 detail. Ordered list of binding IDs (one per service in the chain).
-    Bindings { binding_ids: Vec<Uuid> },
+    #[schema(title = "Bindings")]
+    Bindings {
+        /// The bindings in the chain, in order — one per service.
+        binding_ids: Vec<Uuid>,
+    },
 }
 
 impl Default for DependencyMembers {
@@ -54,12 +62,16 @@ impl DependencyMembers {
     Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, Default, ToSchema,
 )]
 pub struct DependencyBase {
+    /// Human-facing name for this dependency.
     #[validate(length(min = 0, max = 100))]
     pub name: String,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Free-text notes about the dependency.
     #[serde(deserialize_with = "deserialize_empty_string_as_none")]
     #[validate(length(min = 0, max = 500))]
     pub description: Option<String>,
+    /// What kind of relationship this dependency records.
     pub dependency_type: DependencyType,
     /// Members of this dependency: either service IDs or binding IDs.
     #[serde(default)]
@@ -69,10 +81,13 @@ pub struct DependencyBase {
     #[schema(read_only)]
     /// Will be automatically set to Manual for creation through API
     pub source: EntitySource,
+    /// Colour the dependency edge is drawn in.
     pub color: Color,
+    /// Line style the dependency edge is drawn with.
     #[serde(default)]
     #[schema(required)]
     pub edge_style: EdgeStyle,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -83,21 +98,27 @@ pub struct DependencyBase {
 )]
 #[schema(example = crate::server::shared::types::examples::dependency)]
 pub struct Dependency {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// Start of the interval this revision was current for (SCD2 history).
     #[serde(default)]
     #[schema(read_only)]
     pub valid_from: DateTime<Utc>,
+    /// End of the interval this revision was current for. `null` while it is the live revision.
     #[serde(default)]
     #[schema(read_only)]
     pub valid_to: Option<DateTime<Utc>>,
+    /// Stable identifier shared by every revision of the same entity across its history.
     #[serde(default)]
     #[schema(read_only)]
     pub lineage_id: Option<Uuid>,

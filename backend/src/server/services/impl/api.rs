@@ -23,11 +23,16 @@ use crate::server::{
 pub enum CreateBindingInput {
     /// Bind to an interface (service listens on all ports on this ip_address)
     #[schema(title = "IPAddress")]
-    IPAddress { ip_address_id: Uuid },
+    IPAddress {
+        /// The IP address the service is present at.
+        ip_address_id: Uuid,
+    },
     /// Bind to a port (optionally on a specific ip_address)
     #[schema(title = "Port")]
     Port {
+        /// The port the service listens on.
         port_id: Uuid,
+        /// The IP address this port binding applies to. `null` binds to every IP address on the host.
         #[serde(skip_serializing_if = "Option::is_none")]
         ip_address_id: Option<Uuid>,
     },
@@ -62,17 +67,23 @@ impl CreateBindingInput {
 /// Server also assigns `service_id` and `network_id` to all bindings.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateServiceRequest {
+    /// The host this entity belongs to.
     pub host_id: Uuid,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
     #[schema(value_type = String)]
     // Refer to https://scanopy.net/services for options
+    /// Which known software this service is, if identified.
     pub service_definition: Box<dyn ServiceDefinition>,
+    /// Human-facing name for the service.
     pub name: String,
     /// Bindings to create with the service.
     /// `service_id` and `network_id` are assigned by the server.
     #[serde(default)]
     pub bindings: Vec<CreateBindingInput>,
+    /// Container runtime the service runs in, when it is containerized.
     pub virtualization: Option<ServiceVirtualization>,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,

@@ -19,8 +19,11 @@ use crate::server::{
     Debug, Clone, Serialize, Deserialize, Validate, PartialEq, Eq, Hash, Default, ToSchema,
 )]
 pub struct SnapshotBase {
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// The point in time this snapshot captures.
     pub taken_at: DateTime<Utc>,
+    /// User who took the snapshot.
     #[serde(default)]
     pub created_by_user_id: Option<Uuid>,
 }
@@ -43,12 +46,15 @@ impl SnapshotBase {
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema, Validate,
 )]
 pub struct Snapshot {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,

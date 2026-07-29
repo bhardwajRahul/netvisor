@@ -16,11 +16,17 @@ use crate::server::{
     Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, Default, ToSchema, Validate,
 )]
 pub struct DiscoveryBase {
+    /// What this run scans — a subnet, a single host, a container runtime, and so on.
     pub discovery_type: DiscoveryType,
+    /// Whether this run was triggered by hand or on a schedule.
     pub run_type: RunType,
+    /// Human-facing name for this discovery.
     pub name: String,
+    /// The daemon this entity refers to.
     pub daemon_id: Uuid,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -30,12 +36,15 @@ pub struct DiscoveryBase {
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema, Validate,
 )]
 pub struct Discovery {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,

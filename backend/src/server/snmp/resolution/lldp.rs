@@ -18,19 +18,26 @@ use uuid::Uuid;
 #[serde(tag = "subtype", content = "value")]
 pub enum LldpChassisId {
     /// Subtype 1: Chassis component (e.g., backplane serial number)
+    #[schema(title = "ChassisComponent")]
     ChassisComponent(String),
     /// Subtype 2: Interface alias (ifAlias from IF-MIB)
+    #[schema(title = "InterfaceAlias")]
     InterfaceAlias(String),
     /// Subtype 3: Port component (e.g., backplane port number)
+    #[schema(title = "PortComponent")]
     PortComponent(String),
     /// Subtype 4: MAC address (most common)
+    #[schema(title = "MacAddress")]
     MacAddress(String),
     /// Subtype 5: Network address (IP address stored as string)
     #[schema(value_type = String)]
+    #[schema(title = "NetworkAddress")]
     NetworkAddress(#[serde(with = "ip_addr_serde")] IpAddr),
     /// Subtype 6: Interface name (ifName from IF-MIB)
+    #[schema(title = "InterfaceName")]
     InterfaceName(String),
     /// Subtype 7: Locally assigned (device-specific identifier)
+    #[schema(title = "LocallyAssigned")]
     LocallyAssigned(String),
 }
 
@@ -41,19 +48,26 @@ pub enum LldpChassisId {
 #[serde(tag = "subtype", content = "value")]
 pub enum LldpPortId {
     /// Subtype 1: Interface alias (ifAlias from IF-MIB)
+    #[schema(title = "InterfaceAlias")]
     InterfaceAlias(String),
     /// Subtype 2: Port component (e.g., backplane port number)
+    #[schema(title = "PortComponent")]
     PortComponent(String),
     /// Subtype 3: MAC address
+    #[schema(title = "MacAddress")]
     MacAddress(String),
     /// Subtype 4: Network address (IP address stored as string)
     #[schema(value_type = String)]
+    #[schema(title = "NetworkAddress")]
     NetworkAddress(#[serde(with = "ip_addr_serde")] IpAddr),
     /// Subtype 5: Interface name (ifName from IF-MIB)
+    #[schema(title = "InterfaceName")]
     InterfaceName(String),
     /// Subtype 6: Agent circuit ID (used by some providers)
+    #[schema(title = "AgentCircuitId")]
     AgentCircuitId(String),
     /// Subtype 7: Locally assigned (device-specific identifier)
+    #[schema(title = "LocallyAssigned")]
     LocallyAssigned(String),
 }
 

@@ -1,6 +1,7 @@
 use crate::server::auth::r#impl::oidc::OidcProviderMetadata;
 use crate::server::license::key::LicenseKey;
 use crate::server::license::service::LicenseService;
+use crate::server::license::types::LicenseStatusDiscriminants;
 use crate::server::shared::types::api::ApiResponse;
 use crate::server::{
     auth::r#impl::oidc::OidcProviderConfig, shared::services::factory::ServiceFactory,
@@ -202,10 +203,15 @@ impl DeploymentType {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PublicConfigResponse {
+    /// Port this server listens on.
     pub server_port: u16,
+    /// Whether self-service sign-up is turned off on this deployment.
     pub disable_registration: bool,
+    /// Whether email/password login is turned off, leaving OIDC as the only method.
     pub disable_password_login: bool,
+    /// Identity providers available on the login screen.
     pub oidc_providers: Vec<OidcProviderMetadata>,
+    /// Whether this deployment has billing configured.
     pub billing_enabled: bool,
     /// Stripe publishable key, exposed so the frontend can mount Stripe
     /// Elements (Payment Element) for in-app card collection. `None` when
@@ -216,20 +222,32 @@ pub struct PublicConfigResponse {
     /// cancel modal hides the discount save-offer panel so the user
     /// doesn't see an option the deployment can't fulfil.
     pub discount_save_offer_available: bool,
+    /// Whether a daemon runs alongside the server, so no separate install is needed to start scanning.
     pub has_integrated_daemon: bool,
+    /// Whether outbound email is configured. Invites and password resets need it.
     pub has_email_service: bool,
+    /// Whether the deployment asks users to opt in to product email.
     pub has_email_opt_in: bool,
+    /// Base URL this server is reachable at, as configured by the operator.
+    #[schema(format = "uri")]
     pub public_url: String,
+    /// Public analytics key, when analytics is enabled.
     pub posthog_key: Option<String>,
+    /// Whether the client should show a cookie-consent prompt.
     pub needs_cookie_consent: bool,
+    /// How this instance is run: cloud, commercial self-hosted, or community.
     pub deployment_type: DeploymentType,
-    pub license_status: Option<String>,
+    /// Runtime state of the configured license key. `None` on deployments
+    /// that don't require one (community and cloud).
+    pub license_status: Option<LicenseStatusDiscriminants>,
     /// Hard expiry — the drop-dead date after which the server rejects
     /// the key. Referenced by the grace-period banner.
+    #[schema(format = "date")]
     pub license_expiry: Option<String>,
     /// User-visible expiry — the date displayed to end users under
     /// normal operation. 7 days earlier than `license_expiry` for keys
     /// issued after grace-period support landed.
+    #[schema(format = "date")]
     pub license_intended_expiry: Option<String>,
     /// True when the license is past `intended_exp` but not yet past
     /// the hard `exp` — the silent grace window.
@@ -499,9 +517,7 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
         Some(svc) => Some(svc.current_status().await),
         None => None,
     };
-    let license_status = current_license
-        .as_ref()
-        .map(|s| s.as_api_string().to_string());
+    let license_status = current_license.as_ref().map(|s| s.kind());
     let license_expiry = current_license.as_ref().and_then(|s| s.expiry_date());
     let license_intended_expiry = current_license
         .as_ref()

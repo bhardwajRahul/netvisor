@@ -10,19 +10,27 @@ use super::CredentialType;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FieldDefinition {
+    /// Server-assigned unique identifier.
     pub id: &'static str,
+    /// Human-facing field label.
     pub label: &'static str,
+    /// How the field should be rendered and validated.
     pub field_type: FieldType,
+    /// Placeholder text for the input.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<&'static str>,
+    /// Whether the value is a secret, so it is masked and never echoed back.
     pub secret: bool,
+    /// Whether the field may be left empty.
     pub optional: bool,
+    /// Explanatory text shown beneath the field.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub help_text: Option<&'static str>,
     /// Options for `Select` fields. Each option carries a wire `value` (the
     /// serialized enum variant) and a human-facing `label`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub options: Option<&'static [SelectOption]>,
+    /// Value pre-filled when the field is first shown.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_value: Option<&'static str>,
     /// For SecretPathOrInline fields: what format the inline value should be
@@ -37,7 +45,9 @@ pub struct FieldDefinition {
 /// enum variant, e.g. "Sha256"); `label` is the human-facing display text.
 #[derive(Debug, Clone, Copy, Serialize, ToSchema)]
 pub struct SelectOption {
+    /// Value submitted when this option is chosen.
     pub value: &'static str,
+    /// Human-facing option label.
     pub label: &'static str,
 }
 

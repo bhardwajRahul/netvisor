@@ -14,21 +14,30 @@ use validator::Validate;
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema, Validate,
 )]
 pub struct UserApiKeyBase {
+    /// The stored key. Returned redacted except on creation and rotation.
     #[serde(default)]
     #[serde(serialize_with = "serialize_sensitive_info")]
     #[schema(read_only, required)]
     pub key: String,
+    /// Human-facing name for this key.
     pub name: String,
+    /// User the key acts on behalf of.
     pub user_id: Uuid,
+    /// The organization that owns this record.
     pub organization_id: Uuid,
+    /// Role the key is limited to, which cannot exceed the user's own.
     #[serde(default)]
     pub permissions: UserOrgPermissions,
+    /// When this key was last used to authenticate.
     #[serde(default)]
     #[schema(read_only, required)]
     pub last_used: Option<DateTime<Utc>>,
+    /// When this record stops being valid.
     pub expires_at: Option<DateTime<Utc>>,
+    /// Whether the key may still be used. Disabled keys are rejected.
     #[serde(default)]
     pub is_enabled: bool,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -41,12 +50,15 @@ pub struct UserApiKeyBase {
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema, Validate,
 )]
 pub struct UserApiKey {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,

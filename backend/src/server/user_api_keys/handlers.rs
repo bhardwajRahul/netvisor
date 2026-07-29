@@ -375,7 +375,7 @@ pub async fn delete(
     path = "/bulk-delete",
     tag = UserApiKey::ENTITY_NAME_PLURAL,
     operation_id = "bulk_delete_user_api_keys",
-    request_body(content = Vec<Uuid>, description = "Array of API key IDs to delete"),
+    request_body(content = Vec<Uuid>, description = "Array of User API Key IDs to delete"),
     responses(
         (status = 200, description = "API keys deleted", body = ApiResponse<BulkDeleteResponse>),
     ),

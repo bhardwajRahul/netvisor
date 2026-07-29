@@ -211,11 +211,17 @@ async fn update_daemon(
 pub struct InstallCommandQuery {
     /// `install` (with the api-key placeholder) or `reconfigure` (credential-free).
     pub purpose: InstallCommandKind,
+    /// Log verbosity the daemon should run at (e.g. `info`, `debug`).
     pub log_level: Option<String>,
+    /// Path the daemon should write its log file to.
     pub log_file: Option<String>,
+    /// How often the daemon reports in, in seconds.
     pub heartbeat_interval: Option<u64>,
+    /// Address and port the daemon should listen on, for server-polled mode.
     pub bind_address: Option<String>,
+    /// Accept a self-signed certificate when connecting back to the server.
     pub allow_self_signed_certs: Option<bool>,
+    /// Continue scanning targets that present an untrusted certificate.
     pub accept_invalid_scan_certs: Option<bool>,
     /// Comma-separated interface names.
     pub interfaces: Option<String>,
@@ -352,7 +358,7 @@ async fn delete_daemon(
     tag = "daemons",
     operation_id = "bulk_delete_daemons",
     summary = "Bulk delete daemons",
-    request_body(content = Vec<Uuid>, description = "Array of daemon IDs to delete"),
+    request_body(content = Vec<Uuid>, description = "Array of Daemon IDs to delete"),
     responses(
         (status = 200, description = "daemons deleted", body = ApiResponse<crate::server::shared::handlers::traits::BulkDeleteResponse>),
         (status = 409, description = "daemon has active sessions", body = ApiErrorResponse),
@@ -377,11 +383,26 @@ async fn bulk_delete_daemons(
     generated::bulk_delete(state, auth, Json(ids)).await
 }
 
+/// Operating system the install command was generated for.
+#[derive(
+    Debug, Clone, Copy, Deserialize, Serialize, strum_macros::IntoStaticStr, utoipa::ToSchema,
+)]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+pub enum DaemonOs {
+    Linux,
+    MacOS,
+    Windows,
+    FreeBsd,
+}
+
 /// Request body for emailing an install command to the authenticated user.
 #[derive(Deserialize, Serialize, utoipa::ToSchema)]
 pub struct EmailInstallCommandRequest {
+    /// The install command to send, exactly as shown in the UI.
     pub install_command: String,
-    pub os: String,
+    /// Operating system the command targets, used to pick the email wording.
+    pub os: DaemonOs,
 }
 
 /// Email the install command to the authenticated user's email address.
@@ -416,7 +437,7 @@ async fn email_install_command(
         .ok_or_else(|| ApiError::bad_request("Email service is not configured"))?;
 
     email_service
-        .send_install_command_email(email, &request.install_command, &request.os)
+        .send_install_command_email(email, &request.install_command, request.os.into())
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to send email: {e}")))?;
 

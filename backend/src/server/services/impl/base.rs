@@ -24,13 +24,19 @@ use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct ServiceBase {
+    /// The host this entity belongs to.
     pub host_id: Uuid,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Which known software this service is, if identified.
     #[schema(value_type = String)]
     pub service_definition: Box<dyn ServiceDefinition>,
+    /// Human-facing name for the service.
     #[validate(length(min = 0, max = 100))]
     pub name: String,
+    /// Ports and IP addresses this service is reachable on.
     pub bindings: Vec<Binding>,
+    /// Container runtime the service runs in, when it is containerized.
     #[serde(
         default,
         deserialize_with = "crate::server::shared::types::api::deserialize_lenient_option"
@@ -39,6 +45,7 @@ pub struct ServiceBase {
     #[schema(read_only)]
     /// Will be automatically set to Manual for creation through API
     pub source: EntitySource,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -79,30 +86,39 @@ impl ChangeTriggersTopologyStaleness<Service> for Service {
 #[derive(Debug, Clone, Validate, Serialize, Deserialize, Eq, Default, ToSchema)]
 #[schema(example = crate::server::shared::types::examples::service)]
 pub struct Service {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// Start of the interval this revision was current for (SCD2 history).
     #[serde(default)]
     #[schema(read_only)]
     pub valid_from: DateTime<Utc>,
+    /// End of the interval this revision was current for. `null` while it is the live revision.
     #[serde(default)]
     #[schema(read_only)]
     pub valid_to: Option<DateTime<Utc>>,
+    /// Stable identifier shared by every revision of the same entity across its history.
     #[serde(default)]
     #[schema(read_only)]
     pub lineage_id: Option<Uuid>,
+    /// When a discovery last observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_seen_at: DateTime<Utc>,
+    /// The most recent discovery that observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_discovery_id: Option<Uuid>,
+    /// The discovery that first observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub first_discovery_id: Option<Uuid>,

@@ -50,7 +50,7 @@ impl ViewBuilder for L3Builder {
                 && let Some(subnet_type) = subnet_map.get(&node.id)
             {
                 *icon = Some(subnet_type.icon().to_string());
-                *color = Some(subnet_type.color().to_string());
+                *color = Some(subnet_type.color());
             }
         }
 

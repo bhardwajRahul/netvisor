@@ -60,12 +60,16 @@ where
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "mode")]
 pub enum SecretValue {
+    #[schema(title = "Inline")]
     Inline {
+        /// The secret itself. Write-only — reads return a redacted placeholder.
         #[serde(serialize_with = "serialize_secret_value")]
         #[schema(value_type = String)]
         value: SecretString,
     },
+    #[schema(title = "FilePath")]
     FilePath {
+        /// Path to a file on the daemon host holding the secret.
         path: String,
     },
 }
@@ -99,8 +103,16 @@ impl SecretValue {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 #[serde(tag = "mode")]
 pub enum FileOrInline {
-    Inline { value: String },
-    FilePath { path: String },
+    #[schema(title = "Inline")]
+    Inline {
+        /// The value itself.
+        value: String,
+    },
+    #[schema(title = "FilePath")]
+    FilePath {
+        /// Path to a file on the daemon host holding the value.
+        path: String,
+    },
 }
 
 /// Deserialize `Option<FileOrInline>`, normalizing empty inline/path values to `None`.

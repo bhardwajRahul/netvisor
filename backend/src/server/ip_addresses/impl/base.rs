@@ -16,14 +16,19 @@ pub const ALL_IP_ADDRESSES_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema, Validate)]
 pub struct IPAddressBase {
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// The host this entity belongs to.
     pub host_id: Uuid,
+    /// The subnet this entity belongs to.
     pub subnet_id: Uuid,
-    #[schema(value_type = String)]
+    /// IPv4 or IPv6 address.
+    #[schema(value_type = String, example = "192.168.1.10")]
     pub ip_address: IpAddr,
     /// MAC address discovered from ARP, SNMP, or Docker - immutable once set
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, pattern = r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$", example = "a4:bb:6d:12:34:56")]
     pub mac_address: Option<MacAddress>,
+    /// Human-facing name for this IP address.
     #[schema(required)]
     pub name: Option<String>,
     /// Position of this IP address in the host's IP address list (for ordering)
@@ -66,30 +71,39 @@ impl IPAddressBase {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, Default, ToSchema, Validate)]
 #[schema(example = crate::server::shared::types::examples::ip_address)]
 pub struct IPAddress {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// Start of the interval this revision was current for (SCD2 history).
     #[serde(default)]
     #[schema(read_only)]
     pub valid_from: DateTime<Utc>,
+    /// End of the interval this revision was current for. `null` while it is the live revision.
     #[serde(default)]
     #[schema(read_only)]
     pub valid_to: Option<DateTime<Utc>>,
+    /// Stable identifier shared by every revision of the same entity across its history.
     #[serde(default)]
     #[schema(read_only)]
     pub lineage_id: Option<Uuid>,
+    /// When a discovery last observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_seen_at: DateTime<Utc>,
+    /// The most recent discovery that observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_discovery_id: Option<Uuid>,
+    /// The discovery that first observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub first_discovery_id: Option<Uuid>,

@@ -46,12 +46,16 @@ pub struct ShareCsvRow {
 /// Share display options
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct ShareOptions {
+    /// Viewer can open the inspector for a selected element.
     #[schema(required)]
     pub show_inspect_panel: bool,
+    /// Viewer sees the zoom controls.
     #[schema(required)]
     pub show_zoom_controls: bool,
+    /// Viewer sees the export button.
     #[schema(required)]
     pub show_export_button: bool,
+    /// Viewer sees the minimap.
     #[serde(default)]
     #[schema(required)]
     pub show_minimap: bool,
@@ -70,11 +74,17 @@ impl Default for ShareOptions {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, Validate)]
 pub struct ShareBase {
+    /// The topology this share exposes.
     pub topology_id: Uuid,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// User who created the share.
     pub created_by: Uuid,
+    /// Human-facing name for this share.
     pub name: String,
+    /// Whether the link still resolves. Disabled shares return 404.
     pub is_enabled: bool,
+    /// When this record stops being valid.
     #[schema(required)]
     pub expires_at: Option<DateTime<Utc>>,
     /// Password hash — never sent to client, never accepted from client.
@@ -85,10 +95,12 @@ pub struct ShareBase {
     /// `Debug`/logging shows `[REDACTED]` during the window between request
     /// deserialization and hashing.
     #[serde(default, serialize_with = "redact_optional_password")]
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, format = "password")]
     pub password: Option<SecretString>,
+    /// Domains permitted to embed this share. Empty means no restriction.
     #[schema(required)]
     pub allowed_domains: Option<Vec<String>>,
+    /// What the viewer can see and do.
     pub options: ShareOptions,
     /// Which topology views are enabled for this share.
     /// None = all views (subject to data availability). Some(list) = only these views in order.
@@ -100,12 +112,15 @@ pub struct ShareBase {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, Validate)]
 pub struct Share {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,

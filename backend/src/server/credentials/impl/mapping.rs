@@ -123,12 +123,23 @@ pub struct ResolvedCredential<T> {
 pub enum IntegrationTarget {
     /// The daemon's own host — realized as a 127.0.0.1 IP-override (e.g. a local Docker/Podman
     /// socket, or any credential the user pins to the daemon host without naming its IP).
-    DaemonHost { credential_id: Uuid },
-    /// All hosts on the network — a broadcast default credential.
-    Network { credential_id: Uuid },
-    /// Specific host IPs — one IP-override per address.
-    Hosts {
+    #[schema(title = "DaemonHost")]
+    DaemonHost {
+        /// Credential to use on the daemon host.
         credential_id: Uuid,
+    },
+    /// All hosts on the network — a broadcast default credential.
+    #[schema(title = "Network")]
+    Network {
+        /// Credential to use across the network.
+        credential_id: Uuid,
+    },
+    /// Specific host IPs — one IP-override per address.
+    #[schema(title = "Hosts")]
+    Hosts {
+        /// Credential to use on the listed addresses.
+        credential_id: Uuid,
+        /// The host addresses this credential applies to.
         #[schema(value_type = Vec<String>)]
         ips: Vec<IpAddr>,
     },

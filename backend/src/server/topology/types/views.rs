@@ -184,7 +184,9 @@ impl ViewElementConfig {
 /// from this list.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct ViewElementEntityConfig {
+    /// Entity type drawn as an element in this view.
     pub entity_type: EntityDiscriminants,
+    /// Entity types folded into that element rather than drawn separately.
     pub inline_entities: Vec<EntityDiscriminants>,
 }
 
@@ -237,17 +239,23 @@ impl HasId for MetadataFilterType {
 /// and can change freely.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MetadataFilter {
+    /// What the filter narrows by.
     pub filter_type: MetadataFilterType,
     /// User-facing sub-section label (e.g. "By Category", "By Virtualization").
     pub label: String,
+    /// The choices offered for this filter.
     pub values: Vec<FilterValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FilterValue {
+    /// Server-assigned unique identifier.
     pub id: String,
+    /// Human-facing label for this choice.
     pub label: String,
+    /// Colour shown on the filter chip.
     pub color: Color,
+    /// Icon shown on the filter chip.
     #[schema(value_type = Option<String>, required)]
     pub icon: Option<Icon>,
 }
@@ -341,9 +349,13 @@ pub enum InspectorSection {
 /// Determines which sections appear and in what order for each view.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct ViewInspectorConfig {
+    /// Inspector sections shown when an element is selected.
     pub element_sections: Vec<InspectorSection>,
+    /// Inspector sections shown when a container is selected.
     pub container_sections: Vec<InspectorSection>,
+    /// What kind of member a dependency can be drawn between in this view.
     pub dependency_creation: Option<DependencyMemberType>,
+    /// Whether the inspector offers the application picker.
     pub show_application_picker: bool,
 }
 

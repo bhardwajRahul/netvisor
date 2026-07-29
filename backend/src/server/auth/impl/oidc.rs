@@ -56,8 +56,11 @@ pub struct OidcProviderConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash)]
 pub struct OidcProviderMetadata {
+    /// Display name of the identity provider, shown on the login button.
     pub name: String,
+    /// URL-safe identifier used in the provider's login and link endpoints.
     pub slug: String,
+    /// Logo to show on the login button, when the provider has one configured.
     pub logo: Option<String>,
 }
 
