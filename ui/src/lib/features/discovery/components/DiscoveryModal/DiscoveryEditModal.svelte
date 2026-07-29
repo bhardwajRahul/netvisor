@@ -42,6 +42,7 @@
 		type PendingCredential
 	} from '$lib/features/credentials/components/CredentialsStep.svelte';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
+	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import {
 		common_back,
 		common_cancel,
@@ -166,32 +167,81 @@
 	}
 	let daemonHostCredentials = $derived(computeDaemonHostCredentials(daemonHostId));
 
+	// Hosts the credentials are assigned to through the `host_credentials` junction, fetched
+	// by id. The `hosts` prop is whatever the parent happened to load (in practice only the
+	// daemons' own hosts), which is why assignments to any other host went unseen — and
+	// pulling every host just to resolve a handful of ids would be wasteful.
+	let assignedHostIds = $derived([
+		...new Set(
+			(allCredentialsQuery.data ?? []).flatMap((c) =>
+				(c.host_assignments ?? []).map((a) => a.host_id)
+			)
+		)
+	]);
+	const assignedHostsQuery = useHostsByIds(() => assignedHostIds);
+
 	/**
-	 * Credentials assigned, through the `host_credentials` junction, to ANY host on this
-	 * discovery's network, with the hosts each one hits.
+	 * Credential id → the hosts on THIS discovery's network it is already assigned to.
 	 *
 	 * The scan already runs all of these (the server builds host-level mappings for every host
 	 * on the network, independent of this discovery's targets), so omitting them made the step
-	 * an incomplete picture of what a scan will do. They surface as locked rows on the
-	 * credential's own card, not as separate cards.
+	 * an incomplete picture of what a scan will do. They surface on the credential's own card.
 	 *
 	 * Deliberately separate from `computeDaemonHostCredentials`: that one feeds the daemon-host
 	 * endpoint blocking, and generalizing it in place would let another host's credential type
-	 * falsely claim the daemon host. Assignment-sourced only — targets owned by this discovery
-	 * are seeded separately, as editable rows.
+	 * falsely claim the daemon host.
 	 */
-	function computeJunctionAssignments(hostIds: Set<string>) {
-		if (hostIds.size === 0) return [];
-		const hostById = new Map(hosts.map((h) => [h.id, h]));
-		return (allCredentialsQuery.data ?? []).flatMap((c) => {
+	let junctionHostsByCredential = $derived.by(() => {
+		const onNetwork = new Map(
+			(assignedHostsQuery.data ?? [])
+				.filter((h) => h.network_id === formData.network_id)
+				.map((h) => [h.id, h])
+		);
+		const byCredential = new Map<string, Host[]>();
+		for (const c of allCredentialsQuery.data ?? []) {
 			// The junction holds a row per host+IP-scope, so a host id can repeat.
 			const assigned = [...new Set((c.host_assignments ?? []).map((a) => a.host_id))]
-				.filter((id) => hostIds.has(id))
-				.map((id) => hostById.get(id))
+				.map((id) => onNetwork.get(id))
 				.filter((h): h is Host => !!h);
-			return assigned.length > 0 ? [{ credential: c, assignedHosts: assigned }] : [];
+			if (assigned.length > 0) byCredential.set(c.id, assigned);
+		}
+		return byCredential;
+	});
+
+	// Identity of the map above, so the effect that applies it runs once per real change
+	// rather than on every re-derivation (it both reads and writes `pendingCredentials`).
+	let junctionFingerprint = $derived(
+		[...junctionHostsByCredential]
+			.map(([id, hs]) => `${id}:${hs.map((h) => h.id).join(',')}`)
+			.sort()
+			.join('|')
+	);
+	let appliedJunctionFingerprint = $state('');
+
+	// Applied reactively, not in handleOpen: the by-id host query resolves after the modal
+	// opens, and handleOpen runs once. Only ever attaches hosts and appends rows, so it
+	// cannot clobber anything the user has entered.
+	$effect(() => {
+		if (!isOpen || !allCredentialsQuery.data) return;
+		if (junctionFingerprint === appliedJunctionFingerprint) return;
+		appliedJunctionFingerprint = junctionFingerprint;
+
+		const byCredential = junctionHostsByCredential;
+		const withLocked = pendingCredentials.map((p) => {
+			const assigned = byCredential.get(p.credential.id);
+			return assigned ? { ...p, lockedHosts: assigned } : p;
 		});
-	}
+		const credentialById = new Map(allCredentialsQuery.data.map((c) => [c.id, c]));
+		const lockedOnly: PendingCredential[] = [...byCredential]
+			.filter(([id]) => !withLocked.some((p) => p.credential.id === id))
+			.flatMap(([id, assigned]) => {
+				const credential = credentialById.get(id);
+				return credential
+					? [{ credential, targetIps: [], fieldValues: {}, isExisting: true, lockedHosts: assigned }]
+					: [];
+			});
+		pendingCredentials = [...withLocked, ...lockedOnly];
+	});
 
 	// Claimed integrations (credential types) on the daemon host — feeds the shared
 	// CredentialsStep's bidirectional socket↔proxy blocking. Generic across
@@ -476,6 +526,7 @@
 
 	function handleOpen() {
 		activeTab = 'details';
+		appliedJunctionFingerprint = '';
 		furthestReached = discovery ? Infinity : 0;
 		formData = getDefaultFormData();
 		pendingCredentials = [];
@@ -514,67 +565,7 @@
 					}
 				];
 			});
-			// Junction assignments to any host on this network. These are real targets owned
-			// by the host/credential modals, so they attach to the credential's existing row
-			// as locked entries rather than becoming a second card for it — one card per
-			// credential, whether this discovery targets it, it is assigned elsewhere, or both.
-			// One rule, no special cases: every host on the discovery's own network. The
-			// daemon's host is simply one of them. `formData` is assigned at the top of
-			// handleOpen and, for an existing discovery, is the discovery itself — so
-			// `network_id` is authoritative here. (Reading it off the daemon instead meant a
-			// daemon whose network_id differs from its host's matched no hosts at all, and
-			// adding the daemon host separately hid that by leaving exactly one entry.)
-			const networkHostIds = new Set(
-				hosts.filter((h) => h.network_id === formData.network_id).map((h) => h.id)
-			);
-			const assignedByCredential = new Map(
-				computeJunctionAssignments(networkHostIds).map(({ credential, assignedHosts }) => [
-					credential.id,
-					{ credential, assignedHosts }
-				])
-			);
-			// Attach the locked hosts to the rows this discovery already targets...
-			const merged: PendingCredential[] = editable.map((p) => {
-				const assigned = assignedByCredential.get(p.credential.id);
-				return assigned ? { ...p, lockedHosts: assigned.assignedHosts } : p;
-			});
-			// ...and give the rest a row of their own, targeting nothing here yet.
-			const lockedOnly: PendingCredential[] = [...assignedByCredential.values()]
-				.filter(({ credential }) => !editable.some((p) => p.credential.id === credential.id))
-				.map(({ credential, assignedHosts }) => ({
-					credential,
-					targetIps: [],
-					fieldValues: {},
-					isExisting: true,
-					lockedHosts: assignedHosts
-				}));
-			pendingCredentials = [...merged, ...lockedOnly];
-
-			// TEMPORARY DIAGNOSTIC — remove once the missing-credential report is resolved.
-			// Every value the junction lookup depends on, so the failing link is visible
-			// rather than inferred.
-			console.debug('[discovery-creds]', {
-				discoveryNetworkId: formData.network_id,
-				hostsProvided: hosts.length,
-				hostsOnThisNetwork: networkHostIds.size,
-				credentialsFetched: allCredentialsQuery.data.length,
-				credentialAssignments: allCredentialsQuery.data.map((c) => ({
-					name: c.name,
-					hostIds: (c.host_assignments ?? []).map((a) => a.host_id),
-					onThisNetwork: (c.host_assignments ?? []).some((a) => networkHostIds.has(a.host_id))
-				})),
-				matchedByJunction: [...assignedByCredential.values()].map(
-					({ credential, assignedHosts }) => ({
-						name: credential.name,
-						hosts: assignedHosts.map((h) => h.name)
-					})
-				),
-				rendered: pendingCredentials.map((p) => ({
-					name: p.credential.name,
-					lockedHosts: (p.lockedHosts ?? []).map((h) => h.name),
-					targetIps: p.targetIps
-				}))
-			});
+			pendingCredentials = editable;
 		}
 		// Always open straight on the wizard (the Integrations-grid picker is skipped).
 		credentialSubStep = 'wizard';
