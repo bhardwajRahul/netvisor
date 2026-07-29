@@ -92,11 +92,9 @@ impl NetworkScan {
     /// Map each rescan target to the interfaced subnet containing it.
     ///
     /// Targets that can't be resolved are dropped with a warning rather than
-    /// failing the session — one address a daemon can't ARP must not cost a host
-    /// its rescan when the rest are perfectly scannable. Failing only when
-    /// *nothing* resolves keeps the fidelity guarantee that motivates the
-    /// server-side precondition: every address actually scanned is ARP'd, so a
-    /// live but TCP-silent host is never reported unresponsive.
+    /// failing the session — one address this daemon can't reach must not cost a
+    /// host its rescan when the rest are perfectly scannable. The session fails
+    /// only when *nothing* resolves.
     async fn resolve_rescan_targets(
         &self,
         target_ips: &HashSet<IpAddr>,
@@ -116,10 +114,11 @@ impl NetworkScan {
 
         let resolution = resolve_rescan_subnets(target_ips, &subnet_cidr_to_mac, &all_subnets);
 
-        for (ip, subnet) in &resolution.attributions {
+        for (ip, subnet, reach) in &resolution.attributions {
             tracing::info!(
                 target = %ip,
                 subnet = %subnet,
+                reach = %reach,
                 "Resolved rescan target to its containing interfaced subnet"
             );
         }
@@ -154,7 +153,7 @@ pub(crate) enum RescanSkip {
     /// anyway (see `scan_and_process_hosts`), so resolving one buys nothing.
     Loopback,
     /// No interface of this daemon sits on a subnet containing the address, so
-    /// it can't be ARP'd. Normally the server's precondition has already
+    /// there is no route to it. Normally the server's precondition has already
     /// filtered these out; reaching here means its junction is stale.
     NoInterfacedSubnet,
     /// An interface covers the address but the server has no subnet record for
@@ -181,9 +180,33 @@ pub(crate) struct RescanResolution {
     /// The targets that resolved — narrower than the requested set, so progress
     /// budgeting doesn't count addresses that will never be scanned.
     pub resolved: HashSet<IpAddr>,
-    /// `(target, containing CIDR)` for each resolved target.
-    pub attributions: Vec<(IpAddr, cidr::IpCidr)>,
+    /// `(target, containing CIDR, how it will be reached)` per resolved target.
+    pub attributions: Vec<(IpAddr, cidr::IpCidr, RescanReach)>,
     pub skipped: Vec<(IpAddr, RescanSkip)>,
+}
+
+/// How a resolved rescan target will actually be reached.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum RescanReach {
+    /// The daemon has a MAC on the containing subnet, so the address is ARP'd —
+    /// the high-fidelity path, which sees a live host even when every port is
+    /// firewalled.
+    Arp,
+    /// The containing interface has no MAC (a point-to-point tunnel, say), so
+    /// there is nothing to ARP. The address is still routable, so it takes the
+    /// TCP-responsiveness path the scanner already applies to non-interfaced
+    /// subnets. Lower fidelity: a live host answering on no port reads as
+    /// unresponsive.
+    TcpOnly,
+}
+
+impl std::fmt::Display for RescanReach {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Arp => write!(f, "arp"),
+            Self::TcpOnly => write!(f, "tcp-only (no MAC on the containing interface)"),
+        }
+    }
 }
 
 /// Resolve rescan targets to the interfaced subnets they'll be scanned from.
@@ -191,6 +214,10 @@ pub(crate) struct RescanResolution {
 /// Pure: the caller supplies the daemon's live interfaces and the server's
 /// subnet records. Unresolvable targets are reported in `skipped` instead of
 /// aborting, so a mixed host (a real address plus a loopback) still rescans.
+///
+/// A containing interface with a MAC always wins over one without, so ARP is
+/// used wherever it exists and the TCP fallback engages only for an address
+/// that genuinely cannot be ARP'd.
 pub(crate) fn resolve_rescan_subnets(
     target_ips: &HashSet<IpAddr>,
     subnet_cidr_to_mac: &HashMap<cidr::IpCidr, Option<mac_address::MacAddress>>,
@@ -208,20 +235,32 @@ pub(crate) fn resolve_rescan_subnets(
     ordered.sort();
 
     for ip in ordered {
+        // Loopback is the one address with no scannable form: it needs no ARP,
+        // and loopback subnets are dropped from every scan downstream, so
+        // resolving one could only ever produce an empty sweep.
         if ip.is_loopback() {
             resolution.skipped.push((ip, RescanSkip::Loopback));
             continue;
         }
 
-        // Only an interface with a MAC can ARP; a MAC-less interface (loopback,
-        // some tunnels) would silently downgrade the scan to a TCP probe.
-        let containing = longest_prefix_containing(
+        // Prefer an interface that can ARP. Falling back to a MAC-less one is
+        // what lets a VPN/tunnel-only daemon rescan at all — every address it
+        // routes to sits on a point-to-point interface with no MAC, and
+        // refusing those made rescan impossible rather than merely lower
+        // fidelity.
+        let (containing, reach) = match longest_prefix_containing(
             subnet_cidr_to_mac
                 .iter()
                 .filter(|(_, mac)| mac.is_some())
                 .map(|(cidr, _)| *cidr),
             ip,
-        );
+        ) {
+            Some(cidr) => (Some(cidr), RescanReach::Arp),
+            None => (
+                longest_prefix_containing(subnet_cidr_to_mac.keys().copied(), ip),
+                RescanReach::TcpOnly,
+            ),
+        };
 
         let Some(containing_cidr) = containing else {
             resolution
@@ -242,7 +281,7 @@ pub(crate) fn resolve_rescan_subnets(
         };
 
         resolution.resolved.insert(ip);
-        resolution.attributions.push((ip, containing_cidr));
+        resolution.attributions.push((ip, containing_cidr, reach));
         if !resolution.subnets.iter().any(|s| s.id == parent.id) {
             resolution.subnets.push(parent);
         }
@@ -375,8 +414,49 @@ mod tests {
         assert!(resolution.resolved.is_empty());
     }
 
-    /// A target the daemon can't ARP, or one whose subnet the server has no record of, is
-    /// dropped on its own — a stale interfaced-subnet junction must not cost the other targets.
+    /// A MAC-less interface still carries a route, so its addresses are rescanned over the
+    /// TCP path rather than refused. Without this a VPN/tunnel-only daemon — where every
+    /// interface is point-to-point and has no MAC — could not rescan anything at all.
+    #[test]
+    fn a_tunnel_address_falls_back_to_the_tcp_path() {
+        let interfaces = HashMap::from([(cidr("10.0.0.0/24"), None)]);
+
+        let resolution = resolve_rescan_subnets(
+            &targets(&["10.0.0.2"]),
+            &interfaces,
+            &[subnet("10.0.0.0/24")],
+        );
+
+        assert_eq!(resolution.resolved, targets(&["10.0.0.2"]));
+        assert!(resolution.skipped.is_empty());
+        assert_eq!(
+            resolution.attributions,
+            vec![(ip("10.0.0.2"), cidr("10.0.0.0/24"), RescanReach::TcpOnly)]
+        );
+    }
+
+    /// ARP is not given up wherever it is available: an interface with a MAC wins over a
+    /// MAC-less one covering the same address, so the fallback never silently downgrades a
+    /// target that could have been ARP'd.
+    #[test]
+    fn an_arp_capable_interface_wins_over_a_mac_less_one() {
+        let interfaces =
+            HashMap::from([(cidr("10.0.0.0/24"), a_mac()), (cidr("10.0.0.0/16"), None)]);
+
+        let resolution = resolve_rescan_subnets(
+            &targets(&["10.0.0.2"]),
+            &interfaces,
+            &[subnet("10.0.0.0/24")],
+        );
+
+        assert_eq!(
+            resolution.attributions,
+            vec![(ip("10.0.0.2"), cidr("10.0.0.0/24"), RescanReach::Arp)]
+        );
+    }
+
+    /// A target no interface covers at all, or one whose subnet the server has no record of,
+    /// is dropped on its own — a stale interfaced-subnet junction must not cost the others.
     #[test]
     fn one_unresolvable_target_does_not_drop_its_siblings() {
         let interfaces = HashMap::from([
