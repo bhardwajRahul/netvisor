@@ -845,9 +845,7 @@ async fn rescan_host(
     if reachable.is_empty() {
         return Err(ApiError::bad_request(&format!(
             "Daemon \"{}\" last scanned this host but has no interface on a subnet holding any \
-             of its scannable addresses, so it can't scan them directly. (A loopback address is \
-             reached locally and is never rescanned on its own.) Run a full discovery to refresh \
-             which subnets the daemon reaches.",
+             of its scannable addresses, so it can't scan them directly.",
             daemon.base.name
         )));
     }
