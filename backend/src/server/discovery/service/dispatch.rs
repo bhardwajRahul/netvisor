@@ -660,6 +660,8 @@ impl DiscoveryService {
         let daemon_id = session.daemon_id;
         let phase = session.phase;
         let discovery_id = self.lookup_discovery_id(&session_id).await;
+        // Capture before `session.discovery_type` is moved into the update below.
+        let is_rescan = session.discovery_type.rescan_target_host_id().is_some();
 
         let cancelled_update = DiscoveryUpdatePayload {
             session_id,
@@ -725,6 +727,21 @@ impl DiscoveryService {
                 let _ = self.update_tx.send(cancelled_update);
 
                 tracing::info!("Cancelled {} session {} from queue", phase, session_id);
+
+                // A rescan cancelled before dispatch never reaches the
+                // daemon-reported terminal finalization that deletes its transient
+                // parent, so the AdHoc Rescan row would linger in the UI with only a
+                // delete action. Reap it here, matching what completion does.
+                if is_rescan
+                    && let Some(discovery_id) = discovery_id
+                    && let Err(e) = self.discovery_storage.delete(&discovery_id).await
+                {
+                    tracing::warn!(
+                        discovery_id = %discovery_id,
+                        error = ?e,
+                        "Failed to delete cancelled transient rescan; the startup sweeper will retry"
+                    );
+                }
                 Ok(())
             }
 
