@@ -347,29 +347,51 @@ pub async fn execute_integrations(
         }
     }
 
-    // Populate credential_assignments from successful integration probes
-    // whose execute() doesn't handle credential assignments itself.
-    // SNMP is handled by SnmpIntegration.execute().
-    // Only user-configured credentials (Some id) are auto-assigned; network
-    // defaults (None id) are network-wide and not host-scoped.
-    for (discriminant, (cred_id, _credential)) in &probe_results.working_credential_ids {
-        if *discriminant == CredentialQueryPayloadDiscriminants::Snmp {
-            continue;
-        }
-        let Some(cred_id) = cred_id else {
-            continue;
-        };
-        host_data
-            .host
-            .base
-            .credential_assignments
-            .push(CredentialAssignment {
-                credential_id: *cred_id,
-                ip_address_ids: params.ip_address_id.map(|id| vec![id]),
-            });
-    }
+    host_data
+        .host
+        .base
+        .credential_assignments
+        .extend(credential_assignments_from_probes(
+            &probe_results.working_credential_ids,
+            params.ip_address_id,
+        ));
 
     Ok(())
+}
+
+/// Turn the credentials that probed successfully into host credential assignments.
+///
+/// This is how a discovery-scoped credential earns its keep: the server drops a
+/// discovery's one-shot `integration_targets` once a scan completes, and what
+/// survives is exactly the assignments produced here (written to the
+/// `host_credentials` junction by `discover_host`). A Docker/Podman socket
+/// credential probed over the daemon's own loopback address earns an assignment
+/// on the daemon host and so keeps scanning containers on every later scan.
+///
+/// Two kinds are deliberately excluded:
+/// - **SNMP**, which records its own assignments in `SnmpIntegration::execute`.
+/// - **Network defaults** (`None` id), which are network-wide by definition and
+///   must not be pinned to whichever host happened to answer them.
+///
+/// Runs on probe success alone — a matched-service skip or a failed `execute()`
+/// does not suppress it, because the credential is proven either way.
+pub(crate) fn credential_assignments_from_probes(
+    working_credential_ids: &HashMap<
+        CredentialQueryPayloadDiscriminants,
+        (Option<Uuid>, CredentialQueryPayload),
+    >,
+    ip_address_id: Option<Uuid>,
+) -> Vec<CredentialAssignment> {
+    working_credential_ids
+        .iter()
+        .filter(|(discriminant, _)| **discriminant != CredentialQueryPayloadDiscriminants::Snmp)
+        .filter_map(|(_, (cred_id, _credential))| {
+            Some(CredentialAssignment {
+                credential_id: (*cred_id)?,
+                ip_address_ids: ip_address_id.map(|id| vec![id]),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -461,6 +483,56 @@ mod tests {
                 (CredentialQueryPayloadDiscriminants::Snmp, snmp_id),
                 (CredentialQueryPayloadDiscriminants::DockerSocket, docker_id),
             ]
+        );
+    }
+
+    fn docker_socket_payload() -> CredentialQueryPayload {
+        CredentialQueryPayload::DockerSocket(ContainerSocketQueryCredential { socket_path: None })
+    }
+
+    /// A local Docker/Podman socket credential arrives as a `DaemonHost` integration target,
+    /// which the server drops from the discovery once the scan completes. What has to carry it
+    /// into every later scan is the assignment produced here, on the daemon host's own loopback
+    /// address — without it, container discovery would silently stop after the first scan.
+    #[test]
+    fn a_working_socket_credential_earns_an_assignment_on_the_address_it_probed() {
+        let cred_id = Uuid::new_v4();
+        let loopback_ip_id = Uuid::new_v4();
+        let w = winners(vec![(
+            CredentialQueryPayloadDiscriminants::DockerSocket,
+            Some(cred_id),
+            docker_socket_payload(),
+        )]);
+
+        let assignments = credential_assignments_from_probes(&w, Some(loopback_ip_id));
+
+        assert_eq!(assignments.len(), 1);
+        assert_eq!(assignments[0].credential_id, cred_id);
+        assert_eq!(assignments[0].ip_address_ids, Some(vec![loopback_ip_id]));
+    }
+
+    /// Two kinds must never be promoted here: SNMP records its own assignments inside
+    /// `SnmpIntegration::execute`, and a network default (`None` id) is network-wide by
+    /// definition — pinning it to whichever host answered would turn a broadcast credential
+    /// into a host-scoped one.
+    #[test]
+    fn snmp_and_network_defaults_are_not_promoted() {
+        let w = winners(vec![
+            (
+                CredentialQueryPayloadDiscriminants::Snmp,
+                Some(Uuid::new_v4()),
+                CredentialQueryPayload::default(),
+            ),
+            (
+                CredentialQueryPayloadDiscriminants::DockerSocket,
+                None,
+                docker_socket_payload(),
+            ),
+        ]);
+
+        assert!(
+            credential_assignments_from_probes(&w, Some(Uuid::new_v4())).is_empty(),
+            "neither an SNMP winner nor an unidentified network default earns a host assignment"
         );
     }
 }

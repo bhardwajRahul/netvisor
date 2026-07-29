@@ -356,18 +356,12 @@ impl DaemonService {
             Ok(poll_response) => {
                 let auth = AuthenticatedEntity::System;
 
-                // Process progress update if available
-                if let Some(progress) = poll_response.progress
-                    && let Err(e) = self.process_discovery_progress(progress).await
-                {
-                    tracing::warn!(
-                        daemon_id = %daemon.id,
-                        error = ?e,
-                        "Failed to process discovery progress"
-                    );
-                }
-
-                // Process entities if any
+                // Entities before progress. A poll response can carry both the
+                // session's terminal update and the last hosts of that session,
+                // and finalizing a session consumes the discovery's one-shot
+                // integration targets — which are only safe to consume once the
+                // credentials that probed successfully have been promoted to
+                // host assignments, which is what persisting these entities does.
                 if !poll_response.entities.is_empty() {
                     match self
                         .process_discovery_entities(poll_response.entities, auth.clone())
@@ -394,6 +388,17 @@ impl DaemonService {
                             );
                         }
                     }
+                }
+
+                // Process progress update if available
+                if let Some(progress) = poll_response.progress
+                    && let Err(e) = self.process_discovery_progress(progress).await
+                {
+                    tracing::warn!(
+                        daemon_id = %daemon.id,
+                        error = ?e,
+                        "Failed to process discovery progress"
+                    );
                 }
             }
             Err(e) => {

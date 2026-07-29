@@ -519,9 +519,11 @@ pub async fn update_discovery(
             )));
         }
 
-        // Targets stay on the Discovery — including daemon-host ones. They're offered on each
-        // scan and assigned to a host only once they probe successfully, so saving a target here
-        // never assigns a credential on its own.
+        // Targets stay on the Discovery — including daemon-host ones. They're offered to the
+        // daemon until a scan completes, and assigned to a host only once they probe
+        // successfully, so saving a target here never assigns a credential on its own. A target
+        // that matched is retried from the junction it earned; one that matched nothing is
+        // dropped at completion, so re-adding it here is how a user retries it.
     }
 
     update_handler::<Discovery>(state, auth, id, discovery).await

@@ -2,7 +2,7 @@ use crate::bail_validation;
 use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::daemon::runtime::service::LOG_TARGET;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
-use crate::server::credentials::r#impl::mapping::IntegrationTarget;
+use crate::server::credentials::r#impl::mapping::{IntegrationTarget, Target};
 use crate::server::credentials::service::CredentialService;
 use crate::server::daemons::r#impl::api::{DaemonDiscoveryRequest, DiscoveryUpdatePayload};
 use crate::server::daemons::service::DaemonService;
