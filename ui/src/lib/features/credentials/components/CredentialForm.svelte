@@ -75,6 +75,11 @@
 		 *  Listed above the picker so the card reflects everything the credential hits,
 		 *  but owned elsewhere — not editable or removable here. */
 		lockedHosts?: Host[];
+		/** The row's saved target IPs. Passed in rather than read back off the shared
+		 *  TanStack form, whose defaults are built once and are stale whenever the parent
+		 *  seeds rows after this component mounts — which silently reset a per-host
+		 *  credential to broadcast, depending on mount order. */
+		initialTargetIps?: string[];
 		onChange?: (data: {
 			targetIps?: string[];
 			fieldValues?: Record<string, string>;
@@ -96,6 +101,7 @@
 		fieldPrefix = '',
 		daemonHostUnavailable = false,
 		lockedHosts = [],
+		initialTargetIps,
 		onChange,
 		onTypeChange
 	}: Props = $props();
@@ -298,12 +304,13 @@
 			form.setFieldValue?.('name', fixedName);
 		}
 
-		// Initialize target mode and target IP values from the form.
-		// Only read from form if this credential's prefix has an explicitly set value
-		// (not inherited from another credential in the shared form).
+		// Initialize target mode and target IP values from the row itself, falling back to
+		// the shared form only when the caller passes nothing.
 		if (compact) {
 			targetIpValues = [];
-			const formTargetIps = form.getFieldValue?.(`${fieldPrefix}targetIps`) as string[] | undefined;
+			const formTargetIps =
+				initialTargetIps ??
+				(form.getFieldValue?.(`${fieldPrefix}targetIps`) as string[] | undefined);
 			const hasExplicitIps =
 				!!formTargetIps &&
 				formTargetIps.length > 0 &&
@@ -333,6 +340,9 @@
 					targetIpValues = [DAEMON_HOST_IP];
 				}
 			}
+			// Seed the shared form to match. The rendered IP inputs read their value from the
+			// form field, so without this a row restored from a saved target shows blank.
+			form.setFieldValue?.(`${fieldPrefix}targetIps`, [...targetIpValues]);
 		}
 	}
 
@@ -575,8 +585,11 @@
 	// failing field validation. Only the IP format of non-empty rows is checked.
 	// Broadcast credentials always pass (stale targetIps fields left after toggling
 	// Hosts -> Networks can't block submission). Reads the live, reactive `targetMode`.
-	function validateTargetIp(value: string): string | undefined {
-		if (targetMode === 'broadcast' || !value.trim()) return undefined;
+	// `value` can be undefined: TanStack keeps a field registered after its row is removed,
+	// and `validateAllFields` on submit then runs it against an index the array no longer
+	// has. An absent value is an empty row, which is valid here.
+	function validateTargetIp(value: string | undefined): string | undefined {
+		if (targetMode === 'broadcast' || !value?.trim()) return undefined;
 		return ipAddressFormat(value);
 	}
 
@@ -698,9 +711,11 @@
 								<form.Field
 									name={targetIpFieldName(i)}
 									validators={{
-										onBlur: ({ value }: { value: string }) => validateTargetIp(value),
-										onChange: ({ value }: { value: string }) => validateTargetIp(value),
-										onSubmit: ({ value }: { value: string }) => validateTargetIp(value)
+										onBlur: ({ value }: { value: string | undefined }) => validateTargetIp(value),
+										onChange: ({ value }: { value: string | undefined }) =>
+											validateTargetIp(value),
+										onSubmit: ({ value }: { value: string | undefined }) =>
+											validateTargetIp(value)
 									}}
 									listeners={{
 										onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)
