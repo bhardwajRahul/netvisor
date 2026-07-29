@@ -1,6 +1,5 @@
 use crate::server::auth::middleware::permissions::{Authorized, Member, Viewer};
 use crate::server::hosts::r#impl::base::Host;
-use crate::server::ports::r#impl::base::TransportProtocol;
 use crate::server::services::definitions::ServiceDefinitionRegistry;
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::shared::handlers::ordering::OrderField;
@@ -99,10 +98,8 @@ pub struct ServiceFilterQuery {
     pub order_by: Option<ServiceOrderField>,
     /// Direction for order_by field (group_by always uses ASC).
     pub order_direction: Option<OrderDirection>,
-    /// Only services exposed on one of these port numbers.
+    /// Only services exposed on one of these port numbers, over either protocol.
     pub ports: Option<Vec<u16>>,
-    /// Only services exposed over this transport protocol.
-    pub protocol: Option<TransportProtocol>,
     /// Exclude services belonging to these categories.
     pub exclude_categories: Option<Vec<ServiceCategory>>,
     /// Maximum number of results to return (1-1000, default: 50). Use 0 for no limit.
@@ -241,12 +238,10 @@ async fn get_all_services(
         _ => filter,
     };
 
-    // Port and protocol reach services through the bindings junction.
-    let ports = query.ports.clone().unwrap_or_default();
-    let filter = if ports.is_empty() && query.protocol.is_none() {
-        filter
-    } else {
-        filter.bound_to_port(&ports, query.protocol)
+    // Ports reach services through the bindings junction.
+    let filter = match &query.ports {
+        Some(ports) if !ports.is_empty() => filter.bound_to_port(ports),
+        _ => filter,
     };
 
     // Exclude services by category if specified

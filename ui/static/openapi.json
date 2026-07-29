@@ -9815,7 +9815,7 @@
           {
             "name": "ports",
             "in": "query",
-            "description": "Only services exposed on one of these port numbers.",
+            "description": "Only services exposed on one of these port numbers, over either protocol.",
             "required": false,
             "schema": {
               "type": [
@@ -9827,22 +9827,6 @@
                 "format": "int32",
                 "minimum": 0
               }
-            }
-          },
-          {
-            "name": "protocol",
-            "in": "query",
-            "description": "Only services exposed over this transport protocol.",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/components/schemas/TransportProtocol"
-                }
-              ]
             }
           },
           {
@@ -10159,7 +10143,7 @@
           {
             "name": "ports",
             "in": "query",
-            "description": "Only services exposed on one of these port numbers.",
+            "description": "Only services exposed on one of these port numbers, over either protocol.",
             "required": false,
             "schema": {
               "type": [
@@ -10171,22 +10155,6 @@
                 "format": "int32",
                 "minimum": 0
               }
-            }
-          },
-          {
-            "name": "protocol",
-            "in": "query",
-            "description": "Only services exposed over this transport protocol.",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/components/schemas/TransportProtocol"
-                }
-              ]
             }
           },
           {
@@ -14215,19 +14183,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-29T01:10:26.877366Z",
+              "created_at": "2026-07-29T01:45:35.059057Z",
               "first_discovery_id": null,
-              "id": "b8005a86-4495-48da-8de0-d099f6fdc7c3",
+              "id": "99207527-4739-496d-b999-9d76e569fb87",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T01:10:26.877366Z",
+              "last_seen_at": "2026-07-29T01:45:35.059057Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T01:10:26.877366Z",
-              "valid_from": "2026-07-29T01:10:26.877366Z",
+              "updated_at": "2026-07-29T01:45:35.059057Z",
+              "valid_from": "2026-07-29T01:45:35.059057Z",
               "valid_to": null
             }
           },
@@ -15380,19 +15348,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-29T01:10:26.857243Z",
+                      "created_at": "2026-07-29T01:45:35.038733Z",
                       "first_discovery_id": null,
-                      "id": "0da7e6bb-1bdd-4a5b-b200-96a3793ba807",
+                      "id": "6697244f-4dea-4158-86d6-70328b98305d",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-29T01:10:26.857243Z",
+                      "last_seen_at": "2026-07-29T01:45:35.038733Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-29T01:10:26.857243Z",
-                      "valid_from": "2026-07-29T01:10:26.857243Z",
+                      "updated_at": "2026-07-29T01:45:35.038733Z",
+                      "valid_from": "2026-07-29T01:45:35.038733Z",
                       "valid_to": null
                     }
                   ],
@@ -15406,7 +15374,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Domoticz",
+                  "service_definition": "Frigate",
                   "source": {
                     "type": "Manual"
                   },
@@ -16476,19 +16444,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T01:10:26.871070Z",
+                  "created_at": "2026-07-29T01:45:35.052508Z",
                   "first_discovery_id": null,
-                  "id": "ba0e6e1f-14a5-4d1b-84f7-10e4969e7bc9",
+                  "id": "c865dce4-edff-479d-96a0-02b2daf841b9",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T01:10:26.871070Z",
+                  "last_seen_at": "2026-07-29T01:45:35.052508Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T01:10:26.871070Z",
-                  "valid_from": "2026-07-29T01:10:26.871070Z",
+                  "updated_at": "2026-07-29T01:45:35.052508Z",
+                  "valid_from": "2026-07-29T01:45:35.052508Z",
                   "valid_to": null
                 }
               ],
@@ -16502,7 +16470,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Domoticz",
+              "service_definition": "Frigate",
               "source": {
                 "type": "Manual"
               },
@@ -18376,19 +18344,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-29T01:10:26.857714Z",
+          "created_at": "2026-07-29T01:45:35.039133Z",
           "first_discovery_id": null,
-          "id": "e291ef6e-d0c3-4285-944d-0e28a8372338",
+          "id": "dca1644f-0c58-4e6f-8ad1-ca27b8ca2e25",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-29T01:10:26.857714Z",
+          "last_seen_at": "2026-07-29T01:45:35.039133Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-29T01:10:26.857714Z",
-          "valid_from": "2026-07-29T01:10:26.857714Z",
+          "updated_at": "2026-07-29T01:45:35.039133Z",
+          "valid_from": "2026-07-29T01:45:35.039133Z",
           "valid_to": null
         }
       },
@@ -18979,7 +18947,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Domoticz",
+              "service_definition": "Frigate",
               "tags": [],
               "virtualization": null
             }
@@ -22146,19 +22114,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T01:10:26.856730Z",
+                  "created_at": "2026-07-29T01:45:35.038266Z",
                   "first_discovery_id": null,
-                  "id": "6794fefa-d0d4-4c1a-817b-8137994d2df0",
+                  "id": "26c938e9-ad50-4d28-94dd-117b315f88a7",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T01:10:26.856730Z",
+                  "last_seen_at": "2026-07-29T01:45:35.038266Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T01:10:26.856730Z",
-                  "valid_from": "2026-07-29T01:10:26.856730Z",
+                  "updated_at": "2026-07-29T01:45:35.038266Z",
+                  "valid_from": "2026-07-29T01:45:35.038266Z",
                   "valid_to": null
                 }
               ],
@@ -22172,7 +22140,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Domoticz",
+              "service_definition": "Frigate",
               "source": {
                 "type": "Manual"
               },
@@ -24886,19 +24854,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-29T01:10:26.845145Z",
+                        "created_at": "2026-07-29T01:45:35.027659Z",
                         "first_discovery_id": null,
-                        "id": "700d84ea-a9c3-4148-b31d-9cab4aad3474",
+                        "id": "b4f042e3-e8d6-4884-b071-30e7da8c6879",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-29T01:10:26.845145Z",
+                        "last_seen_at": "2026-07-29T01:45:35.027659Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-29T01:10:26.845145Z",
-                        "valid_from": "2026-07-29T01:10:26.845145Z",
+                        "updated_at": "2026-07-29T01:45:35.027659Z",
+                        "valid_from": "2026-07-29T01:45:35.027659Z",
                         "valid_to": null
                       }
                     ],
@@ -24912,7 +24880,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Domoticz",
+                    "service_definition": "Frigate",
                     "source": {
                       "type": "Manual"
                     },
@@ -25033,19 +25001,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-29T01:10:26.869913Z",
+                    "created_at": "2026-07-29T01:45:35.051300Z",
                     "first_discovery_id": null,
-                    "id": "cd1d9d20-7ced-4685-a64a-7410b5ea92d1",
+                    "id": "9305fcb0-fb8a-423c-a7c3-0f238ba88f22",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-29T01:10:26.869913Z",
+                    "last_seen_at": "2026-07-29T01:45:35.051300Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-29T01:10:26.869913Z",
-                    "valid_from": "2026-07-29T01:10:26.869913Z",
+                    "updated_at": "2026-07-29T01:45:35.051300Z",
+                    "valid_from": "2026-07-29T01:45:35.051300Z",
                     "valid_to": null
                   }
                 ],
@@ -25059,7 +25027,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Domoticz",
+                "service_definition": "Frigate",
                 "source": {
                   "type": "Manual"
                 },
@@ -26796,19 +26764,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-29T01:10:26.857616Z",
+              "created_at": "2026-07-29T01:45:35.039045Z",
               "first_discovery_id": null,
-              "id": "ace67690-c85a-40ba-9d44-e708f47768e9",
+              "id": "2f8044df-e5fe-451d-9113-86f52e043737",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T01:10:26.857616Z",
+              "last_seen_at": "2026-07-29T01:45:35.039045Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T01:10:26.857616Z",
-              "valid_from": "2026-07-29T01:10:26.857616Z",
+              "updated_at": "2026-07-29T01:45:35.039045Z",
+              "valid_from": "2026-07-29T01:45:35.039045Z",
               "valid_to": null
             }
           ],
@@ -26822,7 +26790,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Domoticz",
+          "service_definition": "Frigate",
           "source": {
             "type": "Manual"
           },
@@ -27956,7 +27924,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "c2427d69-d7e0-4692-98ee-bea4a358c3d6",
+                  "id": "049284c5-9da5-487b-b52b-10a5015c6b83",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -27966,23 +27934,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "4ab25127-3de0-457b-bdf1-cbdf4733f38c",
+                  "id": "1ae702b9-1e46-4333-a80f-c191d872430d",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "31e2c0a5-e3f2-4315-8390-6bdd05818266",
+                  "id": "d948308c-96fd-4e75-a392-c6e271ebfc27",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "814d3291-b72a-400b-b5a9-796c47f73f37",
+                  "id": "2c343e32-ad38-49c5-95dd-25a7a169c8b5",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "4ab25127-3de0-457b-bdf1-cbdf4733f38c",
+                  "id": "1ae702b9-1e46-4333-a80f-c191d872430d",
                   "rule": "ByHost"
                 }
               ]
@@ -28011,19 +27979,19 @@
             },
             "default": [
               {
-                "id": "06c4dcb9-1c0b-4cf2-8add-3c40d394a37b",
+                "id": "bdb798ea-d1fe-4934-8129-60edb9ed8726",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "3c6fd39a-49c1-4945-b945-a5c6bf55499b",
+                "id": "f86c0c74-8c37-4b21-9438-c7ddfee016eb",
                 "rule": "ByVLAN"
               },
               {
-                "id": "b071f671-e1e4-4b5d-abec-0dab3bd47445",
+                "id": "27b5733e-9d17-47af-b585-d92b20e9e9f6",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "780372ed-f1f9-42e0-95c1-8f5c73e9c3c3",
+                "id": "fb260d38-ba9d-4257-a4e8-31456c1254a4",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -28041,7 +28009,7 @@
                 }
               },
               {
-                "id": "2262e0f4-015a-4ba8-ba73-465c267de4d5",
+                "id": "2f934ada-dc3b-440d-b742-ce5f3ad48283",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -28050,15 +28018,15 @@
                 }
               },
               {
-                "id": "7cd9af58-893d-4de7-851a-514b07700df9",
+                "id": "9dbadb01-228b-4e4b-9f89-bde4d59a5906",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "372aae97-e9e1-48d9-b84a-3189de85fc66",
+                "id": "b77095b8-09e4-401a-a858-faabfb0d957f",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "79891561-9e07-4770-bb95-c0446e491348",
+                "id": "495c3266-8e87-4375-a2b6-7b98976d5e62",
                 "rule": "ByStack"
               }
             ]
