@@ -91,7 +91,15 @@
 	let onboarding = $derived((org?.onboarding ?? []) as OnboardingOperation[]);
 
 	const tagsQuery = useTagsQuery();
-	// Paginated hosts with server-side pagination, ordering, and tag filtering
+	// Paginated hosts with server-side pagination, ordering, and tag filtering.
+	//
+	// Deliberately NOT gated on `isActive`, unlike the other tabs' list queries.
+	// `useHostsQuery` is the last remaining writer of the ip-addresses / ports /
+	// services / interfaces caches (it populates them from its nested response),
+	// and those caches have no fetcher of their own. Gating this would leave the
+	// services tab's binding chips and the host editor's interface lists empty for
+	// anyone who never opens the hosts tab. Un-gate it only once those caches have
+	// real queries — see planned-work/child-cache-rearchitecture.md.
 	const hostsQuery = useHostsQuery(
 		(): HostQueryOptions => ({
 			limit: pageSize,

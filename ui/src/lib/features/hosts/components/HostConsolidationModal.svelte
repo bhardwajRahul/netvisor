@@ -1,7 +1,7 @@
 <script lang="ts">
 	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
 	import type { Host } from '../types/base';
-	import { useHostsQuery } from '../queries';
+	import { useHostSummariesQuery } from '../queries';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import EntityDisplay from '$lib/shared/components/forms/selection/display/EntityDisplayWrapper.svelte';
 	import { HostDisplay } from '$lib/shared/components/forms/selection/display/HostDisplay.svelte';
@@ -41,8 +41,20 @@
 	let { otherHost = null, isOpen = false, onConsolidate, onClose }: Props = $props();
 
 	// TanStack Query hooks
-	// Use limit: 0 to get all hosts for consolidation modal dropdown
-	const hostsQuery = useHostsQuery({ limit: 0 });
+	//
+	// The destination picker only offers hosts on the same network as the host
+	// being consolidated away, and only needs their id/name — so this is scoped to
+	// that network and asks for no nested children.
+	//
+	// It is also gated on `isOpen`. This modal is rendered unconditionally by
+	// HostTab, so its script runs on first paint; as an unpaginated org-wide
+	// `useHostsQuery({ limit: 0 })` it therefore pulled ~1.9MB on page load for a
+	// dropdown nobody had opened, and shared that key with every other consumer.
+	const hostsQuery = useHostSummariesQuery(() => ({
+		network_id: otherHost?.network_id,
+		// Also guards against `network_id: undefined` meaning "every network".
+		enabled: isOpen && !!otherHost
+	}));
 	const servicesQuery = useServicesCacheQuery();
 	const ipAddressesQuery = useIPAddressesQuery();
 	const portsQuery = usePortsQuery();

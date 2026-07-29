@@ -60,6 +60,18 @@
 	let supportsDaemonHostOnly = $derived(targets.includes('DaemonHost') && !supportsPerHost);
 
 	const networksQuery = useNetworksQuery();
+	// Still the full nested query, deliberately. The per-host IP-scoping rows
+	// (`hostIpAddresses`, `getScopedInterfaces`) read the ip-addresses cache, which
+	// has no fetcher of its own and is populated as a side effect of *this* query.
+	// A credential can be assigned to hosts on any network, and
+	// `GET /api/v1/ip-addresses` takes only a single `host_id` — no `ids` — so
+	// there is no bounded direct replacement today.
+	//
+	// Fixing that properly means the deferred child-cache re-architecture plus an
+	// `ids` param on that endpoint (see
+	// planned-work/child-cache-rearchitecture.md). This surface is lazy — it only
+	// mounts inside the credential modal's assignments tab — so it no longer costs
+	// anything on page load.
 	const hostsQuery = useHostsQuery({ limit: 0 });
 	const ipAddressesQuery = useIPAddressesQuery();
 	const subnetsQuery = useSubnetsQuery();

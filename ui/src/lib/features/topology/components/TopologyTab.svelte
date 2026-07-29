@@ -120,9 +120,14 @@
 	// undefined` returns live entities; `snapshot_id = <id>` returns the
 	// captured set as-of that snapshot's `taken_at`. Same code path for both
 	// — see backend `GET /api/v1/topology/data`.
+	// Gated on `isActive`: this is the heaviest query in the app and it is the only
+	// subscriber to its key, so holding it while the tab is off-screen keeps the
+	// bundle — and the discovery SSE stream's throttled refetch of it — off pages
+	// that are not showing a graph.
 	const topologyDataQuery = useTopologyDataQuery(
 		() => $selectedNetworkId ?? undefined,
-		() => $selectedSnapshotId ?? undefined
+		() => $selectedSnapshotId ?? undefined,
+		() => isActive
 	);
 
 	// Derived data

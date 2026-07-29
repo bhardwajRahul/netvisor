@@ -277,70 +277,13 @@ export function useBulkDeleteServicesMutation() {
 	}));
 }
 
-/**
- * Mutation hook for bulk updating services for a host
- * Orchestrates create/update/delete operations
- */
-export function useBulkUpdateServicesMutation() {
-	const queryClient = useQueryClient();
-
-	return createMutation(() => ({
-		mutationFn: async ({ hostId, services }: { hostId: string; services: Service[] }) => {
-			const currentServices = queryClient.getQueryData<Service[]>(queryKeys.services.all) ?? [];
-			const hostServices = currentServices.filter((s) => s.host_id === hostId);
-
-			const newServiceIds = new Set(services.map((s) => s.id));
-			const currentServiceIds = new Set(hostServices.map((s) => s.id));
-
-			// Detect creates, updates, deletes
-			const toCreate = services.filter(
-				(s) => !currentServiceIds.has(s.id) || s.id.startsWith('00000000')
-			);
-			const toUpdate = services.filter(
-				(s) => currentServiceIds.has(s.id) && !s.id.startsWith('00000000')
-			);
-			const toDelete = hostServices.filter((s) => !newServiceIds.has(s.id));
-
-			// Execute all operations
-			const results = await Promise.all([
-				...toCreate.map((s) =>
-					apiClient.POST('/api/v1/services', {
-						body: { ...s, id: undefined } as unknown as Service
-					})
-				),
-				...toUpdate.map((s) =>
-					apiClient.PUT('/api/v1/services/{id}', { params: { path: { id: s.id } }, body: s })
-				),
-				...toDelete.map((s) =>
-					apiClient.DELETE('/api/v1/services/{id}', { params: { path: { id: s.id } } })
-				)
-			]);
-
-			// Collect created/updated services from results
-			const createdUpdated: Service[] = [];
-			for (let i = 0; i < toCreate.length + toUpdate.length; i++) {
-				const result = results[i];
-				if (result.data?.success && result.data.data) {
-					createdUpdated.push(result.data.data as Service);
-				}
-			}
-
-			return { hostId, createdUpdated, deletedIds: toDelete.map((s) => s.id) };
-		},
-		onSuccess: ({ hostId, createdUpdated, deletedIds }) => {
-			queryClient.setQueryData<Service[]>(queryKeys.services.all, (old) => {
-				if (!old) return createdUpdated;
-
-				// Remove deleted and old host services
-				const others = old.filter((s) => s.host_id !== hostId || !deletedIds.includes(s.id));
-
-				// Replace host services with created/updated
-				const nonHostServices = others.filter((s) => s.host_id !== hostId);
-				return [...nonHostServices, ...createdUpdated];
-			});
-		}
-	}));
-}
+// `useBulkUpdateServicesMutation` was removed here. It had no call sites, and it
+// derived its DELETE set from `getQueryData(queryKeys.services.all)` — a
+// synchronous snapshot of a cache with no fetcher of its own — so any host whose
+// services were not in that cache would have had its unseen services deleted.
+// Host service sync already goes through `PUT /api/v1/hosts/{id}`
+// (`useUpdateHostMutation`), which reconciles create/update/delete server-side
+// against the real rows.
 
 // ============================================================================
 // Utility Functions

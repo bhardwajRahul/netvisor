@@ -25,7 +25,7 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
 	import type { components } from '$lib/api/schema';
@@ -48,7 +48,7 @@
 
 	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
-	let { isReadOnly = false }: TabProps = $props();
+	let { isReadOnly = false, isActive = false }: TabProps = $props();
 
 	// Organization query for onboarding state
 	const organizationQuery = useOrganizationQuery();
@@ -56,11 +56,11 @@
 
 	// Queries
 	const tagsQuery = useTagsQuery();
-	const discoveriesQuery = useDiscoveriesQuery();
+	// Gated on `isActive` — see the matching comment in DiscoveryHistoryTab. Both
+	// subscribers must be gated for the query to actually go inactive.
+	const discoveriesQuery = useDiscoveriesQuery(() => isActive);
 	const daemonsQuery = useDaemonsQuery();
 	const networksQuery = useNetworksQuery();
-	// Use limit: 0 to get all hosts for modal dropdown
-	const hostsQuery = useHostsQuery({ limit: 0 });
 
 	// Active sessions
 	const sessionsQuery = useActiveSessionsQuery();
@@ -78,13 +78,24 @@
 	let discoveriesData = $derived(discoveriesQuery.data ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let sessionsList = $derived(sessionsQuery.data ?? []);
+
+	// Only the hosts the daemons run on. This was an unpaginated org-wide hosts
+	// query (~1.9MB on a few hundred hosts), issued so the edit modal's daemon
+	// picker could label each daemon with its host name — and because TanStack
+	// dedupes by key, it was shared with every other consumer, so it loaded on
+	// pages that never opened the modal. Scoped to the ids in hand.
+	let daemonHostIds = $derived([
+		...new Set(daemonsData.map((d) => d.host_id).filter((id): id is string => !!id))
+	]);
+	const hostsQuery = useHostsByIds(() => daemonHostIds);
+	let hostsData = $derived(hostsQuery.data ?? []);
+
+	// Host names are decoration inside the modal, so the list must not block on
+	// them — and with no daemons the by-ids query is disabled, which in TanStack
+	// means it stays `isPending` forever.
 	let isLoading = $derived(
-		discoveriesQuery.isPending ||
-			daemonsQuery.isPending ||
-			hostsQuery.isPending ||
-			sessionsQuery.isPending
+		discoveriesQuery.isPending || daemonsQuery.isPending || sessionsQuery.isPending
 	);
 
 	// Build lookup: discovery_id -> session (server always enriches discovery_id)
@@ -272,6 +283,7 @@
 			)}
 				<DiscoveryRunCard
 					discovery={item}
+					hosts={hostsData}
 					activeSession={getActiveSession(item)}
 					selected={isSelected}
 					{onSelectionChange}

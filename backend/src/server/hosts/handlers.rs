@@ -143,6 +143,11 @@ pub struct HostFilterQuery {
     /// network's staleness window; `false` returns only those it has. Omit for
     /// both. Evaluated per row against the host's own network's window.
     pub stale: Option<bool>,
+    /// `false` returns hosts with empty `ip_addresses`/`ports`/`services`/
+    /// `interfaces`. The children dominate the payload, so callers that only need
+    /// host identity — name pickers, id→name lookups, counts — should pass
+    /// `false`. Defaults to `true`, so existing callers are unaffected.
+    pub include_children: Option<bool>,
 }
 
 impl HostFilterQuery {
@@ -208,9 +213,10 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 /// List all hosts
 ///
 /// Returns all hosts the authenticated user has access to, with their
-/// ip_addresses, ports, and services included. Supports pagination via
-/// `limit` and `offset` query parameters, and ordering via `group_by`,
-/// `order_by`, and `order_direction`.
+/// ip_addresses, ports, services and interfaces included — pass
+/// `include_children=false` to omit those and get a much smaller payload.
+/// Supports pagination via `limit` and `offset` query parameters, and ordering
+/// via `group_by`, `order_by`, and `order_direction`.
 #[utoipa::path(
     get,
     path = "",
@@ -271,7 +277,12 @@ async fn get_all_hosts(
     let mut result = state
         .services
         .host_service
-        .get_all_host_responses_paginated(filter, &order_by, query.at)
+        .get_all_host_responses_paginated(
+            filter,
+            &order_by,
+            query.at,
+            query.include_children.unwrap_or(true),
+        )
         .await?;
 
     // Hydrate credential assignments from junction table
