@@ -29,13 +29,12 @@
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
 		common_lastSeen,
+		common_category,
 		common_noEntityYet,
 		common_port,
-		common_protocol,
 		common_services,
 		common_type,
 		daemons_installPromptServices,
-		services_hiddenCategories,
 		services_subtitle
 	} from '$lib/paraglide/messages';
 	import { serviceDefinitions, ports as ports_metadata } from '$lib/shared/stores/metadata';
@@ -44,18 +43,22 @@
 	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 	type ServiceOrderField = components['schemas']['ServiceOrderField'];
 	type OrderDirection = components['schemas']['OrderDirection'];
-	type TransportProtocol = components['schemas']['TransportProtocol'];
 
-	// Well-known ports, offered by name in the filter panel and translated back
-	// to numbers for the API. Free-form port entry would need a control the
-	// value-list filter panel doesn't have.
-	let wellKnownPorts = $derived(
-		(ports_metadata.getItems() ?? []).flatMap((port) =>
-			port.name ? [{ name: port.name, number: port.metadata.number }] : []
-		)
-	);
-	let portNumbersByName = $derived(
-		new SvelteMap(wellKnownPorts.map((port) => [port.name, port.number]))
+	// Well-known port numbers for the filter panel. People look for 443, not
+	// "HTTPS", so the options are the numbers themselves. Deduplicated because
+	// some ports have both a TCP and a UDP definition (53, 515), and stripped of
+	// the Custom entry, whose number is a placeholder 0. Free-form port entry
+	// would need a control the value-list filter panel doesn't have.
+	let wellKnownPortNumbers = $derived(
+		[
+			...new Set(
+				(ports_metadata.getItems() ?? [])
+					.filter((port) => !port.metadata.is_custom)
+					.map((port) => port.metadata.number)
+			)
+		]
+			.sort((a, b) => a - b)
+			.map(String)
 	);
 
 	let { isReadOnly = false }: TabProps = $props();
@@ -79,10 +82,9 @@
 	// Exclude categories state (for server-side filtering)
 	let excludeCategories = $state<string[]>(['OpenPorts']);
 
-	// Port and protocol filters (server-side: a client-side pass would only
-	// narrow the loaded page)
+	// Port filter (server-side: a client-side pass would only narrow the loaded
+	// page)
 	let ports = $state<number[]>([]);
-	let protocol = $state<TransportProtocol | undefined>(undefined);
 
 	// Staleness filter state (server-side: the list is server-paginated)
 	let stale = $state<boolean | null>(null);
@@ -104,7 +106,6 @@
 			stale: stale ?? undefined,
 			search: search || undefined,
 			ports: ports.length > 0 ? ports : undefined,
-			protocol,
 			exclude_categories:
 				excludeCategories.length > 0
 					? (excludeCategories as components['schemas']['ServiceCategory'][])
@@ -174,13 +175,7 @@
 		if (fieldKey === 'category') {
 			excludeCategories = values;
 		} else if (fieldKey === 'port') {
-			// The filter offers well-known ports by name; the API takes numbers.
-			ports = values
-				.map((name) => portNumbersByName.get(name))
-				.filter((number): number is number => number !== undefined);
-		} else if (fieldKey === 'protocol') {
-			// Single-valued server-side: the last selection wins.
-			protocol = (values.at(-1) as TransportProtocol | undefined) ?? undefined;
+			ports = values.map(Number).filter((port) => Number.isFinite(port));
 		}
 	}
 
@@ -339,7 +334,7 @@
 			[
 				{
 					key: 'category',
-					label: services_hiddenCategories(),
+					label: common_category(),
 					type: 'string',
 					searchable: true,
 					filterable: true,
@@ -376,15 +371,7 @@
 					type: 'string',
 					filterable: true,
 					serverFiltered: true,
-					filterOptions: wellKnownPorts.map((port) => port.name)
-				},
-				{
-					key: 'protocol',
-					label: common_protocol(),
-					type: 'string',
-					filterable: true,
-					serverFiltered: true,
-					filterOptions: ['Tcp', 'Udp']
+					filterOptions: wellKnownPortNumbers
 				},
 				{
 					key: 'tags',

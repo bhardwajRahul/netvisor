@@ -42,10 +42,8 @@ export interface ServicesQueryParams {
 	/** Free-text search across service name, service definition, and the name
 	 * of the host the service runs on. */
 	search?: string;
-	/** Only services exposed on one of these port numbers. */
+	/** Only services exposed on one of these port numbers, over either protocol. */
 	ports?: number[];
-	/** Only services exposed over this transport protocol. */
-	protocol?: components['schemas']['TransportProtocol'];
 	/** Exclude services belonging to these categories. */
 	exclude_categories?: components['schemas']['ServiceCategory'][];
 }
@@ -88,7 +86,6 @@ export function useServicesQuery(
 			stale,
 			search,
 			ports,
-			protocol,
 			exclude_categories
 		} = params;
 
@@ -107,7 +104,6 @@ export function useServicesQuery(
 					stale,
 					search,
 					ports,
-					protocol,
 					exclude_categories
 				}
 			],
@@ -126,7 +122,6 @@ export function useServicesQuery(
 							stale,
 							search,
 							ports,
-							protocol,
 							exclude_categories
 						}
 					}
