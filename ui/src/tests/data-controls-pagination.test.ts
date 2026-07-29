@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { groupPageSlice } from '$lib/shared/components/data/types';
 
 /**
  * Tests for DataControls pagination logic.
@@ -260,5 +261,59 @@ describe('DataControls pagination count display', () => {
 			// offset 100, pageSize 50 -> page 3
 			expect(Math.floor(100 / 50) + 1).toBe(3);
 		});
+	});
+});
+
+/**
+ * A group header used to report `groupItems.length` — the rows of that group on
+ * the loaded page — as if it were the group's size. With server-side grouping
+ * the true size arrives in `group_counts`, and these cover translating it into
+ * "which slice of the group am I looking at".
+ *
+ * Positions are global row indices across every page: a group at start 100 with
+ * count 300 occupies rows 100..399 of the ordered result set.
+ */
+describe('groupPageSlice', () => {
+	it('reports the leading slice when a group runs past the end of the page', () => {
+		// 300 hosts in the group, 100 per page: page 1 shows the first third.
+		const slice = groupPageSlice({ start: 0, count: 300 }, 0, 100);
+
+		expect(slice).toEqual({ total: 300, start: 1, end: 100 });
+	});
+
+	it('reports the middle slice when a group spans the whole page', () => {
+		// Page 2 of that same group: no boundary on either side of the page.
+		const slice = groupPageSlice({ start: 0, count: 300 }, 100, 100);
+
+		expect(slice).toEqual({ total: 300, start: 101, end: 200 });
+	});
+
+	it('counts from the group start, not the page start, when a group begins mid-page', () => {
+		// Page covers rows 100..199; the group starts at 150, so its first row
+		// on this page is row 1 *of the group*, not row 51.
+		const slice = groupPageSlice({ start: 150, count: 80 }, 100, 100);
+
+		expect(slice).toEqual({ total: 80, start: 1, end: 50 });
+	});
+
+	it('stops at the group end when a group finishes mid-page', () => {
+		// Group occupies rows 80..119, so the page beginning at 100 holds its
+		// last 20 rows — rows 21-40 of the group.
+		const slice = groupPageSlice({ start: 80, count: 40 }, 100, 100);
+
+		expect(slice).toEqual({ total: 40, start: 21, end: 40 });
+	});
+
+	it('returns null when the whole group fits on the page', () => {
+		// Nothing to qualify: the header can just show the count.
+		expect(groupPageSlice({ start: 100, count: 12 }, 100, 100)).toBeNull();
+		expect(groupPageSlice({ start: 0, count: 5 }, 0, 20)).toBeNull();
+	});
+
+	it('handles a final short page', () => {
+		// 45 rows in the group, page 1 held 40, this page holds the last 5.
+		const slice = groupPageSlice({ start: 0, count: 45 }, 40, 5);
+
+		expect(slice).toEqual({ total: 45, start: 41, end: 45 });
 	});
 });

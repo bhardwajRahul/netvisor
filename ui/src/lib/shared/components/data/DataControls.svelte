@@ -19,7 +19,10 @@
 		isOrderableField,
 		isDisplayField,
 		getFieldKey,
+		groupPageSlice,
 		PAGE_SIZE_OPTIONS,
+		type GroupPosition,
+		type GroupSlice,
 		type PageSizeOption
 	} from './types';
 	import { onMount, type Snippet } from 'svelte';
@@ -36,6 +39,7 @@
 		common_staleOnly,
 		common_group,
 		common_groupByLabel,
+		common_groupTotalShowing,
 		common_groups,
 		common_item,
 		common_items,
@@ -72,9 +76,20 @@
 	import { scrollFade } from '$lib/shared/utils/scrollFade';
 	import { computeCommonTags } from '$lib/shared/utils/tags';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import throttle from 'just-throttle';
 	import type { components } from '$lib/api/schema';
 
 	type PaginationMeta = components['schemas']['PaginationMeta'];
+
+	/** Debounce window for the search box, in ms. */
+	const SEARCH_THROTTLE_MS = 300;
+
+	/**
+	 * Stands in for a null group key, which has no string form of its own.
+	 * Prefixed with NUL because Postgres text values cannot contain one, so this
+	 * can never collide with a real group value.
+	 */
+	const UNGROUPED_KEY = '\u0000ungrouped';
 
 	let {
 		items = $bindable([]),
@@ -101,6 +116,9 @@
 		// Server-side staleness filtering callback (optional)
 		// Called when the "Stale only" toggle changes
 		onStaleFilterChange = null,
+		// Server-side search callback (optional)
+		// Called (debounced) when the search box changes
+		onSearchChange = null,
 		// CSV export callback (optional, default behavior)
 		// Called when user clicks export button; parent handles the actual export
 		onCsvExport = null,
@@ -137,6 +155,11 @@
 		// Server-side because these lists are server-paginated — a client-side
 		// filter would only ever filter the page currently loaded.
 		onStaleFilterChange?: ((stale: boolean | null) => void) | null;
+		// Server-side search: called with the current query, debounced.
+		// Server-side for the same reason as the filters above — searching the
+		// loaded page would silently miss every match on another page. Lists
+		// that load everything omit this and keep the client-side search.
+		onSearchChange?: ((query: string) => void) | null;
 		// CSV export: default behavior when user clicks export button
 		onCsvExport?: (() => void | Promise<void>) | null;
 		// Export button click override: if provided, replaces onCsvExport entirely
@@ -351,6 +374,11 @@
 			onOrderChange(selectedGroupField, sortState.field, sortState.direction);
 		}
 
+		// Notify parent of restored search state
+		if (onSearchChange && searchQuery.trim()) {
+			onSearchChange(searchQuery);
+		}
+
 		// Notify parent of restored tag filter state
 		const tagFilter = filterState['tags'];
 		if (onTagFilterChange && tagFilter && tagFilter.values.size > 0) {
@@ -449,8 +477,9 @@
 	// Apply all filters, sorting, and grouping
 	let processedItems = $derived.by(() => {
 		let result = items.filter((item) => {
-			// Search filter
-			if (searchQuery.trim()) {
+			// Search filter — skipped when the parent searches server-side
+			// (the rows that arrived are already the matches).
+			if (!onSearchChange && searchQuery.trim()) {
 				const q = searchQuery.toLowerCase();
 				const searchableFields = fields.filter((f) => f.searchable !== false);
 				const matchesQ = searchableFields.some((field) => {
@@ -562,6 +591,9 @@
 		return result;
 	});
 
+	// Per-group totals across every page, when the server supplied them.
+	let serverGroupCounts = $derived(serverPagination?.group_counts ?? null);
+
 	// Group items by selected field
 	let groupedItems = $derived.by(() => {
 		if (!selectedGroupField) {
@@ -585,9 +617,55 @@
 			groups.get(groupKey)!.push(item);
 		});
 
+		// With server-side group totals the rows already arrive in the server's
+		// group order; re-sorting here would desync the headers from the
+		// cumulative offsets those totals are indexed by.
+		if (serverGroupCounts) return groups;
+
 		// Sort groups by key
 		return new SvelteMap([...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])));
 	});
+
+	// Where each group starts in the full ordered result set. The server
+	// returns groups in the same order it orders rows, so a running sum of the
+	// counts gives every group's global offset — which is what turns "this page
+	// holds rows 100-199" into "this is rows 1-40 of that group".
+	let groupOffsets = $derived.by(() => {
+		const offsets = new SvelteMap<string, GroupPosition>();
+		let cursor = 0;
+		for (const group of serverGroupCounts ?? []) {
+			offsets.set(group.value ?? UNGROUPED_KEY, { start: cursor, count: group.count });
+			cursor += group.count;
+		}
+		return offsets;
+	});
+
+	// The value the server grouped these rows under, which is not always what
+	// the header displays (a network group reads as a name, but groups by id).
+	function serverGroupKey(groupItems: T[]): string {
+		const field = fields.find((f) => getFieldKey(f) === selectedGroupField);
+		if (!field || groupItems.length === 0) return UNGROUPED_KEY;
+
+		const raw = field.getGroupValue
+			? field.getGroupValue(groupItems[0])
+			: getFieldValue(groupItems[0], field);
+
+		return raw === null || raw === undefined ? UNGROUPED_KEY : String(raw);
+	}
+
+	/**
+	 * How much of a group this page is showing, and how big the group really
+	 * is. Null when the server didn't supply totals — on an unpaginated list
+	 * the rendered count is already the whole group.
+	 */
+	function groupRange(groupItems: T[]): GroupSlice | null {
+		if (!serverPagination) return null;
+
+		const group = groupOffsets.get(serverGroupKey(groupItems));
+		if (!group) return null;
+
+		return groupPageSlice(group, serverPagination.offset, items.length);
+	}
 
 	// Toggle sort
 	function toggleSort(fieldKey: string) {
@@ -851,29 +929,20 @@
 			? serverPagination.has_more
 			: effectiveCurrentPage < totalPages
 	);
-	// When server pagination is active but client-side search filtering reduces items,
-	// use the filtered count instead of the server's unfiltered total
-	let hasClientSideSearch = $derived(useServerPagination && serverPagination && searchQuery.trim());
+	// The server's total already accounts for the search, so there is no longer
+	// a filtered-vs-unfiltered discrepancy to paper over here.
 	let showingStart = $derived(
 		useServerPagination && serverPagination
-			? hasClientSideSearch
-				? Math.min(1, processedItems.length)
-				: Math.min(serverPagination.offset + 1, serverPagination.total_count)
+			? Math.min(serverPagination.offset + 1, serverPagination.total_count)
 			: Math.min((effectiveCurrentPage - 1) * pageSize + 1, processedItems.length)
 	);
 	let showingEnd = $derived(
 		useServerPagination && serverPagination
-			? hasClientSideSearch
-				? processedItems.length
-				: Math.min(serverPagination.offset + processedItems.length, serverPagination.total_count)
+			? Math.min(serverPagination.offset + processedItems.length, serverPagination.total_count)
 			: Math.min(effectiveCurrentPage * pageSize, processedItems.length)
 	);
 	let totalCount = $derived(
-		useServerPagination && serverPagination
-			? hasClientSideSearch
-				? processedItems.length
-				: serverPagination.total_count
-			: processedItems.length
+		useServerPagination && serverPagination ? serverPagination.total_count : processedItems.length
 	);
 
 	// Paginated items for display
@@ -937,6 +1006,45 @@
 			if (onOrderChange) {
 				onOrderChange(groupBy, orderBy, direction);
 			}
+		}
+	});
+
+	// Trailing throttle so a burst of keystrokes costs one request and the last
+	// one is never dropped. Built once — rebuilding it per keystroke would
+	// defeat the debounce entirely.
+	const notifySearchChange = throttle(
+		(query: string) => {
+			onSearchChange?.(query);
+			// Page 3 of the old result set is meaningless against the new one.
+			if (useServerPagination && onPageChange) {
+				onPageChange(1, pageSize);
+			} else {
+				currentPage = 1;
+			}
+		},
+		SEARCH_THROTTLE_MS,
+		{ leading: false, trailing: true }
+	);
+
+	// Track previous search to detect changes
+	let prevSearchQuery = '';
+	let searchInitialized = false;
+
+	// Notify parent of search changes
+	$effect(() => {
+		const query = searchQuery;
+
+		// Skip the initial run (state restoration); onMount handles that, and
+		// firing here would reset the restored page on every mount.
+		if (!searchInitialized) {
+			prevSearchQuery = query;
+			searchInitialized = true;
+			return;
+		}
+
+		if (query !== prevSearchQuery) {
+			prevSearchQuery = query;
+			notifySearchChange(query);
 		}
 	});
 
@@ -1442,11 +1550,22 @@
 		<!-- Grouped view -->
 		<div class="space-y-6">
 			{#each [...groupedItems.entries()] as [groupName, groupItems] (groupName)}
+				{@const range = groupRange(groupItems)}
 				<div class="space-y-3">
 					<!-- Group Header -->
 					<div class="flex items-center gap-3">
 						<h3 class="text-primary text-lg font-semibold">{groupName}</h3>
-						<span class="text-tertiary text-sm">({groupItems.length})</span>
+						<span class="text-tertiary text-sm">
+							{#if range}
+								{common_groupTotalShowing({
+									total: range.total,
+									start: range.start,
+									end: range.end
+								})}
+							{:else}
+								({groupItems.length})
+							{/if}
+						</span>
 					</div>
 
 					<!-- Group Items -->

@@ -152,20 +152,19 @@ export interface HostQueryOptions {
 	/** `true` returns only hosts discovery hasn't observed within their network's
 	 * staleness window; omit for no staleness constraint. */
 	stale?: boolean;
+	/** Free-text search across host name, hostname, description, IP addresses
+	 * and the names of services running on the host. */
+	search?: string;
 	/** As-of timestamp (ISO 8601). When set, returns SCD2 state as of this instant
 	 * (snapshot view) instead of live state. */
 	at?: string;
 }
 
 /**
- * Pagination metadata from API response
+ * Pagination metadata from API response. Derived from the generated schema so
+ * fields the server adds (e.g. per-group totals) reach consumers automatically.
  */
-export interface PaginationMeta {
-	total_count: number;
-	limit: number;
-	offset: number;
-	has_more: boolean;
-}
+export type PaginationMeta = components['schemas']['PaginationMeta'];
 
 /**
  * Result of a paginated query
@@ -204,6 +203,7 @@ export function useHostsQuery(optionsOrGetter: HostQueryOptions | (() => HostQue
 							order_direction: options.order_direction,
 							tag_ids: options.tag_ids,
 							stale: options.stale,
+							search: options.search,
 							at: options.at
 						}
 					}

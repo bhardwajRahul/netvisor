@@ -121,6 +121,10 @@ pub struct HostFilterQuery {
     pub ids: Option<Vec<Uuid>>,
     /// Filter by tag IDs (returns hosts that have ANY of the specified tags)
     pub tag_ids: Option<Vec<Uuid>>,
+    /// Free-text search. Case-insensitive substring match against the host's
+    /// name, hostname and description, and against its IP addresses and the
+    /// names of services running on it.
+    pub search: Option<String>,
     /// Primary ordering field (used for grouping). Always sorts ASC to keep groups together.
     pub group_by: Option<HostOrderField>,
     /// Secondary ordering field (sorting within groups or standalone sort).
@@ -250,6 +254,13 @@ async fn get_all_hosts(
         _ => filter,
     };
 
+    // Server-side because the list is paginated: a client-side search would
+    // only ever match the page already loaded.
+    let filter = match query.search.as_deref() {
+        Some(search) if !search.trim().is_empty() => filter.text_search(search),
+        _ => filter,
+    };
+
     // Staleness is per-network, so resolve each accessible network's cutoff and
     // let the filter compare every row against its own.
     let filter = match query.stale {
@@ -270,6 +281,20 @@ async fn get_all_hosts(
 
     // Apply ordering and JOINs
     let (filter, order_by) = query.apply_ordering(filter);
+
+    // Grouped lists report each group's full size, not the slice of it that
+    // landed on this page. Runs against the same filter — including the JOIN
+    // `apply_ordering` just added, which the group expression may reference.
+    let group_counts = match query.group_by {
+        Some(group_field) => Some(
+            state
+                .services
+                .host_service
+                .count_by_group(filter.clone(), group_field.to_sql())
+                .await?,
+        ),
+        None => None,
+    };
 
     let mut result = state
         .services
@@ -300,12 +325,12 @@ async fn get_all_hosts(
     let limit = pagination.effective_limit().unwrap_or(0);
     let offset = pagination.effective_offset();
 
-    Ok(Json(PaginatedApiResponse::success(
-        result.items,
-        result.total_count,
-        limit,
-        offset,
-    )))
+    let response = PaginatedApiResponse::success(result.items, result.total_count, limit, offset);
+
+    Ok(Json(match group_counts {
+        Some(counts) => response.with_group_counts(counts),
+        None => response,
+    }))
 }
 
 /// Get a host by ID

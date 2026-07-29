@@ -278,6 +278,7 @@
 	"common_goBack": "Go back",
 	"common_group": "group",
 	"common_groupByLabel": "Group By",
+	"common_groupTotalShowing": "{total} total · showing {start}–{end}",
 	"common_groups": "groups",
 	"common_groupsLabel": "Groups",
 	"common_healthy": "Healthy",

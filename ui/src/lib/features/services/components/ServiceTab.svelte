@@ -66,6 +66,9 @@
 	// Staleness filter state (server-side: the list is server-paginated)
 	let stale = $state<boolean | null>(null);
 
+	// Search state (server-side, for the same reason)
+	let search = $state('');
+
 	// Queries
 	const tagsQuery = useTagsQuery();
 	// Paginated services with server-side pagination, ordering, and tag filtering
@@ -78,6 +81,7 @@
 			order_direction: orderDirection,
 			tag_ids: tagIds.length > 0 ? tagIds : undefined,
 			stale: stale ?? undefined,
+			search: search || undefined,
 			exclude_categories:
 				excludeCategories.length > 0
 					? (excludeCategories as components['schemas']['ServiceCategory'][])
@@ -149,6 +153,11 @@
 
 	function handleStaleFilterChange(next: boolean | null) {
 		stale = next;
+	}
+
+	// Search change handler for server-side search (debounced by DataControls)
+	function handleSearchChange(query: string) {
+		search = query;
 	}
 
 	// CSV export handler
@@ -260,6 +269,9 @@
 					searchable: true,
 					filterable: true,
 					groupable: true,
+					// The server groups on the host's name, coalescing services
+					// with no host to an empty string.
+					getGroupValue: (service) => serviceHosts.get(service.id)?.name ?? '',
 					getValue: (service) => serviceHosts.get(service.id)?.name || 'Unknown Host'
 				},
 				network_id: {
@@ -267,6 +279,8 @@
 					type: 'string',
 					filterable: true,
 					groupable: true,
+					// Displayed as a name, but grouped by id on the server.
+					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || 'Unknown Network'
 				},
@@ -349,6 +363,7 @@
 			onTagFilterChange={handleTagFilterChange}
 			onExcludeFilterChange={handleExcludeFilterChange}
 			onStaleFilterChange={handleStaleFilterChange}
+			onSearchChange={handleSearchChange}
 			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(

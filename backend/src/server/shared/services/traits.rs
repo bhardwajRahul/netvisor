@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event as TypedEvent};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
-    shared::types::api::ApiError,
+    shared::types::api::{ApiError, GroupCount},
     shared::{
         entities::{ChangeTriggersTopologyStaleness, Entity as EntityEnum},
         events::{bus::EventBus, types::EntityOperation},
@@ -188,6 +188,23 @@ where
             filter = filter.live();
         }
         self.storage().count(filter).await
+    }
+
+    /// Per-group totals for a grouped list, under the filter the list query
+    /// already built. `group_sql` is the group field's ORDER BY expression, so
+    /// the filter must already carry any JOIN that expression needs.
+    async fn count_by_group(
+        &self,
+        filter: StorableFilter<T>,
+        group_sql: &str,
+    ) -> Result<Vec<GroupCount>, anyhow::Error> {
+        Ok(self
+            .storage()
+            .count_by_group(filter, group_sql)
+            .await?
+            .into_iter()
+            .map(GroupCount::from)
+            .collect())
     }
 
     /// Count rows for an organization. Same SCD2-aware live narrowing as

@@ -717,6 +717,43 @@ where
         Ok(total_count as u64)
     }
 
+    async fn count_by_group(
+        &self,
+        filter: StorableFilter<T>,
+        group_sql: &str,
+    ) -> Result<Vec<(Option<String>, u64)>, anyhow::Error> {
+        // The filter's limit/offset are deliberately not applied: these are the
+        // totals for the whole result set, which is the whole point — the
+        // caller already knows how much of each group is on the page.
+        //
+        // GROUP BY / ORDER BY use the raw expression while only the SELECT
+        // casts to text, so the group order matches the list query's ORDER BY
+        // exactly rather than whatever the text rendering would collate to.
+        let query_str = format!(
+            "SELECT ({expr})::text, COUNT(*) FROM {table} {joins} {filter} \
+             GROUP BY {expr} ORDER BY {expr} ASC",
+            expr = group_sql,
+            table = T::table_name(),
+            joins = filter.to_join_clause(),
+            filter = filter.to_where_clause(),
+        );
+
+        let mut query = sqlx::query(&query_str);
+        for value in filter.values() {
+            query = Self::bind_value(query, value)?;
+        }
+
+        let rows = query.fetch_all(&self.pool).await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let value: Option<String> = sqlx::Row::get(&row, 0);
+                let count: i64 = sqlx::Row::get(&row, 1);
+                (value, count as u64)
+            })
+            .collect())
+    }
+
     async fn get_paginated(
         &self,
         filter: StorableFilter<T>,

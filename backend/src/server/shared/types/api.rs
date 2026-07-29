@@ -49,6 +49,22 @@ macro_rules! bail_validation {
     };
 }
 
+/// Size of one group in a grouped list, across every page.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GroupCount {
+    /// The group's value, rendered as text. `null` for rows whose group key is
+    /// NULL (the "ungrouped" bucket).
+    pub value: Option<String>,
+    /// How many rows fall in this group in total, not just on this page.
+    pub count: u64,
+}
+
+impl From<(Option<String>, u64)> for GroupCount {
+    fn from((value, count): (Option<String>, u64)) -> Self {
+        Self { value, count }
+    }
+}
+
 /// Pagination metadata returned with paginated responses.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PaginationMeta {
@@ -60,6 +76,12 @@ pub struct PaginationMeta {
     pub offset: u32,
     /// Whether there are more items after this page
     pub has_more: bool,
+    /// Size of every group, in the same order the rows are grouped, when the
+    /// request specified a `group_by`. Lets a paginated client show a group's
+    /// true size instead of the slice of it that happens to be on this page.
+    /// Absent when the list isn't grouped.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_counts: Option<Vec<GroupCount>>,
 }
 
 impl PaginationMeta {
@@ -71,6 +93,7 @@ impl PaginationMeta {
             limit,
             offset,
             has_more,
+            group_counts: None,
         }
     }
 }
@@ -217,6 +240,13 @@ impl<T> PaginatedApiResponse<T> {
             error: None,
             meta: PaginatedApiMeta::new(total_count, limit, offset),
         }
+    }
+
+    /// Attach per-group totals for a grouped list. Kept as a builder so the
+    /// endpoints that don't group aren't forced to thread a `None` through.
+    pub fn with_group_counts(mut self, group_counts: Vec<GroupCount>) -> Self {
+        self.meta.pagination.group_counts = Some(group_counts);
+        self
     }
 }
 

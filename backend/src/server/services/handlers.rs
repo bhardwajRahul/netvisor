@@ -85,6 +85,9 @@ pub struct ServiceFilterQuery {
     pub ids: Option<Vec<Uuid>>,
     /// Filter by tag IDs (returns services that have ANY of the specified tags)
     pub tag_ids: Option<Vec<Uuid>>,
+    /// Free-text search. Case-insensitive substring match against the service's
+    /// name and definition, and against the name of the host it runs on.
+    pub search: Option<String>,
     /// Primary ordering field (used for grouping). Always sorts ASC to keep groups together.
     pub group_by: Option<ServiceOrderField>,
     /// Secondary ordering field (sorting within groups or standalone sort).
@@ -222,6 +225,13 @@ async fn get_all_services(
         _ => filter,
     };
 
+    // Server-side because the list is paginated: a client-side search would
+    // only ever match the page already loaded.
+    let filter = match query.search.as_deref() {
+        Some(search) if !search.trim().is_empty() => filter.text_search(search),
+        _ => filter,
+    };
+
     // Exclude services by category if specified
     let filter = match &query.exclude_categories {
         Some(categories) if !categories.is_empty() => {
@@ -260,6 +270,20 @@ async fn get_all_services(
     // Apply ordering and JOINs
     let (filter, order_by) = query.apply_ordering(filter);
 
+    // Grouped lists report each group's full size, not the slice of it that
+    // landed on this page. Runs against the same filter — including the JOIN
+    // `apply_ordering` just added, which the group expression may reference.
+    let group_counts = match query.group_by {
+        Some(group_field) => Some(
+            state
+                .services
+                .service_service
+                .count_by_group(filter.clone(), group_field.to_sql())
+                .await?,
+        ),
+        None => None,
+    };
+
     let result = state
         .services
         .service_service
@@ -293,12 +317,12 @@ async fn get_all_services(
     let limit = pagination.effective_limit().unwrap_or(0);
     let offset = pagination.effective_offset();
 
-    Ok(Json(PaginatedApiResponse::success(
-        items,
-        result.total_count,
-        limit,
-        offset,
-    )))
+    let response = PaginatedApiResponse::success(items, result.total_count, limit, offset);
+
+    Ok(Json(match group_counts {
+        Some(counts) => response.with_group_counts(counts),
+        None => response,
+    }))
 }
 
 /// Create a new service
