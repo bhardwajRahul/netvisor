@@ -762,12 +762,12 @@ async fn create_host_discovery(
 ///
 /// The scan runs on the daemon that last discovered this host — evidence it can
 /// reach the address — and only if that daemon still has an interface on a
-/// subnet containing one of the host's scannable IPs. That constraint is what
-/// lets the daemon ARP the target rather than fall back to a TCP probe, which
-/// would report a live but firewalled host as unresponsive. When it can't be met
-/// the request is refused with the specific reason rather than run at lower
-/// fidelity. A loopback address is not a scannable IP — it is reached locally,
-/// has no MAC to ARP, and is excluded from the target set.
+/// subnet containing one of the host's scannable IPs. Where that interface has a
+/// MAC the daemon ARPs the target, which sees a live host even when every port
+/// is firewalled; on a MAC-less interface (a point-to-point tunnel) it falls
+/// back to a TCP probe. When no interface covers any of the host's addresses the
+/// request is refused with the specific reason. A loopback address is not a
+/// scannable IP — it is reached locally and is excluded from the target set.
 ///
 /// Returns the session, which streams progress over `/api/v1/discovery/stream`
 /// like any other scan. A `Queued` phase means the daemon is busy; it will start
@@ -821,15 +821,17 @@ async fn rescan_host(
 
     let daemon = resolve_rescan_daemon(&state, &host).await?;
 
-    // Only the addresses this daemon can actually ARP. Anything else would be
-    // scanned at lower fidelity, which is the outcome this endpoint refuses.
+    // Only the addresses this daemon has a route to. The daemon ARPs the ones
+    // on an interface with a MAC and falls back to a TCP probe on the ones
+    // without (a point-to-point tunnel has no MAC but is perfectly routable) —
+    // refusing the latter outright made rescan impossible on VPN-only daemons
+    // rather than merely lower fidelity.
     //
     // A loopback address passes the junction check — the daemon reports its own
-    // 127.0.0.0/8 as an interfaced subnet — but is not scannable: it has no MAC
-    // to ARP from, and loopback subnets are dropped from every scan. Excluding
-    // it here keeps this endpoint and the daemon's own target resolution
-    // agreeing, and keeps 127.0.0.1 out of the frozen rescan name. Link-local
-    // is deliberately kept: APIPA is a real interface that ARPs normally.
+    // 127.0.0.0/8 as an interfaced subnet — but is not scannable by either path:
+    // loopback subnets are dropped from every scan. Excluding it here keeps this
+    // endpoint and the daemon's own target resolution agreeing, and keeps
+    // 127.0.0.1 out of the frozen rescan name.
     let interfaced = state
         .services
         .daemon_service
