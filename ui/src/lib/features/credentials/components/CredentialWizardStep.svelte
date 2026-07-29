@@ -590,7 +590,8 @@
 							fixedName={pending.credential.name}
 							daemonHostUnavailable={daemonHostUnavailableFor(index)}
 							lockedHosts={pending.lockedHosts ?? []}
-							initialTargetIps={pending.targetIps}
+							targetIps={pending.targetIps}
+							scope={pending.scope}
 							onChange={(data) => handleConfigChange(index, data)}
 						/>
 					{:else if isDaemonHostOnly(pending.credential.credential_type.type)}
@@ -614,6 +615,8 @@
 							fieldPrefix={`credentials[${index}].`}
 							fixedCredentialType={pending.credential.credential_type.type}
 							daemonHostUnavailable={daemonHostUnavailableFor(index)}
+							targetIps={pending.targetIps}
+							scope={pending.scope}
 							onChange={(data) => handleConfigChange(index, data)}
 						/>
 					{/if}
