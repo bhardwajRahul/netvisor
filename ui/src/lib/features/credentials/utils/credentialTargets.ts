@@ -115,8 +115,6 @@ export function integrationTargetFor(
 	// arrives here as undefined. Throwing would abort the whole save with no message.
 	const cleaned = ips.map((ip) => ip?.trim() ?? '').filter(Boolean);
 
-	// eslint-disable-next-line no-console -- TEMPORARY: tracing a credential that does not persist
-	console.debug('[cred-target]', { credentialId, targets, ips, cleaned });
 	// A daemon-host-only type (the local socket) is always reached over the loopback,
 	// as is an explicit loopback-only selection on any type.
 	if (isDaemonHostOnly(targets) || (cleaned.length > 0 && cleaned.every(isLoopback))) {

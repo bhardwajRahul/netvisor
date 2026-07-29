@@ -22,7 +22,10 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import { daemonTooOldForCredential } from '$lib/features/credentials/utils/versionGate';
-	import { hasExplicitTarget } from '$lib/features/credentials/utils/credentialTargets';
+	import {
+		DAEMON_HOST_IP,
+		hasExplicitTarget
+	} from '$lib/features/credentials/utils/credentialTargets';
 	import { v4 as uuidv4 } from 'uuid';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import { pushError } from '$lib/shared/stores/feedback';
@@ -310,9 +313,12 @@
 		pendingCredentials = [
 			...pendingCredentials,
 			{
-				// Start with no targets — the user adds IP / daemon-host targets explicitly
 				credential: cred,
-				targetIps: [],
+				// A daemon-host-only type (the local socket) has exactly one possible target
+				// and no picker, so carry it on the row: the save path reads targets from
+				// here, and a row that looks targeted in the UI but empty in its data is
+				// dropped silently.
+				targetIps: isDaemonHostOnly(typeId) ? [DAEMON_HOST_IP] : [],
 				fieldValues,
 				scope: supportsBroadcast ? 'broadcast' : 'per_host'
 			}
@@ -348,7 +354,9 @@
 			...pendingCredentials,
 			{
 				credential: existing,
-				targetIps: [''],
+				// As in handleAddCredential: a daemon-host-only type's single target is
+				// implicit, so record it rather than leaving the row looking untargeted.
+				targetIps: isDaemonHostOnly(existing.credential_type.type) ? [DAEMON_HOST_IP] : [''],
 				fieldValues: {},
 				isExisting: true,
 				// Mirror handleAddCredential: reset() picks the same default internally, but

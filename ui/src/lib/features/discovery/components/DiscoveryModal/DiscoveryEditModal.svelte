@@ -483,17 +483,6 @@
 					// because it is assigned elsewhere has no selection here, and an empty IP list
 					// would otherwise read as "network-wide" for a broadcast-capable type —
 					// inventing a scope nobody asked for.
-					// TEMPORARY: tracing a credential that does not persist. Remove once resolved.
-					console.debug(
-						'[cred-save]',
-						pendingCredentials.map((p) => ({
-							name: p.credential.name,
-							scope: p.scope,
-							targetIps: [...p.targetIps],
-							persisted: persisted.has(p.credential.id),
-							explicit: hasExplicitTarget(p.scope, p.targetIps)
-						}))
-					);
 					const targeted = pendingCredentials
 						.filter(
 							(p) => hasExplicitTarget(p.scope, p.targetIps) && persisted.has(p.credential.id)
