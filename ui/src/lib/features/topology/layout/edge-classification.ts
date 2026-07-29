@@ -77,6 +77,19 @@ export function getSelectionScope(edgeType: string): EdgeSelectionScope {
 }
 
 /**
+ * The relation this edge stands for, as computed by the backend (`EdgeType::relation_key`), or
+ * null when it stands for nothing in particular — one of several interchangeable connections of
+ * its kind. Two edges sharing this are one thing drawn twice.
+ *
+ * Qualified by edge type: a `RequestPath` and a `HubAndSpoke` of the same dependency carry the
+ * same backend key but are not the same line.
+ */
+export function getRelationIdentity(edge: TopologyEdge): string | null {
+	const relationKey = (edge as unknown as Record<string, unknown>).relation_key;
+	return typeof relationKey === 'string' ? `${edge.edge_type}:${relationKey}` : null;
+}
+
+/**
  * Identity of the relation this edge is a segment of, or null when the edge stands alone
  * (segment scope, or a relation-scoped edge whose id is missing). Edges sharing a key are
  * segments of the same thing, so a click on one highlights all of them.
@@ -84,8 +97,7 @@ export function getSelectionScope(edgeType: string): EdgeSelectionScope {
 export function getRelationKey(edge: TopologyEdge): string | null {
 	const scope = getSelectionScope(edge.edge_type);
 	if (scope.type !== 'connected_nodes') return null;
-	const relationId = (edge as unknown as Record<string, unknown>)[scope.relation_field];
-	return typeof relationId === 'string' ? `${edge.edge_type}:${relationId}` : null;
+	return getRelationIdentity(edge);
 }
 
 /** Whether this edge should be elevated to target an accepting container. */

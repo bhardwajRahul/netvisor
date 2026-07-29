@@ -6,6 +6,9 @@ import type { TopologyEdge } from '$lib/features/topology/types/base';
  * Clicking an edge highlights what the edge's own `selection_scope` says it should — the whole
  * relation it is a segment of, or just its endpoints. These exercise that dispatch through the
  * real edge-type metadata, so an edge type whose scope changes is covered here too.
+ *
+ * `relation_key` is what the backend computes for the edge (`EdgeType::relation_key`); segments
+ * of one relation share it, and an interchangeable edge has none.
  */
 
 const HOST_A = '11111111-1111-1111-1111-111111111111';
@@ -18,6 +21,7 @@ function sameHost(source: string, target: string, hostId: string): TopologyEdge 
 		target,
 		edge_type: 'SameHost',
 		host_id: hostId,
+		relation_key: hostId,
 		label: null,
 		source_handle: 'Bottom',
 		target_handle: 'Top',
@@ -35,6 +39,8 @@ function containerRuntime(source: string, target: string, runtimeId: string): To
 		host_id: HOST_A,
 		subnet_ids: [target],
 		containerized_service_ids: [],
+		// Elevated onto its containers, so the backend gives it no relation identity.
+		relation_key: null,
 		label: null,
 		source_handle: 'Bottom',
 		target_handle: 'Top',
@@ -51,6 +57,7 @@ function physicalLink(source: string, target: string): TopologyEdge {
 		source_entity_id: source,
 		target_entity_id: target,
 		protocol: 'LLDP',
+		relation_key: [source, target].sort().join(':'),
 		label: null,
 		source_handle: 'Bottom',
 		target_handle: 'Top',
@@ -92,7 +99,7 @@ describe('nodesConnectedByEdge', () => {
 
 	it('falls back to its own endpoints when the relation id is missing', () => {
 		const orphan = { ...sameHost('ip-1', 'ip-2', HOST_A) } as Record<string, unknown>;
-		delete orphan.host_id;
+		delete orphan.relation_key;
 		const edges = [orphan as unknown as TopologyEdge, sameHost('ip-5', 'ip-6', HOST_A)];
 
 		expect(nodesConnectedByEdge(orphan as unknown as TopologyEdge, edges)).toEqual(

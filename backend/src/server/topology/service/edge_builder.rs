@@ -215,6 +215,7 @@ impl EdgeBuilder {
                             target_handle: EdgeHandle::Top,
                             is_multi_hop,
                             view_config: EdgeViewConfig::default(),
+                            relation_key: None,
                         }
                     })
                     .collect::<Vec<Edge>>()
@@ -273,6 +274,7 @@ impl EdgeBuilder {
                         target_handle: EdgeHandle::Top,
                         is_multi_hop: ctx.edge_is_multi_hop(&anchor, target),
                         view_config: EdgeViewConfig::default(),
+                        relation_key: None,
                     })
                     .collect::<Vec<Edge>>()
             })
@@ -347,6 +349,7 @@ impl EdgeBuilder {
                                     target_handle: EdgeHandle::Top,
                                     is_multi_hop,
                                     view_config: EdgeViewConfig::default(),
+                                    relation_key: None,
                                 });
                             }
                             None
@@ -383,6 +386,7 @@ impl EdgeBuilder {
                     target_handle: EdgeHandle::Top,
                     is_multi_hop: false,
                     view_config: EdgeViewConfig::default(),
+                    relation_key: None,
                 })
             })
             .collect()
@@ -441,6 +445,7 @@ impl EdgeBuilder {
                                 target_handle: EdgeHandle::Top,
                                 is_multi_hop,
                                 view_config: EdgeViewConfig::default(),
+                                relation_key: None,
                             })
                         })
                         .collect::<Vec<_>>()
@@ -507,6 +512,7 @@ impl EdgeBuilder {
                     target_handle: EdgeHandle::Top,
                     is_multi_hop,
                     view_config: EdgeViewConfig::default(),
+                    relation_key: None,
                 })
             })
             .collect()
@@ -606,6 +612,7 @@ impl EdgeBuilder {
                     target_handle: EdgeHandle::Top,
                     is_multi_hop: false,
                     view_config: EdgeViewConfig::default(),
+                    relation_key: None,
                 })
             })
             .collect()
@@ -689,6 +696,7 @@ impl EdgeBuilder {
             target_handle: EdgeHandle::Top,
             is_multi_hop,
             view_config: EdgeViewConfig::default(),
+            relation_key: None,
         })
     }
 }

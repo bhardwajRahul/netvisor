@@ -67,9 +67,9 @@ pub enum EdgeHighlightBehavior {
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EdgeSelectionScope {
-    /// Highlight every node connected by any segment of the same relation. `relation_field`
-    /// names the edge payload field holding that relation's id.
-    ConnectedNodes { relation_field: &'static str },
+    /// Highlight every node connected by any segment of the same relation — the segments that
+    /// share this edge's `relation_key`.
+    ConnectedNodes,
     /// Highlight only this edge's own two endpoints.
     #[default]
     Segment,
@@ -114,6 +114,12 @@ pub struct Edge {
     pub is_multi_hop: bool,
     #[serde(default)]
     pub view_config: EdgeViewConfig,
+    /// Identity of the relation this edge stands for — see [`EdgeType::relation_key`]. Stamped
+    /// centrally from `edge_type` once the graph is built, so no construction site can forget
+    /// it. `None` marks an edge as interchangeable with its like.
+    #[serde(default)]
+    #[schema(required)]
+    pub relation_key: Option<String>,
 }
 
 #[derive(
@@ -241,17 +247,11 @@ impl EdgeType {
         use EdgeSelectionScope::*;
         match self {
             // Every segment of the dependency's chain.
-            EdgeType::RequestPath { .. } | EdgeType::HubAndSpoke { .. } => ConnectedNodes {
-                relation_field: "dependency_id",
-            },
+            EdgeType::RequestPath { .. } | EdgeType::HubAndSpoke { .. } => ConnectedNodes,
             // Every address of the host.
-            EdgeType::SameHost { .. } => ConnectedNodes {
-                relation_field: "host_id",
-            },
+            EdgeType::SameHost { .. } => ConnectedNodes,
             // Every address of the container.
-            EdgeType::SameContainer { .. } => ConnectedNodes {
-                relation_field: "service_id",
-            },
+            EdgeType::SameContainer { .. } => ConnectedNodes,
             // A runtime's edges each reach a different bridge, and a hypervisor's each reach a
             // different VM — they are separate connections that happen to share an origin, not
             // segments of one thing, so a click stays on the one that was clicked. A physical
@@ -260,6 +260,55 @@ impl EdgeType {
             | EdgeType::Hypervisor { .. }
             | EdgeType::PhysicalLink { .. }
             | EdgeType::NeighborLink { .. } => Segment,
+        }
+    }
+
+    /// Order-independent key for a pair of ids, so a relationship reported from either end
+    /// reads as the same one.
+    fn pair_key(a: Uuid, b: Uuid) -> String {
+        if a < b {
+            format!("{a}:{b}")
+        } else {
+            format!("{b}:{a}")
+        }
+    }
+
+    /// The identity of the relation this edge stands for, or `None` when the edge is one of
+    /// several interchangeable connections of its kind.
+    ///
+    /// Two edges sharing a relation key are one thing drawn twice: safe for the canvas to merge
+    /// into a single line, and a click on either means both. Two edges *without* a shared key
+    /// are different things and must each keep their own line — merging them leaves a picture
+    /// asserting "these two boxes are connected" while silently dropping which cable, host or
+    /// dependency connects them.
+    ///
+    /// Derived by destructuring rather than by naming payload fields, so renaming a field or
+    /// adding a variant is a compile error rather than a silent behaviour change.
+    pub fn relation_key(&self) -> Option<String> {
+        match self {
+            // Every segment of one dependency's chain.
+            EdgeType::RequestPath { dependency_id, .. }
+            | EdgeType::HubAndSpoke { dependency_id, .. } => Some(dependency_id.to_string()),
+            // Every address of one host, or of one container.
+            EdgeType::SameHost { host_id } => Some(host_id.to_string()),
+            EdgeType::SameContainer { service_id } => Some(service_id.to_string()),
+            // A cable is the pair of ports it joins; a device-level adjacency, the pair of
+            // devices. Two cables between the same pair of boxes are still two cables.
+            EdgeType::PhysicalLink {
+                source_entity_id,
+                target_entity_id,
+                ..
+            } => Some(Self::pair_key(*source_entity_id, *target_entity_id)),
+            EdgeType::NeighborLink {
+                source_host_id,
+                target_host_id,
+                ..
+            } => Some(Self::pair_key(*source_host_id, *target_host_id)),
+            // These elevate onto their containers (`will_target_container`), so several of them
+            // between the same pair of boxes land on identical endpoints and draw as one line
+            // over another. Merging them into a single counted line is the only way to show
+            // there is more than one; expanding the bundle fans them back out.
+            EdgeType::Hypervisor { .. } | EdgeType::ContainerRuntime { .. } => None,
         }
     }
 }
@@ -362,6 +411,7 @@ impl TypeMetadataProvider for EdgeType {
 mod tests {
     use super::*;
     use crate::server::dependencies::r#impl::types::DependencyTypeDiscriminants;
+    use crate::server::topology::types::views::TopologyView;
     use strum::IntoEnumIterator;
 
     #[test]
@@ -415,21 +465,32 @@ mod tests {
         assert_eq!(EdgeViewConfig::default(), EdgeViewConfig::Disabled);
     }
 
-    /// The relation-scoped edges point the selection code at one of their own payload fields
-    /// by name. Renaming or dropping that field would silently degrade every click on the
-    /// edge to "highlight my two endpoints", so hold the two in step here.
+    /// An edge with no relation key is interchangeable with its like: the canvas is free to
+    /// merge several of them into one counted line. That is only ever right when they land on
+    /// identical endpoints anyway, which is what elevating onto a container guarantees. An edge
+    /// that draws to its own endpoints and gets merged disappears instead — the bug this rule
+    /// exists to prevent.
     #[test]
-    fn relation_scoped_edges_carry_the_field_they_name() {
+    fn interchangeable_edges_are_the_ones_elevated_onto_containers() {
         for edge_type in EdgeType::iter() {
-            let EdgeSelectionScope::ConnectedNodes { relation_field } = edge_type.selection_scope()
-            else {
+            if edge_type.relation_key().is_some() {
                 continue;
-            };
-            let payload = serde_json::to_value(&edge_type).unwrap();
-            assert!(
-                payload.get(relation_field).is_some_and(|v| v.is_string()),
-                "{edge_type:?} says it groups by `{relation_field}`, but serializes {payload}"
-            );
+            }
+            for view in TopologyView::iter() {
+                let EdgeViewConfig::Active {
+                    will_target_container,
+                    ..
+                } = view.edge_view_config((&edge_type).into())
+                else {
+                    continue;
+                };
+                assert!(
+                    will_target_container,
+                    "{edge_type:?} has no relation key, so {view:?} may merge several of them \
+                     into one line — but it draws to its own endpoints there, so merging hides \
+                     all but the first. Give it a relation key or elevate it."
+                );
+            }
         }
     }
 }
