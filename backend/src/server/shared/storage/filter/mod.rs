@@ -302,6 +302,73 @@ mod tests {
         assert!(f.conditions[1].contains("$3") && f.conditions[1].contains("$4"));
     }
 
+    // A multi-fragment search must cost exactly one bind, with every fragment
+    // pointing at that same parameter. Getting this wrong shifts every
+    // subsequent filter's placeholder and silently binds the wrong values.
+    #[test]
+    fn text_search_binds_one_param_shared_by_every_fragment() {
+        let filter = StorableFilter::<Host>::new().text_search("web");
+        let where_clause = filter.to_where_clause();
+
+        assert_eq!(filter.values().len(), 1, "expected a single bound pattern");
+        assert_eq!(
+            where_clause.matches("$1").count(),
+            Host::search_predicates().len(),
+            "every fragment should reference $1: {where_clause}"
+        );
+        assert!(
+            where_clause.contains(" OR "),
+            "fragments should be OR-joined: {where_clause}"
+        );
+    }
+
+    // The search parameter is appended after whatever the filter already
+    // bound, so its placeholder index has to follow the existing values.
+    #[test]
+    fn text_search_placeholder_follows_earlier_values() {
+        let network = Uuid::new_v4();
+        let filter = StorableFilter::<Host>::new()
+            .network_ids(&[network])
+            .text_search("web");
+
+        assert_eq!(filter.values().len(), 2);
+        let search_condition = filter.conditions.last().unwrap();
+        assert!(
+            search_condition.contains("$2") && !search_condition.contains("$1"),
+            "search should bind $2 after the network filter: {search_condition}"
+        );
+    }
+
+    // A user typing `%` or `_` means those characters literally. Unescaped,
+    // `%` turns the search into "match every row" — the query appears to work
+    // while quietly ignoring what was typed.
+    #[test]
+    fn text_search_escapes_like_wildcards() {
+        let filter = StorableFilter::<Host>::new().text_search("100%_x");
+
+        match &filter.values()[0] {
+            SqlValue::String(pattern) => assert_eq!(pattern, r"%100\%\_x%"),
+            _ => panic!("expected a String pattern"),
+        }
+    }
+
+    // Fail closed. An entity that hasn't opted into search, or a blank query,
+    // must match nothing: falling through to "no condition" would answer the
+    // request with the whole table and look like a successful search.
+    #[test]
+    fn text_search_matches_nothing_without_predicates_or_query() {
+        // Snapshot declares no search predicates.
+        let unsupported = StorableFilter::<Snapshot>::new().text_search("web");
+        assert_eq!(unsupported.conditions, vec!["FALSE".to_string()]);
+        assert!(unsupported.values().is_empty());
+
+        for blank in ["", "   "] {
+            let empty_query = StorableFilter::<Host>::new().text_search(blank);
+            assert_eq!(empty_query.conditions, vec!["FALSE".to_string()]);
+            assert!(empty_query.values().is_empty());
+        }
+    }
+
     #[test]
     fn user_permissions_in_emits_in_clause() {
         let f = StorableFilter::<crate::server::users::r#impl::base::User>::new()

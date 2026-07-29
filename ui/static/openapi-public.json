@@ -4091,6 +4091,18 @@
             }
           },
           {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname and description, and against its IP addresses and the\nnames of services running on it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "group_by",
             "in": "query",
             "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
@@ -4386,6 +4398,18 @@
             }
           },
           {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname and description, and against its IP addresses and the\nnames of services running on it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "group_by",
             "in": "query",
             "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
@@ -4558,6 +4582,18 @@
                 "type": "string",
                 "format": "uuid"
               }
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname and description, and against its IP addresses and the\nnames of services running on it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           {
@@ -7465,6 +7501,18 @@
             }
           },
           {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search. Case-insensitive substring match against the service's\nname and definition, and against the name of the host it runs on.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "group_by",
             "in": "query",
             "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
@@ -7761,6 +7809,18 @@
                 "type": "string",
                 "format": "uuid"
               }
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search. Case-insensitive substring match against the service's\nname and definition, and against the name of the host it runs on.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           {
@@ -11239,19 +11299,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-28T19:53:59.979244Z",
+              "created_at": "2026-07-29T00:14:48.332207Z",
               "first_discovery_id": null,
-              "id": "4b8f2a04-d66c-4f06-9702-4154977e9529",
+              "id": "07769572-ee9b-4ad9-b277-dd45ec80ccde",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T19:53:59.979244Z",
+              "last_seen_at": "2026-07-29T00:14:48.332207Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T19:53:59.979244Z",
-              "valid_from": "2026-07-28T19:53:59.979244Z",
+              "updated_at": "2026-07-29T00:14:48.332207Z",
+              "valid_from": "2026-07-29T00:14:48.332207Z",
               "valid_to": null
             }
           },
@@ -12404,19 +12464,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-28T19:53:59.961233Z",
+                      "created_at": "2026-07-29T00:14:48.312940Z",
                       "first_discovery_id": null,
-                      "id": "da432882-f8b4-49f3-824d-73a608d9b2d1",
+                      "id": "3498403e-f363-4093-94f6-01c17c00a719",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-28T19:53:59.961233Z",
+                      "last_seen_at": "2026-07-29T00:14:48.312940Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-28T19:53:59.961233Z",
-                      "valid_from": "2026-07-28T19:53:59.961233Z",
+                      "updated_at": "2026-07-29T00:14:48.312940Z",
+                      "valid_from": "2026-07-29T00:14:48.312940Z",
                       "valid_to": null
                     }
                   ],
@@ -12430,7 +12490,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Beszel Agent",
+                  "service_definition": "Kubernetes",
                   "source": {
                     "type": "Manual"
                   },
@@ -13500,19 +13560,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T19:53:59.973399Z",
+                  "created_at": "2026-07-29T00:14:48.325942Z",
                   "first_discovery_id": null,
-                  "id": "4f273e6f-7f21-447b-9af0-473468e60cc3",
+                  "id": "d6c16ad1-d4b5-46b0-9eaf-af011b6da0d0",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T19:53:59.973399Z",
+                  "last_seen_at": "2026-07-29T00:14:48.325942Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T19:53:59.973399Z",
-                  "valid_from": "2026-07-28T19:53:59.973399Z",
+                  "updated_at": "2026-07-29T00:14:48.325942Z",
+                  "valid_from": "2026-07-29T00:14:48.325942Z",
                   "valid_to": null
                 }
               ],
@@ -13526,7 +13586,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Beszel Agent",
+              "service_definition": "Kubernetes",
               "source": {
                 "type": "Manual"
               },
@@ -15400,19 +15460,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-28T19:53:59.961620Z",
+          "created_at": "2026-07-29T00:14:48.313359Z",
           "first_discovery_id": null,
-          "id": "a30878f6-680f-4dc8-a29d-4a569d9b66af",
+          "id": "2a073993-73c0-40f8-a512-8fd8218752ed",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-28T19:53:59.961620Z",
+          "last_seen_at": "2026-07-29T00:14:48.313359Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-28T19:53:59.961620Z",
-          "valid_from": "2026-07-28T19:53:59.961620Z",
+          "updated_at": "2026-07-29T00:14:48.313359Z",
+          "valid_from": "2026-07-29T00:14:48.313359Z",
           "valid_to": null
         }
       },
@@ -16003,7 +16063,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Beszel Agent",
+              "service_definition": "Kubernetes",
               "tags": [],
               "virtualization": null
             }
@@ -18643,6 +18703,28 @@
           }
         }
       },
+      "GroupCount": {
+        "type": "object",
+        "description": "Size of one group in a grouped list, across every page.",
+        "required": [
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many rows fall in this group in total, not just on this page.",
+            "minimum": 0
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The group's value, rendered as text. `null` for rows whose group key is\nNULL (the \"ungrouped\" bucket)."
+          }
+        }
+      },
       "Host": {
         "allOf": [
           {
@@ -19136,19 +19218,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T19:53:59.960773Z",
+                  "created_at": "2026-07-29T00:14:48.312422Z",
                   "first_discovery_id": null,
-                  "id": "e69ad9f5-ad33-4503-809d-070812349780",
+                  "id": "a530e0d2-623b-48fb-a089-dcd3a687307d",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T19:53:59.960773Z",
+                  "last_seen_at": "2026-07-29T00:14:48.312422Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T19:53:59.960773Z",
-                  "valid_from": "2026-07-28T19:53:59.960773Z",
+                  "updated_at": "2026-07-29T00:14:48.312422Z",
+                  "valid_from": "2026-07-29T00:14:48.312422Z",
                   "valid_to": null
                 }
               ],
@@ -19162,7 +19244,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Beszel Agent",
+              "service_definition": "Kubernetes",
               "source": {
                 "type": "Manual"
               },
@@ -21799,19 +21881,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-28T19:53:59.951039Z",
+                        "created_at": "2026-07-29T00:14:48.301857Z",
                         "first_discovery_id": null,
-                        "id": "bca9303a-7901-4460-8ddd-3a15a5d54421",
+                        "id": "efce437c-ce01-4e5f-afe5-c2a48d1b27cc",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-28T19:53:59.951039Z",
+                        "last_seen_at": "2026-07-29T00:14:48.301857Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-28T19:53:59.951039Z",
-                        "valid_from": "2026-07-28T19:53:59.951039Z",
+                        "updated_at": "2026-07-29T00:14:48.301857Z",
+                        "valid_from": "2026-07-29T00:14:48.301857Z",
                         "valid_to": null
                       }
                     ],
@@ -21825,7 +21907,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Beszel Agent",
+                    "service_definition": "Kubernetes",
                     "source": {
                       "type": "Manual"
                     },
@@ -21946,19 +22028,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-28T19:53:59.972267Z",
+                    "created_at": "2026-07-29T00:14:48.324848Z",
                     "first_discovery_id": null,
-                    "id": "122ffb85-74b3-4cac-a479-b115bcdeb493",
+                    "id": "b72ad196-a59a-4e54-b547-cf29b765067f",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-28T19:53:59.972267Z",
+                    "last_seen_at": "2026-07-29T00:14:48.324848Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-28T19:53:59.972267Z",
-                    "valid_from": "2026-07-28T19:53:59.972267Z",
+                    "updated_at": "2026-07-29T00:14:48.324848Z",
+                    "valid_from": "2026-07-29T00:14:48.324848Z",
                     "valid_to": null
                   }
                 ],
@@ -21972,7 +22054,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Beszel Agent",
+                "service_definition": "Kubernetes",
                 "source": {
                   "type": "Manual"
                 },
@@ -22494,6 +22576,16 @@
           "has_more"
         ],
         "properties": {
+          "group_counts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/GroupCount"
+            },
+            "description": "Size of every group, in the same order the rows are grouped, when the\nrequest specified a `group_by`. Lets a paginated client show a group's\ntrue size instead of the slice of it that happens to be on this page.\nAbsent when the list isn't grouped."
+          },
           "has_more": {
             "type": "boolean",
             "description": "Whether there are more items after this page"
@@ -23699,19 +23791,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-28T19:53:59.961533Z",
+              "created_at": "2026-07-29T00:14:48.313275Z",
               "first_discovery_id": null,
-              "id": "169ed92a-ca3f-47c2-aeaa-457970ae247c",
+              "id": "98dc8a51-da56-4499-92c9-4c5eb0aec060",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T19:53:59.961533Z",
+              "last_seen_at": "2026-07-29T00:14:48.313275Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T19:53:59.961533Z",
-              "valid_from": "2026-07-28T19:53:59.961533Z",
+              "updated_at": "2026-07-29T00:14:48.313275Z",
+              "valid_from": "2026-07-29T00:14:48.313275Z",
               "valid_to": null
             }
           ],
@@ -23725,7 +23817,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Beszel Agent",
+          "service_definition": "Kubernetes",
           "source": {
             "type": "Manual"
           },
@@ -24858,7 +24950,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "1a0587b5-e9ae-4624-9770-a09257b23bfc",
+                  "id": "dda8aaf5-5716-44bd-acae-56b3127568b3",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24868,23 +24960,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "a1ca9a2b-2003-4474-8ab5-f3397c9b379c",
+                  "id": "59ef1031-912a-4f69-85a1-79c513bec1cb",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "a6a3dda3-3c58-48fe-b785-ca7482c601b4",
+                  "id": "965072ba-359c-4e1a-88db-59ea08bf70ce",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "1bf2b86d-5304-41ee-8d67-b220c6ffd847",
+                  "id": "7d4b5e48-12b0-4560-9bbc-bbabb0f6d1b2",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "a1ca9a2b-2003-4474-8ab5-f3397c9b379c",
+                  "id": "59ef1031-912a-4f69-85a1-79c513bec1cb",
                   "rule": "ByHost"
                 }
               ]
@@ -24913,19 +25005,19 @@
             },
             "default": [
               {
-                "id": "0cd3ad45-ccae-41b6-9d90-58a3262d3254",
+                "id": "14912517-a195-42ba-8409-a2c2fe093972",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "7d58d864-01b7-4ab3-9dbf-08bba1436c32",
+                "id": "5ee95856-2661-4cf7-8b97-d838fa65ea3f",
                 "rule": "ByVLAN"
               },
               {
-                "id": "2ad8e384-e80b-4999-8eb5-1c18d370d7fe",
+                "id": "2dd06dd0-bf17-48ef-ae1b-741b943fb80e",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "e6d69728-4ff7-448b-b82c-591ec6ad5f87",
+                "id": "41f12a1b-4d8e-460a-bdc6-2511845f625f",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24943,7 +25035,7 @@
                 }
               },
               {
-                "id": "21bac3aa-8208-452e-9cea-ae2d458be837",
+                "id": "f3e30778-6d70-4d8c-a71f-8851215d4fdf",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24952,15 +25044,15 @@
                 }
               },
               {
-                "id": "6c14321a-e1b1-4206-bf68-2bd7b10cbd74",
+                "id": "c0c717a6-170a-45df-82bf-3279ce216210",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "bd5babf0-3ff3-4d99-92a6-c269e3f45559",
+                "id": "a464c263-62fc-49dc-9a86-317982f9d4c5",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "acbda155-d469-4321-b6bf-0577dbb3b7ac",
+                "id": "2c763cd9-b12d-41dd-88cb-121a8abccd3e",
                 "rule": "ByStack"
               }
             ]

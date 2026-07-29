@@ -80,6 +80,8 @@
 	let tagIds = $state<string[]>([]);
 	// Staleness filter state (server-side: the list is server-paginated)
 	let stale = $state<boolean | null>(null);
+	// Search state (server-side, for the same reason)
+	let search = $state('');
 
 	// Queries
 	const organizationQuery = useOrganizationQuery();
@@ -100,7 +102,8 @@
 			order_by: orderBy,
 			order_direction: orderDirection,
 			tag_ids: tagIds.length > 0 ? tagIds : undefined,
-			stale: stale ?? undefined
+			stale: stale ?? undefined,
+			search: search || undefined
 		})
 	);
 	const networksQuery = useNetworksQuery();
@@ -176,6 +179,11 @@
 		stale = next;
 	}
 
+	// Search change handler for server-side search (debounced by DataControls)
+	function handleSearchChange(query: string) {
+		search = query;
+	}
+
 	// Export modal state
 	let showExportModal = $state(false);
 	let exportParams = $derived({
@@ -229,6 +237,10 @@
 					type: 'string',
 					filterable: true,
 					groupable: true,
+					// The server groups on the virtualizing service's name,
+					// coalescing hosts without one to an empty string.
+					getGroupValue: (host) =>
+						servicesData.find((s) => s.id === host.virtualization?.details.service_id)?.name ?? '',
 					getValue: (host) => {
 						if (host.virtualization) {
 							const virtualizationService = servicesData.find(
@@ -259,6 +271,8 @@
 					filterable: true,
 					groupable: true,
 					filterOptions: networksData.map((n) => n.name),
+					// Displayed as a name, but grouped by id on the server.
+					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
 				},
@@ -444,6 +458,7 @@
 			onOrderChange={handleOrderChange}
 			onTagFilterChange={handleTagFilterChange}
 			onStaleFilterChange={handleStaleFilterChange}
+			onSearchChange={handleSearchChange}
 			onExportClick={() => {
 				showExportModal = true;
 			}}

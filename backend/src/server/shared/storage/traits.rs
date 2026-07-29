@@ -74,6 +74,16 @@ pub trait Storage<T: Storable>: Send + Sync {
     /// For internal count-only needs (dashboards, limit checks) — avoids the
     /// row fetch + tag hydration that `get_paginated`/`get_all` do.
     async fn count(&self, filter: StorableFilter<T>) -> Result<u64, anyhow::Error>;
+    /// Count rows per distinct value of `group_sql` under the same filter,
+    /// ignoring its limit/offset. `group_sql` is the ORDER BY expression the
+    /// list query groups on, so a paginated list can report how big each group
+    /// is in full rather than how much of it landed on the current page.
+    /// Values come back rendered as text, `None` for a SQL NULL group.
+    async fn count_by_group(
+        &self,
+        filter: StorableFilter<T>,
+        group_sql: &str,
+    ) -> Result<Vec<(Option<String>, u64)>, anyhow::Error>;
     async fn update(&self, entity: &mut T) -> Result<T, anyhow::Error>;
     async fn delete(&self, id: &Uuid) -> Result<(), anyhow::Error>;
     async fn create_many(&self, entities: &[T]) -> Result<Vec<T>, anyhow::Error>;
@@ -99,6 +109,21 @@ pub trait Storable: Sized + Clone + Send + Sync + 'static + Default {
 
     /// Deserialization from database
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error>;
+
+    /// SQL boolean fragments that `StorableFilter::text_search` ORs together to
+    /// implement free-text search over this entity. `{}` marks where the bound
+    /// `%pattern%` parameter is substituted; the same parameter is reused by
+    /// every fragment, so each may reference it once.
+    ///
+    /// Fragments are table-qualified and may reach into child tables via
+    /// `EXISTS` — the same latitude `OrderField::join_sql` already takes.
+    ///
+    /// The default is empty, which makes `text_search` match *nothing* rather
+    /// than everything: an entity that has not opted in cannot silently answer
+    /// a search request with its full table.
+    fn search_predicates() -> &'static [&'static str] {
+        &[]
+    }
 
     /// Whether this entity carries SCD2 columns (`valid_from` / `valid_to`).
     /// When `true`, frontend-facing GET handlers automatically filter to live

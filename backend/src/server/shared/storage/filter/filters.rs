@@ -313,6 +313,34 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// Case-insensitive free-text search across `T::search_predicates()`.
+    ///
+    /// The entity's fragments are OR'd together and each `{}` is replaced with
+    /// the one bound `%pattern%` parameter, so a multi-column search costs a
+    /// single bind. LIKE wildcards typed by the user are escaped: searching
+    /// `100%` looks for that literal string rather than matching every row.
+    ///
+    /// Matches nothing when the query is blank or the entity declares no
+    /// predicates. Falling through to "no condition" would answer an
+    /// unsupported search with the entire table, which reads as success.
+    pub fn text_search(mut self, query: &str) -> Self {
+        let predicates = T::search_predicates();
+        let trimmed = query.trim();
+
+        if predicates.is_empty() || trimmed.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+
+        let param = format!("${}", self.values.len() + 1);
+        let clauses: Vec<String> = predicates.iter().map(|p| p.replace("{}", &param)).collect();
+
+        self.conditions.push(format!("({})", clauses.join(" OR ")));
+        self.values
+            .push(SqlValue::String(format!("%{}%", escape_like(trimmed))));
+        self
+    }
+
     pub fn service_definition_not_in(mut self, definitions: &[String]) -> Self {
         if definitions.is_empty() {
             return self;
@@ -808,4 +836,18 @@ impl<T: Storable> StorableFilter<T> {
     pub fn values(&self) -> &[SqlValue] {
         &self.values
     }
+}
+
+/// Neutralize LIKE wildcards in user input so they match literally.
+/// Postgres' default LIKE escape character is a backslash, so no `ESCAPE`
+/// clause is needed alongside this.
+fn escape_like(input: &str) -> String {
+    let mut escaped = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if matches!(ch, '\\' | '%' | '_') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
 }

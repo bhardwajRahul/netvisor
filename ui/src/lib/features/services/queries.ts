@@ -39,19 +39,18 @@ export interface ServicesQueryParams {
 	/** `true` returns only services discovery hasn't observed within their
 	 * network's staleness window; omit for no staleness constraint. */
 	stale?: boolean;
+	/** Free-text search across service name, service definition, and the name
+	 * of the host the service runs on. */
+	search?: string;
 	/** Exclude services belonging to these categories. */
 	exclude_categories?: components['schemas']['ServiceCategory'][];
 }
 
 /**
- * Pagination metadata from API response
+ * Pagination metadata from API response. Derived from the generated schema so
+ * fields the server adds (e.g. per-group totals) reach consumers automatically.
  */
-export interface PaginationMeta {
-	total_count: number;
-	limit: number;
-	offset: number;
-	has_more: boolean;
-}
+export type PaginationMeta = components['schemas']['PaginationMeta'];
 
 /**
  * Result of a paginated query
@@ -83,6 +82,7 @@ export function useServicesQuery(
 			order_direction,
 			tag_ids,
 			stale,
+			search,
 			exclude_categories
 		} = params;
 
@@ -99,6 +99,7 @@ export function useServicesQuery(
 					order_direction,
 					tag_ids,
 					stale,
+					search,
 					exclude_categories
 				}
 			],
@@ -115,6 +116,7 @@ export function useServicesQuery(
 							order_direction,
 							tag_ids,
 							stale,
+							search,
 							exclude_categories
 						}
 					}

@@ -43,6 +43,20 @@ impl Storable for Service {
         "services"
     }
 
+    /// A service is most often looked up by its own name or by what it is
+    /// (`service_definition`, e.g. "Postgres"), but "everything on that box"
+    /// is just as common a reflex — hence the host-name fragment. `EXISTS`
+    /// keeps the row count intact for the paginated `COUNT(*)`. Services carry
+    /// no description column, so there is nothing else on the row to match.
+    fn search_predicates() -> &'static [&'static str] {
+        &[
+            "services.name ILIKE {}",
+            "services.service_definition ILIKE {}",
+            "EXISTS (SELECT 1 FROM hosts h WHERE h.id = services.host_id \
+             AND h.valid_to IS NULL AND h.name ILIKE {})",
+        ]
+    }
+
     const HAS_SCD2: bool = true;
 
     fn is_live_row(&self) -> bool {

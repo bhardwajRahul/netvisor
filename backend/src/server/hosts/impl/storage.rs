@@ -41,6 +41,27 @@ impl Storable for Host {
         "hosts"
     }
 
+    /// Spans what an operator actually types when hunting for a host: its
+    /// name/hostname, a snippet of its description, an IP, or the name of
+    /// something running on it.
+    ///
+    /// Children are matched with `EXISTS` rather than a JOIN so a host with
+    /// many IPs or services is not duplicated in the result set — which would
+    /// also corrupt the paginated `COUNT(*)`. The `valid_to IS NULL` guards
+    /// keep closed SCD2 copies from matching, so a host stops being findable
+    /// by an IP it no longer holds.
+    fn search_predicates() -> &'static [&'static str] {
+        &[
+            "hosts.name ILIKE {}",
+            "hosts.hostname ILIKE {}",
+            "hosts.description ILIKE {}",
+            "EXISTS (SELECT 1 FROM ip_addresses ia WHERE ia.host_id = hosts.id \
+             AND ia.valid_to IS NULL AND host(ia.ip_address) ILIKE {})",
+            "EXISTS (SELECT 1 FROM services s WHERE s.host_id = hosts.id \
+             AND s.valid_to IS NULL AND s.name ILIKE {})",
+        ]
+    }
+
     const HAS_SCD2: bool = true;
 
     fn is_live_row(&self) -> bool {
