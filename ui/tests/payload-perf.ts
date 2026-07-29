@@ -57,12 +57,22 @@ interface ScenarioReport {
 	requests: number;
 	totalBodyBytes: number;
 	totalWireBytes: number;
-	/** Aggregated by path with query strings collapsed. */
+	/**
+	 * API traffic only. This is the headline number: against a dev server the
+	 * totals above are dominated by unbundled JS modules (tens of MB), which has
+	 * nothing to do with what this work changed.
+	 */
+	apiRequests: number;
+	apiBodyBytes: number;
+	apiWireBytes: number;
+	/** Aggregated by path with query strings collapsed — API paths only. */
 	byPath: Record<string, PathTotals>;
 	/** Every `/api/v1/hosts` call, with its query, so regressions are legible. */
 	hostRequests: { query: string; bodyBytes: number }[];
 	/** Host list calls that are unpaginated AND carry nested children. */
 	unboundedNestedHostRequests: string[];
+	/** Topology bundle fetches — should be zero until the topology tab is opened. */
+	topologyDataRequests: number;
 }
 
 /**
@@ -72,8 +82,10 @@ interface ScenarioReport {
 function startRecording(page: Page) {
 	const records: RequestRecord[] = [];
 	const pending: Promise<void>[] = [];
+	const activity = { lastAt: Date.now() };
 
 	const onResponse = (response: import('@playwright/test').Response) => {
+		activity.lastAt = Date.now();
 		pending.push(
 			(async () => {
 				const url = new URL(response.url());
@@ -107,6 +119,24 @@ function startRecording(page: Page) {
 	page.on('response', onResponse);
 
 	return {
+		/**
+		 * Wait until no response has arrived for `idleMs`.
+		 *
+		 * Deliberately not `waitForLoadState('networkidle')`: the app holds SSE
+		 * streams open (discovery and live topology updates), so by Playwright's
+		 * definition the network is never idle and that wait times out. Response
+		 * events fire once per response, not per SSE chunk, so quiescence is the
+		 * right signal here.
+		 */
+		async waitForQuiet(idleMs = 2500, maxMs = 45_000): Promise<void> {
+			const deadline = Date.now() + maxMs;
+			for (;;) {
+				const sinceLast = Date.now() - activity.lastAt;
+				if (sinceLast >= idleMs) return;
+				if (Date.now() >= deadline) return;
+				await page.waitForTimeout(Math.min(250, idleMs - sinceLast));
+			}
+		},
 		async stop(): Promise<RequestRecord[]> {
 			page.off('response', onResponse);
 			await Promise.all(pending);
@@ -129,8 +159,10 @@ function isUnboundedNestedHostRequest(record: RequestRecord): boolean {
 }
 
 function summarize(name: string, records: RequestRecord[]): ScenarioReport {
+	const apiRecords = records.filter((r) => r.path.startsWith('/api/'));
+
 	const byPath: Record<string, PathTotals> = {};
-	for (const r of records) {
+	for (const r of apiRecords) {
 		const totals = (byPath[r.path] ??= { requests: 0, bodyBytes: 0, wireBytes: 0 });
 		totals.requests += 1;
 		totals.bodyBytes += r.bodyBytes;
@@ -142,7 +174,11 @@ function summarize(name: string, records: RequestRecord[]): ScenarioReport {
 		requests: records.length,
 		totalBodyBytes: records.reduce((sum, r) => sum + r.bodyBytes, 0),
 		totalWireBytes: records.reduce((sum, r) => sum + r.wireBytes, 0),
+		apiRequests: apiRecords.length,
+		apiBodyBytes: apiRecords.reduce((sum, r) => sum + r.bodyBytes, 0),
+		apiWireBytes: apiRecords.reduce((sum, r) => sum + r.wireBytes, 0),
 		byPath,
+		topologyDataRequests: records.filter((r) => r.path === '/api/v1/topology/data').length,
 		hostRequests: records
 			.filter((r) => r.path === '/api/v1/hosts')
 			.map((r) => ({ query: r.query, bodyBytes: r.bodyBytes })),
@@ -156,16 +192,21 @@ const kb = (bytes: number) => `${Math.round(bytes / 1024)} KB`;
 
 function logScenario(report: ScenarioReport) {
 	console.log(`\n--- ${report.name} ---`);
-	console.log(`  Requests:        ${report.requests}`);
-	console.log(`  Decoded bytes:   ${kb(report.totalBodyBytes)}`);
-	console.log(`  On-wire bytes:   ${kb(report.totalWireBytes)}`);
+	console.log(`  API requests:    ${report.apiRequests}`);
+	console.log(`  API decoded:     ${kb(report.apiBodyBytes)}`);
+	console.log(`  API on-wire:     ${kb(report.apiWireBytes)}`);
+	console.log(`  (all traffic incl. assets: ${report.requests} req, ${kb(report.totalBodyBytes)})`);
 	const heaviest = Object.entries(report.byPath)
 		.sort((a, b) => b[1].bodyBytes - a[1].bodyBytes)
 		.slice(0, 8);
-	console.log('  Heaviest paths:');
+	if (heaviest.length > 0) console.log('  Heaviest API paths:');
 	for (const [path, totals] of heaviest) {
 		console.log(`    ${kb(totals.bodyBytes).padStart(9)}  ${totals.requests}x  ${path}`);
 	}
+	for (const h of report.hostRequests) {
+		console.log(`  /api/v1/hosts ${h.query || '(no query)'} → ${kb(h.bodyBytes)}`);
+	}
+	console.log(`  topology/data fetches: ${report.topologyDataRequests}`);
 	if (report.unboundedNestedHostRequests.length > 0) {
 		console.log(`  UNBOUNDED NESTED HOST REQUESTS: ${report.unboundedNestedHostRequests.length}`);
 		for (const q of report.unboundedNestedHostRequests) console.log(`    ${q}`);
@@ -186,21 +227,63 @@ test('payload cost on boot, hosts tab, and during a scan', async ({ page, contex
 	// captures what the whole app asks for, not just the landing tab.
 	const boot = startRecording(page);
 	await page.goto('/');
-	await page.waitForLoadState('networkidle');
+	await page.waitForSelector('nav', { timeout: 60_000 });
+	await boot.waitForQuiet();
 	const bootReport = summarize('cold boot to interactive', await boot.stop());
 	scenarios.push(bootReport);
 
-	// --- Scenario 2: hosts tab, one page ------------------------------------
-	// The hosts tab is the one surface that legitimately needs nested children, so
-	// this should show a paginated call, not an unbounded one.
+	// --- Scenario 2: switch to the hosts tab --------------------------------
+	// An in-app tab switch, not a reload: the point is what a *navigation* costs
+	// once the app is up. The hosts tab is the one surface that legitimately needs
+	// nested children, so this should show a paginated call, not an unbounded one.
 	const hostsTab = startRecording(page);
-	await page.goto('/#hosts');
-	await page.waitForLoadState('networkidle');
-	scenarios.push(summarize('hosts tab, first page', await hostsTab.stop()));
+	await page.getByRole('button', { name: 'Hosts', exact: true }).click();
+	await hostsTab.waitForQuiet();
+	scenarios.push(summarize('switch to hosts tab', await hostsTab.stop()));
 
-	// --- Scenario 3: refetch traffic during a live scan ---------------------
-	// Opt-in: needs a discovery actually running, since the cost comes from the
-	// SSE stream's throttled invalidations.
+	// --- Scenario 3: switch to the topology tab -----------------------------
+	// The topology bundle is gated on `isActive`, so it should not have loaded
+	// during boot and should load here instead.
+	const topologyTab = startRecording(page);
+	await page.getByRole('button', { name: 'Topology', exact: true }).click();
+	await topologyTab.waitForQuiet();
+	scenarios.push(summarize('switch to topology tab', await topologyTab.stop()));
+
+	// --- Scenario 4: the cost of ONE refetch of the active query set ---------
+	//
+	// This is the per-tick cost of the discovery SSE stream's invalidation, which
+	// fires on a 1s throttle for the whole of a scan — so multiply this by up to 60
+	// for a minute of scanning.
+	//
+	// Measured via a window-focus cycle rather than a real scan: the client sets
+	// `refetchOnWindowFocus`, so focusing refetches exactly the same set an
+	// invalidation would (active + stale queries). That makes this runnable without
+	// a connected daemon, which a real scan requires. Back on Home first, because
+	// the realistic case is a scan running while the user is not watching the graph.
+	await page.getByRole('button', { name: 'Home', exact: true }).click();
+	await page.waitForTimeout(31_000); // exceed the 30s default staleTime
+	const refetch = startRecording(page);
+	await page.evaluate(() => {
+		// TanStack's focusManager listens for `visibilitychange` on window and reads
+		// `document.visibilityState`, so both have to be driven together.
+		const setVisibility = (state: 'hidden' | 'visible') => {
+			Object.defineProperty(document, 'visibilityState', {
+				value: state,
+				configurable: true
+			});
+			window.dispatchEvent(new Event('visibilitychange'));
+		};
+		setVisibility('hidden');
+		setVisibility('visible');
+	});
+	await refetch.waitForQuiet();
+	scenarios.push(
+		summarize('one refetch of the active set (≈ one SSE invalidation tick)', await refetch.stop())
+	);
+
+	// --- Scenario 5: real scan, opt-in --------------------------------------
+	// Needs a genuinely connected daemon. Prefer this over scenario 4 when one is
+	// available, since it measures the real thing rather than a proxy.
 	const scanSeconds = Number(process.env.SCAN_SECONDS ?? 0);
 	if (scanSeconds > 0) {
 		const scan = startRecording(page);
@@ -221,11 +304,14 @@ test('payload cost on boot, hosts tab, and during a scan', async ({ page, contex
 	for (const scenario of scenarios) logScenario(scenario);
 	console.log(`\nWrote ${OUTPUT_PATH}`);
 
-	// The regression gate. Everything else in this file is measurement; this is the
-	// assertion that keeps the org-wide nested host fetch from creeping back onto
-	// the boot path.
+	// The regression gates. Everything else in this file is measurement; these are
+	// the assertions that keep the cost from creeping back onto the boot path.
 	expect(
 		bootReport.unboundedNestedHostRequests,
 		'no unpaginated nested /api/v1/hosts request should fire on cold boot'
 	).toEqual([]);
+	expect(
+		bootReport.topologyDataRequests,
+		'the topology bundle is gated on isActive, so it must not load while another tab is showing'
+	).toBe(0);
 });
