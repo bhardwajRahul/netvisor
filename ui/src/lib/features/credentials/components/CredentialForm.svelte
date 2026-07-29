@@ -320,9 +320,13 @@
 				// matching the wizard's handleAddCredential; host-only types to Hosts.
 				targetMode = canNetwork ? 'broadcast' : 'per_host';
 				// When the daemon host is the only per-host target, preselect it (the
-				// disabled 127.0.0.1 row) so there's nothing for the user to add.
+				// disabled 127.0.0.1 row) so there's nothing for the user to add. Skipped
+				// when the credential is already assigned to a host: the assignment is
+				// listed above, and this row is local-only (never emitted), so it would
+				// show a removable duplicate of it that reappears on every reopen.
 				if (
 					targetMode === 'per_host' &&
+					lockedHosts.length === 0 &&
 					supported.includes('DaemonHost') &&
 					!supported.includes('Hosts')
 				) {

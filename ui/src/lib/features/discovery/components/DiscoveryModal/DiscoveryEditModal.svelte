@@ -549,6 +549,32 @@
 					lockedHosts: assignedHosts
 				}));
 			pendingCredentials = [...merged, ...lockedOnly];
+
+			// TEMPORARY DIAGNOSTIC — remove once the missing-credential report is resolved.
+			// Every value the junction lookup depends on, so the failing link is visible
+			// rather than inferred.
+			console.debug('[discovery-creds]', {
+				discoveryNetworkId: formData.network_id,
+				hostsProvided: hosts.length,
+				hostsOnThisNetwork: networkHostIds.size,
+				credentialsFetched: allCredentialsQuery.data.length,
+				credentialAssignments: allCredentialsQuery.data.map((c) => ({
+					name: c.name,
+					hostIds: (c.host_assignments ?? []).map((a) => a.host_id),
+					onThisNetwork: (c.host_assignments ?? []).some((a) => networkHostIds.has(a.host_id))
+				})),
+				matchedByJunction: [...assignedByCredential.values()].map(
+					({ credential, assignedHosts }) => ({
+						name: credential.name,
+						hosts: assignedHosts.map((h) => h.name)
+					})
+				),
+				rendered: pendingCredentials.map((p) => ({
+					name: p.credential.name,
+					lockedHosts: (p.lockedHosts ?? []).map((h) => h.name),
+					targetIps: p.targetIps
+				}))
+			});
 		}
 		// Always open straight on the wizard (the Integrations-grid picker is skipped).
 		credentialSubStep = 'wizard';
