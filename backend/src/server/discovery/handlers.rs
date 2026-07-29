@@ -9,11 +9,22 @@ use crate::server::{
     discovery::r#impl::{base::Discovery, types::DiscoveryType},
     networks::r#impl::Network,
     shared::{
-        handlers::traits::{create_handler, update_handler},
+        extractors::Query,
+        handlers::{
+            ordering::OrderField,
+            query::{FilterQueryExtractor, OrderDirection, PaginationParams},
+            traits::{create_handler, update_handler},
+        },
         services::traits::CrudService,
-        storage::traits::Entity,
+        storage::{
+            filter::StorableFilter,
+            traits::{Entity, Storable},
+        },
         types::{
-            api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse},
+            api::{
+                ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse,
+                PaginatedApiResponse,
+            },
             error_codes::ErrorCode,
         },
     },
@@ -28,15 +39,199 @@ use axum::{
     routing::get,
 };
 use futures::Stream;
+use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, sync::Arc};
 use tokio::sync::broadcast;
+use utoipa::IntoParams;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
+
+// ============================================================================
+// Discovery Ordering
+// ============================================================================
+
+/// Fields that discoveries can be ordered/grouped by.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DiscoveryOrderField {
+    /// Newest-first is the default reading of a run history, so this is the one
+    /// people reach for. Kept as the enum default too.
+    #[default]
+    CreatedAt,
+    Name,
+    UpdatedAt,
+    DaemonId,
+    NetworkId,
+    /// `discovery_type` is JSONB, so this reads its tag the way `json_field_eq` does.
+    DiscoveryType,
+}
+
+impl OrderField for DiscoveryOrderField {
+    fn to_sql(&self) -> &'static str {
+        match self {
+            Self::CreatedAt => "discovery.created_at",
+            Self::Name => "discovery.name",
+            Self::UpdatedAt => "discovery.updated_at",
+            Self::DaemonId => "discovery.daemon_id",
+            Self::NetworkId => "discovery.network_id",
+            Self::DiscoveryType => "discovery.discovery_type->>'type'",
+        }
+    }
+}
+
+// ============================================================================
+// Discovery Filter Query
+// ============================================================================
+
+/// Query parameters for filtering and ordering discoveries.
+#[derive(Deserialize, Default, Debug, Clone, IntoParams)]
+pub struct DiscoveryFilterQuery {
+    /// Filter by network ID
+    pub network_id: Option<Uuid>,
+    /// Filter by daemon ID
+    pub daemon_id: Option<Uuid>,
+    /// `true` returns only completed runs (the history view), `false` only the
+    /// configurations that produce them. Omit for both.
+    pub historical: Option<bool>,
+    /// Free-text search across the discovery's name and the name of the daemon
+    /// that runs it.
+    pub search: Option<String>,
+    /// Primary ordering field (used for grouping). Always sorts ASC to keep groups together.
+    pub group_by: Option<DiscoveryOrderField>,
+    /// Secondary ordering field (sorting within groups or standalone sort).
+    pub order_by: Option<DiscoveryOrderField>,
+    /// Direction for order_by field (group_by always uses ASC).
+    pub order_direction: Option<OrderDirection>,
+    /// Maximum number of results to return (1-1000, default: 50). Use 0 for no limit.
+    #[param(minimum = 0, maximum = 1000)]
+    pub limit: Option<u32>,
+    /// Number of results to skip. Default: 0.
+    #[param(minimum = 0)]
+    pub offset: Option<u32>,
+}
+
+impl DiscoveryFilterQuery {
+    /// Build the ORDER BY clause.
+    pub fn apply_ordering(
+        &self,
+        filter: StorableFilter<Discovery>,
+    ) -> (StorableFilter<Discovery>, String) {
+        crate::server::shared::handlers::ordering::apply_ordering(
+            self.group_by,
+            self.order_by,
+            self.order_direction,
+            filter,
+            "discovery.created_at DESC",
+        )
+    }
+}
+
+impl FilterQueryExtractor for DiscoveryFilterQuery {
+    fn apply_to_filter<T: Storable>(
+        &self,
+        filter: StorableFilter<T>,
+        user_network_ids: &[Uuid],
+        _user_organization_id: Uuid,
+    ) -> StorableFilter<T> {
+        let mut filter = match self.network_id {
+            Some(id) if user_network_ids.contains(&id) => filter.network_ids(&[id]),
+            Some(_) => filter.network_ids(&[]),
+            None => filter.network_ids(user_network_ids),
+        };
+        filter = match self.daemon_id {
+            Some(id) => filter.uuid_column("daemon_id", &id),
+            None => filter,
+        };
+        filter = match self.historical {
+            Some(true) => filter.historical_discovery(),
+            Some(false) => filter.exclude_historical(),
+            None => filter,
+        };
+
+        filter
+    }
+
+    fn pagination(&self) -> PaginationParams {
+        PaginationParams {
+            limit: self.limit,
+            offset: self.offset,
+        }
+    }
+}
+
+/// List all discoveries
+///
+/// Returns discoveries the authenticated user has access to. The run history
+/// grows without bound, so this is paginated and ordered server-side rather
+/// than filtered in the browser.
+#[utoipa::path(
+    get,
+    path = "",
+    tag = Discovery::ENTITY_NAME_PLURAL,
+    operation_id = "get_all_discoveries",
+    summary = "List discoveries",
+    params(DiscoveryFilterQuery),
+    responses(
+        (status = 200, description = "List of discoveries", body = PaginatedApiResponse<Discovery>),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn get_all_discoveries(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Viewer>,
+    Query(query): Query<DiscoveryFilterQuery>,
+) -> ApiResult<Json<PaginatedApiResponse<Discovery>>> {
+    let network_ids = auth.network_ids();
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    let base_filter = StorableFilter::<Discovery>::new_from_network_ids(&network_ids);
+    let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
+
+    // Server-side because the list is paginated: a client-side search would
+    // only ever match the page already loaded.
+    let filter = match query.search.as_deref() {
+        Some(search) if !search.trim().is_empty() => filter.text_search(search),
+        _ => filter,
+    };
+
+    let pagination = query.pagination();
+    let filter = pagination.apply_to_filter(filter);
+    let (filter, order_by) = query.apply_ordering(filter);
+
+    // Grouped lists report each group's full size, not the slice on this page.
+    let group_counts = match query.group_by {
+        Some(group_field) => Some(
+            state
+                .services
+                .discovery_service
+                .count_by_group(filter.clone(), group_field.to_sql())
+                .await?,
+        ),
+        None => None,
+    };
+
+    let result = state
+        .services
+        .discovery_service
+        .get_paginated_ordered(filter, &order_by)
+        .await?;
+
+    let limit = pagination.effective_limit().unwrap_or(0);
+    let offset = pagination.effective_offset();
+
+    let response = PaginatedApiResponse::success(result.items, result.total_count, limit, offset);
+
+    Ok(Json(match group_counts {
+        Some(counts) => response.with_group_counts(counts),
+        None => response,
+    }))
+}
 
 // Generated handlers for operations that use generic CRUD logic
 mod generated {
     use super::*;
-    crate::crud_get_all_handler!(Discovery);
     crate::crud_get_by_id_handler!(Discovery);
     crate::crud_delete_handler!(Discovery);
     crate::crud_bulk_delete_handler!(Discovery);
@@ -55,7 +250,7 @@ fn active_session_error() -> ApiError {
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
-        .routes(routes!(generated::get_all, create_discovery))
+        .routes(routes!(get_all_discoveries, create_discovery))
         .routes(routes!(
             generated::get_by_id,
             update_discovery,

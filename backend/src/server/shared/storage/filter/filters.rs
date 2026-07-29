@@ -815,6 +815,50 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// Entities exposed on one of `ports` and/or over `protocol`, matched
+    /// through the `bindings` junction.
+    ///
+    /// `IN (subquery)` rather than a JOIN so a service bound to several ports is
+    /// still one row — a JOIN would repeat it and inflate the paginated
+    /// `COUNT(*)`. Both predicates are evaluated against the same port row, so
+    /// asking for 53 over TCP cannot be satisfied by a service that has a 53/UDP
+    /// binding and some unrelated TCP one.
+    pub fn bound_to_port(mut self, ports: &[u16], protocol: Option<TransportProtocol>) -> Self {
+        let mut predicates = Vec::new();
+
+        if !ports.is_empty() {
+            let placeholders: Vec<String> = ports
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("${}", self.values.len() + i + 1))
+                .collect();
+            predicates.push(format!("p.port_number IN ({})", placeholders.join(", ")));
+            for port in ports {
+                self.values.push(SqlValue::I32(i32::from(*port)));
+            }
+        }
+
+        if let Some(protocol) = protocol {
+            self.values.push(SqlValue::String(protocol.to_string()));
+            predicates.push(format!("p.protocol = ${}", self.values.len()));
+        }
+
+        if predicates.is_empty() {
+            return self;
+        }
+
+        let col = self.qualify_column("id");
+        self.conditions.push(format!(
+            "{} IN (SELECT b.service_id FROM bindings b \
+             JOIN ports p ON b.port_id = p.id \
+             WHERE b.valid_to IS NULL AND p.valid_to IS NULL AND {})",
+            col,
+            predicates.join(" AND ")
+        ));
+
+        self
+    }
+
     pub fn to_where_clause(&self) -> String {
         if self.conditions.is_empty() {
             String::new()

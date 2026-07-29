@@ -207,7 +207,8 @@
 	// Define field configuration for the DataTableControls
 	const credentialFields = defineFields<Credential, CredentialOrderField>(
 		{
-			name: { label: common_name(), type: 'string', searchable: true },
+			// Identity field: grouping by it would render a header per credential.
+			name: { label: common_name(), type: 'string', searchable: true, groupable: false },
 			created_at: { label: common_created(), type: 'date' },
 			updated_at: { label: common_updated(), type: 'date' }
 		},
@@ -216,7 +217,11 @@
 				key: 'credential_type',
 				label: 'Type',
 				type: 'string',
+				searchable: true,
 				filterable: true,
+				// Type is the axis credentials are actually organized by.
+				groupable: true,
+				sortable: true,
 				filterMode: 'include',
 				filterOptions: credentialTypes.getItems().map((t) => t.name ?? t.id),
 				getValue: (item: Credential) => credentialTypes.getName(getCredentialTypeId(item))
@@ -225,6 +230,7 @@
 				key: 'target',
 				label: common_scope(),
 				type: 'array',
+				searchable: true,
 				filterable: true,
 				groupable: true,
 				filterMode: 'include',

@@ -150,6 +150,7 @@
 			key: 'permissions',
 			label: common_role(),
 			type: 'string',
+			searchable: true,
 			filterable: true,
 			groupable: true,
 			getValue(item) {
@@ -160,6 +161,7 @@
 			key: 'oidc_provider',
 			label: users_authMethod(),
 			type: 'string',
+			searchable: true,
 			filterable: true,
 			groupable: true,
 			getValue(item) {

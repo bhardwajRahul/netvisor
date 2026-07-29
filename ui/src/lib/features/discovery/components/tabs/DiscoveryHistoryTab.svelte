@@ -4,17 +4,17 @@
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import type { Discovery } from '../../types/base';
-	import { discoveryFields } from '../../queries';
 	import DiscoveryEditModal from '../DiscoveryModal/DiscoveryEditModal.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import DiscoveryHistoryCard from '../cards/DiscoveryHistoryCard.svelte';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
-	import type { FieldConfig } from '$lib/shared/components/data/types';
+	import { defineFields } from '$lib/shared/components/data/types';
 	import {
-		useDiscoveriesQuery,
+		useDiscoveryHistoryQuery,
 		useCreateDiscoveryMutation,
 		useUpdateDiscoveryMutation,
-		useBulkDeleteDiscoveriesMutation
+		useBulkDeleteDiscoveriesMutation,
+		type DiscoveryHistoryQueryParams
 	} from '../../queries';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
@@ -27,8 +27,15 @@
 	import { modalState, openModal, closeModal } from '$lib/shared/stores/modal-registry';
 	import {
 		common_created,
+		common_daemon,
 		common_duration,
+		common_name,
+		common_network,
+		common_type,
 		common_unknown,
+		common_unknownEntity,
+		common_unknownNetwork,
+		common_updated,
 		daemons_installPromptDiscoveries,
 		discovery_confirmDeleteHistorical,
 		discovery_finishedAt,
@@ -39,6 +46,8 @@
 	} from '$lib/paraglide/messages';
 
 	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
+	type DiscoveryOrderField = components['schemas']['DiscoveryOrderField'];
+	type OrderDirection = components['schemas']['OrderDirection'];
 
 	let { isReadOnly = false, isActive = false }: TabProps = $props();
 
@@ -46,14 +55,30 @@
 	const organizationQuery = useOrganizationQuery();
 	let onboarding = $derived((organizationQuery.data?.onboarding ?? []) as OnboardingOperation[]);
 
+	// Pagination state (managed by DataControls, updated via callback)
+	let pageSize = $state(20);
+	let currentPage = $state(1);
+
+	// Ordering state (server-side)
+	let groupBy = $state<DiscoveryOrderField | undefined>(undefined);
+	let orderBy = $state<DiscoveryOrderField | undefined>(undefined);
+	let orderDirection = $state<OrderDirection>('asc');
+
+	// Search state (server-side: the run history is paginated, so a client-side
+	// search would only ever match the page in hand)
+	let search = $state('');
+
 	// Queries
-	// Gated on `isActive`. Every tab is mounted at once (inactive ones hidden with
-	// CSS), so an ungated list query fetches on app boot and refetches whenever the
-	// discovery SSE stream invalidates it — for a tab nobody is looking at. This
-	// only works because *every* subscriber to `queryKeys.discovery.all` among the
-	// always-mounted components is gated the same way (the scheduled tab); one
-	// ungated subscriber keeps the query active for all of them.
-	const discoveriesQuery = useDiscoveriesQuery(() => isActive);
+	const discoveriesQuery = useDiscoveryHistoryQuery(
+		(): DiscoveryHistoryQueryParams => ({
+			limit: pageSize,
+			offset: (currentPage - 1) * pageSize,
+			group_by: groupBy,
+			order_by: orderBy,
+			order_direction: orderDirection,
+			search: search || undefined
+		})
+	);
 	const daemonsQuery = useDaemonsQuery();
 	const networksQuery = useNetworksQuery();
 
@@ -63,7 +88,8 @@
 	const bulkDeleteDiscoveriesMutation = useBulkDeleteDiscoveriesMutation();
 
 	// Derived data
-	let discoveriesData = $derived(discoveriesQuery.data ?? []);
+	let discoveriesData = $derived(discoveriesQuery.data?.items ?? []);
+	let discoveriesPagination = $derived(discoveriesQuery.data?.pagination ?? null);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
 
@@ -80,11 +106,31 @@
 
 	// Host names are decoration inside the modal, so the list must not block on
 	// them — and with no daemons the by-ids query is disabled, which in TanStack
-	// means it stays `isPending` forever.
+	// means it stays `isPending` forever. The server already returns only
+	// historical rows (`historical: true`), so no client-side filter is needed.
 	let isLoading = $derived(discoveriesQuery.isPending || daemonsQuery.isPending);
-	let historicalDiscoveries = $derived(
-		discoveriesData.filter((d) => d.run_type.type === 'Historical')
-	);
+
+	// Page change handler for server-side pagination
+	function handlePageChange(page: number, newPageSize: number) {
+		currentPage = page;
+		pageSize = newPageSize;
+	}
+
+	// Order change handler for server-side ordering
+	function handleOrderChange(
+		groupField: string | null,
+		orderField: string | null,
+		direction: 'asc' | 'desc'
+	) {
+		groupBy = (groupField as DiscoveryOrderField) ?? undefined;
+		orderBy = (orderField as DiscoveryOrderField) ?? undefined;
+		orderDirection = direction;
+	}
+
+	// Search change handler for server-side search (debounced by DataControls)
+	function handleSearchChange(query: string) {
+		search = query;
+	}
 
 	let showDiscoveryModal = $state(false);
 	let editingDiscovery: Discovery | null = $state(null);
@@ -137,52 +183,84 @@
 		await downloadCsv('Discovery', {});
 	}
 
-	let fields: FieldConfig<Discovery>[] = $derived([
-		...discoveryFields(daemonsData, networksData),
-		{
-			key: 'started_at',
-			label: discovery_startedAt(),
-			type: 'string',
-			searchable: true,
-			getValue: (item) => {
-				const results = item.run_type.type == 'Historical' ? item.run_type.results : null;
-				return results && results.started_at
-					? formatTimestamp(results.started_at)
-					: common_unknown();
-			}
-		},
-		{
-			key: 'finished_at',
-			label: discovery_finishedAt(),
-			type: 'string',
-			searchable: true,
-			getValue: (item) => {
-				const results = item.run_type.type == 'Historical' ? item.run_type.results : null;
-				return results && results.finished_at
-					? formatTimestamp(results.finished_at)
-					: common_unknown();
-			}
-		},
-		{
-			key: 'duration',
-			label: common_duration(),
-			type: 'string',
-			searchable: true,
-			getValue: (item) => {
-				const results = item.run_type.type == 'Historical' ? item.run_type.results : null;
-				if (results && results.finished_at && results.started_at) {
-					return formatDuration(results.started_at, results.finished_at);
+	let fields = $derived(
+		defineFields<Discovery, DiscoveryOrderField>(
+			{
+				// Identity field: grouping by it would render a header per run.
+				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+				daemon_id: {
+					label: common_daemon(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					// Displayed as a name, but grouped by id on the server.
+					getGroupValue: (item) => item.daemon_id,
+					getValue: (item) =>
+						daemonsData.find((d) => d.id === item.daemon_id)?.name ??
+						common_unknownEntity({ entity: common_daemon() })
+				},
+				network_id: {
+					label: common_network(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					getGroupValue: (item) => item.network_id,
+					getValue: (item) =>
+						networksData.find((n) => n.id === item.network_id)?.name ?? common_unknownNetwork()
+				},
+				discovery_type: {
+					label: common_type(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					getValue: (item) => item.discovery_type.type
+				},
+				created_at: { label: common_created(), type: 'date' },
+				updated_at: { label: common_updated(), type: 'date' }
+			},
+			[
+				// Derived from the run's JSONB results, so these are display-only:
+				// there is no column to sort or group on.
+				{
+					key: 'started_at',
+					label: discovery_startedAt(),
+					type: 'string',
+					getValue: (item) => {
+						const results = item.run_type.type == 'Historical' ? item.run_type.results : null;
+						return results && results.started_at
+							? formatTimestamp(results.started_at)
+							: common_unknown();
+					}
+				},
+				{
+					key: 'finished_at',
+					label: discovery_finishedAt(),
+					type: 'string',
+					getValue: (item) => {
+						const results = item.run_type.type == 'Historical' ? item.run_type.results : null;
+						return results && results.finished_at
+							? formatTimestamp(results.finished_at)
+							: common_unknown();
+					}
+				},
+				{
+					key: 'duration',
+					label: common_duration(),
+					type: 'string',
+					getValue: (item) => {
+						const results = item.run_type.type == 'Historical' ? item.run_type.results : null;
+						if (results && results.finished_at && results.started_at) {
+							return formatDuration(results.started_at, results.finished_at);
+						}
+						return common_unknown();
+					}
 				}
-				return common_unknown();
-			}
-		},
-		{
-			key: 'created_at',
-			label: common_created(),
-			type: 'date',
-			sortable: true
-		}
-	]);
+			]
+		)
+	);
 </script>
 
 <div class="space-y-6">
@@ -193,7 +271,7 @@
 		<PreDaemonEmptyState title={daemons_installPromptDiscoveries()} />
 	{:else if isLoading}
 		<Loading />
-	{:else if historicalDiscoveries.length === 0}
+	{:else if discoveriesData.length === 0}
 		<!-- Empty state -->
 		<EmptyState
 			title={discovery_noHistorySessions()}
@@ -201,11 +279,15 @@
 		/>
 	{:else}
 		<DataControls
-			items={historicalDiscoveries}
+			items={discoveriesData}
 			{fields}
 			onBulkDelete={isReadOnly ? undefined : handleBulkDelete}
 			storageKey="scanopy-discovery-historical-table-state"
 			getItemId={(item) => item.id}
+			serverPagination={discoveriesPagination}
+			onPageChange={handlePageChange}
+			onOrderChange={handleOrderChange}
+			onSearchChange={handleSearchChange}
 			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(

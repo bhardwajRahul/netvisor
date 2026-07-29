@@ -26,6 +26,7 @@
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
 		common_create,
+		common_created,
 		common_name,
 		common_networks,
 		common_permissions,
@@ -138,18 +139,22 @@
 			key: 'name',
 			label: common_name(),
 			type: 'string',
-			searchable: true
+			searchable: true,
+			sortable: true
 		},
 		{
 			key: 'permissions',
 			type: 'string',
 			label: common_permissions(),
-			filterable: true
+			searchable: true,
+			filterable: true,
+			groupable: true
 		},
 		{
 			key: 'network_ids',
 			type: 'array',
 			label: common_networks(),
+			searchable: true,
 			getValue(item) {
 				const ids = item.network_ids ?? [];
 				return ids
@@ -168,6 +173,12 @@
 					.map((id) => tagsData.find((t) => t.id === id)?.name)
 					.filter((name): name is string => !!name);
 			}
+		},
+		{
+			key: 'created_at',
+			label: common_created(),
+			type: 'date',
+			sortable: true
 		}
 	];
 </script>

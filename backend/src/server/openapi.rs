@@ -23,6 +23,7 @@ use crate::server::daemons::r#impl::base::Daemon;
 use crate::server::daemons::r#impl::install_artifacts::InstallCommandKind;
 use crate::server::dependencies::handlers::DependencyOrderField;
 use crate::server::dependencies::r#impl::base::Dependency;
+use crate::server::discovery::handlers::DiscoveryOrderField;
 use crate::server::discovery::r#impl::base::Discovery;
 use crate::server::hosts::handlers::HostOrderField;
 use crate::server::hosts::r#impl::base::Host;
@@ -70,6 +71,7 @@ pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
         SubnetOrderField,
         DaemonOrderField,
         CredentialOrderField,
+        DiscoveryOrderField,
         VlanOrderField,
         // Derived staleness status. Not a field on any entity (it's computed
         // per-request against the network's window), so nothing else pulls it

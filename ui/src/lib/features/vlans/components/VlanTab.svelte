@@ -72,8 +72,14 @@
 	let vlanFields = $derived(
 		defineFields<Vlan, VlanOrderField>(
 			{
-				vlan_number: { label: vlans_vlanNumber(), type: 'string', searchable: true },
-				name: { label: common_name(), type: 'string', searchable: true },
+				// Identity fields: grouping by one would render a header per VLAN.
+				vlan_number: {
+					label: vlans_vlanNumber(),
+					type: 'string',
+					searchable: true,
+					groupable: false
+				},
+				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
 				created_at: { label: common_created(), type: 'date' },
 				updated_at: { label: common_updated(), type: 'date' }
 			},
@@ -83,7 +89,9 @@
 					key: 'network_id',
 					label: common_network(),
 					type: 'string',
+					searchable: true,
 					filterable: true,
+					groupable: true,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
 				},

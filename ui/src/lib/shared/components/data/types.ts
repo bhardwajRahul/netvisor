@@ -88,11 +88,26 @@ export interface CardField {
 interface BaseFieldConfig<T> {
 	type: 'string' | 'boolean' | 'date' | 'array';
 	label: string;
+	/**
+	 * Whether the search box matches against this field. Opt-in: leave it off for
+	 * date and boolean fields, whose stringified values match far too broadly
+	 * (a date field turns "2026" into a hit on every row).
+	 *
+	 * Ignored by lists that search server-side — those match against the
+	 * entity's `Storable::search_predicates` instead.
+	 */
 	searchable?: boolean;
 	filterable?: boolean;
 	getValue?: (item: T) => string | boolean | Date | string[] | null;
 	/** 'include' (default): checked values shown. 'exclude': checked values hidden. */
 	filterMode?: 'include' | 'exclude';
+	/**
+	 * The parent applies this filter server-side via `onFilterChange`, so the
+	 * client-side pass leaves it alone. Required for any filter on a
+	 * server-paginated list: filtering the loaded rows would only ever narrow the
+	 * page in hand, silently hiding matches on every other page.
+	 */
+	serverFiltered?: boolean;
 	/** External filter options (bypasses getUniqueValues). Use when values aren't derivable from current items (e.g., server-side pagination). */
 	filterOptions?: string[];
 	/**

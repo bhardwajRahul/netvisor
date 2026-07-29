@@ -1,12 +1,13 @@
 use crate::server::{
     config::AppState,
+    discovery::handlers::DiscoveryFilterQuery,
     discovery::{r#impl::base::Discovery, service::DiscoveryService},
-    shared::handlers::{query::DiscoveryQuery, traits::CrudHandlers},
+    shared::handlers::traits::CrudHandlers,
 };
 
 impl CrudHandlers for Discovery {
     type Service = DiscoveryService;
-    type FilterQuery = DiscoveryQuery;
+    type FilterQuery = DiscoveryFilterQuery;
 
     fn get_service(state: &AppState) -> &Self::Service {
         &state.services.discovery_service

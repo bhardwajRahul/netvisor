@@ -144,8 +144,9 @@
 	// Uses defineFields to ensure all TagOrderField values are covered
 	const tagFields = defineFields<Tag, TagOrderField>(
 		{
-			name: { label: common_name(), type: 'string', searchable: true },
-			color: { label: common_color(), type: 'string', filterable: true },
+			// Identity field: grouping by it would render a header per tag.
+			name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+			color: { label: common_color(), type: 'string', searchable: true, filterable: true },
 			is_application: {
 				label: common_application(),
 				type: 'boolean',
