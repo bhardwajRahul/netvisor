@@ -762,10 +762,12 @@ async fn create_host_discovery(
 ///
 /// The scan runs on the daemon that last discovered this host — evidence it can
 /// reach the address — and only if that daemon still has an interface on a
-/// subnet containing one of the host's IPs. That constraint is what lets the
-/// daemon ARP the target rather than fall back to a TCP probe, which would
-/// report a live but firewalled host as unresponsive. When it can't be met the
-/// request is refused with the specific reason rather than run at lower fidelity.
+/// subnet containing one of the host's scannable IPs. That constraint is what
+/// lets the daemon ARP the target rather than fall back to a TCP probe, which
+/// would report a live but firewalled host as unresponsive. When it can't be met
+/// the request is refused with the specific reason rather than run at lower
+/// fidelity. A loopback address is not a scannable IP — it is reached locally,
+/// has no MAC to ARP, and is excluded from the target set.
 ///
 /// Returns the session, which streams progress over `/api/v1/discovery/stream`
 /// like any other scan. A `Queued` phase means the daemon is busy; it will start
@@ -821,6 +823,13 @@ async fn rescan_host(
 
     // Only the addresses this daemon can actually ARP. Anything else would be
     // scanned at lower fidelity, which is the outcome this endpoint refuses.
+    //
+    // A loopback address passes the junction check — the daemon reports its own
+    // 127.0.0.0/8 as an interfaced subnet — but is not scannable: it has no MAC
+    // to ARP from, and loopback subnets are dropped from every scan. Excluding
+    // it here keeps this endpoint and the daemon's own target resolution
+    // agreeing, and keeps 127.0.0.1 out of the frozen rescan name. Link-local
+    // is deliberately kept: APIPA is a real interface that ARPs normally.
     let interfaced = state
         .services
         .daemon_service
@@ -828,14 +837,15 @@ async fn rescan_host(
         .await;
     let reachable: Vec<&IPAddress> = ip_addresses
         .iter()
-        .filter(|ip| interfaced.contains(&ip.base.subnet_id))
+        .filter(|ip| interfaced.contains(&ip.base.subnet_id) && !ip.base.ip_address.is_loopback())
         .collect();
 
     if reachable.is_empty() {
         return Err(ApiError::bad_request(&format!(
-            "Daemon \"{}\" last scanned this host but no longer has an interface on any subnet \
-             holding its addresses, so it can't scan them directly. Run a full discovery to \
-             refresh which subnets the daemon reaches.",
+            "Daemon \"{}\" last scanned this host but has no interface on a subnet holding any \
+             of its scannable addresses, so it can't scan them directly. (A loopback address is \
+             reached locally and is never rescanned on its own.) Run a full discovery to refresh \
+             which subnets the daemon reaches.",
             daemon.base.name
         )));
     }

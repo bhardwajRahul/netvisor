@@ -1237,21 +1237,7 @@ impl HostService {
         // assignments (created_host.base.credential_assignments is empty after DB round-trip).
         let mut remapped_assignments = original_host.base.credential_assignments.clone();
         for assignment in &mut remapped_assignments {
-            if let Some(ref mut ids) = assignment.ip_address_ids {
-                *ids = ids
-                    .iter()
-                    .filter_map(|daemon_id| {
-                        let ip = daemon_ip_address_ips
-                            .iter()
-                            .find(|(id, _)| id == daemon_id)
-                            .map(|(_, ip)| *ip)?;
-                        created_ip_addresses
-                            .iter()
-                            .find(|i| i.base.ip_address == ip)
-                            .map(|i| i.id)
-                    })
-                    .collect();
-            }
+            remap_assignment_ip_ids(assignment, &daemon_ip_address_ips, &created_ip_addresses);
         }
         // MERGE (not replace): discovery self-reports only credentials that probed successfully,
         // so replacing would prune user/init-assigned daemon-host creds that didn't probe this
@@ -1305,9 +1291,54 @@ fn resolve_dangling_subnet_id(
         .map(|s| s.id)
 }
 
+/// Rewrite a credential assignment's `ip_address_ids` from the daemon's own
+/// interface UUIDs to the server-assigned ones, matching on the address itself.
+///
+/// A scoped assignment whose ids all fail to resolve widens to host-wide
+/// (`None`) rather than collapsing to `Some(vec![])`. An empty id list is not
+/// "no restriction" downstream — `build_all_credential_mappings` treats it as a
+/// restriction that matches no address, so the credential silently stops being
+/// dispatched. Since discovery only ever reports a credential that *probed
+/// successfully on this host*, host-wide is the honest fallback; SNMP already
+/// reports its assignments that way.
+pub(crate) fn remap_assignment_ip_ids(
+    assignment: &mut crate::server::credentials::r#impl::types::CredentialAssignment,
+    daemon_ip_address_ips: &[(Uuid, IpAddr)],
+    created_ip_addresses: &[IPAddress],
+) {
+    let Some(ids) = assignment.ip_address_ids.as_ref() else {
+        return;
+    };
+    let remapped: Vec<Uuid> = ids
+        .iter()
+        .filter_map(|daemon_id| {
+            let ip = daemon_ip_address_ips
+                .iter()
+                .find(|(id, _)| id == daemon_id)
+                .map(|(_, ip)| *ip)?;
+            created_ip_addresses
+                .iter()
+                .find(|i| i.base.ip_address == ip)
+                .map(|i| i.id)
+        })
+        .collect();
+
+    if remapped.is_empty() && !ids.is_empty() {
+        tracing::warn!(
+            credential_id = %assignment.credential_id,
+            "No reported address for this credential assignment resolved to a stored IP; \
+             widening it to the whole host so the credential keeps being dispatched"
+        );
+        assignment.ip_address_ids = None;
+        return;
+    }
+    assignment.ip_address_ids = Some(remapped);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::credentials::r#impl::types::CredentialAssignment;
     use crate::server::subnets::r#impl::base::SubnetBase;
 
     fn subnet(id: Uuid, cidr: &str) -> Subnet {
@@ -1378,6 +1409,61 @@ mod tests {
             resolve_dangling_subnet_id(&live, dangling, ip("192.168.1.1")),
             None
         );
+    }
+
+    fn assignment(ip_address_ids: Option<Vec<Uuid>>) -> CredentialAssignment {
+        CredentialAssignment {
+            credential_id: Uuid::new_v4(),
+            ip_address_ids,
+        }
+    }
+
+    fn stored_ip(id: Uuid, addr: &str) -> IPAddress {
+        IPAddress {
+            id,
+            base: crate::server::ip_addresses::r#impl::base::IPAddressBase {
+                ip_address: ip(addr),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn assignment_ip_ids_are_rewritten_to_the_stored_rows() {
+        let daemon_id = Uuid::new_v4();
+        let stored_id = Uuid::new_v4();
+        let mut a = assignment(Some(vec![daemon_id]));
+
+        remap_assignment_ip_ids(
+            &mut a,
+            &[(daemon_id, ip("127.0.0.1"))],
+            &[stored_ip(stored_id, "127.0.0.1")],
+        );
+
+        assert_eq!(a.ip_address_ids, Some(vec![stored_id]));
+    }
+
+    // A scoped assignment whose addresses all fail to resolve must widen to the whole host, not
+    // collapse to an empty list: downstream, `Some(vec![])` is a restriction matching no address
+    // at all, so the credential would silently stop being dispatched — and with discovery's
+    // one-shot integration targets now pruned at completion, there is nothing left to re-add it.
+    #[test]
+    fn an_unresolvable_assignment_widens_to_the_host_instead_of_matching_nothing() {
+        let mut a = assignment(Some(vec![Uuid::new_v4()]));
+
+        remap_assignment_ip_ids(&mut a, &[], &[stored_ip(Uuid::new_v4(), "127.0.0.1")]);
+
+        assert_eq!(a.ip_address_ids, None);
+    }
+
+    #[test]
+    fn a_host_wide_assignment_stays_host_wide() {
+        let mut a = assignment(None);
+
+        remap_assignment_ip_ids(&mut a, &[], &[]);
+
+        assert_eq!(a.ip_address_ids, None);
     }
 
     // GH #649: the interface prune must NOT run on a partial SNMP walk, or a transient timeout

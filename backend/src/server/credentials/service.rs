@@ -298,6 +298,27 @@ impl CredentialService {
         self.network_credential_storage.create_many(&records).await
     }
 
+    /// Merge `incoming` credentials into a network's junction (additive — never prunes).
+    ///
+    /// The network-side counterpart of [`Self::merge_host_credentials`], for promoting a
+    /// discovery's one-shot `IntegrationTarget::Network` targets into the durable network-wide
+    /// channel when the scan completes. Replacing would delete credentials assigned from the
+    /// networks page or the credential modal, which this path knows nothing about.
+    pub async fn merge_network_credentials(
+        &self,
+        network_id: &Uuid,
+        incoming: &[Uuid],
+    ) -> Result<(), Error> {
+        let existing = self.get_credential_ids_for_network(network_id).await?;
+        let mut merged = existing;
+        for credential_id in incoming {
+            if !merged.contains(credential_id) {
+                merged.push(*credential_id);
+            }
+        }
+        self.set_network_credentials(network_id, &merged).await
+    }
+
     /// Replace all credential assignments for a host (atomic).
     pub async fn set_host_credentials(
         &self,
@@ -701,29 +722,13 @@ impl CredentialService {
                     if let Some(cred) = self.get_by_id(&assignment.credential_id).await?
                         && owned_by_network_org(&cred)
                     {
-                        let cred_type = &cred.base.credential_type;
-                        let payload = cred_type.to_query_payload();
-                        let mapping = mapping_for(&mut mappings_by_credential, cred.id, cred_type);
-
-                        // Create IP overrides for relevant ip_addresses
-                        let relevant_interfaces: Vec<_> = ip_addresses
-                            .iter()
-                            .filter(|i| {
-                                i.base.host_id == host.id
-                                    && match &assignment.ip_address_ids {
-                                        Some(ids) => ids.contains(&i.id),
-                                        None => true,
-                                    }
-                            })
-                            .collect();
-
-                        mapping
-                            .ip_overrides
-                            .extend(relevant_interfaces.iter().map(|i| IpOverride {
-                                ip: i.base.ip_address,
-                                credential: payload.clone(),
-                                credential_id: cred.id,
-                            }));
+                        apply_host_assignment(
+                            &mut mappings_by_credential,
+                            host.id,
+                            assignment,
+                            &cred,
+                            &ip_addresses,
+                        );
                     }
                 }
             }
@@ -838,8 +843,10 @@ fn order_mappings_for_dispatch(
 /// otherwise it is skipped. Every target carries a real credential id — a local socket is just a
 /// credential whose type targets only the daemon host, so there is no nil sentinel.
 ///
-/// Idempotent — applying the same target twice (e.g. across scans) does not duplicate overrides,
-/// core to the #637 fix: targeting lives per-daemon on the `Discovery` and is re-applied each scan.
+/// Idempotent — applying the same target twice does not duplicate overrides. That matters within
+/// a single dispatch, where a credential can arrive both as a target and as the host assignment it
+/// already earned, and it makes the transitional scan (target still present, assignment written)
+/// produce exactly one override.
 pub(crate) fn apply_integration_target(
     mappings_by_credential: &mut BTreeMap<Uuid, TypedCredentialMapping>,
     target: &IntegrationTarget,
@@ -883,6 +890,45 @@ pub(crate) fn apply_integration_target(
             }
         }
     }
+}
+
+/// Apply one host credential assignment to the per-credential mapping accumulator.
+///
+/// Pure (no I/O): the caller resolves the credential and supplies the network's addresses.
+/// `ip_address_ids` scopes the assignment to specific addresses on the host; `None` means the
+/// whole host (how SNMP reports its assignments, and the fallback when a daemon-reported
+/// address can't be resolved — see `remap_assignment_ip_ids`).
+///
+/// This is the channel a promoted credential is dispatched through on every later scan, once
+/// the discovery's one-shot `integration_targets` are consumed. In particular a Docker/Podman
+/// socket credential assigned to the daemon host's `127.0.0.1` re-emerges here as a loopback
+/// override, which is what the daemon's localhost-integration phase selects on.
+pub(crate) fn apply_host_assignment(
+    mappings_by_credential: &mut BTreeMap<Uuid, TypedCredentialMapping>,
+    host_id: Uuid,
+    assignment: &CredentialAssignment,
+    credential: &Credential,
+    ip_addresses: &[IPAddress],
+) {
+    let cred_type = &credential.base.credential_type;
+    let payload = cred_type.to_query_payload();
+    let mapping = mapping_for(mappings_by_credential, credential.id, cred_type);
+
+    let relevant_interfaces = ip_addresses.iter().filter(|i| {
+        i.base.host_id == host_id
+            && match &assignment.ip_address_ids {
+                Some(ids) => ids.contains(&i.id),
+                None => true,
+            }
+    });
+
+    mapping
+        .ip_overrides
+        .extend(relevant_interfaces.map(|i| IpOverride {
+            ip: i.base.ip_address,
+            credential: payload.clone(),
+            credential_id: credential.id,
+        }));
 }
 
 /// Push an IP-override unless an identical `(ip, credential_id)` override is already present
@@ -1112,8 +1158,9 @@ mod integration_target_tests {
         );
     }
 
-    /// Re-applying the same target (i.e. a subsequent scan re-reading the persistent
-    /// `integration_targets`) must not duplicate overrides.
+    /// Applying the same target twice within one dispatch must not duplicate overrides — the
+    /// case that reaches this is a credential arriving both as a target and as the host
+    /// assignment it earned, on the scan where both are still present.
     #[test]
     fn reapplying_same_target_is_idempotent() {
         let cred_id = Uuid::new_v4();
@@ -1129,7 +1176,7 @@ mod integration_target_tests {
         assert_eq!(
             mapping.ip_overrides.len(),
             1,
-            "subsequent scans must not duplicate the override"
+            "a re-applied target must not duplicate the override"
         );
     }
 
@@ -1230,6 +1277,101 @@ mod integration_target_tests {
             payload_community(&dispatched[1].ip_overrides[0].credential),
             "host-specific",
             "the host-specific credential must be probed last so it wins the merge"
+        );
+    }
+
+    fn credential(id: Uuid, credential_type: CredentialType) -> Credential {
+        Credential {
+            id,
+            base: crate::server::credentials::r#impl::base::CredentialBase {
+                credential_type,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    fn ip_address(id: Uuid, host_id: Uuid, ip: IpAddr) -> IPAddress {
+        IPAddress {
+            id,
+            base: crate::server::ip_addresses::r#impl::base::IPAddressBase {
+                host_id,
+                ip_address: ip,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    /// The other half of the one-shot `integration_targets` contract: once a scan completes the
+    /// discovery drops its `DaemonHost` target, and what keeps a working Docker/Podman socket
+    /// credential scanning containers is the `host_credentials` assignment it earned on the
+    /// daemon host's loopback address. That assignment has to come back out as a *localhost*
+    /// override, because that is what the daemon's localhost-integration phase selects on
+    /// (`runner.rs`: mappings with any `is_localhost()` override). If it didn't, container
+    /// discovery would silently stop after the first scan.
+    #[test]
+    fn promoted_socket_credential_is_dispatched_over_loopback() {
+        let cred_id = Uuid::new_v4();
+        let daemon_host_id = Uuid::new_v4();
+        let loopback_ip_id = Uuid::new_v4();
+        let cred = credential(
+            cred_id,
+            CredentialTypeDiscriminants::DockerSocket.to_credential_type(),
+        );
+        let assignment = CredentialAssignment {
+            credential_id: cred_id,
+            ip_address_ids: Some(vec![loopback_ip_id]),
+        };
+        let ip_addresses = vec![
+            ip_address(loopback_ip_id, daemon_host_id, localhost()),
+            ip_address(Uuid::new_v4(), daemon_host_id, "10.0.0.4".parse().unwrap()),
+        ];
+
+        let mut map: Mappings = Mappings::new();
+        apply_host_assignment(&mut map, daemon_host_id, &assignment, &cred, &ip_addresses);
+
+        let mapping = only(&map);
+        assert_eq!(mapping.ip_overrides.len(), 1);
+        assert!(
+            mapping.ip_overrides[0].is_localhost(),
+            "a socket credential assigned to the daemon host's loopback must dispatch as a \
+             localhost override, or the localhost phase will not select it"
+        );
+        assert_eq!(mapping.ip_overrides[0].credential_id, cred_id);
+    }
+
+    /// A host-wide assignment (`ip_address_ids: None`) covers every address on its host and
+    /// nothing on any other. SNMP reports its assignments this way, and it is what a scoped
+    /// assignment widens to when none of the daemon's reported addresses resolve
+    /// (`remap_assignment_ip_ids`) — an empty id list would instead match nothing at all.
+    #[test]
+    fn host_wide_assignment_covers_only_its_own_host() {
+        let cred_id = Uuid::new_v4();
+        let host_id = Uuid::new_v4();
+        let other_host_id = Uuid::new_v4();
+        let cred = credential(cred_id, snmp_v2c("public"));
+        let assignment = CredentialAssignment {
+            credential_id: cred_id,
+            ip_address_ids: None,
+        };
+        let ip_addresses = vec![
+            ip_address(Uuid::new_v4(), host_id, "10.0.0.4".parse().unwrap()),
+            ip_address(Uuid::new_v4(), host_id, "10.0.0.5".parse().unwrap()),
+            ip_address(Uuid::new_v4(), other_host_id, "10.0.0.6".parse().unwrap()),
+        ];
+
+        let mut map: Mappings = Mappings::new();
+        apply_host_assignment(&mut map, host_id, &assignment, &cred, &ip_addresses);
+
+        let mut ips: Vec<IpAddr> = only(&map).ip_overrides.iter().map(|o| o.ip).collect();
+        ips.sort();
+        assert_eq!(
+            ips,
+            vec![
+                "10.0.0.4".parse::<IpAddr>().unwrap(),
+                "10.0.0.5".parse::<IpAddr>().unwrap()
+            ]
         );
     }
 

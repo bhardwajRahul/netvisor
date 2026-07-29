@@ -250,24 +250,114 @@ impl DiscoveryService {
     /// Update progress for a session
     /// If the session doesn't exist (e.g., server restarted during discovery),
     /// auto-creates it from the payload context to maintain resilience.
-    /// Increment a discovery's `scan_count` (and clear `force_full_scan`)
-    /// atomically: the row is read `FOR UPDATE` inside a transaction so
-    /// concurrent session finalizations serialize instead of losing
-    /// increments.
-    async fn increment_scan_count(&self, discovery_id: &Uuid) -> Result<(), Error> {
+    /// Fold a successful scan into a discovery's config row: bump `scan_count`,
+    /// clear `force_full_scan`, and consume the one-shot `integration_targets`.
+    ///
+    /// The row is read `FOR UPDATE` inside a transaction so concurrent session
+    /// finalizations serialize instead of losing increments — and so the prune
+    /// can't race a concurrent finalization that already dispatched the targets.
+    ///
+    /// `Network`-scope targets are migrated into the `network_credentials`
+    /// junction first, because they are the one scope discovery never promotes
+    /// on its own (see `Discovery::take_network_scope_credential_ids`). If that
+    /// migration fails they are written back onto the row *after* the prune,
+    /// rather than dropping a working broadcast credential — the next successful
+    /// scan retries the migration.
+    async fn finalize_successful_scan(&self, discovery_id: &Uuid) -> Result<(), Error> {
         let mut tx = self.discovery_storage.begin_transaction().await?;
         let Some(mut parent_discovery) = tx.get_by_id_for_update(discovery_id).await? else {
             return Ok(());
         };
-        parent_discovery.scan_count += 1;
-        parent_discovery.force_full_scan = false;
-        // integration_targets persist across scans (per-daemon init-command
-        // targeting), so they are intentionally NOT cleared here — unlike the
-        // old one-shot pending_credential_ids.
+
+        let network_id = parent_discovery.base.network_id;
+        let network_scope_ids = parent_discovery.take_network_scope_credential_ids();
+        let (promotable, unpromotable) = self
+            .partition_network_promotable(&network_scope_ids, network_id)
+            .await;
+
+        for credential_id in unpromotable {
+            tracing::warn!(
+                discovery_id = %discovery_id,
+                %credential_id,
+                "Dropping broadcast integration target for a credential type that cannot be \
+                 assigned to a network; it was never dispatched"
+            );
+        }
+
+        let migration_failed = !promotable.is_empty()
+            && match self
+                .credential_service
+                .merge_network_credentials(&network_id, &promotable)
+                .await
+            {
+                Ok(()) => false,
+                Err(e) => {
+                    tracing::error!(
+                        discovery_id = %discovery_id,
+                        network_id = %network_id,
+                        error = ?e,
+                        "Failed to migrate broadcast integration targets to network credentials; \
+                         keeping them on the discovery so the credentials stay in effect"
+                    );
+                    true
+                }
+            };
+
+        parent_discovery.apply_successful_scan();
+        // After the prune, not before — `apply_successful_scan` clears the field.
+        if migration_failed {
+            parent_discovery.integration_targets = promotable
+                .into_iter()
+                .map(|credential_id| IntegrationTarget::Network { credential_id })
+                .collect();
+        }
         parent_discovery.updated_at = Utc::now();
         tx.update(&mut parent_discovery).await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    /// Split broadcast target credentials into those that may be assigned to a
+    /// network and those that may not.
+    ///
+    /// The discovery update handler validates a target's credential type against
+    /// the daemon version but not against the scope, so a `Network` target can
+    /// exist for a type whose `targets()` excludes it (`apply_integration_target`
+    /// warn-drops those at dispatch, so it was never sent to a daemon). Writing
+    /// one into the junction would create exactly the assignment
+    /// `POST /credentials` refuses. An unresolvable credential is treated as
+    /// unpromotable — it no longer exists to assign.
+    async fn partition_network_promotable(
+        &self,
+        credential_ids: &[Uuid],
+        network_id: Uuid,
+    ) -> (Vec<Uuid>, Vec<Uuid>) {
+        let mut promotable = Vec::new();
+        let mut unpromotable = Vec::new();
+        for credential_id in credential_ids {
+            match self.credential_service.get_by_id(credential_id).await {
+                Ok(Some(credential))
+                    if credential
+                        .base
+                        .credential_type
+                        .targets()
+                        .contains(&Target::Network) =>
+                {
+                    promotable.push(*credential_id)
+                }
+                Ok(_) => unpromotable.push(*credential_id),
+                Err(e) => {
+                    tracing::warn!(
+                        %credential_id,
+                        %network_id,
+                        error = ?e,
+                        "Failed to resolve broadcast integration target credential; not migrating it"
+                    );
+                    unpromotable.push(*credential_id);
+                }
+            }
+        }
+        (promotable, unpromotable)
     }
 
     pub async fn update_session(&self, mut update: DiscoveryUpdatePayload) -> Result<(), Error> {
@@ -437,19 +527,20 @@ impl DiscoveryService {
                 integration_targets: vec![],
             };
 
-            // Increment scan_count and clear ephemeral fields only on successful completion.
-            // Failures/cancellations preserve these so the next retry uses the same config.
-            // A rescan's parent is deleted below, so there is nothing to
-            // carry forward and the write would be wasted.
+            // Increment scan_count, clear ephemeral fields and consume the one-shot
+            // integration targets only on successful completion. Failures/cancellations
+            // preserve these so the next retry uses the same config. A rescan's parent is
+            // deleted below, so there is nothing to carry forward and the write would be
+            // wasted.
             if session.phase == DiscoveryPhase::Complete && !is_rescan {
-                // Increment inside one transaction with a row lock: two
-                // finalizations for the same discovery (possible across
-                // backend instances) must not both read N and write N+1.
+                // Inside one transaction with a row lock: two finalizations for the
+                // same discovery (possible across backend instances) must not both
+                // read N and write N+1, nor prune targets the other just dispatched.
                 if let Some(discovery_id) = parent_discovery_id
-                    && let Err(e) = self.increment_scan_count(&discovery_id).await
+                    && let Err(e) = self.finalize_successful_scan(&discovery_id).await
                 {
                     tracing::error!(
-                        "Failed to increment scan_count for discovery {}: {}",
+                        "Failed to finalize successful scan for discovery {}: {}",
                         discovery_id,
                         e
                     );
