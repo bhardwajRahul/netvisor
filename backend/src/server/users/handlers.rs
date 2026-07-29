@@ -232,7 +232,7 @@ pub async fn delete_user(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tags = [User::ENTITY_NAME_PLURAL, "internal"],
+    tags = [User::ENTITY_NAME_PLURAL],
     params(("id" = Uuid, Path, description = "User ID")),
     request_body = User,
     responses(

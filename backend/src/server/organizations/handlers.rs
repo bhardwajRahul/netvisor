@@ -371,7 +371,7 @@ pub async fn reset(
 #[utoipa::path(
     delete,
     path = "/{id}",
-    tags = [Organization::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Organization::ENTITY_NAME_PLURAL],
     params(("id" = Uuid, Path, description = "Organization ID")),
     responses(
         (status = 200, description = "Organization deleted", body = EmptyApiResponse),

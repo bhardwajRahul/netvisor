@@ -4211,7 +4211,6 @@
     "/api/v1/daemons/provision": {
       "post": {
         "tags": [
-          "internal",
           "Daemons"
         ],
         "summary": "Provision a daemon, or re-provision an existing one",
@@ -9075,8 +9074,7 @@
       },
       "delete": {
         "tags": [
-          "Organizations",
-          "internal"
+          "Organizations"
         ],
         "summary": "Delete the organization entirely, including all data and users",
         "operationId": "delete_organization",
@@ -12650,8 +12648,7 @@
     "/api/v1/topology": {
       "get": {
         "tags": [
-          "Topologies",
-          "internal"
+          "Topologies"
         ],
         "summary": "Get all topologies for the authenticated user's networks.",
         "description": "Returns both live-view rows (`snapshot_id IS NULL`) and snapshot-pinned\nrows. The frontend renders the live one by default and renders snapshot\nrows when the user picks one from the snapshots dropdown.",
@@ -12968,8 +12965,7 @@
       },
       "put": {
         "tags": [
-          "Topologies",
-          "internal"
+          "Topologies"
         ],
         "operationId": "update_topology",
         "parameters": [
@@ -13029,8 +13025,7 @@
     "/api/v1/topology/{id}/export/confluence": {
       "get": {
         "tags": [
-          "Topologies",
-          "internal"
+          "Topologies"
         ],
         "summary": "Export topology as Confluence wiki markup",
         "operationId": "export_confluence",
@@ -13059,7 +13054,11 @@
           "200": {
             "description": "Confluence wiki markup export",
             "content": {
-              "text/plain": {}
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "403": {
@@ -13096,8 +13095,7 @@
     "/api/v1/topology/{id}/export/mermaid": {
       "get": {
         "tags": [
-          "Topologies",
-          "internal"
+          "Topologies"
         ],
         "summary": "Export topology as Mermaid flowchart",
         "operationId": "export_mermaid",
@@ -13126,7 +13124,11 @@
           "200": {
             "description": "Mermaid flowchart export",
             "content": {
-              "text/plain": {}
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "403": {
@@ -13394,8 +13396,7 @@
       },
       "put": {
         "tags": [
-          "Users",
-          "internal"
+          "Users"
         ],
         "summary": "Update your own user record",
         "operationId": "update_user",
@@ -14399,19 +14400,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-29T14:26:03.729449Z",
+              "created_at": "2026-07-29T14:42:00.582913Z",
               "first_discovery_id": null,
-              "id": "8bb01b0d-bc8b-4af8-a90a-4696f96bb68c",
+              "id": "d5a3dd65-4922-420e-b83e-bfbaf950a33b",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T14:26:03.729449Z",
+              "last_seen_at": "2026-07-29T14:42:00.582913Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T14:26:03.729449Z",
-              "valid_from": "2026-07-29T14:26:03.729449Z",
+              "updated_at": "2026-07-29T14:42:00.582913Z",
+              "valid_from": "2026-07-29T14:42:00.582913Z",
               "valid_to": null
             }
           },
@@ -15693,19 +15694,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-29T14:26:03.704586Z",
+                      "created_at": "2026-07-29T14:42:00.562571Z",
                       "first_discovery_id": null,
-                      "id": "b5d05826-eb94-444c-b92f-9dceb0e0fae4",
+                      "id": "ca54d22d-cb78-459d-9b92-470bf9c441cd",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-29T14:26:03.704586Z",
+                      "last_seen_at": "2026-07-29T14:42:00.562571Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-29T14:26:03.704586Z",
-                      "valid_from": "2026-07-29T14:26:03.704586Z",
+                      "updated_at": "2026-07-29T14:42:00.562571Z",
+                      "valid_from": "2026-07-29T14:42:00.562571Z",
                       "valid_to": null
                     }
                   ],
@@ -15719,7 +15720,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Proxmox VE",
+                  "service_definition": "Authentik",
                   "source": {
                     "type": "Manual"
                   },
@@ -16920,19 +16921,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T14:26:03.721409Z",
+                  "created_at": "2026-07-29T14:42:00.574544Z",
                   "first_discovery_id": null,
-                  "id": "8607248c-2663-405b-a6bd-99a6d0ff1006",
+                  "id": "0438cd58-521f-4319-a87b-d7546d83914a",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T14:26:03.721409Z",
+                  "last_seen_at": "2026-07-29T14:42:00.574544Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T14:26:03.721409Z",
-                  "valid_from": "2026-07-29T14:26:03.721409Z",
+                  "updated_at": "2026-07-29T14:42:00.574544Z",
+                  "valid_from": "2026-07-29T14:42:00.574544Z",
                   "valid_to": null
                 }
               ],
@@ -16946,7 +16947,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Proxmox VE",
+              "service_definition": "Authentik",
               "source": {
                 "type": "Manual"
               },
@@ -19004,19 +19005,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-29T14:26:03.704828Z",
+          "created_at": "2026-07-29T14:42:00.562847Z",
           "first_discovery_id": null,
-          "id": "eb7c1994-0d91-4ce3-ad09-0ca18e3f44d9",
+          "id": "99d2d21a-1f8b-496e-9c38-07a5d37da4ed",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-29T14:26:03.704828Z",
+          "last_seen_at": "2026-07-29T14:42:00.562847Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-29T14:26:03.704828Z",
-          "valid_from": "2026-07-29T14:26:03.704828Z",
+          "updated_at": "2026-07-29T14:42:00.562847Z",
+          "valid_from": "2026-07-29T14:42:00.562847Z",
           "valid_to": null
         }
       },
@@ -19646,7 +19647,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Proxmox VE",
+              "service_definition": "Authentik",
               "tags": [],
               "virtualization": null
             }
@@ -23134,19 +23135,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T14:26:03.704298Z",
+                  "created_at": "2026-07-29T14:42:00.562196Z",
                   "first_discovery_id": null,
-                  "id": "7efaebd4-6cf1-4a40-841d-e9d45d1baefa",
+                  "id": "8bb49316-fbc6-4085-bae5-6bf66c216dce",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T14:26:03.704298Z",
+                  "last_seen_at": "2026-07-29T14:42:00.562196Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T14:26:03.704298Z",
-                  "valid_from": "2026-07-29T14:26:03.704298Z",
+                  "updated_at": "2026-07-29T14:42:00.562196Z",
+                  "valid_from": "2026-07-29T14:42:00.562196Z",
                   "valid_to": null
                 }
               ],
@@ -23160,7 +23161,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Proxmox VE",
+              "service_definition": "Authentik",
               "source": {
                 "type": "Manual"
               },
@@ -26100,19 +26101,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-29T14:26:03.687673Z",
+                        "created_at": "2026-07-29T14:42:00.554294Z",
                         "first_discovery_id": null,
-                        "id": "53318dcc-f72b-4c85-ab20-630931d0073d",
+                        "id": "a86bb205-3f1d-46e7-9a29-f0a581cd0078",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-29T14:26:03.687673Z",
+                        "last_seen_at": "2026-07-29T14:42:00.554294Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-29T14:26:03.687673Z",
-                        "valid_from": "2026-07-29T14:26:03.687673Z",
+                        "updated_at": "2026-07-29T14:42:00.554294Z",
+                        "valid_from": "2026-07-29T14:42:00.554294Z",
                         "valid_to": null
                       }
                     ],
@@ -26126,7 +26127,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Proxmox VE",
+                    "service_definition": "Authentik",
                     "source": {
                       "type": "Manual"
                     },
@@ -26260,19 +26261,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-29T14:26:03.720264Z",
+                    "created_at": "2026-07-29T14:42:00.573483Z",
                     "first_discovery_id": null,
-                    "id": "ecb96d74-3e81-4d2f-9118-b96f8cd0cfc5",
+                    "id": "86a518fe-ab4b-48d4-8904-1d39e64e8bb0",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-29T14:26:03.720264Z",
+                    "last_seen_at": "2026-07-29T14:42:00.573483Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-29T14:26:03.720264Z",
-                    "valid_from": "2026-07-29T14:26:03.720264Z",
+                    "updated_at": "2026-07-29T14:42:00.573483Z",
+                    "valid_from": "2026-07-29T14:42:00.573483Z",
                     "valid_to": null
                   }
                 ],
@@ -26286,7 +26287,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Proxmox VE",
+                "service_definition": "Authentik",
                 "source": {
                   "type": "Manual"
                 },
@@ -28291,19 +28292,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-29T14:26:03.704770Z",
+              "created_at": "2026-07-29T14:42:00.562780Z",
               "first_discovery_id": null,
-              "id": "a27500a9-0533-4a4f-b4ad-9a7202f8f5f3",
+              "id": "7c41dbd6-d732-4206-baf4-1376356b806a",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T14:26:03.704770Z",
+              "last_seen_at": "2026-07-29T14:42:00.562780Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T14:26:03.704770Z",
-              "valid_from": "2026-07-29T14:26:03.704770Z",
+              "updated_at": "2026-07-29T14:42:00.562780Z",
+              "valid_from": "2026-07-29T14:42:00.562780Z",
               "valid_to": null
             }
           ],
@@ -28317,7 +28318,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Proxmox VE",
+          "service_definition": "Authentik",
           "source": {
             "type": "Manual"
           },
@@ -29551,7 +29552,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "e85cb8c3-4533-49f5-b6fc-07d0ac500222",
+                  "id": "e11f72b2-ec0d-46d9-9da1-e7cfbff0a20a",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -29561,23 +29562,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "96573351-e039-4b18-909f-9a4f316bac56",
+                  "id": "0ff1b42e-0158-4d4c-bc35-35d8ff9e497b",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "6655e907-cd09-4433-8165-6d21e4f9c057",
+                  "id": "ae5d17c5-f9e8-4522-9aee-96cbf4c061c1",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "c74f65c9-086a-4444-bd5e-42a4fee10b55",
+                  "id": "e69569d6-8005-443f-978e-4f1e95fe4cc6",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "96573351-e039-4b18-909f-9a4f316bac56",
+                  "id": "0ff1b42e-0158-4d4c-bc35-35d8ff9e497b",
                   "rule": "ByHost"
                 }
               ]
@@ -29607,19 +29608,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "29667291-c173-4e6a-bc9b-f8e65c7693fb",
+                "id": "4467ab66-427f-4cc7-8dd9-ad8c8d4ba941",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "94dc06f7-3cd2-436c-aca4-98b23d5947d8",
+                "id": "48f788a1-a056-48e2-836e-f3dcaa6b6936",
                 "rule": "ByVLAN"
               },
               {
-                "id": "edf6cc1c-1145-4921-872c-e7a15a7be852",
+                "id": "795d9e75-6923-46b4-bd15-cf9bf8dbd8cc",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "1c2968fd-dd28-4065-b6f9-9e638233fc95",
+                "id": "cbb53795-1eb5-4a64-8649-a4befff3750d",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -29637,7 +29638,7 @@
                 }
               },
               {
-                "id": "a3ed9801-78ce-4f5c-ab3f-59f5653b5e07",
+                "id": "06f60f54-0504-4ddf-bf93-ee1e23dec480",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -29646,15 +29647,15 @@
                 }
               },
               {
-                "id": "cd485c70-2737-47f3-9400-a7926ef95e64",
+                "id": "3e7bab79-2341-434b-8c02-017aa17948d9",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "2c7cc8e7-29b4-4302-bb11-e500f9150ecb",
+                "id": "01894870-94ae-41cb-aa92-5781694329a6",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "5e8c4746-6e7c-4904-92e1-9783c3f3fdb4",
+                "id": "6f0b1211-ebae-4cad-921c-399b50a40c62",
                 "rule": "ByStack"
               }
             ]

@@ -2519,6 +2519,76 @@
         ]
       }
     },
+    "/api/v1/daemons/provision": {
+      "post": {
+        "tags": [
+          "Daemons"
+        ],
+        "summary": "Provision a daemon, or re-provision an existing one",
+        "description": "Creates a daemon record on the server before the daemon is installed, mints an API key bound\nto it 1:1, and returns ready-to-run install artifacts.\n\nWhen `daemon_id` is supplied the existing record is reused instead of creating a new one —\nthis both re-issues install artifacts after install config changes and gives a legacy daemon\n(one with no bound key) a pathway to a dedicated key without losing its host, discovery jobs,\nor history.\n\nReturns the daemon record and an API key that must be configured on the daemon.",
+        "operationId": "provision_daemon",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionDaemonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Daemon provisioned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ProvisionDaemonResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Daemon is live and already has a bound key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/daemons/test-reachability": {
       "post": {
         "tags": [
@@ -7183,6 +7253,62 @@
             "session": []
           }
         ]
+      },
+      "delete": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Delete the organization entirely, including all data and users",
+        "operationId": "delete_organization",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Organization ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cannot delete another organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
       }
     },
     "/api/v1/ports": {
@@ -10449,6 +10575,96 @@
         ]
       }
     },
+    "/api/v1/topology": {
+      "get": {
+        "tags": [
+          "Topologies"
+        ],
+        "summary": "Get all topologies for the authenticated user's networks.",
+        "description": "Returns both live-view rows (`snapshot_id IS NULL`) and snapshot-pinned\nrows. The frontend renders the live one by default and renders snapshot\nrows when the user picks one from the snapshots dropdown.",
+        "operationId": "get_all_topologies",
+        "parameters": [
+          {
+            "name": "network_id",
+            "in": "query",
+            "description": "Filter by network ID",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "description": "Filter by specific entity IDs (for selective loading)",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of results to return (1-1000, default: 50). Use 0 for no limit.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "maximum": 1000,
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of results to skip. Default: 0.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of topologies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedApiResponse_Topology"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/topology/export/csv": {
       "get": {
         "tags": [
@@ -10565,6 +10781,204 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_Topology"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Topology not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Topologies"
+        ],
+        "operationId": "update_topology",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Topology ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Topology"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Topology updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Topology"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Topology not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/topology/{id}/export/confluence": {
+      "get": {
+        "tags": [
+          "Topologies"
+        ],
+        "summary": "Export topology as Confluence wiki markup",
+        "operationId": "export_confluence",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Topology ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "description": "View to export. Defaults to the default view when omitted.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TopologyView"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Confluence wiki markup export",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Topology not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/topology/{id}/export/mermaid": {
+      "get": {
+        "tags": [
+          "Topologies"
+        ],
+        "summary": "Export topology as Mermaid flowchart",
+        "operationId": "export_mermaid",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Topology ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "description": "View to export. Defaults to the default view when omitted.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TopologyView"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mermaid flowchart export",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
                 }
               }
             }
@@ -10797,6 +11211,72 @@
           },
           "403": {
             "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Update your own user record",
+        "operationId": "update_user",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/User"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "User updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_User"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cannot update another user's record",
             "content": {
               "application/json": {
                 "schema": {
@@ -11668,19 +12148,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-29T14:26:03.729449Z",
+              "created_at": "2026-07-29T14:42:00.582911Z",
               "first_discovery_id": null,
-              "id": "ba7cbdec-2e26-4714-8177-391054612391",
+              "id": "8f23ced8-1f47-457c-b549-31f1eabdb04b",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T14:26:03.729449Z",
+              "last_seen_at": "2026-07-29T14:42:00.582911Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T14:26:03.729449Z",
-              "valid_from": "2026-07-29T14:26:03.729449Z",
+              "updated_at": "2026-07-29T14:42:00.582911Z",
+              "valid_from": "2026-07-29T14:42:00.582911Z",
               "valid_to": null
             }
           },
@@ -12962,19 +13442,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-29T14:26:03.704590Z",
+                      "created_at": "2026-07-29T14:42:00.562578Z",
                       "first_discovery_id": null,
-                      "id": "3f8d9cb6-338c-4e1b-971b-174b63511f26",
+                      "id": "968b5223-60ce-4ac6-8736-927acca3d13d",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-29T14:26:03.704590Z",
+                      "last_seen_at": "2026-07-29T14:42:00.562578Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-29T14:26:03.704590Z",
-                      "valid_from": "2026-07-29T14:26:03.704590Z",
+                      "updated_at": "2026-07-29T14:42:00.562578Z",
+                      "valid_from": "2026-07-29T14:42:00.562578Z",
                       "valid_to": null
                     }
                   ],
@@ -12988,7 +13468,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Proxmox VE",
+                  "service_definition": "Authentik",
                   "source": {
                     "type": "Manual"
                   },
@@ -14189,19 +14669,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T14:26:03.721399Z",
+                  "created_at": "2026-07-29T14:42:00.574542Z",
                   "first_discovery_id": null,
-                  "id": "be572e45-2453-4fcf-a092-9fba7257eb43",
+                  "id": "dd810c7a-4417-4f72-9d7c-6b09b61429c0",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T14:26:03.721399Z",
+                  "last_seen_at": "2026-07-29T14:42:00.574542Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T14:26:03.721399Z",
-                  "valid_from": "2026-07-29T14:26:03.721399Z",
+                  "updated_at": "2026-07-29T14:42:00.574542Z",
+                  "valid_from": "2026-07-29T14:42:00.574542Z",
                   "valid_to": null
                 }
               ],
@@ -14215,7 +14695,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Proxmox VE",
+              "service_definition": "Authentik",
               "source": {
                 "type": "Manual"
               },
@@ -16273,19 +16753,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-29T14:26:03.704827Z",
+          "created_at": "2026-07-29T14:42:00.562853Z",
           "first_discovery_id": null,
-          "id": "39da793e-6312-461b-b3aa-7371186fc649",
+          "id": "97c83300-7124-432a-86ac-e950d71b34dd",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-29T14:26:03.704827Z",
+          "last_seen_at": "2026-07-29T14:42:00.562853Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-29T14:26:03.704827Z",
-          "valid_from": "2026-07-29T14:26:03.704827Z",
+          "updated_at": "2026-07-29T14:42:00.562853Z",
+          "valid_from": "2026-07-29T14:42:00.562853Z",
           "valid_to": null
         }
       },
@@ -16915,7 +17395,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Proxmox VE",
+              "service_definition": "Authentik",
               "tags": [],
               "virtualization": null
             }
@@ -20403,19 +20883,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T14:26:03.704303Z",
+                  "created_at": "2026-07-29T14:42:00.562200Z",
                   "first_discovery_id": null,
-                  "id": "5ec4f484-7c18-4ae7-a3d1-0b05065c76c8",
+                  "id": "83613fae-69b6-4555-b355-605028edbc27",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T14:26:03.704303Z",
+                  "last_seen_at": "2026-07-29T14:42:00.562200Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T14:26:03.704303Z",
-                  "valid_from": "2026-07-29T14:26:03.704303Z",
+                  "updated_at": "2026-07-29T14:42:00.562200Z",
+                  "valid_from": "2026-07-29T14:42:00.562200Z",
                   "valid_to": null
                 }
               ],
@@ -20429,7 +20909,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Proxmox VE",
+              "service_definition": "Authentik",
               "source": {
                 "type": "Manual"
               },
@@ -23369,19 +23849,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-29T14:26:03.687670Z",
+                        "created_at": "2026-07-29T14:42:00.554301Z",
                         "first_discovery_id": null,
-                        "id": "cda38548-a0a8-4d4b-b4a8-3771210ffe2a",
+                        "id": "ce185ff2-bff8-4425-805d-710e9b197265",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-29T14:26:03.687670Z",
+                        "last_seen_at": "2026-07-29T14:42:00.554301Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-29T14:26:03.687670Z",
-                        "valid_from": "2026-07-29T14:26:03.687670Z",
+                        "updated_at": "2026-07-29T14:42:00.554301Z",
+                        "valid_from": "2026-07-29T14:42:00.554301Z",
                         "valid_to": null
                       }
                     ],
@@ -23395,7 +23875,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Proxmox VE",
+                    "service_definition": "Authentik",
                     "source": {
                       "type": "Manual"
                     },
@@ -23529,19 +24009,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-29T14:26:03.720267Z",
+                    "created_at": "2026-07-29T14:42:00.573483Z",
                     "first_discovery_id": null,
-                    "id": "26ae8e43-656e-48a3-b429-411661541da6",
+                    "id": "6172e8a6-e2d7-4009-bbd9-6f95e4022cc1",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-29T14:26:03.720267Z",
+                    "last_seen_at": "2026-07-29T14:42:00.573483Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-29T14:26:03.720267Z",
-                    "valid_from": "2026-07-29T14:26:03.720267Z",
+                    "updated_at": "2026-07-29T14:42:00.573483Z",
+                    "valid_from": "2026-07-29T14:42:00.573483Z",
                     "valid_to": null
                   }
                 ],
@@ -23555,7 +24035,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Proxmox VE",
+                "service_definition": "Authentik",
                 "source": {
                   "type": "Manual"
                 },
@@ -25560,19 +26040,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-29T14:26:03.704769Z",
+              "created_at": "2026-07-29T14:42:00.562787Z",
               "first_discovery_id": null,
-              "id": "090d2ced-2d3a-4df5-8904-d5f16b6dca77",
+              "id": "60ad8cdd-3ec3-4803-80b6-35bea01e827d",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T14:26:03.704769Z",
+              "last_seen_at": "2026-07-29T14:42:00.562787Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T14:26:03.704769Z",
-              "valid_from": "2026-07-29T14:26:03.704769Z",
+              "updated_at": "2026-07-29T14:42:00.562787Z",
+              "valid_from": "2026-07-29T14:42:00.562787Z",
               "valid_to": null
             }
           ],
@@ -25586,7 +26066,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Proxmox VE",
+          "service_definition": "Authentik",
           "source": {
             "type": "Manual"
           },
@@ -26820,7 +27300,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "0cc5e266-f4ac-4b8c-b4c7-247c1c127977",
+                  "id": "641cf125-e725-4866-a69f-5ceafccdcefd",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -26830,23 +27310,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "513c115c-ff5d-4498-bb51-acf4d427db41",
+                  "id": "a7c33bf0-ad4a-4a9c-9e94-84784cca47eb",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "c11a8f63-48b5-414a-ba6d-c1149d528aaf",
+                  "id": "c9b53828-192a-4c9e-b1ed-e027d7728c24",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "31bc54d7-4ce9-47d7-b9d6-569a8cc625cd",
+                  "id": "fdd0fccf-5300-483f-a5a0-148d0e3acd8a",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "513c115c-ff5d-4498-bb51-acf4d427db41",
+                  "id": "a7c33bf0-ad4a-4a9c-9e94-84784cca47eb",
                   "rule": "ByHost"
                 }
               ]
@@ -26876,19 +27356,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "163faf7c-6f8c-4368-b6c9-98c3e17d0284",
+                "id": "39f98dfc-4ce5-4c84-813a-0b57551014c4",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "e0e28f6e-4350-407b-af8d-7dfc5ef0d58c",
+                "id": "8c765e1e-a70e-428b-ac08-4e5d6dbe5f96",
                 "rule": "ByVLAN"
               },
               {
-                "id": "05d1c11b-a216-4022-abf2-dc23a67be104",
+                "id": "13f9dd96-cb6d-4d0d-b487-a6ac603bb59a",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "ec81f6c0-5010-49e2-a01d-67636e7101f0",
+                "id": "56176fdf-8fdf-4e3b-b294-56b98fd379e5",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -26906,7 +27386,7 @@
                 }
               },
               {
-                "id": "33b8d85e-54f9-47ca-854f-483d3fa9a6ac",
+                "id": "76435d6b-f2f8-48a3-ad57-2587047d9d9d",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -26915,15 +27395,15 @@
                 }
               },
               {
-                "id": "6f94f41a-41c0-47d1-b5a9-03c7c0e600a0",
+                "id": "d43edd87-856a-4b93-aa95-ee4d762bf54a",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "09f4e998-efb7-4f47-86f8-07778a272823",
+                "id": "184d5ffc-a4bc-423e-9e49-904601ea3c55",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "0805637f-2f5e-47ce-9147-e0fd730c81c8",
+                "id": "e81e7ff4-4f79-4f36-b08b-f93938f2c813",
                 "rule": "ByStack"
               }
             ]

@@ -1002,7 +1002,7 @@ async fn load_reprovision_target(
 #[utoipa::path(
     post,
     path = "/provision",
-    tags = ["internal", Daemon::ENTITY_NAME_PLURAL],
+    tags = [Daemon::ENTITY_NAME_PLURAL],
     operation_id = "provision_daemon",
     summary = "Provision a daemon, or re-provision an existing one",
     request_body = ProvisionDaemonRequest,
