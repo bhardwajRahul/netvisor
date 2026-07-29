@@ -15,8 +15,11 @@
 	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
 	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
 	import type { Credential, CredentialType } from '../types/base';
+	import type { Host } from '$lib/features/hosts/types/base';
 	import { createDefaultCredential } from '../types/base';
-	import { credentialTypes } from '$lib/shared/stores/metadata';
+	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
+	import { entityRef } from '$lib/shared/components/data/types';
+	import { credentialTypes, entities } from '$lib/shared/stores/metadata';
 	import { DAEMON_HOST_IP } from '../utils/credentialTargets';
 	import { translateFieldDefinitions } from '$lib/i18n/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -67,6 +70,11 @@
 		/** Disable the "Add daemon host" target when the daemon host is already
 		 *  claimed by another single-endpoint credential of the same integration. */
 		daemonHostUnavailable?: boolean;
+		/** Hosts this credential is already assigned to through the host/credential
+		 *  junction. Rendered as locked target rows — they are real targets, so the card
+		 *  reflects everything the credential hits, but they are owned elsewhere and so
+		 *  carry no remove button. */
+		lockedHosts?: Host[];
 		onChange?: (data: {
 			targetIps?: string[];
 			fieldValues?: Record<string, string>;
@@ -87,6 +95,7 @@
 		hideTargets = false,
 		fieldPrefix = '',
 		daemonHostUnavailable = false,
+		lockedHosts = [],
 		onChange,
 		onTypeChange
 	}: Props = $props();
@@ -305,6 +314,10 @@
 			const canNetwork = supported.includes('Network');
 			if (hasExplicitIps) {
 				targetIpValues = [...formTargetIps];
+				targetMode = 'per_host';
+			} else if (lockedHosts.length > 0) {
+				// Locked rows live in the per-host list, so a credential that already has
+				// junction targets must open on that mode or they would be hidden.
 				targetMode = 'per_host';
 			} else {
 				// Network-capable types (e.g. SNMP) default to Networks (broadcast),
@@ -550,6 +563,9 @@
 		// A hidden picker can never be a failure the user could act on: `hideTargets` types
 		// (the daemon-host socket, managed references) carry an implicit 127.0.0.1 target.
 		if (!compact || hideTargets || targetMode === 'broadcast') return true;
+		// Locked rows are real targets owned elsewhere, so the credential is already
+		// pointed somewhere even with nothing entered here.
+		if (lockedHosts.length > 0) return true;
 		return targetIpValues.some((ip) => ip.trim() !== '');
 	}
 
@@ -649,6 +665,24 @@
 			{#if targetMode === 'broadcast'}
 				<p class="text-muted text-xs">{daemons_credentialWizardBroadcastHelp()}</p>
 			{:else}
+				<!-- Targets this credential already has from the host/credential junction.
+				     Shown so the card reflects everything it hits, but owned elsewhere, so
+				     no remove button — the spacer keeps them aligned with removable rows. -->
+				{#each lockedHosts as host (host.id)}
+					<div class="flex items-center gap-2">
+						<div class="input-field flex min-w-0 flex-1 items-center opacity-70">
+							<EntityTag
+								entityRef={entityRef('Host', host.id, host)}
+								label={host.name}
+								icon={entities.getIconComponent('Host')}
+								color={entities.getColorHelper('Host').color}
+							/>
+						</div>
+						<span class="shrink-0 p-1 text-lg leading-none opacity-0" aria-hidden="true"
+							>&times;</span
+						>
+					</div>
+				{/each}
 				{#each targetIpValues as ip, i (i)}
 					<div class="flex items-center gap-2">
 						{#if isDaemonHostValue(ip)}

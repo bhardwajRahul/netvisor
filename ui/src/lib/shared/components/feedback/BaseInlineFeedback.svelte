@@ -1,14 +1,13 @@
 <script lang="ts">
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import { X } from 'lucide-svelte';
-	import { onMount, type Snippet } from 'svelte';
+	import { onMount } from 'svelte';
 	import { common_dismiss } from '$lib/paraglide/messages';
 
 	let {
 		title,
 		body = null,
 		dismissableKey = null,
-		children = null,
 		Icon,
 		borderColor,
 		bgColor,
@@ -17,10 +16,6 @@
 		title: string;
 		body?: string | null;
 		dismissableKey?: string | null;
-		/** Rich content rendered below `body`, for a notice that has to embed a component
-		 *  (e.g. an entity tag). Plain copy keeps using `body` — `title`/`body` are HTML
-		 *  strings and cannot hold a component. */
-		children?: Snippet | null;
 		Icon: IconComponent;
 		borderColor: string;
 		bgColor: string;
@@ -55,12 +50,6 @@
 				{#if body}
 					<!-- eslint-disable-next-line svelte/no-at-html-tags -- trusted: all callers pass i18n or hardcoded strings -->
 					<p class={`${title ? 'mt-1' : ''} text-sm ${textColor}`}>{@html body}</p>
-				{/if}
-				{#if children}
-					<!-- A div, not a p: slotted content may contain block-level components. -->
-					<div class={`${title || body ? 'mt-1' : ''} text-sm ${textColor}`}>
-						{@render children()}
-					</div>
 				{/if}
 			</div>
 			{#if dismissableKey}
