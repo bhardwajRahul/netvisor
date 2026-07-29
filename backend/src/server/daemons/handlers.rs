@@ -990,15 +990,17 @@ async fn load_reprovision_target(
 
 /// Provision a Daemon, or re-provision an existing one
 ///
-/// Creates a daemon record on the server before the daemon is installed, mints an API key bound
-/// to it 1:1, and returns ready-to-run install artifacts.
+/// Creates a daemon record on the server before the daemon is installed and mints an API key
+/// bound to it 1:1. Returns the daemon record and that key, which is shown only once and must
+/// be configured on the daemon.
 ///
-/// When `daemon_id` is supplied the existing record is reused instead of creating a new one —
-/// this both re-issues install artifacts after install config changes and gives a legacy daemon
-/// (one with no bound key) a pathway to a dedicated key without losing its host, discovery jobs,
-/// or history.
+/// When `daemon_id` is supplied the existing record is reused instead of creating a new one,
+/// giving a legacy daemon (one with no bound key) a pathway to a dedicated key without losing
+/// its host, discovery jobs, or history. Re-provisioning always mints a fresh key.
 ///
-/// Returns the daemon record and an API key that must be configured on the daemon.
+/// Install commands are not built here — fetch them from the install-command endpoint, which
+/// builds them idempotently and fills in the key this returns. That keeps a display-only
+/// regenerate (an OS switch, an advanced-setting change) from re-minting the key.
 #[utoipa::path(
     post,
     path = "/provision",
