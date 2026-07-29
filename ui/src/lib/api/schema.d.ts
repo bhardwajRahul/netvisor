@@ -3160,19 +3160,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-28T19:53:59.979256Z",
+             *       "created_at": "2026-07-29T00:34:47.873102Z",
              *       "first_discovery_id": null,
-             *       "id": "aef71a39-9a2b-4beb-a711-7900655a077d",
+             *       "id": "bbd7cc6b-f143-4939-b89c-d75b0507209b",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-28T19:53:59.979256Z",
+             *       "last_seen_at": "2026-07-29T00:34:47.873102Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-28T19:53:59.979256Z",
-             *       "valid_from": "2026-07-28T19:53:59.979256Z",
+             *       "updated_at": "2026-07-29T00:34:47.873102Z",
+             *       "valid_from": "2026-07-29T00:34:47.873102Z",
              *       "valid_to": null
              *     }
              */
@@ -3464,17 +3464,6 @@ export interface components {
                 /** Format: date-time */
                 started_at?: string | null;
                 /**
-                 * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
-                 *     rather than a discovery the user configured. Set server-side at session
-                 *     creation; daemons do not send it.
-                 *
-                 *     It rides into the historical Discovery row's `results`, which is the only
-                 *     way downstream consumers can tell a rescan apart: the terminal path mints
-                 *     a plain `RunType::Historical` row and the transient parent is deleted, so
-                 *     there is nothing left to look up. Used to keep rescans out of the digest.
-                 */
-                targeted?: boolean;
-                /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
                  *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
                  */
@@ -3576,19 +3565,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-28T19:53:59.961225Z",
+             *               "created_at": "2026-07-29T00:34:47.854750Z",
              *               "first_discovery_id": null,
-             *               "id": "be8e903f-49e6-4dbd-9489-408982699df4",
+             *               "id": "46218fae-4101-4a4a-8cc7-9e25d6c372df",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-28T19:53:59.961225Z",
+             *               "last_seen_at": "2026-07-29T00:34:47.854750Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-28T19:53:59.961225Z",
-             *               "valid_from": "2026-07-28T19:53:59.961225Z",
+             *               "updated_at": "2026-07-29T00:34:47.854750Z",
+             *               "valid_from": "2026-07-29T00:34:47.854750Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3602,7 +3591,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Beszel Agent",
+             *           "service_definition": "Firefly III",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -4019,19 +4008,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-28T19:53:59.973382Z",
+             *           "created_at": "2026-07-29T00:34:47.867227Z",
              *           "first_discovery_id": null,
-             *           "id": "cf02f364-70c1-4df3-bbf3-394d4a3ff91b",
+             *           "id": "6a55d77d-1165-482e-830d-b491927ea68d",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-28T19:53:59.973382Z",
+             *           "last_seen_at": "2026-07-29T00:34:47.867227Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-28T19:53:59.973382Z",
-             *           "valid_from": "2026-07-28T19:53:59.973382Z",
+             *           "updated_at": "2026-07-29T00:34:47.867227Z",
+             *           "valid_from": "2026-07-29T00:34:47.867227Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4045,7 +4034,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Beszel Agent",
+             *       "service_definition": "Firefly III",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4426,17 +4415,6 @@ export interface components {
                 /** Format: date-time */
                 started_at?: string | null;
                 /**
-                 * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
-                 *     rather than a discovery the user configured. Set server-side at session
-                 *     creation; daemons do not send it.
-                 *
-                 *     It rides into the historical Discovery row's `results`, which is the only
-                 *     way downstream consumers can tell a rescan apart: the terminal path mints
-                 *     a plain `RunType::Historical` row and the transient parent is deleted, so
-                 *     there is nothing left to look up. Used to keep rescans out of the digest.
-                 */
-                targeted?: boolean;
-                /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
                  *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
                  */
@@ -4560,19 +4538,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-28T19:53:59.961611Z",
+         *       "created_at": "2026-07-29T00:34:47.855107Z",
          *       "first_discovery_id": null,
-         *       "id": "aca1bf73-2f14-40ad-9143-8958eee8de27",
+         *       "id": "dc0f1482-c949-4f04-ad66-4da88ee9f97c",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-28T19:53:59.961611Z",
+         *       "last_seen_at": "2026-07-29T00:34:47.855107Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-28T19:53:59.961611Z",
-         *       "valid_from": "2026-07-28T19:53:59.961611Z",
+         *       "updated_at": "2026-07-29T00:34:47.855107Z",
+         *       "valid_from": "2026-07-29T00:34:47.855107Z",
          *       "valid_to": null
          *     }
          */
@@ -4787,7 +4765,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Beszel Agent",
+         *           "service_definition": "Firefly III",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5447,6 +5425,29 @@ export interface components {
         } | {
             /**
              * Format: uuid
+             * @description ID of the host that the daemon is running on — same meaning as every
+             *     other variant. The host being rescanned is `target_host_id`.
+             */
+            host_id: string;
+            /** @description Addresses to scan on that host. */
+            ips: string[];
+            /**
+             * @description Ports already known on that host, re-checked to confirm they are
+             *     still open. Scanned in addition to the standard discovery set, so a
+             *     rescan also surfaces newly-opened services.
+             */
+            ports?: components["schemas"]["PortType"][];
+            settings?: components["schemas"]["RescanSettings"];
+            /**
+             * Format: uuid
+             * @description The host being rescanned.
+             */
+            target_host_id: string;
+            /** @enum {string} */
+            type: "Rescan";
+        } | {
+            /**
+             * Format: uuid
              * @description ID of the host that the daemon is running on
              */
             host_id: string;
@@ -5488,17 +5489,6 @@ export interface components {
             /** Format: date-time */
             started_at?: string | null;
             /**
-             * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
-             *     rather than a discovery the user configured. Set server-side at session
-             *     creation; daemons do not send it.
-             *
-             *     It rides into the historical Discovery row's `results`, which is the only
-             *     way downstream consumers can tell a rescan apart: the terminal path mints
-             *     a plain `RunType::Historical` row and the transient parent is deleted, so
-             *     there is nothing left to look up. Used to keep rescans out of the digest.
-             */
-            targeted?: boolean;
-            /**
              * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
              *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
              */
@@ -5537,6 +5527,12 @@ export interface components {
             id: string;
             is_multi_hop: boolean;
             label: string | null;
+            /**
+             * @description Identity of the relation this edge stands for — see [`EdgeType::relation_key`]. Stamped
+             *     centrally from `edge_type` once the graph is built, so no construction site can forget
+             *     it. `None` marks an edge as interchangeable with its like.
+             */
+            relation_key: string | null;
             /** Format: uuid */
             source: string;
             source_handle: components["schemas"]["EdgeHandle"];
@@ -5984,19 +5980,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-28T19:53:59.960763Z",
+         *               "created_at": "2026-07-29T00:34:47.854353Z",
          *               "first_discovery_id": null,
-         *               "id": "0dd0f8d0-e017-4c6c-ba6b-84c1f7488be3",
+         *               "id": "55cf2fae-faf8-4361-9e84-254dae7d61a4",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-28T19:53:59.960763Z",
+         *               "last_seen_at": "2026-07-29T00:34:47.854353Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-28T19:53:59.960763Z",
-         *               "valid_from": "2026-07-28T19:53:59.960763Z",
+         *               "updated_at": "2026-07-29T00:34:47.854353Z",
+         *               "valid_from": "2026-07-29T00:34:47.854353Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -6010,7 +6006,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Beszel Agent",
+         *           "service_definition": "Firefly III",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -7494,6 +7490,39 @@ export interface components {
             /** Format: email */
             new_email: string;
         };
+        /**
+         * @description Scan settings that apply to a single-host rescan.
+         *
+         *     Deliberately narrower than [`ScanSettings`]: a rescan verifies a known host
+         *     against a known port set, so the full-scan mechanism (`is_full_scan`,
+         *     `full_scan_interval`) must not be expressible — promoting a rescan to a
+         *     65,535-port sweep defeats the feature. The remaining omissions are settings
+         *     that cannot bind on a one-or-two address target.
+         */
+        RescanSettings: {
+            /**
+             * Format: int32
+             * @description ARP retry rounds. Matters more here than in a sweep: for a rescan, "did
+             *     it answer" is the entire answer, so a missed round reads as a dead host.
+             */
+            arp_retries?: number | null;
+            /** @description Ports scanned concurrently per host. */
+            port_scan_batch_size?: number | null;
+            /**
+             * @description Whether to probe raw-socket ports 9100-9107. Correctness-affecting: with
+             *     this off the scanner drops those ports from its results, so a printer's
+             *     known JetDirect port would look like it had disappeared.
+             */
+            probe_raw_socket_ports?: boolean;
+            /**
+             * Format: int32
+             * @description Port scan probes per second. Operators lower this for fragile devices or
+             *     noisy IDS, and a rescan must respect that as much as a discovery does.
+             */
+            scan_rate_pps?: number | null;
+            /** @description On Windows, use Npcap broadcast ARP instead of SendARP. */
+            use_npcap_arp?: boolean;
+        };
         /** @description Request to resend verification email */
         ResendVerificationRequest: {
             /** Format: email */
@@ -7521,11 +7550,6 @@ export interface components {
             readonly last_run?: string | null;
             /** @enum {string} */
             type: "AdHoc";
-        } | {
-            /** Format: date-time */
-            readonly last_run?: string | null;
-            /** @enum {string} */
-            type: "Targeted";
         };
         /**
          * @description Save-offer choices presented during in-app cancellation (Phase 5).
@@ -7665,19 +7689,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-28T19:53:59.961525Z",
+         *           "created_at": "2026-07-29T00:34:47.855034Z",
          *           "first_discovery_id": null,
-         *           "id": "f1e43525-26a6-486c-bf11-7b9befda7040",
+         *           "id": "c69cfec0-e326-47eb-a816-a8d0f87e30a0",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-28T19:53:59.961525Z",
+         *           "last_seen_at": "2026-07-29T00:34:47.855034Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-28T19:53:59.961525Z",
-         *           "valid_from": "2026-07-28T19:53:59.961525Z",
+         *           "updated_at": "2026-07-29T00:34:47.855034Z",
+         *           "valid_from": "2026-07-29T00:34:47.855034Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7691,7 +7715,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Beszel Agent",
+         *       "service_definition": "Firefly III",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7957,7 +7981,7 @@ export interface components {
          */
         SubnetOrderField: "created_at" | "name" | "cidr" | "subnet_type" | "updated_at" | "network_id" | "last_seen_at";
         /** @enum {string} */
-        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "ScanTarget" | "Unknown";
+        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "Unknown";
         /**
          * @description Virtualization metadata for subnets that belong to a virtual infrastructure.
          *     Consistent with HostVirtualization and ServiceVirtualization patterns.
@@ -8114,7 +8138,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "c9920fa7-3938-4d8a-885a-aef9bae5961b",
+             *           "id": "ae2fd465-5df6-4760-8e2c-d47437cc5a03",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -8124,23 +8148,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "c00e7c63-35a0-4582-afc0-094b97031cd9",
+             *           "id": "db03e3e4-33ad-41b7-a0aa-f0ffbbde718a",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "63ac29ab-61a1-4479-8c9b-48559e486e28",
+             *           "id": "ac90d3bf-1eb5-41bc-9897-aa8eb7039e31",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "1a1261f8-dfba-4f09-a3ad-ba325ed0275d",
+             *           "id": "93f727fb-0787-4f2b-bc42-f093d160dbe3",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "c00e7c63-35a0-4582-afc0-094b97031cd9",
+             *           "id": "db03e3e4-33ad-41b7-a0aa-f0ffbbde718a",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -8152,19 +8176,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "cb51eff8-8fe6-4b37-82aa-22119288f0c6",
+             *         "id": "03bf962c-b89f-4edf-be8b-dbbe1f2e0892",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "5f8fff6b-caf2-4fed-aff5-d315f955f42b",
+             *         "id": "e0f44366-2eba-4bd7-9072-d2a6c96ed505",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "74229ca0-fb83-4917-8eb3-e92f392542f2",
+             *         "id": "7ad68fa7-5a98-4bbc-a502-07b91482d8f2",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "e52b5592-7e43-47c3-bbc5-1a6f3c01b319",
+             *         "id": "5b913bf6-5aa4-407a-a808-7f05dfd2a108",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -8182,7 +8206,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "a2bc8cec-85c5-41a6-a146-447bdbe9e1ff",
+             *         "id": "9c6ae61e-aee9-453c-94e7-af257422fe7d",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -8191,15 +8215,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "b4273ef5-1de8-4970-a006-95da0b1f7664",
+             *         "id": "3b57591d-27b3-4de2-aa9f-eadc780f733c",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "b9378d41-a56b-4fc9-95f2-a062e1b718c7",
+             *         "id": "0e03c8f0-493a-495f-867b-5207c0240ba7",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "eec5fb5f-d363-425f-abca-fff7436410b2",
+             *         "id": "7f0bf6f3-471a-4a4c-bcd8-a5d3298e4232",
              *         "rule": "ByStack"
              *       }
              *     ]

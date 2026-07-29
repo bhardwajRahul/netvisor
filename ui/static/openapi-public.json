@@ -11239,19 +11239,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-28T19:53:59.979244Z",
+              "created_at": "2026-07-29T00:34:47.873098Z",
               "first_discovery_id": null,
-              "id": "4b8f2a04-d66c-4f06-9702-4154977e9529",
+              "id": "5e7c9b15-3ff2-43e9-8217-7bca1a29b1b9",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T19:53:59.979244Z",
+              "last_seen_at": "2026-07-29T00:34:47.873098Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T19:53:59.979244Z",
-              "valid_from": "2026-07-28T19:53:59.979244Z",
+              "updated_at": "2026-07-29T00:34:47.873098Z",
+              "valid_from": "2026-07-29T00:34:47.873098Z",
               "valid_to": null
             }
           },
@@ -12136,10 +12136,6 @@
                 ],
                 "format": "date-time"
               },
-              "targeted": {
-                "type": "boolean",
-                "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
-              },
               "warnings": {
                 "type": "array",
                 "items": {
@@ -12404,19 +12400,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-28T19:53:59.961233Z",
+                      "created_at": "2026-07-29T00:34:47.854764Z",
                       "first_discovery_id": null,
-                      "id": "da432882-f8b4-49f3-824d-73a608d9b2d1",
+                      "id": "bfbe9645-46f9-48df-9948-b7dcdc6917d7",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-28T19:53:59.961233Z",
+                      "last_seen_at": "2026-07-29T00:34:47.854764Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-28T19:53:59.961233Z",
-                      "valid_from": "2026-07-28T19:53:59.961233Z",
+                      "updated_at": "2026-07-29T00:34:47.854764Z",
+                      "valid_from": "2026-07-29T00:34:47.854764Z",
                       "valid_to": null
                     }
                   ],
@@ -12430,7 +12426,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Beszel Agent",
+                  "service_definition": "Firefly III",
                   "source": {
                     "type": "Manual"
                   },
@@ -13500,19 +13496,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T19:53:59.973399Z",
+                  "created_at": "2026-07-29T00:34:47.867239Z",
                   "first_discovery_id": null,
-                  "id": "4f273e6f-7f21-447b-9af0-473468e60cc3",
+                  "id": "c928ce4f-0cb3-4df8-8454-4ecda7e98660",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T19:53:59.973399Z",
+                  "last_seen_at": "2026-07-29T00:34:47.867239Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T19:53:59.973399Z",
-                  "valid_from": "2026-07-28T19:53:59.973399Z",
+                  "updated_at": "2026-07-29T00:34:47.867239Z",
+                  "valid_from": "2026-07-29T00:34:47.867239Z",
                   "valid_to": null
                 }
               ],
@@ -13526,7 +13522,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Beszel Agent",
+              "service_definition": "Firefly III",
               "source": {
                 "type": "Manual"
               },
@@ -14792,10 +14788,6 @@
                   ],
                   "format": "date-time"
                 },
-                "targeted": {
-                  "type": "boolean",
-                  "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
-                },
                 "warnings": {
                   "type": "array",
                   "items": {
@@ -15400,19 +15392,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-28T19:53:59.961620Z",
+          "created_at": "2026-07-29T00:34:47.855129Z",
           "first_discovery_id": null,
-          "id": "a30878f6-680f-4dc8-a29d-4a569d9b66af",
+          "id": "2c71145a-d1c6-4edf-9cfe-f23d2fef7eaa",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-28T19:53:59.961620Z",
+          "last_seen_at": "2026-07-29T00:34:47.855129Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-28T19:53:59.961620Z",
-          "valid_from": "2026-07-28T19:53:59.961620Z",
+          "updated_at": "2026-07-29T00:34:47.855129Z",
+          "valid_from": "2026-07-29T00:34:47.855129Z",
           "valid_to": null
         }
       },
@@ -16003,7 +15995,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Beszel Agent",
+              "service_definition": "Firefly III",
               "tags": [],
               "virtualization": null
             }
@@ -17662,6 +17654,52 @@
           },
           {
             "type": "object",
+            "title": "Rescan",
+            "description": "A one-shot verification of a single host: re-check the addresses and\nports already recorded for it, rather than sweeping a subnet.\n\nCreated by the server only (never via the API) and deleted once its\nsession reaches a terminal phase, so it is not a discovery configuration\nanyone owns or sees in their scan list.",
+            "required": [
+              "host_id",
+              "target_host_id",
+              "ips",
+              "type"
+            ],
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "ID of the host that the daemon is running on — same meaning as every\nother variant. The host being rescanned is `target_host_id`."
+              },
+              "ips": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Addresses to scan on that host."
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PortType"
+                },
+                "description": "Ports already known on that host, re-checked to confirm they are\nstill open. Scanned in addition to the standard discovery set, so a\nrescan also surfaces newly-opened services."
+              },
+              "settings": {
+                "$ref": "#/components/schemas/RescanSettings"
+              },
+              "target_host_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The host being rescanned."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Rescan"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "title": "Unified",
             "required": [
               "host_id",
@@ -17794,10 +17832,6 @@
             ],
             "format": "date-time"
           },
-          "targeted": {
-            "type": "boolean",
-            "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
-          },
           "warnings": {
             "type": "array",
             "items": {
@@ -17887,7 +17921,8 @@
               "label",
               "source_handle",
               "target_handle",
-              "is_multi_hop"
+              "is_multi_hop",
+              "relation_key"
             ],
             "properties": {
               "id": {
@@ -17902,6 +17937,13 @@
                   "string",
                   "null"
                 ]
+              },
+              "relation_key": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Identity of the relation this edge stands for — see [`EdgeType::relation_key`]. Stamped\ncentrally from `edge_type` once the graph is built, so no construction site can forget\nit. `None` marks an edge as interchangeable with its like."
               },
               "source": {
                 "type": "string",
@@ -19136,19 +19178,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T19:53:59.960773Z",
+                  "created_at": "2026-07-29T00:34:47.854360Z",
                   "first_discovery_id": null,
-                  "id": "e69ad9f5-ad33-4503-809d-070812349780",
+                  "id": "16380239-25bc-4648-8426-4e0d187e6551",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T19:53:59.960773Z",
+                  "last_seen_at": "2026-07-29T00:34:47.854360Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T19:53:59.960773Z",
-                  "valid_from": "2026-07-28T19:53:59.960773Z",
+                  "updated_at": "2026-07-29T00:34:47.854360Z",
+                  "valid_from": "2026-07-29T00:34:47.854360Z",
                   "valid_to": null
                 }
               ],
@@ -19162,7 +19204,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Beszel Agent",
+              "service_definition": "Firefly III",
               "source": {
                 "type": "Manual"
               },
@@ -21799,19 +21841,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-28T19:53:59.951039Z",
+                        "created_at": "2026-07-29T00:34:47.844582Z",
                         "first_discovery_id": null,
-                        "id": "bca9303a-7901-4460-8ddd-3a15a5d54421",
+                        "id": "892f3ace-4fd4-4ace-a59d-41853e07db2c",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-28T19:53:59.951039Z",
+                        "last_seen_at": "2026-07-29T00:34:47.844582Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-28T19:53:59.951039Z",
-                        "valid_from": "2026-07-28T19:53:59.951039Z",
+                        "updated_at": "2026-07-29T00:34:47.844582Z",
+                        "valid_from": "2026-07-29T00:34:47.844582Z",
                         "valid_to": null
                       }
                     ],
@@ -21825,7 +21867,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Beszel Agent",
+                    "service_definition": "Firefly III",
                     "source": {
                       "type": "Manual"
                     },
@@ -21946,19 +21988,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-28T19:53:59.972267Z",
+                    "created_at": "2026-07-29T00:34:47.866185Z",
                     "first_discovery_id": null,
-                    "id": "122ffb85-74b3-4cac-a479-b115bcdeb493",
+                    "id": "7b0a6087-d9fb-4d9a-88e9-7d67cea30edd",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-28T19:53:59.972267Z",
+                    "last_seen_at": "2026-07-29T00:34:47.866185Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-28T19:53:59.972267Z",
-                    "valid_from": "2026-07-28T19:53:59.972267Z",
+                    "updated_at": "2026-07-29T00:34:47.866185Z",
+                    "valid_from": "2026-07-29T00:34:47.866185Z",
                     "valid_to": null
                   }
                 ],
@@ -21972,7 +22014,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Beszel Agent",
+                "service_definition": "Firefly III",
                 "source": {
                   "type": "Manual"
                 },
@@ -23242,6 +23284,46 @@
           }
         }
       },
+      "RescanSettings": {
+        "type": "object",
+        "description": "Scan settings that apply to a single-host rescan.\n\nDeliberately narrower than [`ScanSettings`]: a rescan verifies a known host\nagainst a known port set, so the full-scan mechanism (`is_full_scan`,\n`full_scan_interval`) must not be expressible — promoting a rescan to a\n65,535-port sweep defeats the feature. The remaining omissions are settings\nthat cannot bind on a one-or-two address target.",
+        "properties": {
+          "arp_retries": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "ARP retry rounds. Matters more here than in a sweep: for a rescan, \"did\nit answer\" is the entire answer, so a missed round reads as a dead host.",
+            "minimum": 0
+          },
+          "port_scan_batch_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Ports scanned concurrently per host.",
+            "minimum": 0
+          },
+          "probe_raw_socket_ports": {
+            "type": "boolean",
+            "description": "Whether to probe raw-socket ports 9100-9107. Correctness-affecting: with\nthis off the scanner drops those ports from its results, so a printer's\nknown JetDirect port would look like it had disappeared."
+          },
+          "scan_rate_pps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Port scan probes per second. Operators lower this for fragile devices or\nnoisy IDS, and a rescan must respect that as much as a discovery does.",
+            "minimum": 0
+          },
+          "use_npcap_arp": {
+            "type": "boolean",
+            "description": "On Windows, use Npcap broadcast ARP instead of SendARP."
+          }
+        }
+      },
       "ResendVerificationRequest": {
         "type": "object",
         "description": "Request to resend verification email",
@@ -23349,30 +23431,6 @@
                 "type": "string",
                 "enum": [
                   "AdHoc"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "title": "Targeted",
-            "description": "A one-shot rescan of specific targets. Created by the server (never via\nAPI) and deleted when its session reaches a terminal phase, so it is not\na discovery configuration the user owns or sees in their scan list.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "last_run": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "format": "date-time",
-                "readOnly": true
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "Targeted"
                 ]
               }
             }
@@ -23699,19 +23757,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-28T19:53:59.961533Z",
+              "created_at": "2026-07-29T00:34:47.855053Z",
               "first_discovery_id": null,
-              "id": "169ed92a-ca3f-47c2-aeaa-457970ae247c",
+              "id": "91d6d0a4-9906-432c-9cc6-4bc7c75a1f5e",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T19:53:59.961533Z",
+              "last_seen_at": "2026-07-29T00:34:47.855053Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T19:53:59.961533Z",
-              "valid_from": "2026-07-28T19:53:59.961533Z",
+              "updated_at": "2026-07-29T00:34:47.855053Z",
+              "valid_from": "2026-07-29T00:34:47.855053Z",
               "valid_to": null
             }
           ],
@@ -23725,7 +23783,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Beszel Agent",
+          "service_definition": "Firefly III",
           "source": {
             "type": "Manual"
           },
@@ -24418,7 +24476,6 @@
           "Management",
           "Storage",
           "Loopback",
-          "ScanTarget",
           "Unknown"
         ]
       },
@@ -24858,7 +24915,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "1a0587b5-e9ae-4624-9770-a09257b23bfc",
+                  "id": "f4f0ffc2-2cb6-42df-aeb9-a8141c4eeaed",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24868,23 +24925,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "a1ca9a2b-2003-4474-8ab5-f3397c9b379c",
+                  "id": "61dc1f81-24c0-4267-ad74-e74d361c4483",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "a6a3dda3-3c58-48fe-b785-ca7482c601b4",
+                  "id": "e63424b8-d7fe-43d0-947a-1e4b9bb320e3",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "1bf2b86d-5304-41ee-8d67-b220c6ffd847",
+                  "id": "63111f15-6a79-4a5d-99b0-13a5439638df",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "a1ca9a2b-2003-4474-8ab5-f3397c9b379c",
+                  "id": "61dc1f81-24c0-4267-ad74-e74d361c4483",
                   "rule": "ByHost"
                 }
               ]
@@ -24913,19 +24970,19 @@
             },
             "default": [
               {
-                "id": "0cd3ad45-ccae-41b6-9d90-58a3262d3254",
+                "id": "c4596007-fac1-466f-bdee-6dc5f2ec4415",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "7d58d864-01b7-4ab3-9dbf-08bba1436c32",
+                "id": "ccb6a2a1-0a9e-4b81-bf26-8bf0ef093906",
                 "rule": "ByVLAN"
               },
               {
-                "id": "2ad8e384-e80b-4999-8eb5-1c18d370d7fe",
+                "id": "fa784fcc-1fa6-4558-85da-a1e59e5a3ce9",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "e6d69728-4ff7-448b-b82c-591ec6ad5f87",
+                "id": "d9874057-91d3-4152-8ea6-57f2c02b4a3f",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24943,7 +25000,7 @@
                 }
               },
               {
-                "id": "21bac3aa-8208-452e-9cea-ae2d458be837",
+                "id": "a55fd51b-f1c7-47a0-8352-191643efaad6",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24952,15 +25009,15 @@
                 }
               },
               {
-                "id": "6c14321a-e1b1-4206-bf68-2bd7b10cbd74",
+                "id": "2b96f642-228f-4ce6-932c-f6453c9355d9",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "bd5babf0-3ff3-4d99-92a6-c269e3f45559",
+                "id": "e54c1268-cead-4902-af38-f57b5eb929a4",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "acbda155-d469-4321-b6bf-0577dbb3b7ac",
+                "id": "b436344d-e102-4a8c-a816-35f81ed3730c",
                 "rule": "ByStack"
               }
             ]

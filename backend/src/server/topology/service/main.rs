@@ -599,9 +599,10 @@ impl TopologyService {
         let builder = super::view::builder_for_view(view);
         let (all_nodes, mut all_edges) = builder.build(&ctx, &grouping);
 
-        // Set per-view edge configuration
+        // Set per-view edge configuration and the view-independent relation identity
         for edge in &mut all_edges {
             edge.view_config = view.edge_view_config((&edge.edge_type).into());
+            edge.relation_key = edge.edge_type.relation_key();
         }
 
         let final_edges = all_edges;

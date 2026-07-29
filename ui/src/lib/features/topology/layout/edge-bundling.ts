@@ -1,4 +1,5 @@
 import type { TopologyEdge } from '../types/base';
+import { getRelationIdentity } from './edge-classification';
 
 export interface BundledEdge {
 	/** Unique ID for the bundle */
@@ -54,20 +55,19 @@ export function bundleEdges(
 				? [sourceContainer, targetContainer]
 				: [targetContainer, sourceContainer];
 
-		// Edges that stand for one specific relationship carry that relationship's id in the key,
-		// so two instances between the same containers never merge: a dependency is identified by
-		// its dependency_id, a SameContainer edge by the container it belongs to. Merging those
-		// would leave a bundle asserting "these subnets are linked" while dropping *which*
-		// dependency or container links them — and bundles also lose their label and highlight
-		// only as a group.
-		const instanceId =
-			'dependency_id' in edge
-				? (edge.dependency_id as string)
-				: edge.edge_type === 'SameContainer'
-					? (edge.service_id as string)
-					: '';
-		const key = instanceId
-			? `${c1}:${c2}:${edge.edge_type}:${instanceId}`
+		// Edges that stand for one specific relationship carry that relationship's identity in
+		// the key, so two instances between the same containers never merge: a cable is the pair
+		// of ports it joins, a dependency its dependency_id, a SameHost edge the host whose
+		// addresses it ties together. Merging those would leave a bundle asserting "these subnets
+		// are linked" while dropping *which* cable, host or dependency links them — and bundles
+		// also lose their label and highlight only as a group.
+		//
+		// Only edges elevated onto their containers have no identity: those land on identical
+		// endpoints, so merging them is the only way to show there is more than one. The backend
+		// decides which is which — see `EdgeType::relation_key`.
+		const relationIdentity = getRelationIdentity(edge);
+		const key = relationIdentity
+			? `${c1}:${c2}:${relationIdentity}`
 			: `${c1}:${c2}:${edge.edge_type}`;
 
 		const group = groups.get(key);
@@ -79,7 +79,7 @@ export function bundleEdges(
 	}
 
 	const bundles: BundledEdge[] = [];
-	for (const [, group] of groups) {
+	for (const [key, group] of groups) {
 		if (group.length < 2) {
 			unbundled.push(...group);
 			continue;
@@ -94,7 +94,9 @@ export function bundleEdges(
 				: [targetContainer, sourceContainer];
 
 		bundles.push({
-			id: `bundle-${c1}-${c2}-${first.edge_type}`,
+			// The grouping key, which is what makes this bundle distinct — expansion state is
+			// tracked by this id, so two bundles between one container pair must not share one.
+			id: `bundle-${key}`,
 			sourceContainerId: c1,
 			targetContainerId: c2,
 			edges: group,
