@@ -30,7 +30,7 @@ export function supportsTarget(
 }
 
 function isLoopback(ip: string): boolean {
-	const t = ip.trim();
+	const t = ip?.trim() ?? '';
 	return t === '127.0.0.1' || t === '::1' || t === 'localhost';
 }
 
@@ -92,7 +92,7 @@ export function hasExplicitTarget(
 	scope: 'broadcast' | 'per_host' | undefined,
 	ips: string[]
 ): boolean {
-	return scope === 'broadcast' || ips.some((ip) => ip.trim() !== '');
+	return scope === 'broadcast' || ips.some((ip) => (ip?.trim() ?? '') !== '');
 }
 
 /**
@@ -111,8 +111,12 @@ export function integrationTargetFor(
 	targets: CredentialTarget[] | undefined,
 	ips: string[]
 ): IntegrationTarget | null {
-	const cleaned = ips.map((ip) => ip.trim()).filter(Boolean);
+	// Tolerates holes: the shared form can leave an index unset (a removed row), which
+	// arrives here as undefined. Throwing would abort the whole save with no message.
+	const cleaned = ips.map((ip) => ip?.trim() ?? '').filter(Boolean);
 
+	// eslint-disable-next-line no-console -- TEMPORARY: tracing a credential that does not persist
+	console.debug('[cred-target]', { credentialId, targets, ips, cleaned });
 	// A daemon-host-only type (the local socket) is always reached over the loopback,
 	// as is an explicit loopback-only selection on any type.
 	if (isDaemonHostOnly(targets) || (cleaned.length > 0 && cleaned.every(isLoopback))) {

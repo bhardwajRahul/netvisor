@@ -145,6 +145,15 @@ describe('hasExplicitTarget', () => {
 	it('counts any non-blank IP', () => {
 		expect(hasExplicitTarget('per_host', ['', '10.0.0.5'])).toBe(true);
 	});
+
+	// The shared form leaves an index unset when a row is removed, so the array reaching
+	// here can have holes. Throwing on one aborts the entire save with nothing shown.
+	it('tolerates an unset entry', () => {
+		const withHole = ['10.0.0.5', undefined] as unknown as string[];
+		expect(() => hasExplicitTarget('per_host', withHole)).not.toThrow();
+		expect(hasExplicitTarget('per_host', withHole)).toBe(true);
+		expect(hasExplicitTarget('per_host', [undefined] as unknown as string[])).toBe(false);
+	});
 });
 
 describe('integrationTargetFor', () => {

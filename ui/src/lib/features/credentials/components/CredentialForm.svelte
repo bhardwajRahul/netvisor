@@ -299,9 +299,12 @@
 			initDefaultFieldValues(typeId);
 		}
 
-		// Set fixed name if provided
-		if (fixedName && !compact) {
-			form.setFieldValue?.('name', fixedName);
+		// Set fixed name if provided. In compact mode this seeds this row's slice of the
+		// shared form: its defaults are built once, so a row the parent seeds afterwards has
+		// no entry and the name input renders blank. (Written inline rather than via
+		// `nameFieldName`, which is declared below this function's only call site.)
+		if (fixedName) {
+			form.setFieldValue?.(compact ? `${fieldPrefix}name` : 'name', fixedName);
 		}
 
 		// Initialize target mode and target IP values from the row itself, falling back to
@@ -576,7 +579,7 @@
 		// Locked rows are real targets owned elsewhere, so the credential is already
 		// pointed somewhere even with nothing entered here.
 		if (lockedHosts.length > 0) return true;
-		return targetIpValues.some((ip) => ip.trim() !== '');
+		return targetIpValues.some((ip) => (ip?.trim() ?? '') !== '');
 	}
 
 	// Target-IP field validator. Empty rows are valid at the field level — they're
