@@ -167,18 +167,19 @@
 
 	/**
 	 * Credentials assigned, through the `host_credentials` junction, to ANY host on this
-	 * discovery's network — shown as read-only "managed elsewhere" cards.
+	 * discovery's network, with the hosts each one hits.
 	 *
 	 * The scan already runs all of these (the server builds host-level mappings for every host
 	 * on the network, independent of this discovery's targets), so omitting them made the step
-	 * an incomplete picture of what a scan will do.
+	 * an incomplete picture of what a scan will do. They surface as locked rows on the
+	 * credential's own card, not as separate cards.
 	 *
 	 * Deliberately separate from `computeDaemonHostCredentials`: that one feeds the daemon-host
 	 * endpoint blocking, and generalizing it in place would let another host's credential type
 	 * falsely claim the daemon host. Assignment-sourced only — targets owned by this discovery
-	 * are editable rows, seeded separately.
+	 * are seeded separately, as editable rows.
 	 */
-	function computeNetworkManagedCredentials(hostIds: Set<string>) {
+	function computeJunctionAssignments(hostIds: Set<string>) {
 		if (hostIds.size === 0) return [];
 		const hostById = new Map(hosts.map((h) => [h.id, h]));
 		return (allCredentialsQuery.data ?? []).flatMap((c) => {
@@ -425,13 +426,13 @@
 					// integration targets on the Discovery. Parity with the daemon-create modal: the
 					// scope comes from the type's `targets` metadata, so a type that excludes Network
 					// (e.g. a UniFi controller) can never be emitted as a network-wide broadcast the
-					// server would drop at dispatch. The backend (apply_integration_targets) merges
-					// DaemonHost targets into the host_credentials junction and keeps Network/Hosts on
-					// the Discovery — so adding a socket here works exactly like the create modal.
+					// server would drop at dispatch.
 					const persisted = new Set(ids ?? []);
-					// Managed (already-junction-assigned) daemon-host cards are read-only here.
+					// `isDiscoveryTarget` is the gate: a row showing only junction assignments has no
+					// target the user chose here, and an empty IP list would otherwise be read as
+					// "network-wide" for a broadcast-capable type — inventing a scope nobody asked for.
 					const targeted = pendingCredentials
-						.filter((p) => !p.isManaged && persisted.has(p.credential.id))
+						.filter((p) => p.isDiscoveryTarget && persisted.has(p.credential.id))
 						.map((p) => ({
 							name: p.credential.name,
 							target: integrationTargetFor(
@@ -498,13 +499,19 @@
 				// picker's "nothing chosen" placeholder.
 				const ips = t.scope === 'Hosts' ? t.ips : t.scope === 'DaemonHost' ? [DAEMON_HOST_IP] : [];
 				return [
-					{ credential: c, targetIps: ips.length ? ips : [''], fieldValues: {}, isExisting: true }
+					{
+						credential: c,
+						targetIps: ips.length ? ips : [''],
+						fieldValues: {},
+						isExisting: true,
+						isDiscoveryTarget: true
+					}
 				];
 			});
-			// Read-only managed cards: credentials assigned through the host/credential modals'
-			// junction to any host on this network — genuinely managed elsewhere, so not
-			// editable here. Anything already seeded above as an editable target is filtered
-			// out, so a credential this discovery targets stays a single editable row.
+			// Junction assignments to any host on this network. These are real targets owned
+			// by the host/credential modals, so they attach to the credential's existing row
+			// as locked entries rather than becoming a second card for it — one card per
+			// credential, whether this discovery targets it, it is assigned elsewhere, or both.
 			// Resolve the daemon and its network inline (formData not yet settled).
 			const dForDiscovery = daemons.find((d) => d.id === discovery?.daemon_id) ?? null;
 			const dHostId = dForDiscovery
@@ -518,17 +525,28 @@
 				? hosts.filter((h) => h.network_id === networkId).map((h) => h.id)
 				: [];
 			const networkHostIds = new Set(dHostId ? [...onNetwork, dHostId] : onNetwork);
-			const managed: PendingCredential[] = computeNetworkManagedCredentials(networkHostIds)
+			const assignedByCredential = new Map(
+				computeJunctionAssignments(networkHostIds).map(({ credential, assignedHosts }) => [
+					credential.id,
+					{ credential, assignedHosts }
+				])
+			);
+			// Attach the locked hosts to the rows this discovery already targets...
+			const merged: PendingCredential[] = editable.map((p) => {
+				const assigned = assignedByCredential.get(p.credential.id);
+				return assigned ? { ...p, lockedHosts: assigned.assignedHosts } : p;
+			});
+			// ...and give the rest a row of their own, targeting nothing here yet.
+			const lockedOnly: PendingCredential[] = [...assignedByCredential.values()]
 				.filter(({ credential }) => !editable.some((p) => p.credential.id === credential.id))
 				.map(({ credential, assignedHosts }) => ({
 					credential,
 					targetIps: [],
 					fieldValues: {},
 					isExisting: true,
-					isManaged: true,
-					managedHosts: assignedHosts
+					lockedHosts: assignedHosts
 				}));
-			pendingCredentials = [...editable, ...managed];
+			pendingCredentials = [...merged, ...lockedOnly];
 		}
 		// Always open straight on the wizard (the Integrations-grid picker is skipped).
 		credentialSubStep = 'wizard';
