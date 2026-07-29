@@ -1406,8 +1406,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all Discoveries */
-        get: operations["list_discoveries"];
+        /**
+         * List discoveries
+         * @description Returns discoveries the authenticated user has access to. The run history
+         *     grows without bound, so this is paginated and ordered server-side rather
+         *     than filtered in the browser.
+         */
+        get: operations["get_all_discoveries"];
         put?: never;
         /** Create new Discovery */
         post: operations["create_discovery"];
@@ -3161,19 +3166,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-28T23:58:51.394013Z",
+             *       "created_at": "2026-07-29T01:29:50.395268Z",
              *       "first_discovery_id": null,
-             *       "id": "3591263f-62f8-48d2-b135-542bb4bc2546",
+             *       "id": "c321721b-ba13-4afb-af6b-5362e6999c61",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-28T23:58:51.394013Z",
+             *       "last_seen_at": "2026-07-29T01:29:50.395268Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-28T23:58:51.394013Z",
-             *       "valid_from": "2026-07-28T23:58:51.394013Z",
+             *       "updated_at": "2026-07-29T01:29:50.395268Z",
+             *       "valid_from": "2026-07-29T01:29:50.395268Z",
              *       "valid_to": null
              *     }
              */
@@ -3465,17 +3470,6 @@ export interface components {
                 /** Format: date-time */
                 started_at?: string | null;
                 /**
-                 * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
-                 *     rather than a discovery the user configured. Set server-side at session
-                 *     creation; daemons do not send it.
-                 *
-                 *     It rides into the historical Discovery row's `results`, which is the only
-                 *     way downstream consumers can tell a rescan apart: the terminal path mints
-                 *     a plain `RunType::Historical` row and the transient parent is deleted, so
-                 *     there is nothing left to look up. Used to keep rescans out of the digest.
-                 */
-                targeted?: boolean;
-                /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
                  *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
                  */
@@ -3577,19 +3571,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-28T23:58:51.373155Z",
+             *               "created_at": "2026-07-29T01:29:50.375136Z",
              *               "first_discovery_id": null,
-             *               "id": "d15f481d-be6d-42f6-bfe3-b0b5e84d4a31",
+             *               "id": "d3833ea5-c09f-4efe-8e67-4eb78751e20c",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-28T23:58:51.373155Z",
+             *               "last_seen_at": "2026-07-29T01:29:50.375136Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-28T23:58:51.373155Z",
-             *               "valid_from": "2026-07-28T23:58:51.373155Z",
+             *               "updated_at": "2026-07-29T01:29:50.375136Z",
+             *               "valid_from": "2026-07-29T01:29:50.375136Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3603,7 +3597,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Ceph",
+             *           "service_definition": "MySQL",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -4020,19 +4014,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-28T23:58:51.387266Z",
+             *           "created_at": "2026-07-29T01:29:50.389081Z",
              *           "first_discovery_id": null,
-             *           "id": "940ca394-04d6-455b-85c7-0cd37cd5642b",
+             *           "id": "675f1617-abbe-4aff-9f9e-93f031d95e84",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-28T23:58:51.387266Z",
+             *           "last_seen_at": "2026-07-29T01:29:50.389081Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-28T23:58:51.387266Z",
-             *           "valid_from": "2026-07-28T23:58:51.387266Z",
+             *           "updated_at": "2026-07-29T01:29:50.389081Z",
+             *           "valid_from": "2026-07-29T01:29:50.389081Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4046,7 +4040,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Ceph",
+             *       "service_definition": "MySQL",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4427,17 +4421,6 @@ export interface components {
                 /** Format: date-time */
                 started_at?: string | null;
                 /**
-                 * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
-                 *     rather than a discovery the user configured. Set server-side at session
-                 *     creation; daemons do not send it.
-                 *
-                 *     It rides into the historical Discovery row's `results`, which is the only
-                 *     way downstream consumers can tell a rescan apart: the terminal path mints
-                 *     a plain `RunType::Historical` row and the transient parent is deleted, so
-                 *     there is nothing left to look up. Used to keep rescans out of the digest.
-                 */
-                targeted?: boolean;
-                /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
                  *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
                  */
@@ -4561,19 +4544,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-28T23:58:51.373595Z",
+         *       "created_at": "2026-07-29T01:29:50.375516Z",
          *       "first_discovery_id": null,
-         *       "id": "79610a0d-e2e0-4ecb-a148-52cbbb2e0f87",
+         *       "id": "3b2e6056-5f43-481f-8320-20c18568b0a0",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-28T23:58:51.373595Z",
+         *       "last_seen_at": "2026-07-29T01:29:50.375516Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-28T23:58:51.373595Z",
-         *       "valid_from": "2026-07-28T23:58:51.373595Z",
+         *       "updated_at": "2026-07-29T01:29:50.375516Z",
+         *       "valid_from": "2026-07-29T01:29:50.375516Z",
          *       "valid_to": null
          *     }
          */
@@ -4788,7 +4771,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Ceph",
+         *           "service_definition": "MySQL",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5417,6 +5400,11 @@ export interface components {
              */
             subnets?: components["schemas"]["Subnet"][];
         };
+        /**
+         * @description Fields that discoveries can be ordered/grouped by.
+         * @enum {string}
+         */
+        DiscoveryOrderField: "created_at" | "name" | "updated_at" | "daemon_id" | "network_id" | "discovery_type";
         /** @enum {string} */
         DiscoveryPhase: "AwaitingSnapshot" | "Queued" | "Pending" | "Starting" | "Started" | "Scanning" | "Complete" | "Failed" | "Cancelled";
         /**
@@ -5445,6 +5433,29 @@ export interface components {
             host_naming_fallback: components["schemas"]["HostNamingFallback"];
             /** @enum {string} */
             type: "Docker";
+        } | {
+            /**
+             * Format: uuid
+             * @description ID of the host that the daemon is running on — same meaning as every
+             *     other variant. The host being rescanned is `target_host_id`.
+             */
+            host_id: string;
+            /** @description Addresses to scan on that host. */
+            ips: string[];
+            /**
+             * @description Ports already known on that host, re-checked to confirm they are
+             *     still open. Scanned in addition to the standard discovery set, so a
+             *     rescan also surfaces newly-opened services.
+             */
+            ports?: components["schemas"]["PortType"][];
+            settings?: components["schemas"]["RescanSettings"];
+            /**
+             * Format: uuid
+             * @description The host being rescanned.
+             */
+            target_host_id: string;
+            /** @enum {string} */
+            type: "Rescan";
         } | {
             /**
              * Format: uuid
@@ -5489,17 +5500,6 @@ export interface components {
             /** Format: date-time */
             started_at?: string | null;
             /**
-             * @description Whether this session came from a one-shot rescan (`RunType::Targeted`)
-             *     rather than a discovery the user configured. Set server-side at session
-             *     creation; daemons do not send it.
-             *
-             *     It rides into the historical Discovery row's `results`, which is the only
-             *     way downstream consumers can tell a rescan apart: the terminal path mints
-             *     a plain `RunType::Historical` row and the transient parent is deleted, so
-             *     there is nothing left to look up. Used to keep rescans out of the digest.
-             */
-            targeted?: boolean;
-            /**
              * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
              *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
              */
@@ -5538,6 +5538,12 @@ export interface components {
             id: string;
             is_multi_hop: boolean;
             label: string | null;
+            /**
+             * @description Identity of the relation this edge stands for — see [`EdgeType::relation_key`]. Stamped
+             *     centrally from `edge_type` once the graph is built, so no construction site can forget
+             *     it. `None` marks an edge as interchangeable with its like.
+             */
+            relation_key: string | null;
             /** Format: uuid */
             source: string;
             source_handle: components["schemas"]["EdgeHandle"];
@@ -5778,6 +5784,19 @@ export interface components {
             /** Format: email */
             email: string;
         };
+        /** @description Size of one group in a grouped list, across every page. */
+        GroupCount: {
+            /**
+             * Format: int64
+             * @description How many rows fall in this group in total, not just on this page.
+             */
+            count: number;
+            /**
+             * @description The group's value, rendered as text. `null` for rows whose group key is
+             *     NULL (the "ungrouped" bucket).
+             */
+            value?: string | null;
+        };
         /**
          * @example {
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -5985,19 +6004,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-28T23:58:51.372647Z",
+         *               "created_at": "2026-07-29T01:29:50.374682Z",
          *               "first_discovery_id": null,
-         *               "id": "6783c719-4812-4c78-8da1-2b1e33088840",
+         *               "id": "b35fc726-f7d2-43fa-9f0b-405d90284d50",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-28T23:58:51.372647Z",
+         *               "last_seen_at": "2026-07-29T01:29:50.374682Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-28T23:58:51.372647Z",
-         *               "valid_from": "2026-07-28T23:58:51.372647Z",
+         *               "updated_at": "2026-07-29T01:29:50.374682Z",
+         *               "valid_from": "2026-07-29T01:29:50.374682Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -6011,7 +6030,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Ceph",
+         *           "service_definition": "MySQL",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6932,6 +6951,36 @@ export interface components {
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
+        PaginatedApiResponse_Discovery: {
+            data: (components["schemas"]["DiscoveryBase"] & {
+                /** Format: date-time */
+                readonly created_at: string;
+                /** @description When true, the next scan will be a full port scan regardless of interval */
+                force_full_scan?: boolean;
+                /** Format: uuid */
+                readonly id: string;
+                /**
+                 * @description Per-daemon integration targeting: which integrations (credentialed or credential-less
+                 *     local) run on this daemon, and on which IPs. Delivered via the init command at
+                 *     registration and editable via the discovery modal. Persistent — re-applied every scan.
+                 *     This is the single home for cred↔IP targeting; it replaces the global
+                 *     `credential.target_ips` (race-prone, consumed once) and the discovery modal's old
+                 *     one-shot `pending_credential_ids`.
+                 */
+                integration_targets: components["schemas"]["IntegrationTarget"][];
+                /**
+                 * Format: int32
+                 * @description Number of completed scans (incremented by server on session completion)
+                 */
+                readonly scan_count?: number;
+                /** Format: date-time */
+                readonly updated_at: string;
+            })[];
+            error?: string | null;
+            meta: components["schemas"]["PaginatedApiMeta"];
+            success: boolean;
+        };
+        /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_HostResponse: {
             data: {
                 chassis_id?: string | null;
@@ -7123,6 +7172,13 @@ export interface components {
          *     }
          */
         PaginationMeta: {
+            /**
+             * @description Size of every group, in the same order the rows are grouped, when the
+             *     request specified a `group_by`. Lets a paginated client show a group's
+             *     true size instead of the slice of it that happens to be on this page.
+             *     Absent when the list isn't grouped.
+             */
+            group_counts?: components["schemas"]["GroupCount"][] | null;
             /** @description Whether there are more items after this page */
             has_more: boolean;
             /**
@@ -7495,6 +7551,39 @@ export interface components {
             /** Format: email */
             new_email: string;
         };
+        /**
+         * @description Scan settings that apply to a single-host rescan.
+         *
+         *     Deliberately narrower than [`ScanSettings`]: a rescan verifies a known host
+         *     against a known port set, so the full-scan mechanism (`is_full_scan`,
+         *     `full_scan_interval`) must not be expressible — promoting a rescan to a
+         *     65,535-port sweep defeats the feature. The remaining omissions are settings
+         *     that cannot bind on a one-or-two address target.
+         */
+        RescanSettings: {
+            /**
+             * Format: int32
+             * @description ARP retry rounds. Matters more here than in a sweep: for a rescan, "did
+             *     it answer" is the entire answer, so a missed round reads as a dead host.
+             */
+            arp_retries?: number | null;
+            /** @description Ports scanned concurrently per host. */
+            port_scan_batch_size?: number | null;
+            /**
+             * @description Whether to probe raw-socket ports 9100-9107. Correctness-affecting: with
+             *     this off the scanner drops those ports from its results, so a printer's
+             *     known JetDirect port would look like it had disappeared.
+             */
+            probe_raw_socket_ports?: boolean;
+            /**
+             * Format: int32
+             * @description Port scan probes per second. Operators lower this for fragile devices or
+             *     noisy IDS, and a rescan must respect that as much as a discovery does.
+             */
+            scan_rate_pps?: number | null;
+            /** @description On Windows, use Npcap broadcast ARP instead of SendARP. */
+            use_npcap_arp?: boolean;
+        };
         /** @description Request to resend verification email */
         ResendVerificationRequest: {
             /** Format: email */
@@ -7522,11 +7611,6 @@ export interface components {
             readonly last_run?: string | null;
             /** @enum {string} */
             type: "AdHoc";
-        } | {
-            /** Format: date-time */
-            readonly last_run?: string | null;
-            /** @enum {string} */
-            type: "Targeted";
         };
         /**
          * @description Save-offer choices presented during in-app cancellation (Phase 5).
@@ -7666,19 +7750,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-28T23:58:51.373503Z",
+         *           "created_at": "2026-07-29T01:29:50.375430Z",
          *           "first_discovery_id": null,
-         *           "id": "f0731c04-d994-403c-8ab7-53c901cbf7aa",
+         *           "id": "4ae62916-3ed9-45e3-b466-086b827eaa1b",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-28T23:58:51.373503Z",
+         *           "last_seen_at": "2026-07-29T01:29:50.375430Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-28T23:58:51.373503Z",
-         *           "valid_from": "2026-07-28T23:58:51.373503Z",
+         *           "updated_at": "2026-07-29T01:29:50.375430Z",
+         *           "valid_from": "2026-07-29T01:29:50.375430Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7692,7 +7776,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Ceph",
+         *       "service_definition": "MySQL",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7776,7 +7860,7 @@ export interface components {
          * @description Fields that services can be ordered/grouped by.
          * @enum {string}
          */
-        ServiceOrderField: "created_at" | "name" | "updated_at" | "host" | "network_id" | "position" | "last_seen_at";
+        ServiceOrderField: "created_at" | "name" | "updated_at" | "host" | "network_id" | "position" | "service_definition" | "last_seen_at";
         /** ServiceVirtualization */
         ServiceVirtualization: {
             details: components["schemas"]["DockerVirtualization"];
@@ -7958,7 +8042,7 @@ export interface components {
          */
         SubnetOrderField: "created_at" | "name" | "cidr" | "subnet_type" | "updated_at" | "network_id" | "last_seen_at";
         /** @enum {string} */
-        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "ScanTarget" | "Unknown";
+        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "Unknown";
         /**
          * @description Virtualization metadata for subnets that belong to a virtual infrastructure.
          *     Consistent with HostVirtualization and ServiceVirtualization patterns.
@@ -8115,7 +8199,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "e2463610-3f5f-48bf-a496-566b45805a54",
+             *           "id": "e2d80d2a-921c-4496-9487-42a825ce0bea",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -8125,23 +8209,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "6d5aa66e-4858-4fe6-9d35-fa669b670b5b",
+             *           "id": "2fdfd835-9148-46db-8659-a0175129c885",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "05f7cd5f-d8f1-4f0d-b8c8-dcd3ae50f60a",
+             *           "id": "476d1d97-9824-4f6d-a309-c64255a18717",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "23bab0bf-e92e-407f-a1a5-5629297047d8",
+             *           "id": "0165e666-580a-4708-a8fa-ebb9336cca4a",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "6d5aa66e-4858-4fe6-9d35-fa669b670b5b",
+             *           "id": "2fdfd835-9148-46db-8659-a0175129c885",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -8153,19 +8237,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "494fb957-5348-494e-b87d-80aabfa7673f",
+             *         "id": "09b47623-2b40-4a9d-b700-4f1e70c89f36",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "a04e42e4-c5c9-4197-82cd-8871c6a78e70",
+             *         "id": "b1a31f9d-f3a2-40f6-960c-4606b62bfd35",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "2541e06c-88e5-4c03-85a3-3492d2690267",
+             *         "id": "2d027190-f314-45da-9e01-773f5dd12625",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "90498ff6-5e05-4b1f-9f76-2e45a7daebc9",
+             *         "id": "cdf4b65e-a765-4ab0-992d-4a927aea7f41",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -8183,7 +8267,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "6abe836a-007c-47b4-a51b-bf7375b4b375",
+             *         "id": "7cb2d807-033d-412c-acb3-06c2aa3f8d10",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -8192,15 +8276,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "2a384aff-b517-4989-95e4-80936f4350f4",
+             *         "id": "7ad49b15-b237-4239-816d-19658f4080a9",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "262d47a7-b9f1-4336-b8d1-5592999b5071",
+             *         "id": "15cc6e3c-ded9-4c56-8b9a-016bd94b4705",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "a456af2e-f804-4840-ac44-d690ff9536c3",
+             *         "id": "359f5798-dfa1-4d43-993c-6661aa7da07b",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -11553,13 +11637,29 @@ export interface operations {
             };
         };
     };
-    list_discoveries: {
+    get_all_discoveries: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
                 network_id?: string | null;
                 /** @description Filter by daemon ID */
                 daemon_id?: string | null;
+                /**
+                 * @description `true` returns only completed runs (the history view), `false` only the
+                 *     configurations that produce them. Omit for both.
+                 */
+                historical?: boolean | null;
+                /**
+                 * @description Free-text search across the discovery's name and the name of the daemon
+                 *     that runs it.
+                 */
+                search?: string | null;
+                /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
+                group_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Secondary ordering field (sorting within groups or standalone sort). */
+                order_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Direction for order_by field (group_by always uses ASC). */
+                order_direction?: null | components["schemas"]["OrderDirection"];
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
@@ -11571,18 +11671,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of Discoveries */
+            /** @description List of discoveries */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Discovery"][];
-                        error?: string | null;
-                        meta: components["schemas"]["PaginatedApiMeta"];
-                        success: boolean;
-                    };
+                    "application/json": components["schemas"]["PaginatedApiResponse_Discovery"];
                 };
             };
         };
@@ -11681,6 +11776,22 @@ export interface operations {
                 network_id?: string | null;
                 /** @description Filter by daemon ID */
                 daemon_id?: string | null;
+                /**
+                 * @description `true` returns only completed runs (the history view), `false` only the
+                 *     configurations that produce them. Omit for both.
+                 */
+                historical?: boolean | null;
+                /**
+                 * @description Free-text search across the discovery's name and the name of the daemon
+                 *     that runs it.
+                 */
+                search?: string | null;
+                /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
+                group_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Secondary ordering field (sorting within groups or standalone sort). */
+                order_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Direction for order_by field (group_by always uses ASC). */
+                order_direction?: null | components["schemas"]["OrderDirection"];
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
@@ -11913,6 +12024,12 @@ export interface operations {
                 ids?: string[] | null;
                 /** @description Filter by tag IDs (returns hosts that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
+                /**
+                 * @description Free-text search. Case-insensitive substring match against the host's
+                 *     name, hostname and description, and against its IP addresses and the
+                 *     names of services running on it.
+                 */
+                search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["HostOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
@@ -12077,6 +12194,12 @@ export interface operations {
                 ids?: string[] | null;
                 /** @description Filter by tag IDs (returns hosts that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
+                /**
+                 * @description Free-text search. Case-insensitive substring match against the host's
+                 *     name, hostname and description, and against its IP addresses and the
+                 *     names of services running on it.
+                 */
+                search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["HostOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
@@ -12132,6 +12255,12 @@ export interface operations {
                 ids?: string[] | null;
                 /** @description Filter by tag IDs (returns hosts that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
+                /**
+                 * @description Free-text search. Case-insensitive substring match against the host's
+                 *     name, hostname and description, and against its IP addresses and the
+                 *     names of services running on it.
+                 */
+                search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["HostOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
@@ -13824,12 +13953,21 @@ export interface operations {
                 ids?: string[] | null;
                 /** @description Filter by tag IDs (returns services that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
+                /**
+                 * @description Free-text search. Case-insensitive substring match against the service's
+                 *     name and definition, and against the name of the host it runs on.
+                 */
+                search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
                 order_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Direction for order_by field (group_by always uses ASC). */
                 order_direction?: null | components["schemas"]["OrderDirection"];
+                /** @description Only services exposed on one of these port numbers. */
+                ports?: number[] | null;
+                /** @description Only services exposed over this transport protocol. */
+                protocol?: null | components["schemas"]["TransportProtocol"];
                 /** @description Exclude services belonging to these categories. */
                 exclude_categories?: components["schemas"]["ServiceCategory"][] | null;
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
@@ -13934,12 +14072,21 @@ export interface operations {
                 ids?: string[] | null;
                 /** @description Filter by tag IDs (returns services that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
+                /**
+                 * @description Free-text search. Case-insensitive substring match against the service's
+                 *     name and definition, and against the name of the host it runs on.
+                 */
+                search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
                 order_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Direction for order_by field (group_by always uses ASC). */
                 order_direction?: null | components["schemas"]["OrderDirection"];
+                /** @description Only services exposed on one of these port numbers. */
+                ports?: number[] | null;
+                /** @description Only services exposed over this transport protocol. */
+                protocol?: null | components["schemas"]["TransportProtocol"];
                 /** @description Exclude services belonging to these categories. */
                 exclude_categories?: components["schemas"]["ServiceCategory"][] | null;
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */

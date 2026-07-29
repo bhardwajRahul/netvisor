@@ -3446,8 +3446,9 @@
         "tags": [
           "Discoveries"
         ],
-        "summary": "List all Discoveries",
-        "operationId": "list_discoveries",
+        "summary": "List discoveries",
+        "description": "Returns discoveries the authenticated user has access to. The run history\ngrows without bound, so this is paginated and ordered server-side rather\nthan filtered in the browser.",
+        "operationId": "get_all_discoveries",
         "parameters": [
           {
             "name": "network_id",
@@ -3473,6 +3474,78 @@
                 "null"
               ],
               "format": "uuid"
+            }
+          },
+          {
+            "name": "historical",
+            "in": "query",
+            "description": "`true` returns only completed runs (the history view), `false` only the\nconfigurations that produce them. Omit for both.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search across the discovery's name and the name of the daemon\nthat runs it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/DiscoveryOrderField"
+                }
+              ]
+            }
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "description": "Secondary ordering field (sorting within groups or standalone sort).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/DiscoveryOrderField"
+                }
+              ]
+            }
+          },
+          {
+            "name": "order_direction",
+            "in": "query",
+            "description": "Direction for order_by field (group_by always uses ASC).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/OrderDirection"
+                }
+              ]
             }
           },
           {
@@ -3507,37 +3580,11 @@
         ],
         "responses": {
           "200": {
-            "description": "List of Discoveries",
+            "description": "List of discoveries",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "description": "Response type for paginated list endpoints (pagination is always present in meta)",
-                  "required": [
-                    "success",
-                    "data",
-                    "meta"
-                  ],
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Discovery"
-                      }
-                    },
-                    "error": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "meta": {
-                      "$ref": "#/components/schemas/PaginatedApiMeta"
-                    },
-                    "success": {
-                      "type": "boolean"
-                    }
-                  }
+                  "$ref": "#/components/schemas/PaginatedApiResponse_Discovery"
                 }
               }
             }
@@ -3716,6 +3763,78 @@
                 "null"
               ],
               "format": "uuid"
+            }
+          },
+          {
+            "name": "historical",
+            "in": "query",
+            "description": "`true` returns only completed runs (the history view), `false` only the\nconfigurations that produce them. Omit for both.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search across the discovery's name and the name of the daemon\nthat runs it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/DiscoveryOrderField"
+                }
+              ]
+            }
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "description": "Secondary ordering field (sorting within groups or standalone sort).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/DiscoveryOrderField"
+                }
+              ]
+            }
+          },
+          {
+            "name": "order_direction",
+            "in": "query",
+            "description": "Direction for order_by field (group_by always uses ASC).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/OrderDirection"
+                }
+              ]
             }
           },
           {
@@ -4091,6 +4210,18 @@
             }
           },
           {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname and description, and against its IP addresses and the\nnames of services running on it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "group_by",
             "in": "query",
             "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
@@ -4398,6 +4529,18 @@
             }
           },
           {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname and description, and against its IP addresses and the\nnames of services running on it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "group_by",
             "in": "query",
             "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
@@ -4582,6 +4725,18 @@
                 "type": "string",
                 "format": "uuid"
               }
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname and description, and against its IP addresses and the\nnames of services running on it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           {
@@ -7501,6 +7656,18 @@
             }
           },
           {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search. Case-insensitive substring match against the service's\nname and definition, and against the name of the host it runs on.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "group_by",
             "in": "query",
             "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
@@ -7544,6 +7711,39 @@
                 },
                 {
                   "$ref": "#/components/schemas/OrderDirection"
+                }
+              ]
+            }
+          },
+          {
+            "name": "ports",
+            "in": "query",
+            "description": "Only services exposed on one of these port numbers.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "name": "protocol",
+            "in": "query",
+            "description": "Only services exposed over this transport protocol.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/TransportProtocol"
                 }
               ]
             }
@@ -7800,6 +8000,18 @@
             }
           },
           {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search. Case-insensitive substring match against the service's\nname and definition, and against the name of the host it runs on.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "group_by",
             "in": "query",
             "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
@@ -7843,6 +8055,39 @@
                 },
                 {
                   "$ref": "#/components/schemas/OrderDirection"
+                }
+              ]
+            }
+          },
+          {
+            "name": "ports",
+            "in": "query",
+            "description": "Only services exposed on one of these port numbers.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "name": "protocol",
+            "in": "query",
+            "description": "Only services exposed over this transport protocol.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/TransportProtocol"
                 }
               ]
             }
@@ -11275,19 +11520,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-28T23:58:51.394015Z",
+              "created_at": "2026-07-29T01:29:50.395265Z",
               "first_discovery_id": null,
-              "id": "f52eec8d-f16f-4a51-96fa-f01d6434242a",
+              "id": "ebc155c4-af1a-4bd1-8fd7-978b7797716c",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T23:58:51.394015Z",
+              "last_seen_at": "2026-07-29T01:29:50.395265Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T23:58:51.394015Z",
-              "valid_from": "2026-07-28T23:58:51.394015Z",
+              "updated_at": "2026-07-29T01:29:50.395265Z",
+              "valid_from": "2026-07-29T01:29:50.395265Z",
               "valid_to": null
             }
           },
@@ -12172,10 +12417,6 @@
                 ],
                 "format": "date-time"
               },
-              "targeted": {
-                "type": "boolean",
-                "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
-              },
               "warnings": {
                 "type": "array",
                 "items": {
@@ -12440,19 +12681,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-28T23:58:51.373172Z",
+                      "created_at": "2026-07-29T01:29:50.375125Z",
                       "first_discovery_id": null,
-                      "id": "abb69247-a7d7-4a9b-95be-cb403837d102",
+                      "id": "42977d9d-07f3-40f5-904a-a9872d72e7b2",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-28T23:58:51.373172Z",
+                      "last_seen_at": "2026-07-29T01:29:50.375125Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-28T23:58:51.373172Z",
-                      "valid_from": "2026-07-28T23:58:51.373172Z",
+                      "updated_at": "2026-07-29T01:29:50.375125Z",
+                      "valid_from": "2026-07-29T01:29:50.375125Z",
                       "valid_to": null
                     }
                   ],
@@ -12466,7 +12707,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Ceph",
+                  "service_definition": "MySQL",
                   "source": {
                     "type": "Manual"
                   },
@@ -13536,19 +13777,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T23:58:51.387272Z",
+                  "created_at": "2026-07-29T01:29:50.389104Z",
                   "first_discovery_id": null,
-                  "id": "6f590583-be7d-4267-8621-321002bbe195",
+                  "id": "180e852b-a9ef-4714-b0fe-707e7df066e9",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T23:58:51.387272Z",
+                  "last_seen_at": "2026-07-29T01:29:50.389104Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T23:58:51.387272Z",
-                  "valid_from": "2026-07-28T23:58:51.387272Z",
+                  "updated_at": "2026-07-29T01:29:50.389104Z",
+                  "valid_from": "2026-07-29T01:29:50.389104Z",
                   "valid_to": null
                 }
               ],
@@ -13562,7 +13803,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Ceph",
+              "service_definition": "MySQL",
               "source": {
                 "type": "Manual"
               },
@@ -14828,10 +15069,6 @@
                   ],
                   "format": "date-time"
                 },
-                "targeted": {
-                  "type": "boolean",
-                  "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
-                },
                 "warnings": {
                   "type": "array",
                   "items": {
@@ -15436,19 +15673,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-28T23:58:51.373626Z",
+          "created_at": "2026-07-29T01:29:50.375509Z",
           "first_discovery_id": null,
-          "id": "8c28adaa-ef95-4c67-80ba-1fb27734a2cc",
+          "id": "2878548e-572d-4c04-8155-7aab05fed665",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-28T23:58:51.373626Z",
+          "last_seen_at": "2026-07-29T01:29:50.375509Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-28T23:58:51.373626Z",
-          "valid_from": "2026-07-28T23:58:51.373626Z",
+          "updated_at": "2026-07-29T01:29:50.375509Z",
+          "valid_from": "2026-07-29T01:29:50.375509Z",
           "valid_to": null
         }
       },
@@ -16039,7 +16276,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Ceph",
+              "service_definition": "MySQL",
               "tags": [],
               "virtualization": null
             }
@@ -17594,6 +17831,18 @@
           }
         }
       },
+      "DiscoveryOrderField": {
+        "type": "string",
+        "description": "Fields that discoveries can be ordered/grouped by.",
+        "enum": [
+          "created_at",
+          "name",
+          "updated_at",
+          "daemon_id",
+          "network_id",
+          "discovery_type"
+        ]
+      },
       "DiscoveryPhase": {
         "type": "string",
         "enum": [
@@ -17692,6 +17941,52 @@
                 "type": "string",
                 "enum": [
                   "Docker"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "Rescan",
+            "description": "A one-shot verification of a single host: re-check the addresses and\nports already recorded for it, rather than sweeping a subnet.\n\nCreated by the server only (never via the API) and deleted once its\nsession reaches a terminal phase, so it is not a discovery configuration\nanyone owns or sees in their scan list.",
+            "required": [
+              "host_id",
+              "target_host_id",
+              "ips",
+              "type"
+            ],
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "ID of the host that the daemon is running on — same meaning as every\nother variant. The host being rescanned is `target_host_id`."
+              },
+              "ips": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Addresses to scan on that host."
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PortType"
+                },
+                "description": "Ports already known on that host, re-checked to confirm they are\nstill open. Scanned in addition to the standard discovery set, so a\nrescan also surfaces newly-opened services."
+              },
+              "settings": {
+                "$ref": "#/components/schemas/RescanSettings"
+              },
+              "target_host_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The host being rescanned."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Rescan"
                 ]
               }
             }
@@ -17830,10 +18125,6 @@
             ],
             "format": "date-time"
           },
-          "targeted": {
-            "type": "boolean",
-            "description": "Whether this session came from a one-shot rescan (`RunType::Targeted`)\nrather than a discovery the user configured. Set server-side at session\ncreation; daemons do not send it.\n\nIt rides into the historical Discovery row's `results`, which is the only\nway downstream consumers can tell a rescan apart: the terminal path mints\na plain `RunType::Historical` row and the transient parent is deleted, so\nthere is nothing left to look up. Used to keep rescans out of the digest."
-          },
           "warnings": {
             "type": "array",
             "items": {
@@ -17923,7 +18214,8 @@
               "label",
               "source_handle",
               "target_handle",
-              "is_multi_hop"
+              "is_multi_hop",
+              "relation_key"
             ],
             "properties": {
               "id": {
@@ -17938,6 +18230,13 @@
                   "string",
                   "null"
                 ]
+              },
+              "relation_key": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Identity of the relation this edge stands for — see [`EdgeType::relation_key`]. Stamped\ncentrally from `edge_type` once the graph is built, so no construction site can forget\nit. `None` marks an edge as interchangeable with its like."
               },
               "source": {
                 "type": "string",
@@ -18679,6 +18978,28 @@
           }
         }
       },
+      "GroupCount": {
+        "type": "object",
+        "description": "Size of one group in a grouped list, across every page.",
+        "required": [
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many rows fall in this group in total, not just on this page.",
+            "minimum": 0
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The group's value, rendered as text. `null` for rows whose group key is\nNULL (the \"ungrouped\" bucket)."
+          }
+        }
+      },
       "Host": {
         "allOf": [
           {
@@ -19172,19 +19493,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T23:58:51.372656Z",
+                  "created_at": "2026-07-29T01:29:50.374675Z",
                   "first_discovery_id": null,
-                  "id": "bba645c4-da01-4100-857f-f81cce604833",
+                  "id": "f796d639-6942-4df1-9998-0a0c3615c04b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T23:58:51.372656Z",
+                  "last_seen_at": "2026-07-29T01:29:50.374675Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T23:58:51.372656Z",
-                  "valid_from": "2026-07-28T23:58:51.372656Z",
+                  "updated_at": "2026-07-29T01:29:50.374675Z",
+                  "valid_from": "2026-07-29T01:29:50.374675Z",
                   "valid_to": null
                 }
               ],
@@ -19198,7 +19519,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Ceph",
+              "service_definition": "MySQL",
               "source": {
                 "type": "Manual"
               },
@@ -21590,6 +21911,83 @@
           }
         }
       },
+      "PaginatedApiResponse_Discovery": {
+        "type": "object",
+        "description": "Response type for paginated list endpoints (pagination is always present in meta)",
+        "required": [
+          "success",
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/DiscoveryBase"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "created_at",
+                    "updated_at",
+                    "integration_targets"
+                  ],
+                  "properties": {
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "force_full_scan": {
+                      "type": "boolean",
+                      "description": "When true, the next scan will be a full port scan regardless of interval"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "integration_targets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/IntegrationTarget"
+                      },
+                      "description": "Per-daemon integration targeting: which integrations (credentialed or credential-less\nlocal) run on this daemon, and on which IPs. Delivered via the init command at\nregistration and editable via the discovery modal. Persistent — re-applied every scan.\nThis is the single home for cred↔IP targeting; it replaces the global\n`credential.target_ips` (race-prone, consumed once) and the discovery modal's old\none-shot `pending_credential_ids`."
+                    },
+                    "scan_count": {
+                      "type": "integer",
+                      "format": "int32",
+                      "description": "Number of completed scans (incremented by server on session completion)",
+                      "readOnly": true,
+                      "minimum": 0
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginatedApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
       "PaginatedApiResponse_HostResponse": {
         "type": "object",
         "description": "Response type for paginated list endpoints (pagination is always present in meta)",
@@ -21835,19 +22233,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-28T23:58:51.360406Z",
+                        "created_at": "2026-07-29T01:29:50.363658Z",
                         "first_discovery_id": null,
-                        "id": "ceb8954c-e574-4a51-aa6d-c48203f04f99",
+                        "id": "ab941bce-da7a-4a13-8f3d-7af802bd71d5",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-28T23:58:51.360406Z",
+                        "last_seen_at": "2026-07-29T01:29:50.363658Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-28T23:58:51.360406Z",
-                        "valid_from": "2026-07-28T23:58:51.360406Z",
+                        "updated_at": "2026-07-29T01:29:50.363658Z",
+                        "valid_from": "2026-07-29T01:29:50.363658Z",
                         "valid_to": null
                       }
                     ],
@@ -21861,7 +22259,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Ceph",
+                    "service_definition": "MySQL",
                     "source": {
                       "type": "Manual"
                     },
@@ -21982,19 +22380,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-28T23:58:51.386059Z",
+                    "created_at": "2026-07-29T01:29:50.387941Z",
                     "first_discovery_id": null,
-                    "id": "11eec6f2-a404-4ad9-a77e-016deff6f982",
+                    "id": "e15b9e07-fb0e-4c37-9bfe-ee91c49f85bd",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-28T23:58:51.386059Z",
+                    "last_seen_at": "2026-07-29T01:29:50.387941Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-28T23:58:51.386059Z",
-                    "valid_from": "2026-07-28T23:58:51.386059Z",
+                    "updated_at": "2026-07-29T01:29:50.387941Z",
+                    "valid_from": "2026-07-29T01:29:50.387941Z",
                     "valid_to": null
                   }
                 ],
@@ -22008,7 +22406,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Ceph",
+                "service_definition": "MySQL",
                 "source": {
                   "type": "Manual"
                 },
@@ -22530,6 +22928,16 @@
           "has_more"
         ],
         "properties": {
+          "group_counts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/GroupCount"
+            },
+            "description": "Size of every group, in the same order the rows are grouped, when the\nrequest specified a `group_by`. Lets a paginated client show a group's\ntrue size instead of the slice of it that happens to be on this page.\nAbsent when the list isn't grouped."
+          },
           "has_more": {
             "type": "boolean",
             "description": "Whether there are more items after this page"
@@ -23278,6 +23686,46 @@
           }
         }
       },
+      "RescanSettings": {
+        "type": "object",
+        "description": "Scan settings that apply to a single-host rescan.\n\nDeliberately narrower than [`ScanSettings`]: a rescan verifies a known host\nagainst a known port set, so the full-scan mechanism (`is_full_scan`,\n`full_scan_interval`) must not be expressible — promoting a rescan to a\n65,535-port sweep defeats the feature. The remaining omissions are settings\nthat cannot bind on a one-or-two address target.",
+        "properties": {
+          "arp_retries": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "ARP retry rounds. Matters more here than in a sweep: for a rescan, \"did\nit answer\" is the entire answer, so a missed round reads as a dead host.",
+            "minimum": 0
+          },
+          "port_scan_batch_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Ports scanned concurrently per host.",
+            "minimum": 0
+          },
+          "probe_raw_socket_ports": {
+            "type": "boolean",
+            "description": "Whether to probe raw-socket ports 9100-9107. Correctness-affecting: with\nthis off the scanner drops those ports from its results, so a printer's\nknown JetDirect port would look like it had disappeared."
+          },
+          "scan_rate_pps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Port scan probes per second. Operators lower this for fragile devices or\nnoisy IDS, and a rescan must respect that as much as a discovery does.",
+            "minimum": 0
+          },
+          "use_npcap_arp": {
+            "type": "boolean",
+            "description": "On Windows, use Npcap broadcast ARP instead of SendARP."
+          }
+        }
+      },
       "ResendVerificationRequest": {
         "type": "object",
         "description": "Request to resend verification email",
@@ -23385,30 +23833,6 @@
                 "type": "string",
                 "enum": [
                   "AdHoc"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "title": "Targeted",
-            "description": "A one-shot rescan of specific targets. Created by the server (never via\nAPI) and deleted when its session reaches a terminal phase, so it is not\na discovery configuration the user owns or sees in their scan list.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "last_run": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "format": "date-time",
-                "readOnly": true
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "Targeted"
                 ]
               }
             }
@@ -23735,19 +24159,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-28T23:58:51.373530Z",
+              "created_at": "2026-07-29T01:29:50.375423Z",
               "first_discovery_id": null,
-              "id": "d3ed6fdb-6f48-4f65-94ef-8b9a03f99c71",
+              "id": "fdd7f8f0-9656-4ee9-aa0c-85ff3cab6ff0",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T23:58:51.373530Z",
+              "last_seen_at": "2026-07-29T01:29:50.375423Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T23:58:51.373530Z",
-              "valid_from": "2026-07-28T23:58:51.373530Z",
+              "updated_at": "2026-07-29T01:29:50.375423Z",
+              "valid_from": "2026-07-29T01:29:50.375423Z",
               "valid_to": null
             }
           ],
@@ -23761,7 +24185,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Ceph",
+          "service_definition": "MySQL",
           "source": {
             "type": "Manual"
           },
@@ -23944,6 +24368,7 @@
           "host",
           "network_id",
           "position",
+          "service_definition",
           "last_seen_at"
         ]
       },
@@ -24454,7 +24879,6 @@
           "Management",
           "Storage",
           "Loopback",
-          "ScanTarget",
           "Unknown"
         ]
       },
@@ -24894,7 +25318,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "c154c042-ca40-404f-bbdc-c453ab247046",
+                  "id": "6ea9ae36-f8b2-49ed-ab7b-193ae885d596",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24904,23 +25328,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "881c768b-9341-4e02-8df4-30911a87b8e4",
+                  "id": "7cfbb1ba-8f38-4ce5-a62c-a286177ebb29",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "6a430833-f7be-4c51-be72-25d781212e6e",
+                  "id": "99cf1b1c-2a3f-4157-8791-e01b4693008a",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "ceb82c8f-1591-40de-8314-3f6cfcd701e9",
+                  "id": "363e8c3d-8ef6-4397-9307-140f3cc81ea4",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "881c768b-9341-4e02-8df4-30911a87b8e4",
+                  "id": "7cfbb1ba-8f38-4ce5-a62c-a286177ebb29",
                   "rule": "ByHost"
                 }
               ]
@@ -24949,19 +25373,19 @@
             },
             "default": [
               {
-                "id": "5d94564e-6113-496a-87d6-8f3a51c3d06a",
+                "id": "4dfde2a7-4e6e-4322-8cb6-d2dae4366aa8",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "8b998504-0c4f-46b5-802e-172db7160704",
+                "id": "59a91ef7-afb5-4418-b3eb-c77b0857e06b",
                 "rule": "ByVLAN"
               },
               {
-                "id": "f4b2639d-3fa7-4ac1-b514-a5b3c896a239",
+                "id": "1d2d215e-f989-457a-8eed-e8a5c8546bf5",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "c6040d0d-7510-4b8a-9fdc-3b080666a129",
+                "id": "53e5ebfd-889f-4d57-b862-d29137b8f546",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24979,7 +25403,7 @@
                 }
               },
               {
-                "id": "b0ee1d95-a962-4846-afcf-1a7ae73226c3",
+                "id": "ed130f88-b54b-444d-9268-14fe52deae41",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24988,15 +25412,15 @@
                 }
               },
               {
-                "id": "60d8c408-3a91-4620-9074-fad1daeed5e2",
+                "id": "d5ceb8ca-480d-4e67-9077-91edd4b497ba",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "2025b8c2-3230-4fd9-b18c-2957e845adbf",
+                "id": "6237c0f7-e260-4ef1-8d0b-714f9d075391",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "ce9cb120-6813-4133-be47-a0bd9440a93d",
+                "id": "61438088-64e5-44a8-8a0d-d2ed151d14aa",
                 "rule": "ByStack"
               }
             ]
