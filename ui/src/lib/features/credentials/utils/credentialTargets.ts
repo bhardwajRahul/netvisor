@@ -11,6 +11,9 @@ export type CredentialTarget = components['schemas']['IntegrationTarget']['scope
 
 type HostAssignment = components['schemas']['CredentialHostAssignment'];
 
+/** The address a daemon-host target is reached on — the daemon's own loopback. */
+export const DAEMON_HOST_IP = '127.0.0.1';
+
 /**
  * Whether a credential type's `targets` metadata permits a given scope.
  *
@@ -40,18 +43,33 @@ function isLoopback(ip: string): boolean {
  * `Network` (e.g. a UniFi controller) is dispatched to the daemon as the default
  * credential for every IP on the subnet, so it must never survive the switch.
  *
+ * A type that targets `DaemonHost` but not `Hosts` (the local socket) is reachable only on
+ * a host that actually runs a daemon, so `daemonHostIds` narrows its assignments to those.
+ * Pass `undefined` when the daemon list hasn't loaded — an empty list would otherwise read
+ * as "no daemon hosts exist" and strip every assignment the type legitimately holds.
+ *
  * Returns the pruned lists plus whether anything was actually dropped, so the caller can
  * tell the user rather than silently discarding their input.
  */
 export function pruneAssignmentsForTargets(
 	targets: CredentialTarget[] | undefined,
-	assignments: { assignedNetworkIds: string[]; hostAssignments: HostAssignment[] }
+	assignments: { assignedNetworkIds: string[]; hostAssignments: HostAssignment[] },
+	daemonHostIds?: string[]
 ): { assignedNetworkIds: string[]; hostAssignments: HostAssignment[]; changed: boolean } {
-	const keepNetworks = supportsTarget(targets, 'Network');
-	const keepHosts = supportsTarget(targets, 'Hosts') || supportsTarget(targets, 'DaemonHost');
+	const assignedNetworkIds = supportsTarget(targets, 'Network')
+		? assignments.assignedNetworkIds
+		: [];
 
-	const assignedNetworkIds = keepNetworks ? assignments.assignedNetworkIds : [];
-	const hostAssignments = keepHosts ? assignments.hostAssignments : [];
+	let hostAssignments: HostAssignment[];
+	if (supportsTarget(targets, 'Hosts')) {
+		hostAssignments = assignments.hostAssignments;
+	} else if (supportsTarget(targets, 'DaemonHost')) {
+		hostAssignments = daemonHostIds
+			? assignments.hostAssignments.filter((a) => daemonHostIds.includes(a.host_id))
+			: assignments.hostAssignments;
+	} else {
+		hostAssignments = [];
+	}
 
 	return {
 		assignedNetworkIds,

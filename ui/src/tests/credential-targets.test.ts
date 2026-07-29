@@ -57,6 +57,53 @@ describe('pruneAssignmentsForTargets', () => {
 		expect(result.assignedNetworkIds).toEqual([]);
 	});
 
+	// A local socket is reachable over its daemon's loopback and nowhere else, so an ordinary
+	// host is not a valid target for it even though the type does target "a host".
+	it('narrows a daemon-host-only type to hosts that actually run a daemon', () => {
+		const result = pruneAssignmentsForTargets(
+			DAEMON_HOST_ONLY,
+			{
+				assignedNetworkIds: [],
+				hostAssignments: [
+					{ host_id: 'daemon-host', ip_address_ids: null },
+					{ host_id: 'ordinary-host', ip_address_ids: null }
+				]
+			},
+			['daemon-host']
+		);
+
+		expect(result.hostAssignments).toEqual([{ host_id: 'daemon-host', ip_address_ids: null }]);
+		expect(result.changed).toBe(true);
+	});
+
+	// The daemon list is loaded asynchronously. Treating "not loaded yet" as "no daemon hosts
+	// exist" would strip every assignment the credential legitimately holds, on any save that
+	// happened to race the query.
+	it('does not narrow when the daemon host list is unavailable', () => {
+		const hostAssignments = [{ host_id: 'daemon-host', ip_address_ids: null }];
+
+		expect(
+			pruneAssignmentsForTargets(DAEMON_HOST_ONLY, { assignedNetworkIds: [], hostAssignments })
+				.hostAssignments
+		).toHaveLength(1);
+	});
+
+	// A type that targets remote hosts is not restricted to daemon hosts — the narrowing must
+	// not leak across to it.
+	it('leaves a Hosts-capable type unnarrowed by the daemon host list', () => {
+		const result = pruneAssignmentsForTargets(
+			HOST_ONLY,
+			{
+				assignedNetworkIds: [],
+				hostAssignments: [{ host_id: 'ordinary-host', ip_address_ids: null }]
+			},
+			['daemon-host']
+		);
+
+		expect(result.hostAssignments).toHaveLength(1);
+		expect(result.changed).toBe(false);
+	});
+
 	// Absent metadata (an unknown type id yields `{}` from the store) must not be read as
 	// "anything goes" — the credential would be broadcast on a guess.
 	it('permits nothing when the type has no targets metadata', () => {

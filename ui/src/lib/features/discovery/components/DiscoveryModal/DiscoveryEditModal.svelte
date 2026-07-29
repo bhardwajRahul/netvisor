@@ -6,6 +6,7 @@
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import { entities, credentialTypes } from '$lib/shared/stores/metadata';
 	import {
+		DAEMON_HOST_IP,
 		integrationTargetFor,
 		supportsTarget
 	} from '$lib/features/credentials/utils/credentialTargets';
@@ -450,11 +451,13 @@
 		credentialIds = [];
 		if (allCredentialsQuery.data) {
 			const credMap = new Map(allCredentialsQuery.data.map((c) => [c.id, c]));
-			// Editable: network/host credentialed targets from integration_targets. Daemon-host
-			// targeting (DaemonHost scope or loopback Hosts) is junction-managed — excluded here.
+			// Editable: every credentialed target that lives on THIS discovery, daemon-host ones
+			// included. They were previously excluded as "junction-managed", but nothing writes a
+			// junction row for them — a daemon-host target created here lives only on the
+			// discovery, so rendering it read-only left it impossible to remove or retarget and
+			// dropped it from the record on the next save. A daemon-host target round-trips as a
+			// loopback IP row, which `integrationTargetFor` maps back to the DaemonHost scope.
 			const editable: PendingCredential[] = (discovery?.integration_targets ?? []).flatMap((t) => {
-				if (t.scope === 'DaemonHost') return [];
-				if (t.scope === 'Hosts' && t.ips.length > 0 && t.ips.every(ipIsLoopback)) return [];
 				const c = credMap.get(t.credential_id);
 				if (!c) return [];
 				// Drop a target whose scope the credential's type doesn't permit — rows written
@@ -463,13 +466,20 @@
 				// Omitting it here lets the submit mapping rewrite the record without it.
 				if (!supportsTarget(credentialTypes.getMetadata(c.credential_type.type)?.targets, t.scope))
 					return [];
-				const ips = t.scope === 'Hosts' ? t.ips : [];
+				// A daemon-host target is shown as the loopback row the picker already renders (a
+				// disabled "daemon host" label with a remove button), so it reads back as the same
+				// scope it was saved with. Network scope carries no IPs; an empty row is the
+				// picker's "nothing chosen" placeholder.
+				const ips = t.scope === 'Hosts' ? t.ips : t.scope === 'DaemonHost' ? [DAEMON_HOST_IP] : [];
 				return [
 					{ credential: c, targetIps: ips.length ? ips : [''], fieldValues: {}, isExisting: true }
 				];
 			});
-			// Read-only managed cards: credentials assigned to the daemon host (via the
-			// host/credential modals). Resolve the daemon host inline (formData not yet settled).
+			// Read-only managed cards: credentials assigned to the daemon host through the
+			// host/credential modals' junction — genuinely managed elsewhere, so not editable
+			// here. Anything already seeded above as an editable target is filtered out, which
+			// leaves this to the junction-sourced entries it describes.
+			// Resolve the daemon host inline (formData not yet settled).
 			const dForDiscovery = daemons.find((d) => d.id === discovery?.daemon_id) ?? null;
 			const dHostId = dForDiscovery
 				? (hosts.find((h) => h.id === dForDiscovery.host_id)?.id ?? null)

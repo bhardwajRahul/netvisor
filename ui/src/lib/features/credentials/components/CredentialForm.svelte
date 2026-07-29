@@ -17,6 +17,7 @@
 	import type { Credential, CredentialType } from '../types/base';
 	import { createDefaultCredential } from '../types/base';
 	import { credentialTypes } from '$lib/shared/stores/metadata';
+	import { DAEMON_HOST_IP } from '../utils/credentialTargets';
 	import { translateFieldDefinitions } from '$lib/i18n/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
@@ -111,7 +112,6 @@
 	// network). The available modes and per-host buttons are gated by `targets()`.
 	let targetMode = $state<'per_host' | 'broadcast'>('per_host');
 
-	const DAEMON_HOST_IP = '127.0.0.1';
 	function isDaemonHostValue(value: string): boolean {
 		return value === '127.0.0.1' || value === '::1';
 	}
