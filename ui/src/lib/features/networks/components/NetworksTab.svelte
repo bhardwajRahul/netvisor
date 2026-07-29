@@ -34,6 +34,7 @@
 		useBulkDeleteNetworksMutation
 	} from '../queries';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
+	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useDependenciesQuery } from '$lib/features/dependencies/queries';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
@@ -53,9 +54,18 @@
 	const tagsQuery = useTagsQuery();
 	const networksQuery = useNetworksQuery();
 	// Load related data for network cards
-	useDaemonsQuery();
+	const daemonsQuery = useDaemonsQuery();
 	useSubnetsQuery();
 	useDependenciesQuery();
+
+	// Only the hosts the daemons run on. Each card needs one host name per daemon
+	// chip; fetching per card meant every card subscribing to an unpaginated
+	// org-wide hosts query (~1.9MB), shared by key with every other consumer.
+	let daemonHostIds = $derived([
+		...new Set((daemonsQuery.data ?? []).map((d) => d.host_id).filter((id): id is string => !!id))
+	]);
+	const daemonHostsQuery = useHostsByIds(() => daemonHostIds);
+	let daemonHosts = $derived(daemonHostsQuery.data ?? []);
 
 	// Mutations
 	const createNetworkMutation = useCreateNetworkMutation();
@@ -257,6 +267,7 @@
 			)}
 				<NetworkCard
 					network={item}
+					hosts={daemonHosts}
 					{viewMode}
 					selected={isSelected}
 					{onSelectionChange}

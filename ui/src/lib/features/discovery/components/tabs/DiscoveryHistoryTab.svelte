@@ -18,7 +18,7 @@
 	} from '../../queries';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
 	import type { components } from '$lib/api/schema';
@@ -40,18 +40,22 @@
 
 	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
-	let { isReadOnly = false }: TabProps = $props();
+	let { isReadOnly = false, isActive = false }: TabProps = $props();
 
 	// Organization query for onboarding state
 	const organizationQuery = useOrganizationQuery();
 	let onboarding = $derived((organizationQuery.data?.onboarding ?? []) as OnboardingOperation[]);
 
 	// Queries
-	const discoveriesQuery = useDiscoveriesQuery();
+	// Gated on `isActive`. Every tab is mounted at once (inactive ones hidden with
+	// CSS), so an ungated list query fetches on app boot and refetches whenever the
+	// discovery SSE stream invalidates it — for a tab nobody is looking at. This
+	// only works because *every* subscriber to `queryKeys.discovery.all` among the
+	// always-mounted components is gated the same way (the scheduled tab); one
+	// ungated subscriber keeps the query active for all of them.
+	const discoveriesQuery = useDiscoveriesQuery(() => isActive);
 	const daemonsQuery = useDaemonsQuery();
 	const networksQuery = useNetworksQuery();
-	// Use limit: 0 to get all hosts for modal dropdown
-	const hostsQuery = useHostsQuery({ limit: 0 });
 
 	// Mutations
 	const createDiscoveryMutation = useCreateDiscoveryMutation();
@@ -62,10 +66,22 @@
 	let discoveriesData = $derived(discoveriesQuery.data ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data?.items ?? []);
-	let isLoading = $derived(
-		discoveriesQuery.isPending || daemonsQuery.isPending || hostsQuery.isPending
-	);
+
+	// Only the hosts the daemons run on. This was an unpaginated org-wide hosts
+	// query (~1.9MB on a few hundred hosts), issued so the edit modal's daemon
+	// picker could label each daemon with its host name — and because TanStack
+	// dedupes by key, it was shared with every other consumer, so it loaded on
+	// pages that never opened the modal. Scoped to the ids in hand.
+	let daemonHostIds = $derived([
+		...new Set(daemonsData.map((d) => d.host_id).filter((id): id is string => !!id))
+	]);
+	const hostsQuery = useHostsByIds(() => daemonHostIds);
+	let hostsData = $derived(hostsQuery.data ?? []);
+
+	// Host names are decoration inside the modal, so the list must not block on
+	// them — and with no daemons the by-ids query is disabled, which in TanStack
+	// means it stays `isPending` forever.
+	let isLoading = $derived(discoveriesQuery.isPending || daemonsQuery.isPending);
 	let historicalDiscoveries = $derived(
 		discoveriesData.filter((d) => d.run_type.type === 'Historical')
 	);
@@ -200,6 +216,7 @@
 			)}
 				<DiscoveryHistoryCard
 					discovery={item}
+					hosts={hostsData}
 					onView={handleEditDiscovery}
 					{viewMode}
 					selected={isSelected}

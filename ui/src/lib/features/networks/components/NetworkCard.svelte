@@ -19,10 +19,16 @@
 	import { getCredentialTypeId } from '$lib/features/credentials/types/base';
 	import { uuidv4Sentinel } from '$lib/shared/utils/formatting';
 	import { toColor } from '$lib/shared/utils/styling';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import type { Host } from '$lib/features/hosts/types/base';
 
 	interface Props {
 		network: Network;
+		/**
+		 * Hosts the daemons in this list run on. Passed in rather than fetched here:
+		 * each card needs one host name per daemon chip, and fetching per card meant
+		 * every card subscribing to an unpaginated org-wide hosts query.
+		 */
+		hosts?: Host[];
 		onDelete?: (network: Network) => void;
 		onEdit?: (network: Network) => void;
 		viewMode: 'card' | 'list';
@@ -32,6 +38,7 @@
 
 	let {
 		network,
+		hosts = [],
 		onDelete = () => {},
 		onEdit = () => {},
 		viewMode,
@@ -45,12 +52,11 @@
 
 	const daemonsQuery = useDaemonsQuery();
 	const subnetsQuery = useSubnetsQuery();
-	const hostsQuery = useHostsQuery({ limit: 0 });
 
 	// Derived data from queries
 	let daemonsData = $derived(daemonsQuery.data ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data?.items ?? []);
+	let hostsData = $derived(hosts);
 
 	let networkDaemons = $derived(daemonsData.filter((d) => d.network_id == network.id));
 	let networkSubnets = $derived(

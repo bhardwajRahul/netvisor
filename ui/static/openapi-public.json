@@ -4042,7 +4042,7 @@
           "Hosts"
         ],
         "summary": "List all hosts",
-        "description": "Returns all hosts the authenticated user has access to, with their\nip_addresses, ports, and services included. Supports pagination via\n`limit` and `offset` query parameters, and ordering via `group_by`,\n`order_by`, and `order_direction`.",
+        "description": "Returns all hosts the authenticated user has access to, with their\nip_addresses, ports, services and interfaces included — pass\n`include_children=false` to omit those and get a much smaller payload.\nSupports pagination via `limit` and `offset` query parameters, and ordering\nvia `group_by`, `order_by`, and `order_direction`.",
         "operationId": "get_all_hosts",
         "parameters": [
           {
@@ -4184,6 +4184,18 @@
             "name": "stale",
             "in": "query",
             "description": "`true` returns only hosts discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the host's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "include_children",
+            "in": "query",
+            "description": "`false` returns hosts with empty `ip_addresses`/`ports`/`services`/\n`interfaces`. The children dominate the payload, so callers that only need\nhost identity — name pickers, id→name lookups, counts — should pass\n`false`. Defaults to `true`, so existing callers are unaffected.",
             "required": false,
             "schema": {
               "type": [
@@ -4486,6 +4498,18 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "include_children",
+            "in": "query",
+            "description": "`false` returns hosts with empty `ip_addresses`/`ports`/`services`/\n`interfaces`. The children dominate the payload, so callers that only need\nhost identity — name pickers, id→name lookups, counts — should pass\n`false`. Defaults to `true`, so existing callers are unaffected.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -4654,6 +4678,18 @@
             "name": "stale",
             "in": "query",
             "description": "`true` returns only hosts discovery hasn't observed within their\nnetwork's staleness window; `false` returns only those it has. Omit for\nboth. Evaluated per row against the host's own network's window.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "include_children",
+            "in": "query",
+            "description": "`false` returns hosts with empty `ip_addresses`/`ports`/`services`/\n`interfaces`. The children dominate the payload, so callers that only need\nhost identity — name pickers, id→name lookups, counts — should pass\n`false`. Defaults to `true`, so existing callers are unaffected.",
             "required": false,
             "schema": {
               "type": [
@@ -11239,19 +11275,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-28T19:53:59.979244Z",
+              "created_at": "2026-07-28T23:58:51.394015Z",
               "first_discovery_id": null,
-              "id": "4b8f2a04-d66c-4f06-9702-4154977e9529",
+              "id": "f52eec8d-f16f-4a51-96fa-f01d6434242a",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T19:53:59.979244Z",
+              "last_seen_at": "2026-07-28T23:58:51.394015Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T19:53:59.979244Z",
-              "valid_from": "2026-07-28T19:53:59.979244Z",
+              "updated_at": "2026-07-28T23:58:51.394015Z",
+              "valid_from": "2026-07-28T23:58:51.394015Z",
               "valid_to": null
             }
           },
@@ -12404,19 +12440,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-28T19:53:59.961233Z",
+                      "created_at": "2026-07-28T23:58:51.373172Z",
                       "first_discovery_id": null,
-                      "id": "da432882-f8b4-49f3-824d-73a608d9b2d1",
+                      "id": "abb69247-a7d7-4a9b-95be-cb403837d102",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-28T19:53:59.961233Z",
+                      "last_seen_at": "2026-07-28T23:58:51.373172Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-28T19:53:59.961233Z",
-                      "valid_from": "2026-07-28T19:53:59.961233Z",
+                      "updated_at": "2026-07-28T23:58:51.373172Z",
+                      "valid_from": "2026-07-28T23:58:51.373172Z",
                       "valid_to": null
                     }
                   ],
@@ -12430,7 +12466,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Beszel Agent",
+                  "service_definition": "Ceph",
                   "source": {
                     "type": "Manual"
                   },
@@ -13500,19 +13536,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T19:53:59.973399Z",
+                  "created_at": "2026-07-28T23:58:51.387272Z",
                   "first_discovery_id": null,
-                  "id": "4f273e6f-7f21-447b-9af0-473468e60cc3",
+                  "id": "6f590583-be7d-4267-8621-321002bbe195",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T19:53:59.973399Z",
+                  "last_seen_at": "2026-07-28T23:58:51.387272Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T19:53:59.973399Z",
-                  "valid_from": "2026-07-28T19:53:59.973399Z",
+                  "updated_at": "2026-07-28T23:58:51.387272Z",
+                  "valid_from": "2026-07-28T23:58:51.387272Z",
                   "valid_to": null
                 }
               ],
@@ -13526,7 +13562,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Beszel Agent",
+              "service_definition": "Ceph",
               "source": {
                 "type": "Manual"
               },
@@ -15400,19 +15436,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-28T19:53:59.961620Z",
+          "created_at": "2026-07-28T23:58:51.373626Z",
           "first_discovery_id": null,
-          "id": "a30878f6-680f-4dc8-a29d-4a569d9b66af",
+          "id": "8c28adaa-ef95-4c67-80ba-1fb27734a2cc",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-28T19:53:59.961620Z",
+          "last_seen_at": "2026-07-28T23:58:51.373626Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-28T19:53:59.961620Z",
-          "valid_from": "2026-07-28T19:53:59.961620Z",
+          "updated_at": "2026-07-28T23:58:51.373626Z",
+          "valid_from": "2026-07-28T23:58:51.373626Z",
           "valid_to": null
         }
       },
@@ -16003,7 +16039,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Beszel Agent",
+              "service_definition": "Ceph",
               "tags": [],
               "virtualization": null
             }
@@ -19136,19 +19172,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-28T19:53:59.960773Z",
+                  "created_at": "2026-07-28T23:58:51.372656Z",
                   "first_discovery_id": null,
-                  "id": "e69ad9f5-ad33-4503-809d-070812349780",
+                  "id": "bba645c4-da01-4100-857f-f81cce604833",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-28T19:53:59.960773Z",
+                  "last_seen_at": "2026-07-28T23:58:51.372656Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-28T19:53:59.960773Z",
-                  "valid_from": "2026-07-28T19:53:59.960773Z",
+                  "updated_at": "2026-07-28T23:58:51.372656Z",
+                  "valid_from": "2026-07-28T23:58:51.372656Z",
                   "valid_to": null
                 }
               ],
@@ -19162,7 +19198,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Beszel Agent",
+              "service_definition": "Ceph",
               "source": {
                 "type": "Manual"
               },
@@ -21799,19 +21835,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-28T19:53:59.951039Z",
+                        "created_at": "2026-07-28T23:58:51.360406Z",
                         "first_discovery_id": null,
-                        "id": "bca9303a-7901-4460-8ddd-3a15a5d54421",
+                        "id": "ceb8954c-e574-4a51-aa6d-c48203f04f99",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-28T19:53:59.951039Z",
+                        "last_seen_at": "2026-07-28T23:58:51.360406Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-28T19:53:59.951039Z",
-                        "valid_from": "2026-07-28T19:53:59.951039Z",
+                        "updated_at": "2026-07-28T23:58:51.360406Z",
+                        "valid_from": "2026-07-28T23:58:51.360406Z",
                         "valid_to": null
                       }
                     ],
@@ -21825,7 +21861,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Beszel Agent",
+                    "service_definition": "Ceph",
                     "source": {
                       "type": "Manual"
                     },
@@ -21946,19 +21982,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-28T19:53:59.972267Z",
+                    "created_at": "2026-07-28T23:58:51.386059Z",
                     "first_discovery_id": null,
-                    "id": "122ffb85-74b3-4cac-a479-b115bcdeb493",
+                    "id": "11eec6f2-a404-4ad9-a77e-016deff6f982",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-28T19:53:59.972267Z",
+                    "last_seen_at": "2026-07-28T23:58:51.386059Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-28T19:53:59.972267Z",
-                    "valid_from": "2026-07-28T19:53:59.972267Z",
+                    "updated_at": "2026-07-28T23:58:51.386059Z",
+                    "valid_from": "2026-07-28T23:58:51.386059Z",
                     "valid_to": null
                   }
                 ],
@@ -21972,7 +22008,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Beszel Agent",
+                "service_definition": "Ceph",
                 "source": {
                   "type": "Manual"
                 },
@@ -23699,19 +23735,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-28T19:53:59.961533Z",
+              "created_at": "2026-07-28T23:58:51.373530Z",
               "first_discovery_id": null,
-              "id": "169ed92a-ca3f-47c2-aeaa-457970ae247c",
+              "id": "d3ed6fdb-6f48-4f65-94ef-8b9a03f99c71",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-28T19:53:59.961533Z",
+              "last_seen_at": "2026-07-28T23:58:51.373530Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-28T19:53:59.961533Z",
-              "valid_from": "2026-07-28T19:53:59.961533Z",
+              "updated_at": "2026-07-28T23:58:51.373530Z",
+              "valid_from": "2026-07-28T23:58:51.373530Z",
               "valid_to": null
             }
           ],
@@ -23725,7 +23761,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Beszel Agent",
+          "service_definition": "Ceph",
           "source": {
             "type": "Manual"
           },
@@ -24858,7 +24894,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "1a0587b5-e9ae-4624-9770-a09257b23bfc",
+                  "id": "c154c042-ca40-404f-bbdc-c453ab247046",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -24868,23 +24904,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "a1ca9a2b-2003-4474-8ab5-f3397c9b379c",
+                  "id": "881c768b-9341-4e02-8df4-30911a87b8e4",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "a6a3dda3-3c58-48fe-b785-ca7482c601b4",
+                  "id": "6a430833-f7be-4c51-be72-25d781212e6e",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "1bf2b86d-5304-41ee-8d67-b220c6ffd847",
+                  "id": "ceb82c8f-1591-40de-8314-3f6cfcd701e9",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "a1ca9a2b-2003-4474-8ab5-f3397c9b379c",
+                  "id": "881c768b-9341-4e02-8df4-30911a87b8e4",
                   "rule": "ByHost"
                 }
               ]
@@ -24913,19 +24949,19 @@
             },
             "default": [
               {
-                "id": "0cd3ad45-ccae-41b6-9d90-58a3262d3254",
+                "id": "5d94564e-6113-496a-87d6-8f3a51c3d06a",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "7d58d864-01b7-4ab3-9dbf-08bba1436c32",
+                "id": "8b998504-0c4f-46b5-802e-172db7160704",
                 "rule": "ByVLAN"
               },
               {
-                "id": "2ad8e384-e80b-4999-8eb5-1c18d370d7fe",
+                "id": "f4b2639d-3fa7-4ac1-b514-a5b3c896a239",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "e6d69728-4ff7-448b-b82c-591ec6ad5f87",
+                "id": "c6040d0d-7510-4b8a-9fdc-3b080666a129",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -24943,7 +24979,7 @@
                 }
               },
               {
-                "id": "21bac3aa-8208-452e-9cea-ae2d458be837",
+                "id": "b0ee1d95-a962-4846-afcf-1a7ae73226c3",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -24952,15 +24988,15 @@
                 }
               },
               {
-                "id": "6c14321a-e1b1-4206-bf68-2bd7b10cbd74",
+                "id": "60d8c408-3a91-4620-9074-fad1daeed5e2",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "bd5babf0-3ff3-4d99-92a6-c269e3f45559",
+                "id": "2025b8c2-3230-4fd9-b18c-2957e845adbf",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "acbda155-d469-4321-b6bf-0577dbb3b7ac",
+                "id": "ce9cb120-6813-4133-be47-a0bd9440a93d",
                 "rule": "ByStack"
               }
             ]

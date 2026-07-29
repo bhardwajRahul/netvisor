@@ -16,7 +16,7 @@ import * as m from '$lib/paraglide/messages';
 /**
  * Query hook for fetching all discoveries
  */
-export function useDiscoveriesQuery() {
+export function useDiscoveriesQuery(enabled?: () => boolean) {
 	return createQuery(() => ({
 		queryKey: queryKeys.discovery.all,
 		queryFn: async () => {
@@ -27,7 +27,8 @@ export function useDiscoveriesQuery() {
 				throw new Error(data?.error || 'Failed to fetch discoveries');
 			}
 			return data.data;
-		}
+		},
+		...(enabled ? { enabled } : {})
 	}));
 }
 

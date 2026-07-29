@@ -214,10 +214,20 @@ export function useTopologiesQuery(enabled?: () => boolean) {
  * Single endpoint, single code path. The cache key includes the snapshot id
  * so live vs snapshot data don't collide. The SSE `live_topology_updates_stream`
  * consumer invalidates this query on live-view network updates.
+ *
+ * `enabled` exists so the caller can hold the fetch while the topology tab is
+ * off-screen. Every tab in the app is mounted at once (inactive ones are hidden
+ * with CSS), so without it this bundle — every host, service, ip-address and port
+ * on the network — loads on app boot and, because it is invalidated by the
+ * discovery SSE stream, refetches on a throttle for the whole of every scan, on
+ * pages that are not showing a graph. A disabled query is skipped by
+ * `invalidateQueries` (which refetches active queries only) and refetches when it
+ * is re-enabled and stale.
  */
 export function useTopologyDataQuery(
 	networkId: () => string | undefined,
-	snapshotId: () => string | undefined
+	snapshotId: () => string | undefined,
+	enabled?: () => boolean
 ) {
 	return createQuery(() => ({
 		queryKey: queryKeys.topology.data(networkId() ?? '', snapshotId()),
@@ -235,7 +245,7 @@ export function useTopologyDataQuery(
 			}
 			return data.data;
 		},
-		enabled: () => !!networkId()
+		enabled: () => !!networkId() && (enabled?.() ?? true)
 	}));
 }
 

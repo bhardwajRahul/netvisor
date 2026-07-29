@@ -6,40 +6,47 @@
 	import type { Discovery } from '../../types/base';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
 	import type { TagProps } from '$lib/shared/components/data/types';
 	import { entityRef } from '$lib/shared/components/data/types';
+	import type { Host } from '$lib/features/hosts/types/base';
 
 	// Queries
 	const daemonsQuery = useDaemonsQuery();
 	const networksQuery = useNetworksQuery();
-	const hostsQuery = useHostsQuery({ limit: 0 });
 	const subnetsQuery = useSubnetsQuery();
 	const credentialsQuery = useCredentialsQuery();
 
 	// Derived data
 	let daemonsData = $derived(daemonsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 	let credentialsData = $derived(credentialsQuery.data ?? []);
 
 	let {
 		viewMode,
 		discovery,
+		hosts = [],
 		onView = () => {},
 		selected,
 		onSelectionChange = () => {}
 	}: {
 		viewMode: 'card' | 'list';
 		discovery: Discovery;
+		/**
+		 * Hosts the daemons in this list run on. Passed in rather than fetched
+		 * here: each card needs one host name for a popover, and fetching per card
+		 * meant every card subscribing to an unpaginated org-wide hosts query.
+		 */
+		hosts?: Host[];
 		onView?: (discovery: Discovery) => void;
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
+
+	let hostsData = $derived(hosts);
 
 	let results = $derived(
 		discovery.run_type.type == 'Historical' ? discovery.run_type.results : null

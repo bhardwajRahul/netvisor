@@ -1554,9 +1554,10 @@ export interface paths {
         /**
          * List all hosts
          * @description Returns all hosts the authenticated user has access to, with their
-         *     ip_addresses, ports, and services included. Supports pagination via
-         *     `limit` and `offset` query parameters, and ordering via `group_by`,
-         *     `order_by`, and `order_direction`.
+         *     ip_addresses, ports, services and interfaces included — pass
+         *     `include_children=false` to omit those and get a much smaller payload.
+         *     Supports pagination via `limit` and `offset` query parameters, and ordering
+         *     via `group_by`, `order_by`, and `order_direction`.
          */
         get: operations["get_all_hosts"];
         put?: never;
@@ -3160,19 +3161,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-28T19:53:59.979256Z",
+             *       "created_at": "2026-07-28T23:58:51.394013Z",
              *       "first_discovery_id": null,
-             *       "id": "aef71a39-9a2b-4beb-a711-7900655a077d",
+             *       "id": "3591263f-62f8-48d2-b135-542bb4bc2546",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-28T19:53:59.979256Z",
+             *       "last_seen_at": "2026-07-28T23:58:51.394013Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-28T19:53:59.979256Z",
-             *       "valid_from": "2026-07-28T19:53:59.979256Z",
+             *       "updated_at": "2026-07-28T23:58:51.394013Z",
+             *       "valid_from": "2026-07-28T23:58:51.394013Z",
              *       "valid_to": null
              *     }
              */
@@ -3576,19 +3577,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-28T19:53:59.961225Z",
+             *               "created_at": "2026-07-28T23:58:51.373155Z",
              *               "first_discovery_id": null,
-             *               "id": "be8e903f-49e6-4dbd-9489-408982699df4",
+             *               "id": "d15f481d-be6d-42f6-bfe3-b0b5e84d4a31",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-28T19:53:59.961225Z",
+             *               "last_seen_at": "2026-07-28T23:58:51.373155Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-28T19:53:59.961225Z",
-             *               "valid_from": "2026-07-28T19:53:59.961225Z",
+             *               "updated_at": "2026-07-28T23:58:51.373155Z",
+             *               "valid_from": "2026-07-28T23:58:51.373155Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3602,7 +3603,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Beszel Agent",
+             *           "service_definition": "Ceph",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -4019,19 +4020,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-28T19:53:59.973382Z",
+             *           "created_at": "2026-07-28T23:58:51.387266Z",
              *           "first_discovery_id": null,
-             *           "id": "cf02f364-70c1-4df3-bbf3-394d4a3ff91b",
+             *           "id": "940ca394-04d6-455b-85c7-0cd37cd5642b",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-28T19:53:59.973382Z",
+             *           "last_seen_at": "2026-07-28T23:58:51.387266Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-28T19:53:59.973382Z",
-             *           "valid_from": "2026-07-28T19:53:59.973382Z",
+             *           "updated_at": "2026-07-28T23:58:51.387266Z",
+             *           "valid_from": "2026-07-28T23:58:51.387266Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4045,7 +4046,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Beszel Agent",
+             *       "service_definition": "Ceph",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4560,19 +4561,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-28T19:53:59.961611Z",
+         *       "created_at": "2026-07-28T23:58:51.373595Z",
          *       "first_discovery_id": null,
-         *       "id": "aca1bf73-2f14-40ad-9143-8958eee8de27",
+         *       "id": "79610a0d-e2e0-4ecb-a148-52cbbb2e0f87",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-28T19:53:59.961611Z",
+         *       "last_seen_at": "2026-07-28T23:58:51.373595Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-28T19:53:59.961611Z",
-         *       "valid_from": "2026-07-28T19:53:59.961611Z",
+         *       "updated_at": "2026-07-28T23:58:51.373595Z",
+         *       "valid_from": "2026-07-28T23:58:51.373595Z",
          *       "valid_to": null
          *     }
          */
@@ -4787,7 +4788,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Beszel Agent",
+         *           "service_definition": "Ceph",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5984,19 +5985,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-28T19:53:59.960763Z",
+         *               "created_at": "2026-07-28T23:58:51.372647Z",
          *               "first_discovery_id": null,
-         *               "id": "0dd0f8d0-e017-4c6c-ba6b-84c1f7488be3",
+         *               "id": "6783c719-4812-4c78-8da1-2b1e33088840",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-28T19:53:59.960763Z",
+         *               "last_seen_at": "2026-07-28T23:58:51.372647Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-28T19:53:59.960763Z",
-         *               "valid_from": "2026-07-28T19:53:59.960763Z",
+         *               "updated_at": "2026-07-28T23:58:51.372647Z",
+         *               "valid_from": "2026-07-28T23:58:51.372647Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -6010,7 +6011,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Beszel Agent",
+         *           "service_definition": "Ceph",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -7665,19 +7666,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-28T19:53:59.961525Z",
+         *           "created_at": "2026-07-28T23:58:51.373503Z",
          *           "first_discovery_id": null,
-         *           "id": "f1e43525-26a6-486c-bf11-7b9befda7040",
+         *           "id": "f0731c04-d994-403c-8ab7-53c901cbf7aa",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-28T19:53:59.961525Z",
+         *           "last_seen_at": "2026-07-28T23:58:51.373503Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-28T19:53:59.961525Z",
-         *           "valid_from": "2026-07-28T19:53:59.961525Z",
+         *           "updated_at": "2026-07-28T23:58:51.373503Z",
+         *           "valid_from": "2026-07-28T23:58:51.373503Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7691,7 +7692,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Beszel Agent",
+         *       "service_definition": "Ceph",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -8114,7 +8115,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "c9920fa7-3938-4d8a-885a-aef9bae5961b",
+             *           "id": "e2463610-3f5f-48bf-a496-566b45805a54",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -8124,23 +8125,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "c00e7c63-35a0-4582-afc0-094b97031cd9",
+             *           "id": "6d5aa66e-4858-4fe6-9d35-fa669b670b5b",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "63ac29ab-61a1-4479-8c9b-48559e486e28",
+             *           "id": "05f7cd5f-d8f1-4f0d-b8c8-dcd3ae50f60a",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "1a1261f8-dfba-4f09-a3ad-ba325ed0275d",
+             *           "id": "23bab0bf-e92e-407f-a1a5-5629297047d8",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "c00e7c63-35a0-4582-afc0-094b97031cd9",
+             *           "id": "6d5aa66e-4858-4fe6-9d35-fa669b670b5b",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -8152,19 +8153,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "cb51eff8-8fe6-4b37-82aa-22119288f0c6",
+             *         "id": "494fb957-5348-494e-b87d-80aabfa7673f",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "5f8fff6b-caf2-4fed-aff5-d315f955f42b",
+             *         "id": "a04e42e4-c5c9-4197-82cd-8871c6a78e70",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "74229ca0-fb83-4917-8eb3-e92f392542f2",
+             *         "id": "2541e06c-88e5-4c03-85a3-3492d2690267",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "e52b5592-7e43-47c3-bbc5-1a6f3c01b319",
+             *         "id": "90498ff6-5e05-4b1f-9f76-2e45a7daebc9",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -8182,7 +8183,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "a2bc8cec-85c5-41a6-a146-447bdbe9e1ff",
+             *         "id": "6abe836a-007c-47b4-a51b-bf7375b4b375",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -8191,15 +8192,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "b4273ef5-1de8-4970-a006-95da0b1f7664",
+             *         "id": "2a384aff-b517-4989-95e4-80936f4350f4",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "b9378d41-a56b-4fc9-95f2-a062e1b718c7",
+             *         "id": "262d47a7-b9f1-4336-b8d1-5592999b5071",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "eec5fb5f-d363-425f-abca-fff7436410b2",
+             *         "id": "a456af2e-f804-4840-ac44-d690ff9536c3",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -11933,6 +11934,13 @@ export interface operations {
                  *     both. Evaluated per row against the host's own network's window.
                  */
                 stale?: boolean | null;
+                /**
+                 * @description `false` returns hosts with empty `ip_addresses`/`ports`/`services`/
+                 *     `interfaces`. The children dominate the payload, so callers that only need
+                 *     host identity — name pickers, id→name lookups, counts — should pass
+                 *     `false`. Defaults to `true`, so existing callers are unaffected.
+                 */
+                include_children?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -12090,6 +12098,13 @@ export interface operations {
                  *     both. Evaluated per row against the host's own network's window.
                  */
                 stale?: boolean | null;
+                /**
+                 * @description `false` returns hosts with empty `ip_addresses`/`ports`/`services`/
+                 *     `interfaces`. The children dominate the payload, so callers that only need
+                 *     host identity — name pickers, id→name lookups, counts — should pass
+                 *     `false`. Defaults to `true`, so existing callers are unaffected.
+                 */
+                include_children?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -12138,6 +12153,13 @@ export interface operations {
                  *     both. Evaluated per row against the host's own network's window.
                  */
                 stale?: boolean | null;
+                /**
+                 * @description `false` returns hosts with empty `ip_addresses`/`ports`/`services`/
+                 *     `interfaces`. The children dominate the payload, so callers that only need
+                 *     host identity — name pickers, id→name lookups, counts — should pass
+                 *     `false`. Defaults to `true`, so existing callers are unaffected.
+                 */
+                include_children?: boolean | null;
             };
             header?: never;
             path?: never;
