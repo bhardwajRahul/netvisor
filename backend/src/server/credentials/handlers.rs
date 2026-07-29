@@ -2,6 +2,7 @@ use crate::server::auth::middleware::permissions::{Admin, Authorized, Viewer};
 use crate::server::credentials::r#impl::base::Credential;
 use crate::server::credentials::r#impl::mapping::Target;
 use crate::server::credentials::service::CredentialService;
+use crate::server::daemons::r#impl::base::Daemon;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
@@ -209,7 +210,15 @@ async fn enforce_single_endpoint(
 /// unrelated hosts. Only the per-daemon `integration_targets` path was checked (and there only by
 /// skipping, at scan time) — the junction assignments written here reached dispatch unchecked, so
 /// this is the authoritative "prevent writing it" for every client, UI or API.
-fn enforce_supported_targets(credential: &Credential) -> Result<(), ApiError> {
+/// A type targeting only `DaemonHost` is additionally checked against the hosts that actually run
+/// a daemon: a local socket is reachable over the daemon's own loopback and nowhere else, so an
+/// assignment to an ordinary host would be dispatched as a 127.0.0.1 override on a machine with no
+/// daemon to serve it — a probe that can only ever fail.
+async fn enforce_supported_targets(
+    state: &AppState,
+    credential: &Credential,
+    user_network_ids: &[Uuid],
+) -> Result<(), ApiError> {
     let permitted = credential.base.credential_type.targets();
     let integration =
         ServiceDefinition::name(&*credential.base.credential_type.associated_service());
@@ -220,13 +229,41 @@ fn enforce_supported_targets(credential: &Credential) -> Result<(), ApiError> {
         )));
     }
 
-    if !credential.base.host_assignments.is_empty()
-        && !permitted.contains(&Target::Hosts)
-        && !permitted.contains(&Target::DaemonHost)
-    {
-        return Err(ApiError::bad_request(&format!(
-            "{integration} credentials cannot be assigned to hosts."
-        )));
+    if credential.base.host_assignments.is_empty() {
+        return Ok(());
+    }
+
+    if !permitted.contains(&Target::Hosts) {
+        if !permitted.contains(&Target::DaemonHost) {
+            return Err(ApiError::bad_request(&format!(
+                "{integration} credentials cannot be assigned to hosts."
+            )));
+        }
+
+        // Daemon-host-only: every assignment must name a host that runs a daemon. Read through
+        // the daemon service (never its storage), scoped to the caller's networks so this can't
+        // be used to probe for daemons in another tenant.
+        let daemon_filter = StorableFilter::<Daemon>::new_from_network_ids(user_network_ids);
+        let daemon_host_ids: Vec<Uuid> = state
+            .services
+            .daemon_service
+            .get_all(daemon_filter)
+            .await
+            .map_err(|e| ApiError::internal_error(&e.to_string()))?
+            .into_iter()
+            .map(|d| d.base.host_id)
+            .collect();
+
+        if credential
+            .base
+            .host_assignments
+            .iter()
+            .any(|a| !daemon_host_ids.contains(&a.host_id))
+        {
+            return Err(ApiError::bad_request(&format!(
+                "{integration} credentials run on a daemon's own host, so they can only be assigned to a host that runs a daemon."
+            )));
+        }
     }
 
     Ok(())
@@ -327,7 +364,7 @@ async fn update_credential(
     let host_assignments = entity.base.host_assignments.clone();
     let network_ids = auth.network_ids();
 
-    enforce_supported_targets(&entity)?;
+    enforce_supported_targets(&state, &entity, &network_ids).await?;
     enforce_single_endpoint(&state, &entity).await?;
 
     let mut response = update_handler::<Credential>(
@@ -478,7 +515,7 @@ pub async fn create_credential(
     let host_assignments = credential.base.host_assignments.clone();
     let network_ids = auth.network_ids();
 
-    enforce_supported_targets(&credential)?;
+    enforce_supported_targets(&state, &credential, &network_ids).await?;
     enforce_single_endpoint(&state, &credential).await?;
 
     let mut response = create_handler::<Credential>(
@@ -527,6 +564,13 @@ async fn bulk_create_credentials(
         return Ok(Json(ApiResponse::success(vec![])));
     }
 
+    // This path calls credential_service.create directly (bypassing the generic
+    // create_handler's validate_create_access), so enforce tenancy here: force
+    // each credential's org to the caller's rather than trusting the body, and
+    // validate assignment references (inside save_assignments).
+    let org_id = auth.require_organization_id()?;
+    let network_ids = auth.network_ids();
+
     // Validate all credential types and their assignments up front, so a batch containing one
     // contradicting credential creates none of them.
     for credential in &credentials {
@@ -535,15 +579,9 @@ async fn bulk_create_credentials(
             .credential_type
             .validate()
             .map_err(|e| ApiError::bad_request(&e.to_string()))?;
-        enforce_supported_targets(credential)?;
+        enforce_supported_targets(&state, credential, &network_ids).await?;
     }
 
-    // This path calls credential_service.create directly (bypassing the generic
-    // create_handler's validate_create_access), so enforce tenancy here: force
-    // each credential's org to the caller's rather than trusting the body, and
-    // validate assignment references (inside save_assignments).
-    let org_id = auth.require_organization_id()?;
-    let network_ids = auth.network_ids();
     let auth_entity = auth.into_entity();
     let mut created = Vec::with_capacity(credentials.len());
     for mut credential in credentials {

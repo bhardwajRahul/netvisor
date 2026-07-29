@@ -9,6 +9,7 @@
 	import { createDefaultCredential, getCredentialTypeId } from '../types/base';
 	import { credentialTypes, entities } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { pushError, pushWarning } from '$lib/shared/stores/feedback';
 	import { pruneAssignmentsForTargets } from '../utils/credentialTargets';
 	import CredentialForm from './CredentialForm.svelte';
@@ -55,6 +56,12 @@
 
 	const organizationQuery = useOrganizationQuery();
 	let organization = $derived(organizationQuery.data);
+
+	// Hosts that run a daemon — the only hosts a daemon-host-only type (the local socket)
+	// can be assigned to. `undefined` until the query resolves so a not-yet-loaded list is
+	// never mistaken for "there are none", which would strip legitimate assignments on save.
+	const daemonsQuery = useDaemonsQuery();
+	let daemonHostIds = $derived(daemonsQuery.data?.map((d) => d.host_id));
 
 	let isEditing = $derived(credential !== null);
 	let title = $derived(
@@ -106,7 +113,8 @@
 			// any future surface that mutates the assignment state.
 			const permitted = pruneAssignmentsForTargets(
 				credentialTypes.getMetadata(credentialType.type)?.targets,
-				{ assignedNetworkIds, hostAssignments }
+				{ assignedNetworkIds, hostAssignments },
+				daemonHostIds
 			);
 
 			const credentialData: Credential = {
@@ -141,10 +149,11 @@
 		// new credential; re-notifications during open/reset report the id unchanged.
 		if (isEditing || typeId === previous) return;
 
-		const pruned = pruneAssignmentsForTargets(credentialTypes.getMetadata(typeId)?.targets, {
-			assignedNetworkIds,
-			hostAssignments
-		});
+		const pruned = pruneAssignmentsForTargets(
+			credentialTypes.getMetadata(typeId)?.targets,
+			{ assignedNetworkIds, hostAssignments },
+			daemonHostIds
+		);
 		if (!pruned.changed) return;
 		assignedNetworkIds = pruned.assignedNetworkIds;
 		hostAssignments = pruned.hostAssignments;
