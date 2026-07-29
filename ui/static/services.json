@@ -1,5 +1,23 @@
 [
   {
+    "category": "ContainerRuntime",
+    "color": "Blue",
+    "description": "Daemonless container runtime",
+    "discovery_pattern": "Client probe Podman succeeded",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/podman.svg",
+    "name": "Podman"
+  },
+  {
+    "category": "ContainerRuntime",
+    "color": "Blue",
+    "description": "Docker",
+    "discovery_pattern": "Client probe Docker succeeded",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg",
+    "name": "Docker"
+  },
+  {
     "category": "Media",
     "color": "Blue",
     "description": "User invitation and management system for Jellyfin, Plex, Emby etc",
@@ -196,6 +214,24 @@
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/freshrss.svg",
     "name": "FreshRSS"
+  },
+  {
+    "category": "Office",
+    "color": "Blue",
+    "description": "Open-source personal finance manager",
+    "discovery_pattern": "Any of: (Endpoint response from <ip> has header \"set-cookie\" with value \"firefly_iii_session\", Endpoint response body from <ip>:8080/ contains \"Login to Firefly III\", Endpoint response body from <ip>:80/ contains \"Login to Firefly III\", Endpoint response body from <ip>:443/ contains \"Login to Firefly III\")",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/firefly-iii.svg",
+    "name": "Firefly III"
+  },
+  {
+    "category": "ProjectManagement",
+    "color": "Indigo",
+    "description": "Open-source collaborative wiki and documentation platform",
+    "discovery_pattern": "Any of: (Endpoint response body from <ip>:3000/ contains \"<title>Docmost</title>\", Endpoint response body from <ip>:80/ contains \"<title>Docmost</title>\", Endpoint response body from <ip>:443/ contains \"<title>Docmost</title>\")",
+    "logo_needs_white_background": true,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/docmost.png",
+    "name": "Docmost"
   },
   {
     "category": "Media",
@@ -2221,23 +2257,5 @@
     "logo_needs_white_background": false,
     "logo_url": "",
     "name": "DHCP Server"
-  },
-  {
-    "category": "ContainerRuntime",
-    "color": "Blue",
-    "description": "Daemonless container runtime",
-    "discovery_pattern": "Client probe Podman succeeded",
-    "logo_needs_white_background": false,
-    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/podman.svg",
-    "name": "Podman"
-  },
-  {
-    "category": "ContainerRuntime",
-    "color": "Blue",
-    "description": "Docker",
-    "discovery_pattern": "Client probe Docker succeeded",
-    "logo_needs_white_background": false,
-    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg",
-    "name": "Docker"
   }
 ]

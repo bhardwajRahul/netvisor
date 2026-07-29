@@ -10576,3 +10576,5 @@ iau.edu.bd
 cmu.edu.bd
 neu.ac.bd
 istp.fr
+stmikadhiguna.ac.id
+uindatokarama.ac.id
