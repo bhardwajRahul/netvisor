@@ -6,7 +6,9 @@
     "category": null,
     "icon": "radar",
     "color": "Green",
-    "metadata": null
+    "metadata": {
+      "is_legacy": true
+    }
   },
   {
     "id": "Network",
@@ -15,7 +17,9 @@
     "category": null,
     "icon": "radar",
     "color": "Green",
-    "metadata": null
+    "metadata": {
+      "is_legacy": true
+    }
   },
   {
     "id": "Docker",
@@ -24,7 +28,9 @@
     "category": null,
     "icon": "radar",
     "color": "Green",
-    "metadata": null
+    "metadata": {
+      "is_legacy": true
+    }
   },
   {
     "id": "Rescan",
@@ -33,7 +39,9 @@
     "category": null,
     "icon": "radar",
     "color": "Green",
-    "metadata": null
+    "metadata": {
+      "is_legacy": false
+    }
   },
   {
     "id": "Unified",
@@ -42,6 +50,8 @@
     "category": null,
     "icon": "radar",
     "color": "Green",
-    "metadata": null
+    "metadata": {
+      "is_legacy": false
+    }
   }
 ]

@@ -77,7 +77,8 @@
 			order_by: orderBy,
 			order_direction: orderDirection,
 			search: search || undefined
-		})
+		}),
+		() => isActive
 	);
 	const daemonsQuery = useDaemonsQuery();
 	const networksQuery = useNetworksQuery();

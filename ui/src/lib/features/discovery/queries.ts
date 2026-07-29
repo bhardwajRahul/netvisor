@@ -69,7 +69,11 @@ export type PaginationMeta = components['schemas']['PaginationMeta'];
  * ever worked because the whole table was loaded.
  */
 export function useDiscoveryHistoryQuery(
-	paramsOrGetter: DiscoveryHistoryQueryParams | (() => DiscoveryHistoryQueryParams) = {}
+	paramsOrGetter: DiscoveryHistoryQueryParams | (() => DiscoveryHistoryQueryParams) = {},
+	// Every tab is mounted at once (inactive ones hidden with CSS), so an ungated
+	// query fetches on app boot and refetches on every discovery SSE invalidation
+	// for a tab nobody is looking at. Gate it on tab activity.
+	enabled: () => boolean = () => true
 ) {
 	return createQuery(() => {
 		const params = typeof paramsOrGetter === 'function' ? paramsOrGetter() : paramsOrGetter;
@@ -81,6 +85,7 @@ export function useDiscoveryHistoryQuery(
 				'history',
 				{ limit, offset, group_by, order_by, order_direction, search }
 			],
+			enabled: enabled(),
 			queryFn: async (): Promise<{ items: Discovery[]; pagination: PaginationMeta | null }> => {
 				const { data } = await apiClient.GET('/api/v1/discovery', {
 					params: {

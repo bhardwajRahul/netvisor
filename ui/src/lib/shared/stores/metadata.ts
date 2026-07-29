@@ -228,7 +228,6 @@ export interface PortTypeMetadata {
 	protocol: 'Tcp' | 'Udp';
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface DiscoveryTypeMetadata {
 	is_legacy: boolean;
 }
