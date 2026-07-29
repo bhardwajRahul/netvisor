@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+	hasExplicitTarget,
 	integrationTargetFor,
 	pruneAssignmentsForTargets,
 	type CredentialTarget
@@ -125,6 +126,24 @@ describe('pruneAssignmentsForTargets', () => {
 
 		expect(assignedNetworkIds).toEqual(['net-a']);
 		expect(hostAssignments).toHaveLength(1);
+	});
+});
+
+describe('hasExplicitTarget', () => {
+	// The distinction that keeps a credential merely *listed* here (because it is assigned
+	// to a host elsewhere) from being written out as a network-wide target nobody chose:
+	// an empty IP list means "nothing selected", not "everywhere".
+	it('does not treat an empty selection as a target', () => {
+		expect(hasExplicitTarget(undefined, [])).toBe(false);
+		expect(hasExplicitTarget('per_host', ['', '  '])).toBe(false);
+	});
+
+	it('counts an explicit broadcast choice even with no IPs', () => {
+		expect(hasExplicitTarget('broadcast', [])).toBe(true);
+	});
+
+	it('counts any non-blank IP', () => {
+		expect(hasExplicitTarget('per_host', ['', '10.0.0.5'])).toBe(true);
 	});
 });
 

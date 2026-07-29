@@ -7,6 +7,7 @@
 	import { entities, credentialTypes } from '$lib/shared/stores/metadata';
 	import {
 		DAEMON_HOST_IP,
+		hasExplicitTarget,
 		integrationTargetFor,
 		supportsTarget
 	} from '$lib/features/credentials/utils/credentialTargets';
@@ -428,11 +429,14 @@
 					// (e.g. a UniFi controller) can never be emitted as a network-wide broadcast the
 					// server would drop at dispatch.
 					const persisted = new Set(ids ?? []);
-					// `isDiscoveryTarget` is the gate: a row showing only junction assignments has no
-					// target the user chose here, and an empty IP list would otherwise be read as
-					// "network-wide" for a broadcast-capable type — inventing a scope nobody asked for.
+					// Only rows the user actually pointed somewhere: a credential listed purely
+					// because it is assigned elsewhere has no selection here, and an empty IP list
+					// would otherwise read as "network-wide" for a broadcast-capable type —
+					// inventing a scope nobody asked for.
 					const targeted = pendingCredentials
-						.filter((p) => p.isDiscoveryTarget && persisted.has(p.credential.id))
+						.filter(
+							(p) => hasExplicitTarget(p.scope, p.targetIps) && persisted.has(p.credential.id)
+						)
 						.map((p) => ({
 							name: p.credential.name,
 							target: integrationTargetFor(
@@ -504,7 +508,9 @@
 						targetIps: ips.length ? ips : [''],
 						fieldValues: {},
 						isExisting: true,
-						isDiscoveryTarget: true
+						// Record the scope this target was saved with, so a Network-scope row
+						// round-trips as broadcast rather than reading back as "nothing chosen".
+						scope: t.scope === 'Network' ? ('broadcast' as const) : ('per_host' as const)
 					}
 				];
 			});
@@ -512,19 +518,15 @@
 			// by the host/credential modals, so they attach to the credential's existing row
 			// as locked entries rather than becoming a second card for it — one card per
 			// credential, whether this discovery targets it, it is assigned elsewhere, or both.
-			// Resolve the daemon and its network inline (formData not yet settled).
-			const dForDiscovery = daemons.find((d) => d.id === discovery?.daemon_id) ?? null;
-			const dHostId = dForDiscovery
-				? (hosts.find((h) => h.id === dForDiscovery.host_id)?.id ?? null)
-				: null;
-			// `hosts` is org-wide and unfiltered, so scoping to the network is required. The
-			// daemon's own host is included explicitly in case it is not carried on the
-			// network's host list.
-			const networkId = dForDiscovery?.network_id ?? null;
-			const onNetwork = networkId
-				? hosts.filter((h) => h.network_id === networkId).map((h) => h.id)
-				: [];
-			const networkHostIds = new Set(dHostId ? [...onNetwork, dHostId] : onNetwork);
+			// One rule, no special cases: every host on the discovery's own network. The
+			// daemon's host is simply one of them. `formData` is assigned at the top of
+			// handleOpen and, for an existing discovery, is the discovery itself — so
+			// `network_id` is authoritative here. (Reading it off the daemon instead meant a
+			// daemon whose network_id differs from its host's matched no hosts at all, and
+			// adding the daemon host separately hid that by leaving exactly one entry.)
+			const networkHostIds = new Set(
+				hosts.filter((h) => h.network_id === formData.network_id).map((h) => h.id)
+			);
 			const assignedByCredential = new Map(
 				computeJunctionAssignments(networkHostIds).map(({ credential, assignedHosts }) => [
 					credential.id,

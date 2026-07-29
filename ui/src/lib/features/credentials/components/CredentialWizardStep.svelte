@@ -22,6 +22,7 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import { daemonTooOldForCredential } from '$lib/features/credentials/utils/versionGate';
+	import { hasExplicitTarget } from '$lib/features/credentials/utils/credentialTargets';
 	import { v4 as uuidv4 } from 'uuid';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import { pushError } from '$lib/shared/stores/feedback';
@@ -39,7 +40,6 @@
 		daemons_credentialWizardAddExisting,
 		daemons_credentialWizardSelectExisting,
 		daemons_credentialWizardExistingDescription,
-		credentials_targetsManagedElsewhere,
 		daemons_credentialWizardDaemonHostUnavailable,
 		credentials_requiresDaemonVersion
 	} from '$lib/paraglide/messages';
@@ -50,13 +50,9 @@
 		fieldValues: Record<string, string>;
 		isExisting?: boolean;
 		/** Hosts on this network the credential is already assigned to through the
-		 *  host/credential junction. Rendered as locked target rows. Resolved by the
-		 *  caller — this component has no hosts query. */
+		 *  host/credential junction. Listed on the card, not editable here. Resolved by
+		 *  the caller — this component has no hosts query. */
 		lockedHosts?: Host[];
-		/** Whether this row contributes a target to the discovery. False for a row that
-		 *  exists only to surface junction assignments — emitting a target for one of
-		 *  those would invent a scope the user never chose. Set once the user targets it. */
-		isDiscoveryTarget?: boolean;
 		// How the new credential is assigned: 'broadcast' (network default) or
 		// 'per_host' (target IPs). Defaults based on the type's scope_models.
 		scope?: 'broadcast' | 'per_host';
@@ -107,15 +103,17 @@
 
 	// Local items array for ListConfigEditor display
 	let items = $derived(pendingCredentials.map((p) => p.credential));
-	/** A row that exists only to surface junction assignments — the user hasn't targeted it
-	 *  on this discovery. Removing it would do nothing, so it carries no remove affordance
-	 *  and writes no target; it becomes an ordinary row the moment a target is added. */
+	/** A row listed only because the credential is assigned elsewhere — the user has not
+	 *  pointed it at anything on this discovery. It contributes no target. */
 	function isLockedOnly(p: PendingCredential): boolean {
-		return !!p.lockedHosts?.length && !p.isDiscoveryTarget;
+		return !!p.lockedHosts?.length && !hasExplicitTarget(p.scope, p.targetIps);
 	}
 
-	let lockedOnlyCredIds = $derived(
-		pendingCredentials.filter(isLockedOnly).map((p) => p.credential.id)
+	// A credential assigned through the junction is never removable from this list: the
+	// assignment lives on the host/credential, so the trash would either do nothing or
+	// imply it had unassigned it. Its targets *here* are removed row by row instead.
+	let assignedElsewhereCredIds = $derived(
+		pendingCredentials.filter((p) => p.lockedHosts?.length).map((p) => p.credential.id)
 	);
 
 	function isDaemonHostOnly(typeId: string): boolean {
@@ -316,8 +314,7 @@
 				credential: cred,
 				targetIps: [],
 				fieldValues,
-				scope: supportsBroadcast ? 'broadcast' : 'per_host',
-				isDiscoveryTarget: true
+				scope: supportsBroadcast ? 'broadcast' : 'per_host'
 			}
 		];
 		syncFormDefaults();
@@ -354,7 +351,14 @@
 				targetIps: [''],
 				fieldValues: {},
 				isExisting: true,
-				isDiscoveryTarget: true
+				// Mirror handleAddCredential: reset() picks the same default internally, but
+				// never emits it, so the row must carry it or a broadcast type would be
+				// added with no recorded selection and written out as no target at all.
+				scope: (credentialTypes.getMetadata(existing.credential_type.type)?.targets ?? []).includes(
+					'Network'
+				)
+					? 'broadcast'
+					: 'per_host'
 			}
 		];
 		syncFormDefaults();
@@ -385,12 +389,6 @@
 		pendingCredentials = pendingCredentials.map((p, i) => {
 			if (i !== index) return p;
 			const updated = { ...p };
-			// Any change to targeting means the user is aiming this credential at this
-			// discovery, so a row that existed only to surface junction assignments becomes
-			// an ordinary one — removable, and written to the discovery's targets.
-			if (data.scope !== undefined || data.targetIps !== undefined) {
-				updated.isDiscoveryTarget = true;
-			}
 			if (data.scope !== undefined) {
 				updated.scope = data.scope;
 			}
@@ -551,7 +549,7 @@
 				{items}
 				onAdd={handleAddCredential}
 				onRemove={handleRemoveCredential}
-				allowItemRemove={(c) => !lockedOnlyCredIds.includes(c.id)}
+				allowItemRemove={(c) => !assignedElsewhereCredIds.includes(c.id)}
 				onClick={onItemSelect}
 				{onEdit}
 				{highlightedIndex}
@@ -571,11 +569,7 @@
 						     credential, whether this discovery targets it, it is assigned elsewhere,
 						     or both. -->
 						<div class="mb-4">
-							<InlineInfo
-								body={pending.lockedHosts?.length
-									? credentials_targetsManagedElsewhere()
-									: daemons_credentialWizardExistingDescription()}
-							/>
+							<InlineInfo body={daemons_credentialWizardExistingDescription()} />
 						</div>
 						<CredentialForm
 							bind:this={credentialFormRefs[index]}

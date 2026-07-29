@@ -81,6 +81,21 @@ export function pruneAssignmentsForTargets(
 }
 
 /**
+ * Whether the user has actually pointed this credential at something on this discovery.
+ *
+ * "No IPs" is ambiguous on its own: for a broadcast-capable type it could mean network-wide,
+ * or it could mean nothing was chosen. Only an explicit broadcast selection or a non-blank IP
+ * counts — otherwise a credential merely *listed* because it is assigned elsewhere would be
+ * written out as a network-wide target nobody asked for.
+ */
+export function hasExplicitTarget(
+	scope: 'broadcast' | 'per_host' | undefined,
+	ips: string[]
+): boolean {
+	return scope === 'broadcast' || ips.some((ip) => ip.trim() !== '');
+}
+
+/**
  * Build the per-daemon `IntegrationTarget` for a credential with the given target IPs,
  * or `null` when its type permits no scope for that selection.
  *

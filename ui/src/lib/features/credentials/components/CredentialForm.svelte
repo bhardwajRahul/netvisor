@@ -48,7 +48,8 @@
 		daemons_credentialWizardDaemonHostTargetLabel,
 		daemons_credentialWizardTargetSpecificHosts,
 		daemons_credentialWizardTargetAllHosts,
-		daemons_credentialWizardBroadcastHelp
+		daemons_credentialWizardBroadcastHelp,
+		credentials_alreadyAssignedTo
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -70,10 +71,9 @@
 		/** Disable the "Add daemon host" target when the daemon host is already
 		 *  claimed by another single-endpoint credential of the same integration. */
 		daemonHostUnavailable?: boolean;
-		/** Hosts this credential is already assigned to through the host/credential
-		 *  junction. Rendered as locked target rows — they are real targets, so the card
-		 *  reflects everything the credential hits, but they are owned elsewhere and so
-		 *  carry no remove button. */
+		/** Hosts this credential already reaches through the host/credential junction.
+		 *  Listed above the picker so the card reflects everything the credential hits,
+		 *  but owned elsewhere — not editable or removable here. */
 		lockedHosts?: Host[];
 		onChange?: (data: {
 			targetIps?: string[];
@@ -314,10 +314,6 @@
 			const canNetwork = supported.includes('Network');
 			if (hasExplicitIps) {
 				targetIpValues = [...formTargetIps];
-				targetMode = 'per_host';
-			} else if (lockedHosts.length > 0) {
-				// Locked rows live in the per-host list, so a credential that already has
-				// junction targets must open on that mode or they would be hidden.
 				targetMode = 'per_host';
 			} else {
 				// Network-capable types (e.g. SNMP) default to Networks (broadcast),
@@ -649,6 +645,25 @@
 {#if compact}
 	<div class="space-y-4">
 		{#if !hideTargets}
+			<!-- Hosts this credential already reaches through the host/credential junction.
+			     Informational, like the network-wide credential line in the wizard — these are
+			     owned elsewhere, so they are listed rather than offered as editable rows.
+			     Shown in both modes: it is a fact about the credential, not about the choice
+			     being made here. -->
+			{#if lockedHosts.length > 0}
+				<p class="text-tertiary flex flex-wrap items-center gap-1 text-xs">
+					<span>{credentials_alreadyAssignedTo()}</span>
+					{#each lockedHosts as host (host.id)}
+						<EntityTag
+							entityRef={entityRef('Host', host.id, host)}
+							label={host.name}
+							icon={entities.getIconComponent('Host')}
+							color={entities.getColorHelper('Host').color}
+						/>
+					{/each}
+				</p>
+			{/if}
+
 			<!-- Target mode selector — only when the type supports both modes -->
 			{#if showTargetModeToggle}
 				<SegmentedControl
@@ -665,24 +680,6 @@
 			{#if targetMode === 'broadcast'}
 				<p class="text-muted text-xs">{daemons_credentialWizardBroadcastHelp()}</p>
 			{:else}
-				<!-- Targets this credential already has from the host/credential junction.
-				     Shown so the card reflects everything it hits, but owned elsewhere, so
-				     no remove button — the spacer keeps them aligned with removable rows. -->
-				{#each lockedHosts as host (host.id)}
-					<div class="flex items-center gap-2">
-						<div class="input-field flex min-w-0 flex-1 items-center opacity-70">
-							<EntityTag
-								entityRef={entityRef('Host', host.id, host)}
-								label={host.name}
-								icon={entities.getIconComponent('Host')}
-								color={entities.getColorHelper('Host').color}
-							/>
-						</div>
-						<span class="shrink-0 p-1 text-lg leading-none opacity-0" aria-hidden="true"
-							>&times;</span
-						>
-					</div>
-				{/each}
 				{#each targetIpValues as ip, i (i)}
 					<div class="flex items-center gap-2">
 						{#if isDaemonHostValue(ip)}
