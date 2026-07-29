@@ -6,6 +6,7 @@ use crate::server::billing::types::api::{
 };
 use crate::server::billing::types::base::BillingPlan;
 use crate::server::config::AppState;
+use crate::server::openapi::tags as api_tags;
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::types::ErrorCode;
 use crate::server::shared::types::api::{ApiError, ApiResult};
@@ -104,7 +105,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "/plans",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     responses(
         (status = 200, description = "List of available billing plans", body = ApiResponse<Vec<BillingPlan>>),
         (status = 400, description = "Billing not enabled", body = ApiErrorResponse),
@@ -130,7 +131,7 @@ async fn get_billing_plans(
 #[utoipa::path(
     post,
     path = "/checkout",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     request_body = CreateCheckoutRequest,
     responses(
         (status = 200, description = "Checkout session URL", body = ApiResponse<String>),
@@ -272,7 +273,7 @@ async fn create_checkout_session(
 #[utoipa::path(
     post,
     path = "/payment-method-setup-intent",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     responses(
         (status = 200, description = "SetupIntent client secret", body = ApiResponse<SetupIntentResponse>),
         (status = 400, description = "Billing not enabled", body = ApiErrorResponse),
@@ -303,7 +304,7 @@ async fn create_payment_method_setup_intent(
 #[utoipa::path(
     post,
     path = "/finalize-payment-method",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     request_body = FinalizePaymentMethodRequest,
     responses(
         (status = 200, description = "Payment method finalized", body = EmptyApiResponse),
@@ -336,7 +337,7 @@ async fn finalize_payment_method(
 #[utoipa::path(
     post,
     path = "/change-plan",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     request_body = ChangePlanRequest,
     responses(
         (status = 200, description = "Plan change initiated", body = ApiResponse<String>),
@@ -368,7 +369,7 @@ async fn change_plan(
 #[utoipa::path(
     get,
     path = "/change-plan/preview",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     params(
         ("plan" = String, Query, description = "Target plan (JSON)"),
     ),
@@ -411,7 +412,7 @@ async fn preview_plan_change(
 #[utoipa::path(
     post,
     path = "/webhooks",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Webhook processed", body = EmptyApiResponse),
         (status = 400, description = "Invalid signature or billing not enabled", body = ApiErrorResponse),
@@ -443,7 +444,7 @@ async fn handle_webhook(
 #[utoipa::path(
     post,
     path = "/portal",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     request_body = String,
     responses(
         (status = 200, description = "Portal session URL", body = ApiResponse<String>),
@@ -479,7 +480,7 @@ async fn create_portal_session(
 #[utoipa::path(
     post,
     path = "/inquiry",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     request_body = EnterpriseInquiryRequest,
     responses(
         (status = 200, description = "Inquiry submitted successfully", body = EmptyApiResponse),
@@ -580,7 +581,7 @@ async fn submit_enterprise_inquiry(
 #[utoipa::path(
     post,
     path = "/pause",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     request_body = PauseSubscriptionRequest,
     responses(
         (status = 200, description = "Subscription paused", body = ApiResponse<String>),
@@ -616,7 +617,7 @@ async fn pause_subscription(
 #[utoipa::path(
     post,
     path = "/resume",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Subscription resumed", body = ApiResponse<String>),
         (status = 400, description = "No paused subscription or billing not enabled", body = ApiErrorResponse),
@@ -648,7 +649,7 @@ async fn resume_subscription(
 #[utoipa::path(
     post,
     path = "/reactivate",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Subscription reactivated", body = ApiResponse<String>),
         (status = 400, description = "No pending cancellation or billing not enabled", body = ApiErrorResponse),
@@ -677,7 +678,7 @@ async fn reactivate_subscription(
 #[utoipa::path(
     post,
     path = "/extend-trial",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Trial extended", body = ApiResponse<String>),
         (status = 400, description = "Ineligible or billing not enabled", body = ApiErrorResponse),
@@ -711,7 +712,7 @@ async fn extend_trial(
 #[utoipa::path(
     post,
     path = "/cancel",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     request_body = CancelSubscriptionRequest,
     responses(
         (status = 200, description = "Cancellation initiated", body = ApiResponse<CancelSubscriptionResponse>),
@@ -745,7 +746,7 @@ async fn cancel_subscription(
 #[utoipa::path(
     post,
     path = "/cancel/apply-discount",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Discount applied", body = ApiResponse<String>),
         (status = 400, description = "Discount not configured or billing not enabled", body = ApiErrorResponse),
@@ -779,7 +780,7 @@ async fn apply_discount_save_offer(
 #[utoipa::path(
     get,
     path = "/save-offer-coupon",
-    tags = ["billing", "internal"],
+    tags = [api_tags::BILLING, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Save-offer coupon terms, or null when not configured", body = ApiResponse<Option<SaveOfferCoupon>>),
         (status = 400, description = "Billing not enabled", body = ApiErrorResponse),

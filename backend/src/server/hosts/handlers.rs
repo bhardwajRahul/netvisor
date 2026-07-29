@@ -9,6 +9,7 @@ use crate::server::discovery::r#impl::scan_settings::{RescanSettings, ScanSettin
 use crate::server::discovery::r#impl::types::{DiscoveryType, RunType};
 use crate::server::interfaces::r#impl::base::Interface;
 use crate::server::ip_addresses::r#impl::base::IPAddress;
+use crate::server::openapi::tags as api_tags;
 use crate::server::ports::r#impl::base::{Port, PortType};
 use crate::server::services::r#impl::base::Service;
 use crate::server::shared::entities::EntityDiscriminants;
@@ -681,7 +682,7 @@ async fn update_host(
 #[utoipa::path(
     post,
     path = "/discovery",
-    tags = ["hosts", "internal"],
+    tags = [Host::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     request_body = DiscoveryHostRequest,
     responses(
         (status = 200, description = "Host discovered/updated successfully", body = ApiResponse<HostResponse>),

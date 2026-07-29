@@ -4,6 +4,7 @@ use crate::server::auth::service::hash_password;
 use crate::server::bindings::r#impl::base::Binding;
 use crate::server::config::AppState;
 use crate::server::networks::r#impl::{Network, NetworkBase};
+use crate::server::openapi::tags as api_tags;
 use crate::server::organizations::demo_status::DemoPopulateStatus;
 use crate::server::organizations::r#impl::base::Organization;
 use crate::server::shared::events::traits::{Event, OrgScope};
@@ -298,7 +299,7 @@ async fn daemon_prompt_response(
 #[utoipa::path(
     post,
     path = "/{id}/reset",
-    tags = [Organization::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Organization::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Organization ID")),
     responses(
         (status = 200, description = "Organization reset", body = EmptyApiResponse),
@@ -488,7 +489,7 @@ pub async fn delete_organization(
 #[utoipa::path(
     post,
     path = "/{id}/populate-demo",
-    tags = [Organization::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Organization::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Organization ID")),
     responses(
         (status = 202, description = "Demo data population started", body = ApiResponse<DemoPopulateStatus>),
@@ -570,7 +571,7 @@ pub async fn populate_demo_data(
 #[utoipa::path(
     get,
     path = "/{id}/populate-demo/status",
-    tags = [Organization::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Organization::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Organization ID")),
     responses(
         (status = 200, description = "Demo populate status", body = ApiResponse<DemoPopulateStatus>),

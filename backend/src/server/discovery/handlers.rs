@@ -1,3 +1,4 @@
+use crate::server::openapi::tags as api_tags;
 use crate::server::{
     auth::middleware::{
         auth::AuthenticatedEntity,
@@ -535,7 +536,7 @@ pub async fn update_discovery(
 #[utoipa::path(
     post,
     path = "/{session_id}/update",
-    tags = [Discovery::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Discovery::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("session_id" = Uuid, Path, description = "Discovery session ID")),
     request_body = DiscoveryUpdatePayload,
     responses(

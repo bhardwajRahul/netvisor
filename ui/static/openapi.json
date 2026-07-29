@@ -3986,7 +3986,7 @@
     "/api/v1/daemons/bulk-delete": {
       "post": {
         "tags": [
-          "daemons"
+          "Daemons"
         ],
         "summary": "Bulk delete daemons",
         "operationId": "bulk_delete_daemons",
@@ -4040,7 +4040,7 @@
     "/api/v1/daemons/email-install-command": {
       "post": {
         "tags": [
-          "daemons"
+          "Daemons"
         ],
         "summary": "Email install command to current user",
         "operationId": "email_install_command",
@@ -4391,7 +4391,7 @@
       },
       "put": {
         "tags": [
-          "daemons"
+          "Daemons"
         ],
         "summary": "Update daemon",
         "description": "Edits the server-side daemon record: its name, maintainer, tags, and — for ServerPoll —\nthe url the server dials. Identity and server-managed fields (network, mode, host, key\nbinding, version, liveness) are restored from the existing record by\n`preserve_immutable_fields`.",
@@ -4461,7 +4461,7 @@
       },
       "delete": {
         "tags": [
-          "daemons"
+          "Daemons"
         ],
         "summary": "Delete daemon",
         "operationId": "delete_daemon",
@@ -4522,7 +4522,7 @@
     "/api/v1/daemons/{id}/install-command": {
       "get": {
         "tags": [
-          "daemons"
+          "Daemons"
         ],
         "summary": "Generate daemon install command",
         "description": "A pure, idempotent builder — it never mints or persists anything. The api key in an `install`\ncommand is a placeholder (`<API_KEY>`) the caller substitutes from the plaintext it holds; a\n`reconfigure` command carries no key at all. Minting is a separate mutation\n(`POST /provision`), so regenerating a command here (advanced-setting change, OS switch, the\nDetails reconfigure view) never rotates the daemon's key.\n\nThe server derives the exact command shape from the record: DaemonPoll vs ServerPoll for the\nflags, and — for `install` — whether the daemon has checked in (`last_seen`) to decide between\na first-install and a minimal re-key command.",
@@ -6391,7 +6391,7 @@
     "/api/v1/hosts/discovery": {
       "post": {
         "tags": [
-          "hosts",
+          "Hosts",
           "internal"
         ],
         "summary": "Internal endpoint for daemon discovery",
@@ -14400,19 +14400,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-29T15:00:26.325342Z",
+              "created_at": "2026-07-29T15:23:06.672964Z",
               "first_discovery_id": null,
-              "id": "53e2c516-9874-4fe0-8ce9-bfb290c03b9a",
+              "id": "93be57ee-b9bd-4938-b65c-f9f7d4caa974",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T15:00:26.325342Z",
+              "last_seen_at": "2026-07-29T15:23:06.672964Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T15:00:26.325342Z",
-              "valid_from": "2026-07-29T15:00:26.325342Z",
+              "updated_at": "2026-07-29T15:23:06.672964Z",
+              "valid_from": "2026-07-29T15:23:06.672964Z",
               "valid_to": null
             }
           },
@@ -15694,19 +15694,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-29T15:00:26.305416Z",
+                      "created_at": "2026-07-29T15:23:06.660146Z",
                       "first_discovery_id": null,
-                      "id": "d5f383bc-273e-4a68-b6c1-727d5c3f2a3b",
+                      "id": "1065baf6-9ba7-46ec-aad9-9aa6ce7cfed6",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-29T15:00:26.305416Z",
+                      "last_seen_at": "2026-07-29T15:23:06.660146Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-29T15:00:26.305416Z",
-                      "valid_from": "2026-07-29T15:00:26.305416Z",
+                      "updated_at": "2026-07-29T15:23:06.660146Z",
+                      "valid_from": "2026-07-29T15:23:06.660146Z",
                       "valid_to": null
                     }
                   ],
@@ -15720,7 +15720,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Authentik",
+                  "service_definition": "Unclaimed Open Ports",
                   "source": {
                     "type": "Manual"
                   },
@@ -16921,19 +16921,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T15:00:26.319013Z",
+                  "created_at": "2026-07-29T15:23:06.668616Z",
                   "first_discovery_id": null,
-                  "id": "e9d70a6a-eabc-4888-9d6e-39bdfc4c1b7e",
+                  "id": "7ad6de19-781d-4c36-b3a6-426ca0d47007",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T15:00:26.319013Z",
+                  "last_seen_at": "2026-07-29T15:23:06.668616Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T15:00:26.319013Z",
-                  "valid_from": "2026-07-29T15:00:26.319013Z",
+                  "updated_at": "2026-07-29T15:23:06.668616Z",
+                  "valid_from": "2026-07-29T15:23:06.668616Z",
                   "valid_to": null
                 }
               ],
@@ -16947,7 +16947,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Authentik",
+              "service_definition": "Unclaimed Open Ports",
               "source": {
                 "type": "Manual"
               },
@@ -19005,19 +19005,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-29T15:00:26.305820Z",
+          "created_at": "2026-07-29T15:23:06.660397Z",
           "first_discovery_id": null,
-          "id": "abc220d2-3751-47b9-9490-ceb58230b901",
+          "id": "bdb8981f-4fca-4ed5-a9f6-0ee40dfa6ca7",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-29T15:00:26.305820Z",
+          "last_seen_at": "2026-07-29T15:23:06.660397Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-29T15:00:26.305820Z",
-          "valid_from": "2026-07-29T15:00:26.305820Z",
+          "updated_at": "2026-07-29T15:23:06.660397Z",
+          "valid_from": "2026-07-29T15:23:06.660397Z",
           "valid_to": null
         }
       },
@@ -19647,7 +19647,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Authentik",
+              "service_definition": "Unclaimed Open Ports",
               "tags": [],
               "virtualization": null
             }
@@ -23135,19 +23135,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T15:00:26.304955Z",
+                  "created_at": "2026-07-29T15:23:06.659870Z",
                   "first_discovery_id": null,
-                  "id": "c90915c3-f1a0-4db7-b828-4a6078810ddc",
+                  "id": "1c47dabd-b340-4f22-88ad-39a54f0860b8",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T15:00:26.304955Z",
+                  "last_seen_at": "2026-07-29T15:23:06.659870Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T15:00:26.304955Z",
-                  "valid_from": "2026-07-29T15:00:26.304955Z",
+                  "updated_at": "2026-07-29T15:23:06.659870Z",
+                  "valid_from": "2026-07-29T15:23:06.659870Z",
                   "valid_to": null
                 }
               ],
@@ -23161,7 +23161,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Authentik",
+              "service_definition": "Unclaimed Open Ports",
               "source": {
                 "type": "Manual"
               },
@@ -26101,19 +26101,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-29T15:00:26.294677Z",
+                        "created_at": "2026-07-29T15:23:06.654949Z",
                         "first_discovery_id": null,
-                        "id": "339610c9-2e58-4249-b174-7422b4eae6cb",
+                        "id": "cdaa0fcd-d19d-48a9-9049-cd2526d9d826",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-29T15:00:26.294677Z",
+                        "last_seen_at": "2026-07-29T15:23:06.654949Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-29T15:00:26.294677Z",
-                        "valid_from": "2026-07-29T15:00:26.294677Z",
+                        "updated_at": "2026-07-29T15:23:06.654949Z",
+                        "valid_from": "2026-07-29T15:23:06.654949Z",
                         "valid_to": null
                       }
                     ],
@@ -26127,7 +26127,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Authentik",
+                    "service_definition": "Unclaimed Open Ports",
                     "source": {
                       "type": "Manual"
                     },
@@ -26261,19 +26261,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-29T15:00:26.317889Z",
+                    "created_at": "2026-07-29T15:23:06.667799Z",
                     "first_discovery_id": null,
-                    "id": "435c54d4-9b5a-4df0-a966-f23eb63d8122",
+                    "id": "4fda6a99-00cc-4d78-8168-30f365a51990",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-29T15:00:26.317889Z",
+                    "last_seen_at": "2026-07-29T15:23:06.667799Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-29T15:00:26.317889Z",
-                    "valid_from": "2026-07-29T15:00:26.317889Z",
+                    "updated_at": "2026-07-29T15:23:06.667799Z",
+                    "valid_from": "2026-07-29T15:23:06.667799Z",
                     "valid_to": null
                   }
                 ],
@@ -26287,7 +26287,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Authentik",
+                "service_definition": "Unclaimed Open Ports",
                 "source": {
                   "type": "Manual"
                 },
@@ -28292,19 +28292,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-29T15:00:26.305730Z",
+              "created_at": "2026-07-29T15:23:06.660341Z",
               "first_discovery_id": null,
-              "id": "a8ebdc8f-ee5f-444a-bc48-89f0fe89e415",
+              "id": "999dbf39-0357-4b20-8bd8-cc20520334ea",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T15:00:26.305730Z",
+              "last_seen_at": "2026-07-29T15:23:06.660341Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T15:00:26.305730Z",
-              "valid_from": "2026-07-29T15:00:26.305730Z",
+              "updated_at": "2026-07-29T15:23:06.660341Z",
+              "valid_from": "2026-07-29T15:23:06.660341Z",
               "valid_to": null
             }
           ],
@@ -28318,7 +28318,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Authentik",
+          "service_definition": "Unclaimed Open Ports",
           "source": {
             "type": "Manual"
           },
@@ -29552,7 +29552,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "35e7e29a-baec-4f76-8eae-ea8fa1f73b20",
+                  "id": "398d0287-bc2d-4753-99bc-b5ac170172b5",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -29562,23 +29562,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "a7ff785b-eaaa-405a-bd60-94b396956b36",
+                  "id": "385a9401-906a-4f8e-8f4f-c02564e8d173",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "fb96418b-009a-4a9a-b09c-7f151e1bd985",
+                  "id": "3b5aa500-b9cb-4f5f-a94a-52412a1815b0",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "81a4750e-dc3a-4d1d-a1a7-fe32e7b7b06c",
+                  "id": "32477e07-d47c-44a6-90a7-f7666f5408e4",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "a7ff785b-eaaa-405a-bd60-94b396956b36",
+                  "id": "385a9401-906a-4f8e-8f4f-c02564e8d173",
                   "rule": "ByHost"
                 }
               ]
@@ -29608,19 +29608,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "5db6187b-e9b1-4e74-8d08-383009530b4b",
+                "id": "b639a20c-3d84-4365-871f-4bf152ddd0a8",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "d9f59e50-b89b-4a9f-8eb9-aa0b162bd194",
+                "id": "300857a5-6b64-4926-853f-86e4f0bc97ac",
                 "rule": "ByVLAN"
               },
               {
-                "id": "f5b6251a-079d-454c-aaad-6a4df680ce05",
+                "id": "f3cb5129-6282-4814-b8ab-e440af777788",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "d26ab6b1-abea-47b0-9005-b96b50b4d306",
+                "id": "d2e85250-eb06-40e3-b8e8-f231ade2bead",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -29638,7 +29638,7 @@
                 }
               },
               {
-                "id": "2e43f331-7e4b-49de-bf19-b71ffc0df4c0",
+                "id": "4f4a8d39-d504-45ef-9d31-f6db1755d122",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -29647,15 +29647,15 @@
                 }
               },
               {
-                "id": "b0ce7d24-b41d-4842-baf4-c596d5d74c98",
+                "id": "59b8b695-b1c5-485e-b32c-41edb0129dc7",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "683d48b1-1a38-4252-be0f-2558ceb8d573",
+                "id": "6e0c3d69-dc0a-40e9-ada6-47a53506d054",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "ab761a9d-602e-4f3c-b073-e9b8ac736fd4",
+                "id": "645619b3-5092-49b1-b073-cc583e8b9790",
                 "rule": "ByStack"
               }
             ]
@@ -30642,8 +30642,20 @@
       "description": "Authentication and session management. Handle user login, logout, and session state."
     },
     {
+      "name": "billing",
+      "description": "Subscription, plan and payment management for the organization."
+    },
+    {
       "name": "config",
       "description": "Server configuration. Public configuration settings for client applications."
+    },
+    {
+      "name": "dashboard",
+      "description": "Aggregate counts and recent activity for the landing view."
+    },
+    {
+      "name": "deprecated",
+      "description": "Superseded endpoints, still served for older clients. Avoid in new integrations."
     },
     {
       "name": "github",

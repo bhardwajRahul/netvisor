@@ -1,11 +1,12 @@
 //! Email check, registration, onboarding setup, and pending-setup application.
 use super::*;
 use crate::server::auth::email_domain::{DomainCheck, check_email_domain};
+use crate::server::openapi::tags as api_tags;
 
 #[utoipa::path(
     post,
     path = "/check-email",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     request_body = CheckEmailRequest,
     responses(
         (status = 200, description = "Email is available", body = EmptyApiResponse),
@@ -42,7 +43,7 @@ pub(crate) async fn check_email(
 #[utoipa::path(
     post,
     path = "/register",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     request_body = RegisterRequest,
     responses(
         (status = 200, description = "User registered successfully", body = ApiResponse<User>),
@@ -222,7 +223,7 @@ pub(crate) async fn register(
 #[utoipa::path(
     post,
     path = "/setup",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     request_body = SetupRequest,
     responses(
         (status = 200, description = "Setup data stored", body = ApiResponse<SetupResponse>),
@@ -287,7 +288,7 @@ pub async fn clear_pending_setup(session: &Session) {
 #[utoipa::path(
     post,
     path = "/onboarding-step",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     request_body = OnboardingStepRequest,
     responses(
         (status = 200, description = "Step saved", body = EmptyApiResponse),
@@ -319,7 +320,7 @@ pub(crate) async fn onboarding_step(
 #[utoipa::path(
     get,
     path = "/onboarding-state",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Onboarding state", body = ApiResponse<OnboardingStateResponse>),
     )

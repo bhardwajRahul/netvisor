@@ -1,11 +1,12 @@
 //! Password update, email-change request, and forgot/reset flows.
 use super::*;
+use crate::server::openapi::tags as api_tags;
 use validator::Validate;
 
 #[utoipa::path(
     post,
     path = "/update",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Password updated", body = ApiResponse<User>),
         (status = 401, description = "Not authenticated", body = ApiErrorResponse),
@@ -60,7 +61,7 @@ pub(crate) async fn update_password_auth(
 #[utoipa::path(
     post,
     path = "/request-email-change",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     request_body = RequestEmailChangeRequest,
     responses(
         (status = 200, description = "Verification email sent to new address", body = EmptyApiResponse),
@@ -96,7 +97,7 @@ pub(crate) async fn request_email_change(
 #[utoipa::path(
     post,
     path = "/forgot-password",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     request_body = ForgotPasswordRequest,
     responses(
         (status = 200, description = "Password reset email sent", body = EmptyApiResponse),
@@ -122,7 +123,7 @@ pub(crate) async fn forgot_password(
 #[utoipa::path(
     post,
     path = "/reset-password",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     request_body = ResetPasswordRequest,
     responses(
         (status = 200, description = "Password reset successful", body = ApiResponse<User>),

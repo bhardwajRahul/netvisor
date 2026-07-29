@@ -1,5 +1,6 @@
 //! OIDC providers, authorize/callback, link/login/register flows, and unlink.
 use super::*;
+use crate::server::openapi::tags as api_tags;
 
 pub(crate) async fn list_oidc_providers(
     State(state): State<Arc<AppState>>,
@@ -609,7 +610,7 @@ async fn handle_register_flow(
 #[utoipa::path(
     post,
     path = "/oidc/{slug}/unlink",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     params(("slug" = String, Path, description = "OIDC provider slug")),
     responses(
         (status = 200, description = "OIDC account unlinked", body = ApiResponse<User>),

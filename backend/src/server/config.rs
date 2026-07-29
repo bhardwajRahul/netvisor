@@ -2,6 +2,7 @@ use crate::server::auth::r#impl::oidc::OidcProviderMetadata;
 use crate::server::license::key::LicenseKey;
 use crate::server::license::service::LicenseService;
 use crate::server::license::types::LicenseStatusDiscriminants;
+use crate::server::openapi::tags as api_tags;
 use crate::server::shared::types::api::ApiResponse;
 use crate::server::{
     auth::r#impl::oidc::OidcProviderConfig, shared::services::factory::ServiceFactory,
@@ -499,7 +500,7 @@ pub fn get_deployment_type(config: &ServerConfig) -> DeploymentType {
 #[utoipa::path(
     get,
     path = "/api/config",
-    tags = ["config", "internal"],
+    tags = [api_tags::CONFIG, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Public server configuration", body = ApiResponse<PublicConfigResponse>)
     )

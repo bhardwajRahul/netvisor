@@ -50,9 +50,36 @@ use crate::server::users::r#impl::base::User;
 use crate::server::vlans::handlers::VlanOrderField;
 use crate::server::vlans::r#impl::base::Vlan;
 
+/// OpenAPI tags that aren't derived from an `Entity`.
+///
+/// Entity endpoints tag themselves with `T::ENTITY_NAME_PLURAL` so the tag and the
+/// entity can never drift. These are the rest. They live here as constants for the
+/// same reason: a literal at the call site is how `"daemons"` and `"hosts"` ended up
+/// as separate, undeclared tags alongside `Daemons` and `Hosts`.
+pub mod tags {
+    /// Authentication and session management.
+    pub const AUTH: &str = "auth";
+    /// Subscription, plan and payment endpoints.
+    pub const BILLING: &str = "billing";
+    /// Server configuration exposed to clients.
+    pub const CONFIG: &str = "config";
+    /// Aggregate counts for the landing view.
+    pub const DASHBOARD: &str = "dashboard";
+    /// Superseded, still served for older clients.
+    pub const DEPRECATED: &str = "deprecated";
+    /// GitHub integration endpoints.
+    pub const GITHUB: &str = "github";
+    /// Hidden from the public spec, kept in the full one for client generation.
+    pub const INTERNAL: &str = "internal";
+    /// Entity metadata registry.
+    pub const METADATA: &str = "metadata";
+    /// Version and compatibility checking.
+    pub const SYSTEM: &str = "system";
+}
+
 /// Tag used to mark endpoints that should be hidden from public documentation
 /// but included in the full OpenAPI spec for client generation.
-const INTERNAL_TAG: &str = "internal";
+const INTERNAL_TAG: &str = tags::INTERNAL;
 pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// OpenAPI base configuration
@@ -234,12 +261,15 @@ Resources are scoped to your **organization** and **network(s)**:
         (name = UserApiKey::ENTITY_NAME_PLURAL, description = UserApiKey::ENTITY_DESCRIPTION),
         (name = Vlan::ENTITY_NAME_PLURAL, description = Vlan::ENTITY_DESCRIPTION),
         // Non-entity tags with inline descriptions
-        (name = "auth", description = "Authentication and session management. Handle user login, logout, and session state."),
-        (name = "config", description = "Server configuration. Public configuration settings for client applications."),
-        (name = "github", description = "GitHub integration endpoints."),
-        (name = "internal", description = "Internal endpoints for system operations. Not part of the public API."),
-        (name = "metadata", description = "Entity metadata registry. Schema information for all entity types in the system."),
-        (name = "system", description = "System information endpoints. Version and compatibility checking."),
+        (name = tags::AUTH, description = "Authentication and session management. Handle user login, logout, and session state."),
+        (name = tags::BILLING, description = "Subscription, plan and payment management for the organization."),
+        (name = tags::CONFIG, description = "Server configuration. Public configuration settings for client applications."),
+        (name = tags::DASHBOARD, description = "Aggregate counts and recent activity for the landing view."),
+        (name = tags::DEPRECATED, description = "Superseded endpoints, still served for older clients. Avoid in new integrations."),
+        (name = tags::GITHUB, description = "GitHub integration endpoints."),
+        (name = tags::INTERNAL, description = "Internal endpoints for system operations. Not part of the public API."),
+        (name = tags::METADATA, description = "Entity metadata registry. Schema information for all entity types in the system."),
+        (name = tags::SYSTEM, description = "System information endpoints. Version and compatibility checking."),
     )
 )]
 pub struct ApiDoc;

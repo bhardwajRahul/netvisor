@@ -6,6 +6,7 @@ use crate::server::daemons::r#impl::api::{
     DaemonDiscoveryRequest, DaemonHeartbeatPayload, ProvisionDaemonRequest,
     ProvisionDaemonResponse, TestReachabilityRequest, TestReachabilityResponse,
 };
+use crate::server::openapi::tags as api_tags;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::ordering::OrderField;
@@ -162,7 +163,7 @@ fn active_session_error() -> ApiError {
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "update_daemon",
     summary = "Update daemon",
     params(("id" = Uuid, Path, description = "daemon ID")),
@@ -278,7 +279,7 @@ impl InstallCommandQuery {
 #[utoipa::path(
     get,
     path = "/{id}/install-command",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "get_daemon_install_command",
     summary = "Generate daemon install command",
     params(("id" = Uuid, Path, description = "daemon ID"), InstallCommandQuery),
@@ -324,7 +325,7 @@ async fn get_install_command(
 #[utoipa::path(
     delete,
     path = "/{id}",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "delete_daemon",
     summary = "Delete daemon",
     params(("id" = Uuid, Path, description = "daemon ID")),
@@ -355,7 +356,7 @@ async fn delete_daemon(
 #[utoipa::path(
     post,
     path = "/bulk-delete",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "bulk_delete_daemons",
     summary = "Bulk delete daemons",
     request_body(content = Vec<Uuid>, description = "Array of Daemon IDs to delete"),
@@ -409,7 +410,7 @@ pub struct EmailInstallCommandRequest {
 #[utoipa::path(
     post,
     path = "/email-install-command",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "email_install_command",
     summary = "Email install command to current user",
     request_body = EmailInstallCommandRequest,
@@ -619,7 +620,7 @@ async fn get_by_id(
 #[utoipa::path(
     post,
     path = "/register",
-    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     request_body = DaemonRegistrationRequest,
     responses(
         (status = 200, description = "Daemon registered successfully", body = ApiResponse<DaemonRegistrationResponse>),
@@ -650,7 +651,7 @@ async fn register_daemon(
 #[utoipa::path(
     post,
     path = "/{id}/startup",
-    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Daemon ID")),
     request_body = DaemonStartupRequest,
     responses(
@@ -699,7 +700,7 @@ async fn daemon_startup(
 #[utoipa::path(
     post,
     path = "/{id}/update-capabilities",
-    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Daemon ID")),
     request_body = LegacyCapabilities,
     responses(
@@ -747,7 +748,7 @@ async fn update_capabilities(
 #[utoipa::path(
     post,
     path = "/{id}/request-work",
-    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Daemon ID")),
     request_body = DaemonStatus,
     responses(
@@ -898,7 +899,7 @@ async fn receive_work_request(
 #[utoipa::path(
     post,
     path = "/{id}/heartbeat",
-    tags = [Daemon::ENTITY_NAME_PLURAL, "internal", "deprecated"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, api_tags::INTERNAL, api_tags::DEPRECATED],
     params(("id" = Uuid, Path, description = "Daemon ID")),
     request_body = DaemonHeartbeatPayload,
     responses(

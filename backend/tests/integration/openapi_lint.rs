@@ -239,6 +239,37 @@ fn openapi_lint() {
         }
     }
 
+    // An operation tagged with something the spec never declares gets no description, and
+    // shows up as its own unexplained group. Case drift is how `daemons` came to sit beside
+    // `Daemons`, so this compares exactly.
+    let declared: BTreeSet<&str> = spec
+        .get("tags")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|t| t.get("name").and_then(Value::as_str))
+        .collect();
+    let mut used = BTreeSet::new();
+    for (_route, item) in paths {
+        for (_method, op) in item.as_object().into_iter().flatten() {
+            for tag in op
+                .get("tags")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                if let Some(tag) = tag.as_str() {
+                    used.insert(tag);
+                }
+            }
+        }
+    }
+    for tag in used.difference(&declared) {
+        lint.failures.push(format!(
+            "tag `{tag}` is used but never declared in the spec"
+        ));
+    }
+
     // A `$ref` with nothing behind it renders as an empty box and breaks client generators.
     let mut refs = BTreeSet::new();
     collect_refs(&spec, &mut refs);
