@@ -9,7 +9,7 @@
 	import type { DiscoveryUpdatePayload } from '../../types/api';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
 	import { useSubnetsQuery, getSubnetById } from '$lib/features/subnets/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import scanSettingsFields from '$lib/data/scan-settings.json';
 	import {
 		discovery_runDetails,
@@ -48,8 +48,13 @@
 	// TanStack Query for subnets
 	const subnetsQuery = useSubnetsQuery();
 	let subnetsData = $derived(subnetsQuery.data ?? []);
-	const hostsQuery = useHostsQuery({ limit: 0 });
-	let hostsData = $derived(hostsQuery.data?.items ?? []);
+	// Only a rescan names a target host, and we only need that one host's name —
+	// fetch it by id rather than downloading every host with its nested entities.
+	let rescanTargetIds = $derived(
+		payload.discovery_type.type === 'Rescan' ? [payload.discovery_type.target_host_id] : []
+	);
+	const hostsQuery = useHostsByIds(() => rescanTargetIds);
+	let hostsData = $derived(hostsQuery.data ?? []);
 
 	let duration = $derived(
 		payload.started_at && payload.finished_at
