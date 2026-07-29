@@ -230,11 +230,18 @@
 	let hostFields = $derived(
 		defineFields<Host, HostOrderField>(
 			{
-				name: { label: common_name(), type: 'string', searchable: true },
-				hostname: { label: common_hostname(), type: 'string', searchable: true },
+				// Identity fields: grouping by one would render a header per host.
+				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+				hostname: {
+					label: common_hostname(),
+					type: 'string',
+					searchable: true,
+					groupable: false
+				},
 				virtualized_by: {
 					label: hosts_fields_virtualizedBy(),
 					type: 'string',
+					searchable: true,
 					filterable: true,
 					groupable: true,
 					// The server groups on the virtualizing service's name,
@@ -258,6 +265,9 @@
 				interface_ip: {
 					label: hosts_fields_interfaceIp(),
 					type: 'string',
+					searchable: true,
+					// Near-unique per host, so grouping by it is one header per host.
+					groupable: false,
 					getValue: (host) => {
 						const iface = ipAddressesData
 							.filter((i) => i.host_id === host.id)
@@ -268,6 +278,7 @@
 				network_id: {
 					label: common_network(),
 					type: 'string',
+					searchable: true,
 					filterable: true,
 					groupable: true,
 					filterOptions: networksData.map((n) => n.name),

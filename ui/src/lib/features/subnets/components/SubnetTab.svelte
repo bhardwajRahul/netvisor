@@ -160,8 +160,9 @@
 	let subnetFields = $derived(
 		defineFields<Subnet, SubnetOrderField>(
 			{
-				name: { label: common_name(), type: 'string', searchable: true },
-				cidr: { label: common_cidr(), type: 'string', searchable: true },
+				// Identity fields: grouping by one would render a header per subnet.
+				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+				cidr: { label: common_cidr(), type: 'string', searchable: true, groupable: false },
 				subnet_type: {
 					label: subnets_subnetType(),
 					type: 'string',
@@ -171,6 +172,7 @@
 				network_id: {
 					label: common_network(),
 					type: 'string',
+					searchable: true,
 					filterable: true,
 					groupable: true,
 					getValue: (item) =>

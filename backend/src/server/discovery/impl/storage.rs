@@ -36,6 +36,17 @@ impl Storable for Discovery {
         "discovery"
     }
 
+    /// A run is looked up by its own name or by the daemon that produced it —
+    /// "what did that box do last night" is the usual question of a history
+    /// list. Discovery rows carry no description to match on.
+    fn search_predicates() -> &'static [&'static str] {
+        &[
+            "discovery.name ILIKE {}",
+            "EXISTS (SELECT 1 FROM daemons d WHERE d.id = discovery.daemon_id \
+             AND d.name ILIKE {})",
+        ]
+    }
+
     fn new(base: Self::BaseData) -> Self {
         let now = chrono::Utc::now();
 

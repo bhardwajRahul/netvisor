@@ -1406,8 +1406,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all Discoveries */
-        get: operations["list_discoveries"];
+        /**
+         * List discoveries
+         * @description Returns discoveries the authenticated user has access to. The run history
+         *     grows without bound, so this is paginated and ordered server-side rather
+         *     than filtered in the browser.
+         */
+        get: operations["get_all_discoveries"];
         put?: never;
         /** Create new Discovery */
         post: operations["create_discovery"];
@@ -3160,19 +3165,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-29T00:14:48.332085Z",
+             *       "created_at": "2026-07-29T01:10:26.877366Z",
              *       "first_discovery_id": null,
-             *       "id": "29005632-0c80-4009-9adb-ce69aef15806",
+             *       "id": "b8005a86-4495-48da-8de0-d099f6fdc7c3",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-29T00:14:48.332085Z",
+             *       "last_seen_at": "2026-07-29T01:10:26.877366Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-29T00:14:48.332085Z",
-             *       "valid_from": "2026-07-29T00:14:48.332085Z",
+             *       "updated_at": "2026-07-29T01:10:26.877366Z",
+             *       "valid_from": "2026-07-29T01:10:26.877366Z",
              *       "valid_to": null
              *     }
              */
@@ -3576,19 +3581,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-29T00:14:48.312934Z",
+             *               "created_at": "2026-07-29T01:10:26.857243Z",
              *               "first_discovery_id": null,
-             *               "id": "5a9c17c5-c307-472a-8602-fb2f3d03b32f",
+             *               "id": "0da7e6bb-1bdd-4a5b-b200-96a3793ba807",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-29T00:14:48.312934Z",
+             *               "last_seen_at": "2026-07-29T01:10:26.857243Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-29T00:14:48.312934Z",
-             *               "valid_from": "2026-07-29T00:14:48.312934Z",
+             *               "updated_at": "2026-07-29T01:10:26.857243Z",
+             *               "valid_from": "2026-07-29T01:10:26.857243Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3602,7 +3607,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Kubernetes",
+             *           "service_definition": "Domoticz",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -4019,19 +4024,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-29T00:14:48.325961Z",
+             *           "created_at": "2026-07-29T01:10:26.871070Z",
              *           "first_discovery_id": null,
-             *           "id": "645e4883-ddc7-4d18-9592-f3c7daaf659d",
+             *           "id": "ba0e6e1f-14a5-4d1b-84f7-10e4969e7bc9",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-29T00:14:48.325961Z",
+             *           "last_seen_at": "2026-07-29T01:10:26.871070Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-29T00:14:48.325961Z",
-             *           "valid_from": "2026-07-29T00:14:48.325961Z",
+             *           "updated_at": "2026-07-29T01:10:26.871070Z",
+             *           "valid_from": "2026-07-29T01:10:26.871070Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4045,7 +4050,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Kubernetes",
+             *       "service_definition": "Domoticz",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4560,19 +4565,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-29T00:14:48.313417Z",
+         *       "created_at": "2026-07-29T01:10:26.857714Z",
          *       "first_discovery_id": null,
-         *       "id": "b50e7fa5-fc8e-47ad-a2bd-1a17cb9f83c6",
+         *       "id": "e291ef6e-d0c3-4285-944d-0e28a8372338",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-29T00:14:48.313417Z",
+         *       "last_seen_at": "2026-07-29T01:10:26.857714Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-29T00:14:48.313417Z",
-         *       "valid_from": "2026-07-29T00:14:48.313417Z",
+         *       "updated_at": "2026-07-29T01:10:26.857714Z",
+         *       "valid_from": "2026-07-29T01:10:26.857714Z",
          *       "valid_to": null
          *     }
          */
@@ -4787,7 +4792,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Kubernetes",
+         *           "service_definition": "Domoticz",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5416,6 +5421,11 @@ export interface components {
              */
             subnets?: components["schemas"]["Subnet"][];
         };
+        /**
+         * @description Fields that discoveries can be ordered/grouped by.
+         * @enum {string}
+         */
+        DiscoveryOrderField: "created_at" | "name" | "updated_at" | "daemon_id" | "network_id" | "discovery_type";
         /** @enum {string} */
         DiscoveryPhase: "AwaitingSnapshot" | "Queued" | "Pending" | "Starting" | "Started" | "Scanning" | "Complete" | "Failed" | "Cancelled";
         /**
@@ -5997,19 +6007,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-29T00:14:48.312385Z",
+         *               "created_at": "2026-07-29T01:10:26.856730Z",
          *               "first_discovery_id": null,
-         *               "id": "415d8189-0f37-4bc3-842b-6c184b456bf1",
+         *               "id": "6794fefa-d0d4-4c1a-817b-8137994d2df0",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-29T00:14:48.312385Z",
+         *               "last_seen_at": "2026-07-29T01:10:26.856730Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-29T00:14:48.312385Z",
-         *               "valid_from": "2026-07-29T00:14:48.312385Z",
+         *               "updated_at": "2026-07-29T01:10:26.856730Z",
+         *               "valid_from": "2026-07-29T01:10:26.856730Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -6023,7 +6033,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Kubernetes",
+         *           "service_definition": "Domoticz",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6944,6 +6954,36 @@ export interface components {
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
+        PaginatedApiResponse_Discovery: {
+            data: (components["schemas"]["DiscoveryBase"] & {
+                /** Format: date-time */
+                readonly created_at: string;
+                /** @description When true, the next scan will be a full port scan regardless of interval */
+                force_full_scan?: boolean;
+                /** Format: uuid */
+                readonly id: string;
+                /**
+                 * @description Per-daemon integration targeting: which integrations (credentialed or credential-less
+                 *     local) run on this daemon, and on which IPs. Delivered via the init command at
+                 *     registration and editable via the discovery modal. Persistent — re-applied every scan.
+                 *     This is the single home for cred↔IP targeting; it replaces the global
+                 *     `credential.target_ips` (race-prone, consumed once) and the discovery modal's old
+                 *     one-shot `pending_credential_ids`.
+                 */
+                integration_targets: components["schemas"]["IntegrationTarget"][];
+                /**
+                 * Format: int32
+                 * @description Number of completed scans (incremented by server on session completion)
+                 */
+                readonly scan_count?: number;
+                /** Format: date-time */
+                readonly updated_at: string;
+            })[];
+            error?: string | null;
+            meta: components["schemas"]["PaginatedApiMeta"];
+            success: boolean;
+        };
+        /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_HostResponse: {
             data: {
                 chassis_id?: string | null;
@@ -7685,19 +7725,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-29T00:14:48.313326Z",
+         *           "created_at": "2026-07-29T01:10:26.857616Z",
          *           "first_discovery_id": null,
-         *           "id": "6d83ae0e-99c3-4992-96be-16f24fe4f53a",
+         *           "id": "ace67690-c85a-40ba-9d44-e708f47768e9",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-29T00:14:48.313326Z",
+         *           "last_seen_at": "2026-07-29T01:10:26.857616Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-29T00:14:48.313326Z",
-         *           "valid_from": "2026-07-29T00:14:48.313326Z",
+         *           "updated_at": "2026-07-29T01:10:26.857616Z",
+         *           "valid_from": "2026-07-29T01:10:26.857616Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7711,7 +7751,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Kubernetes",
+         *       "service_definition": "Domoticz",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7795,7 +7835,7 @@ export interface components {
          * @description Fields that services can be ordered/grouped by.
          * @enum {string}
          */
-        ServiceOrderField: "created_at" | "name" | "updated_at" | "host" | "network_id" | "position" | "last_seen_at";
+        ServiceOrderField: "created_at" | "name" | "updated_at" | "host" | "network_id" | "position" | "service_definition" | "last_seen_at";
         /** ServiceVirtualization */
         ServiceVirtualization: {
             details: components["schemas"]["DockerVirtualization"];
@@ -8134,7 +8174,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "723a98e7-1208-4002-a50c-29670a55cebd",
+             *           "id": "c2427d69-d7e0-4692-98ee-bea4a358c3d6",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -8144,23 +8184,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "4b652367-427b-40b4-83dd-9821a09dd32d",
+             *           "id": "4ab25127-3de0-457b-bdf1-cbdf4733f38c",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "0df8de12-2de1-438d-9d64-a7ad7bb40515",
+             *           "id": "31e2c0a5-e3f2-4315-8390-6bdd05818266",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "a3c06f83-d83e-492e-9d19-456748f8f823",
+             *           "id": "814d3291-b72a-400b-b5a9-796c47f73f37",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "4b652367-427b-40b4-83dd-9821a09dd32d",
+             *           "id": "4ab25127-3de0-457b-bdf1-cbdf4733f38c",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -8172,19 +8212,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "e4f8292a-5723-4355-b92a-13f37ff21301",
+             *         "id": "06c4dcb9-1c0b-4cf2-8add-3c40d394a37b",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "d02d4713-dbe2-41d0-babb-cc1517f1bd3f",
+             *         "id": "3c6fd39a-49c1-4945-b945-a5c6bf55499b",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "6aa9e6b2-0029-45e4-8e05-fd25d4cb8635",
+             *         "id": "b071f671-e1e4-4b5d-abec-0dab3bd47445",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "c964aa07-8008-452d-a5da-36139343dd32",
+             *         "id": "780372ed-f1f9-42e0-95c1-8f5c73e9c3c3",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -8202,7 +8242,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "0b3fa1fb-c862-4f94-85b6-29699a32d465",
+             *         "id": "2262e0f4-015a-4ba8-ba73-465c267de4d5",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -8211,15 +8251,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "d101688f-bdd8-4cd5-a262-bb736af8f178",
+             *         "id": "7cd9af58-893d-4de7-851a-514b07700df9",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "9d41f65f-93c2-4577-bc5f-55123e50435e",
+             *         "id": "372aae97-e9e1-48d9-b84a-3189de85fc66",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "63397d09-4a24-4da5-bc42-cd7a2469f21d",
+             *         "id": "79891561-9e07-4770-bb95-c0446e491348",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -11572,13 +11612,29 @@ export interface operations {
             };
         };
     };
-    list_discoveries: {
+    get_all_discoveries: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
                 network_id?: string | null;
                 /** @description Filter by daemon ID */
                 daemon_id?: string | null;
+                /**
+                 * @description `true` returns only completed runs (the history view), `false` only the
+                 *     configurations that produce them. Omit for both.
+                 */
+                historical?: boolean | null;
+                /**
+                 * @description Free-text search across the discovery's name and the name of the daemon
+                 *     that runs it.
+                 */
+                search?: string | null;
+                /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
+                group_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Secondary ordering field (sorting within groups or standalone sort). */
+                order_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Direction for order_by field (group_by always uses ASC). */
+                order_direction?: null | components["schemas"]["OrderDirection"];
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
@@ -11590,18 +11646,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of Discoveries */
+            /** @description List of discoveries */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Discovery"][];
-                        error?: string | null;
-                        meta: components["schemas"]["PaginatedApiMeta"];
-                        success: boolean;
-                    };
+                    "application/json": components["schemas"]["PaginatedApiResponse_Discovery"];
                 };
             };
         };
@@ -11700,6 +11751,22 @@ export interface operations {
                 network_id?: string | null;
                 /** @description Filter by daemon ID */
                 daemon_id?: string | null;
+                /**
+                 * @description `true` returns only completed runs (the history view), `false` only the
+                 *     configurations that produce them. Omit for both.
+                 */
+                historical?: boolean | null;
+                /**
+                 * @description Free-text search across the discovery's name and the name of the daemon
+                 *     that runs it.
+                 */
+                search?: string | null;
+                /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
+                group_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Secondary ordering field (sorting within groups or standalone sort). */
+                order_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Direction for order_by field (group_by always uses ASC). */
+                order_direction?: null | components["schemas"]["OrderDirection"];
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
@@ -13851,6 +13918,10 @@ export interface operations {
                 order_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Direction for order_by field (group_by always uses ASC). */
                 order_direction?: null | components["schemas"]["OrderDirection"];
+                /** @description Only services exposed on one of these port numbers. */
+                ports?: number[] | null;
+                /** @description Only services exposed over this transport protocol. */
+                protocol?: null | components["schemas"]["TransportProtocol"];
                 /** @description Exclude services belonging to these categories. */
                 exclude_categories?: components["schemas"]["ServiceCategory"][] | null;
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
@@ -13966,6 +14037,10 @@ export interface operations {
                 order_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Direction for order_by field (group_by always uses ASC). */
                 order_direction?: null | components["schemas"]["OrderDirection"];
+                /** @description Only services exposed on one of these port numbers. */
+                ports?: number[] | null;
+                /** @description Only services exposed over this transport protocol. */
+                protocol?: null | components["schemas"]["TransportProtocol"];
                 /** @description Exclude services belonging to these categories. */
                 exclude_categories?: components["schemas"]["ServiceCategory"][] | null;
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */

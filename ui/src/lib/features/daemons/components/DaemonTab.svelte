@@ -24,6 +24,7 @@
 	import type { components } from '$lib/api/schema';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
+		common_active,
 		common_create,
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
@@ -31,11 +32,17 @@
 		common_daemons,
 		common_name,
 		common_network,
+		common_standby,
+		common_status,
 		common_tags,
 		common_noEntityYet,
 		common_unknownNetwork,
+		common_unreachable,
 		common_updated,
+		daemons_config_mode,
 		daemons_lastSeen,
+		daemons_mode_daemonPoll,
+		daemons_mode_serverPoll,
 		daemons_sunsetBannerTitle,
 		daemons_sunsetBannerBody
 	} from '$lib/paraglide/messages';
@@ -162,10 +169,12 @@
 	let daemonFields = $derived(
 		defineFields<Daemon, DaemonOrderField>(
 			{
-				name: { label: common_name(), type: 'string', searchable: true },
+				// Identity field: grouping by it would render a header per daemon.
+				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
 				network_id: {
 					label: common_network(),
 					type: 'string',
+					searchable: true,
 					filterable: true,
 					groupable: true,
 					getValue: (item) =>
@@ -176,6 +185,33 @@
 				updated_at: { label: common_updated(), type: 'date' }
 			},
 			[
+				{
+					// Reachability as one value rather than a raw boolean: "which
+					// daemons are down" is the question during an incident, and a
+					// standby daemon is a third answer, not a shade of unreachable.
+					key: 'status',
+					label: common_status(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					getValue: (daemon) =>
+						daemon.is_unreachable
+							? common_unreachable()
+							: daemon.standby
+								? common_standby()
+								: common_active()
+				},
+				{
+					key: 'mode',
+					label: daemons_config_mode(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					getValue: (daemon) =>
+						daemon.mode === 'server_poll' ? daemons_mode_serverPoll() : daemons_mode_daemonPoll()
+				},
 				{
 					key: 'tags',
 					label: common_tags(),

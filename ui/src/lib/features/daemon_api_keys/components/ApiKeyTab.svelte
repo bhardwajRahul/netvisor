@@ -129,6 +129,7 @@
 			key: 'network_id',
 			type: 'string',
 			label: common_network(),
+			searchable: true,
 			filterable: true,
 			groupable: true,
 			getValue(item) {

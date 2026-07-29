@@ -110,9 +110,9 @@
 		// Server-side tag filtering callback (optional)
 		// Called when tag filter selection changes, with array of selected tag IDs
 		onTagFilterChange = null,
-		// Server-side exclude filter callback (optional)
-		// Called when an exclude-mode filter changes, with field key and excluded values
-		onExcludeFilterChange = null,
+		// Server-side field filter callback (optional)
+		// Called when a `serverFiltered` field's selection changes
+		onFilterChange = null,
 		// Server-side staleness filtering callback (optional)
 		// Called when the "Stale only" toggle changes
 		onStaleFilterChange = null,
@@ -147,9 +147,11 @@
 		// Server-side tag filtering: called when tag filter changes
 		// Args: array of tag IDs to filter by
 		onTagFilterChange?: ((tagIds: string[]) => void) | null;
-		// Server-side exclude filter: called when exclude-mode filter changes
-		// Args: (fieldKey, array of excluded values)
-		onExcludeFilterChange?: ((fieldKey: string, values: string[]) => void) | null;
+		// Server-side field filter: called when a field marked `serverFiltered`
+		// changes. Args: (fieldKey, selected values). The field opts in explicitly
+		// rather than this applying to every filter, so a key the parent doesn't
+		// handle keeps its client-side filtering instead of silently doing nothing.
+		onFilterChange?: ((fieldKey: string, values: string[]) => void) | null;
 		// Server-side staleness filtering: called when the "Stale only" toggle
 		// changes. `true` = only stale, `null` = no staleness constraint.
 		// Server-side because these lists are server-paginated — a client-side
@@ -385,14 +387,14 @@
 			onTagFilterChange(Array.from(tagFilter.values));
 		}
 
-		// Notify parent of restored exclude filter state
-		if (onExcludeFilterChange) {
+		// Notify parent of restored server-side filter state
+		if (onFilterChange) {
 			for (const field of fields) {
-				if (field.filterable && field.filterMode === 'exclude') {
+				if (field.filterable && field.serverFiltered) {
 					const key = getFieldKey(field);
 					const filter = filterState[key];
 					if (filter && filter.values.size > 0) {
-						onExcludeFilterChange(key, Array.from(filter.values));
+						onFilterChange(key, Array.from(filter.values));
 					}
 				}
 			}
@@ -481,7 +483,9 @@
 			// (the rows that arrived are already the matches).
 			if (!onSearchChange && searchQuery.trim()) {
 				const q = searchQuery.toLowerCase();
-				const searchableFields = fields.filter((f) => f.searchable !== false);
+				// Opt-in: an unmarked field is not searched. Matching everything by
+				// default meant a date field turned "2026" into a match on every row.
+				const searchableFields = fields.filter((f) => f.searchable === true);
 				const matchesQ = searchableFields.some((field) => {
 					const value = getFieldValue(item, field);
 					if (value === null || value === undefined) return false;
@@ -510,8 +514,8 @@
 					return true;
 				}
 
-				// Skip client-side exclude filtering when server-side filtering is enabled
-				if (field.filterMode === 'exclude' && onExcludeFilterChange) {
+				// Skip client-side filtering for fields the parent filters server-side
+				if (field.serverFiltered && onFilterChange) {
 					return true;
 				}
 
@@ -702,11 +706,11 @@
 			}
 		};
 
-		// Notify parent of exclude filter changes
-		if (onExcludeFilterChange) {
+		// Notify parent of server-side filter changes
+		if (onFilterChange) {
 			const field = fields.find((f) => getFieldKey(f) === fieldKey);
-			if (field?.filterMode === 'exclude') {
-				onExcludeFilterChange(fieldKey, Array.from(newValues));
+			if (field?.serverFiltered) {
+				onFilterChange(fieldKey, Array.from(newValues));
 				// Reset pagination
 				if (useServerPagination && onPageChange) {
 					onPageChange(1, pageSize);
@@ -787,11 +791,11 @@
 			onStaleFilterChange?.(null);
 		}
 
-		// Notify parent that exclude filters were cleared
-		if (onExcludeFilterChange) {
+		// Notify parent that server-side filters were cleared
+		if (onFilterChange) {
 			fields.forEach((field) => {
-				if (field.filterable && field.filterMode === 'exclude') {
-					onExcludeFilterChange(getFieldKey(field), []);
+				if (field.filterable && field.serverFiltered) {
+					onFilterChange(getFieldKey(field), []);
 				}
 			});
 		}

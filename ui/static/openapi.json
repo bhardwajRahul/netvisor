@@ -5237,8 +5237,9 @@
         "tags": [
           "Discoveries"
         ],
-        "summary": "List all Discoveries",
-        "operationId": "list_discoveries",
+        "summary": "List discoveries",
+        "description": "Returns discoveries the authenticated user has access to. The run history\ngrows without bound, so this is paginated and ordered server-side rather\nthan filtered in the browser.",
+        "operationId": "get_all_discoveries",
         "parameters": [
           {
             "name": "network_id",
@@ -5264,6 +5265,78 @@
                 "null"
               ],
               "format": "uuid"
+            }
+          },
+          {
+            "name": "historical",
+            "in": "query",
+            "description": "`true` returns only completed runs (the history view), `false` only the\nconfigurations that produce them. Omit for both.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search across the discovery's name and the name of the daemon\nthat runs it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/DiscoveryOrderField"
+                }
+              ]
+            }
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "description": "Secondary ordering field (sorting within groups or standalone sort).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/DiscoveryOrderField"
+                }
+              ]
+            }
+          },
+          {
+            "name": "order_direction",
+            "in": "query",
+            "description": "Direction for order_by field (group_by always uses ASC).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/OrderDirection"
+                }
+              ]
             }
           },
           {
@@ -5298,37 +5371,11 @@
         ],
         "responses": {
           "200": {
-            "description": "List of Discoveries",
+            "description": "List of discoveries",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "description": "Response type for paginated list endpoints (pagination is always present in meta)",
-                  "required": [
-                    "success",
-                    "data",
-                    "meta"
-                  ],
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Discovery"
-                      }
-                    },
-                    "error": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "meta": {
-                      "$ref": "#/components/schemas/PaginatedApiMeta"
-                    },
-                    "success": {
-                      "type": "boolean"
-                    }
-                  }
+                  "$ref": "#/components/schemas/PaginatedApiResponse_Discovery"
                 }
               }
             }
@@ -5507,6 +5554,78 @@
                 "null"
               ],
               "format": "uuid"
+            }
+          },
+          {
+            "name": "historical",
+            "in": "query",
+            "description": "`true` returns only completed runs (the history view), `false` only the\nconfigurations that produce them. Omit for both.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text search across the discovery's name and the name of the daemon\nthat runs it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/DiscoveryOrderField"
+                }
+              ]
+            }
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "description": "Secondary ordering field (sorting within groups or standalone sort).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/DiscoveryOrderField"
+                }
+              ]
+            }
+          },
+          {
+            "name": "order_direction",
+            "in": "query",
+            "description": "Direction for order_by field (group_by always uses ASC).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/OrderDirection"
+                }
+              ]
             }
           },
           {
@@ -9694,6 +9813,39 @@
             }
           },
           {
+            "name": "ports",
+            "in": "query",
+            "description": "Only services exposed on one of these port numbers.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "name": "protocol",
+            "in": "query",
+            "description": "Only services exposed over this transport protocol.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/TransportProtocol"
+                }
+              ]
+            }
+          },
+          {
             "name": "exclude_categories",
             "in": "query",
             "description": "Exclude services belonging to these categories.",
@@ -10000,6 +10152,39 @@
                 },
                 {
                   "$ref": "#/components/schemas/OrderDirection"
+                }
+              ]
+            }
+          },
+          {
+            "name": "ports",
+            "in": "query",
+            "description": "Only services exposed on one of these port numbers.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "name": "protocol",
+            "in": "query",
+            "description": "Only services exposed over this transport protocol.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/TransportProtocol"
                 }
               ]
             }
@@ -14030,19 +14215,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-29T00:14:48.332085Z",
+              "created_at": "2026-07-29T01:10:26.877366Z",
               "first_discovery_id": null,
-              "id": "29005632-0c80-4009-9adb-ce69aef15806",
+              "id": "b8005a86-4495-48da-8de0-d099f6fdc7c3",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T00:14:48.332085Z",
+              "last_seen_at": "2026-07-29T01:10:26.877366Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T00:14:48.332085Z",
-              "valid_from": "2026-07-29T00:14:48.332085Z",
+              "updated_at": "2026-07-29T01:10:26.877366Z",
+              "valid_from": "2026-07-29T01:10:26.877366Z",
               "valid_to": null
             }
           },
@@ -15195,19 +15380,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-29T00:14:48.312934Z",
+                      "created_at": "2026-07-29T01:10:26.857243Z",
                       "first_discovery_id": null,
-                      "id": "5a9c17c5-c307-472a-8602-fb2f3d03b32f",
+                      "id": "0da7e6bb-1bdd-4a5b-b200-96a3793ba807",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-29T00:14:48.312934Z",
+                      "last_seen_at": "2026-07-29T01:10:26.857243Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-29T00:14:48.312934Z",
-                      "valid_from": "2026-07-29T00:14:48.312934Z",
+                      "updated_at": "2026-07-29T01:10:26.857243Z",
+                      "valid_from": "2026-07-29T01:10:26.857243Z",
                       "valid_to": null
                     }
                   ],
@@ -15221,7 +15406,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Kubernetes",
+                  "service_definition": "Domoticz",
                   "source": {
                     "type": "Manual"
                   },
@@ -16291,19 +16476,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T00:14:48.325961Z",
+                  "created_at": "2026-07-29T01:10:26.871070Z",
                   "first_discovery_id": null,
-                  "id": "645e4883-ddc7-4d18-9592-f3c7daaf659d",
+                  "id": "ba0e6e1f-14a5-4d1b-84f7-10e4969e7bc9",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T00:14:48.325961Z",
+                  "last_seen_at": "2026-07-29T01:10:26.871070Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T00:14:48.325961Z",
-                  "valid_from": "2026-07-29T00:14:48.325961Z",
+                  "updated_at": "2026-07-29T01:10:26.871070Z",
+                  "valid_from": "2026-07-29T01:10:26.871070Z",
                   "valid_to": null
                 }
               ],
@@ -16317,7 +16502,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Kubernetes",
+              "service_definition": "Domoticz",
               "source": {
                 "type": "Manual"
               },
@@ -18191,19 +18376,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-29T00:14:48.313417Z",
+          "created_at": "2026-07-29T01:10:26.857714Z",
           "first_discovery_id": null,
-          "id": "b50e7fa5-fc8e-47ad-a2bd-1a17cb9f83c6",
+          "id": "e291ef6e-d0c3-4285-944d-0e28a8372338",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-29T00:14:48.313417Z",
+          "last_seen_at": "2026-07-29T01:10:26.857714Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-29T00:14:48.313417Z",
-          "valid_from": "2026-07-29T00:14:48.313417Z",
+          "updated_at": "2026-07-29T01:10:26.857714Z",
+          "valid_from": "2026-07-29T01:10:26.857714Z",
           "valid_to": null
         }
       },
@@ -18794,7 +18979,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Kubernetes",
+              "service_definition": "Domoticz",
               "tags": [],
               "virtualization": null
             }
@@ -20348,6 +20533,18 @@
             "description": "Integration-derived subnets (e.g., Docker bridge networks) — created during\ncreate_with_children after service dedup so virtualization.service_id is correct."
           }
         }
+      },
+      "DiscoveryOrderField": {
+        "type": "string",
+        "description": "Fields that discoveries can be ordered/grouped by.",
+        "enum": [
+          "created_at",
+          "name",
+          "updated_at",
+          "daemon_id",
+          "network_id",
+          "discovery_type"
+        ]
       },
       "DiscoveryPhase": {
         "type": "string",
@@ -21949,19 +22146,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T00:14:48.312385Z",
+                  "created_at": "2026-07-29T01:10:26.856730Z",
                   "first_discovery_id": null,
-                  "id": "415d8189-0f37-4bc3-842b-6c184b456bf1",
+                  "id": "6794fefa-d0d4-4c1a-817b-8137994d2df0",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T00:14:48.312385Z",
+                  "last_seen_at": "2026-07-29T01:10:26.856730Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T00:14:48.312385Z",
-                  "valid_from": "2026-07-29T00:14:48.312385Z",
+                  "updated_at": "2026-07-29T01:10:26.856730Z",
+                  "valid_from": "2026-07-29T01:10:26.856730Z",
                   "valid_to": null
                 }
               ],
@@ -21975,7 +22172,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Kubernetes",
+              "service_definition": "Domoticz",
               "source": {
                 "type": "Manual"
               },
@@ -24367,6 +24564,83 @@
           }
         }
       },
+      "PaginatedApiResponse_Discovery": {
+        "type": "object",
+        "description": "Response type for paginated list endpoints (pagination is always present in meta)",
+        "required": [
+          "success",
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/DiscoveryBase"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "created_at",
+                    "updated_at",
+                    "integration_targets"
+                  ],
+                  "properties": {
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "force_full_scan": {
+                      "type": "boolean",
+                      "description": "When true, the next scan will be a full port scan regardless of interval"
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "integration_targets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/IntegrationTarget"
+                      },
+                      "description": "Per-daemon integration targeting: which integrations (credentialed or credential-less\nlocal) run on this daemon, and on which IPs. Delivered via the init command at\nregistration and editable via the discovery modal. Persistent — re-applied every scan.\nThis is the single home for cred↔IP targeting; it replaces the global\n`credential.target_ips` (race-prone, consumed once) and the discovery modal's old\none-shot `pending_credential_ids`."
+                    },
+                    "scan_count": {
+                      "type": "integer",
+                      "format": "int32",
+                      "description": "Number of completed scans (incremented by server on session completion)",
+                      "readOnly": true,
+                      "minimum": 0
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginatedApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
       "PaginatedApiResponse_HostResponse": {
         "type": "object",
         "description": "Response type for paginated list endpoints (pagination is always present in meta)",
@@ -24612,19 +24886,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-29T00:14:48.301875Z",
+                        "created_at": "2026-07-29T01:10:26.845145Z",
                         "first_discovery_id": null,
-                        "id": "125d334f-09b7-4f01-bb1a-e5b60ef1814b",
+                        "id": "700d84ea-a9c3-4148-b31d-9cab4aad3474",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-29T00:14:48.301875Z",
+                        "last_seen_at": "2026-07-29T01:10:26.845145Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-29T00:14:48.301875Z",
-                        "valid_from": "2026-07-29T00:14:48.301875Z",
+                        "updated_at": "2026-07-29T01:10:26.845145Z",
+                        "valid_from": "2026-07-29T01:10:26.845145Z",
                         "valid_to": null
                       }
                     ],
@@ -24638,7 +24912,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Kubernetes",
+                    "service_definition": "Domoticz",
                     "source": {
                       "type": "Manual"
                     },
@@ -24759,19 +25033,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-29T00:14:48.324851Z",
+                    "created_at": "2026-07-29T01:10:26.869913Z",
                     "first_discovery_id": null,
-                    "id": "a684ee98-e1ec-4994-b945-c96c5161fe6d",
+                    "id": "cd1d9d20-7ced-4685-a64a-7410b5ea92d1",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-29T00:14:48.324851Z",
+                    "last_seen_at": "2026-07-29T01:10:26.869913Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-29T00:14:48.324851Z",
-                    "valid_from": "2026-07-29T00:14:48.324851Z",
+                    "updated_at": "2026-07-29T01:10:26.869913Z",
+                    "valid_from": "2026-07-29T01:10:26.869913Z",
                     "valid_to": null
                   }
                 ],
@@ -24785,7 +25059,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Kubernetes",
+                "service_definition": "Domoticz",
                 "source": {
                   "type": "Manual"
                 },
@@ -26522,19 +26796,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-29T00:14:48.313326Z",
+              "created_at": "2026-07-29T01:10:26.857616Z",
               "first_discovery_id": null,
-              "id": "6d83ae0e-99c3-4992-96be-16f24fe4f53a",
+              "id": "ace67690-c85a-40ba-9d44-e708f47768e9",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T00:14:48.313326Z",
+              "last_seen_at": "2026-07-29T01:10:26.857616Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T00:14:48.313326Z",
-              "valid_from": "2026-07-29T00:14:48.313326Z",
+              "updated_at": "2026-07-29T01:10:26.857616Z",
+              "valid_from": "2026-07-29T01:10:26.857616Z",
               "valid_to": null
             }
           ],
@@ -26548,7 +26822,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Kubernetes",
+          "service_definition": "Domoticz",
           "source": {
             "type": "Manual"
           },
@@ -26731,6 +27005,7 @@
           "host",
           "network_id",
           "position",
+          "service_definition",
           "last_seen_at"
         ]
       },
@@ -27681,7 +27956,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "723a98e7-1208-4002-a50c-29670a55cebd",
+                  "id": "c2427d69-d7e0-4692-98ee-bea4a358c3d6",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -27691,23 +27966,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "4b652367-427b-40b4-83dd-9821a09dd32d",
+                  "id": "4ab25127-3de0-457b-bdf1-cbdf4733f38c",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "0df8de12-2de1-438d-9d64-a7ad7bb40515",
+                  "id": "31e2c0a5-e3f2-4315-8390-6bdd05818266",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "a3c06f83-d83e-492e-9d19-456748f8f823",
+                  "id": "814d3291-b72a-400b-b5a9-796c47f73f37",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "4b652367-427b-40b4-83dd-9821a09dd32d",
+                  "id": "4ab25127-3de0-457b-bdf1-cbdf4733f38c",
                   "rule": "ByHost"
                 }
               ]
@@ -27736,19 +28011,19 @@
             },
             "default": [
               {
-                "id": "e4f8292a-5723-4355-b92a-13f37ff21301",
+                "id": "06c4dcb9-1c0b-4cf2-8add-3c40d394a37b",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "d02d4713-dbe2-41d0-babb-cc1517f1bd3f",
+                "id": "3c6fd39a-49c1-4945-b945-a5c6bf55499b",
                 "rule": "ByVLAN"
               },
               {
-                "id": "6aa9e6b2-0029-45e4-8e05-fd25d4cb8635",
+                "id": "b071f671-e1e4-4b5d-abec-0dab3bd47445",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "c964aa07-8008-452d-a5da-36139343dd32",
+                "id": "780372ed-f1f9-42e0-95c1-8f5c73e9c3c3",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -27766,7 +28041,7 @@
                 }
               },
               {
-                "id": "0b3fa1fb-c862-4f94-85b6-29699a32d465",
+                "id": "2262e0f4-015a-4ba8-ba73-465c267de4d5",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -27775,15 +28050,15 @@
                 }
               },
               {
-                "id": "d101688f-bdd8-4cd5-a262-bb736af8f178",
+                "id": "7cd9af58-893d-4de7-851a-514b07700df9",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "9d41f65f-93c2-4577-bc5f-55123e50435e",
+                "id": "372aae97-e9e1-48d9-b84a-3189de85fc66",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "63397d09-4a24-4da5-bc42-cd7a2469f21d",
+                "id": "79891561-9e07-4770-bb95-c0446e491348",
                 "rule": "ByStack"
               }
             ]

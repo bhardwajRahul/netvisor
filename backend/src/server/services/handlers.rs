@@ -1,5 +1,6 @@
 use crate::server::auth::middleware::permissions::{Authorized, Member, Viewer};
 use crate::server::hosts::r#impl::base::Host;
+use crate::server::ports::r#impl::base::TransportProtocol;
 use crate::server::services::definitions::ServiceDefinitionRegistry;
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::shared::handlers::ordering::OrderField;
@@ -43,6 +44,9 @@ pub enum ServiceOrderField {
     Host,
     NetworkId,
     Position,
+    /// Sort by what the service *is* (Postgres, Nginx, ...) rather than what it
+    /// was named. Plain text column, no JOIN.
+    ServiceDefinition,
     /// Sort by when discovery last observed the service. Surfaces stale assets.
     LastSeenAt,
 }
@@ -55,6 +59,7 @@ impl OrderField for ServiceOrderField {
             Self::UpdatedAt => "services.updated_at",
             Self::NetworkId => "services.network_id",
             Self::Position => "services.position",
+            Self::ServiceDefinition => "services.service_definition",
             Self::LastSeenAt => "services.last_seen_at",
             Self::Host => "COALESCE(service_host.name, '')",
         }
@@ -94,6 +99,10 @@ pub struct ServiceFilterQuery {
     pub order_by: Option<ServiceOrderField>,
     /// Direction for order_by field (group_by always uses ASC).
     pub order_direction: Option<OrderDirection>,
+    /// Only services exposed on one of these port numbers.
+    pub ports: Option<Vec<u16>>,
+    /// Only services exposed over this transport protocol.
+    pub protocol: Option<TransportProtocol>,
     /// Exclude services belonging to these categories.
     pub exclude_categories: Option<Vec<ServiceCategory>>,
     /// Maximum number of results to return (1-1000, default: 50). Use 0 for no limit.
@@ -230,6 +239,14 @@ async fn get_all_services(
     let filter = match query.search.as_deref() {
         Some(search) if !search.trim().is_empty() => filter.text_search(search),
         _ => filter,
+    };
+
+    // Port and protocol reach services through the bindings junction.
+    let ports = query.ports.clone().unwrap_or_default();
+    let filter = if ports.is_empty() && query.protocol.is_none() {
+        filter
+    } else {
+        filter.bound_to_port(&ports, query.protocol)
     };
 
     // Exclude services by category if specified

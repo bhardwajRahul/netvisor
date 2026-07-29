@@ -378,49 +378,6 @@ impl FilterQueryExtractor for IPAddressQuery {
     }
 }
 
-/// Query for filtering discoveries by network_id or daemon_id
-#[derive(Deserialize, Default, Debug, Clone, IntoParams)]
-pub struct DiscoveryQuery {
-    /// Filter by network ID
-    pub network_id: Option<Uuid>,
-    /// Filter by daemon ID
-    pub daemon_id: Option<Uuid>,
-    /// Maximum number of results to return (1-1000, default: 50). Use 0 for no limit.
-    #[param(minimum = 0, maximum = 1000)]
-    pub limit: Option<u32>,
-    /// Number of results to skip. Default: 0.
-    #[param(minimum = 0)]
-    pub offset: Option<u32>,
-}
-
-impl FilterQueryExtractor for DiscoveryQuery {
-    fn apply_to_filter<T: Storable>(
-        &self,
-        filter: StorableFilter<T>,
-        user_network_ids: &[Uuid],
-        _user_organization_id: Uuid,
-    ) -> StorableFilter<T> {
-        let mut filter = match self.network_id {
-            Some(id) if user_network_ids.contains(&id) => filter.network_ids(&[id]),
-            Some(_) => filter.network_ids(&[]),
-            None => filter.network_ids(user_network_ids),
-        };
-        filter = match self.daemon_id {
-            Some(id) => filter.uuid_column("daemon_id", &id),
-            None => filter,
-        };
-
-        filter
-    }
-
-    fn pagination(&self) -> PaginationParams {
-        PaginationParams {
-            limit: self.limit,
-            offset: self.offset,
-        }
-    }
-}
-
 /// Query for filtering shares by network_id or topology_id
 #[derive(Deserialize, Default, Debug, Clone, IntoParams)]
 pub struct SharesQuery {
