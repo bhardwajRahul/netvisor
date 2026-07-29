@@ -9,9 +9,12 @@
 	import { slugifyNetworkName } from '$lib/features/daemons/utils';
 	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
 	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
+	import { entityRef } from '$lib/shared/components/data/types';
+	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import { credentialTypes, entities } from '$lib/shared/stores/metadata';
 	import type { TypedTypeMetadata, CredentialTypeMetadata } from '$lib/shared/stores/metadata';
 	import type { Credential, CredentialType } from '$lib/features/credentials/types/base';
+	import type { Host } from '$lib/features/hosts/types/base';
 	import {
 		createDefaultCredential,
 		isDaemonHostOnly as isDaemonHostOnlyTargets
@@ -37,7 +40,7 @@
 		daemons_credentialWizardAddExisting,
 		daemons_credentialWizardSelectExisting,
 		daemons_credentialWizardExistingDescription,
-		credentials_daemonHostManagedElsewhere,
+		credentials_targetsHostManagedElsewhere,
 		daemons_credentialWizardDaemonHostUnavailable,
 		credentials_requiresDaemonVersion
 	} from '$lib/paraglide/messages';
@@ -47,9 +50,13 @@
 		targetIps: string[];
 		fieldValues: Record<string, string>;
 		isExisting?: boolean;
-		// Managed elsewhere (a daemon-host credential assigned via the host/credential
-		// modals): shown read-only, not removable here, never created/updated.
+		// Managed elsewhere (assigned to a host through the host/credential modals'
+		// junction, not targeted by this discovery): shown read-only, not removable here,
+		// never created/updated, and never written to the discovery's targets.
 		isManaged?: boolean;
+		/** Hosts on this network the credential is assigned to, for the managed card's
+		 *  message. Resolved by the caller — this component has no hosts query. */
+		managedHosts?: Host[];
 		// How the new credential is assigned: 'broadcast' (network default) or
 		// 'per_host' (target IPs). Defaults based on the type's scope_models.
 		scope?: 'broadcast' | 'per_host';
@@ -100,10 +107,14 @@
 
 	// Local items array for ListConfigEditor display
 	let items = $derived(pendingCredentials.map((p) => p.credential));
-	// Managed (daemon-host) credentials are read-only here — no remove affordance.
+	// Junction-assigned credentials are read-only here — no remove affordance.
 	let managedCredIds = $derived(
 		pendingCredentials.filter((p) => p.isManaged).map((p) => p.credential.id)
 	);
+
+	// The managed-card sentence is one translatable string with a %host% slot the host
+	// tag(s) render into — the same splice convention DocsHint uses for its link.
+	let managedOnHostParts = $derived(credentials_targetsHostManagedElsewhere().split('%host%'));
 
 	function isDaemonHostOnly(typeId: string): boolean {
 		return isDaemonHostOnlyTargets(credentialTypes.getMetadata(typeId)?.targets);
@@ -162,10 +173,15 @@
 	// (e.g. multiple Docker Proxies on different hosts) are never blanket-blocked.
 	let typeOptions = $derived(
 		credentialTypes.getItems().filter((t) => {
-			// A daemon-host-only type (the local socket) can only be added once (one daemon host).
+			// A daemon-host-only type (the local socket) can only be added once (one daemon
+			// host). Managed rows are excluded: they cover every host on the network, and a
+			// credential assigned to some *other* host leaves the daemon host free. When one
+			// genuinely occupies the daemon host it reaches the dropdown through
+			// `claimedDaemonHostIntegrations` instead, which disables it with a reason rather
+			// than hiding it.
 			if (
 				isDaemonHostOnlyTargets(t.metadata?.targets) &&
-				pendingCredentials.some((p) => p.credential.credential_type.type === t.id)
+				pendingCredentials.some((p) => !p.isManaged && p.credential.credential_type.type === t.id)
 			) {
 				return false;
 			}
@@ -197,7 +213,12 @@
 	// Available existing credentials (filter out already-added and network-level)
 	let availableExistingCredentials = $derived.by(() => {
 		if (!credentialsQuery.data) return [];
-		const pendingIds = new Set(pendingCredentials.map((p) => p.credential.id));
+		// Managed rows are a read-only "already assigned on host X" note, not a target on
+		// this discovery — so the credential stays offerable here if the user also wants to
+		// target it explicitly.
+		const pendingIds = new Set(
+			pendingCredentials.filter((p) => !p.isManaged).map((p) => p.credential.id)
+		);
 		const networkCredIds = new Set(networkCredentials.map((c) => c.id));
 		return credentialsQuery.data.filter((c) => !pendingIds.has(c.id) && !networkCredIds.has(c.id));
 	});
@@ -529,11 +550,27 @@
 			{#each pendingCredentials as pending, index (`${pending.credential.id}-${index}`)}
 				<div class:hidden={selectedIndex !== index}>
 					{#if pending.isManaged}
-						<!-- Daemon-host credential assigned via the host/credential modals: read-only
-						     here. Managed (added/removed) by editing the host or the credential. -->
-						<p class="text-muted mb-4 text-xs">
-							{credentials_daemonHostManagedElsewhere()}
-						</p>
+						<!-- Credential assigned to a host on this network via the host/credential
+						     modals: read-only here, and named with the host(s) it targets. Managed
+						     (added/removed) by editing the host or the credential. -->
+						<div class="mb-4">
+							<InlineInfo>
+								{managedOnHostParts[0]}<!--
+								--><span
+									class="inline-flex flex-wrap items-center gap-1 align-middle"
+								>
+									{#each pending.managedHosts ?? [] as host (host.id)}
+										<EntityTag
+											entityRef={entityRef('Host', host.id, host)}
+											label={host.name}
+											icon={entities.getIconComponent('Host')}
+											color={entities.getColorHelper('Host').color}
+										/>
+									{/each}
+								</span><!--
+								-->{managedOnHostParts[1] ?? ''}
+							</InlineInfo>
+						</div>
 						<CredentialForm
 							{form}
 							compact={true}
@@ -547,9 +584,9 @@
 						<!-- Existing credential added by reference (incl. daemon-host-only sockets):
 						     read-only here (fields shown disabled). Checked before isDaemonHostOnly so an
 						     existing socket cred renders as a reference card, not an editable new form. -->
-						<p class="text-muted mb-4 text-xs">
-							{daemons_credentialWizardExistingDescription()}
-						</p>
+						<div class="mb-4">
+							<InlineInfo body={daemons_credentialWizardExistingDescription()} />
+						</div>
 						<CredentialForm
 							bind:this={credentialFormRefs[index]}
 							{form}

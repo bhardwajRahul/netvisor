@@ -165,6 +165,32 @@
 	}
 	let daemonHostCredentials = $derived(computeDaemonHostCredentials(daemonHostId));
 
+	/**
+	 * Credentials assigned, through the `host_credentials` junction, to ANY host on this
+	 * discovery's network — shown as read-only "managed elsewhere" cards.
+	 *
+	 * The scan already runs all of these (the server builds host-level mappings for every host
+	 * on the network, independent of this discovery's targets), so omitting them made the step
+	 * an incomplete picture of what a scan will do.
+	 *
+	 * Deliberately separate from `computeDaemonHostCredentials`: that one feeds the daemon-host
+	 * endpoint blocking, and generalizing it in place would let another host's credential type
+	 * falsely claim the daemon host. Assignment-sourced only — targets owned by this discovery
+	 * are editable rows, seeded separately.
+	 */
+	function computeNetworkManagedCredentials(hostIds: Set<string>) {
+		if (hostIds.size === 0) return [];
+		const hostById = new Map(hosts.map((h) => [h.id, h]));
+		return (allCredentialsQuery.data ?? []).flatMap((c) => {
+			// The junction holds a row per host+IP-scope, so a host id can repeat.
+			const assigned = [...new Set((c.host_assignments ?? []).map((a) => a.host_id))]
+				.filter((id) => hostIds.has(id))
+				.map((id) => hostById.get(id))
+				.filter((h): h is Host => !!h);
+			return assigned.length > 0 ? [{ credential: c, assignedHosts: assigned }] : [];
+		});
+	}
+
 	// Claimed integrations (credential types) on the daemon host — feeds the shared
 	// CredentialsStep's bidirectional socket↔proxy blocking. Generic across
 	// integrations (Docker, Podman, …); no per-integration capability flag.
@@ -475,23 +501,32 @@
 					{ credential: c, targetIps: ips.length ? ips : [''], fieldValues: {}, isExisting: true }
 				];
 			});
-			// Read-only managed cards: credentials assigned to the daemon host through the
-			// host/credential modals' junction — genuinely managed elsewhere, so not editable
-			// here. Anything already seeded above as an editable target is filtered out, which
-			// leaves this to the junction-sourced entries it describes.
-			// Resolve the daemon host inline (formData not yet settled).
+			// Read-only managed cards: credentials assigned through the host/credential modals'
+			// junction to any host on this network — genuinely managed elsewhere, so not
+			// editable here. Anything already seeded above as an editable target is filtered
+			// out, so a credential this discovery targets stays a single editable row.
+			// Resolve the daemon and its network inline (formData not yet settled).
 			const dForDiscovery = daemons.find((d) => d.id === discovery?.daemon_id) ?? null;
 			const dHostId = dForDiscovery
 				? (hosts.find((h) => h.id === dForDiscovery.host_id)?.id ?? null)
 				: null;
-			const managed: PendingCredential[] = computeDaemonHostCredentials(dHostId)
-				.filter((c) => !editable.some((p) => p.credential.id === c.id))
-				.map((c) => ({
-					credential: c,
+			// `hosts` is org-wide and unfiltered, so scoping to the network is required. The
+			// daemon's own host is included explicitly in case it is not carried on the
+			// network's host list.
+			const networkId = dForDiscovery?.network_id ?? null;
+			const onNetwork = networkId
+				? hosts.filter((h) => h.network_id === networkId).map((h) => h.id)
+				: [];
+			const networkHostIds = new Set(dHostId ? [...onNetwork, dHostId] : onNetwork);
+			const managed: PendingCredential[] = computeNetworkManagedCredentials(networkHostIds)
+				.filter(({ credential }) => !editable.some((p) => p.credential.id === credential.id))
+				.map(({ credential, assignedHosts }) => ({
+					credential,
 					targetIps: [],
 					fieldValues: {},
 					isExisting: true,
-					isManaged: true
+					isManaged: true,
+					managedHosts: assignedHosts
 				}));
 			pendingCredentials = [...editable, ...managed];
 		}
