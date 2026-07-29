@@ -121,7 +121,7 @@
 	}
 
 	function isLoopback(ip: string): boolean {
-		const t = ip.trim();
+		const t = ip?.trim() ?? '';
 		return t === '127.0.0.1' || t === '::1' || t === 'localhost';
 	}
 

@@ -579,7 +579,7 @@
 		// Locked rows are real targets owned elsewhere, so the credential is already
 		// pointed somewhere even with nothing entered here.
 		if (lockedHosts.length > 0) return true;
-		return targetIpValues.some((ip) => ip.trim() !== '');
+		return targetIpValues.some((ip) => (ip?.trim() ?? '') !== '');
 	}
 
 	// Target-IP field validator. Empty rows are valid at the field level — they're
