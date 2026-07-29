@@ -78,12 +78,19 @@
 
 	const fields = scanSettingsFields as FieldDef[];
 
-	// Get non-default scan settings as label/value pairs
+	// Get non-default scan settings as label/value pairs. A rescan carries the
+	// narrower RescanSettings, whose fields are a subset of the same definitions,
+	// so it reports the ones it does have rather than showing nothing.
 	let nonDefaultSettings = $derived.by(() => {
-		if (payload.discovery_type.type !== 'Unified' || !payload.discovery_type.scan_settings) {
+		const settings =
+			payload.discovery_type.type === 'Unified'
+				? payload.discovery_type.scan_settings
+				: payload.discovery_type.type === 'Rescan'
+					? payload.discovery_type.settings
+					: null;
+		if (!settings) {
 			return [];
 		}
-		const settings = payload.discovery_type.scan_settings;
 		const result: { label: string; value: string }[] = [];
 		for (const field of fields) {
 			const val = settings[field.id as keyof typeof settings];
@@ -163,6 +170,13 @@
 			</InfoRow>
 			<InfoRow label={common_ipAddresses()}>{rescan.ips.join(', ')}</InfoRow>
 			<InfoRow label={discovery_portsVerified()}>{(rescan.ports ?? []).length}</InfoRow>
+			{#if nonDefaultSettings.length > 0}
+				{#each nonDefaultSettings as setting (setting.label)}
+					<InfoRow label={setting.label}>{setting.value}</InfoRow>
+				{/each}
+			{:else}
+				<InfoRow label={discovery_scanTuning()}>{discovery_defaultSettings()}</InfoRow>
+			{/if}
 		</InfoCard>
 
 		<!-- Settings for Unified -->

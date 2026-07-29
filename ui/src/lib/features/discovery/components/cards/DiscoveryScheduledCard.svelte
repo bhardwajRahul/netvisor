@@ -19,7 +19,7 @@
 	import { entityRef } from '$lib/shared/components/data/types';
 	import type { TagProps } from '$lib/shared/components/data/types';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { billingPlans } from '$lib/shared/stores/metadata';
+	import { billingPlans, discoveryTypes } from '$lib/shared/stores/metadata';
 	import {
 		common_delete,
 		common_disable,
@@ -91,8 +91,12 @@
 		activeSession?.session_id ? $cancellingSessions.get(activeSession.session_id) === true : false
 	);
 
+	// Legacy-ness comes from the backend's own `is_legacy`, not a local list —
+	// a `!== 'Unified'` check flagged Rescan, which is new rather than frozen.
 	let legacyStatus: TagProps | null = $derived(
-		discovery.discovery_type.type !== 'Unified' ? { label: common_legacy(), color: 'Yellow' } : null
+		discoveryTypes.getMetadata(discovery.discovery_type.type).is_legacy
+			? { label: common_legacy(), color: 'Yellow' }
+			: null
 	);
 
 	let cardData = $derived({

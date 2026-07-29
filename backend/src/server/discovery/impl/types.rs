@@ -342,4 +342,13 @@ impl TypeMetadataProvider for DiscoveryType {
             }
         }
     }
+
+    fn metadata(&self) -> serde_json::Value {
+        serde_json::json!({
+            // Frozen types the daemon no longer runs. Surfaced so the UI can
+            // flag them without keeping its own copy of the list — `Rescan` is
+            // new, not legacy, and a hardcoded `!= Unified` check said otherwise.
+            "is_legacy": self.is_legacy(),
+        })
+    }
 }

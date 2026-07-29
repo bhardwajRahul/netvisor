@@ -232,7 +232,9 @@ export interface PortTypeMetadata {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface DiscoveryTypeMetadata {}
+export interface DiscoveryTypeMetadata {
+	is_legacy: boolean;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface DiscoveryPhaseMetadata {}
