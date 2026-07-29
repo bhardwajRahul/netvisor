@@ -36,7 +36,6 @@
 	import {
 		common_confirmDeleteName,
 		common_create,
-		common_created,
 		common_tags,
 		daemons_installPromptDiscoveries,
 		discovery_confirmDeleteScheduled,
@@ -220,13 +219,8 @@
 					.map((id) => tagsData.find((t) => t.id === id)?.name)
 					.filter((name): name is string => !!name);
 			}
-		},
-		{
-			key: 'created_at',
-			label: common_created(),
-			type: 'date',
-			sortable: true
 		}
+		// `created_at` (sortable) comes from the shared `discoveryFields()` spread above.
 	]);
 </script>
 
