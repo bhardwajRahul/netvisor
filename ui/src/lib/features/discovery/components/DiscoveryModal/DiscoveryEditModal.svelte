@@ -197,15 +197,15 @@
 				.filter((h) => h.network_id === formData.network_id)
 				.map((h) => [h.id, h])
 		);
-		const byCredential = new Map<string, Host[]>();
-		for (const c of allCredentialsQuery.data ?? []) {
-			// The junction holds a row per host+IP-scope, so a host id can repeat.
-			const assigned = [...new Set((c.host_assignments ?? []).map((a) => a.host_id))]
-				.map((id) => onNetwork.get(id))
-				.filter((h): h is Host => !!h);
-			if (assigned.length > 0) byCredential.set(c.id, assigned);
-		}
-		return byCredential;
+		return new Map(
+			(allCredentialsQuery.data ?? []).flatMap((c) => {
+				// The junction holds a row per host+IP-scope, so a host id can repeat.
+				const assigned = [...new Set((c.host_assignments ?? []).map((a) => a.host_id))]
+					.map((id) => onNetwork.get(id))
+					.filter((h): h is Host => !!h);
+				return assigned.length > 0 ? [[c.id, assigned] as const] : [];
+			})
+		);
 	});
 
 	// Identity of the map above, so the effect that applies it runs once per real change
@@ -237,7 +237,15 @@
 			.flatMap(([id, assigned]) => {
 				const credential = credentialById.get(id);
 				return credential
-					? [{ credential, targetIps: [], fieldValues: {}, isExisting: true, lockedHosts: assigned }]
+					? [
+							{
+								credential,
+								targetIps: [],
+								fieldValues: {},
+								isExisting: true,
+								lockedHosts: assigned
+							}
+						]
 					: [];
 			});
 		pendingCredentials = [...withLocked, ...lockedOnly];

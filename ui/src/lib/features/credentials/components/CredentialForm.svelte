@@ -75,11 +75,13 @@
 		 *  Listed above the picker so the card reflects everything the credential hits,
 		 *  but owned elsewhere — not editable or removable here. */
 		lockedHosts?: Host[];
-		/** The row's saved target IPs. Passed in rather than read back off the shared
-		 *  TanStack form, whose defaults are built once and are stale whenever the parent
-		 *  seeds rows after this component mounts — which silently reset a per-host
-		 *  credential to broadcast, depending on mount order. */
-		initialTargetIps?: string[];
+		/** The row's target selection, owned by the parent. This component mirrors it for
+		 *  rendering and emits every edit back through `onChange`; it never decides a
+		 *  default of its own. Reading these back off the shared TanStack form instead was
+		 *  the source of a family of bugs: its defaults are built once, so they are stale
+		 *  for any row seeded afterwards. */
+		targetIps?: string[];
+		scope?: 'broadcast' | 'per_host';
 		onChange?: (data: {
 			targetIps?: string[];
 			fieldValues?: Record<string, string>;
@@ -101,7 +103,8 @@
 		fieldPrefix = '',
 		daemonHostUnavailable = false,
 		lockedHosts = [],
-		initialTargetIps,
+		targetIps,
+		scope,
 		onChange,
 		onTypeChange
 	}: Props = $props();
@@ -307,44 +310,12 @@
 			form.setFieldValue?.(compact ? `${fieldPrefix}name` : 'name', fixedName);
 		}
 
-		// Initialize target mode and target IP values from the row itself, falling back to
-		// the shared form only when the caller passes nothing.
+		// Mirror the parent's selection. No defaults are chosen here: the row's creator
+		// (handleAddCredential / handleAddExistingCredential / the modal's seeding) decides
+		// them, so a decision made here could not be emitted and would be silently lost.
 		if (compact) {
-			targetIpValues = [];
-			const formTargetIps =
-				initialTargetIps ??
-				(form.getFieldValue?.(`${fieldPrefix}targetIps`) as string[] | undefined);
-			const hasExplicitIps =
-				!!formTargetIps &&
-				formTargetIps.length > 0 &&
-				formTargetIps.some((ip: string) => ip !== '');
-			// Targets the type supports — computed inline (not via the derived) to
-			// avoid init-time staleness.
-			const supported = (credentialTypes.getMetadata(selectedTypeId)?.targets ?? []) as string[];
-			const canNetwork = supported.includes('Network');
-			if (hasExplicitIps) {
-				targetIpValues = [...formTargetIps];
-				targetMode = 'per_host';
-			} else {
-				// Network-capable types (e.g. SNMP) default to Networks (broadcast),
-				// matching the wizard's handleAddCredential; host-only types to Hosts.
-				targetMode = canNetwork ? 'broadcast' : 'per_host';
-				// When the daemon host is the only per-host target, preselect it (the
-				// disabled 127.0.0.1 row) so there's nothing for the user to add. Skipped
-				// when the credential is already assigned to a host: the assignment is
-				// listed above, and this row is local-only (never emitted), so it would
-				// show a removable duplicate of it that reappears on every reopen.
-				if (
-					targetMode === 'per_host' &&
-					lockedHosts.length === 0 &&
-					supported.includes('DaemonHost') &&
-					!supported.includes('Hosts')
-				) {
-					targetIpValues = [DAEMON_HOST_IP];
-				}
-			}
-			// Seed the shared form to match. The rendered IP inputs read their value from the
-			// form field, so without this a row restored from a saved target shows blank.
+			targetIpValues = [...(targetIps ?? [])];
+			targetMode = scope ?? 'per_host';
 			form.setFieldValue?.(`${fieldPrefix}targetIps`, [...targetIpValues]);
 		}
 	}
@@ -617,7 +588,9 @@
 		targetIpValues = [...targetIpValues];
 		const formValues = [...targetIpValues];
 		form.setFieldValue?.(`${fieldPrefix}targetIps`, formValues);
-		onChange?.({ targetIps: formValues });
+		// Emits the mode too: every edit reports the complete selection, so the parent's
+		// copy can never drift from what is rendered here.
+		onChange?.({ targetIps: formValues, scope: targetMode });
 	}
 
 	function handleRemoveTarget(index: number) {
@@ -715,10 +688,8 @@
 									name={targetIpFieldName(i)}
 									validators={{
 										onBlur: ({ value }: { value: string | undefined }) => validateTargetIp(value),
-										onChange: ({ value }: { value: string | undefined }) =>
-											validateTargetIp(value),
-										onSubmit: ({ value }: { value: string | undefined }) =>
-											validateTargetIp(value)
+										onChange: ({ value }: { value: string | undefined }) => validateTargetIp(value),
+										onSubmit: ({ value }: { value: string | undefined }) => validateTargetIp(value)
 									}}
 									listeners={{
 										onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)
