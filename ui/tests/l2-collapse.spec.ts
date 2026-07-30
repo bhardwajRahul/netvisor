@@ -16,10 +16,16 @@ import { test, expect, type Page, type BrowserContext } from '@playwright/test';
  *    session), because the refit was a fixed 100ms timer that fired before the
  *    relayout landed and the post-layout gate excludes collapse changes.
  *
- * Always runs with culling disabled. With culling on, off-screen nodes are absent
- * from the DOM, so any DOM-derived count or on-screen fraction only ever sees
+ * Most tests here run with culling disabled. With culling on, off-screen nodes are
+ * absent from the DOM, so any DOM-derived count or on-screen fraction only ever sees
  * survivors and is structurally blind to a graph that has left the viewport — the
  * measurement mistake that made this bug look like a viewport problem at first.
+ *
+ * The exception is the last test, which turns culling on deliberately. Everything
+ * above measures *where the graph is*; that one measures *whether it is drawn*, and
+ * culling is precisely the mechanism that can stop it being drawn. Excluding it left
+ * the ladder's most-reported symptom — a blank canvas at levels 3 and 4, with the
+ * minimap still showing content — outside the reach of every assertion here.
  *
  * Requires a live dev stack, a SESSION_ID from a logged-in browser, and a seeded
  * dataset. Which dataset decides which tests are meaningful, so each test asserts
@@ -42,14 +48,19 @@ interface Sample {
 	elementCards: number;
 }
 
-async function setup(page: Page, context: BrowserContext, view = 'L2Physical') {
+async function setup(
+	page: Page,
+	context: BrowserContext,
+	view = 'L2Physical',
+	{ cull = false }: { cull?: boolean } = {}
+) {
 	await context.addCookies([
 		{ name: 'session_id', value: process.env.SESSION_ID ?? '', domain: 'localhost', path: '/' }
 	]);
-	await page.addInitScript(() => {
-		(window as unknown as { __topoPerf: boolean; __topoNoCull: boolean }).__topoPerf = true;
-		(window as unknown as { __topoNoCull: boolean }).__topoNoCull = true;
-	});
+	await page.addInitScript((noCull) => {
+		(window as unknown as { __topoPerf: boolean }).__topoPerf = true;
+		(window as unknown as { __topoNoCull: boolean }).__topoNoCull = noCull;
+	}, !cull);
 	await page.goto(`/?view=${view}#topology`);
 	await page.waitForSelector('.svelte-flow__node', { timeout: 120_000 });
 	await waitForStableLayout(page);
@@ -314,5 +325,50 @@ test.describe('collapse ladder', () => {
 		expect(first.nodes, 'collapsing a small topology should change the graph').toBeLessThan(
 			reopened.nodes
 		);
+	});
+
+	/**
+	 * The customer-reported symptom, and the one every other test here is blind to.
+	 *
+	 * Reported on a ~300-host network in Chromium: level 1 draws, level 2 draws, level 3 shows
+	 * content in the minimap and nothing on the canvas, and any zoom, minimap click, or step to
+	 * level 4 locks that in. Pressing F does nothing. Stepping back down to level 1 restores it.
+	 *
+	 * Culling is on above 150 rendered elements (`pipeline/render-mode.ts`), which is why level 1
+	 * — below the threshold — is the only rung that recovers. So this walks the ladder with
+	 * culling *on*, where `sample().nodes` counts what SvelteFlow actually mounted rather than
+	 * what the store holds. A blank canvas is `nodes === 0` while the level indicator still
+	 * reports a level, which is exactly the state the minimap keeps drawing through.
+	 */
+	test('the canvas is never blank at any level with culling on', async ({ page, context }) => {
+		test.setTimeout(300_000);
+		await setup(page, context, 'L2Physical', { cull: true });
+
+		const start = await sample(page);
+		test.skip(
+			start.nodes < 150,
+			`only ${start.nodes} nodes rendered — below the culling threshold, so this dataset cannot exercise it`
+		);
+
+		const all = [start, ...(await walkTo(page, ']')), ...(await walkTo(page, '['))];
+		for (const [i, s] of all.entries()) {
+			expect(s.nodes, `step ${i} left the canvas blank at level ${s.level}`).toBeGreaterThan(0);
+		}
+
+		// Interacting with the viewport re-evaluates which nodes are inside it, and is what
+		// locked the blank state in for the customer.
+		await page.mouse.move(400, 400);
+		await page.mouse.wheel(0, -300);
+		await waitForStableLayout(page);
+		const zoomed = await sample(page);
+		expect(zoomed.nodes, 'zooming emptied the canvas').toBeGreaterThan(0);
+
+		// And F must always be able to bring the graph back — it is the only escape hatch a user
+		// has, and "pressing F does nothing" was half the report.
+		await page.keyboard.press('f');
+		await waitForStableLayout(page);
+		const refit = await sample(page);
+		expect(refit.nodes, 'fit view did not restore the graph').toBeGreaterThan(0);
+		expect(refit.fractionOnScreen, 'fit view left the viewport off the graph').toBeGreaterThan(0);
 	});
 });
