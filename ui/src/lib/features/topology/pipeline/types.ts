@@ -18,6 +18,16 @@ export interface LayoutState {
 	sessionBaseKey: string;
 	seenAutoCollapseIds: Set<string>;
 	collapseLevelInferred: boolean;
+	/**
+	 * Whether the level indicator has been reconciled with what auto-collapse actually drew.
+	 *
+	 * Separate from `collapseLevelInferred` because the two are consumed by different steps in
+	 * the same run, and sharing one flag meant the later step never ran: seeding sets the level
+	 * from the stored default *before* `applyAutoCollapse` scale-collapses the graph, and the
+	 * re-infer that was supposed to correct it found the flag already taken. The view then
+	 * opened fully collapsed while the indicator read 3.
+	 */
+	collapseLevelReconciled: boolean;
 	lastSeenTopologyId: string;
 	fitViewPending: boolean;
 	prevExpandedPortIds: Set<string>;
@@ -65,6 +75,7 @@ export function createInitialState(): LayoutState {
 		sessionBaseKey: '',
 		seenAutoCollapseIds: new Set(),
 		collapseLevelInferred: false,
+		collapseLevelReconciled: false,
 		lastSeenTopologyId: '',
 		fitViewPending: false,
 		prevExpandedPortIds: new Set(),

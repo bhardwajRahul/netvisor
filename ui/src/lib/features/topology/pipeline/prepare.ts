@@ -172,9 +172,15 @@ function applyAutoCollapse(
 		collapsedContainers.set(next);
 	}
 
-	// Re-infer level after auto-collapse
-	if (!state.collapseLevelInferred) {
-		state.collapseLevelInferred = true;
+	// Re-infer the level from what auto-collapse actually produced.
+	//
+	// Gated on its own flag, not `collapseLevelInferred`. The seeding step upstream consumes
+	// that one in the same run and sets the level from the stored default — *before* this
+	// function scale-collapses the graph — so this correction never ran: the view opened fully
+	// collapsed while the indicator read 3, and every subsequent step walked from a number that
+	// described a graph nobody had drawn.
+	if (!state.collapseLevelReconciled) {
+		state.collapseLevelReconciled = true;
 		const inferred = inferCurrentLevel(
 			next,
 			topology.nodes,
@@ -308,6 +314,8 @@ export function prepareTopologyData(
 		state.seenAutoCollapseIds = new Set<string>();
 		state.containerSizeCache.clear();
 		state.collapseLevelInferred = false;
+		// A new topology re-runs auto-collapse, so its level needs reconciling again too.
+		state.collapseLevelReconciled = false;
 
 		if (collapsed.size > 0) {
 			const newContainerIds = new Set(

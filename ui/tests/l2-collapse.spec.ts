@@ -340,6 +340,45 @@ test.describe('collapse ladder', () => {
 	 * what the store holds. A blank canvas is `nodes === 0` while the level indicator still
 	 * reports a level, which is exactly the state the minimap keeps drawing through.
 	 */
+	/**
+	 * The indicator must describe the graph that is drawn, on open as much as after a press.
+	 *
+	 * At scale the view opens with every container collapsed, but the seeding step set the level
+	 * from the stored default *before* auto-collapse ran, and the re-infer meant to correct it
+	 * was gated on a flag seeding had already consumed. So the view opened fully collapsed
+	 * reading "3" — the same graph the ladder calls level 1 when you step down to it, which is
+	 * what this asserts directly rather than pinning the number.
+	 */
+	test('opening scale-collapsed reports the level that graph actually is', async ({
+		page,
+		context
+	}) => {
+		test.setTimeout(300_000);
+		await setup(page, context);
+
+		const opened = await sample(page);
+		test.skip(
+			opened.elementCards > 0,
+			'this dataset opens expanded, so scale collapse is not in play'
+		);
+
+		// Expand a rung and collapse straight back, so the ladder itself computes a level for
+		// this graph. Comparing against `walkTo('[')` directly would be vacuous: from an
+		// already-collapsed graph it presses nothing, returns no samples, and the assertion
+		// compares the opening sample to itself — which passes whatever the indicator says.
+		const expanded = await press(page, ']');
+		expect(expanded.nodes, 'expected expanding to change the graph').not.toBe(opened.nodes);
+		const returned = await press(page, '[');
+
+		expect(returned.nodes, 'collapsing back should restore the graph opening drew').toBe(
+			opened.nodes
+		);
+		expect(
+			opened.level,
+			`opening rendered ${opened.nodes} nodes and called it level ${opened.level}; the ladder calls that same graph level ${returned.level}`
+		).toBe(returned.level);
+	});
+
 	test('the canvas is never blank at any level with culling on', async ({ page, context }) => {
 		test.setTimeout(300_000);
 		await setup(page, context, 'L2Physical', { cull: true });
