@@ -41,7 +41,7 @@
 	// first value can't be missed — which is what the previous hand-rolled
 	// subscriptions existed to work around.
 	let isExportingValue = $derived(sharedStores.exporting.current);
-	let hiddenServices = $derived(sharedStores.hiddenServices.current);
+	let hiddenEntities = $derived(sharedStores.hiddenEntities.current);
 	let searchHiddenNodes = $derived(sharedStores.searchHiddenNodes.current);
 	let connectedNodes = $derived(sharedStores.connectedNodes.current);
 	let highlightedNewNodes = $derived(sharedStores.highlightedNewNodes.current);
@@ -93,7 +93,7 @@
 					topology,
 					activeView: $activeView,
 					options: $topologyOptions,
-					hiddenServiceIds: hiddenServices,
+					hiddenEntityIds: hiddenEntities,
 					networks: networksData
 				})
 			: null

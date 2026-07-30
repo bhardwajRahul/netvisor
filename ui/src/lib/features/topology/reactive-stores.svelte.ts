@@ -35,7 +35,7 @@ import {
 	newNodeIds,
 	searchHiddenNodeIds,
 	searchMatchContainerMap,
-	tagHiddenServiceIds
+	hiddenEntityIds
 } from './interactions';
 import { selectedNodes } from './queries';
 import { collapsedContainers } from './collapse';
@@ -44,7 +44,7 @@ export const connectedNodes = fromStore(connectedNodeIds);
 export const exporting = fromStore(isExporting);
 export const searchHiddenNodes = fromStore(searchHiddenNodeIds);
 export const searchContainerMatches = fromStore(searchMatchContainerMap);
-export const hiddenServices = fromStore(tagHiddenServiceIds);
+export const hiddenEntities = fromStore(hiddenEntityIds);
 export const highlightedNewNodes = fromStore(newNodeIds);
 export const multiSelectedNodes = fromStore(selectedNodes);
 export const currentHoveredTag = fromStore(hoveredTag);

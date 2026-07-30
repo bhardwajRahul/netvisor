@@ -32,7 +32,7 @@ import { getFreshnessTag } from '$lib/shared/utils/freshness';
 import type { Network } from '$lib/features/networks/types';
 import { get } from 'svelte/store';
 import { activeView, topologyOptions } from './queries';
-import { tagHiddenServiceIds } from './interactions';
+import { hiddenEntityIds } from './interactions';
 import { queryClient, queryKeys } from '$lib/api/query-client';
 
 /**
@@ -66,8 +66,8 @@ export interface ElementRenderInputs {
 	topology: RenderableTopology;
 	activeView: string;
 	options: TopologyOptions;
-	/** Service ids hidden by tag filtering (`tagHiddenServiceIds`). */
-	hiddenServiceIds: Set<string>;
+	/** Ids of entities hidden by any filter, of any type (`hiddenEntityIds`). */
+	hiddenEntityIds: Set<string>;
 	/** Networks, for resolving each entity's staleness window. */
 	networks: Network[];
 }
@@ -149,7 +149,7 @@ function resolveStaleTag(
 }
 
 export function buildElementRender(inputs: ElementRenderInputs): ElementRenderResult {
-	const { nodeId, node, topology, activeView, options, hiddenServiceIds } = inputs;
+	const { nodeId, node, topology, activeView, options, hiddenEntityIds } = inputs;
 
 	const resolved = resolveElementNode(nodeId, node, topology);
 	const flags = elementInlineFlags(inputs, resolved.elementType);
@@ -197,7 +197,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 		// are dropped from the list entirely, not faded. The OpenPorts-category
 		// subset is routed to the collapsed "+N open ports" indicator below.
 		const servicesOnHost = servicesForHost.filter((s) => {
-			if (hiddenServiceIds.has(s.id)) return false;
+			if (hiddenEntityIds.has(s.id)) return false;
 			const category = serviceDefinitions.getCategory(s.service_definition);
 			if (category === 'OpenPorts' && hiddenCategories.includes(category)) return false;
 			return true;
@@ -206,7 +206,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 		// OpenPorts hidden by category → collapsed indicator.
 		// (Tag-hidden services of any category are already removed above.)
 		const hiddenOpenPorts = servicesForHost.filter((s) => {
-			if (hiddenServiceIds.has(s.id)) return false;
+			if (hiddenEntityIds.has(s.id)) return false;
 			const category = serviceDefinitions.getCategory(s.service_definition);
 			return category === 'OpenPorts' && hiddenCategories.includes(category);
 		});
@@ -298,14 +298,14 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 
 	// Filter = structural remove (see Host branch for context).
 	const servicesOnIPAddress = allServicesOnIPAddress.filter((s) => {
-		if (hiddenServiceIds.has(s.id)) return false;
+		if (hiddenEntityIds.has(s.id)) return false;
 		const category = serviceDefinitions.getCategory(s.service_definition);
 		if (category === 'OpenPorts' && hiddenCategories.includes(category)) return false;
 		return true;
 	});
 
 	const hiddenOpenPorts = allServicesOnIPAddress.filter((s) => {
-		if (hiddenServiceIds.has(s.id)) return false;
+		if (hiddenEntityIds.has(s.id)) return false;
 		const category = serviceDefinitions.getCategory(s.service_definition);
 		return category === 'OpenPorts' && hiddenCategories.includes(category);
 	});
@@ -427,7 +427,7 @@ export function currentElementRenderContext(): Omit<
 	return {
 		activeView: get(activeView),
 		options: get(topologyOptions),
-		hiddenServiceIds: get(tagHiddenServiceIds),
+		hiddenEntityIds: get(hiddenEntityIds),
 		networks: queryClient.getQueryData<Network[]>(queryKeys.networks.all) ?? []
 	};
 }

@@ -10,7 +10,12 @@ import {
 	showDirectionality
 } from './layout/edge-classification';
 import { elevateEdgesToContainers } from './layout/edge-elevation';
-import { getContainerContents, buildEntityNodeIndex, type EntityNodeIndex } from './resolvers';
+import {
+	getContainerContents,
+	buildEntityNodeIndex,
+	entityCollection,
+	type EntityNodeIndex
+} from './resolvers';
 import type { Network } from '$lib/features/networks/types';
 import { entityFreshness, type FreshnessSubject } from '$lib/shared/utils/freshness';
 import { buildFullParentMap, resolveCollapsedAncestor } from './collapse';
@@ -23,8 +28,24 @@ export const isExporting = writable(false);
 export const newNodeIds = writable<Set<string>>(new Set());
 
 // Tag filter stores - nodes/services hidden by tag filter
+/**
+ * Ids of *nodes* the filters remove from the graph. Node-space: consumed by the pipeline, which
+ * drops these from ELK's input, from the DOM, and from the edge graph.
+ *
+ * Derived from `hiddenEntityIds` by [`updateTagFilter`] — see the resolution pass there.
+ */
 export const tagHiddenNodeIds = writable<Set<string>>(new Set());
-export const tagHiddenServiceIds = writable<Set<string>>(new Set());
+
+/**
+ * Ids of *entities* the filters hide, whatever their type and however they render. Entity-space:
+ * consumed by render gates that show entities inline on another node's card, where there is no
+ * node to remove.
+ *
+ * Deliberately not per-entity-type. This was `tagHiddenServiceIds`, which forced every filter
+ * pass to special-case Service (`if (entityType === 'Service')`, `if (serviceIsElement)`) and
+ * left every other inlined type — Port among them — with no path to being hidden at all.
+ */
+export const hiddenEntityIds = writable<Set<string>>(new Set());
 
 // Search stores
 export const searchHiddenNodeIds = writable<Set<string>>(new Set());
@@ -223,7 +244,7 @@ function computePresentFilterValues(
 ): Record<string, Record<string, string[]>> {
 	const out: Record<string, Record<string, string[]>> = {};
 	for (const [entityType, extractors] of Object.entries(FILTER_VALUE_EXTRACTORS)) {
-		const collection = collectionFor(topology, entityType);
+		const collection = entityCollection(topology, entityType);
 		if (!collection) continue;
 		for (const [filterType, extract] of Object.entries(extractors)) {
 			const seen = new Set<string>();
@@ -238,25 +259,6 @@ function computePresentFilterValues(
 }
 
 /** Collections on Topology indexed by the entity-type key used in filters. */
-function collectionFor(
-	topo: RenderableTopology,
-	entityType: string
-): Array<{ id: string }> | undefined {
-	switch (entityType) {
-		case 'Service':
-			return topo.services as Array<{ id: string }>;
-		case 'Host':
-			return topo.hosts as Array<{ id: string }>;
-		case 'IPAddress':
-			return topo.ip_addresses as Array<{ id: string }>;
-		case 'Interface':
-			return topo.interfaces as Array<{ id: string }>;
-		case 'Subnet':
-			return topo.subnets as Array<{ id: string }>;
-	}
-	return undefined;
-}
-
 export function updateTagFilter(
 	topology: RenderableTopology | undefined,
 	tagFilter: TagFilter | undefined,
@@ -269,7 +271,7 @@ export function updateTagFilter(
 ) {
 	if (!topology) {
 		tagHiddenNodeIds.set(new Set());
-		tagHiddenServiceIds.set(new Set());
+		hiddenEntityIds.set(new Set());
 		presentFilterValues.set({});
 		return;
 	}
@@ -285,7 +287,7 @@ export function updateTagFilter(
 
 	if (!hasTagFilter && !hasMetadataFilter && !hasEntityFilter) {
 		tagHiddenNodeIds.set(new Set());
-		tagHiddenServiceIds.set(new Set());
+		hiddenEntityIds.set(new Set());
 		return;
 	}
 
@@ -311,7 +313,20 @@ export function updateTagFilter(
 	const hideUntaggedSubnets = hiddenSubnetTagIds.includes(UNTAGGED_SENTINEL);
 
 	const hiddenNodeIds = new Set<string>();
-	const hiddenServiceIds = new Set<string>();
+	// Entity-space hits, plus the same ids grouped by type. The grouping is what lets the single
+	// resolution pass at the end reach nodes that represent an entity *indirectly* — a node whose
+	// own id belongs to a different entity — without any pass here naming an entity type.
+	const hiddenEntities = new Set<string>();
+	const hiddenByType = new Map<string, Set<string>>();
+	const noteHidden = (entityType: string, entityId: string) => {
+		hiddenEntities.add(entityId);
+		let forType = hiddenByType.get(entityType);
+		if (!forType) {
+			forType = new Set<string>();
+			hiddenByType.set(entityType, forType);
+		}
+		forType.add(entityId);
+	};
 	const index = buildEntityNodeIndex(topology.nodes);
 
 	// Host filtering: runs when Host is container, element, or parent of an element entity
@@ -342,15 +357,15 @@ export function updateTagFilter(
 
 	// Service filtering: tag-based only. Category / other metadata filters
 	// come through the generic metadata-filter pass below.
+	//
+	// Records entity-space only; whether a hidden service also removes a node is settled by the
+	// resolution pass at the end, which is what the `serviceIsElement` gate used to decide here.
 	if (serviceIsVisible) {
 		for (const service of topology.services) {
 			const isUntagged = service.tags.length === 0;
 			const serviceHasHiddenTag = service.tags.some((t) => hiddenServiceTagIds.includes(t));
 			if (serviceHasHiddenTag || (isUntagged && hideUntaggedServices)) {
-				hiddenServiceIds.add(service.id);
-				if (serviceIsElement) {
-					hiddenNodeIds.add(service.id);
-				}
+				noteHidden('Service', service.id);
 			}
 		}
 	}
@@ -377,7 +392,7 @@ export function updateTagFilter(
 		for (const [entityType, byFilter] of Object.entries(hiddenMetadataValues)) {
 			const extractors = FILTER_VALUE_EXTRACTORS[entityType];
 			if (!extractors) continue;
-			const collection = collectionFor(topology, entityType);
+			const collection = entityCollection(topology, entityType);
 			if (!collection) continue;
 			for (const entity of collection) {
 				for (const [filterType, hiddenValues] of Object.entries(byFilter)) {
@@ -386,23 +401,7 @@ export function updateTagFilter(
 					if (!extract) continue;
 					const value = extract(entity, { network });
 					if (value && hiddenValues.includes(value)) {
-						if (entityType === 'Service') {
-							hiddenServiceIds.add(entity.id);
-							if (serviceIsElement) hiddenNodeIds.add(entity.id);
-						} else {
-							// Element-role hide for non-Service entities —
-							// only hide element nodes of that element_type,
-							// leaving containers and unrelated nodes alone.
-							for (const node of topology.nodes) {
-								if (
-									node.node_type === 'Element' &&
-									node.element_type === entityType &&
-									relatesToEntity(node, entityType, entity.id)
-								) {
-									hiddenNodeIds.add(node.id);
-								}
-							}
-						}
+						noteHidden(entityType, entity.id);
 					}
 				}
 			}
@@ -421,17 +420,33 @@ export function updateTagFilter(
 				hiddenNodeIds.add(node.id);
 			}
 		}
-		if (entityTypes.has('Service')) {
-			for (const service of topology.services) {
-				hiddenServiceIds.add(service.id);
+		// Every entity of a hidden type, so the types that render only inline are covered too.
+		// Previously this named Service and left Port to a separate render gate.
+		for (const entityType of entityTypes) {
+			for (const entity of entityCollection(topology, entityType) ?? []) {
+				noteHidden(entityType, entity.id);
 			}
 		}
-		// Pure-inline entities (Port) have no element nodes — their hidden
-		// state is consulted directly by ElementNode render gates.
+	}
+
+	// Entity-space -> node-space, once, generically. A node stands for a hidden entity in one of
+	// two ways: it *is* that entity, so its own id matches; or it is an element of that type
+	// related to it, for the types whose node id is some other entity's. Every pass above records
+	// entity ids and leaves this to decide what that means for the graph.
+	for (const node of topology.nodes) {
+		if (hiddenEntities.has(node.id)) {
+			hiddenNodeIds.add(node.id);
+			continue;
+		}
+		if (node.node_type !== 'Element') continue;
+		const relatedId = relatedEntityId(node, node.element_type);
+		if (relatedId && hiddenByType.get(node.element_type)?.has(relatedId)) {
+			hiddenNodeIds.add(node.id);
+		}
 	}
 
 	tagHiddenNodeIds.set(hiddenNodeIds);
-	tagHiddenServiceIds.set(hiddenServiceIds);
+	hiddenEntityIds.set(hiddenEntities);
 }
 
 function isTagFilterEmpty(filter: {
@@ -459,18 +474,26 @@ function hasAnyMetadataFilter(m: Record<string, Record<string, string[]>> | unde
 /** For non-Service metadata filters: check that an Element node represents
  *  the same entity instance as the filter target. Keeps the filter match
  *  narrowly scoped instead of leaking to unrelated elements sharing a host_id. */
-function relatesToEntity(node: TopologyNode, entityType: string, entityId: string): boolean {
-	if (node.node_type !== 'Element') return false;
+/**
+ * The id of the `entityType` entity this node hangs off, when that is something other than the
+ * node itself. `undefined` for a node that simply *is* its entity — those are matched by id, so
+ * they need no mapping.
+ *
+ * Returns the id rather than testing one, so a caller can resolve in a single pass over the
+ * nodes instead of once per (node, hidden entity) pair.
+ */
+function relatedEntityId(node: TopologyNode, entityType: string): string | undefined {
+	if (node.node_type !== 'Element') return undefined;
 	const data = node as unknown as Record<string, string | undefined>;
 	switch (entityType) {
 		case 'Host':
-			return data.host_id === entityId;
+			return data.host_id;
 		case 'IPAddress':
-			return data.ip_address_id === entityId;
+			return data.ip_address_id;
 		case 'Interface':
-			return data.interface_id === entityId;
+			return data.interface_id;
 		default:
-			return false;
+			return undefined;
 	}
 }
 

@@ -3,6 +3,38 @@ import type { RenderableTopology, TopologyNode } from './types/base';
 import { entities } from '$lib/shared/stores/metadata';
 import { getTopologyIndex, type ContainerContents } from './entity-index';
 
+/**
+ * Where each entity type's instances live on a Topology.
+ *
+ * Entity-registry data, not view- or feature-specific: the only knowledge encoded is "Service
+ * entities live in topology.services". One owner, because two partial copies of this had already
+ * drifted — a hardcoded five-type switch in the filter pass, which silently matched nothing for
+ * every type it omitted, and a fuller map in the layout pipeline. Adding an entity type is a
+ * one-line append here.
+ */
+export const ENTITY_COLLECTIONS: Record<string, keyof RenderableTopology> = {
+	Service: 'services',
+	Port: 'ports',
+	Interface: 'interfaces',
+	IPAddress: 'ip_addresses',
+	Host: 'hosts',
+	Subnet: 'subnets',
+	Binding: 'bindings',
+	Dependency: 'dependencies',
+	Vlan: 'vlans'
+};
+
+/** Instances of `entityType` on `topo`, or `undefined` if the type has no collection. */
+export function entityCollection(
+	topo: RenderableTopology,
+	entityType: string
+): Array<{ id: string }> | undefined {
+	const key = ENTITY_COLLECTIONS[entityType];
+	if (!key) return undefined;
+	const collection = topo[key];
+	return Array.isArray(collection) ? (collection as Array<{ id: string }>) : undefined;
+}
+
 type ElementEntityType = components['schemas']['ElementEntityType'];
 type ElementEntityTypeDiscriminant = ElementEntityType['element_type'];
 

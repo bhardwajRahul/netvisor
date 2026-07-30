@@ -28,6 +28,19 @@ export interface ReloadInputs {
 	bundleEdges: boolean;
 	hiddenEdgeTypes: string;
 	tagHidden: Set<string>;
+	/**
+	 * Entities hidden by a filter, in entity-space. Distinct from `tagHidden`, which holds *node*
+	 * ids: an entity shown inline on another node's card has no node of its own, so hiding it
+	 * changes that card's height while every node id stays the same. Omitting it here meant a
+	 * filter change that arrived mid-run was queued and then suppressed as a no-op.
+	 */
+	hiddenEntities: Set<string>;
+	/**
+	 * Metadata-value filters for the active view (e.g. hiding the OpenPorts service category),
+	 * pre-serialized. These are applied at render time straight from the options and never reach
+	 * either hidden-id store, so nothing else here would notice them change.
+	 */
+	hiddenMetadata: string;
 }
 
 /** Order-independent set equality. */
@@ -65,6 +78,8 @@ export function reloadInputsDiff(previous: ReloadInputs, next: ReloadInputs): st
 	if (!sameSet(previous.expandedBundles, next.expandedBundles)) changed.push('expandedBundles');
 	if (!sameSet(previous.expandedPorts, next.expandedPorts)) changed.push('expandedPorts');
 	if (!sameSet(previous.tagHidden, next.tagHidden)) changed.push('tagHidden');
+	if (!sameSet(previous.hiddenEntities, next.hiddenEntities)) changed.push('hiddenEntities');
+	if (previous.hiddenMetadata !== next.hiddenMetadata) changed.push('hiddenMetadata');
 	return changed;
 }
 
@@ -76,6 +91,8 @@ export function snapshotReloadInputs(inputs: ReloadInputs): ReloadInputs {
 		expandedPorts: new Set(inputs.expandedPorts),
 		bundleEdges: inputs.bundleEdges,
 		hiddenEdgeTypes: inputs.hiddenEdgeTypes,
-		tagHidden: new Set(inputs.tagHidden)
+		tagHidden: new Set(inputs.tagHidden),
+		hiddenEntities: new Set(inputs.hiddenEntities),
+		hiddenMetadata: inputs.hiddenMetadata
 	};
 }
