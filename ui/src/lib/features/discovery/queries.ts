@@ -615,13 +615,11 @@ class DiscoverySSEManager extends BaseSSEManager<DiscoveryUpdatePayload> {
 
 				// Handle terminal phases
 				if (update.phase === 'Complete') {
-					if (update.warnings && update.warnings.length > 0) {
-						// e.g. the scan hit its time limit and left hosts un-scanned;
-						// sticky so the user notices what needs a rescan or a higher limit.
-						pushWarning(update.warnings.join(' '), -1);
-					} else {
-						pushSuccess(m.discovery_completed({ type: update.discovery_type.type }));
-					}
+					// The scan completed either way, so that is what the toast says. Warnings are
+					// not toasted: a sticky toast carrying several paragraphs is the wrong surface
+					// for detail the user needs to read at their own pace, and the run's history
+					// card already tags itself "Warnings" and lists them in full.
+					pushSuccess(m.discovery_completed({ type: update.discovery_type.type }));
 					// Final refresh on completion - do this immediately, not throttled
 					await Promise.all([
 						queryClient.invalidateQueries({ queryKey: queryKeys.hosts.all }),

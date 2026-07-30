@@ -5,10 +5,13 @@
 	let {
 		title = 'Error',
 		body = null,
+		items = null,
 		dismissableKey = null
 	}: {
 		title?: string;
 		body?: string | null;
+		/** Independent statements, rendered as a bulleted list. See `BaseInlineFeedback`. */
+		items?: string[] | null;
 		dismissableKey?: string | null;
 	} = $props();
 </script>
@@ -16,6 +19,7 @@
 <BaseInlineFeedback
 	{title}
 	{body}
+	{items}
 	{dismissableKey}
 	Icon={AlertTriangle}
 	borderColor="border-yellow-400 dark:border-yellow-600/30"

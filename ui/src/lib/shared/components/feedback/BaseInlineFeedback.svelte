@@ -7,6 +7,7 @@
 	let {
 		title,
 		body = null,
+		items = null,
 		dismissableKey = null,
 		Icon,
 		borderColor,
@@ -15,6 +16,15 @@
 	}: {
 		title: string;
 		body?: string | null;
+		/**
+		 * Several independent statements, rendered as a bulleted list. Prefer this over joining
+		 * them into `body`: a run that hit three unrelated problems reads as three problems.
+		 *
+		 * Unlike `body` these are escaped, not `{@html}`-ed — items can carry text this app did
+		 * not author (a scan warning quotes the error a remote endpoint returned), so they must
+		 * never be interpreted as markup.
+		 */
+		items?: string[] | null;
 		dismissableKey?: string | null;
 		Icon: IconComponent;
 		borderColor: string;
@@ -50,6 +60,15 @@
 				{#if body}
 					<!-- eslint-disable-next-line svelte/no-at-html-tags -- trusted: all callers pass i18n or hardcoded strings -->
 					<p class={`${title ? 'mt-1' : ''} text-sm ${textColor}`}>{@html body}</p>
+				{/if}
+				{#if items && items.length > 0}
+					<ul
+						class={`${title || body ? 'mt-1' : ''} list-disc space-y-1 pl-4 text-sm ${textColor}`}
+					>
+						{#each items as item, i (i)}
+							<li>{item}</li>
+						{/each}
+					</ul>
 				{/if}
 			</div>
 			{#if dismissableKey}
