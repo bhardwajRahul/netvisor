@@ -149,9 +149,9 @@
 							{hostServices.length} services
 						</button>
 						{#if expandedHostIds.has(host.id)}
-							<div class="mt-1 divide-y divide-gray-700/50">
+							<div class="mt-1 divide-y divide-gray-200 dark:divide-gray-700/50">
 								{#each hostServices as service (service.id)}
-									<div class="rounded px-2 py-1.5 pl-6 odd:bg-gray-800/30">
+									<div class="rounded px-2 py-1.5 pl-6 odd:bg-gray-50 dark:odd:bg-gray-800/30">
 										<ListSelectItem
 											item={service}
 											context={getServiceContext(service)}
