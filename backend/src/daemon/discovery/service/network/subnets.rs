@@ -21,6 +21,16 @@ use super::NetworkScan;
 pub struct ResolvedScanTargets {
     pub subnets: Vec<Subnet>,
     pub target_ips: Option<HashSet<IpAddr>>,
+    /// Every subnet the server holds for this network, whether or not this run sweeps it.
+    ///
+    /// Distinct from `subnets`, and the two must not be conflated. `subnets` is scan *scope*:
+    /// what gets swept, and what "this credential targets an address we never contacted" is
+    /// judged against. This is the network's *address space*, which an integration needs to
+    /// place a device it learned about from somewhere other than the sweep — a UniFi
+    /// controller reports switches on subnets a rescan of the controller never touches, and
+    /// host identity is IP-based, so a device that cannot be placed in a subnet cannot be
+    /// deduplicated and is dropped.
+    pub network_subnets: Vec<Subnet>,
 }
 
 impl NetworkScan {
@@ -45,15 +55,17 @@ impl NetworkScan {
                 .await;
         }
 
+        let network_subnets: Vec<Subnet> = ops
+            .api_client
+            .get("/api/v1/subnets", "Failed to get subnets")
+            .await?;
+
         // Target specific subnets if provided in discovery type
         let subnets = if let Some(subnet_ids) = &self.subnet_ids {
-            let all_subnets: Vec<Subnet> = ops
-                .api_client
-                .get("/api/v1/subnets", "Failed to get subnets")
-                .await?;
-            all_subnets
-                .into_iter()
+            network_subnets
+                .iter()
                 .filter(|s| subnet_ids.contains(&s.id))
+                .cloned()
                 .collect()
 
         // Target all interfaced subnets if not
@@ -86,6 +98,7 @@ impl NetworkScan {
         Ok(ResolvedScanTargets {
             subnets,
             target_ips: None,
+            network_subnets,
         })
     }
 
@@ -141,6 +154,7 @@ impl NetworkScan {
         Ok(ResolvedScanTargets {
             subnets: resolution.subnets,
             target_ips: Some(resolution.resolved),
+            network_subnets: all_subnets,
         })
     }
 }

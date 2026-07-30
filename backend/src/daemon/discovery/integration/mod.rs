@@ -142,7 +142,15 @@ pub struct IntegrationContext<'a> {
     pub endpoint_responses: &'a [EndpointResponse],
     pub host_id: Uuid,
     pub host_naming_fallback: HostNamingFallback,
-    pub created_subnets: &'a [Subnet],
+    /// Subnets an integration may place a discovered address in — the network's whole address
+    /// space during the network phase, and the just-created ones during the daemon-host phase.
+    ///
+    /// Deliberately *not* the scan's subnet list. An integration learns about addresses the
+    /// sweep never visits: a UniFi controller reports every switch it manages, most of them on
+    /// subnets a rescan of the controller does not touch. Host identity is IP-based, so a device
+    /// that cannot be placed in a subnet is dropped rather than deduplicated — which made a
+    /// controller rescan silently enrich nothing.
+    pub known_subnets: &'a [Subnet],
     pub accept_invalid_certs: bool,
     /// The subnet currently being scanned (needed by SNMP for remote subnet discovery).
     pub scanning_subnet: Option<&'a Subnet>,

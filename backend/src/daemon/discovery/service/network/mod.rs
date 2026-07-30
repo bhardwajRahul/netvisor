@@ -182,7 +182,7 @@ pub(super) struct DeepScanParams<'a> {
     credential_mappings: &'a [crate::server::credentials::r#impl::mapping::CredentialMapping<
         crate::server::credentials::r#impl::mapping::CredentialQueryPayload,
     >],
-    created_subnets: Vec<Subnet>,
+    known_subnets: Vec<Subnet>,
 }
 
 #[cfg(test)]

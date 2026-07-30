@@ -245,7 +245,7 @@ pub struct ExecuteParams<'a> {
     pub endpoint_responses: &'a [crate::server::services::r#impl::endpoints::EndpointResponse],
     pub host_id: Uuid,
     pub host_naming_fallback: HostNamingFallback,
-    pub created_subnets: &'a [Subnet],
+    pub known_subnets: &'a [Subnet],
     pub scanning_subnet: Option<&'a Subnet>,
     pub ip_address_id: Option<Uuid>,
 }
@@ -363,7 +363,7 @@ pub async fn execute_integrations(
             endpoint_responses: params.endpoint_responses,
             host_id: params.host_id,
             host_naming_fallback: params.host_naming_fallback,
-            created_subnets: params.created_subnets,
+            known_subnets: params.known_subnets,
             accept_invalid_certs,
             scanning_subnet: params.scanning_subnet,
         };

@@ -45,6 +45,7 @@ impl NetworkScan {
     pub async fn scan_and_process_hosts(
         &self,
         subnets: Vec<Subnet>,
+        network_subnets: Vec<Subnet>,
         target_ips: Option<HashSet<IpAddr>>,
         cancel: CancellationToken,
         ops: &DiscoveryOps,
@@ -103,8 +104,9 @@ impl NetworkScan {
         // Check ARP capability once before partitioning
         let arp_available = can_arp_scan(use_npcap);
 
-        // Keep a copy of all subnets for integration context (Docker needs physical LAN subnets)
-        let all_subnets = subnets.clone();
+        // Scan scope, kept for the post-scan credential-reachability check: a credential
+        // targeting an address outside these was never contacted, and saying so is the point.
+        let scanned_subnets = subnets.clone();
 
         // Partition subnets (not IPs) into interfaced vs non-interfaced.
         // IPs are generated per-subnet at point of use to avoid allocating a
@@ -634,7 +636,7 @@ impl NetworkScan {
                                 }
                                 let probe_raw_socket_ports = self.scan_settings.probe_raw_socket_ports;
                                 let light_scan_ports = self.light_scan_ports.clone();
-                                let all_subnets_ref = all_subnets.clone();
+                                let network_subnets_ref = network_subnets.clone();
                                 let early_host_handle = early_reported_hosts.remove(&ip);
                                 pending_scans.push(Box::pin(async move {
                                     let early_host_id = match early_host_handle {
@@ -665,7 +667,7 @@ impl NetworkScan {
                                             is_full_scan,
                                             light_scan_ports: &light_scan_ports,
                                             credential_mappings: &self.credential_mappings,
-                                            created_subnets: all_subnets_ref,
+                                            known_subnets: network_subnets_ref,
                                         }, ops, utils)
                                         .await;
 
@@ -745,7 +747,7 @@ impl NetworkScan {
                         let scan_controller = scan_controller.clone();
                         let probe_raw_socket_ports = self.scan_settings.probe_raw_socket_ports;
                         let light_scan_ports = self.light_scan_ports.clone();
-                        let all_subnets_ref = all_subnets.clone();
+                        let network_subnets_ref = network_subnets.clone();
                         let early_host_handle = early_reported_hosts.remove(&ip);
 
                         pending_scans.push(Box::pin(async move {
@@ -777,7 +779,7 @@ impl NetworkScan {
                                     is_full_scan,
                                     light_scan_ports: &light_scan_ports,
                                     credential_mappings: &self.credential_mappings,
-                                    created_subnets: all_subnets_ref,
+                                    known_subnets: network_subnets_ref,
                                 }, ops, utils)
                                 .await;
 
@@ -995,7 +997,7 @@ impl NetworkScan {
         let answered: HashSet<IpAddr> = results.iter().map(|(ip, _, _)| *ip).collect();
         let unanswered = unanswered_credential_targets(
             &self.credential_mappings,
-            &all_subnets,
+            &scanned_subnets,
             target_ips.as_ref(),
             &answered,
         );
@@ -1043,7 +1045,7 @@ impl NetworkScan {
             is_full_scan,
             light_scan_ports,
             credential_mappings,
-            created_subnets,
+            known_subnets,
         } = params;
 
         if cancel.is_cancelled() {
@@ -1319,7 +1321,7 @@ impl NetworkScan {
                 endpoint_responses: &endpoint_responses,
                 host_id: early_host_id,
                 host_naming_fallback: self.host_naming_fallback,
-                created_subnets: &created_subnets,
+                known_subnets: &known_subnets,
                 scanning_subnet: Some(subnet),
                 ip_address_id: Some(ip_address.id),
             };

@@ -343,7 +343,9 @@ impl DiscoveryRunner {
             endpoint_responses: &[],
             host_id: self.host_id,
             host_naming_fallback: self.host_naming_fallback,
-            created_subnets,
+            // The daemon-host phase runs before the network sweep, so the subnets it just
+            // created are all that is known at this point.
+            known_subnets: created_subnets,
             scanning_subnet: None,
             ip_address_id: Some(ip_address.id),
         };
@@ -412,6 +414,7 @@ impl DiscoveryRunner {
         let network_result = network_discovery
             .scan_and_process_hosts(
                 resolved.subnets,
+                resolved.network_subnets,
                 resolved.target_ips,
                 cancel.clone(),
                 &ops,

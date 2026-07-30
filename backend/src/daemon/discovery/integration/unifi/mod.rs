@@ -158,18 +158,28 @@ impl DiscoveryIntegration for UnifiIntegration {
     }
 }
 
-/// Subnets the daemon knows about in this session, used to place each device's IP.
+/// Subnets available to place each managed device's IP in.
+///
+/// `known_subnets` is the network's whole address space, not the scan's scope — which is what
+/// makes a rescan of the controller useful. The controller reports every switch it manages, and
+/// on a segmented network almost none of them sit in the subnet the rescan is sweeping; scoping
+/// this to the sweep dropped all of them.
 fn collect_subnets(
     ctx: &IntegrationContext<'_>,
     host_data: &HostData,
 ) -> Vec<crate::server::subnets::r#impl::base::Subnet> {
-    let mut subnets = ctx.created_subnets.to_vec();
-    if let Some(scanning) = ctx.scanning_subnet
-        && !subnets.iter().any(|s| s.id == scanning.id)
-    {
-        subnets.push(scanning.clone());
-    }
-    for subnet in &host_data.subnets {
+    merge_subnets(ctx.known_subnets, ctx.scanning_subnet, &host_data.subnets)
+}
+
+/// Union the three sources by id, preserving order: network-wide first, then the subnet being
+/// swept, then anything this host's own collection turned up.
+fn merge_subnets(
+    known: &[crate::server::subnets::r#impl::base::Subnet],
+    scanning: Option<&crate::server::subnets::r#impl::base::Subnet>,
+    from_host: &[crate::server::subnets::r#impl::base::Subnet],
+) -> Vec<crate::server::subnets::r#impl::base::Subnet> {
+    let mut subnets = known.to_vec();
+    for subnet in scanning.into_iter().chain(from_host) {
         if !subnets.iter().any(|s| s.id == subnet.id) {
             subnets.push(subnet.clone());
         }
@@ -292,5 +302,67 @@ fn interface_data_complete() -> InterfaceDataComplete {
         cdp: false,
         fdb: true,
         vlan_membership: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::shared::types::entities::EntitySource;
+    use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
+    use crate::server::subnets::r#impl::types::SubnetType;
+    use uuid::Uuid;
+
+    fn subnet(cidr: &str) -> Subnet {
+        Subnet {
+            base: SubnetBase {
+                name: cidr.to_string(),
+                network_id: Uuid::nil(),
+                cidr: cidr.parse().expect("valid CIDR"),
+                subnet_type: SubnetType::Lan,
+                source: EntitySource::System,
+                ..Default::default()
+            },
+            id: Uuid::new_v4(),
+            ..Default::default()
+        }
+    }
+
+    /// The failure Motala hit: a rescan of the controller sweeps only the controller's own
+    /// subnet, but the controller manages switches on a management VLAN it never touches. When
+    /// the subnet list came from the sweep, `map_devices` could place none of them and dropped
+    /// every switch — so the rescan appeared to do nothing at all.
+    #[test]
+    fn a_managed_device_outside_the_swept_subnet_is_still_placeable() {
+        let management = subnet("192.168.210.0/24");
+        let controller = subnet("172.16.8.0/24");
+
+        let available = merge_subnets(
+            // The network's whole address space, which is what `known_subnets` now carries.
+            &[controller.clone(), management.clone()],
+            // A rescan of the controller sweeps only this one.
+            Some(&controller),
+            &[],
+        );
+
+        let switch: std::net::IpAddr = "192.168.210.207".parse().expect("valid IP");
+        assert!(
+            available.iter().any(|s| s.base.cidr.contains(&switch)),
+            "a switch on the management VLAN must be placeable from a rescan of the controller"
+        );
+    }
+
+    /// The sweep's subnet and anything the host's own collection found still get folded in, and
+    /// nothing appears twice — `map_devices` picks the first containing subnet, so a duplicate
+    /// would be a silent coin-flip over which id an address is stamped with.
+    #[test]
+    fn merging_is_a_union_by_id() {
+        let a = subnet("10.0.0.0/24");
+        let b = subnet("10.0.1.0/24");
+
+        let merged = merge_subnets(&[a.clone()], Some(&a), &[b.clone(), a.clone()]);
+
+        let ids: Vec<Uuid> = merged.iter().map(|s| s.id).collect();
+        assert_eq!(ids, vec![a.id, b.id]);
     }
 }

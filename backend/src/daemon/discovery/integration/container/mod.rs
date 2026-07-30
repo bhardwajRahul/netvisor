@@ -395,7 +395,7 @@ pub async fn execute(
     ctx.ops.report_progress(10).await.ok();
 
     let all_subnets: Vec<_> = ctx
-        .created_subnets
+        .known_subnets
         .iter()
         .cloned()
         .chain(bridge_subnets)
