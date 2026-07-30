@@ -19,7 +19,12 @@
  * regardless. Panning afterwards is where culling pays.
  */
 
-const CULLING_THRESHOLD_ELEMENTS = 150;
+/**
+ * Exported so a diagnostic can report the gate's inputs *and* the line they were
+ * measured against — "412 nodes, culling on" is only actionable next to the
+ * threshold that made it so.
+ */
+export const CULLING_THRESHOLD_ELEMENTS = 150;
 
 /**
  * Escape hatch for tooling that reads the graph out of the DOM.

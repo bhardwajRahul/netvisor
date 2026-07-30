@@ -91,6 +91,7 @@
 	import { cacheCollapsedSizes } from '../../pipeline/post-render';
 	import { computeEdgeDisplayUpdates } from '../../pipeline/sync-edge-display';
 	import { shouldCull } from '../../pipeline/render-mode';
+	import { installDiagnostics, recordAfterRun, recordAfterViewportMove } from '../../diagnostics';
 	import * as perf from '../../perf';
 	import {
 		reloadInputsDiff,
@@ -328,6 +329,16 @@
 			exporting: $isExporting
 		})
 	);
+
+	/// Everything the blank-canvas diagnostic cannot read from the DOM. Gathered here so the
+	/// sample sees the same numbers the culling gate above was given, not a re-derived guess.
+	const diagnosticInputs = () => ({
+		storeNodes: $nodes.length,
+		storeEdges: $edges.length,
+		measuring: isMeasuring,
+		exporting: $isExporting
+	});
+	installDiagnostics(diagnosticInputs);
 
 	// --- Reactive triggers ---
 
@@ -834,10 +845,14 @@
 					// point the harness treats as "interactive".
 					perf.count('fit-view');
 					perf.endRun();
+					// …and the first moment the canvas is final, so the honest place to ask
+					// whether anything is actually on it.
+					recordAfterRun(diagnosticInputs());
 				})
 			);
 		} else {
 			perf.endRun();
+			recordAfterRun(diagnosticInputs());
 		}
 	}
 
@@ -881,6 +896,9 @@
 		viewportMoveTimer = setTimeout(() => {
 			viewportMoved = false;
 		}, 50);
+		// Moving the viewport is what re-evaluates which nodes are inside it, so it is the other
+		// moment a canvas can go blank — and the one a customer reported as "locking it in".
+		recordAfterViewportMove(diagnosticInputs());
 	}
 
 	function syncEdgeDisplayState() {

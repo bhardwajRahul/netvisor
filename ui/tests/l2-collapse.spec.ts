@@ -410,4 +410,48 @@ test.describe('collapse ladder', () => {
 		expect(refit.nodes, 'fit view did not restore the graph').toBeGreaterThan(0);
 		expect(refit.fractionOnScreen, 'fit view left the viewport off the graph').toBeGreaterThan(0);
 	});
+
+	/**
+	 * The diagnostics exist to be run by a customer during an intermittent fault we cannot
+	 * reproduce, so the thing that must not break is the report itself — it is one shot at
+	 * evidence, and a broken shape is worse than none because it looks like it worked.
+	 *
+	 * Also asserts it stays quiet on a healthy load. A detector that cries wolf on every
+	 * ordinary scan is one nobody reads by the time it matters.
+	 */
+	test('the diagnostics report is well formed and quiet on a healthy load', async ({
+		page,
+		context
+	}) => {
+		test.setTimeout(300_000);
+
+		const warnings: string[] = [];
+		page.on('console', (message) => {
+			if (message.type() === 'warning' && message.text().includes('[scanopy] topology canvas'))
+				warnings.push(message.text());
+		});
+
+		await setup(page, context);
+		await walkTo(page, ']');
+
+		const report = await page.evaluate(() => {
+			const fn = (
+				window as unknown as { scanopyTopologyDiagnostics?: () => Record<string, unknown> }
+			).scanopyTopologyDiagnostics;
+			return fn ? fn() : null;
+		});
+
+		expect(report, 'scanopyTopologyDiagnostics() was not published on window').not.toBeNull();
+		const samples = report!.samples as Record<string, unknown>[];
+		// Walking the ladder runs the pipeline repeatedly, so there is history rather than only
+		// the sample the call itself takes.
+		expect(samples.length, 'expected a ring buffer, not a single snapshot').toBeGreaterThan(1);
+
+		const latest = samples.at(-1)!;
+		for (const field of ['store', 'mounted', 'culling', 'pane', 'collapse', 'blank']) {
+			expect(latest, `sample is missing ${field}`).toHaveProperty(field);
+		}
+		expect(latest.blank, 'a healthy load should not be recorded as blank').toBeNull();
+		expect(warnings, 'a healthy load should not warn').toEqual([]);
+	});
 });
