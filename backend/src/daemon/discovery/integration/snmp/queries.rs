@@ -64,12 +64,12 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
                 pdu.varbinds.map(|(o, v)| (oid_to_vec(&o), v)).collect(),
             )),
             // A response that fails request-id or community validation is a session that has lost
-            // sync with its own traffic, not an agent declining getbulk. Retrying the same OID with
-            // getnext on a desynced session just reads the next stale answer, so the walk has to
-            // end and be reported as truncated — treating it as "no bulk support" produced a
-            // silently short table that still claimed to be complete.
+            // sync with its own traffic, not an agent declining getbulk — treating it as "no bulk
+            // support" produced a silently short table that still claimed to be complete. The
+            // error type is preserved rather than formatted so `is_desync` can recognise it
+            // without matching on message text.
             Ok(Err(e @ (snmp2::Error::RequestIdMismatch | snmp2::Error::CommunityMismatch))) => {
-                Err(anyhow::anyhow!("SNMP session desynchronized: {e}"))
+                Err(anyhow::Error::new(e).context("SNMP session desynchronized"))
             }
             Ok(Err(_)) => Ok(WalkPage::BulkUnsupported),
             Err(_) => Err(anyhow::anyhow!("getbulk timed out")),
@@ -80,7 +80,7 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
         let oid = Oid::from(from).map_err(|_| anyhow::anyhow!("invalid walk OID"))?;
         match timeout(SNMP_TIMEOUT, self.getnext(&oid)).await {
             Ok(Ok(pdu)) => Ok(pdu.varbinds.map(|(o, v)| (oid_to_vec(&o), v)).collect()),
-            Ok(Err(e)) => Err(anyhow::anyhow!("getnext failed: {e}")),
+            Ok(Err(e)) => Err(anyhow::Error::new(e).context("getnext failed")),
             Err(_) => Err(anyhow::anyhow!("getnext timed out")),
         }
     }
@@ -93,6 +93,33 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
 /// varbinds instead of one per round-trip) and transparently falls back to `getnext`
 /// if the agent rejects getbulk (e.g. SNMPv1).
 ///
+/// How many times one walk step will re-issue its request after reading someone else's answer.
+///
+/// Small deliberately. A retry costs one round trip and only happens on a genuine desync, but a
+/// device that is *persistently* answering out of step should be reported as truncated rather
+/// than have the scan spin on it.
+const MAX_DESYNC_RETRIES: u8 = 2;
+
+/// Whether this error means the session read an answer to a question nobody is waiting for.
+///
+/// The daemon abandons SNMP requests constantly — 5s per query, 60s per walk — and keeps using
+/// the session afterwards. `drain_stale` clears the socket before each send, but a response still
+/// in flight from an abandoned request lands *after* that drain and is read by the next `recv`,
+/// where it fails validation. That is a transient belonging to the previous request, not a
+/// verdict on this one, and ending the walk on it turned one slow answer into a truncated table
+/// — visible in a customer log as `GET timeout` followed immediately by `RequestIdMismatch`.
+///
+/// Re-issuing is safe precisely because the failed read *consumed* the stale datagram, so the
+/// retry cannot be served the same one again.
+fn is_desync(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        matches!(
+            cause.downcast_ref::<snmp2::Error>(),
+            Some(snmp2::Error::RequestIdMismatch | snmp2::Error::CommunityMismatch)
+        )
+    })
+}
+
 /// Returns why the walk stopped. [`WalkStop::is_complete`] is true when the subtree was walked
 /// to its natural end (or the agent said it has no such OID) and false when it was cut short by
 /// `MAX_WALK_ENTRIES`, a session error, a timeout, a non-advancing OID, or an abnormal empty
@@ -121,6 +148,7 @@ where
     let mut use_bulk = true;
     let mut stop = WalkStop::EndOfSubtree;
     let mut stop_detail: Option<String> = None;
+    let mut desync_retries = 0u8;
 
     'walk: loop {
         if count >= MAX_WALK_ENTRIES {
@@ -140,6 +168,17 @@ where
                     use_bulk = false;
                     continue 'walk;
                 }
+                Err(e) if is_desync(&e) && desync_retries < MAX_DESYNC_RETRIES => {
+                    desync_retries += 1;
+                    debug!(
+                        ip = %ip,
+                        base = base_oid_str,
+                        attempt = desync_retries,
+                        error = %e,
+                        "Re-issuing after reading a stale answer"
+                    );
+                    continue 'walk;
+                }
                 Err(e) => {
                     stop = WalkStop::Transport;
                     stop_detail = Some(e.to_string());
@@ -149,6 +188,17 @@ where
         } else {
             match session.walk_getnext(&current_parts).await {
                 Ok(v) => v,
+                Err(e) if is_desync(&e) && desync_retries < MAX_DESYNC_RETRIES => {
+                    desync_retries += 1;
+                    debug!(
+                        ip = %ip,
+                        base = base_oid_str,
+                        attempt = desync_retries,
+                        error = %e,
+                        "Re-issuing after reading a stale answer"
+                    );
+                    continue 'walk;
+                }
                 Err(e) => {
                     stop = WalkStop::Transport;
                     stop_detail = Some(e.to_string());
@@ -2204,6 +2254,92 @@ mod if_table_tests {
         assert!(lldp.unsupported, "noSuchObject means the MIB is absent");
         // The walk itself did finish, so this is not a shortfall to warn about either.
         assert!(lldp.complete);
+    }
+
+    /// A response to a request the daemon already gave up on lands in the socket and is read by
+    /// the next one, where it fails request-id validation. That is a transient belonging to the
+    /// previous request, and ending the walk on it turned one slow answer into a truncated table
+    /// — the pair visible in a customer log as `GET timeout` immediately followed by
+    /// `RequestIdMismatch`.
+    ///
+    /// Re-issuing is safe because the failed read consumed the stale datagram, so the retry
+    /// cannot be handed the same one again.
+    #[tokio::test]
+    async fn a_walk_survives_reading_one_stale_answer() {
+        struct DesyncsOnce {
+            answered: bool,
+        }
+
+        #[async_trait::async_trait]
+        impl SnmpWalkTransport for DesyncsOnce {
+            async fn walk_getbulk<'a>(
+                &'a mut self,
+                _from: &[u64],
+                _max: u32,
+            ) -> Result<WalkPage<'a>> {
+                if !self.answered {
+                    self.answered = true;
+                    return Err(anyhow::Error::new(snmp2::Error::RequestIdMismatch)
+                        .context("SNMP session desynchronized"));
+                }
+                // In the subtree, then the walk ends naturally on the next round.
+                Ok(WalkPage::Varbinds(vec![(
+                    vec![1, 3, 6, 1, 2, 1, 2, 2, 1, 2, 1],
+                    Value::Integer(1),
+                )]))
+            }
+
+            async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
+                unreachable!("getbulk answers first")
+            }
+        }
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(
+            &mut DesyncsOnce { answered: false },
+            ip(),
+            IF_DESCR,
+            |_, _| seen += 1,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            !matches!(stop, WalkStop::Transport),
+            "one stale answer should not end the walk as a transport failure, got {stop:?}"
+        );
+        // The exact count is an artefact of this agent repeating one OID until the
+        // non-advancing guard stops it. What matters is that the retry ran and its data was
+        // collected at all — before, the walk ended on the stale answer with nothing.
+        assert!(seen > 0, "the retry's data should have been collected");
+    }
+
+    /// Bounded, so a device answering persistently out of step is reported as truncated rather
+    /// than spun on.
+    #[tokio::test]
+    async fn a_persistently_desynced_session_still_reports_truncated() {
+        struct AlwaysDesyncs;
+
+        #[async_trait::async_trait]
+        impl SnmpWalkTransport for AlwaysDesyncs {
+            async fn walk_getbulk<'a>(
+                &'a mut self,
+                _from: &[u64],
+                _max: u32,
+            ) -> Result<WalkPage<'a>> {
+                Err(anyhow::Error::new(snmp2::Error::RequestIdMismatch)
+                    .context("SNMP session desynchronized"))
+            }
+
+            async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
+                unreachable!("getbulk answers first")
+            }
+        }
+
+        let stop = walk_subtree(&mut AlwaysDesyncs, ip(), IF_DESCR, |_, _| {})
+            .await
+            .unwrap();
+        assert!(stop.is_truncation(), "got {stop:?}");
     }
 
     /// The other side of the rule, and the one that must keep working: a switch that *has*
