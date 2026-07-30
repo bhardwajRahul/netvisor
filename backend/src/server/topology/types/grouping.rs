@@ -473,6 +473,21 @@ impl GroupingConfig {
             .any(|r| matches!(r.rule, ContainerRule::MergeContainerBridges))
     }
 
+    /// Whether a subnet is itself a container in this view, so an edge aimed at one address
+    /// inside it elevates onto the subnet box.
+    ///
+    /// Container-runtime edges use this to decide how many to emit. Collapsing them to one per
+    /// bridge subnet — with the lowest address as the representative — is only sound when that
+    /// subnet is a container: every other member elevates onto the same box, so one edge covers
+    /// them all. Where subnets are not containers (the Application view groups by application),
+    /// members of one bridge land in different groups, and a single edge reaches only whichever
+    /// group holds the representative, leaving the rest looking unconnected.
+    pub fn subnets_are_containers(&self) -> bool {
+        self.container_rules
+            .iter()
+            .any(|r| matches!(r.rule, ContainerRule::BySubnet))
+    }
+
     pub fn has_application_rule(&self) -> bool {
         self.container_rules
             .iter()
