@@ -142,7 +142,57 @@ function isAutoCollapseContainer(
 }
 
 /**
+ * Element count above which containers start collapsed regardless of type.
+ *
+ * At a few hundred hosts the expanded graph mounts thousands of element cards —
+ * the dominant cost of a cold load — and at the zoom needed to see it all their
+ * contents are illegible anyway.
+ */
+const SCALE_COLLAPSE_ELEMENTS = 300;
+
+/** Whether this graph is large enough for containers to start collapsed. */
+export function isScaleCollapsed(allNodes: TopologyNode[]): boolean {
+	return allNodes.filter((n) => n.node_type === 'Element').length >= SCALE_COLLAPSE_ELEMENTS;
+}
+
+/**
+ * Containers that scale-collapse applies to, or an empty set below the threshold.
+ *
+ * This is the single owner of that policy. Both the automatic path
+ * (`prepare.ts` `applyAutoCollapse`, on load) and the manual ladder
+ * (`computeCollapsedForLevel`, on a Collapse/Expand press) must agree on it —
+ * when they did not, the ladder recomputed a set with no knowledge of
+ * scale-collapse, so the first Collapse press *expanded* every host container
+ * and `inferCurrentLevel` fell through to its default, leaving the level
+ * indicator describing a graph that was never drawn.
+ */
+export function scaleCollapseCandidates(
+	allNodes: TopologyNode[],
+	containerTypesStore: ContainerTypesAccessor,
+	/** Ignore the size threshold — used by level 1, which means "all of these" at any size. */
+	ignoreThreshold = false
+): Set<string> {
+	if (!ignoreThreshold && !isScaleCollapsed(allNodes)) return new Set();
+	return new Set(
+		allNodes
+			.filter((n) => {
+				if (n.node_type !== 'Container') return false;
+				const ct = (n as Record<string, unknown>).container_type as string | undefined;
+				return containerTypesStore.getMetadata(ct ?? 'Subnet').is_collapsible;
+			})
+			.map((n) => n.id)
+	);
+}
+
+/**
  * Compute the set of container IDs that should be collapsed at a given level.
+ *
+ * Every level must produce a visibly different diagram, which is why scale collapse is
+ * deliberately *not* folded in here. Scale collapse closes every collapsible container, so
+ * unioning it into levels 2 and 3 made them identical to level 1 — three rungs of the ladder
+ * rendering the same graph, and the indicator reading 3 while the diagram was fully collapsed.
+ * Instead, level 1 *is* that state, so a scale-collapsed load simply infers level 1 and every
+ * step from there genuinely expands.
  */
 export function computeCollapsedForLevel(
 	level: CollapseLevel,
@@ -154,8 +204,12 @@ export function computeCollapsedForLevel(
 
 	switch (level) {
 		case 1: {
-			// All containers collapsed
-			return new Set(containers.map((n) => n.id));
+			// Every container that *can* be collapsed. Restricted to collapsible ones so this
+			// is exactly the set `applyAutoCollapse` produces at scale — that identity is what
+			// lets `inferCurrentLevel` recognise a scale-collapsed load as level 1 instead of
+			// falling through to its default. Listing a container that cannot be collapsed
+			// would also be a lie about the rendered state.
+			return scaleCollapseCandidates(allNodes, containerTypesStore, true);
 		}
 		case 2: {
 			// Root containers expanded except auto-collapse ones (collapsed_by_default
@@ -279,13 +333,70 @@ export function toggleCollapse(containerId: string, allNodes?: TopologyNode[]): 
  * Step expand level up by one. Returns the new level and the set of
  * auto-collapse IDs that should be marked as "seen" (relevant at level 4).
  */
+/**
+ * The next level in `direction` that would actually change the diagram, or `null` if none would.
+ *
+ * A level's set can be indistinguishable from the current one, so stepping blindly produces
+ * presses that appear to do nothing. It happens whenever a *root* is collapsed: every deeper
+ * level only adds containers already hidden inside it. The Application view shows this at its
+ * worst — with no application tags every service lands in one `ApplicationUngrouped` root, which
+ * is `collapsed_by_default`, so levels 3, 2 and 1 all render identically and only level 4 differs.
+ *
+ * Skipping is preferred to redefining the levels: how many distinct states a view *has* depends
+ * on its container depth, so no fixed four-rung ladder can always fill them, and changing what a
+ * level means would desynchronise `inferCurrentLevel` from what the loader produces.
+ */
+export function nextEffectiveLevel(
+	direction: 'collapse' | 'expand',
+	allNodes: TopologyNode[],
+	containerTypesStore: ContainerTypesAccessor,
+	infraRuleId: string | null
+): CollapseLevel | null {
+	const rendered = get(collapsedContainers);
+	// Start from what is actually drawn, not from the stored level. The two can disagree —
+	// `prepare` infers a level before auto-collapse has been applied, so a scale-collapsed load
+	// keeps a lower number than its diagram — and stepping from a stale number walks the wrong
+	// way: pressing Collapse from a fully-collapsed graph "advanced" to a level that expands it.
+	const from = inferCurrentLevel(rendered, allNodes, containerTypesStore, infraRuleId);
+	const step = direction === 'collapse' ? -1 : 1;
+
+	for (let level = from + step; level >= 1 && level <= 4; level += step) {
+		const candidate = computeCollapsedForLevel(
+			level as CollapseLevel,
+			allNodes,
+			containerTypesStore,
+			infraRuleId
+		);
+		// Collapse must only ever collapse and expand must only ever expand, whatever the
+		// numbering implies. Requiring a strict superset (or subset) of what is drawn makes the
+		// button's direction the guarantee, rather than something the level ordering happens to
+		// deliver — and it is what disables the button once there is genuinely nowhere to go.
+		const moves =
+			direction === 'collapse'
+				? isStrictSuperset(candidate, rendered)
+				: isStrictSuperset(rendered, candidate);
+		if (moves) return level as CollapseLevel;
+	}
+	return null;
+}
+
+/** True when `a` contains every member of `b` and at least one more. */
+function isStrictSuperset(a: Set<string>, b: Set<string>): boolean {
+	if (a.size <= b.size) return false;
+	for (const value of b) {
+		if (!a.has(value)) return false;
+	}
+	return true;
+}
+
 export function stepExpand(
 	allNodes: TopologyNode[],
 	containerTypesStore: ContainerTypesAccessor,
 	infraRuleId: string | null
 ): { newLevel: CollapseLevel; autoCollapseIds: string[] } {
-	const current = get(collapseLevel);
-	const newLevel = Math.min(current + 1, 4) as CollapseLevel;
+	const newLevel = nextEffectiveLevel('expand', allNodes, containerTypesStore, infraRuleId);
+	if (newLevel === null) return { newLevel: get(collapseLevel), autoCollapseIds: [] };
+
 	const collapsed = computeCollapsedForLevel(newLevel, allNodes, containerTypesStore, infraRuleId);
 	collapsedContainers.set(collapsed);
 	collapseLevel.set(newLevel);
@@ -296,16 +407,14 @@ export function stepExpand(
 	return { newLevel, autoCollapseIds };
 }
 
-/**
- * Step collapse level down by one.
- */
 export function stepCollapse(
 	allNodes: TopologyNode[],
 	containerTypesStore: ContainerTypesAccessor,
 	infraRuleId: string | null
 ): { newLevel: CollapseLevel } {
-	const current = get(collapseLevel);
-	const newLevel = Math.max(current - 1, 1) as CollapseLevel;
+	const newLevel = nextEffectiveLevel('collapse', allNodes, containerTypesStore, infraRuleId);
+	if (newLevel === null) return { newLevel: get(collapseLevel) };
+
 	const collapsed = computeCollapsedForLevel(newLevel, allNodes, containerTypesStore, infraRuleId);
 	collapsedContainers.set(collapsed);
 	collapseLevel.set(newLevel);

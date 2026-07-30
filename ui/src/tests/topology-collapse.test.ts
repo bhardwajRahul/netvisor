@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { computeCollapsedForLevel } from '$lib/features/topology/collapse';
+import {
+	computeCollapsedForLevel,
+	inferCurrentLevel,
+	scaleCollapseCandidates,
+	nextEffectiveLevel,
+	collapseLevel,
+	collapsedContainers
+} from '$lib/features/topology/collapse';
 import { LayoutGraph } from '$lib/features/topology/layout/layout-graph';
 import type { components } from '$lib/api/schema';
 
@@ -29,9 +36,9 @@ const element = (id: string, container_id: string): TopologyNode =>
 
 // Mock the container-type metadata the collapse logic reads.
 const META: Record<string, Partial<ContainerTypeMetadata>> = {
-	Subnet: { is_subcontainer: false, collapsed_by_default: false },
-	NestedTag: { is_subcontainer: true, collapsed_by_default: false },
-	ApplicationUngrouped: { is_subcontainer: false, collapsed_by_default: true }
+	Subnet: { is_subcontainer: false, collapsed_by_default: false, is_collapsible: true },
+	NestedTag: { is_subcontainer: true, collapsed_by_default: false, is_collapsible: true },
+	ApplicationUngrouped: { is_subcontainer: false, collapsed_by_default: true, is_collapsible: true }
 };
 const containerTypes = {
 	getMetadata: (ct: string | null) => (META[ct ?? ''] ?? {}) as ContainerTypeMetadata
@@ -58,6 +65,68 @@ describe('computeCollapsedForLevel — collapsed_by_default root', () => {
 	});
 });
 
+describe('computeCollapsedForLevel — scale collapse', () => {
+	// Above 300 elements the loader collapses every collapsible container. The
+	// manual ladder has to agree, or the first Collapse press expands the graph
+	// instead of densifying it and the level indicator stops describing what is
+	// drawn. Two hosts' worth of containers, padded past the threshold.
+	// Includes one of each kind the ladder distinguishes — a plain root, a
+	// subcontainer, and a collapsed-by-default root — so the four levels are
+	// genuinely distinguishable. Without the last one, levels 3 and 4 coincide
+	// for want of anything to auto-collapse, which is a property of the fixture
+	// rather than of the ladder.
+	const atScale = [
+		container('root', 'Subnet'),
+		container('sub', 'NestedTag', 'root'),
+		container('ung', 'ApplicationUngrouped'),
+		...Array.from({ length: 300 }, (_, i) => element(`e${i}`, 'sub'))
+	];
+	const belowScale = [
+		container('root', 'Subnet'),
+		container('sub', 'NestedTag', 'root'),
+		...Array.from({ length: 10 }, (_, i) => element(`e${i}`, 'sub'))
+	];
+
+	it('infers level 1 for a scale-collapsed load, matching what is drawn', () => {
+		// `applyAutoCollapse` closes every collapsible container at scale, which is
+		// exactly level 1. Before, that matched no level and fell through to a
+		// hardcoded 3 while the graph was drawn fully collapsed — so the indicator
+		// disagreed with the diagram and the first Collapse press expanded it.
+		const loaded = scaleCollapseCandidates(atScale, containerTypes);
+		expect(loaded.size).toBeGreaterThan(0);
+		expect(inferCurrentLevel(loaded, atScale, containerTypes, null)).toBe(1);
+	});
+
+	it('gives every level a distinct collapsed set, so no two render alike', () => {
+		const sets = ([1, 2, 3, 4] as const).map(
+			(l) => computeCollapsedForLevel(l, atScale, containerTypes, null).size
+		);
+		// Strictly decreasing: each step up genuinely expands something.
+		for (let i = 1; i < sets.length; i++) {
+			expect(sets[i], `level ${i + 1} collapsed the same count as level ${i}`).toBeLessThan(
+				sets[i - 1]
+			);
+		}
+	});
+
+	it('still expands everything at level 4, so the user can always get out', () => {
+		expect(computeCollapsedForLevel(4, atScale, containerTypes, null).size).toBe(0);
+	});
+
+	it('leaves sub-threshold graphs exactly as they were', () => {
+		expect(computeCollapsedForLevel(3, belowScale, containerTypes, null).has('root')).toBe(false);
+		expect(computeCollapsedForLevel(2, belowScale, containerTypes, null).has('root')).toBe(false);
+		// Scale collapse is inert below the threshold.
+		expect(scaleCollapseCandidates(belowScale, containerTypes).size).toBe(0);
+	});
+
+	it('level 1 means the same thing at any size', () => {
+		// Level 1 is "everything collapsible", independent of the size threshold —
+		// otherwise a small graph could never reach a fully collapsed state.
+		expect(computeCollapsedForLevel(1, belowScale, containerTypes, null).has('root')).toBe(true);
+	});
+});
+
 describe('getVisibleNodes — transitive ancestor collapse', () => {
 	// root → subcontainer → element. Only the root is in the collapsed set
 	// (the level-3 / auto-collapse case where the subcontainer is left expanded).
@@ -80,5 +149,60 @@ describe('getVisibleNodes — transitive ancestor collapse', () => {
 		const graph = LayoutGraph.fromTopology(nodes);
 		const visible = graph.getVisibleNodes(nodes).map((n) => n.id);
 		expect(visible).toEqual(expect.arrayContaining(['ung', 'sub', 'svc']));
+	});
+});
+
+describe('nextEffectiveLevel — skipping rungs that change nothing', () => {
+	// The Application view as reported: with no application tags every service lands in one
+	// `ApplicationUngrouped` root, which is collapsed_by_default. Collapsing a root hides
+	// everything inside it, so levels 3, 2 and 1 all render the same diagram and only 4 differs.
+	const applicationView = [
+		container('ungrouped', 'ApplicationUngrouped'),
+		container('stack', 'Stack', 'ungrouped'),
+		element('svc', 'stack')
+	];
+
+	it('walks past levels whose diagram matches the current one', () => {
+		// Rendered fully expanded at level 4.
+		collapseLevel.set(4);
+		collapsedContainers.set(new Set());
+
+		// 3 collapses the auto-collapse root, which is a real change.
+		expect(nextEffectiveLevel('collapse', applicationView, containerTypes, null)).toBe(3);
+
+		// Now at 3, with the root collapsed. 2 and 1 only add containers already hidden inside
+		// it, so neither changes anything and there is nowhere further to go.
+		collapseLevel.set(3);
+		collapsedContainers.set(computeCollapsedForLevel(3, applicationView, containerTypes, null));
+		expect(nextEffectiveLevel('collapse', applicationView, containerTypes, null)).toBe(null);
+
+		// Expanding back out still works.
+		expect(nextEffectiveLevel('expand', applicationView, containerTypes, null)).toBe(4);
+	});
+
+	it('still steps one rung at a time where every level differs', () => {
+		// A plain root plus a subcontainer and an auto-collapse root: all four levels distinct.
+		const layered = [
+			container('root', 'Subnet'),
+			container('sub', 'NestedTag', 'root'),
+			container('ungrouped', 'ApplicationUngrouped'),
+			element('svc', 'sub')
+		];
+
+		collapseLevel.set(4);
+		collapsedContainers.set(new Set());
+		expect(nextEffectiveLevel('collapse', layered, containerTypes, null)).toBe(3);
+
+		collapseLevel.set(3);
+		collapsedContainers.set(computeCollapsedForLevel(3, layered, containerTypes, null));
+		expect(nextEffectiveLevel('collapse', layered, containerTypes, null)).toBe(2);
+
+		collapseLevel.set(2);
+		collapsedContainers.set(computeCollapsedForLevel(2, layered, containerTypes, null));
+		expect(nextEffectiveLevel('collapse', layered, containerTypes, null)).toBe(1);
+
+		collapseLevel.set(1);
+		collapsedContainers.set(computeCollapsedForLevel(1, layered, containerTypes, null));
+		expect(nextEffectiveLevel('collapse', layered, containerTypes, null)).toBe(null);
 	});
 });

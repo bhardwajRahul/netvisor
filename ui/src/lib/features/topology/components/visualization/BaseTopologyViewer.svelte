@@ -38,7 +38,8 @@
 		aggregatedEdgeOriginals,
 		getInfrastructureRuleIdForTopology,
 		topologyReadOnly,
-		topologyOptionsHydrated
+		topologyOptionsHydrated,
+		activeView
 	} from '../../queries';
 	import { isExporting, expandedPortNodeIds } from '../../interactions';
 
@@ -48,7 +49,13 @@
 	import CustomEdge from './CustomEdge.svelte';
 	import TopologySidebarControls from './TopologySidebarControls.svelte';
 	import type { RenderableTopology } from '../../types/base';
-	import { collapsedContainers, collapseLevel, stepExpand, stepCollapse } from '../../collapse';
+	import {
+		collapsedContainers,
+		collapseLevel,
+		stepExpand,
+		stepCollapse,
+		nextEffectiveLevel
+	} from '../../collapse';
 	import type { CollapseLevel } from '../../collapse';
 	import {
 		updateConnectedNodes,
@@ -57,7 +64,8 @@
 		expandedBundles,
 		collapseAllBundles,
 		searchHiddenNodeIds,
-		tagHiddenNodeIds
+		tagHiddenNodeIds,
+		hiddenEntityIds
 	} from '../../interactions';
 	import {
 		selectNode,
@@ -74,7 +82,7 @@
 
 	// Pipeline imports
 	import { createInitialState } from '../../pipeline/types';
-	import { prepareTopologyData } from '../../pipeline/prepare';
+	import { prepareTopologyData, hiddenMetadataKey } from '../../pipeline/prepare';
 	import { resolveNodeSizes } from '../../pipeline/measure';
 	import { executeLayout, handlePortExpansion } from '../../pipeline/execute-layout';
 	import { preloadElk } from '../../layout/elk-layout';
@@ -335,6 +343,12 @@
 	const hideEdgeTypesStore = derived(topologyOptions, (o) =>
 		(o.local.hide_edge_types ?? []).join(',')
 	);
+	// Metadata-value filters (e.g. hiding the OpenPorts service category) are read at render
+	// time straight from the options, so no hidden-id store ever fires for them. Without this
+	// the cards resize under a layout that never re-runs, and they overlap.
+	const hiddenMetadataStore = derived([topologyOptions, activeView], ([, view]) =>
+		hiddenMetadataKey(view)
+	);
 
 	// Infra rule id derived from the topology bundle being rendered (not the
 	// global options store, which hydrates out-of-band and lags a network
@@ -365,7 +379,9 @@
 			expandedPorts: get(expandedPortNodeIds),
 			bundleEdges: get(topologyOptions).local.bundle_edges ?? false,
 			hiddenEdgeTypes: (get(topologyOptions).local.hide_edge_types ?? []).join(','),
-			tagHidden: get(tagHiddenNodeIds)
+			tagHidden: get(tagHiddenNodeIds),
+			hiddenEntities: get(hiddenEntityIds),
+			hiddenMetadata: hiddenMetadataKey(get(activeView))
 		};
 	}
 	function triggerLoad(source = 'unknown') {
@@ -439,11 +455,18 @@
 	hideEdgeTypesStore.subscribe(() => {
 		if (storesInitialized) triggerLoad('hidden-edge-types');
 	});
-	// Filter changes (tag / metadata / entity-hide all funnel through here)
-	// must re-run the pipeline so ELK sees the new node set and containers
-	// reflow around the removed cards.
+	// Filter changes must re-run the pipeline so ELK sees the new node set and containers
+	// reflow around the removed cards. Three stores, because a filter can change the layout
+	// without removing a node: an entity shown inline on another node's card resizes that card,
+	// and a metadata-value filter never reaches either hidden-id store at all.
 	tagHiddenNodeIds.subscribe(() => {
 		if (storesInitialized) triggerLoad('tag-filter');
+	});
+	hiddenEntityIds.subscribe(() => {
+		if (storesInitialized) triggerLoad('entity-filter');
+	});
+	hiddenMetadataStore.subscribe(() => {
+		if (storesInitialized) triggerLoad('metadata-filter');
 	});
 	storesInitialized = true;
 
@@ -949,8 +972,27 @@
 		}
 	}
 
-	let expandDisabled = $derived($collapseLevel === 4 || !!editMode);
-	let collapseDisabled = $derived($collapseLevel === 1 || !!editMode);
+	// Disabled when nothing further would change, not merely when the level is at its numeric
+	// end. A view whose only root is collapsed_by_default has fewer distinct states than the
+	// ladder has rungs, so the button can run out before the number does — and a button that
+	// still looks live while doing nothing is worse than one that greys out.
+	// `$collapsedContainers` is read so this re-evaluates when the rendered set changes.
+	let expandDisabled = $derived(
+		!!editMode ||
+			($collapsedContainers &&
+				nextEffectiveLevel('expand', topology.nodes, containerTypes, getInfrastructureRuleId()) ===
+					null)
+	);
+	let collapseDisabled = $derived(
+		!!editMode ||
+			($collapsedContainers &&
+				nextEffectiveLevel(
+					'collapse',
+					topology.nodes,
+					containerTypes,
+					getInfrastructureRuleId()
+				) === null)
+	);
 	let collapseLevelTooltipCollapse = $derived(
 		$collapseLevel > 1
 			? `${common_collapse()}: ${getCollapseLevelName(($collapseLevel - 1) as CollapseLevel)}`
@@ -962,11 +1004,18 @@
 			: ''
 	);
 
+	// Both step handlers only write the collapse stores; the relayout that
+	// follows is a full asynchronous pipeline run (measure pass, ELK, and a
+	// 350ms animation phase). Refitting on a fixed timer therefore fits the
+	// *previous* graph — and nothing refits afterwards, because a collapse
+	// change is neither `viewChanged` nor `topologyChanged` (`getStructureKey`
+	// does not include collapse state). Hand the intent to the pipeline instead
+	// and let the post-layout branch fit once the new layout exists.
 	function handleStepCollapse() {
 		if (editMode) return;
 		clearSelection(selectionStores);
 		stepCollapse(topology.nodes, containerTypes, getInfrastructureRuleId());
-		setTimeout(() => fitView({ padding: getFitViewPadding(), duration: 300 }), 100);
+		layoutState.fitViewPending = true;
 	}
 
 	function handleStepExpand() {
@@ -978,7 +1027,7 @@
 			getInfrastructureRuleId()
 		);
 		for (const id of autoCollapseIds) layoutState.seenAutoCollapseIds.add(id);
-		setTimeout(() => fitView({ padding: getFitViewPadding(), duration: 300 }), 100);
+		layoutState.fitViewPending = true;
 	}
 
 	export function triggerStepExpand() {
