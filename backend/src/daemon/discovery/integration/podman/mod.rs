@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::server::credentials::r#impl::mapping::{
@@ -18,7 +18,10 @@ use crate::server::credentials::r#impl::mapping::{
 use crate::server::ports::r#impl::base::PortType;
 
 use super::container::{self, ContainerRuntime};
-use super::{DiscoveryIntegration, IntegrationContext, ProbeContext, ProbeFailure, ProbeSuccess};
+use super::{
+    DiscoveryIntegration, IntegrationContext, IntegrationFailure, ProbeContext, ProbeFailure,
+    ProbeSuccess,
+};
 use crate::daemon::discovery::service::ops::HostData;
 
 /// Resolve the Podman socket path. Honors `CONTAINER_HOST` (Podman's
@@ -75,7 +78,7 @@ impl DiscoveryIntegration for PodmanIntegration {
         &self,
         ctx: &IntegrationContext<'_>,
         host_data: &mut HostData,
-    ) -> Result<(), Error> {
+    ) -> Result<(), IntegrationFailure> {
         container::execute(ctx, host_data, ContainerRuntime::Podman).await
     }
 }
@@ -113,7 +116,7 @@ impl DiscoveryIntegration for PodmanSocketIntegration {
         &self,
         ctx: &IntegrationContext<'_>,
         host_data: &mut HostData,
-    ) -> Result<(), Error> {
+    ) -> Result<(), IntegrationFailure> {
         container::execute(ctx, host_data, ContainerRuntime::Podman).await
     }
 }

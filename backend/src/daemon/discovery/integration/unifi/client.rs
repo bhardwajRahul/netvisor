@@ -20,6 +20,7 @@ use reqwest::{Client, StatusCode};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
+use crate::daemon::discovery::service::warnings::AttemptOutcome;
 use crate::server::credentials::r#impl::mapping::{UnifiAuth, UnifiQueryCredential};
 
 use super::types::UnifiEnvelope;
@@ -133,6 +134,22 @@ impl UnifiClient {
             .unwrap_or_else(|| anyhow!("Could not determine UniFi controller API layout")))
     }
 
+    /// How a [`Self::connect`] failure should be reported to the operator.
+    ///
+    /// Reads the transport error out of the chain rather than matching on our own message text,
+    /// so rewording a `bail!` cannot silently change the classification. Everything this client
+    /// raises itself is a login or HTTP-status problem — a refused password, an unknown site, an
+    /// unexpected status — which is why the fallback is `Rejected`; a genuine transport failure
+    /// always carries a `reqwest::Error` and is classified from it (self-signed certificate,
+    /// connection refused, timeout).
+    pub fn classify_connect_error(error: &Error) -> AttemptOutcome {
+        error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<reqwest::Error>())
+            .map(AttemptOutcome::from)
+            .unwrap_or(AttemptOutcome::Rejected)
+    }
+
     /// Log in (if the transport is stateful) and confirm the requested site exists.
     ///
     /// Verifies via the **site list** rather than by probing a site-scoped endpoint and reading
@@ -202,7 +219,7 @@ impl UnifiClient {
             .json(&json!({ "username": username, "password": secret.expose_secret() }))
             .send()
             .await
-            .map_err(|e| anyhow!("Could not reach UniFi controller: {e}"))?;
+            .map_err(|e| Error::new(e).context("Could not reach UniFi controller"))?;
 
         match response.status() {
             s if s.is_success() => Ok(()),
@@ -237,7 +254,7 @@ impl UnifiClient {
             .get(&url)
             .send()
             .await
-            .map_err(|e| anyhow!("Could not reach UniFi controller: {e}"))?;
+            .map_err(|e| Error::new(e).context("Could not reach UniFi controller"))?;
 
         let endpoint = path;
         match response.status() {

@@ -38,7 +38,10 @@ use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::base::ServiceMatchBaselineParams;
 use crate::server::services::r#impl::patterns::{ClientProbe, ManagedDevice};
 
-use super::{DiscoveryIntegration, IntegrationContext, ProbeContext, ProbeFailure, ProbeSuccess};
+use super::{
+    DiscoveryIntegration, IntegrationContext, IntegrationFailure, ProbeContext, ProbeFailure,
+    ProbeSuccess,
+};
 use crate::daemon::discovery::service::ops::HostData;
 use client::UnifiClient;
 use types::UnifiDevice;
@@ -73,18 +76,22 @@ impl DiscoveryIntegration for UnifiIntegration {
 
     async fn probe(&self, ctx: &ProbeContext<'_>) -> Result<ProbeSuccess, ProbeFailure> {
         let CredentialQueryPayload::UnifiController(credential) = ctx.credential else {
-            return Err(ProbeFailure {
-                message: "Not a UniFi credential".to_string(),
-            });
+            return Err(ProbeFailure::malformed("Not a UniFi credential"));
         };
 
         let client =
             UnifiClient::connect(&ctx.ip.to_string(), credential, ctx.accept_invalid_certs)
                 .await
-                .map_err(|e| ProbeFailure {
-                    // `e` is already phrased for an operator (rejected credential, unknown site,
-                    // transport error) and never contains the secret.
-                    message: e.to_string(),
+                .map_err(|e| {
+                    // `e` is already phrased for an operator and never contains the secret. The
+                    // client distinguishes a refused login from an unknown site from a transport
+                    // failure, so keep that distinction rather than flattening it — a wrong
+                    // password and a self-signed certificate send an operator to opposite ends
+                    // of the problem, and both used to read as "was rejected".
+                    ProbeFailure::with_outcome(
+                        UnifiClient::classify_connect_error(&e),
+                        e.to_string(),
+                    )
                 })?;
 
         tracing::info!(
@@ -105,7 +112,7 @@ impl DiscoveryIntegration for UnifiIntegration {
         &self,
         ctx: &IntegrationContext<'_>,
         host_data: &mut HostData,
-    ) -> Result<(), Error> {
+    ) -> Result<(), IntegrationFailure> {
         let handle = ctx
             .probe_handle
             .and_then(|h| h.downcast_ref::<UnifiProbeHandle>())
@@ -133,7 +140,7 @@ impl DiscoveryIntegration for UnifiIntegration {
         let mut created = 0usize;
         for device in mapped {
             if ctx.cancel.is_cancelled() {
-                return Err(Error::msg("Discovery was cancelled"));
+                return Err(IntegrationFailure::cancelled());
             }
 
             // A UDM / Cloud Key is itself a UniFi device, so when the controller we scanned

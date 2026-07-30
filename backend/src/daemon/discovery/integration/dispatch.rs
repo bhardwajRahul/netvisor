@@ -14,7 +14,9 @@ use uuid::Uuid;
 
 use crate::daemon::discovery::credentials::resolve_credentials_for_ip;
 use crate::daemon::discovery::service::ops::{DiscoveryOps, HostData};
-use crate::daemon::discovery::service::warnings::{CredentialIssue, CredentialIssueReason};
+use crate::daemon::discovery::service::warnings::{
+    AttemptOutcome, CredentialIssue, CredentialIssueReason,
+};
 use crate::daemon::utils::base::PlatformDaemonUtils;
 use crate::server::credentials::r#impl::mapping::{
     CredentialMapping, CredentialQueryPayload, CredentialQueryPayloadDiscriminants,
@@ -29,6 +31,62 @@ use super::{
     DiscoveryIntegration, IntegrationContext, IntegrationRegistry, ProbeContext, ProbeSuccess,
     execute_with_progress_reporting,
 };
+
+/// Run one credential against one integration and say what happened.
+///
+/// The single path from a credential attempt to an operator-visible outcome. Integrations cannot
+/// reach the session's issue buffer themselves, so adding one cannot bypass this — which is why a
+/// new integration is instrumented by default rather than by its author remembering to be.
+///
+/// Returns `Ok` on success, or the issue worth reporting — `None` inside the `Err` for the
+/// failures that are noise rather than news.
+async fn attempt_credential(
+    integration: &dyn DiscoveryIntegration,
+    ctx: &ProbeContext<'_>,
+    label: &'static str,
+    discriminant: CredentialQueryPayloadDiscriminants,
+    user_assigned: bool,
+) -> Result<ProbeSuccess, Option<CredentialIssue>> {
+    let failure = match integration.probe(ctx).await {
+        Ok(success) => return Ok(success),
+        Err(failure) => failure,
+    };
+    let outcome = failure.outcome();
+
+    // A network default is broadcast at every address in the subnet, so its failure is the normal
+    // case and stays at debug — raising it would emit hundreds of lines per /24 sweep. A
+    // credential the user assigned to this specific host is a different matter: it failing is
+    // news, and was invisible at the default log level before.
+    //
+    // Cancellation is dropped either way. The operator stopped the scan; nothing about it is a
+    // finding, and it used to be reported as a rejected credential.
+    if !user_assigned || outcome == AttemptOutcome::Cancelled {
+        tracing::debug!(
+            ip = %ctx.ip,
+            integration = ?discriminant,
+            ?outcome,
+            error = failure.message(),
+            "Integration probe failed, trying next credential"
+        );
+        return Err(None);
+    }
+
+    tracing::warn!(
+        ip = %ctx.ip,
+        integration = ?discriminant,
+        ?outcome,
+        error = failure.message(),
+        "Configured credential did not work"
+    );
+    Err(Some(CredentialIssue {
+        label,
+        ip: ctx.ip,
+        reason: CredentialIssueReason::Attempted {
+            outcome,
+            message: failure.message().to_string(),
+        },
+    }))
+}
 
 /// Results from probing all integrations for a single host IP.
 pub struct IntegrationProbeResults {
@@ -154,16 +212,21 @@ pub async fn probe_integrations(
                 if cancel.is_cancelled() {
                     return (None, Vec::new());
                 }
-                match integration
-                    .probe(&ProbeContext {
+                match attempt_credential(
+                    integration.as_ref(),
+                    &ProbeContext {
                         ip,
                         credential,
                         credential_id: *cred_id,
                         cancel,
                         utils,
                         accept_invalid_certs,
-                    })
-                    .await
+                    },
+                    credential.discovery_label(),
+                    discriminant,
+                    cred_id.is_some(),
+                )
+                .await
                 {
                     Ok(success) => {
                         return (
@@ -171,25 +234,7 @@ pub async fn probe_integrations(
                             Vec::new(),
                         );
                     }
-                    Err(failure) => {
-                        // A network default is broadcast at every address in the subnet, so
-                        // its failure is the normal case and stays at debug — raising it
-                        // would emit hundreds of lines per /24 sweep. A credential the user
-                        // assigned to this specific host is a different matter: it failing is
-                        // news, and it was previously invisible at the default log level.
-                        if cred_id.is_some() {
-                            tracing::warn!(ip = %ip, integration = ?discriminant, error = %failure, "Configured credential was rejected");
-                            targeted_failures.push(CredentialIssue {
-                                label: credential.discovery_label(),
-                                ip,
-                                reason: CredentialIssueReason::ProbeRejected {
-                                    message: failure.to_string(),
-                                },
-                            });
-                        } else {
-                            tracing::debug!(ip = %ip, integration = ?discriminant, error = %failure, "Integration probe failed, trying next credential");
-                        }
-                    }
+                    Err(issue) => targeted_failures.extend(issue),
                 }
             }
             (None, targeted_failures)
@@ -387,9 +432,28 @@ pub async fn execute_integrations(
             tracing::warn!(
                 ip = %params.ip,
                 integration = ?discriminant,
-                error = %e,
+                outcome = ?e.outcome(),
+                error = e.message(),
                 "Integration execute failed"
             );
+
+            // …and tell the operator, which the log alone never did. The credential worked and
+            // the collection after it did not, so this host's data is missing rather than stale
+            // — a materially different thing from every other credential issue, and previously
+            // knowable only by reading the daemon log.
+            if e.outcome() != AttemptOutcome::Cancelled
+                && let Ok(session) = params.ops.get_session().await
+                && let Ok(mut issues) = session.credential_issues.lock()
+            {
+                issues.push(CredentialIssue {
+                    label: credential.discovery_label(),
+                    ip: params.ip,
+                    reason: CredentialIssueReason::Attempted {
+                        outcome: e.outcome(),
+                        message: e.message().to_string(),
+                    },
+                });
+            }
         }
     }
 

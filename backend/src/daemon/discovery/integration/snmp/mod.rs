@@ -29,14 +29,14 @@ pub use types::{
 use std::net::IpAddr;
 use std::time::Duration;
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use tokio::time::timeout;
 use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
-    daemon::utils::scanner::try_snmp_with_credential_on_port,
+    daemon::utils::scanner::{SnmpProbeOutcome, try_snmp_with_credential_on_port},
     server::{
         credentials::r#impl::{
             mapping::{
@@ -57,10 +57,14 @@ use crate::{
     },
 };
 
-use super::{DiscoveryIntegration, IntegrationContext, ProbeContext, ProbeFailure, ProbeSuccess};
+use super::{
+    DiscoveryIntegration, IntegrationContext, IntegrationFailure, ProbeContext, ProbeFailure,
+    ProbeSuccess,
+};
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::{
-    IncompleteInterfaceWalk, SnmpCollectionOutcome, SnmpGroupOutcome, snmp_walk_shortfalls,
+    AttemptOutcome, IncompleteInterfaceWalk, SnmpCollectionOutcome, SnmpGroupOutcome,
+    snmp_walk_shortfalls,
 };
 
 /// Handle returned by a successful SNMP probe — carries the working credential and port.
@@ -95,6 +99,18 @@ where
     }
 }
 
+/// How much a probe outcome tells us, for picking between the two SNMP ports' answers.
+///
+/// A device that refuses us on 161 and ignores us on 1161 has told us something on 161; reporting
+/// the silence would be reporting the less informative of the two.
+fn probe_specificity(outcome: AttemptOutcome) -> u8 {
+    match outcome {
+        AttemptOutcome::Rejected => 3,
+        AttemptOutcome::NotThisService | AttemptOutcome::Malformed => 2,
+        _ => 1,
+    }
+}
+
 pub struct SnmpIntegration;
 
 #[async_trait]
@@ -120,21 +136,19 @@ impl DiscoveryIntegration for SnmpIntegration {
     async fn probe(&self, ctx: &ProbeContext<'_>) -> Result<ProbeSuccess, ProbeFailure> {
         let snmp_cred = match ctx.credential {
             CredentialQueryPayload::Snmp(cred) => cred,
-            _ => {
-                return Err(ProbeFailure {
-                    message: "Expected SNMP credential".to_string(),
-                });
-            }
+            _ => return Err(ProbeFailure::malformed("Expected SNMP credential")),
         };
 
         let snmp_ports: &[u16] = &[161, 1161];
 
-        // Try the provided credential on each SNMP port
+        // The most specific answer any port gave. A device listening on 161 and silent on 1161
+        // should be reported as whatever 161 said, not as the silence from 1161 — so a refusal
+        // outranks a timeout, which outranks nothing having been tried.
+        let mut best: Option<(AttemptOutcome, String)> = None;
+
         for &port in snmp_ports {
             if ctx.cancel.is_cancelled() {
-                return Err(ProbeFailure {
-                    message: "Cancelled".to_string(),
-                });
+                return Err(ProbeFailure::cancelled());
             }
 
             // Cap the whole probe (create-session + GET) so a non-responder — v3's
@@ -145,11 +159,15 @@ impl DiscoveryIntegration for SnmpIntegration {
             )
             .await
             {
-                Ok(res) => res,
-                Err(_) => Ok(None), // probe timed out → treat as no answer
+                Ok(outcome) => outcome,
+                Err(_) => SnmpProbeOutcome::Failed(
+                    AttemptOutcome::TimedOut,
+                    format!("no answer on port {port} within {SNMP_PROBE_TIMEOUT:?}"),
+                ),
             };
+
             match port_outcome {
-                Ok(Some(detected_port)) => {
+                SnmpProbeOutcome::Answered(detected_port) => {
                     return Ok(ProbeSuccess {
                         client_probe: ClientProbe::Snmp,
                         ports: vec![PortType::new_udp(detected_port)],
@@ -159,14 +177,19 @@ impl DiscoveryIntegration for SnmpIntegration {
                         })),
                     });
                 }
-                Ok(None) => continue,
-                Err(e) => {
+                SnmpProbeOutcome::Failed(outcome, message) => {
                     tracing::debug!(
                         ip = %ctx.ip,
-                        port = port,
-                        error = %e,
+                        port,
+                        ?outcome,
+                        error = %message,
                         "SNMP credential probe failed"
                     );
+                    if best.as_ref().is_none_or(|(seen, _)| {
+                        probe_specificity(outcome) > probe_specificity(*seen)
+                    }) {
+                        best = Some((outcome, format!("port {port}: {message}")));
+                    }
                 }
             }
         }
@@ -175,16 +198,18 @@ impl DiscoveryIntegration for SnmpIntegration {
         // with community "public" into credential_mappings, so it's tried as its own
         // integration dispatch. No special-casing needed.
 
-        Err(ProbeFailure {
-            message: format!("SNMP not responding on {} with any credential", ctx.ip),
-        })
+        let (outcome, message) = best.unwrap_or((
+            AttemptOutcome::TimedOut,
+            format!("SNMP not responding on {}", ctx.ip),
+        ));
+        Err(ProbeFailure::with_outcome(outcome, message))
     }
 
     async fn execute(
         &self,
         ctx: &IntegrationContext<'_>,
         host_data: &mut HostData,
-    ) -> Result<(), Error> {
+    ) -> Result<(), IntegrationFailure> {
         // Downcast probe handle to get the working credential and port
         let handle = ctx
             .probe_handle
@@ -229,7 +254,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         };
 
         if ctx.cancel.is_cancelled() {
-            return Err(anyhow::anyhow!("Discovery was cancelled"));
+            return Err(IntegrationFailure::cancelled());
         }
 
         // Walk interface table. `if_table_complete` tells the server whether this is an

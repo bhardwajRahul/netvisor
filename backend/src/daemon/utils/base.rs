@@ -281,15 +281,15 @@ pub trait DaemonUtils {
                     15,
                     API_DEFAULT_VERSION,
                 )
-                .map_err(|e| anyhow::anyhow!("Failed to connect to Docker: {}", e))?
+                .map_err(|e| anyhow::Error::new(e).context("Failed to connect to Docker"))?
             } else {
                 Docker::connect_with_http(&docker_proxy, 4, API_DEFAULT_VERSION)
-                    .map_err(|e| anyhow::anyhow!("Failed to connect to Docker: {}", e))?
+                    .map_err(|e| anyhow::Error::new(e).context("Failed to connect to Docker"))?
             }
         } else {
             tracing::debug!("Using Docker local defaults");
             Docker::connect_with_local_defaults()
-                .map_err(|e| anyhow::anyhow!("Failed to connect to Docker: {}", e))?
+                .map_err(|e| anyhow::Error::new(e).context("Failed to connect to Docker"))?
         };
 
         // Ping Docker with retry and exponential backoff
@@ -306,7 +306,12 @@ pub trait DaemonUtils {
                     return Ok(negotiate_container_api_version(client).await);
                 }
                 Ok(Err(e)) => {
-                    last_error = Some(format!("Docker ping failed: {}", e));
+                    let rendered = e.to_string();
+                    // Keep the bollard error itself, not its text. `AttemptOutcome`'s
+                    // classification downcasts to it to tell a refused credential from an
+                    // unreachable socket, and a formatted string discards that.
+                    last_error = Some(anyhow::Error::new(e).context("Docker ping failed"));
+                    let e = rendered;
                     if attempt < MAX_PING_ATTEMPTS {
                         let backoff = Duration::from_millis(500 * 2u64.pow(attempt - 1));
                         tracing::warn!(
@@ -319,9 +324,8 @@ pub trait DaemonUtils {
                     }
                 }
                 Err(_) => {
-                    last_error = Some(format!(
-                        "Docker connection timed out after {:?}",
-                        DOCKER_CONNECT_TIMEOUT
+                    last_error = Some(anyhow::anyhow!(
+                        "Docker connection timed out after {DOCKER_CONNECT_TIMEOUT:?}"
                     ));
                     if attempt < MAX_PING_ATTEMPTS {
                         let backoff = Duration::from_millis(500 * 2u64.pow(attempt - 1));
@@ -340,9 +344,7 @@ pub trait DaemonUtils {
             "Docker ping failed after {} attempts",
             MAX_PING_ATTEMPTS
         );
-        Err(anyhow::anyhow!(
-            last_error.unwrap_or_else(|| "Docker connection failed".to_string())
-        ))
+        Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Docker connection failed")))
     }
 
     /// Connect to a container runtime's local Unix socket via bollard's
@@ -374,7 +376,7 @@ pub trait DaemonUtils {
             (None, ContainerRuntime::Docker) => {
                 tracing::debug!("Using Docker local defaults");
                 Docker::connect_with_local_defaults()
-                    .map_err(|e| anyhow::anyhow!("Failed to connect to Docker: {}", e))?
+                    .map_err(|e| anyhow::Error::new(e).context("Failed to connect to Docker"))?
             }
             // Podman with no resolved socket: fail cleanly rather than fall back to
             // the Docker default socket.

@@ -299,6 +299,39 @@ pub fn render_incomplete_interface_walks(records: &[IncompleteInterfaceWalk]) ->
 // Credential issues
 // ============================================================================
 
+/// How a credential attempt that actually ran came out.
+///
+/// Deliberately a *subset* of [`CredentialIssueReason`]: an integration observes only what
+/// happened on the wire, and has no way to know about the dispatch-level reasons ("never
+/// scanned", "gate closed"). Splitting the two means an integration cannot report a reason it
+/// cannot have established.
+///
+/// Every variant maps to a different thing for the operator to do, which is the test for whether
+/// one belongs here. "The device refused my password" and "nothing was listening" arrive as the
+/// same empty result and send an operator to opposite ends of the problem.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AttemptOutcome {
+    /// The endpoint answered and refused the credential. The credential is wrong.
+    Rejected,
+    /// Nothing was listening: connection refused, or no route.
+    Unreachable,
+    /// Connected, then never answered inside the timeout.
+    TimedOut,
+    /// Something answered, but it is not this service — usually the wrong port.
+    NotThisService,
+    /// TLS negotiation failed. Distinct from [`Self::Rejected`] because the fix is a trust
+    /// setting, not a password.
+    TlsFailed,
+    /// The credential itself is incomplete or unusable — our configuration rather than their
+    /// device, and the only outcome an operator fixes in Scanopy rather than on the network.
+    Malformed,
+    /// The credential worked and the collection after it did not. The host's data is missing
+    /// rather than merely stale, which is why it is worth its own line.
+    CollectionFailed,
+    /// The scan was cancelled. Never rendered — the user stopped it, so it is not a finding.
+    Cancelled,
+}
+
 /// Why an IP-targeted credential produced nothing.
 ///
 /// Only credentials the user deliberately assigned to a host are reported. A network-default
@@ -315,8 +348,16 @@ pub enum CredentialIssueReason {
     TargetNotResponding,
     /// The host was scanned but the credential's port was not open, so no probe was attempted.
     GateClosed { ports: Vec<PortType> },
-    /// The probe ran and the endpoint refused it.
-    ProbeRejected { message: String },
+    /// The attempt ran and did not succeed.
+    ///
+    /// Replaces a `ProbeRejected` variant that named one outcome and was used for all of them —
+    /// every integration flattened cancellation, a closed port, a TLS failure and a genuinely
+    /// wrong password into the same "was rejected" line.
+    Attempted {
+        outcome: AttemptOutcome,
+        /// The integration's own diagnostic, already phrased for an operator.
+        message: String,
+    },
 }
 
 /// One IP-targeted credential that did not work, and why.
@@ -394,29 +435,73 @@ pub fn render_credential_issues(issues: &[CredentialIssue]) -> Vec<String> {
         ));
     }
 
-    let rejected: Vec<&CredentialIssue> = issues
-        .iter()
-        .filter(|i| matches!(i.reason, CredentialIssueReason::ProbeRejected { .. }))
-        .collect();
-    if !rejected.is_empty() {
-        // The first message is representative and already phrased for an operator; the count
-        // carries the rest so the line stays one sentence.
-        let first = rejected
+    // One line per outcome, because the whole point of the outcome is that the fix differs.
+    // Ordered by how actionable the outcome is, so the line an operator can do something about
+    // is not buried under the ones describing the network.
+    for (outcome, advice) in ATTEMPT_ADVICE {
+        let matching: Vec<&CredentialIssue> = issues
+            .iter()
+            .filter(|i| attempt_outcome(&i.reason) == Some(*outcome))
+            .collect();
+        if matching.is_empty() {
+            continue;
+        }
+        // The first message is representative and already phrased for an operator; grouping by
+        // outcome is what carries the rest, so the line stays one sentence.
+        let first = matching
             .iter()
             .find_map(|i| match &i.reason {
-                CredentialIssueReason::ProbeRejected { message } => Some(message.as_str()),
+                CredentialIssueReason::Attempted { message, .. } => Some(message.as_str()),
                 _ => None,
             })
-            .unwrap_or("the endpoint refused it");
-        let ips: BTreeSet<IpAddr> = rejected.iter().map(|i| i.ip).collect();
+            .unwrap_or("no further detail");
+        let ips: BTreeSet<IpAddr> = matching.iter().map(|i| i.ip).collect();
         parts.push(format!(
-            "{} was rejected: {}",
+            "{} {} ({first})",
             describe_targets(issues, &ips),
-            first
+            advice
         ));
     }
 
     parts.into_iter().map(|p| format!("{p}.")).collect()
+}
+
+/// What to tell the operator per outcome, and the order the lines appear in.
+///
+/// [`AttemptOutcome::Cancelled`] is absent deliberately: the user stopped the scan, so nothing
+/// about it is a finding. [`AttemptOutcome::Unreachable`] and [`AttemptOutcome::TimedOut`] are
+/// absent because the address-level lines above already say nothing answered there, and repeating
+/// it per credential would be the same fact twice.
+const ATTEMPT_ADVICE: &[(AttemptOutcome, &str)] = &[
+    (
+        AttemptOutcome::Rejected,
+        "was refused — check the username, password or community string",
+    ),
+    (
+        AttemptOutcome::Malformed,
+        "is incomplete and could not be used — re-enter it",
+    ),
+    (
+        AttemptOutcome::TlsFailed,
+        "could not negotiate TLS — if the appliance serves a self-signed certificate, turn on \
+         \"accept invalid certificates\" in the daemon's scan settings",
+    ),
+    (
+        AttemptOutcome::NotThisService,
+        "reached something that is not the expected service — check the port on the credential",
+    ),
+    (
+        AttemptOutcome::CollectionFailed,
+        "authenticated and then failed while collecting, so this host's data is missing rather \
+         than out of date",
+    ),
+];
+
+fn attempt_outcome(reason: &CredentialIssueReason) -> Option<AttemptOutcome> {
+    match reason {
+        CredentialIssueReason::Attempted { outcome, .. } => Some(*outcome),
+        _ => None,
+    }
 }
 
 /// "The SNMP queries credential for 10.0.0.5" / "2 credentials for 10.0.0.5, 10.0.0.6".
@@ -739,5 +824,76 @@ mod tests {
         assert!(msg.contains("not on any subnet"));
         assert!(msg.contains("10.0.0.7"));
         assert!(msg.contains("port 443 was not open"));
+    }
+
+    fn attempted(ip_str: &str, outcome: AttemptOutcome) -> CredentialIssue {
+        CredentialIssue {
+            label: "UniFi controller connection",
+            ip: ip(ip_str),
+            reason: CredentialIssueReason::Attempted {
+                outcome,
+                message: "detail from the integration".to_string(),
+            },
+        }
+    }
+
+    /// The reason the outcome exists at all. Every one of these was a single "was rejected" line
+    /// before, so an operator with a self-signed certificate, a wrong port and a wrong password
+    /// was told the same thing three times and given no way to tell them apart.
+    #[test]
+    fn each_attempt_outcome_gets_its_own_line_and_its_own_fix() {
+        let lines = render_credential_issues(&[
+            attempted("10.0.0.1", AttemptOutcome::Rejected),
+            attempted("10.0.0.2", AttemptOutcome::TlsFailed),
+            attempted("10.0.0.3", AttemptOutcome::NotThisService),
+            attempted("10.0.0.4", AttemptOutcome::Malformed),
+            attempted("10.0.0.5", AttemptOutcome::CollectionFailed),
+        ]);
+
+        assert_eq!(lines.len(), 5, "{lines:?}");
+        let msg = joined(&lines);
+        assert!(msg.contains("10.0.0.1") && msg.contains("username, password or community"));
+        assert!(msg.contains("10.0.0.2") && msg.contains("accept invalid certificates"));
+        assert!(msg.contains("10.0.0.3") && msg.contains("check the port on the credential"));
+        assert!(msg.contains("10.0.0.4") && msg.contains("re-enter it"));
+        assert!(msg.contains("10.0.0.5") && msg.contains("missing rather than out of date"));
+    }
+
+    /// The operator stopped the scan. Reporting anything about it — and this used to report the
+    /// credential as rejected — is telling them their configuration is broken because they
+    /// pressed cancel.
+    #[test]
+    fn a_cancelled_attempt_is_never_reported() {
+        assert!(
+            render_credential_issues(&[attempted("10.0.0.1", AttemptOutcome::Cancelled)])
+                .is_empty()
+        );
+    }
+
+    /// Nothing answered at the address, which the address-level lines already say. Repeating it
+    /// per credential is the same fact twice and pushes the actionable lines down the list.
+    #[test]
+    fn an_unreachable_attempt_does_not_repeat_the_address_level_line() {
+        assert!(
+            render_credential_issues(&[
+                attempted("10.0.0.1", AttemptOutcome::Unreachable),
+                attempted("10.0.0.2", AttemptOutcome::TimedOut),
+            ])
+            .is_empty()
+        );
+    }
+
+    /// Hosts sharing an outcome collapse onto one line, the same way they do for every other
+    /// reason — fifteen switches refusing the same community is one problem, not fifteen.
+    #[test]
+    fn hosts_sharing_an_outcome_collapse_onto_one_line() {
+        let issues: Vec<CredentialIssue> = (1..=4)
+            .map(|n| attempted(&format!("10.0.0.{n}"), AttemptOutcome::Rejected))
+            .collect();
+
+        let lines = render_credential_issues(&issues);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].contains("10.0.0.1"));
+        assert!(lines[0].contains("10.0.0.4"));
     }
 }

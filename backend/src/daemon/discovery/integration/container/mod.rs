@@ -35,6 +35,7 @@ use crate::server::subnets::r#impl::virtualization::{
 };
 
 use super::{ProbeContext, ProbeFailure, ProbeSuccess};
+use crate::daemon::discovery::service::warnings::AttemptOutcome;
 
 const CONTAINER_PROBE_MAX_ATTEMPTS: u32 = 3;
 
@@ -252,27 +253,26 @@ pub async fn probe_proxy(
     ctx: &ProbeContext<'_>,
     runtime: ContainerRuntime,
 ) -> Result<ProbeSuccess, ProbeFailure> {
-    let cred = ctx
-        .credential
-        .as_container_proxy()
-        .ok_or_else(|| ProbeFailure {
-            message: format!("Expected {} proxy credential", runtime.label()),
-        })?;
+    let cred = ctx.credential.as_container_proxy().ok_or_else(|| {
+        ProbeFailure::malformed(format!("Expected {} proxy credential", runtime.label()))
+    })?;
 
     let proxy_url = build_container_proxy_url(ctx.ip, cred);
     let label = ctx.credential.discovery_label();
-    let (ssl_paths, ssl_temp_handles) =
-        resolve_container_ssl(cred, label).map_err(|e| ProbeFailure {
-            message: format!("Failed to resolve {} SSL: {}", runtime.label(), e),
-        })?;
+    let (ssl_paths, ssl_temp_handles) = resolve_container_ssl(cred, label).map_err(|e| {
+        // The certificate material on the credential could not be read or parsed. That is our
+        // stored configuration, not the remote host, so it is the one failure here an operator
+        // fixes in Scanopy.
+        ProbeFailure::malformed(format!("Failed to resolve {} SSL: {}", runtime.label(), e))
+    })?;
 
     tracing::info!(ip = %ctx.ip, proxy_url = %proxy_url, runtime = runtime.label(), "Attempting container proxy probe");
 
     for attempt in 1..=CONTAINER_PROBE_MAX_ATTEMPTS {
         if ctx.cancel.is_cancelled() {
-            return Err(ProbeFailure {
-                message: "Cancelled".to_string(),
-            });
+            // Never reported. The operator stopped the scan; telling them their credential was
+            // rejected — which is what this used to do — is worse than saying nothing.
+            return Err(ProbeFailure::cancelled());
         }
 
         match ctx
@@ -297,22 +297,35 @@ pub async fn probe_proxy(
                     tracing::debug!(ip = %ctx.ip, attempt, error = %e, "Container client probe failed, retrying");
                     tokio::time::sleep(Duration::from_secs(2)).await;
                 } else {
-                    return Err(ProbeFailure {
-                        message: format!(
-                            "{} probe failed after {} attempts: {}",
-                            runtime.label(),
-                            CONTAINER_PROBE_MAX_ATTEMPTS,
-                            e
-                        ),
-                    });
+                    return Err(classify_container_error(&e).with_context(format!(
+                        "{} probe failed after {} attempts",
+                        runtime.label(),
+                        CONTAINER_PROBE_MAX_ATTEMPTS
+                    )));
                 }
             }
         }
     }
 
-    Err(ProbeFailure {
-        message: format!("{} probe exhausted all attempts", runtime.label()),
-    })
+    Err(ProbeFailure::unreachable(format!(
+        "{} probe exhausted all attempts",
+        runtime.label()
+    )))
+}
+
+/// Classify a container-client failure.
+///
+/// `new_docker_client` returns `anyhow::Error`, but it now preserves the underlying
+/// `bollard::errors::Error` in the chain rather than formatting it into a string — so a socket
+/// that refused us (fix the credential) is distinguishable from one nothing is listening on (fix
+/// the address), which the single "probe failed after N attempts" message could never say.
+fn classify_container_error(error: &anyhow::Error) -> ProbeFailure {
+    let outcome = error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<bollard::errors::Error>())
+        .map(AttemptOutcome::from)
+        .unwrap_or(AttemptOutcome::Unreachable);
+    ProbeFailure::with_outcome(outcome, error.to_string())
 }
 
 /// Probe a container-runtime local Unix socket. `socket_path` of `None` uses the
@@ -340,9 +353,8 @@ pub async fn probe_socket(
                 })),
             })
         }
-        Err(e) => Err(ProbeFailure {
-            message: format!("{} socket connection failed: {}", runtime.label(), e),
-        }),
+        Err(e) => Err(classify_container_error(&e)
+            .with_context(format!("{} socket connection failed", runtime.label()))),
     }
 }
 
@@ -352,7 +364,7 @@ pub async fn execute(
     ctx: &super::IntegrationContext<'_>,
     host_data: &mut crate::daemon::discovery::service::ops::HostData,
     runtime: ContainerRuntime,
-) -> Result<(), Error> {
+) -> Result<(), super::IntegrationFailure> {
     use std::sync::Arc;
     use std::sync::atomic::AtomicU8;
 
