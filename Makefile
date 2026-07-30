@@ -1,4 +1,4 @@
-.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures refresh-vendored-data seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-seed-credentials snmp-deploy snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status podman-proxy-up podman-proxy-up-tls podman-proxy-down podman-proxy-status podman-workload-up podman-workload-down unifi-status unifi-capture issue-license daemon-clean daemon-purge daemon-logs daemon-restart daemon-config
+.PHONY: daemon-build daemon-rebuild daemon-dev daemon-fix-perms help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures refresh-vendored-data seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-seed-credentials snmp-deploy snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status podman-proxy-up podman-proxy-up-tls podman-proxy-down podman-proxy-status podman-workload-up podman-workload-down unifi-status unifi-capture issue-license daemon-clean daemon-purge daemon-logs daemon-restart daemon-config
 
 DAYS ?= 365
 
@@ -36,6 +36,11 @@ help:
 	@echo "  make install-dev-windows  - Install development dependencies on Windows"
 	@echo ""
 	@echo "Daemon (local install management, macOS):"
+	@echo "  make daemon-dev      - Foreground dev loop: stop the service, run your build with logs"
+	@echo "                         on stdout, restore the service on Ctrl-C"
+	@echo "  make daemon-rebuild  - Rebuild, install into the background service, restart, tail log"
+	@echo "  make daemon-build    - Build the daemon binary only (never run this under sudo)"
+	@echo "  make daemon-fix-perms - Reclaim backend/target after an accidental 'sudo cargo' run"
 	@echo "  make daemon-clean    - Uninstall the locally-installed daemon (service + config); [PURGE=--purge]"
 	@echo "  make daemon-purge    - Uninstall with --purge (also removes the binary)"
 	@echo "  make daemon-logs     - Tail the last 40 lines of the daemon log"
@@ -105,8 +110,15 @@ seed-dev:
 clean-daemon:
 	rm -rf ~/Library/Application\ Support/com.scanopy.daemon
 
+# Where `scanopy-daemon install` puts things on macOS (see daemon/install/macos.rs).
+DAEMON_LABEL      := com.scanopy.daemon
+DAEMON_PLIST      := /Library/LaunchDaemons/$(DAEMON_LABEL).plist
+DAEMON_BIN        := /usr/local/bin/scanopy-daemon
+DAEMON_CONFIG_DIR := /Library/Application Support/Scanopy/daemon/scanopy-daemon
+DAEMON_BUILT      := backend/target/debug/daemon
+
 daemon-clean:
-	cd ./backend && sudo /usr/local/bin/scanopy-daemon uninstall $(PURGE)
+	cd ./backend && sudo $(DAEMON_BIN) uninstall $(PURGE)
 
 daemon-purge:
 	$(MAKE) daemon-clean PURGE=--purge
@@ -115,10 +127,53 @@ daemon-logs:
 	tail -n 40 /var/log/scanopy/scanopy-daemon.log
 
 daemon-restart:
-	sudo launchctl kickstart -k system/com.scanopy.daemon
+	sudo launchctl kickstart -k system/$(DAEMON_LABEL)
 
 daemon-config:
-	open -a "Visual Studio Code" "/Library/Application Support/Scanopy/daemon/scanopy-daemon/config.json"
+	open -a "Visual Studio Code" "$(DAEMON_CONFIG_DIR)/config.json"
+
+# Build the daemon as *you*, never as root. `sudo cargo build` / `sudo cargo run`
+# leaves root-owned files scattered through backend/target, and every later
+# non-sudo build then dies with "Permission denied" on a fingerprint file. All the
+# targets below build here and only elevate to move or run the finished binary.
+daemon-build:
+	@if [ -n "$$SUDO_USER" ]; then \
+		echo "Refusing to build under sudo — it would make backend/target root-owned."; \
+		echo "Run 'make $@' without sudo; the targets elevate only where they must."; \
+		exit 1; \
+	fi
+	cd backend && cargo build --bin daemon
+
+# Rebuild and push the result into the installed background service.
+# Use this when you want the running service to pick up your changes.
+daemon-rebuild: daemon-build
+	sudo cp $(DAEMON_BUILT) $(DAEMON_BIN)
+	sudo launchctl kickstart -k system/$(DAEMON_LABEL)
+	@echo "Service restarted on the new binary. Following the log — Ctrl-C to stop watching:"
+	@sleep 1
+	tail -f /var/log/scanopy/scanopy-daemon.log
+
+# Foreground dev loop: the old ergonomics back.
+#
+# Stops the background service, runs your freshly built binary in the foreground
+# with logs on stdout, and re-bootstraps the service when you Ctrl-C. `--config-dir`
+# points at the installed daemon's own config, so the foreground process keeps the
+# same identity and API key as the service it replaced — no re-enrolment, and the
+# server sees one daemon rather than two fighting over the same registration.
+#
+# Root because discovery needs raw sockets for ARP. The binary is invoked directly
+# rather than through `cargo run`, so cargo never writes anything as root.
+daemon-dev: daemon-build
+	@echo "Stopping the background service so it doesn't race the foreground one..."
+	@sudo launchctl bootout system/$(DAEMON_LABEL) 2>/dev/null || true
+	@trap 'echo; echo "Restoring the background service..."; sudo launchctl bootstrap system $(DAEMON_PLIST) 2>/dev/null || true' EXIT INT TERM; \
+	sudo $(DAEMON_BUILT) --config-dir "$(DAEMON_CONFIG_DIR)" --log-level debug
+
+# Recover from a past `sudo cargo` run: hand backend/target back to you.
+daemon-fix-perms:
+	@echo "Reclaiming root-owned build artifacts under backend/target..."
+	sudo chown -R "$$(id -u):$$(id -g)" backend/target
+	@echo "Done. 'make daemon-build' should work now."
 
 dump-db:
 	docker exec -t scanopy-postgres pg_dump -U postgres -d scanopy > ~/dev/scanopy/scanopy.sql  
@@ -178,10 +233,13 @@ test-merge:
 	echo "All branches merged. Run 'make generate-types && make test-plan' next."
 
 test-plan:
-	@echo "Collecting TEST_PLAN.json from worktrees..."
+	@echo "Collecting TEST_PLAN.json from this repo and worktrees..."
 	@echo "var TEST_PLANS = [" > tools/testing/test-plans.js
+	@# The main checkout is included first: work done directly on a branch here needs
+	@# testing just as much as work done in a worktree, and the worktree glob below
+	@# cannot match it — "scanopy" has no hyphen, so it fails "*/scanopy-*/".
 	@first=true; \
-	for f in $$(find .. -maxdepth 2 -name "TEST_PLAN.json" -path "*/scanopy-*/TEST_PLAN.json" 2>/dev/null); do \
+	for f in $$(ls TEST_PLAN.json 2>/dev/null) $$(find .. -maxdepth 2 -name "TEST_PLAN.json" -path "*/scanopy-*/TEST_PLAN.json" 2>/dev/null); do \
 		if [ "$$first" = true ]; then first=false; else echo "," >> tools/testing/test-plans.js; fi; \
 		cat "$$f" >> tools/testing/test-plans.js; \
 		echo "  Found: $$f"; \
@@ -196,17 +254,23 @@ test-results:
 		exit 1; \
 	fi
 	@echo "Distributing results to worktrees..."
-	@for wt in $$(git worktree list --porcelain | grep '^worktree ' | sed 's/^worktree //'); do \
+	@# Read from a snapshot, not from TEST_RESULTS.json directly. `git worktree list`
+	@# includes the main checkout, so when work is done on a branch here the loop
+	@# writes that branch's slice straight back over the file it is reading — and
+	@# every worktree visited afterwards finds only that slice and is skipped.
+	@src=$$(mktemp); cp TEST_RESULTS.json "$$src"; \
+	for wt in $$(git worktree list --porcelain | grep '^worktree ' | sed 's/^worktree //'); do \
 		branch=$$(git -C "$$wt" branch --show-current 2>/dev/null); \
 		if [ -z "$$branch" ]; then continue; fi; \
-		if grep -q "\"$$branch\"" TEST_RESULTS.json 2>/dev/null; then \
+		if grep -q "\"$$branch\"" "$$src" 2>/dev/null; then \
 			node -e " \
-				const r = require('./TEST_RESULTS.json'); \
+				const r = require('$$src'); \
 				const d = r['$$branch']; \
 				if (d) { require('fs').writeFileSync('$$wt/TEST_RESULTS.json', JSON.stringify({'$$branch': d}, null, 2)); } \
 			" && echo "  $$branch -> $$wt/TEST_RESULTS.json"; \
 		fi; \
-	done
+	done; \
+	rm -f "$$src"
 	@echo "Done. Agents can read TEST_RESULTS.json in their worktree."
 
 dev-server:
@@ -214,8 +278,14 @@ dev-server:
 	@export DATABASE_URL="postgresql://postgres:password@localhost:5432/scanopy" && \
 	cd backend && cargo run --bin server -- --log-level debug --public-url http://localhost:60072
 
-dev-daemon:
-	cd backend && cargo run --bin daemon -- --server-url http://127.0.0.1:60072 --log-level debug
+# Unenrolled foreground daemon against a local server. For a daemon that is already
+# installed as a service, prefer `make daemon-dev`: it reuses the installed identity
+# and API key instead of needing a fresh enrolment, and puts the service back afterwards.
+#
+# Not run through `cargo run`, because discovery needs root for raw-socket ARP and
+# `sudo cargo run` would leave backend/target root-owned.
+dev-daemon: daemon-build
+	sudo $(DAEMON_BUILT) --server-url http://127.0.0.1:60072 --log-level debug
 
 dev-ui:
 	cd ui && npm run dev
