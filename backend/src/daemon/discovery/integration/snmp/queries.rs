@@ -93,17 +93,19 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
 /// varbinds instead of one per round-trip) and transparently falls back to `getnext`
 /// if the agent rejects getbulk (e.g. SNMPv1).
 ///
-/// Returns `Ok(true)` when the subtree was walked to its natural end (or `EndOfMibView`)
-/// and `Ok(false)` when it was cut short by `MAX_WALK_ENTRIES`, a session error, a
-/// timeout, a non-advancing OID, or an abnormal empty response — callers that prune
-/// against a full table (see `walk_if_table`, GH #649) must treat `false` as a partial
-/// walk.
+/// Returns why the walk stopped. [`WalkStop::is_complete`] is true when the subtree was walked
+/// to its natural end (or the agent said it has no such OID) and false when it was cut short by
+/// `MAX_WALK_ENTRIES`, a session error, a timeout, a non-advancing OID, or an abnormal empty
+/// response — callers that prune against a full table (see `walk_if_table`, GH #649) must treat
+/// an incomplete walk as partial. The reason itself is returned rather than collapsed to a bool
+/// because "the agent has no such OID" and "the table is implemented and empty" are different
+/// answers with different consequences; see [`WalkStop::is_unsupported`].
 async fn walk_subtree<T, F>(
     session: &mut T,
     ip: IpAddr,
     base_oid_str: &str,
     mut on_entry: F,
-) -> Result<bool>
+) -> Result<WalkStop>
 where
     T: SnmpWalkTransport,
     F: FnMut(&[u64], &Value),
@@ -247,7 +249,7 @@ where
         );
     }
 
-    Ok(!stop.is_truncation())
+    Ok(stop)
 }
 
 /// Query system MIB information from a device
@@ -317,6 +319,21 @@ pub async fn query_system_info(
 pub struct SnmpCollection<T> {
     pub records: T,
     pub complete: bool,
+    /// The agent does not implement this MIB at all — it answered `noSuchObject` rather than
+    /// walking past the end of a table it has.
+    ///
+    /// A third state is needed because `complete: true` with no records is the daemon telling the
+    /// server "this device authoritatively has nothing here", which the server acts on by
+    /// clearing what it holds. That is right for a switch whose last LLDP neighbour went away and
+    /// wrong for one that has no LLDP-MIB: on a Ubiquiti USW-Pro-Max, `1.0.8802.1.1.2.1.4.1`
+    /// returns `No Such Object`, so an SNMP pass would erase the neighbours the UniFi controller
+    /// integration had just written for the same switch — the two run in the same scan, in no
+    /// fixed order, so the data would come and go between scans.
+    ///
+    /// Computed for the neighbour tables (LLDP, CDP), which are the columns another integration
+    /// also writes and so the only ones where overwriting with an empty result destroys data.
+    /// Left `false` elsewhere, where nothing consumes it.
+    pub unsupported: bool,
 }
 
 impl<T: Default> Default for SnmpCollection<T> {
@@ -324,6 +341,7 @@ impl<T: Default> Default for SnmpCollection<T> {
         Self {
             records: T::default(),
             complete: false,
+            unsupported: false,
         }
     }
 }
@@ -381,6 +399,22 @@ impl WalkStop {
     fn is_truncation(self) -> bool {
         !matches!(self, Self::EndOfSubtree | Self::EndOfMibView)
     }
+
+    /// The walk reached the column's end and read everything the agent has.
+    fn is_complete(self) -> bool {
+        !self.is_truncation()
+    }
+
+    /// The agent answered "I do not have this OID" rather than walking past the end of a table
+    /// it implements.
+    ///
+    /// These are different answers and the difference matters: an implemented-but-empty table
+    /// walks forward out of its own subtree ([`Self::EndOfSubtree`]), while an unimplemented MIB
+    /// returns `noSuchObject` / `endOfMibView` at the first request ([`Self::EndOfMibView`]). Both
+    /// yield zero rows, and only the first is a device authoritatively reporting "nothing here".
+    fn is_unsupported(self) -> bool {
+        matches!(self, Self::EndOfMibView)
+    }
 }
 
 /// Walk one column, recording in `complete` whether it reached the end.
@@ -393,16 +427,18 @@ async fn walk_column<T, F>(
     base_oid_str: &str,
     complete: &mut bool,
     on_entry: F,
-) where
+) -> WalkStop
+where
     T: SnmpWalkTransport,
     F: FnMut(&[u64], &Value),
 {
-    if !walk_subtree(session, ip, base_oid_str, on_entry)
+    let stop = walk_subtree(session, ip, base_oid_str, on_entry)
         .await
-        .unwrap_or(false)
-    {
+        .unwrap_or(WalkStop::Transport);
+    if !stop.is_complete() {
         *complete = false;
     }
+    stop
 }
 
 /// Walk the ifTable/ifXTable columns.
@@ -497,6 +533,7 @@ pub async fn walk_if_table<T: SnmpWalkTransport>(
             }
         })
         .await
+        .map(WalkStop::is_complete)
         .unwrap_or(false);
 
         // A column cut short (timeout/error/limit) means this is NOT an authoritative
@@ -607,9 +644,13 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         // apply. It is resolved by walk_lldp_rem_man_addr() after this loop.
     ];
 
+    // Every column answering "no such object" is how an agent says it has no LLDP-MIB, as
+    // opposed to walking past the end of a table it implements but has no neighbours in.
+    let mut all_columns_unsupported = true;
+
     for (base_oid_str, column_name) in columns {
         // lldpRemEntry index: timeMark.localPortNum.remIndex
-        walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
+        let stop = walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
             if suffix.len() < 3 {
                 return;
             }
@@ -653,6 +694,9 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
             }
         })
         .await;
+        if !stop.is_unsupported() {
+            all_columns_unsupported = false;
+        }
     }
 
     // Resolve remote management addresses from the separate lldpRemManAddrTable.
@@ -717,11 +761,21 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
              walk partial"
         );
     }
-    debug!("LLDP query from {} returned {} neighbors", ip, result.len());
+    // Only when nothing was read: a device that answered with rows plainly has the MIB, whatever
+    // the last column's stop reason was.
+    let unsupported = all_columns_unsupported && result.is_empty();
+    debug!(
+        ip = %ip,
+        neighbors = result.len(),
+        complete,
+        unsupported,
+        "LLDP query finished"
+    );
 
     Ok(SnmpCollection {
         records: result,
         complete,
+        unsupported,
     })
 }
 
@@ -852,9 +906,13 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
         (oids::cdp::entry::CDP_CACHE_ADDRESS, "address"),
     ];
 
+    // See `query_lldp_neighbors`: the same distinction, for the same reason. CDP-MIB is a Cisco
+    // enterprise MIB, so the overwhelming majority of devices answer `noSuchObject` for it.
+    let mut all_columns_unsupported = true;
+
     for (base_oid_str, column_name) in columns {
         // CDP index: cdpCacheIfIndex.cdpCacheDeviceIndex
-        walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
+        let stop = walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
             if suffix.len() < 2 {
                 return;
             }
@@ -886,6 +944,9 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
             }
         })
         .await;
+        if !stop.is_unsupported() {
+            all_columns_unsupported = false;
+        }
     }
 
     // cdpCacheDeviceId is what L2 resolution matches on, so a record without one is the CDP
@@ -903,11 +964,19 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
             "CDP neighbours missing a device id; discarding them and marking the walk partial"
         );
     }
-    debug!("CDP query from {} returned {} neighbors", ip, result.len());
+    let unsupported = all_columns_unsupported && result.is_empty();
+    debug!(
+        ip = %ip,
+        neighbors = result.len(),
+        complete,
+        unsupported,
+        "CDP query finished"
+    );
 
     Ok(SnmpCollection {
         records: result,
         complete,
+        unsupported,
     })
 }
 
@@ -1107,6 +1176,7 @@ pub async fn query_bridge_port_mapping<T: SnmpWalkTransport>(
     Ok(SnmpCollection {
         records: port_to_if_index,
         complete,
+        unsupported: false,
     })
 }
 
@@ -1216,6 +1286,7 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     Ok(SnmpCollection {
         records: result,
         complete,
+        unsupported: false,
     })
 }
 
@@ -1269,6 +1340,7 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
     Ok(SnmpCollection {
         records: entries,
         complete,
+        unsupported: false,
     })
 }
 
@@ -1416,6 +1488,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
         return Ok(SnmpCollection {
             records: Vec::new(),
             complete,
+            unsupported: false,
         });
     }
 
@@ -1521,6 +1594,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
     Ok(SnmpCollection {
         records: result,
         complete,
+        unsupported: false,
     })
 }
 
@@ -1597,7 +1671,8 @@ mod walk_tests {
         let mut seen = 0usize;
         let complete = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
             .await
-            .unwrap();
+            .unwrap()
+            .is_complete();
 
         assert!(!complete, "a non-advancing walk must report as partial");
         assert!(
@@ -1622,7 +1697,8 @@ mod walk_tests {
             suffixes.push(suffix.to_vec())
         })
         .await
-        .unwrap();
+        .unwrap()
+        .is_complete();
 
         assert!(
             complete,
@@ -2069,7 +2145,8 @@ mod if_table_tests {
 
         let complete = walk_subtree(&mut StaleAgent, ip(), IF_DESCR, |_, _| {})
             .await
-            .unwrap();
+            .unwrap()
+            .is_complete();
         assert!(!complete);
     }
 
@@ -2085,9 +2162,66 @@ mod if_table_tests {
         let mut seen = 0usize;
         let complete = walk_subtree(&mut agent, ip(), IF_INDEX, |_, _| seen += 1)
             .await
-            .unwrap();
+            .unwrap()
+            .is_complete();
 
         assert!(complete, "walking off the end of a column is a natural end");
         assert_eq!(seen, 1);
+    }
+
+    /// An agent with no LLDP-MIB at all: every request under it comes back `noSuchObject`,
+    /// which is what `snmpwalk 1.0.8802.1.1.2.1.4.1` reports on a Ubiquiti USW-Pro-Max
+    /// ("No Such Object available on this agent at this OID").
+    struct NoLldpMib;
+
+    #[async_trait::async_trait]
+    impl SnmpWalkTransport for NoLldpMib {
+        async fn walk_getbulk<'a>(&'a mut self, from: &[u64], _max: u32) -> Result<WalkPage<'a>> {
+            Ok(WalkPage::Varbinds(vec![(
+                from.to_vec(),
+                Value::NoSuchObject,
+            )]))
+        }
+
+        async fn walk_getnext<'a>(&'a mut self, from: &[u64]) -> Result<Varbinds<'a>> {
+            Ok(vec![(from.to_vec(), Value::NoSuchObject)])
+        }
+    }
+
+    /// That answer is not the device reporting it has no neighbours, and must not be handed to
+    /// the server as authority to clear what it holds — the UniFi controller integration writes
+    /// LLDP for these exact switches, in the same scan, in no fixed order, so treating it as
+    /// authoritative made the neighbours appear and disappear from one scan to the next.
+    ///
+    /// Scoped to the `noSuchObject` form deliberately. An agent that instead answers by
+    /// advancing into the next subtree it does implement is indistinguishable from one with an
+    /// empty table, and guessing there would break neighbour removal on healthy switches.
+    #[tokio::test]
+    async fn an_absent_lldp_mib_is_not_authority_to_clear_neighbours() {
+        let lldp = query_lldp_neighbors(&mut NoLldpMib, ip()).await.unwrap();
+
+        assert!(lldp.records.is_empty());
+        assert!(lldp.unsupported, "noSuchObject means the MIB is absent");
+        // The walk itself did finish, so this is not a shortfall to warn about either.
+        assert!(lldp.complete);
+    }
+
+    /// The other side of the rule, and the one that must keep working: a switch that *has*
+    /// LLDP-MIB and reports no neighbours is saying there are none, so the server should clear
+    /// the rows it holds. Its columns end by advancing past the table.
+    #[tokio::test]
+    async fn an_implemented_but_empty_lldp_table_stays_authoritative() {
+        // FakeAgent answers every walk with the next row it holds, leaving the LLDP subtree by
+        // advancing rather than by noSuchObject — the shape this rule must not catch.
+        let mut agent = FakeAgent::new(&FakeAgent::omada());
+
+        let lldp = query_lldp_neighbors(&mut agent, ip()).await.unwrap();
+
+        assert!(lldp.records.is_empty());
+        assert!(
+            !lldp.unsupported,
+            "a table walked past is implemented and empty, not absent"
+        );
+        assert!(lldp.complete);
     }
 }

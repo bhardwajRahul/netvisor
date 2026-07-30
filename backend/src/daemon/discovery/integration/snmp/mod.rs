@@ -286,12 +286,25 @@ impl DiscoveryIntegration for SnmpIntegration {
 
         // Query LLDP neighbors
         let lldp = query_or_default(ip, "lldp", query_lldp_neighbors(&mut session, ip)).await;
+        // Two different questions, deliberately not one flag.
+        //
+        // `lldp_complete` — did the walk finish? An agent with no LLDP-MIB answers immediately
+        // and completely, so this stays true and no shortfall is reported. Warning about it
+        // every scan would be the same noise the bridge-MIB groups used to produce.
+        //
+        // `lldp_authoritative` — may this result overwrite what the server holds? Only a device
+        // that *has* the MIB and reports no neighbours is saying "there are none". Answering
+        // `noSuchObject` says nothing about neighbours, and treating it as authority erased the
+        // rows the UniFi integration writes for these very switches — the only source of LLDP
+        // they have — whenever the SNMP pass happened to land second.
         let lldp_complete = lldp.complete;
+        let lldp_authoritative = lldp.complete && !lldp.unsupported;
         let mut lldp_neighbors = lldp.records;
         tracing::debug!(
             ip = %ip,
             count = lldp_neighbors.len(),
             complete = lldp_complete,
+            unsupported = lldp.unsupported,
             "LLDP neighbors discovered"
         );
         let lldp_count = lldp_neighbors.len();
@@ -533,7 +546,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         // cut-short walk is indistinguishable from a device reporting nothing, and for the
         // neighbour fields losing them drops the row out of L2 resolution for good.
         host_data.set_interface_data_complete(InterfaceDataComplete {
-            lldp: lldp_complete,
+            lldp: lldp_authoritative,
             cdp: cdp_complete,
             fdb: fdb_complete,
             vlan_membership: vlan_membership_complete,
