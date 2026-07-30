@@ -44,8 +44,15 @@ pub const SNMP_SESSION_TIMEOUT: Duration = Duration::from_secs(5);
 /// ~2s instead of up to 7s. A responsive device answers in well under this on a LAN.
 pub const SNMP_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Default timeout for table walks (longer since they involve multiple requests)
-pub const SNMP_WALK_TIMEOUT: Duration = Duration::from_secs(30);
+/// Default timeout for table walks (longer since they involve multiple requests).
+///
+/// Sized against real switches rather than a round number: a busy device's bridge FDB and
+/// per-port VLAN membership are the two largest tables SNMP reads, and at 30s they were being
+/// cut short often enough that operators saw "incomplete" warnings on every scan. Raising this
+/// only costs time on devices that are genuinely slow — a healthy walk returns as soon as it is
+/// done. Keep [`super::SnmpIntegration::timeout`] above `13 * SNMP_WALK_TIMEOUT`, since the
+/// walks run sequentially and the outer cap would otherwise kill the last ones first.
+pub const SNMP_WALK_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Maximum number of varbinds to process in a single walk
 pub const MAX_WALK_ENTRIES: usize = 10000;

@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use crate::daemon::discovery::credentials::resolve_credentials_for_ip;
 use crate::daemon::discovery::service::ops::{DiscoveryOps, HostData};
+use crate::daemon::discovery::service::warnings::{CredentialIssue, CredentialIssueReason};
 use crate::daemon::utils::base::PlatformDaemonUtils;
 use crate::server::credentials::r#impl::mapping::{
     CredentialMapping, CredentialQueryPayload, CredentialQueryPayloadDiscriminants,
@@ -42,6 +43,10 @@ pub struct IntegrationProbeResults {
         HashMap<CredentialQueryPayloadDiscriminants, (Option<Uuid>, CredentialQueryPayload)>,
     /// Ports discovered by integration probes (added to open_ports).
     pub additional_ports: Vec<PortType>,
+    /// IP-targeted credentials that produced nothing at this address, for the caller to
+    /// surface. Only credentials the user deliberately assigned to a host appear here — a
+    /// network default failing is routine, since it is tried at every address in the subnet.
+    pub credential_issues: Vec<CredentialIssue>,
 }
 
 /// Probe all integrations for a host IP against credential mappings.
@@ -66,6 +71,7 @@ pub async fn probe_integrations(
         probe_handles: HashMap::new(),
         working_credential_ids: HashMap::new(),
         additional_ports: Vec::new(),
+        credential_issues: Vec::new(),
     };
 
     // Combine caller's open ports with probe-discovered ports for gate checks
@@ -102,6 +108,18 @@ pub async fn probe_integrations(
         if !skip_gate {
             let gate_ports = integration.probe_gate_ports(credentials[0].0);
             if !gate_ports.is_empty() && !gate_ports.iter().all(|gp| all_open_ports.contains(gp)) {
+                // Silent until now, and the single likeliest reason a working credential
+                // appears to do nothing: the port on the credential does not match the port
+                // the service actually listens on, so no connection is ever attempted.
+                if let Some((credential, _)) = credentials.iter().find(|(_, id)| id.is_some()) {
+                    results.credential_issues.push(CredentialIssue {
+                        label: credential.discovery_label(),
+                        ip,
+                        reason: CredentialIssueReason::GateClosed {
+                            ports: gate_ports.clone(),
+                        },
+                    });
+                }
                 continue;
             }
         }
@@ -127,9 +145,14 @@ pub async fn probe_integrations(
             credentials,
         } = task;
         async move {
+            // Failures of IP-targeted credentials, reported only if nothing here wins.
+            // Reporting them eagerly would flag the benign try-many case: SnmpV1, V2c and V3
+            // assigned to one host are all attempted and the first success wins, so the ones
+            // tried before it "failed" without anything being wrong.
+            let mut targeted_failures: Vec<CredentialIssue> = Vec::new();
             for (credential, cred_id) in &credentials {
                 if cancel.is_cancelled() {
-                    return None;
+                    return (None, Vec::new());
                 }
                 match integration
                     .probe(&ProbeContext {
@@ -143,14 +166,33 @@ pub async fn probe_integrations(
                     .await
                 {
                     Ok(success) => {
-                        return Some((discriminant, *cred_id, (*credential).clone(), success));
+                        return (
+                            Some((discriminant, *cred_id, (*credential).clone(), success)),
+                            Vec::new(),
+                        );
                     }
                     Err(failure) => {
-                        tracing::debug!(ip = %ip, integration = ?discriminant, error = %failure, "Integration probe failed, trying next credential");
+                        // A network default is broadcast at every address in the subnet, so
+                        // its failure is the normal case and stays at debug — raising it
+                        // would emit hundreds of lines per /24 sweep. A credential the user
+                        // assigned to this specific host is a different matter: it failing is
+                        // news, and it was previously invisible at the default log level.
+                        if cred_id.is_some() {
+                            tracing::warn!(ip = %ip, integration = ?discriminant, error = %failure, "Configured credential was rejected");
+                            targeted_failures.push(CredentialIssue {
+                                label: credential.discovery_label(),
+                                ip,
+                                reason: CredentialIssueReason::ProbeRejected {
+                                    message: failure.to_string(),
+                                },
+                            });
+                        } else {
+                            tracing::debug!(ip = %ip, integration = ?discriminant, error = %failure, "Integration probe failed, trying next credential");
+                        }
                     }
                 }
             }
-            None
+            (None, targeted_failures)
         }
     }))
     .await;
@@ -162,7 +204,11 @@ pub async fn probe_integrations(
     // Merge in original mapping order so winner-selection is unchanged from the serial
     // version: for a given integration the last successful mapping's credential wins
     // (overwrite), and probe-discovered ports are unioned.
-    for (discriminant, cred_id, credential, success) in outcomes.into_iter().flatten() {
+    let (winners, failures): (Vec<_>, Vec<_>) = outcomes.into_iter().unzip();
+    results
+        .credential_issues
+        .extend(failures.into_iter().flatten());
+    for (discriminant, cred_id, credential, success) in winners.into_iter().flatten() {
         let ProbeSuccess {
             client_probe,
             ports,

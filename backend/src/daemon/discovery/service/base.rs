@@ -6,6 +6,9 @@ use std::{
     },
 };
 
+use crate::daemon::discovery::service::warnings::{
+    CredentialIssue, IncompleteInterfaceWalk, IncompleteSnmpWalk,
+};
 use crate::daemon::discovery::types::base::DiscoverySessionInfo;
 use crate::daemon::{
     discovery::{buffer::EntityBuffer, manager::DaemonDiscoverySessionManager},
@@ -122,7 +125,20 @@ pub struct DiscoverySession {
     /// Non-fatal warnings accumulated during the run (e.g. the discovery hit its
     /// time limit and left hosts un-scanned). Surfaced in the terminal session
     /// update so the user sees them without the run being marked as failed.
+    ///
+    /// Push here only for things that happen at most once per run. Anything that
+    /// fires per host belongs in one of the typed accumulators below, which are
+    /// rendered to a single line at finalize — a `Vec<String>` written per host
+    /// multiplies by the host count and drowns the notification.
     pub warnings: Arc<std::sync::Mutex<Vec<String>>>,
+    /// Per-host SNMP walks that could not be read in full. See
+    /// [`crate::daemon::discovery::service::warnings`].
+    pub incomplete_snmp_walks: Arc<std::sync::Mutex<Vec<IncompleteSnmpWalk>>>,
+    /// Per-host ifTable walks that could not be read in full. Separate from the above because
+    /// a truncated interface set and a truncated attribute column mean different things.
+    pub incomplete_interface_walks: Arc<std::sync::Mutex<Vec<IncompleteInterfaceWalk>>>,
+    /// IP-targeted credentials that produced nothing, and why.
+    pub credential_issues: Arc<std::sync::Mutex<Vec<CredentialIssue>>>,
 }
 
 impl DiscoverySession {
@@ -137,6 +153,9 @@ impl DiscoverySession {
             progress_range_start: Arc::new(AtomicU8::new(0)),
             progress_range_end: Arc::new(AtomicU8::new(100)),
             warnings: Arc::new(std::sync::Mutex::new(Vec::new())),
+            incomplete_snmp_walks: Arc::new(std::sync::Mutex::new(Vec::new())),
+            incomplete_interface_walks: Arc::new(std::sync::Mutex::new(Vec::new())),
+            credential_issues: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 

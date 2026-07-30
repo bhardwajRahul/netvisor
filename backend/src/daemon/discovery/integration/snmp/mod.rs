@@ -58,6 +58,7 @@ use crate::{
 
 use super::{DiscoveryIntegration, IntegrationContext, ProbeContext, ProbeFailure, ProbeSuccess};
 use crate::daemon::discovery::service::ops::HostData;
+use crate::daemon::discovery::service::warnings::{IncompleteInterfaceWalk, IncompleteSnmpWalk};
 
 /// Handle returned by a successful SNMP probe — carries the working credential and port.
 pub struct SnmpProbeHandle {
@@ -103,8 +104,12 @@ impl DiscoveryIntegration for SnmpIntegration {
         15
     }
 
+    /// Must exceed the sum of every sequential walk's own timeout, or the outer cap silently
+    /// kills the walks that run last — bridge FDB and per-port VLAN membership — which is
+    /// exactly the data operators were reporting as missing. 13 walks at
+    /// [`session::SNMP_WALK_TIMEOUT`] each is the worst case; this leaves headroom above it.
     fn timeout(&self) -> Duration {
-        Duration::from_secs(300)
+        Duration::from_secs(900)
     }
 
     // No probe_gate_ports — SNMP does its own UDP port probing.
@@ -257,29 +262,22 @@ impl DiscoveryIntegration for SnmpIntegration {
         // attribute column also finished (#649).
         host_data.set_interfaces_complete(if_table.set_complete);
 
-        // Surface an incomplete walk on the session rather than leaving it to debug logs, but say
+        // Record an incomplete walk on the session rather than leaving it to debug logs, keeping
         // which kind it was: a short interface list means interfaces are genuinely missing, while
         // a short attribute column only means some fields are blank. Reporting the second as
         // possible data loss sends operators hunting for interfaces that were never absent.
+        // Rendered to one line per run at finalize — one paragraph per device drowns the
+        // notification on any real network.
         let walk_fell_short = !if_table.set_complete || !if_table.attributes_complete;
         if !snmp_if_entries.is_empty()
             && walk_fell_short
             && let Ok(session_state) = ctx.ops.get_session().await
-            && let Ok(mut warnings) = session_state.warnings.lock()
+            && let Ok(mut records) = session_state.incomplete_interface_walks.lock()
         {
-            let count = snmp_if_entries.len();
-            warnings.push(if if_table.set_complete {
-                format!(
-                    "SNMP interface details for {ip} are incomplete — all {count} interfaces were \
-                     found, but the device stopped responding while reading their details, so \
-                     some descriptions or speeds may be blank."
-                )
-            } else {
-                format!(
-                    "SNMP interface collection for {ip} was incomplete — the device stopped \
-                     responding partway through its interface list, so some interfaces are \
-                     missing. Collected {count} so far."
-                )
+            records.push(IncompleteInterfaceWalk {
+                ip,
+                collected: snmp_if_entries.len(),
+                set_complete: if_table.set_complete,
             });
         }
 
@@ -516,28 +514,33 @@ impl DiscoveryIntegration for SnmpIntegration {
         });
 
         // A cut-short neighbour walk used to be entirely silent — it took a database query to
-        // discover that a switch had lost its chassis ids. Say so, and say what happened as a
-        // result: the previous values are kept, so this is a "no fresh data" notice rather than
-        // a loss.
-        let incomplete: Vec<&str> = [
-            (!lldp_complete).then_some("LLDP"),
-            (!cdp_complete).then_some("CDP"),
-            (!fdb_complete).then_some("bridge forwarding"),
-            (!vlan_membership_complete).then_some("VLAN membership"),
+        // discover that a switch had lost its chassis ids. Record it so the run can say so once,
+        // with what happened as a result: the previous values are kept, so this is a "no fresh
+        // data" notice rather than a loss.
+        //
+        // `returned_any` is carried per group because it separates two different problems that
+        // share the `complete: false` flag: a walk that returned rows and stopped was truncated,
+        // while one that returned nothing timed out or errored outright.
+        let incomplete: Vec<IncompleteSnmpWalk> = [
+            (!lldp_complete).then_some(("LLDP", lldp_count > 0)),
+            (!cdp_complete).then_some(("CDP", cdp_count > 0)),
+            (!fdb_complete).then_some(("bridge forwarding", fdb_count > 0)),
+            (!vlan_membership_complete)
+                .then_some(("VLAN membership", !port_vlan_membership.is_empty())),
         ]
         .into_iter()
         .flatten()
+        .map(|(group, returned_any)| IncompleteSnmpWalk {
+            ip,
+            group,
+            returned_any,
+        })
         .collect();
         if !incomplete.is_empty()
             && let Ok(session_state) = ctx.ops.get_session().await
-            && let Ok(mut warnings) = session_state.warnings.lock()
+            && let Ok(mut records) = session_state.incomplete_snmp_walks.lock()
         {
-            warnings.push(format!(
-                "SNMP {} data for {ip} was incomplete — the device stopped responding partway \
-                 through, so its previously discovered values were kept rather than overwritten. \
-                 They refresh on the next complete scan.",
-                incomplete.join(" and ")
-            ));
+            records.extend(incomplete);
         }
 
         // GH #649: one consolidated per-host collection record. Ties together the scattered

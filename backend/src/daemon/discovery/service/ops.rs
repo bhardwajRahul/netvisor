@@ -17,6 +17,7 @@ use crate::{
     daemon::{
         discovery::{
             buffer::EntityBuffer,
+            service::warnings,
             types::base::{
                 DiscoveryCriticalError, DiscoveryPhase, DiscoverySessionInfo,
                 DiscoverySessionUpdate,
@@ -444,12 +445,27 @@ impl DiscoveryOps {
             .last_progress
             .load(std::sync::atomic::Ordering::Relaxed);
 
-        // Non-fatal warnings accumulated during the run (e.g. hit the time limit).
-        let warnings = session
+        // Non-fatal warnings accumulated during the run (e.g. hit the time limit), plus one
+        // rendered line for each kind that fires per host — see
+        // `crate::daemon::discovery::service::warnings` for why those are aggregated here rather
+        // than pushed as they occur.
+        let mut warnings = session
             .warnings
             .lock()
             .map(|w| w.clone())
             .unwrap_or_default();
+
+        // Each renderer returns one entry per distinct problem rather than a paragraph, so the
+        // wire format stays a list the UI can render as bullets.
+        if let Ok(records) = session.incomplete_interface_walks.lock() {
+            warnings.extend(warnings::render_incomplete_interface_walks(&records));
+        }
+        if let Ok(records) = session.incomplete_snmp_walks.lock() {
+            warnings.extend(warnings::render_incomplete_snmp_walks(&records));
+        }
+        if let Ok(issues) = session.credential_issues.lock() {
+            warnings.extend(warnings::render_credential_issues(&issues));
+        }
 
         // Build the terminal update based on result
         let terminal_update = match &discovery_result {
