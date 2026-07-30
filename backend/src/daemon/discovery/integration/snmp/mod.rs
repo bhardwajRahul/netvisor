@@ -64,7 +64,7 @@ use super::{
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::{
     AttemptOutcome, IncompleteInterfaceWalk, SnmpCollectionOutcome, SnmpGroupOutcome,
-    snmp_walk_shortfalls,
+    UnresolvedLldpPorts, snmp_walk_shortfalls,
 };
 
 /// Handle returned by a successful SNMP probe — carries the working credential and port.
@@ -321,6 +321,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         // rows the UniFi integration writes for these very switches — the only source of LLDP
         // they have — whenever the SNMP pass happened to land second.
         let lldp_complete = lldp.complete;
+        let lldp_reason = lldp.reason;
         let lldp_authoritative = lldp.complete && !lldp.unsupported;
         let mut lldp_neighbors = lldp.records;
         tracing::debug!(
@@ -335,6 +336,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Query CDP neighbors (Cisco devices)
         let cdp = query_or_default(ip, "cdp", query_cdp_neighbors(&mut session, ip)).await;
         let cdp_complete = cdp.complete;
+        let cdp_reason = cdp.reason;
         let cdp_neighbors = cdp.records;
         tracing::debug!(
             ip = %ip,
@@ -360,7 +362,24 @@ impl DiscoveryIntegration for SnmpIntegration {
         } else {
             std::collections::HashMap::new()
         };
-        remap_lldp_local_ports(&mut lldp_neighbors, &lldp_local_ports, &snmp_if_entries);
+        let unresolved_ports =
+            remap_lldp_local_ports(&mut lldp_neighbors, &lldp_local_ports, &snmp_if_entries);
+        if unresolved_ports > 0 {
+            tracing::warn!(
+                ip = %ip,
+                unresolved = unresolved_ports,
+                total = lldp_count,
+                "LLDP neighbours could not be matched to a local interface; their links may \
+                 attach to the wrong port"
+            );
+            ctx.ops
+                .record_unresolved_lldp_ports(UnresolvedLldpPorts {
+                    ip,
+                    unresolved: unresolved_ports,
+                    total: lldp_count,
+                })
+                .await;
+        }
 
         // Query ipAddrTable for IP->ifIndex+netMask mappings
         let ip_addr_table =
@@ -407,6 +426,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         )
         .await;
         let fdb_complete = fdb.complete;
+        let fdb_reason = fdb.reason;
         let bridge_fdb = fdb.records;
         let fdb_count = bridge_fdb.len();
         tracing::info!(
@@ -436,6 +456,10 @@ impl DiscoveryIntegration for SnmpIntegration {
                 Err(e) => {
                     vlan_upsert = "failed";
                     tracing::warn!(ip = %ip, error = %e, "Failed to upsert VLANs, VLAN IDs will not be resolved");
+                    // The switch answered in full and we could not record it. Silent until now,
+                    // and the consequence is not small — every interface on this device loses
+                    // its VLAN ids, which looks identical to a switch that reports no VLANs.
+                    ctx.ops.record_vlan_recording_failure(ip).await;
                     std::collections::HashMap::new()
                 }
             }
@@ -451,6 +475,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         )
         .await;
         let vlan_membership_complete = port_vlan_membership.complete;
+        let vlan_membership_reason = port_vlan_membership.reason;
         let port_vlan_membership = port_vlan_membership.records;
         tracing::info!(
             ip = %ip,
@@ -593,22 +618,27 @@ impl DiscoveryIntegration for SnmpIntegration {
                 lldp: SnmpGroupOutcome {
                     complete: lldp_complete,
                     returned_any: lldp_count > 0,
+                    reason: lldp_reason,
                 },
                 cdp: SnmpGroupOutcome {
                     complete: cdp_complete,
                     returned_any: cdp_count > 0,
+                    reason: cdp_reason,
                 },
                 bridge_port_numbering: SnmpGroupOutcome {
                     complete: bridge_ports.complete,
                     returned_any: !bridge_ports.records.is_empty(),
+                    reason: bridge_ports.reason,
                 },
                 bridge_forwarding: SnmpGroupOutcome {
                     complete: fdb_complete,
                     returned_any: fdb_count > 0,
+                    reason: fdb_reason,
                 },
                 vlan_membership: SnmpGroupOutcome {
                     complete: vlan_membership_complete,
                     returned_any: !port_vlan_membership.is_empty(),
+                    reason: vlan_membership_reason,
                 },
             },
         );
@@ -832,21 +862,31 @@ impl DiscoveryIntegration for SnmpIntegration {
 /// interface table (`if_entries`). Neighbours whose port cannot be resolved keep their
 /// original index. An empty `loc_ports` is identity — correct for devices where
 /// `lldpLocPortNum == ifIndex` (e.g. Extreme VOSS) or that omit the table.
+/// Returns how many neighbours could not be resolved and kept their original index.
+///
+/// The count matters because this failure is *silent and wrong* rather than silent and missing.
+/// An unresolved neighbour keeps its `lldpLocPortNum`, which on a device where that is a separate
+/// namespace from `ifIndex` — ExtremeXOS reports ports 1..N against ifIndexes 1001+ — attaches
+/// the link to whatever interface happens to hold that index, or to none. A missing link is
+/// visibly missing; a link drawn to the wrong port is worse, because the map looks complete.
 fn remap_lldp_local_ports(
     neighbors: &mut [LldpNeighbor],
     loc_ports: &std::collections::HashMap<i32, LldpLocalPort>,
     if_entries: &[IfTableEntry],
-) {
+) -> usize {
+    // An empty table is the identity mapping, not a failure: devices where `lldpLocPortNum ==
+    // ifIndex` (Extreme VOSS, most vendors) legitimately omit it.
     if loc_ports.is_empty() {
-        return;
+        return 0;
     }
+    let mut unresolved = 0;
     for neighbor in neighbors.iter_mut() {
-        if let Some(if_index) =
-            resolve_lldp_local_port(neighbor.local_port_index, loc_ports, if_entries)
-        {
-            neighbor.local_port_index = if_index;
+        match resolve_lldp_local_port(neighbor.local_port_index, loc_ports, if_entries) {
+            Some(if_index) => neighbor.local_port_index = if_index,
+            None => unresolved += 1,
         }
     }
+    unresolved
 }
 
 /// Resolve a single `lldpLocPortNum` to an `ifIndex`. Returns `None` to keep the

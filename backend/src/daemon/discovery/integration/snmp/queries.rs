@@ -9,6 +9,8 @@ use std::net::IpAddr;
 use tokio::time::timeout;
 use tracing::{debug, trace, warn};
 
+use crate::daemon::discovery::service::warnings::ShortfallReason;
+
 use super::oids::{self, oid_to_vec, parse_oid};
 use super::session::{MAX_WALK_ENTRIES, SNMP_TIMEOUT};
 use super::types::{
@@ -384,6 +386,12 @@ pub struct SnmpCollection<T> {
     /// also writes and so the only ones where overwriting with an empty result destroys data.
     /// Left `false` elsewhere, where nothing consumes it.
     pub unsupported: bool,
+    /// Why it came up short, for the operator-facing warning.
+    ///
+    /// Separate from `unsupported`, which gates a *data* decision (may this overwrite what the
+    /// server holds?) rather than a reporting one. They agree where both are set; keeping them
+    /// apart means a change to how something reads cannot silently change what is stored.
+    pub reason: Option<ShortfallReason>,
 }
 
 impl<T: Default> Default for SnmpCollection<T> {
@@ -392,6 +400,9 @@ impl<T: Default> Default for SnmpCollection<T> {
             records: T::default(),
             complete: false,
             unsupported: false,
+            // `query_or_default` produces this when a whole query timed out or errored, and it
+            // genuinely cannot say more — the future was dropped before it could report.
+            reason: Some(ShortfallReason::NoAnswer),
         }
     }
 }
@@ -445,6 +456,25 @@ enum WalkStop {
     StaleResponse,
 }
 
+impl From<WalkStop> for Option<ShortfallReason> {
+    /// Collapse the walk's own vocabulary into the four things an operator can act on
+    /// differently. The distinctions dropped here (`EmptyResponse` vs `Transport`) are
+    /// diagnostic detail, already in the truncation log with the host address.
+    fn from(stop: WalkStop) -> Self {
+        match stop {
+            WalkStop::EndOfSubtree => None,
+            WalkStop::EndOfMibView => Some(ShortfallReason::Unsupported),
+            WalkStop::EntryCap => Some(ShortfallReason::EntryCap {
+                limit: MAX_WALK_ENTRIES,
+            }),
+            WalkStop::NonAdvancingOid | WalkStop::StaleResponse => {
+                Some(ShortfallReason::Desynchronised)
+            }
+            WalkStop::Transport | WalkStop::EmptyResponse => Some(ShortfallReason::NoAnswer),
+        }
+    }
+}
+
 impl WalkStop {
     fn is_truncation(self) -> bool {
         !matches!(self, Self::EndOfSubtree | Self::EndOfMibView)
@@ -467,7 +497,45 @@ impl WalkStop {
     }
 }
 
-/// Walk one column, recording in `complete` whether it reached the end.
+/// What a multi-column query managed across all its columns.
+///
+/// Replaces a bare `&mut bool`: the flag alone said *that* something fell short and the reason
+/// stopped at the walk, so the operator-facing line had to guess — it claimed a query "usually
+/// timed out" whether it had hit our entry cap, been answered out of step, or found a MIB the
+/// device does not implement.
+#[derive(Debug, Clone, Copy)]
+pub struct Shortfall {
+    pub complete: bool,
+    pub reason: Option<ShortfallReason>,
+}
+
+impl Default for Shortfall {
+    fn default() -> Self {
+        Self {
+            complete: true,
+            reason: None,
+        }
+    }
+}
+
+impl Shortfall {
+    /// Fold in one column's stop.
+    ///
+    /// First reason wins. Columns are walked in order and a session that has gone wrong tends to
+    /// stay wrong, so the first failure is the one that explains the rest — a later `NoAnswer`
+    /// on a session already desynchronised is a consequence, not a second finding.
+    fn record(&mut self, stop: WalkStop) {
+        if stop.is_complete() {
+            return;
+        }
+        self.complete = false;
+        if self.reason.is_none() {
+            self.reason = Option::<ShortfallReason>::from(stop);
+        }
+    }
+}
+
+/// Walk one column, folding its outcome into `shortfall`.
 ///
 /// Every multi-column query needs this and none of them had it: `walk_subtree` never returns
 /// `Err`, so the `?` these call sites used was dead code and a truncated column was invisible.
@@ -475,7 +543,7 @@ async fn walk_column<T, F>(
     session: &mut T,
     ip: IpAddr,
     base_oid_str: &str,
-    complete: &mut bool,
+    shortfall: &mut Shortfall,
     on_entry: F,
 ) -> WalkStop
 where
@@ -485,9 +553,7 @@ where
     let stop = walk_subtree(session, ip, base_oid_str, on_entry)
         .await
         .unwrap_or(WalkStop::Transport);
-    if !stop.is_complete() {
-        *complete = false;
-    }
+    shortfall.record(stop);
     stop
 }
 
@@ -500,7 +566,7 @@ pub async fn walk_if_table<T: SnmpWalkTransport>(
 ) -> Result<IfTableWalk> {
     let mut entries: HashMap<i32, IfTableEntry> = HashMap::new();
     // Cleared to false the moment any column walk is cut short (error/timeout/limit).
-    let mut complete = true;
+    let mut shortfall = Shortfall::default();
     // Whether the index column specifically survived. `None` until it has been walked.
     let mut index_column_complete: Option<bool> = None;
 
@@ -589,7 +655,7 @@ pub async fn walk_if_table<T: SnmpWalkTransport>(
         // A column cut short (timeout/error/limit) means this is NOT an authoritative
         // full ifTable — the server must not prune stale interfaces against it (#649).
         if !walked {
-            complete = false;
+            shortfall.complete = false;
         }
 
         if column_name == "ifIndex" {
@@ -608,7 +674,7 @@ pub async fn walk_if_table<T: SnmpWalkTransport>(
             // Something answered for an interface this device never listed. Whatever the cause,
             // what we hold is not a faithful copy of its ifTable.
             foreign_rows += column_foreign;
-            complete = false;
+            shortfall.complete = false;
             tracing::warn!(
                 ip = %ip,
                 column = column_name,
@@ -621,6 +687,12 @@ pub async fn walk_if_table<T: SnmpWalkTransport>(
 
     let mut result: Vec<IfTableEntry> = entries.into_values().collect();
     result.sort_by_key(|e| e.if_index);
+
+    // The ifTable keeps its own two-flag model (`set_complete` / `attributes_complete`) rather
+    // than reporting a `ShortfallReason`: a truncated interface *set* and a truncated attribute
+    // *column* mean different things to the server, and only the first may gate pruning. The
+    // accumulator is used here purely for the attribute-column flag.
+    let complete = shortfall.complete;
 
     // A foreign row means something answered for an interface this device never listed, so the
     // set itself is suspect — not just its attributes.
@@ -666,7 +738,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     ip: IpAddr,
 ) -> Result<SnmpCollection<Vec<LldpNeighbor>>> {
     let mut neighbors: HashMap<(i32, i32), LldpNeighbor> = HashMap::new();
-    let mut complete = true;
+    let mut shortfall = Shortfall::default();
 
     // LLDP remote table uses a complex index: lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex
     // We'll walk the columns and extract the local port from the OID
@@ -700,49 +772,55 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // lldpRemEntry index: timeMark.localPortNum.remIndex
-        let stop = walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
-            if suffix.len() < 3 {
-                return;
-            }
-            let local_port = suffix[1] as i32;
-            let rem_index = suffix[2] as i32;
-            let neighbor =
-                neighbors
-                    .entry((local_port, rem_index))
-                    .or_insert_with(|| LldpNeighbor {
-                        local_port_index: local_port,
-                        remote_chassis_id_subtype: None,
-                        remote_chassis_id_bytes: None,
-                        remote_port_id_subtype: None,
-                        remote_port_id_bytes: None,
-                        remote_port_desc: None,
-                        remote_sys_name: None,
-                        remote_sys_desc: None,
-                        remote_mgmt_addr: None,
-                    });
-            match column_name {
-                "remChassisIdSubtype" => {
-                    neighbor.remote_chassis_id_subtype = value_to_i32(value).map(|v| v as u8)
+        let stop = walk_column(
+            session,
+            ip,
+            base_oid_str,
+            &mut shortfall,
+            |suffix, value| {
+                if suffix.len() < 3 {
+                    return;
                 }
-                "remChassisId" => {
-                    if let Value::OctetString(bytes) = value {
-                        neighbor.remote_chassis_id_bytes = Some(bytes.to_vec());
+                let local_port = suffix[1] as i32;
+                let rem_index = suffix[2] as i32;
+                let neighbor =
+                    neighbors
+                        .entry((local_port, rem_index))
+                        .or_insert_with(|| LldpNeighbor {
+                            local_port_index: local_port,
+                            remote_chassis_id_subtype: None,
+                            remote_chassis_id_bytes: None,
+                            remote_port_id_subtype: None,
+                            remote_port_id_bytes: None,
+                            remote_port_desc: None,
+                            remote_sys_name: None,
+                            remote_sys_desc: None,
+                            remote_mgmt_addr: None,
+                        });
+                match column_name {
+                    "remChassisIdSubtype" => {
+                        neighbor.remote_chassis_id_subtype = value_to_i32(value).map(|v| v as u8)
                     }
-                }
-                "remPortIdSubtype" => {
-                    neighbor.remote_port_id_subtype = value_to_i32(value).map(|v| v as u8)
-                }
-                "remPortId" => {
-                    if let Value::OctetString(bytes) = value {
-                        neighbor.remote_port_id_bytes = Some(bytes.to_vec());
+                    "remChassisId" => {
+                        if let Value::OctetString(bytes) = value {
+                            neighbor.remote_chassis_id_bytes = Some(bytes.to_vec());
+                        }
                     }
+                    "remPortIdSubtype" => {
+                        neighbor.remote_port_id_subtype = value_to_i32(value).map(|v| v as u8)
+                    }
+                    "remPortId" => {
+                        if let Value::OctetString(bytes) = value {
+                            neighbor.remote_port_id_bytes = Some(bytes.to_vec());
+                        }
+                    }
+                    "remPortDesc" => neighbor.remote_port_desc = value_to_string(value),
+                    "remSysName" => neighbor.remote_sys_name = value_to_string(value),
+                    "remSysDesc" => neighbor.remote_sys_desc = value_to_string(value),
+                    _ => {}
                 }
-                "remPortDesc" => neighbor.remote_port_desc = value_to_string(value),
-                "remSysName" => neighbor.remote_sys_name = value_to_string(value),
-                "remSysDesc" => neighbor.remote_sys_desc = value_to_string(value),
-                _ => {}
-            }
-        })
+            },
+        )
         .await;
         if !stop.is_unsupported() {
             all_columns_unsupported = false;
@@ -756,12 +834,14 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     let man_base_oid_str = oids::lldp::remote::entry::LLDP_REM_MAN_ADDR_IF_SUBTYPE;
     // Management address is optional enrichment; ignore walk errors (keeps the
     // neighbours already collected above).
-    let mut mgmt_complete = true;
+    // Management address is optional enrichment, so it gets its own accumulator and its outcome
+    // is not folded into the neighbours'.
+    let mut mgmt = Shortfall::default();
     walk_column(
         session,
         ip,
         man_base_oid_str,
-        &mut mgmt_complete,
+        &mut mgmt,
         |suffix, _value| {
             // suffix = timeMark, localPortNum, remIndex, addrSubtype, addrLen, addr...
             if suffix.len() < 5 {
@@ -788,7 +868,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     .await;
     // A missing management address never gates resolution (topology.rs matches on chassis/port
     // only), so a truncated walk here is not a reason to withhold the neighbours themselves.
-    if !mgmt_complete {
+    if !mgmt.complete {
         debug!(ip = %ip, "LLDP management-address walk was cut short");
     }
 
@@ -803,7 +883,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         .filter(|n| n.remote_chassis_id_subtype.is_some() && n.remote_chassis_id_bytes.is_some())
         .collect();
     if result.len() != before {
-        complete = false;
+        shortfall.complete = false;
         warn!(
             ip = %ip,
             dropped = before - result.len(),
@@ -817,15 +897,16 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     debug!(
         ip = %ip,
         neighbors = result.len(),
-        complete,
+        complete = shortfall.complete,
         unsupported,
         "LLDP query finished"
     );
 
     Ok(SnmpCollection {
         records: result,
-        complete,
+        complete: shortfall.complete,
         unsupported,
+        reason: shortfall.reason,
     })
 }
 
@@ -947,7 +1028,7 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
     ip: IpAddr,
 ) -> Result<SnmpCollection<Vec<CdpNeighbor>>> {
     let mut neighbors: HashMap<(i32, i32), CdpNeighbor> = HashMap::new();
-    let mut complete = true;
+    let mut shortfall = Shortfall::default();
 
     let columns = [
         (oids::cdp::entry::CDP_CACHE_DEVICE_ID, "deviceId"),
@@ -962,37 +1043,43 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // CDP index: cdpCacheIfIndex.cdpCacheDeviceIndex
-        let stop = walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
-            if suffix.len() < 2 {
-                return;
-            }
-            let if_index = suffix[0] as i32;
-            let device_index = suffix[1] as i32;
-            let neighbor = neighbors
-                .entry((if_index, device_index))
-                .or_insert_with(|| CdpNeighbor {
-                    local_port_index: if_index,
-                    remote_device_id: None,
-                    remote_port_id: None,
-                    remote_platform: None,
-                    remote_address: None,
-                });
-            match column_name {
-                "deviceId" => neighbor.remote_device_id = value_to_string(value),
-                "devicePort" => neighbor.remote_port_id = value_to_string(value),
-                "platform" => neighbor.remote_platform = value_to_string(value),
-                "address" => {
-                    // CDP address is encoded as 4 bytes for IPv4
-                    if let Value::OctetString(bytes) = value
-                        && bytes.len() == 4
-                    {
-                        neighbor.remote_address =
-                            Some(IpAddr::from([bytes[0], bytes[1], bytes[2], bytes[3]]));
-                    }
+        let stop = walk_column(
+            session,
+            ip,
+            base_oid_str,
+            &mut shortfall,
+            |suffix, value| {
+                if suffix.len() < 2 {
+                    return;
                 }
-                _ => {}
-            }
-        })
+                let if_index = suffix[0] as i32;
+                let device_index = suffix[1] as i32;
+                let neighbor = neighbors
+                    .entry((if_index, device_index))
+                    .or_insert_with(|| CdpNeighbor {
+                        local_port_index: if_index,
+                        remote_device_id: None,
+                        remote_port_id: None,
+                        remote_platform: None,
+                        remote_address: None,
+                    });
+                match column_name {
+                    "deviceId" => neighbor.remote_device_id = value_to_string(value),
+                    "devicePort" => neighbor.remote_port_id = value_to_string(value),
+                    "platform" => neighbor.remote_platform = value_to_string(value),
+                    "address" => {
+                        // CDP address is encoded as 4 bytes for IPv4
+                        if let Value::OctetString(bytes) = value
+                            && bytes.len() == 4
+                        {
+                            neighbor.remote_address =
+                                Some(IpAddr::from([bytes[0], bytes[1], bytes[2], bytes[3]]));
+                        }
+                    }
+                    _ => {}
+                }
+            },
+        )
         .await;
         if !stop.is_unsupported() {
             all_columns_unsupported = false;
@@ -1007,7 +1094,7 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
         .filter(|n| n.remote_device_id.is_some())
         .collect();
     if result.len() != before {
-        complete = false;
+        shortfall.complete = false;
         warn!(
             ip = %ip,
             dropped = before - result.len(),
@@ -1018,15 +1105,16 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
     debug!(
         ip = %ip,
         neighbors = result.len(),
-        complete,
+        complete = shortfall.complete,
         unsupported,
         "CDP query finished"
     );
 
     Ok(SnmpCollection {
         records: result,
-        complete,
+        complete: shortfall.complete,
         unsupported,
+        reason: shortfall.reason,
     })
 }
 
@@ -1206,13 +1294,13 @@ pub async fn query_bridge_port_mapping<T: SnmpWalkTransport>(
     ip: IpAddr,
 ) -> Result<SnmpCollection<HashMap<i32, i32>>> {
     let mut port_to_if_index: HashMap<i32, i32> = HashMap::new();
-    let mut complete = true;
+    let mut shortfall = Shortfall::default();
     // OID suffix is the bridge port number; value is the ifIndex.
     walk_column(
         session,
         ip,
         oids::bridge::DOT1D_BASE_PORT_IF_INDEX,
-        &mut complete,
+        &mut shortfall,
         |suffix, value| {
             if let Some(&port_u64) = suffix.last()
                 && let Some(if_index) = value_to_i32(value)
@@ -1225,8 +1313,9 @@ pub async fn query_bridge_port_mapping<T: SnmpWalkTransport>(
 
     Ok(SnmpCollection {
         records: port_to_if_index,
-        complete,
+        complete: shortfall.complete,
         unsupported: false,
+        reason: shortfall.reason,
     })
 }
 
@@ -1253,7 +1342,12 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     // `query_port_vlan_membership`. Both FDB tables reference this same dot1dBasePort space.
     bridge_ports: &SnmpCollection<HashMap<i32, i32>>,
 ) -> Result<SnmpCollection<Vec<BridgeFdbEntry>>> {
-    let mut complete = bridge_ports.complete;
+    // Seeded from the shared bridge-port walk: when *that* failed, everything keyed by it
+    // inherits the reason rather than inventing one of its own.
+    let mut shortfall = Shortfall {
+        complete: bridge_ports.complete,
+        reason: bridge_ports.reason,
+    };
     let port_to_if_index = &bridge_ports.records;
 
     // Step 2: Walk legacy dot1dTpFdbTable columns.
@@ -1267,23 +1361,29 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // OID suffix is a 6-octet MAC encoded as 6 sub-ids.
-        walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
-            if suffix.len() != 6 {
-                return;
-            }
-            let key = suffix
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<_>>()
-                .join(".");
-            let entry = fdb_entries.entry(key).or_default();
-            match column_name {
-                "address" => entry.mac_address = value_to_mac(value),
-                "port" => entry.port = value_to_i32(value),
-                "status" => entry.status = value_to_i32(value),
-                _ => {}
-            }
-        })
+        walk_column(
+            session,
+            ip,
+            base_oid_str,
+            &mut shortfall,
+            |suffix, value| {
+                if suffix.len() != 6 {
+                    return;
+                }
+                let key = suffix
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                let entry = fdb_entries.entry(key).or_default();
+                match column_name {
+                    "address" => entry.mac_address = value_to_mac(value),
+                    "port" => entry.port = value_to_i32(value),
+                    "status" => entry.status = value_to_i32(value),
+                    _ => {}
+                }
+            },
+        )
         .await;
     }
 
@@ -1293,7 +1393,7 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     let legacy_count = fdb_entries.len();
     let qbridge = walk_qbridge_fdb(session, ip).await.unwrap_or_default();
     if !qbridge.complete {
-        complete = false;
+        shortfall.complete = false;
     }
     let qbridge = qbridge.records;
     let qbridge_count = qbridge.len();
@@ -1329,14 +1429,15 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
         legacy_dot1d = legacy_count,
         qbridge_dot1q = qbridge_count,
         port_mappings = port_to_if_index.len(),
-        complete = complete,
+        complete = shortfall.complete,
         "Bridge FDB walk finished"
     );
 
     Ok(SnmpCollection {
         records: result,
-        complete,
+        complete: shortfall.complete,
         unsupported: false,
+        reason: shortfall.reason,
     })
 }
 
@@ -1353,7 +1454,7 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
     ip: IpAddr,
 ) -> Result<SnmpCollection<HashMap<String, FdbBuilder>>> {
     let mut entries: HashMap<String, FdbBuilder> = HashMap::new();
-    let mut complete = true;
+    let mut shortfall = Shortfall::default();
 
     let columns = [
         (oids::bridge::q_fdb_entry::DOT1Q_TP_FDB_PORT, "port"),
@@ -1362,35 +1463,42 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // Q-BRIDGE index = dot1qFdbId (1 sub-id) + MAC (6 octets).
-        walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
-            let Some(mac) = qbridge_fdb_index_to_mac(suffix) else {
-                return;
-            };
-            if suffix.len() < 7 {
-                return;
-            }
-            // Key by MAC alone (drop fdb_id) so the same MAC learned across VLANs
-            // collapses to one entry and merges with the legacy table's MAC key.
-            let key = suffix[1..7]
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<_>>()
-                .join(".");
-            let entry = entries.entry(key).or_default();
-            entry.mac_address = Some(mac);
-            match column_name {
-                "port" => entry.port = value_to_i32(value),
-                "status" => entry.status = value_to_i32(value),
-                _ => {}
-            }
-        })
+        walk_column(
+            session,
+            ip,
+            base_oid_str,
+            &mut shortfall,
+            |suffix, value| {
+                let Some(mac) = qbridge_fdb_index_to_mac(suffix) else {
+                    return;
+                };
+                if suffix.len() < 7 {
+                    return;
+                }
+                // Key by MAC alone (drop fdb_id) so the same MAC learned across VLANs
+                // collapses to one entry and merges with the legacy table's MAC key.
+                let key = suffix[1..7]
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                let entry = entries.entry(key).or_default();
+                entry.mac_address = Some(mac);
+                match column_name {
+                    "port" => entry.port = value_to_i32(value),
+                    "status" => entry.status = value_to_i32(value),
+                    _ => {}
+                }
+            },
+        )
         .await;
     }
 
     Ok(SnmpCollection {
         records: entries,
-        complete,
+        complete: shortfall.complete,
         unsupported: false,
+        reason: shortfall.reason,
     })
 }
 
@@ -1527,7 +1635,12 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
     // `query_bridge_fdb`; every result below is keyed by bridge port.
     bridge_ports: &SnmpCollection<HashMap<i32, i32>>,
 ) -> Result<SnmpCollection<Vec<PortVlanMembership>>> {
-    let mut complete = bridge_ports.complete;
+    // Seeded from the shared bridge-port walk: when *that* failed, everything keyed by it
+    // inherits the reason rather than inventing one of its own.
+    let mut shortfall = Shortfall {
+        complete: bridge_ports.complete,
+        reason: bridge_ports.reason,
+    };
     let port_to_if_index = &bridge_ports.records;
 
     if port_to_if_index.is_empty() {
@@ -1537,8 +1650,9 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
         );
         return Ok(SnmpCollection {
             records: Vec::new(),
-            complete,
+            complete: shortfall.complete,
             unsupported: false,
+            reason: shortfall.reason,
         });
     }
 
@@ -1549,7 +1663,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
         session,
         ip,
         oids::vlan::q_bridge::DOT1Q_PVID,
-        &mut complete,
+        &mut shortfall,
         |suffix, value| {
             if let Some(&port_u64) = suffix.last()
                 && let Some(vlan_id) = value_to_u16(value)
@@ -1567,7 +1681,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
         session,
         ip,
         oids::vlan::q_bridge::DOT1Q_VLAN_CURRENT_EGRESS_PORTS,
-        &mut complete,
+        &mut shortfall,
         |suffix, value| {
             if let Some(&vlan_u64) = suffix.last()
                 && let Value::OctetString(bytes) = value
@@ -1587,7 +1701,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
         session,
         ip,
         oids::vlan::q_bridge::DOT1Q_VLAN_CURRENT_UNTAGGED_PORTS,
-        &mut complete,
+        &mut shortfall,
         |suffix, value| {
             if let Some(&vlan_u64) = suffix.last()
                 && let Value::OctetString(bytes) = value
@@ -1643,8 +1757,9 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
 
     Ok(SnmpCollection {
         records: result,
-        complete,
+        complete: shortfall.complete,
         unsupported: false,
+        reason: shortfall.reason,
     })
 }
 

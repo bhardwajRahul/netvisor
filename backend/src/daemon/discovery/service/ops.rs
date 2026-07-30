@@ -463,6 +463,12 @@ impl DiscoveryOps {
         if let Ok(records) = session.incomplete_snmp_walks.lock() {
             warnings.extend(warnings::render_incomplete_snmp_walks(&records));
         }
+        if let Ok(records) = session.unresolved_lldp_ports.lock() {
+            warnings.extend(warnings::render_unresolved_lldp_ports(&records));
+        }
+        if let Ok(records) = session.vlan_recording_failures.lock() {
+            warnings.extend(warnings::render_vlan_recording_failures(&records));
+        }
         if let Ok(issues) = session.credential_issues.lock() {
             warnings.extend(warnings::render_credential_issues(&issues));
         }
@@ -668,6 +674,27 @@ impl DiscoveryOps {
             && let Ok(mut buffer) = session.incomplete_snmp_walks.lock()
         {
             buffer.extend(records);
+        }
+    }
+
+    /// Record LLDP neighbours whose local port could not be matched to an interface.
+    pub async fn record_unresolved_lldp_ports(&self, record: warnings::UnresolvedLldpPorts) {
+        if record.unresolved == 0 {
+            return;
+        }
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.unresolved_lldp_ports.lock()
+        {
+            buffer.push(record);
+        }
+    }
+
+    /// Record a device whose VLAN table was read and could not be saved.
+    pub async fn record_vlan_recording_failure(&self, ip: std::net::IpAddr) {
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.vlan_recording_failures.lock()
+        {
+            buffer.push(warnings::VlanRecordingFailed { ip });
         }
     }
 

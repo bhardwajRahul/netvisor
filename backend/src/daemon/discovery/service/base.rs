@@ -7,7 +7,8 @@ use std::{
 };
 
 use crate::daemon::discovery::service::warnings::{
-    CredentialIssue, IncompleteInterfaceWalk, IncompleteSnmpWalk,
+    CredentialIssue, IncompleteInterfaceWalk, IncompleteSnmpWalk, UnresolvedLldpPorts,
+    VlanRecordingFailed,
 };
 use crate::daemon::discovery::types::base::DiscoverySessionInfo;
 use crate::daemon::{
@@ -150,6 +151,11 @@ pub struct DiscoverySession {
     /// Per-host ifTable walks that could not be read in full. Separate from the above because
     /// a truncated interface set and a truncated attribute column mean different things.
     pub(super) incomplete_interface_walks: Arc<std::sync::Mutex<Vec<IncompleteInterfaceWalk>>>,
+    /// LLDP neighbours whose local port could not be matched to an interface. Not a shortfall in
+    /// a walk — the data arrived, and could not be placed.
+    pub(super) unresolved_lldp_ports: Arc<std::sync::Mutex<Vec<UnresolvedLldpPorts>>>,
+    /// Devices whose VLAN table was read and could not be saved.
+    pub(super) vlan_recording_failures: Arc<std::sync::Mutex<Vec<VlanRecordingFailed>>>,
     /// IP-targeted credentials that produced nothing, and why.
     pub(super) credential_issues: Arc<std::sync::Mutex<Vec<CredentialIssue>>>,
 }
@@ -168,6 +174,8 @@ impl DiscoverySession {
             warnings: Arc::new(std::sync::Mutex::new(Vec::new())),
             incomplete_snmp_walks: Arc::new(std::sync::Mutex::new(Vec::new())),
             incomplete_interface_walks: Arc::new(std::sync::Mutex::new(Vec::new())),
+            unresolved_lldp_ports: Arc::new(std::sync::Mutex::new(Vec::new())),
+            vlan_recording_failures: Arc::new(std::sync::Mutex::new(Vec::new())),
             credential_issues: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }

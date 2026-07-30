@@ -50,6 +50,26 @@ fn list_addresses_prose(ips: &BTreeSet<IpAddr>) -> String {
 // Incomplete SNMP walks
 // ============================================================================
 
+/// Why a group of SNMP data came up short.
+///
+/// The renderer used to guess — its empty-walk line said the query "usually timed out" — because
+/// the reason stopped at the walk and never travelled with the result. Each of these calls for a
+/// different sentence, and two of them are not faults at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ShortfallReason {
+    /// Stopped at our own entry cap. The device is fine and larger than we read.
+    ///
+    /// Carries the limit so the renderer can name it without reaching into the SNMP module for
+    /// a constant — the number is the whole point of the sentence.
+    EntryCap { limit: usize },
+    /// The agent stopped answering partway.
+    NoAnswer,
+    /// The agent answered out of step with what was asked — a stale or non-advancing response.
+    Desynchronised,
+    /// The agent does not implement this MIB. Not a fault, and no later scan will change it.
+    Unsupported,
+}
+
 /// An SNMP data group a walk may come up short on.
 ///
 /// An enum rather than a free string so the renderer below is exhaustive: every group has to
@@ -89,6 +109,65 @@ impl SnmpWalkGroup {
     }
 }
 
+/// LLDP neighbours whose local port could not be matched to an interface on the device.
+///
+/// Kept apart from [`IncompleteSnmpWalk`] because it is a different kind of problem and reads
+/// nothing like one. The walk succeeded — the neighbours are there — but their `lldpLocPortNum`
+/// could not be translated to an `ifIndex`, so each one is attached to whatever interface holds
+/// that number, or to nothing. The result is a map that looks complete and is wrong in a
+/// specific place, which no "data was incomplete" sentence describes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnresolvedLldpPorts {
+    pub ip: IpAddr,
+    pub unresolved: usize,
+    pub total: usize,
+}
+
+/// One line naming the devices, or empty if there were none.
+pub fn render_unresolved_lldp_ports(records: &[UnresolvedLldpPorts]) -> Vec<String> {
+    let affected: BTreeSet<IpAddr> = records
+        .iter()
+        .filter(|r| r.unresolved > 0)
+        .map(|r| r.ip)
+        .collect();
+    if affected.is_empty() {
+        return Vec::new();
+    }
+    let total: usize = records.iter().map(|r| r.unresolved).sum();
+    vec![format!(
+        "{} reported {total} LLDP neighbour{} whose local port does not match any interface on \
+         the device, so those links may be drawn against the wrong port. This usually means the \
+         switch numbers its LLDP ports separately from its interfaces.",
+        list_addresses_prose(&affected),
+        if total == 1 { "" } else { "s" }
+    )]
+}
+
+/// A device whose VLAN table was read and could not be recorded.
+///
+/// Not a shortfall in a walk, and it must not read like one: the switch answered in full, and the
+/// upsert to the server failed. Reporting it as "VLAN membership was incomplete" would send an
+/// operator to inspect a switch that did nothing wrong, when the fault is on our side of the
+/// wire. The consequence is real either way — every interface on that device loses its VLAN ids.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VlanRecordingFailed {
+    pub ip: IpAddr,
+}
+
+/// One line naming the devices, or empty if there were none.
+pub fn render_vlan_recording_failures(records: &[VlanRecordingFailed]) -> Vec<String> {
+    let affected: BTreeSet<IpAddr> = records.iter().map(|r| r.ip).collect();
+    if affected.is_empty() {
+        return Vec::new();
+    }
+    vec![format!(
+        "The VLANs reported by {} could not be saved, so VLAN membership is missing from their \
+         interfaces. The devices answered correctly — this is a failure recording the result, and \
+         the daemon log has the underlying error.",
+        list_addresses_prose(&affected)
+    )]
+}
+
 /// One SNMP data group that a walk could not read in full, for one device.
 ///
 /// `returned_any` distinguishes the two cases the old single phrasing conflated. A walk that
@@ -101,6 +180,8 @@ pub struct IncompleteSnmpWalk {
     pub ip: IpAddr,
     pub group: SnmpWalkGroup,
     pub returned_any: bool,
+    /// Why it came up short, when the walk could establish that.
+    pub reason: Option<ShortfallReason>,
 }
 
 /// What one host's SNMP collection managed to read, per group.
@@ -111,6 +192,7 @@ pub struct IncompleteSnmpWalk {
 pub struct SnmpGroupOutcome {
     pub complete: bool,
     pub returned_any: bool,
+    pub reason: Option<ShortfallReason>,
 }
 
 /// Per-group outcomes for one host, as [`snmp_walk_shortfalls`] consumes them.
@@ -157,6 +239,7 @@ pub fn snmp_walk_shortfalls(ip: IpAddr, outcome: SnmpCollectionOutcome) -> Vec<I
         ip,
         group,
         returned_any: outcome.returned_any,
+        reason: outcome.reason,
     })
     .collect()
 }
@@ -172,56 +255,77 @@ pub fn render_incomplete_snmp_walks(records: &[IncompleteSnmpWalk]) -> Vec<Strin
         return Vec::new();
     }
 
-    // (returned_any, group) -> devices, then invert so identical device sets collapse.
+    // (returned_any, reason, group) -> devices, then invert so identical device sets collapse.
     //
-    // `returned_any` is part of the key, not a sentence appended afterwards. It is a property of
-    // one group's walk, so aggregating it per *device* produced lines that contradicted
-    // themselves — "192.168.7.230 did not finish reporting VLAN membership or bridge forwarding"
-    // immediately followed by "192.168.7.230 returned nothing at all", which reads as two
-    // incompatible claims about the same walk. Keyed this way, each line makes one claim.
-    let mut devices_by_group: BTreeMap<(bool, SnmpWalkGroup), BTreeSet<IpAddr>> = BTreeMap::new();
+    // `returned_any` and `reason` are part of the key, not sentences appended afterwards. Both are
+    // properties of one group's walk, so aggregating them per *device* produced lines that
+    // contradicted themselves — "192.168.7.230 did not finish reporting VLAN membership or bridge
+    // forwarding" immediately followed by "192.168.7.230 returned nothing at all", which reads as
+    // two incompatible claims about the same walk. Keyed this way, each line makes one claim.
+    type Key = (bool, Option<ShortfallReason>, SnmpWalkGroup);
+    let mut devices_by_group: BTreeMap<Key, BTreeSet<IpAddr>> = BTreeMap::new();
     for r in records {
         devices_by_group
-            .entry((r.returned_any, r.group))
+            .entry((r.returned_any, r.reason, r.group))
             .or_default()
             .insert(r.ip);
     }
-    let mut groups_by_devices: BTreeMap<(bool, BTreeSet<IpAddr>), Vec<SnmpWalkGroup>> =
-        BTreeMap::new();
-    for ((returned_any, group), ips) in devices_by_group {
+    let mut groups_by_devices: BTreeMap<
+        (bool, Option<ShortfallReason>, BTreeSet<IpAddr>),
+        Vec<SnmpWalkGroup>,
+    > = BTreeMap::new();
+    for ((returned_any, reason, group), ips) in devices_by_group {
         groups_by_devices
-            .entry((returned_any, ips))
+            .entry((returned_any, reason, ips))
             .or_default()
             .push(group);
     }
 
     groups_by_devices
         .iter()
-        .map(|((returned_any, ips), groups)| {
+        .map(|((returned_any, reason, ips), groups)| {
             let who = list_addresses_prose(ips);
             let labels: Vec<&str> = groups.iter().map(|g| g.label()).collect();
             let what = join_prose(&labels);
-            if *returned_any {
-                format!(
+            match reason {
+                // Our limit, not their fault, and it will recur on every scan of a device this
+                // size. "Did not finish reporting" invited an operator to go looking for a
+                // problem on hardware that was answering perfectly.
+                Some(ShortfallReason::EntryCap { limit }) => format!(
+                    "{who} has more {what} than one scan reads — collection stops at {limit} \
+                     entries per table, so the rest were not read. The data recorded is correct \
+                     as far as it goes."
+                ),
+                // The device does not implement it. No refresh to promise, nothing to fix.
+                Some(ShortfallReason::Unsupported) => format!(
+                    "{who} does not implement {what} over SNMP, so it cannot be read from the \
+                     device at all. Previously discovered values were kept."
+                ),
+                // Answering out of step is a transient worth naming: it is the signature of a
+                // busy agent racing itself, and points somewhere completely different from a
+                // device that has simply gone quiet. Ahead of the `returned_any` arm below,
+                // because a desynchronised walk usually *does* return rows before it goes wrong
+                // — putting it after meant it never matched.
+                Some(ShortfallReason::Desynchronised) => format!(
+                    "{who} answered out of step with what was asked for {what}, which usually \
+                     means the agent is under load. Previously discovered values were kept and \
+                     refresh on the next complete scan."
+                ),
+                _ if *returned_any => format!(
                     "{who} did not finish reporting {what}, so previously discovered values were \
                      kept rather than overwritten and refresh on the next complete scan."
-                )
-            } else if groups.iter().all(|g| g.absence_means_unsupported()) {
-                // Nothing was read, and this table's absence means the device does not implement
-                // it — so there is no refresh to promise and nothing to fix on the device. Say
-                // what the operator actually loses instead, once, without implying a fault.
-                format!(
+                ),
+                _ if groups.iter().all(|g| g.absence_means_unsupported()) => format!(
                     "{who} did not answer for {what}, which these switches commonly do not \
                      implement. Their MAC-address-table and VLAN membership cannot be read over \
                      SNMP; a UniFi controller integration reports the same data where one manages \
                      the device."
-                )
-            } else {
-                format!(
-                    "{who} returned no {what} data at all, which usually means the query timed \
-                     out rather than that the device is faulty. Previously discovered values were \
-                     kept rather than overwritten and refresh on the next complete scan."
-                )
+                ),
+                _ => format!(
+                    "{who} returned no {what} data at all — the device stopped answering rather \
+                     than reporting that it has none. Previously discovered values were kept \
+                     rather than overwritten and refresh on the next complete scan."
+                ),
             }
         })
         .collect()
@@ -603,11 +707,13 @@ mod tests {
                         ip: addr,
                         group: SnmpWalkGroup::BridgeForwarding,
                         returned_any: false,
+                        reason: None,
                     },
                     IncompleteSnmpWalk {
                         ip: addr,
                         group: SnmpWalkGroup::VlanMembership,
                         returned_any: false,
+                        reason: None,
                     },
                 ]
             })
@@ -633,11 +739,13 @@ mod tests {
             ip: ip("10.0.0.1"),
             group: SnmpWalkGroup::BridgeForwarding,
             returned_any: true,
+            reason: None,
         }]));
         let empty = joined(&render_incomplete_snmp_walks(&[IncompleteSnmpWalk {
             ip: ip("10.0.0.1"),
             group: SnmpWalkGroup::BridgeForwarding,
             returned_any: false,
+            reason: None,
         }]));
 
         // Each line makes exactly one claim about the walk, never both.
@@ -663,6 +771,7 @@ mod tests {
             ip: ip("192.168.210.217"),
             group: SnmpWalkGroup::BridgePortNumbering,
             returned_any: false,
+            reason: None,
         }]));
 
         assert!(msg.contains("192.168.210.217 did not answer for"), "{msg}");
@@ -682,10 +791,12 @@ mod tests {
                 lldp: SnmpGroupOutcome {
                     complete: true,
                     returned_any: false,
+                    reason: None,
                 },
                 cdp: SnmpGroupOutcome {
                     complete: true,
                     returned_any: false,
+                    reason: None,
                 },
                 // Everything below is a consequence of this one failure.
                 bridge_port_numbering: SnmpGroupOutcome::default(),
@@ -708,22 +819,27 @@ mod tests {
                 lldp: SnmpGroupOutcome {
                     complete: true,
                     returned_any: true,
+                    reason: None,
                 },
                 cdp: SnmpGroupOutcome {
                     complete: true,
                     returned_any: false,
+                    reason: None,
                 },
                 bridge_port_numbering: SnmpGroupOutcome {
                     complete: true,
                     returned_any: true,
+                    reason: None,
                 },
                 bridge_forwarding: SnmpGroupOutcome {
                     complete: false,
                     returned_any: true,
+                    reason: None,
                 },
                 vlan_membership: SnmpGroupOutcome {
                     complete: true,
                     returned_any: true,
+                    reason: None,
                 },
             },
         );
@@ -741,6 +857,7 @@ mod tests {
             ip: ip("192.168.210.217"),
             group: SnmpWalkGroup::BridgePortNumbering,
             returned_any: true,
+            reason: None,
         }]));
 
         assert!(msg.contains("did not finish reporting"), "{msg}");
@@ -872,6 +989,114 @@ mod tests {
         assert!(msg.contains("not on any subnet"));
         assert!(msg.contains("10.0.0.7"));
         assert!(msg.contains("port 443 was not open"));
+    }
+
+    fn shortfall(ip_str: &str, reason: Option<ShortfallReason>) -> IncompleteSnmpWalk {
+        IncompleteSnmpWalk {
+            ip: ip(ip_str),
+            group: SnmpWalkGroup::BridgeForwarding,
+            // Rows arrived and then stopped, which is the case that previously swallowed every
+            // one of these distinctions into "did not finish reporting".
+            returned_any: true,
+            reason,
+        }
+    }
+
+    /// Our own limit, hit every scan on a device this size. Reporting it as a shortfall sent an
+    /// operator looking for a fault on hardware that was answering perfectly, and no amount of
+    /// re-scanning would have changed it.
+    #[test]
+    fn hitting_the_entry_cap_names_the_limit_and_does_not_imply_a_fault() {
+        let msg = joined(&render_incomplete_snmp_walks(&[shortfall(
+            "10.0.0.1",
+            Some(ShortfallReason::EntryCap { limit: 10_000 }),
+        )]));
+
+        assert!(
+            msg.contains("more bridge forwarding than one scan reads"),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("10000"),
+            "the limit is the point of the sentence: {msg}"
+        );
+        assert!(!msg.contains("did not finish reporting"), "{msg}");
+        assert!(!msg.contains("stopped answering"), "{msg}");
+    }
+
+    /// The simulator's signature, and the one the sim-vs-customer comparison turns on: an agent
+    /// racing itself answers with the wrong OID. That points somewhere completely different from
+    /// a device that has gone quiet, so it cannot share a line with one.
+    #[test]
+    fn an_out_of_step_agent_reads_differently_from_a_silent_one() {
+        let desynced = joined(&render_incomplete_snmp_walks(&[shortfall(
+            "10.0.0.1",
+            Some(ShortfallReason::Desynchronised),
+        )]));
+        let silent = joined(&render_incomplete_snmp_walks(&[IncompleteSnmpWalk {
+            ip: ip("10.0.0.2"),
+            group: SnmpWalkGroup::BridgeForwarding,
+            returned_any: false,
+            reason: Some(ShortfallReason::NoAnswer),
+        }]));
+
+        assert!(desynced.contains("answered out of step"), "{desynced}");
+        assert!(desynced.contains("under load"), "{desynced}");
+        assert!(silent.contains("stopped answering"), "{silent}");
+        assert!(!silent.contains("out of step"), "{silent}");
+    }
+
+    /// A device that does not implement the MIB will never implement it, so promising a refresh
+    /// on the next complete scan is a promise that cannot be kept.
+    #[test]
+    fn an_unsupported_table_promises_no_refresh() {
+        let msg = joined(&render_incomplete_snmp_walks(&[shortfall(
+            "10.0.0.1",
+            Some(ShortfallReason::Unsupported),
+        )]));
+
+        assert!(msg.contains("does not implement"), "{msg}");
+        assert!(!msg.contains("refresh on the next complete scan"), "{msg}");
+    }
+
+    /// This one produces a map that is *wrong* rather than incomplete — the link is drawn, against
+    /// the wrong port — so it must not be phrased as missing data.
+    #[test]
+    fn unresolved_lldp_ports_say_the_links_may_be_wrong_not_missing() {
+        let msg = joined(&render_unresolved_lldp_ports(&[UnresolvedLldpPorts {
+            ip: ip("192.168.7.238"),
+            unresolved: 3,
+            total: 4,
+        }]));
+
+        assert!(msg.contains("192.168.7.238"), "{msg}");
+        assert!(msg.contains("3 LLDP neighbours"), "{msg}");
+        assert!(msg.contains("wrong port"), "{msg}");
+    }
+
+    /// Everything resolved is the normal case on most vendors, and must be silent.
+    #[test]
+    fn fully_resolved_lldp_ports_are_not_reported() {
+        assert!(
+            render_unresolved_lldp_ports(&[UnresolvedLldpPorts {
+                ip: ip("10.0.0.1"),
+                unresolved: 0,
+                total: 6,
+            }])
+            .is_empty()
+        );
+    }
+
+    /// The switch did nothing wrong. Blaming it would send an operator to the wrong end of the
+    /// problem entirely.
+    #[test]
+    fn a_failed_vlan_save_does_not_blame_the_device() {
+        let msg = joined(&render_vlan_recording_failures(&[VlanRecordingFailed {
+            ip: ip("10.0.0.1"),
+        }]));
+
+        assert!(msg.contains("could not be saved"), "{msg}");
+        assert!(msg.contains("answered correctly"), "{msg}");
     }
 
     fn attempted(ip_str: &str, outcome: AttemptOutcome) -> CredentialIssue {
