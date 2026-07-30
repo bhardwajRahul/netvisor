@@ -2,7 +2,11 @@ import type { Node, Edge } from '@xyflow/svelte';
 import type { LayoutState, PrepareResult, XY } from './types';
 import type { RenderableTopology } from '../types/base';
 import * as perf from '../perf';
-import { reportShapeVerification, shapeVerifyEnabled } from './shape-verify';
+import {
+	fillMissingSizesByShapeKey,
+	reportShapeVerification,
+	shapeVerifyEnabled
+} from './shape-verify';
 
 export interface MeasureCallbacks {
 	setMeasuring: (v: boolean) => void;
@@ -122,6 +126,29 @@ export async function resolveNodeSizes(
 					}
 				}
 			}
+		}
+
+		// Elements must have a size too, not just collapsed containers.
+		//
+		// This counted containers only, so an element card missing from both the live nodes and
+		// the view cache left the map *partial* — which is worse than empty, because the
+		// `size === 0` guard below only takes the full-measurement path when the map is entirely
+		// empty. ELK then fell back to `node.size`, which the server leaves at `Uxy::default()`
+		// — literally 0x0 — so it packed zero-sized children a spacing apart while the DOM
+		// rendered them at their real size, overlapping by ~80%.
+		//
+		// Reachable exactly when containers start collapsed at scale: their cards are never
+		// mounted, so never measured, so absent from the cache when one is expanded.
+		//
+		// Filled from a measured card of the same shape key rather than by re-measuring
+		// everything. Discarding the map would be correct but costs a full pass — mounting every
+		// card in the graph to learn sizes most of them already have — which at a few hundred
+		// hosts is the cold-load cost the sampling exists to avoid. Only a key with no measured
+		// representative at all forces the full path.
+		const unresolved = fillMissingSizesByShapeKey(visibleNodes, topology, elementNodeSizes);
+		if (unresolved > 0) {
+			perf.count('measure.cache-incomplete:collapse');
+			elementNodeSizes.clear();
 		}
 
 		// If any containers are missing from cache, fall through to full measurement

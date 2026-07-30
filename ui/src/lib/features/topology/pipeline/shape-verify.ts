@@ -35,6 +35,54 @@ import {
  */
 const HEIGHT_TOLERANCE_PX = 0;
 
+/**
+ * Fill sizes for elements the cache missed, using a measured card of the same shape key.
+ *
+ * Returns how many are *still* missing — the caller falls back to a full measurement only if
+ * that is non-zero.
+ *
+ * The shape key exists precisely so card height need not be measured per card: cards sharing a
+ * key measure to the same height, which [`verifyShapeKeys`] is here to keep true. That makes it
+ * the right source for a card that was never mounted — as happens when containers start
+ * collapsed at scale and one is then expanded. The alternative, re-measuring the whole graph,
+ * means mounting every card to learn sizes most of them already have, which is the cold-load
+ * cost the sampling was introduced to avoid.
+ */
+export function fillMissingSizesByShapeKey(
+	visibleNodes: TopologyNode[],
+	topology: RenderableTopology,
+	measured: Map<string, XY>
+): number {
+	const context = currentElementRenderContext();
+	const keyOf = (node: TopologyNode): string | null => {
+		try {
+			return elementShapeKey(buildElementRender({ nodeId: node.id, node, topology, ...context }));
+		} catch {
+			return null;
+		}
+	};
+
+	// Only elements: a container's size comes from its own cache or from ELK's minimum.
+	const elements = visibleNodes.filter((n) => n.node_type === 'Element');
+	const sizeByKey = new Map<string, XY>();
+	for (const node of elements) {
+		const size = measured.get(node.id);
+		if (!size) continue;
+		const key = keyOf(node);
+		if (key && !sizeByKey.has(key)) sizeByKey.set(key, size);
+	}
+
+	let stillMissing = 0;
+	for (const node of elements) {
+		if (measured.has(node.id)) continue;
+		const key = keyOf(node);
+		const known = key ? sizeByKey.get(key) : undefined;
+		if (known) measured.set(node.id, known);
+		else stillMissing++;
+	}
+	return stillMissing;
+}
+
 export interface ShapeKeyDisagreement {
 	shapeKey: string;
 	/** Distinct measured heights seen for this key, with an example node each. */

@@ -288,7 +288,17 @@ function buildElkGraph(
 			const parentId = node.container_id ?? '';
 			if (!parentId || collapsed.has(parentId)) continue;
 			if (!containers.has(parentId)) continue;
-			const size = input.elementNodeSizes?.get(node.id) ?? node.size;
+			// `node.size` is the server's value, which for elements is `Uxy::default()` — 0x0.
+			// A zero-sized ELK node is never legitimate: box packing puts such children a
+			// spacing apart and the DOM then renders them at their real size, overlapping.
+			// The measure pass is supposed to make this unreachable; counting it keeps a
+			// regression loud instead of silent, and the fallback keeps the graph merely
+			// imperfect rather than broken.
+			let size = input.elementNodeSizes?.get(node.id) ?? node.size;
+			if (!size || size.x <= 0 || size.y <= 0) {
+				perf.count('elk.element-size-missing');
+				size = { x: 250, y: 54 };
+			}
 			if (!elementsPerContainer.has(parentId)) elementsPerContainer.set(parentId, []);
 			elementsPerContainer.get(parentId)!.push({ node, size });
 		}
