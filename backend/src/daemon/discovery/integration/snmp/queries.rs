@@ -98,7 +98,12 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
 /// timeout, a non-advancing OID, or an abnormal empty response — callers that prune
 /// against a full table (see `walk_if_table`, GH #649) must treat `false` as a partial
 /// walk.
-async fn walk_subtree<T, F>(session: &mut T, base_oid_str: &str, mut on_entry: F) -> Result<bool>
+async fn walk_subtree<T, F>(
+    session: &mut T,
+    ip: IpAddr,
+    base_oid_str: &str,
+    mut on_entry: F,
+) -> Result<bool>
 where
     T: SnmpWalkTransport,
     F: FnMut(&[u64], &Value),
@@ -226,7 +231,14 @@ where
     // already the session warning. This is the follow-up detail for when that warning needs
     // explaining. A clean walk stays silent either way.
     if stop.is_truncation() {
+        // `ip` is not decoration. This is the only line that says *why* a column came up
+        // short, and without the address it cannot be tied to a device — an operator
+        // grepping their daemon log for the switch named in the scan warning filtered out
+        // every one of these, which is what made a Ubiquiti bridge-FDB failure take two
+        // rounds of logs to narrow. Threading it as a parameter rather than relying on an
+        // enclosing span means a new walk cannot be added without supplying it.
         debug!(
+            ip = %ip,
             base = base_oid_str,
             ?stop,
             detail = stop_detail.as_deref().unwrap_or(""),
@@ -375,12 +387,17 @@ impl WalkStop {
 ///
 /// Every multi-column query needs this and none of them had it: `walk_subtree` never returns
 /// `Err`, so the `?` these call sites used was dead code and a truncated column was invisible.
-async fn walk_column<T, F>(session: &mut T, base_oid_str: &str, complete: &mut bool, on_entry: F)
-where
+async fn walk_column<T, F>(
+    session: &mut T,
+    ip: IpAddr,
+    base_oid_str: &str,
+    complete: &mut bool,
+    on_entry: F,
+) where
     T: SnmpWalkTransport,
     F: FnMut(&[u64], &Value),
 {
-    if !walk_subtree(session, base_oid_str, on_entry)
+    if !walk_subtree(session, ip, base_oid_str, on_entry)
         .await
         .unwrap_or(false)
     {
@@ -430,7 +447,7 @@ pub async fn walk_if_table<T: SnmpWalkTransport>(
         let known = known_if_indexes.clone();
         let mut column_indexes: HashSet<i32> = HashSet::new();
         let mut column_foreign = 0usize;
-        let walked = walk_subtree(session, base_oid_str, |suffix, value| {
+        let walked = walk_subtree(session, ip, base_oid_str, |suffix, value| {
             let Some(&if_index_u64) = suffix.last() else {
                 return;
             };
@@ -592,7 +609,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // lldpRemEntry index: timeMark.localPortNum.remIndex
-        walk_column(session, base_oid_str, &mut complete, |suffix, value| {
+        walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
             if suffix.len() < 3 {
                 return;
             }
@@ -648,6 +665,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     let mut mgmt_complete = true;
     walk_column(
         session,
+        ip,
         man_base_oid_str,
         &mut mgmt_complete,
         |suffix, _value| {
@@ -727,7 +745,7 @@ pub async fn query_lldp_local_ports(
 
     for (base_oid_str, column_name) in columns {
         // Index is a single sub-id: lldpLocPortNum.
-        walk_subtree(session, base_oid_str, |suffix, value| {
+        walk_subtree(session, ip, base_oid_str, |suffix, value| {
             let Some(&local_port_num) = suffix.first() else {
                 return;
             };
@@ -762,6 +780,7 @@ pub async fn query_ip_addr_table(
     // Walk ipAdEntIfIndex — OID suffix encodes the IP address as A.B.C.D.
     walk_subtree(
         session,
+        ip,
         oids::ip_mib::ip_addr_entry::IP_AD_ENT_IF_INDEX,
         |suffix, value| {
             if suffix.len() == 4
@@ -782,6 +801,7 @@ pub async fn query_ip_addr_table(
     // Walk ipAdEntNetMask
     walk_subtree(
         session,
+        ip,
         oids::ip_mib::ip_addr_entry::IP_AD_ENT_NET_MASK,
         |suffix, value| {
             if suffix.len() == 4
@@ -834,7 +854,7 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // CDP index: cdpCacheIfIndex.cdpCacheDeviceIndex
-        walk_column(session, base_oid_str, &mut complete, |suffix, value| {
+        walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
             if suffix.len() < 2 {
                 return;
             }
@@ -920,7 +940,7 @@ pub async fn query_arp_table(
 
     for (base_oid_str, column_name) in columns {
         // OID suffix: ifIndex.A.B.C.D
-        walk_subtree(session, base_oid_str, |suffix, value| {
+        walk_subtree(session, ip, base_oid_str, |suffix, value| {
             if suffix.len() < 5 {
                 return;
             }
@@ -1000,7 +1020,7 @@ pub async fn query_entity_physical(
 
     for (base_oid_str, column_name) in columns {
         // OID suffix is entPhysicalIndex (single integer).
-        walk_subtree(session, base_oid_str, |suffix, value| {
+        walk_subtree(session, ip, base_oid_str, |suffix, value| {
             let Some(&index_u64) = suffix.last() else {
                 return;
             };
@@ -1054,17 +1074,24 @@ pub async fn query_entity_physical(
 }
 
 /// Walk dot1dBasePortIfIndex to build bridge_port → ifIndex mapping.
-/// Shared by query_bridge_fdb() and query_port_vlan_membership().
+///
 /// This is the highest-leverage truncation in the file: both FDB and VLAN-membership collection
 /// key everything off it, so a cut-short walk here silently empties both for the whole switch.
-async fn walk_bridge_port_mapping<T: SnmpWalkTransport>(
+///
+/// Walked **once per host** by the caller and handed to both consumers. It used to be walked
+/// independently inside each of them, which on a device that answers this OID with silence
+/// rather than `noSuchObject` — the Ubiquiti USW-Pro-Max does exactly this — paid the full
+/// walk timeout twice per scan for a table that was never going to arrive.
+pub async fn query_bridge_port_mapping<T: SnmpWalkTransport>(
     session: &mut T,
+    ip: IpAddr,
 ) -> Result<SnmpCollection<HashMap<i32, i32>>> {
     let mut port_to_if_index: HashMap<i32, i32> = HashMap::new();
     let mut complete = true;
     // OID suffix is the bridge port number; value is the ifIndex.
     walk_column(
         session,
+        ip,
         oids::bridge::DOT1D_BASE_PORT_IF_INDEX,
         &mut complete,
         |suffix, value| {
@@ -1102,12 +1129,12 @@ struct FdbBuilder {
 pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     session: &mut T,
     ip: IpAddr,
+    // Step 1 (`query_bridge_port_mapping`) is done by the caller and shared with
+    // `query_port_vlan_membership`. Both FDB tables reference this same dot1dBasePort space.
+    bridge_ports: &SnmpCollection<HashMap<i32, i32>>,
 ) -> Result<SnmpCollection<Vec<BridgeFdbEntry>>> {
-    // Step 1: Walk dot1dBasePortIfIndex to build bridge_port → ifIndex map.
-    // Both FDB tables reference this same dot1dBasePort space.
-    let mapping = walk_bridge_port_mapping(session).await?;
-    let mut complete = mapping.complete;
-    let port_to_if_index = mapping.records;
+    let mut complete = bridge_ports.complete;
+    let port_to_if_index = &bridge_ports.records;
 
     // Step 2: Walk legacy dot1dTpFdbTable columns.
     let mut fdb_entries: HashMap<String, FdbBuilder> = HashMap::new();
@@ -1120,7 +1147,7 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // OID suffix is a 6-octet MAC encoded as 6 sub-ids.
-        walk_column(session, base_oid_str, &mut complete, |suffix, value| {
+        walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
             if suffix.len() != 6 {
                 return;
             }
@@ -1144,7 +1171,7 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     // win; Q-BRIDGE fills in MACs the legacy table didn't report (or all of them,
     // on switches that populate only the Q-BRIDGE table).
     let legacy_count = fdb_entries.len();
-    let qbridge = walk_qbridge_fdb(session).await.unwrap_or_default();
+    let qbridge = walk_qbridge_fdb(session, ip).await.unwrap_or_default();
     if !qbridge.complete {
         complete = false;
     }
@@ -1202,6 +1229,7 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
 /// often populate only this table (GH #649).
 async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
     session: &mut T,
+    ip: IpAddr,
 ) -> Result<SnmpCollection<HashMap<String, FdbBuilder>>> {
     let mut entries: HashMap<String, FdbBuilder> = HashMap::new();
     let mut complete = true;
@@ -1213,7 +1241,7 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // Q-BRIDGE index = dot1qFdbId (1 sub-id) + MAC (6 octets).
-        walk_column(session, base_oid_str, &mut complete, |suffix, value| {
+        walk_column(session, ip, base_oid_str, &mut complete, |suffix, value| {
             let Some(mac) = qbridge_fdb_index_to_mac(suffix) else {
                 return;
             };
@@ -1322,6 +1350,7 @@ pub async fn query_vlan_table(
     // Try Q-BRIDGE dot1qVlanStaticName first. OID suffix is the VLAN ID.
     walk_subtree(
         session,
+        ip,
         oids::vlan::q_bridge::DOT1Q_VLAN_STATIC_NAME,
         |suffix, value| {
             if let Some(&vlan_u64) = suffix.last()
@@ -1341,6 +1370,7 @@ pub async fn query_vlan_table(
     if vlans.is_empty() {
         walk_subtree(
             session,
+            ip,
             oids::vlan::cisco_vtp::VTP_VLAN_NAME,
             |suffix, value| {
                 if let Some(&vlan_u64) = suffix.last()
@@ -1371,11 +1401,12 @@ pub async fn query_vlan_table(
 pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
     session: &mut T,
     ip: IpAddr,
+    // Step 1 (`query_bridge_port_mapping`) is done by the caller and shared with
+    // `query_bridge_fdb`; every result below is keyed by bridge port.
+    bridge_ports: &SnmpCollection<HashMap<i32, i32>>,
 ) -> Result<SnmpCollection<Vec<PortVlanMembership>>> {
-    // Step 1: Get bridge port → ifIndex mapping
-    let mapping = walk_bridge_port_mapping(session).await?;
-    let mut complete = mapping.complete;
-    let port_to_if_index = mapping.records;
+    let mut complete = bridge_ports.complete;
+    let port_to_if_index = &bridge_ports.records;
 
     if port_to_if_index.is_empty() {
         debug!(
@@ -1393,6 +1424,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
     let mut native_vlans: HashMap<i32, u16> = HashMap::new();
     walk_column(
         session,
+        ip,
         oids::vlan::q_bridge::DOT1Q_PVID,
         &mut complete,
         |suffix, value| {
@@ -1410,6 +1442,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
     let mut egress_by_port: HashMap<i32, Vec<u16>> = HashMap::new();
     walk_column(
         session,
+        ip,
         oids::vlan::q_bridge::DOT1Q_VLAN_CURRENT_EGRESS_PORTS,
         &mut complete,
         |suffix, value| {
@@ -1429,6 +1462,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
     let mut untagged_by_port: HashMap<i32, Vec<u16>> = HashMap::new();
     walk_column(
         session,
+        ip,
         oids::vlan::q_bridge::DOT1Q_VLAN_CURRENT_UNTAGGED_PORTS,
         &mut complete,
         |suffix, value| {
@@ -1447,7 +1481,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
     // Step 5: Assemble per-port membership, resolving bridge port → ifIndex
     let mut result: Vec<PortVlanMembership> = Vec::new();
 
-    for (&bridge_port, &if_index) in &port_to_if_index {
+    for (&bridge_port, &if_index) in port_to_if_index {
         let native_vlan = native_vlans.get(&bridge_port).copied();
         let egress_vlans = egress_by_port.get(&bridge_port);
         let untagged_vlans = untagged_by_port.get(&bridge_port);
@@ -1496,6 +1530,10 @@ mod walk_tests {
     use std::collections::VecDeque;
 
     const BASE: &str = "1.3.6.1.2.1.2.2.1.1";
+
+    fn ip() -> IpAddr {
+        "192.0.2.1".parse().unwrap()
+    }
 
     fn page(oids: &[&str]) -> Vec<Vec<u64>> {
         oids.iter()
@@ -1557,7 +1595,7 @@ mod walk_tests {
         let mut session = MockTransport::stalling(page(&["1.3.6.1.2.1.2.2.1.1.5"]));
 
         let mut seen = 0usize;
-        let complete = walk_subtree(&mut session, BASE, |_suffix, _v| seen += 1)
+        let complete = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
             .await
             .unwrap();
 
@@ -1580,7 +1618,7 @@ mod walk_tests {
         ]);
 
         let mut suffixes = Vec::new();
-        let complete = walk_subtree(&mut session, BASE, |suffix, _v| {
+        let complete = walk_subtree(&mut session, ip(), BASE, |suffix, _v| {
             suffixes.push(suffix.to_vec())
         })
         .await
@@ -2029,7 +2067,7 @@ mod if_table_tests {
             }
         }
 
-        let complete = walk_subtree(&mut StaleAgent, IF_DESCR, |_, _| {})
+        let complete = walk_subtree(&mut StaleAgent, ip(), IF_DESCR, |_, _| {})
             .await
             .unwrap();
         assert!(!complete);
@@ -2045,7 +2083,7 @@ mod if_table_tests {
         ]);
 
         let mut seen = 0usize;
-        let complete = walk_subtree(&mut agent, IF_INDEX, |_, _| seen += 1)
+        let complete = walk_subtree(&mut agent, ip(), IF_INDEX, |_, _| seen += 1)
             .await
             .unwrap();
 

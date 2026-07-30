@@ -14,9 +14,10 @@ pub mod values;
 
 // Re-export commonly used items
 pub use queries::{
-    query_arp_table, query_bridge_fdb, query_cdp_neighbors, query_entity_physical,
-    query_ip_addr_table, query_lldp_local, query_lldp_local_ports, query_lldp_neighbors,
-    query_port_vlan_membership, query_system_info, query_vlan_table, walk_if_table,
+    query_arp_table, query_bridge_fdb, query_bridge_port_mapping, query_cdp_neighbors,
+    query_entity_physical, query_ip_addr_table, query_lldp_local, query_lldp_local_ports,
+    query_lldp_neighbors, query_port_vlan_membership, query_system_info, query_vlan_table,
+    walk_if_table,
 };
 pub use session::SNMP_WALK_TIMEOUT;
 use session::{SNMP_PROBE_TIMEOUT, create_session};
@@ -58,7 +59,9 @@ use crate::{
 
 use super::{DiscoveryIntegration, IntegrationContext, ProbeContext, ProbeFailure, ProbeSuccess};
 use crate::daemon::discovery::service::ops::HostData;
-use crate::daemon::discovery::service::warnings::{IncompleteInterfaceWalk, IncompleteSnmpWalk};
+use crate::daemon::discovery::service::warnings::{
+    IncompleteInterfaceWalk, SnmpCollectionOutcome, SnmpGroupOutcome, snmp_walk_shortfalls,
+};
 
 /// Handle returned by a successful SNMP probe — carries the working credential and port.
 pub struct SnmpProbeHandle {
@@ -342,8 +345,31 @@ impl DiscoveryIntegration for SnmpIntegration {
             "ENTITY-MIB inventory queried"
         );
 
+        // Walk dot1dBasePortIfIndex once and share it. Both the bridge FDB and per-port VLAN
+        // membership are keyed by bridge port, and each used to walk this table for itself —
+        // so a switch that answers the OID with silence rather than `noSuchObject` (the
+        // Ubiquiti USW-Pro-Max does) paid the walk timeout twice per scan for a table that
+        // was never going to arrive.
+        let bridge_ports = query_or_default(
+            ip,
+            "bridge_port_mapping",
+            query_bridge_port_mapping(&mut session, ip),
+        )
+        .await;
+        tracing::debug!(
+            ip = %ip,
+            count = bridge_ports.records.len(),
+            complete = bridge_ports.complete,
+            "Bridge port mappings collected"
+        );
+
         // Query bridge FDB for MAC-to-port mappings
-        let fdb = query_or_default(ip, "bridge_fdb", query_bridge_fdb(&mut session, ip)).await;
+        let fdb = query_or_default(
+            ip,
+            "bridge_fdb",
+            query_bridge_fdb(&mut session, ip, &bridge_ports),
+        )
+        .await;
         let fdb_complete = fdb.complete;
         let bridge_fdb = fdb.records;
         let fdb_count = bridge_fdb.len();
@@ -385,7 +411,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let port_vlan_membership = query_or_default(
             ip,
             "port_vlan_membership",
-            query_port_vlan_membership(&mut session, ip),
+            query_port_vlan_membership(&mut session, ip, &bridge_ports),
         )
         .await;
         let vlan_membership_complete = port_vlan_membership.complete;
@@ -521,21 +547,35 @@ impl DiscoveryIntegration for SnmpIntegration {
         // `returned_any` is carried per group because it separates two different problems that
         // share the `complete: false` flag: a walk that returned rows and stopped was truncated,
         // while one that returned nothing timed out or errored outright.
-        let incomplete: Vec<IncompleteSnmpWalk> = [
-            (!lldp_complete).then_some(("LLDP", lldp_count > 0)),
-            (!cdp_complete).then_some(("CDP", cdp_count > 0)),
-            (!fdb_complete).then_some(("bridge forwarding", fdb_count > 0)),
-            (!vlan_membership_complete)
-                .then_some(("VLAN membership", !port_vlan_membership.is_empty())),
-        ]
-        .into_iter()
-        .flatten()
-        .map(|(group, returned_any)| IncompleteSnmpWalk {
+        //
+        // Which groups are worth reporting — and which are merely downstream of a failure
+        // already being reported — is `snmp_walk_shortfalls`'s call, so it can be tested
+        // without a live agent.
+        let incomplete = snmp_walk_shortfalls(
             ip,
-            group,
-            returned_any,
-        })
-        .collect();
+            SnmpCollectionOutcome {
+                lldp: SnmpGroupOutcome {
+                    complete: lldp_complete,
+                    returned_any: lldp_count > 0,
+                },
+                cdp: SnmpGroupOutcome {
+                    complete: cdp_complete,
+                    returned_any: cdp_count > 0,
+                },
+                bridge_port_numbering: SnmpGroupOutcome {
+                    complete: bridge_ports.complete,
+                    returned_any: !bridge_ports.records.is_empty(),
+                },
+                bridge_forwarding: SnmpGroupOutcome {
+                    complete: fdb_complete,
+                    returned_any: fdb_count > 0,
+                },
+                vlan_membership: SnmpGroupOutcome {
+                    complete: vlan_membership_complete,
+                    returned_any: !port_vlan_membership.is_empty(),
+                },
+            },
+        );
         if !incomplete.is_empty()
             && let Ok(session_state) = ctx.ops.get_session().await
             && let Ok(mut records) = session_state.incomplete_snmp_walks.lock()

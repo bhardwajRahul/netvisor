@@ -50,6 +50,45 @@ fn list_addresses_prose(ips: &BTreeSet<IpAddr>) -> String {
 // Incomplete SNMP walks
 // ============================================================================
 
+/// An SNMP data group a walk may come up short on.
+///
+/// An enum rather than a free string so the renderer below is exhaustive: every group has to
+/// declare which consequence sentence describes it, and a new one cannot be added without
+/// choosing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SnmpWalkGroup {
+    Lldp,
+    Cdp,
+    /// `dot1dBasePortIfIndex` — the bridge-port numbering both groups below are keyed by.
+    BridgePortNumbering,
+    BridgeForwarding,
+    VlanMembership,
+}
+
+impl SnmpWalkGroup {
+    /// Noun phrase, used as the object of a sentence.
+    fn label(self) -> &'static str {
+        match self {
+            Self::Lldp => "LLDP neighbours",
+            Self::Cdp => "CDP neighbours",
+            Self::BridgePortNumbering => "SNMP bridge-port numbering",
+            Self::BridgeForwarding => "bridge forwarding",
+            Self::VlanMembership => "VLAN membership",
+        }
+    }
+
+    /// Whether an empty result here means the device does not implement the table at all,
+    /// rather than that a read of an implemented table fell short.
+    ///
+    /// Only true for the bridge-port numbering, because it is the *root* of the bridge MIB:
+    /// a switch that serves none of it has no MAC-address table or VLAN membership to offer
+    /// over SNMP at all, and telling its operator that "previously discovered values were
+    /// kept" promises a refresh that will never come.
+    fn absence_means_unsupported(self) -> bool {
+        matches!(self, Self::BridgePortNumbering)
+    }
+}
+
 /// One SNMP data group that a walk could not read in full, for one device.
 ///
 /// `returned_any` distinguishes the two cases the old single phrasing conflated. A walk that
@@ -60,8 +99,66 @@ fn list_addresses_prose(ips: &BTreeSet<IpAddr>) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IncompleteSnmpWalk {
     pub ip: IpAddr,
-    pub group: &'static str,
+    pub group: SnmpWalkGroup,
     pub returned_any: bool,
+}
+
+/// What one host's SNMP collection managed to read, per group.
+///
+/// `complete` mirrors [`SnmpCollection::complete`] on the daemon side; `returned_any` is whether
+/// that group produced any records at all.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SnmpGroupOutcome {
+    pub complete: bool,
+    pub returned_any: bool,
+}
+
+/// Per-group outcomes for one host, as [`snmp_walk_shortfalls`] consumes them.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SnmpCollectionOutcome {
+    pub lldp: SnmpGroupOutcome,
+    pub cdp: SnmpGroupOutcome,
+    pub bridge_port_numbering: SnmpGroupOutcome,
+    pub bridge_forwarding: SnmpGroupOutcome,
+    pub vlan_membership: SnmpGroupOutcome,
+}
+
+/// The groups worth reporting for one host.
+///
+/// Bridge forwarding and VLAN membership are both keyed by `dot1dBasePortIfIndex`, so when *that*
+/// walk fails they are marked incomplete having attempted nothing of their own. Reporting all
+/// three told an operator their switch had failed three ways when it had failed once, and pointed
+/// at the two tables that are consequences rather than the one that is the cause. Report the
+/// cause, and stay silent about the derived groups unless they failed on their own account.
+pub fn snmp_walk_shortfalls(ip: IpAddr, outcome: SnmpCollectionOutcome) -> Vec<IncompleteSnmpWalk> {
+    let root_failed = !outcome.bridge_port_numbering.complete;
+    [
+        (SnmpWalkGroup::Lldp, outcome.lldp, true),
+        (SnmpWalkGroup::Cdp, outcome.cdp, true),
+        (
+            SnmpWalkGroup::BridgePortNumbering,
+            outcome.bridge_port_numbering,
+            true,
+        ),
+        (
+            SnmpWalkGroup::BridgeForwarding,
+            outcome.bridge_forwarding,
+            !root_failed,
+        ),
+        (
+            SnmpWalkGroup::VlanMembership,
+            outcome.vlan_membership,
+            !root_failed,
+        ),
+    ]
+    .into_iter()
+    .filter(|(_, group, report)| *report && !group.complete)
+    .map(|(group, outcome, _)| IncompleteSnmpWalk {
+        ip,
+        group,
+        returned_any: outcome.returned_any,
+    })
+    .collect()
 }
 
 /// One line per distinct failure, or empty if there were none.
@@ -82,14 +179,15 @@ pub fn render_incomplete_snmp_walks(records: &[IncompleteSnmpWalk]) -> Vec<Strin
     // themselves — "192.168.7.230 did not finish reporting VLAN membership or bridge forwarding"
     // immediately followed by "192.168.7.230 returned nothing at all", which reads as two
     // incompatible claims about the same walk. Keyed this way, each line makes one claim.
-    let mut devices_by_group: BTreeMap<(bool, &str), BTreeSet<IpAddr>> = BTreeMap::new();
+    let mut devices_by_group: BTreeMap<(bool, SnmpWalkGroup), BTreeSet<IpAddr>> = BTreeMap::new();
     for r in records {
         devices_by_group
             .entry((r.returned_any, r.group))
             .or_default()
             .insert(r.ip);
     }
-    let mut groups_by_devices: BTreeMap<(bool, BTreeSet<IpAddr>), Vec<&str>> = BTreeMap::new();
+    let mut groups_by_devices: BTreeMap<(bool, BTreeSet<IpAddr>), Vec<SnmpWalkGroup>> =
+        BTreeMap::new();
     for ((returned_any, group), ips) in devices_by_group {
         groups_by_devices
             .entry((returned_any, ips))
@@ -101,11 +199,22 @@ pub fn render_incomplete_snmp_walks(records: &[IncompleteSnmpWalk]) -> Vec<Strin
         .iter()
         .map(|((returned_any, ips), groups)| {
             let who = list_addresses_prose(ips);
-            let what = join_prose(groups);
+            let labels: Vec<&str> = groups.iter().map(|g| g.label()).collect();
+            let what = join_prose(&labels);
             if *returned_any {
                 format!(
                     "{who} did not finish reporting {what}, so previously discovered values were \
                      kept rather than overwritten and refresh on the next complete scan."
+                )
+            } else if groups.iter().all(|g| g.absence_means_unsupported()) {
+                // Nothing was read, and this table's absence means the device does not implement
+                // it — so there is no refresh to promise and nothing to fix on the device. Say
+                // what the operator actually loses instead, once, without implying a fault.
+                format!(
+                    "{who} did not answer for {what}, which these switches commonly do not \
+                     implement. Their MAC-address-table and VLAN membership cannot be read over \
+                     SNMP; a UniFi controller integration reports the same data where one manages \
+                     the device."
                 )
             } else {
                 format!(
@@ -359,12 +468,12 @@ mod tests {
                 [
                     IncompleteSnmpWalk {
                         ip: addr,
-                        group: "bridge forwarding",
+                        group: SnmpWalkGroup::BridgeForwarding,
                         returned_any: false,
                     },
                     IncompleteSnmpWalk {
                         ip: addr,
-                        group: "VLAN membership",
+                        group: SnmpWalkGroup::VlanMembership,
                         returned_any: false,
                     },
                 ]
@@ -389,12 +498,12 @@ mod tests {
     fn an_empty_walk_reads_differently_from_a_truncated_one() {
         let truncated = joined(&render_incomplete_snmp_walks(&[IncompleteSnmpWalk {
             ip: ip("10.0.0.1"),
-            group: "bridge forwarding",
+            group: SnmpWalkGroup::BridgeForwarding,
             returned_any: true,
         }]));
         let empty = joined(&render_incomplete_snmp_walks(&[IncompleteSnmpWalk {
             ip: ip("10.0.0.1"),
-            group: "bridge forwarding",
+            group: SnmpWalkGroup::BridgeForwarding,
             returned_any: false,
         }]));
 
@@ -409,6 +518,100 @@ mod tests {
             "{empty}"
         );
         assert!(!empty.contains("did not finish reporting"), "{empty}");
+    }
+
+    /// A switch that serves no bridge MIB at all (the Ubiquiti USW-Pro-Max) hits this every
+    /// scan, for ever. The generic empty-walk sentence promised a refresh on the next complete
+    /// scan that could never arrive, and blamed a timeout on hardware that answered everything
+    /// else promptly.
+    #[test]
+    fn an_unimplemented_table_does_not_promise_a_later_refresh() {
+        let msg = joined(&render_incomplete_snmp_walks(&[IncompleteSnmpWalk {
+            ip: ip("192.168.210.217"),
+            group: SnmpWalkGroup::BridgePortNumbering,
+            returned_any: false,
+        }]));
+
+        assert!(msg.contains("192.168.210.217 did not answer for"), "{msg}");
+        assert!(msg.contains("commonly do not implement"), "{msg}");
+        // The two claims that were wrong for this device.
+        assert!(!msg.contains("refresh on the next complete scan"), "{msg}");
+        assert!(!msg.contains("timed out"), "{msg}");
+    }
+
+    /// A switch with no bridge MIB fails three groups at once, but only one of them is a
+    /// finding: the other two never ran. Reporting all three read as three separate faults.
+    #[test]
+    fn a_failed_bridge_port_walk_suppresses_the_groups_keyed_by_it() {
+        let shortfalls = snmp_walk_shortfalls(
+            ip("192.168.210.217"),
+            SnmpCollectionOutcome {
+                lldp: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: false,
+                },
+                cdp: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: false,
+                },
+                // Everything below is a consequence of this one failure.
+                bridge_port_numbering: SnmpGroupOutcome::default(),
+                bridge_forwarding: SnmpGroupOutcome::default(),
+                vlan_membership: SnmpGroupOutcome::default(),
+            },
+        );
+
+        let groups: Vec<SnmpWalkGroup> = shortfalls.iter().map(|s| s.group).collect();
+        assert_eq!(groups, vec![SnmpWalkGroup::BridgePortNumbering]);
+    }
+
+    /// The suppression is scoped to the root failing. When the bridge-port walk succeeds, a
+    /// genuinely short FDB walk is the device's own finding and must still be reported.
+    #[test]
+    fn a_short_fdb_walk_is_reported_when_the_bridge_port_walk_succeeded() {
+        let shortfalls = snmp_walk_shortfalls(
+            ip("192.168.210.217"),
+            SnmpCollectionOutcome {
+                lldp: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                },
+                cdp: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: false,
+                },
+                bridge_port_numbering: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                },
+                bridge_forwarding: SnmpGroupOutcome {
+                    complete: false,
+                    returned_any: true,
+                },
+                vlan_membership: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                },
+            },
+        );
+
+        let groups: Vec<SnmpWalkGroup> = shortfalls.iter().map(|s| s.group).collect();
+        assert_eq!(groups, vec![SnmpWalkGroup::BridgeForwarding]);
+        assert!(shortfalls[0].returned_any);
+    }
+
+    /// The same device, truncated rather than absent, is a different problem and must keep the
+    /// truncation wording — `absence_means_unsupported` gates on the empty case alone.
+    #[test]
+    fn a_truncated_bridge_port_walk_still_reads_as_truncation() {
+        let msg = joined(&render_incomplete_snmp_walks(&[IncompleteSnmpWalk {
+            ip: ip("192.168.210.217"),
+            group: SnmpWalkGroup::BridgePortNumbering,
+            returned_any: true,
+        }]));
+
+        assert!(msg.contains("did not finish reporting"), "{msg}");
+        assert!(!msg.contains("commonly do not implement"), "{msg}");
     }
 
     /// Pins the exact copy for the customer's reported scenario, because this string is the
