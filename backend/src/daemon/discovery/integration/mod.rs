@@ -11,6 +11,7 @@
 pub mod container;
 pub mod dispatch;
 pub mod docker;
+pub mod failure;
 pub mod podman;
 pub mod snmp;
 pub mod unifi;
@@ -19,7 +20,6 @@ use std::any::Any;
 use std::net::IpAddr;
 use std::time::Duration;
 
-use anyhow::Error;
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -39,6 +39,7 @@ use crate::{
 };
 
 use super::service::ops::{DiscoveryOps, HostData};
+pub use failure::{IntegrationFailure, ProbeFailure};
 
 // ============================================================================
 // Trait
@@ -208,154 +209,6 @@ pub struct ProbeSuccess {
     /// Opaque keep-alive state passed to `execute()`.
     /// E.g., connected Docker client, working SNMP credential + port.
     pub handle: Option<Box<dyn Any + Send + Sync>>,
-}
-
-/// Failed probe, carrying what kind of failure it was.
-///
-/// Constructors only — no public fields, no `Default`, no `From<String>`. An integration
-/// therefore cannot add a failure path without saying what the failure *means*, which is the
-/// whole mechanism: only the integration knows whether its error was a refused password, a
-/// closed port or a TLS problem, and nothing downstream can recover that from prose. Every one
-/// of these used to be a bare string, so an operator was told "was rejected" whatever happened —
-/// including when they had cancelled the scan themselves.
-pub struct ProbeFailure {
-    outcome: AttemptOutcome,
-    message: String,
-}
-
-impl ProbeFailure {
-    fn new(outcome: AttemptOutcome, message: impl Into<String>) -> Self {
-        Self {
-            outcome,
-            message: message.into(),
-        }
-    }
-
-    /// The endpoint answered and refused the credential.
-    pub fn rejected(message: impl Into<String>) -> Self {
-        Self::new(AttemptOutcome::Rejected, message)
-    }
-
-    /// Nothing was listening — refused, or no route.
-    pub fn unreachable(message: impl Into<String>) -> Self {
-        Self::new(AttemptOutcome::Unreachable, message)
-    }
-
-    /// Connected, then no answer inside the timeout.
-    pub fn timed_out(message: impl Into<String>) -> Self {
-        Self::new(AttemptOutcome::TimedOut, message)
-    }
-
-    /// Something answered, but it is not this service.
-    pub fn not_this_service(message: impl Into<String>) -> Self {
-        Self::new(AttemptOutcome::NotThisService, message)
-    }
-
-    /// TLS negotiation failed.
-    pub fn tls_failed(message: impl Into<String>) -> Self {
-        Self::new(AttemptOutcome::TlsFailed, message)
-    }
-
-    /// The credential is incomplete or the wrong type for this integration.
-    pub fn malformed(message: impl Into<String>) -> Self {
-        Self::new(AttemptOutcome::Malformed, message)
-    }
-
-    /// The scan was cancelled. Never reported to the operator.
-    pub fn cancelled() -> Self {
-        Self::new(AttemptOutcome::Cancelled, "Discovery was cancelled")
-    }
-
-    /// For an integration whose client already classified the failure for itself.
-    pub fn with_outcome(outcome: AttemptOutcome, message: impl Into<String>) -> Self {
-        Self::new(outcome, message)
-    }
-
-    /// Classify a client-library error and keep its own wording.
-    pub fn from_error<E>(error: &E) -> Self
-    where
-        for<'a> AttemptOutcome: From<&'a E>,
-        E: std::fmt::Display,
-    {
-        Self::new(AttemptOutcome::from(error), error.to_string())
-    }
-
-    /// Add surrounding context without losing the classification.
-    pub fn with_context(mut self, context: impl std::fmt::Display) -> Self {
-        self.message = format!("{context}: {}", self.message);
-        self
-    }
-
-    pub fn outcome(&self) -> AttemptOutcome {
-        self.outcome
-    }
-
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-}
-
-/// A failure during `execute()` — the credential worked and the collection after it did not.
-///
-/// Same shape and the same reason as [`ProbeFailure`]: an `execute` failure was previously only
-/// `tracing::warn!`ed, so a Docker daemon that authenticated and then returned nothing produced
-/// a host with unclaimed open ports and no services, and nothing anywhere said why.
-pub struct IntegrationFailure {
-    outcome: AttemptOutcome,
-    message: String,
-}
-
-impl IntegrationFailure {
-    /// The default for this phase: authentication already succeeded, so a failure here is about
-    /// the collection rather than the credential.
-    pub fn collection_failed(message: impl Into<String>) -> Self {
-        Self {
-            outcome: AttemptOutcome::CollectionFailed,
-            message: message.into(),
-        }
-    }
-
-    /// For the cases where the collection phase can still establish something more specific —
-    /// SNMP re-opening its session, for instance, which can time out on its own.
-    pub fn with_outcome(outcome: AttemptOutcome, message: impl Into<String>) -> Self {
-        Self {
-            outcome,
-            message: message.into(),
-        }
-    }
-
-    pub fn cancelled() -> Self {
-        Self::with_outcome(AttemptOutcome::Cancelled, "Discovery was cancelled")
-    }
-
-    pub fn outcome(&self) -> AttemptOutcome {
-        self.outcome
-    }
-
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-}
-
-impl std::fmt::Display for IntegrationFailure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-/// Anything an integration already returns as an `anyhow::Error` degrades to the generic
-/// collection failure rather than forcing every `?` to be rewritten. Integrations that can say
-/// something sharper use [`IntegrationFailure::with_outcome`].
-impl From<Error> for IntegrationFailure {
-    fn from(error: Error) -> Self {
-        Self::collection_failed(error.to_string())
-    }
-}
-
-impl std::fmt::Display for ProbeFailure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
 }
 
 // ============================================================================
@@ -565,7 +418,7 @@ mod classification_tests {
     /// so, since the integration was still working when we stopped waiting.
     #[test]
     fn an_integration_failure_defaults_to_collection_failed() {
-        let from_anyhow: IntegrationFailure = Error::msg("something broke").into();
+        let from_anyhow: IntegrationFailure = anyhow::Error::msg("something broke").into();
         assert_eq!(from_anyhow.outcome(), AttemptOutcome::CollectionFailed);
 
         assert_eq!(

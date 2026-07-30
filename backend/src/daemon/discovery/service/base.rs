@@ -131,14 +131,27 @@ pub struct DiscoverySession {
     /// rendered to a single line at finalize — a `Vec<String>` written per host
     /// multiplies by the host count and drowns the notification.
     pub warnings: Arc<std::sync::Mutex<Vec<String>>>,
+    // The three typed accumulators are `pub(super)` — visible throughout `service`, and to
+    // nothing outside it. That is deliberate and load-bearing rather than tidiness.
+    //
+    // An integration observing a problem and an operator being told about it are two different
+    // jobs, and only the first belongs to the integration: it alone knows what its error means,
+    // and it has no idea whether the credential was one the user pinned to this host or a
+    // network default broadcast at every address in the subnet — which is the difference between
+    // a finding and hundreds of lines of noise. When these were `pub`, the SNMP integration
+    // reached in and pushed directly, so that judgement was simply skipped for its warnings.
+    //
+    // Integrations now go through `DiscoveryOps`, which applies the policy in one place. The
+    // scan pipeline under `service::` still writes directly, because it *is* the layer that
+    // knows about scan scope.
     /// Per-host SNMP walks that could not be read in full. See
     /// [`crate::daemon::discovery::service::warnings`].
-    pub incomplete_snmp_walks: Arc<std::sync::Mutex<Vec<IncompleteSnmpWalk>>>,
+    pub(super) incomplete_snmp_walks: Arc<std::sync::Mutex<Vec<IncompleteSnmpWalk>>>,
     /// Per-host ifTable walks that could not be read in full. Separate from the above because
     /// a truncated interface set and a truncated attribute column mean different things.
-    pub incomplete_interface_walks: Arc<std::sync::Mutex<Vec<IncompleteInterfaceWalk>>>,
+    pub(super) incomplete_interface_walks: Arc<std::sync::Mutex<Vec<IncompleteInterfaceWalk>>>,
     /// IP-targeted credentials that produced nothing, and why.
-    pub credential_issues: Arc<std::sync::Mutex<Vec<CredentialIssue>>>,
+    pub(super) credential_issues: Arc<std::sync::Mutex<Vec<CredentialIssue>>>,
 }
 
 impl DiscoverySession {

@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::daemon::discovery::credentials::resolve_credentials_for_ip;
 use crate::daemon::discovery::service::ops::{DiscoveryOps, HostData};
 use crate::daemon::discovery::service::warnings::{
-    AttemptOutcome, CredentialIssue, CredentialIssueReason,
+    CredentialIssue, CredentialIssueReason, issue_for_attempt,
 };
 use crate::daemon::utils::base::PlatformDaemonUtils;
 use crate::server::credentials::r#impl::mapping::{
@@ -53,14 +53,19 @@ async fn attempt_credential(
     };
     let outcome = failure.outcome();
 
-    // A network default is broadcast at every address in the subnet, so its failure is the normal
-    // case and stays at debug — raising it would emit hundreds of lines per /24 sweep. A
-    // credential the user assigned to this specific host is a different matter: it failing is
-    // news, and was invisible at the default log level before.
-    //
-    // Cancellation is dropped either way. The operator stopped the scan; nothing about it is a
-    // finding, and it used to be reported as a rejected credential.
-    if !user_assigned || outcome == AttemptOutcome::Cancelled {
+    // Whether this is a finding is `issue_for_attempt`'s call, not ours — a network default
+    // failing is routine (it is broadcast at every address in the subnet) and a cancelled attempt
+    // is not news at all. The log level follows the same verdict, so an operator reading the log
+    // and an operator reading the scan warnings see the same set of problems.
+    let issue = issue_for_attempt(
+        label,
+        ctx.ip,
+        outcome,
+        failure.message().to_string(),
+        user_assigned,
+    );
+
+    if issue.is_none() {
         tracing::debug!(
             ip = %ctx.ip,
             integration = ?discriminant,
@@ -68,24 +73,16 @@ async fn attempt_credential(
             error = failure.message(),
             "Integration probe failed, trying next credential"
         );
-        return Err(None);
+    } else {
+        tracing::warn!(
+            ip = %ctx.ip,
+            integration = ?discriminant,
+            ?outcome,
+            error = failure.message(),
+            "Configured credential did not work"
+        );
     }
-
-    tracing::warn!(
-        ip = %ctx.ip,
-        integration = ?discriminant,
-        ?outcome,
-        error = failure.message(),
-        "Configured credential did not work"
-    );
-    Err(Some(CredentialIssue {
-        label,
-        ip: ctx.ip,
-        reason: CredentialIssueReason::Attempted {
-            outcome,
-            message: failure.message().to_string(),
-        },
-    }))
+    Err(issue)
 }
 
 /// Results from probing all integrations for a single host IP.
@@ -441,19 +438,20 @@ pub async fn execute_integrations(
             // the collection after it did not, so this host's data is missing rather than stale
             // — a materially different thing from every other credential issue, and previously
             // knowable only by reading the daemon log.
-            if e.outcome() != AttemptOutcome::Cancelled
-                && let Ok(session) = params.ops.get_session().await
-                && let Ok(mut issues) = session.credential_issues.lock()
-            {
-                issues.push(CredentialIssue {
-                    label: credential.discovery_label(),
-                    ip: params.ip,
-                    reason: CredentialIssueReason::Attempted {
-                        outcome: e.outcome(),
-                        message: e.message().to_string(),
-                    },
-                });
-            }
+            //
+            // `user_assigned: true` unconditionally: unlike a probe, execute only runs after a
+            // credential has already succeeded against this host, so there is no broadcast-noise
+            // case to suppress here.
+            params
+                .ops
+                .record_attempt_failure(
+                    credential.discovery_label(),
+                    params.ip,
+                    e.outcome(),
+                    e.message().to_string(),
+                    true,
+                )
+                .await;
         }
     }
 

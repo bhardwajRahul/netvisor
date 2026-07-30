@@ -369,6 +369,37 @@ pub struct CredentialIssue {
     pub reason: CredentialIssueReason,
 }
 
+/// Whether a finished credential attempt is worth telling the operator about, and as what.
+///
+/// Pure, and separated from the dispatch that calls it for the same reason
+/// [`snmp_walk_shortfalls`] is: the policy is the part worth testing, and testing it in place
+/// would mean standing up a whole `DaemonDiscoveryService`. Both the probe path and the execute
+/// path go through here, so the two cannot drift apart.
+///
+/// Two things are deliberately silent:
+///
+/// - **A network default that failed.** It is broadcast at every address in the subnet, so
+///   failing is its normal condition — reporting it would bury the real findings under a line per
+///   unresponsive host on any /24 sweep. Only a credential the user pinned to this host is news.
+/// - **A cancelled attempt.** The operator stopped the scan; nothing about that is a finding, and
+///   it used to be reported as a rejected credential.
+pub fn issue_for_attempt(
+    label: &'static str,
+    ip: IpAddr,
+    outcome: AttemptOutcome,
+    message: String,
+    user_assigned: bool,
+) -> Option<CredentialIssue> {
+    if !user_assigned || outcome == AttemptOutcome::Cancelled {
+        return None;
+    }
+    Some(CredentialIssue {
+        label,
+        ip,
+        reason: CredentialIssueReason::Attempted { outcome, message },
+    })
+}
+
 /// One line per reason, or empty if there were none.
 ///
 /// Grouped by reason rather than by credential, because the fix differs per reason: a target on
@@ -436,9 +467,10 @@ pub fn render_credential_issues(issues: &[CredentialIssue]) -> Vec<String> {
     }
 
     // One line per outcome, because the whole point of the outcome is that the fix differs.
-    // Ordered by how actionable the outcome is, so the line an operator can do something about
-    // is not buried under the ones describing the network.
-    for (outcome, advice) in ATTEMPT_ADVICE {
+    for outcome in ATTEMPT_ORDER {
+        let Some(advice) = outcome.advice() else {
+            continue;
+        };
         let matching: Vec<&CredentialIssue> = issues
             .iter()
             .filter(|i| attempt_outcome(&i.reason) == Some(*outcome))
@@ -466,36 +498,52 @@ pub fn render_credential_issues(issues: &[CredentialIssue]) -> Vec<String> {
     parts.into_iter().map(|p| format!("{p}.")).collect()
 }
 
-/// What to tell the operator per outcome, and the order the lines appear in.
-///
-/// [`AttemptOutcome::Cancelled`] is absent deliberately: the user stopped the scan, so nothing
-/// about it is a finding. [`AttemptOutcome::Unreachable`] and [`AttemptOutcome::TimedOut`] are
-/// absent because the address-level lines above already say nothing answered there, and repeating
-/// it per credential would be the same fact twice.
-const ATTEMPT_ADVICE: &[(AttemptOutcome, &str)] = &[
-    (
-        AttemptOutcome::Rejected,
-        "was refused — check the username, password or community string",
-    ),
-    (
-        AttemptOutcome::Malformed,
-        "is incomplete and could not be used — re-enter it",
-    ),
-    (
-        AttemptOutcome::TlsFailed,
-        "could not negotiate TLS — if the appliance serves a self-signed certificate, turn on \
-         \"accept invalid certificates\" in the daemon's scan settings",
-    ),
-    (
-        AttemptOutcome::NotThisService,
-        "reached something that is not the expected service — check the port on the credential",
-    ),
-    (
-        AttemptOutcome::CollectionFailed,
-        "authenticated and then failed while collecting, so this host's data is missing rather \
-         than out of date",
-    ),
+/// The order the outcome lines appear in: most actionable first, so the line an operator can do
+/// something about is not buried under the ones describing the network.
+const ATTEMPT_ORDER: &[AttemptOutcome] = &[
+    AttemptOutcome::Rejected,
+    AttemptOutcome::Malformed,
+    AttemptOutcome::TlsFailed,
+    AttemptOutcome::NotThisService,
+    AttemptOutcome::CollectionFailed,
+    AttemptOutcome::Unreachable,
+    AttemptOutcome::TimedOut,
+    AttemptOutcome::Cancelled,
 ];
+
+impl AttemptOutcome {
+    /// What to tell the operator, or `None` for an outcome that is not a finding.
+    ///
+    /// A `match` rather than a lookup table, so a new outcome cannot be added without deciding
+    /// how it reads. As a table this compiled fine with a variant missing and simply never
+    /// mentioned it — the failure mode being that an operator hits a problem the product has a
+    /// name for and is told nothing at all.
+    fn advice(self) -> Option<&'static str> {
+        match self {
+            Self::Rejected => {
+                Some("was refused — check the username, password or community string")
+            }
+            Self::Malformed => Some("is incomplete and could not be used — re-enter it"),
+            Self::TlsFailed => Some(
+                "could not negotiate TLS — if the appliance serves a self-signed certificate, \
+                 turn on \"accept invalid certificates\" in the daemon's scan settings",
+            ),
+            Self::NotThisService => Some(
+                "reached something that is not the expected service — check the port on the \
+                 credential",
+            ),
+            Self::CollectionFailed => Some(
+                "authenticated and then failed while collecting, so this host's data is missing \
+                 rather than out of date",
+            ),
+            // The user stopped the scan. Not a finding.
+            Self::Cancelled => None,
+            // The address-level lines above already say nothing answered there; repeating it per
+            // credential is the same fact twice.
+            Self::Unreachable | Self::TimedOut => None,
+        }
+    }
+}
 
 fn attempt_outcome(reason: &CredentialIssueReason) -> Option<AttemptOutcome> {
     match reason {
@@ -835,6 +883,56 @@ mod tests {
                 message: "detail from the integration".to_string(),
             },
         }
+    }
+
+    fn decide(outcome: AttemptOutcome, user_assigned: bool) -> Option<CredentialIssue> {
+        issue_for_attempt(
+            "SNMP queries",
+            ip("10.0.0.1"),
+            outcome,
+            "detail from the integration".to_string(),
+            user_assigned,
+        )
+    }
+
+    /// A network default is tried at every address in the subnet, so failing is its normal
+    /// condition. Reporting it would put a line per unresponsive host into the notification and
+    /// bury the credentials the user actually configured.
+    #[test]
+    fn a_failing_network_default_is_not_a_finding() {
+        assert!(decide(AttemptOutcome::Rejected, false).is_none());
+        assert!(decide(AttemptOutcome::TlsFailed, false).is_none());
+    }
+
+    /// The operator stopped the scan. This used to be reported as a rejected credential — the
+    /// container probe returned the same failure for cancellation as for a refused socket.
+    #[test]
+    fn a_cancelled_attempt_is_not_a_finding_even_when_configured() {
+        assert!(decide(AttemptOutcome::Cancelled, true).is_none());
+    }
+
+    /// The case the whole mechanism exists for: a credential the user pinned to this host was
+    /// refused, and both the outcome and the integration's own wording survive to the renderer.
+    #[test]
+    fn a_configured_credential_that_was_refused_is_reported_in_full() {
+        let issue = decide(AttemptOutcome::Rejected, true).expect("should be reported");
+        assert_eq!(issue.ip, ip("10.0.0.1"));
+        assert_eq!(issue.label, "SNMP queries");
+        match issue.reason {
+            CredentialIssueReason::Attempted { outcome, message } => {
+                assert_eq!(outcome, AttemptOutcome::Rejected);
+                assert_eq!(message, "detail from the integration");
+            }
+            other => panic!("expected an Attempted reason, got {other:?}"),
+        }
+    }
+
+    /// `execute` only runs after a credential has already worked against this host, so dispatch
+    /// passes `user_assigned: true` there unconditionally — there is no broadcast-noise case to
+    /// suppress. This pins that a collection failure survives the decision.
+    #[test]
+    fn a_collection_failure_after_a_working_credential_is_reported() {
+        assert!(decide(AttemptOutcome::CollectionFailed, true).is_some());
     }
 
     /// The reason the outcome exists at all. Every one of these was a single "was rejected" line

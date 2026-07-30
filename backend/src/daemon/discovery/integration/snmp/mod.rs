@@ -297,16 +297,14 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Rendered to one line per run at finalize — one paragraph per device drowns the
         // notification on any real network.
         let walk_fell_short = !if_table.set_complete || !if_table.attributes_complete;
-        if !snmp_if_entries.is_empty()
-            && walk_fell_short
-            && let Ok(session_state) = ctx.ops.get_session().await
-            && let Ok(mut records) = session_state.incomplete_interface_walks.lock()
-        {
-            records.push(IncompleteInterfaceWalk {
-                ip,
-                collected: snmp_if_entries.len(),
-                set_complete: if_table.set_complete,
-            });
+        if !snmp_if_entries.is_empty() && walk_fell_short {
+            ctx.ops
+                .record_interface_shortfall(IncompleteInterfaceWalk {
+                    ip,
+                    collected: snmp_if_entries.len(),
+                    set_complete: if_table.set_complete,
+                })
+                .await;
         }
 
         // Query LLDP neighbors
@@ -614,12 +612,7 @@ impl DiscoveryIntegration for SnmpIntegration {
                 },
             },
         );
-        if !incomplete.is_empty()
-            && let Ok(session_state) = ctx.ops.get_session().await
-            && let Ok(mut records) = session_state.incomplete_snmp_walks.lock()
-        {
-            records.extend(incomplete);
-        }
+        ctx.ops.record_snmp_shortfalls(incomplete).await;
 
         // GH #649: one consolidated per-host collection record. Ties together the scattered
         // per-query lines above so a self-hosted operator (and we, from their logs) can see, at a

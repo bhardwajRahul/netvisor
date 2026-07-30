@@ -633,6 +633,53 @@ impl DiscoveryOps {
         Ok(())
     }
 
+    /// Record a credential attempt that did not succeed, if it is worth telling the operator.
+    ///
+    /// The one route an integration has to the operator, and the reason the session's buffers are
+    /// not `pub`. Whether an attempt is a *finding* is not an integration's call to make — it
+    /// turns on whether the user pinned this credential to this host or it is a network default
+    /// tried at every address in the subnet, which the integration cannot see. The judgement
+    /// lives in [`warnings::issue_for_attempt`] so both callers share it.
+    pub async fn record_attempt_failure(
+        &self,
+        label: &'static str,
+        ip: std::net::IpAddr,
+        outcome: warnings::AttemptOutcome,
+        message: String,
+        user_assigned: bool,
+    ) {
+        let Some(issue) = warnings::issue_for_attempt(label, ip, outcome, message, user_assigned)
+        else {
+            return;
+        };
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut issues) = session.credential_issues.lock()
+        {
+            issues.push(issue);
+        }
+    }
+
+    /// Record the SNMP data groups this host came up short on.
+    pub async fn record_snmp_shortfalls(&self, records: Vec<warnings::IncompleteSnmpWalk>) {
+        if records.is_empty() {
+            return;
+        }
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.incomplete_snmp_walks.lock()
+        {
+            buffer.extend(records);
+        }
+    }
+
+    /// Record an ifTable walk that fell short, and in which of the two ways.
+    pub async fn record_interface_shortfall(&self, record: warnings::IncompleteInterfaceWalk) {
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.incomplete_interface_walks.lock()
+        {
+            buffer.push(record);
+        }
+    }
+
     /// Report scanning progress. Mode-aware: DaemonPoll POSTs to server,
     /// ServerPoll updates session atomics only.
     pub async fn report_progress(&self, percent: u8) -> Result<(), Error> {
