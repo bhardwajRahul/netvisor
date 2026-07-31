@@ -174,6 +174,17 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 	};
 }
 
+/**
+ * The buffer as it stood the first time the canvas went blank, kept verbatim.
+ *
+ * The ring alone is not enough. Someone who has just lost the diagram pans, zooms, clicks the
+ * minimap and presses F before thinking to run anything — every one of which records a sample, at
+ * up to two a second. Fifteen seconds of that evicts the runs that led *into* the blank, which is
+ * the only part that identifies a cause. So the moment blankness is first seen, the buffer is
+ * copied somewhere nothing overwrites, and the report carries it however long they take.
+ */
+let firstBlankCapture: ViewerSample[] | null = null;
+
 function push(sample: ViewerSample): void {
 	history.push(sample);
 	if (history.length > HISTORY_LIMIT) history.shift();
@@ -189,6 +200,8 @@ function record(inputs: SampleInputs): void {
 	// Announce the edge, not the state. A blank canvas that persists across a pan would otherwise
 	// fill the console with the same line and bury whatever else is there.
 	if (sample.blank && sample.blank !== previousBlank) {
+		// Before anything else can push it out of the ring.
+		firstBlankCapture ??= [...history];
 		console.warn(
 			`[scanopy] topology canvas is blank (${sample.blank}): ` +
 				`${sample.store.nodes} nodes in the graph, ${sample.mounted} drawn, ` +
@@ -220,6 +233,14 @@ export interface DiagnosticsReport {
 	generatedAt: string;
 	userAgent: string;
 	screen: { width: number; height: number; devicePixelRatio: number };
+	/**
+	 * The buffer as it stood when the canvas first went blank, or `null` if it never did.
+	 *
+	 * Read this first: it holds the runs leading into the fault. `samples` below is whatever the
+	 * live ring happens to hold by the time the report was taken, which after any amount of
+	 * panning is the aftermath rather than the cause.
+	 */
+	firstBlank: ViewerSample[] | null;
 	samples: ViewerSample[];
 }
 
@@ -233,6 +254,7 @@ function buildReport(current: ViewerSample): DiagnosticsReport {
 			height: window.innerHeight,
 			devicePixelRatio: window.devicePixelRatio
 		},
+		firstBlank: firstBlankCapture,
 		samples: [...history, current]
 	};
 }
@@ -269,6 +291,7 @@ export function installDiagnostics(read: () => Omit<SampleInputs, 'trigger'>): v
 export function resetDiagnostics(): void {
 	history.length = 0;
 	previousBlank = null;
+	firstBlankCapture = null;
 }
 
 /** Test seam. */
