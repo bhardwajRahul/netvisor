@@ -219,6 +219,9 @@ where
         // Process the response, remembering the last in-subtree OID to continue from.
         let mut next_parts: Option<Vec<u64>> = None;
         let mut done = false;
+        // Set when the agent answered with an OID belonging to some other question. Re-asking is
+        // worth a try before giving up on the column.
+        let mut retry_page = false;
         for (resp_parts, value) in varbinds {
             if matches!(
                 value,
@@ -235,12 +238,18 @@ where
                 // over from a cancelled request reads exactly like this), and calling it a
                 // natural end would report a column that stopped early as authoritative, which
                 // then re-enables the server-side prune #649 exists to suppress.
-                stop = if resp_parts <= current_parts {
+                if resp_parts <= current_parts {
                     stop_detail = Some(format!("responded with {resp_parts:?}"));
-                    WalkStop::StaleResponse
+                    stop = WalkStop::StaleResponse;
+                    // Retryable for the same reason a request-id mismatch is: the answer belongs
+                    // to an earlier question and has now been consumed, so re-asking gets a fresh
+                    // one. Unlike that case there is no transport error — the response was valid
+                    // and carried the wrong OID, which is what a forking `pass` handler under
+                    // load produces.
+                    retry_page = true;
                 } else {
-                    WalkStop::EndOfSubtree
-                };
+                    stop = WalkStop::EndOfSubtree;
+                }
                 done = true;
                 break;
             }
@@ -253,28 +262,50 @@ where
                 break;
             }
         }
-        if done {
-            break;
+        if !done {
+            match next_parts {
+                Some(parts) => {
+                    // The walk must strictly advance. A device that answers with a tail OID
+                    // that doesn't lexicographically exceed the one we asked from (observed
+                    // on Ubiquiti bridge-FDB) would otherwise have us re-request the same
+                    // page until MAX_WALK_ENTRIES or the integration timeout. `Vec<u64>`
+                    // compares lexicographically, matching SNMP OID ordering.
+                    if parts <= current_parts {
+                        stop_detail = Some(format!("responded with {parts:?}"));
+                        stop = WalkStop::NonAdvancingOid;
+                        retry_page = true;
+                        done = true;
+                    } else {
+                        current_parts = parts;
+                    }
+                }
+                None => {
+                    stop = WalkStop::EmptyResponse;
+                    done = true;
+                }
+            }
         }
 
-        match next_parts {
-            Some(parts) => {
-                // The walk must strictly advance. A device that answers with a tail OID
-                // that doesn't lexicographically exceed the one we asked from (observed
-                // on Ubiquiti bridge-FDB) would otherwise have us re-request the same
-                // page until MAX_WALK_ENTRIES or the integration timeout. `Vec<u64>`
-                // compares lexicographically, matching SNMP OID ordering.
-                if parts <= current_parts {
-                    stop_detail = Some(format!("responded with {parts:?}"));
-                    stop = WalkStop::NonAdvancingOid;
-                    break;
-                }
-                current_parts = parts;
-            }
-            None => {
-                stop = WalkStop::EmptyResponse;
-                break;
-            }
+        // Both wrong-OID shapes converge here — the one detected inside the page and the one
+        // detected on the tail — so a retry covers each.
+        if retry_page && desync_retries < MAX_DESYNC_RETRIES {
+            desync_retries += 1;
+            debug!(
+                ip = %ip,
+                base = base_oid_str,
+                attempt = desync_retries,
+                ?stop,
+                detail = stop_detail.as_deref().unwrap_or(""),
+                "Re-asking after an answer that belonged to another request"
+            );
+            // Nothing from this page reached `on_entry` — a wrong-OID response is rejected
+            // before the callback — so re-asking cannot duplicate rows.
+            stop = WalkStop::EndOfSubtree;
+            stop_detail = None;
+            continue 'walk;
+        }
+        if done {
+            break;
         }
     }
 
@@ -2427,6 +2458,59 @@ mod if_table_tests {
         // non-advancing guard stops it. What matters is that the retry ran and its data was
         // collected at all — before, the walk ended on the stale answer with nothing.
         assert!(seen > 0, "the retry's data should have been collected");
+    }
+
+    /// The simulator's documented failure mode, and the one a busy agent produces: a response
+    /// that is perfectly valid — right request id, right community — and carries an OID belonging
+    /// to an earlier request. No transport error, so the request-id retry never saw it, and the
+    /// column ended there. Measured against the sim, the request-id retry alone moved nothing,
+    /// which is what sent us looking at this path.
+    #[tokio::test]
+    async fn a_walk_survives_one_answer_meant_for_another_request() {
+        /// Answers the first request with someone else's OID, then walks the column properly.
+        struct AnswersLateOnce {
+            page: usize,
+        }
+
+        #[async_trait::async_trait]
+        impl SnmpWalkTransport for AnswersLateOnce {
+            async fn walk_getbulk<'a>(
+                &'a mut self,
+                _from: &[u64],
+                _max: u32,
+            ) -> Result<WalkPage<'a>> {
+                self.page += 1;
+                Ok(WalkPage::Varbinds(match self.page {
+                    // Below the requested base: belongs to some earlier question entirely.
+                    1 => vec![(vec![1, 3, 6, 1, 2, 1, 1, 1, 0], Value::Integer(1))],
+                    2 => vec![(vec![1, 3, 6, 1, 2, 1, 2, 2, 1, 2, 1], Value::Integer(1))],
+                    3 => vec![(vec![1, 3, 6, 1, 2, 1, 2, 2, 1, 2, 2], Value::Integer(2))],
+                    // Past the column, advancing — the natural end.
+                    _ => vec![(vec![1, 3, 6, 1, 2, 1, 2, 2, 1, 3, 1], Value::Integer(6))],
+                }))
+            }
+
+            async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
+                unreachable!("getbulk answers first")
+            }
+        }
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(&mut AnswersLateOnce { page: 0 }, ip(), IF_DESCR, |_, _| {
+            seen += 1
+        })
+        .await
+        .unwrap();
+
+        assert!(
+            !matches!(stop, WalkStop::StaleResponse | WalkStop::NonAdvancingOid),
+            "one misdirected answer should not end the column, got {stop:?}"
+        );
+        assert!(stop.is_complete(), "expected a clean end, got {stop:?}");
+        assert_eq!(
+            seen, 2,
+            "both rows after the misdirected answer should be collected"
+        );
     }
 
     /// Bounded, so a device answering persistently out of step is reported as truncated rather
