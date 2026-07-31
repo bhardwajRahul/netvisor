@@ -65,6 +65,36 @@ Measured 2026-07-27, walking all 12 v2c devices from a single client:
 
 Every truncation was a stale response — an in-subtree walk answered with an OID *lower* than the one requested (asking for `lldpRemChassisId` and getting `lldpRemChassisIdSubtype`; asking within ifXTable and being handed an LLDP OID that sorts below the entire subtree). A correct agent walking forward cannot produce that, and it is not the client desyncing: the responses pass request-id and community validation, each session owns its own connected socket and request-id range, and the identical walks are clean run serially.
 
+### The daemon now recovers from it (2026-07-31)
+
+Re-measured after the walk gained a bounded re-ask on a misdirected answer:
+
+| | truncated | re-asks |
+|---|---|---|
+| concurrent, 2 scans | **0** | **13**, every one `StaleResponse` |
+
+Re-asking is safe because a wrong-OID response is rejected before it reaches the row callback, so nothing from it was collected and the retry cannot duplicate rows. Bounded at two attempts, so an agent answering persistently out of step still reports as truncated rather than spinning the scan.
+
+**The simulator is still doing exactly what it did** — 13 misdirected answers across two scans, on a different set of devices each time. What changed is that the daemon no longer converts them into lost columns. Judge future changes against *0 truncated*, and treat a rise in the re-ask count as the simulator being busier rather than the product regressing.
+
+Note this arrived by way of a null result worth remembering: an earlier retry keyed on `snmp2::Error::RequestIdMismatch` — a transport error where the session rejects the datagram — and moved these numbers not at all, because the simulator never produces that. A customer's switches did. Two environments, two different faults; the first fix was aimed at the wrong one.
+
+The remaining `set_complete=false` results here are a *different* simulator misbehaviour: columns answering for ifIndexes the device never listed (`foreign_rows=1, 7, 19` in one two-scan window). Those rows are discarded and reported separately, so warning count is not a clean proxy for truncation — count `SNMP walk truncated` lines instead.
+
+### Control: a correct agent under load (2026-07-31)
+
+The agents here are deliberately incorrect, so they cannot answer "is the *scanner* losing data?". A control agent settles it: one `snmpd` with **no `pass` directives at all**, serving the built-in MIBs from real kernel state, on its own macvlan behind `tc netem`.
+
+| impairment | rescans | truncations | re-asks | ifTable |
+|---|---|---|---|---|
+| none | 5 | 0 | 0 | 17/17, complete |
+| 200 ms delay, 2% loss | 6 | 0 | 0 | 17/17, complete |
+| 400 ms delay, 15% loss | 6 | 0 | 0 | 17/17, complete |
+
+Against an agent that is correct by construction, the scanner loses nothing — including at loss rates well past anything a LAN produces. (At 800 ms / 55% loss only 1 of 3 rescans got past the probe at all, so that arm proves little either way.)
+
+To rebuild it: a macvlan on the parent interface, a conf file with `agentAddress`, `rocommunity` and the `sys*` values and **nothing else**, a systemd unit running `snmpd -f -Lo -C -c <conf>` — note *without* the `-I -ifTable,-ifXTable` the other units carry, since here the built-in implementations are the point — then `tc qdisc replace dev <iface> root netem delay Xms loss Y%`. Remove the qdisc, unit, conf and macvlan afterwards.
+
 **How to read a scan.** Judge a change by whether *data* was lost — interfaces pruned, neighbours wiped, links frozen — not by whether warnings appeared. A warning saying previously discovered values "were kept rather than overwritten" is the daemon handling the chaos correctly.
 
 **Worth keeping.** This free adversarial agent surfaced three real defects in July 2026: a foreign interface appearing on a switch, a chassis ID overwritten with NULL leaving a link permanently unresolvable, and a truncated column reported as authoritative. If the noise ever needs quieting, `pass_persist` replaces the fork-per-request with one long-lived handler per agent — but leave a device or two on `pass` deliberately, or the environment loses the property that found those bugs.
