@@ -272,6 +272,12 @@ impl DiscoveryRunner {
         )
         .await?;
 
+        // Deliver before the early return below. These were built correctly and then dropped,
+        // so a wrong Docker or Podman socket credential on the daemon host reported nothing at
+        // all — and the early return is precisely the path a failing credential takes.
+        ops.record_credential_issues(&probe_results.credential_issues)
+            .await;
+
         if probe_results.client_responses.is_empty() {
             tracing::debug!("No localhost integration probes succeeded");
             return Ok(());

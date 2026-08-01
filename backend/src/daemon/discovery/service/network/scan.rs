@@ -1215,12 +1215,8 @@ impl NetworkScan {
         open_ports.extend(probe_results.additional_ports.iter());
         // Hand any IP-targeted credential that produced nothing to the session, which renders
         // them as one line at the end. `probe_integrations` has no session handle of its own.
-        if !probe_results.credential_issues.is_empty()
-            && let Ok(session_state) = ops.get_session().await
-            && let Ok(mut issues) = session_state.credential_issues.lock()
-        {
-            issues.extend(probe_results.credential_issues.iter().cloned());
-        }
+        ops.record_credential_issues(&probe_results.credential_issues)
+            .await;
         // Mark this host's integration cost as completed once its probes resolve. Uses
         // the SAME per-distinct-integration cost that total_cost accrued for the host,
         // so completed_cost converges to total_cost (the scan ETA/progress stay accurate

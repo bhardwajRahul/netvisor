@@ -680,6 +680,24 @@ impl DiscoveryOps {
         }
     }
 
+    /// Hand a batch of already-classified credential issues to the session.
+    ///
+    /// `probe_integrations` has no session handle, so it returns its issues for the caller to
+    /// deliver — and a caller that forgets makes them disappear after being correctly built. That
+    /// is exactly what the localhost phase did, so a wrong Docker socket credential on the daemon
+    /// host reported nothing at all. One method both callers share, rather than the delivery being
+    /// re-implemented (or not) per phase.
+    pub async fn record_credential_issues(&self, issues: &[warnings::CredentialIssue]) {
+        if issues.is_empty() {
+            return;
+        }
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.credential_issues.lock()
+        {
+            buffer.extend(issues.iter().cloned());
+        }
+    }
+
     /// Record LLDP neighbours whose local port could not be matched to an interface.
     pub async fn record_unresolved_lldp_ports(&self, record: warnings::UnresolvedLldpPorts) {
         if record.unresolved == 0 {

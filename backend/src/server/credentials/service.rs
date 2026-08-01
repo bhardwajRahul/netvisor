@@ -807,11 +807,31 @@ pub(crate) fn mapping_for<'a>(
 /// Filters on the 7-way `CredentialTypeDiscriminants` rather than the 5-way wire tag, because
 /// SnmpV1 and SnmpV3 carry a higher daemon floor than SnmpV2c but all three collapse to one `Snmp`
 /// tag on the wire — gating after that collapse could not tell them apart.
+/// Configuring an incompatible credential is already refused at the API with an actionable 400,
+/// but only for a discovery's `integration_targets`. This set also carries network credentials and
+/// host assignments, which are network-scoped and cannot be validated against one daemon version
+/// because a network may hold several daemons on different ones. So reaching here means a
+/// mixed-version fleet or a downgrade, where the credential silently does nothing on this daemon
+/// until it is upgraded — worth saying out loud, since a silent filter is indistinguishable from
+/// a credential that simply never worked.
 pub(crate) fn retain_daemon_compatible(
     mappings: &mut BTreeMap<Uuid, TypedCredentialMapping>,
     daemon_version: Option<&semver::Version>,
 ) {
-    mappings.retain(|_, typed| typed.discriminant.compatible_with_daemon(daemon_version));
+    mappings.retain(|credential_id, typed| {
+        let compatible = typed.discriminant.compatible_with_daemon(daemon_version);
+        if !compatible {
+            tracing::warn!(
+                %credential_id,
+                credential_type = %typed.discriminant.display_name(),
+                minimum_daemon_version = %typed.discriminant.minimum_daemon_version(),
+                daemon_version = daemon_version.map(|v| v.to_string()).unwrap_or_else(|| "unknown".to_string()),
+                "Not dispatching a credential this daemon is too old to use; upgrade the daemon \
+                 or the credential will keep being skipped on its scans"
+            );
+        }
+        compatible
+    });
 }
 
 /// Flatten the per-credential mappings into the order the daemon should probe them.
