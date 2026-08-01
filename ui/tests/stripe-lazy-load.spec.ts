@@ -24,9 +24,19 @@ test('no stripe script on a page that has no billing UI', async ({ page, context
 		{ name: 'session_id', value: process.env.SESSION_ID ?? '', domain: 'localhost', path: '/' }
 	]);
 
+	// Matched on the parsed hostname rather than as a substring: `https://elsewhere.test/?
+	// ref=js.stripe.com` is not Stripe.js, and a substring test would fail this test on it.
+	const isStripeHost = (url: string) => {
+		try {
+			return new URL(url).hostname === 'js.stripe.com';
+		} catch {
+			return false;
+		}
+	};
+
 	const stripeRequests: string[] = [];
 	page.on('request', (r) => {
-		if (r.url().includes('js.stripe.com')) stripeRequests.push(r.url());
+		if (isStripeHost(r.url())) stripeRequests.push(r.url());
 	});
 
 	await page.goto('/');
@@ -37,7 +47,14 @@ test('no stripe script on a page that has no billing UI', async ({ page, context
 	await page.waitForTimeout(3000);
 
 	const tags = await page.evaluate(
-		() => document.querySelectorAll('script[src*="js.stripe.com"]').length
+		() =>
+			Array.from(document.querySelectorAll<HTMLScriptElement>('script[src]')).filter((s) => {
+				try {
+					return new URL(s.src, document.baseURI).hostname === 'js.stripe.com';
+				} catch {
+					return false;
+				}
+			}).length
 	);
 	console.log('stripe requests:', JSON.stringify(stripeRequests), 'script tags:', tags);
 	expect(stripeRequests, `Stripe.js was fetched: ${stripeRequests.join(', ')}`).toEqual([]);
