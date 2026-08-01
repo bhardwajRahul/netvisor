@@ -626,7 +626,10 @@ pub fn render_credential_issues(issues: &[CredentialIssue]) -> Vec<String> {
         };
         let matching: Vec<&CredentialIssue> = issues
             .iter()
-            .filter(|i| attempt_outcome(&i.reason) == Some(*outcome))
+            .filter(|i| {
+                attempt_outcome(&i.reason) == Some(*outcome)
+                    && !already_covered_by_address_line(issues, i)
+            })
             .collect();
         if matching.is_empty() {
             continue;
@@ -691,11 +694,42 @@ impl AttemptOutcome {
             ),
             // The user stopped the scan. Not a finding.
             Self::Cancelled => None,
-            // The address-level lines above already say nothing answered there; repeating it per
-            // credential is the same fact twice.
-            Self::Unreachable | Self::TimedOut => None,
+            // Rendered only when no address-level line already said it — see
+            // `already_covered_by_address_line`. Suppressing these unconditionally was wrong: it
+            // assumed a sweep, where "nothing answered there" is reported per address. The
+            // daemon-host phase has no such line, because 127.0.0.1 is always up, so a Docker
+            // socket credential pointing at a path that does not exist stayed silent even after
+            // its issue was correctly built and delivered.
+            Self::Unreachable | Self::TimedOut => Some(
+                "could not be reached at that address — check the address, port and that the \
+                 service is listening",
+            ),
         }
     }
+}
+
+/// Whether an address-level line in the same batch already says what this one would.
+///
+/// "Nothing answered at 10.0.0.5" and "the SNMP credential for 10.0.0.5 could not be reached" are
+/// the same fact, and on a sweep the first is reported per address already. So the second is
+/// dropped — but *only* when the first is actually present. Deciding this by outcome alone, as
+/// this used to, silently swallowed every unreachable-credential report from the daemon-host
+/// phase, where no address-level line exists because 127.0.0.1 is always up.
+fn already_covered_by_address_line(issues: &[CredentialIssue], issue: &CredentialIssue) -> bool {
+    if !matches!(
+        attempt_outcome(&issue.reason),
+        Some(AttemptOutcome::Unreachable | AttemptOutcome::TimedOut)
+    ) {
+        return false;
+    }
+    issues.iter().any(|other| {
+        other.ip == issue.ip
+            && matches!(
+                other.reason,
+                CredentialIssueReason::TargetNotScanned
+                    | CredentialIssueReason::TargetNotResponding
+            )
+    })
 }
 
 fn attempt_outcome(reason: &CredentialIssueReason) -> Option<AttemptOutcome> {
@@ -1292,17 +1326,38 @@ mod tests {
         );
     }
 
-    /// Nothing answered at the address, which the address-level lines already say. Repeating it
-    /// per credential is the same fact twice and pushes the actionable lines down the list.
+    /// Suppressed only when the address-level line is actually there. Repeating "nothing answered
+    /// at 10.0.0.1" per credential is the same fact twice.
     #[test]
-    fn an_unreachable_attempt_does_not_repeat_the_address_level_line() {
+    fn an_unreachable_attempt_does_not_repeat_an_address_line_that_exists() {
+        let lines = render_credential_issues(&[
+            CredentialIssue {
+                label: "SNMP queries",
+                ip: ip("10.0.0.1"),
+                reason: CredentialIssueReason::TargetNotResponding,
+            },
+            attempted("10.0.0.1", AttemptOutcome::Unreachable),
+        ]);
+
+        assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(
-            render_credential_issues(&[
-                attempted("10.0.0.1", AttemptOutcome::Unreachable),
-                attempted("10.0.0.2", AttemptOutcome::TimedOut),
-            ])
-            .is_empty()
+            lines[0].contains("nothing answered at that address"),
+            "{lines:?}"
         );
+    }
+
+    /// …and reported when it is not. The daemon-host phase has no address-level line, because
+    /// 127.0.0.1 is always up — so deciding this by outcome alone swallowed every unreachable
+    /// report from it, which is how a Docker socket credential pointing at a path that does not
+    /// exist stayed silent even after its issue was built and delivered correctly.
+    #[test]
+    fn an_unreachable_attempt_is_reported_when_no_address_line_covers_it() {
+        let lines =
+            render_credential_issues(&[attempted("127.0.0.1", AttemptOutcome::Unreachable)]);
+
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].contains("127.0.0.1"), "{lines:?}");
+        assert!(lines[0].contains("could not be reached"), "{lines:?}");
     }
 
     /// Hosts sharing an outcome collapse onto one line, the same way they do for every other
