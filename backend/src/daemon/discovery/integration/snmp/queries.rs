@@ -19,7 +19,7 @@ use super::types::{
 };
 use super::values::{
     parse_lldp_mgmt_addr, parse_portlist_bitmap, qbridge_fdb_index_to_mac, value_to_i32,
-    value_to_ip, value_to_mac, value_to_string, value_to_u16, value_to_u64,
+    value_to_ip, value_to_mac, value_to_string, value_to_u16, value_to_u64, value_type_name,
 };
 
 /// Varbinds requested per getbulk round when walking a table subtree.
@@ -423,6 +423,16 @@ pub struct SnmpCollection<T> {
     /// server holds?) rather than a reporting one. They agree where both are set; keeping them
     /// apart means a change to how something reads cannot silently change what is stored.
     pub reason: Option<ShortfallReason>,
+    /// Rows the walk *read* and then had to throw away as unusable.
+    ///
+    /// Distinct from every other field here, which describe rows that were never read. A record
+    /// the agent served but that is missing a mandatory identifier is a fault in the device's
+    /// data, not in the read, and no rescan fixes it — so it needs saying separately or it
+    /// reads to an operator as a transient (GH #668).
+    ///
+    /// Set by both neighbour tables: LLDP discards a record with no chassis ID, CDP one with no
+    /// device id, for the same reason in both cases.
+    pub discarded: usize,
 }
 
 impl<T: Default> Default for SnmpCollection<T> {
@@ -431,6 +441,7 @@ impl<T: Default> Default for SnmpCollection<T> {
             records: T::default(),
             complete: false,
             unsupported: false,
+            discarded: 0,
             // `query_or_default` produces this when a whole query timed out or errored, and it
             // genuinely cannot say more — the future was dropped before it could report.
             reason: Some(ShortfallReason::NoAnswer),
@@ -771,6 +782,28 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     let mut neighbors: HashMap<(i32, i32), LldpNeighbor> = HashMap::new();
     let mut shortfall = Shortfall::default();
 
+    // The two chassis columns get their own accumulators as well as folding into `shortfall`.
+    //
+    // A record missing its chassis ID is discarded below, and three unrelated things cause that:
+    // one of these two columns stopping early, the agent answering them with a type we reject, or
+    // rows existing in the later columns that these two never listed. The shared accumulator
+    // cannot tell a chassis-column stop from a `remSysDesc` stop, which left `dropped=N` as the
+    // only evidence and sent us asking customers to run snmpwalk by hand (GH #668). Same shape as
+    // the management-address walk further down, for the same reason.
+    let mut chassis_subtype_shortfall = Shortfall::default();
+    let mut chassis_value_shortfall = Shortfall::default();
+
+    // Keys the chassis columns actually listed. A key present in `neighbors` but absent here was
+    // conjured by a later column alone — a ghost row, not a truncated read. `walk_if_table` has
+    // the same guard in `known_if_indexes`; this table had none.
+    let mut chassis_keys: HashSet<(i32, i32)> = HashSet::new();
+
+    // Values rejected for being the wrong ASN.1 type, by the type the agent actually sent. A
+    // count says something went wrong; the type says what, and the two point at different
+    // remedies.
+    let mut unexpected_subtype_type: Option<&'static str> = None;
+    let mut unexpected_value_type: Option<&'static str> = None;
+
     // LLDP remote table uses a complex index: lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex
     // We'll walk the columns and extract the local port from the OID
 
@@ -830,11 +863,26 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
                         });
                 match column_name {
                     "remChassisIdSubtype" => {
-                        neighbor.remote_chassis_id_subtype = value_to_i32(value).map(|v| v as u8)
+                        chassis_keys.insert((local_port, rem_index));
+                        match value_to_i32(value) {
+                            Some(v) => neighbor.remote_chassis_id_subtype = Some(v as u8),
+                            // Not a silent discard any more. An agent answering the subtype with
+                            // a Null or an Opaque looks exactly like a walk that never reached
+                            // this row, and only one of those is worth retrying.
+                            None => {
+                                unexpected_subtype_type.get_or_insert(value_type_name(value));
+                            }
+                        }
                     }
                     "remChassisId" => {
-                        if let Value::OctetString(bytes) = value {
-                            neighbor.remote_chassis_id_bytes = Some(bytes.to_vec());
+                        chassis_keys.insert((local_port, rem_index));
+                        match value {
+                            Value::OctetString(bytes) => {
+                                neighbor.remote_chassis_id_bytes = Some(bytes.to_vec());
+                            }
+                            other => {
+                                unexpected_value_type.get_or_insert(value_type_name(other));
+                            }
                         }
                     }
                     "remPortIdSubtype" => {
@@ -853,6 +901,11 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
             },
         )
         .await;
+        match column_name {
+            "remChassisIdSubtype" => chassis_subtype_shortfall.record(stop),
+            "remChassisId" => chassis_value_shortfall.record(stop),
+            _ => {}
+        }
         if !stop.is_unsupported() {
             all_columns_unsupported = false;
         }
@@ -909,15 +962,48 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     // NULL, and a row with no chassis ID is excluded from L2 resolution entirely, so it could
     // never recover. Drop it and report the walk as partial instead.
     let before = neighbors.len();
+    // Classified as we filter, because "14 were dropped" is not a diagnosis. Each counter below
+    // has a different remedy — a truncated column is worth a rescan, an agent answering with the
+    // wrong type never will be, and a ghost row is neither.
+    let mut ghost_rows = 0usize;
+    let mut missing_subtype = 0usize;
+    let mut missing_value = 0usize;
     let result: Vec<LldpNeighbor> = neighbors
-        .into_values()
-        .filter(|n| n.remote_chassis_id_subtype.is_some() && n.remote_chassis_id_bytes.is_some())
+        .into_iter()
+        .filter(|(key, n)| {
+            let has_subtype = n.remote_chassis_id_subtype.is_some();
+            let has_value = n.remote_chassis_id_bytes.is_some();
+            if has_subtype && has_value {
+                return true;
+            }
+            if !chassis_keys.contains(key) {
+                // Neither chassis column ever listed this (localPortNum, remIndex). A later
+                // column invented it, so there was never a chassis ID to lose.
+                ghost_rows += 1;
+            } else {
+                if !has_subtype {
+                    missing_subtype += 1;
+                }
+                if !has_value {
+                    missing_value += 1;
+                }
+            }
+            false
+        })
+        .map(|(_, n)| n)
         .collect();
     if result.len() != before {
         shortfall.complete = false;
         warn!(
             ip = %ip,
             dropped = before - result.len(),
+            ghost_rows,
+            missing_subtype,
+            missing_value,
+            unexpected_subtype_type,
+            unexpected_value_type,
+            subtype_walk = ?chassis_subtype_shortfall.reason,
+            value_walk = ?chassis_value_shortfall.reason,
             "LLDP neighbours missing the mandatory chassis ID; discarding them and marking the \
              walk partial"
         );
@@ -934,6 +1020,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     );
 
     Ok(SnmpCollection {
+        discarded: before - result.len(),
         records: result,
         complete: shortfall.complete,
         unsupported,
@@ -1142,6 +1229,7 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
     );
 
     Ok(SnmpCollection {
+        discarded: before - result.len(),
         records: result,
         complete: shortfall.complete,
         unsupported,
@@ -1347,6 +1435,7 @@ pub async fn query_bridge_port_mapping<T: SnmpWalkTransport>(
         complete: shortfall.complete,
         unsupported: false,
         reason: shortfall.reason,
+        discarded: 0,
     })
 }
 
@@ -1469,6 +1558,7 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
         complete: shortfall.complete,
         unsupported: false,
         reason: shortfall.reason,
+        discarded: 0,
     })
 }
 
@@ -1530,6 +1620,7 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
         complete: shortfall.complete,
         unsupported: false,
         reason: shortfall.reason,
+        discarded: 0,
     })
 }
 
@@ -1684,6 +1775,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
             complete: shortfall.complete,
             unsupported: false,
             reason: shortfall.reason,
+            discarded: 0,
         });
     }
 
@@ -1791,6 +1883,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
         complete: shortfall.complete,
         unsupported: false,
         reason: shortfall.reason,
+        discarded: 0,
     })
 }
 
@@ -2275,6 +2368,94 @@ mod if_table_tests {
             "dropping a malformed record means this walk is not authoritative, so the server \
              must keep what it already has"
         );
+        assert_eq!(
+            walk.discarded, 1,
+            "the count has to survive to the caller — it is what tells an operator the device \
+             answered and the record itself was unusable"
+        );
+    }
+
+    /// A record whose chassis *value* arrived but whose subtype column answered with a
+    /// non-integer. Indistinguishable from a truncated walk in the old logging, and the two call
+    /// for opposite responses: one is worth a rescan, the other never will be. GH #668.
+    #[tokio::test]
+    async fn a_chassis_id_subtype_of_the_wrong_type_is_reported_as_a_discard() {
+        let mut agent = FakeAgent::new(&[
+            // .4 is lldpRemChassisIdSubtype and must be an integer; this agent sends a string.
+            ("1.0.8802.1.1.2.1.4.1.1.4.0.1.1", Canned::Str("macAddress")),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.0.1.1",
+                Canned::Str("00:1a:2b:00:10:00"),
+            ),
+            ("1.0.8802.1.1.2.1.4.1.1.7.0.1.1", Canned::Str("41")),
+        ]);
+
+        let walk = query_lldp_neighbors(&mut agent, ip()).await.unwrap();
+
+        assert!(walk.records.is_empty());
+        assert_eq!(walk.discarded, 1);
+    }
+
+    /// The mirror: the subtype is fine and the chassis id itself is not an OCTET STRING.
+    #[tokio::test]
+    async fn a_chassis_id_value_of_the_wrong_type_is_reported_as_a_discard() {
+        let mut agent = FakeAgent::new(&[
+            ("1.0.8802.1.1.2.1.4.1.1.4.0.1.1", Canned::Int(4)),
+            // .5 must be an OCTET STRING.
+            ("1.0.8802.1.1.2.1.4.1.1.5.0.1.1", Canned::Int(0)),
+            ("1.0.8802.1.1.2.1.4.1.1.7.0.1.1", Canned::Str("41")),
+        ]);
+
+        let walk = query_lldp_neighbors(&mut agent, ip()).await.unwrap();
+
+        assert!(walk.records.is_empty());
+        assert_eq!(walk.discarded, 1);
+    }
+
+    /// A ghost row: a `(localPortNum, remIndex)` that only the later columns ever mention. There
+    /// was never a chassis ID to lose, so this is not evidence of a cut-short chassis column —
+    /// the distinction the walk previously could not draw at all.
+    #[tokio::test]
+    async fn a_row_only_the_later_columns_mention_is_still_discarded() {
+        let mut agent = FakeAgent::new(&[
+            // A well-formed neighbour at remIndex 1...
+            ("1.0.8802.1.1.2.1.4.1.1.4.0.1.1", Canned::Int(4)),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.0.1.1",
+                Canned::Str("00:1a:2b:00:10:00"),
+            ),
+            ("1.0.8802.1.1.2.1.4.1.1.7.0.1.1", Canned::Str("41")),
+            // ...and a sys-name row at remIndex 2 that the chassis columns never listed.
+            ("1.0.8802.1.1.2.1.4.1.1.9.0.1.2", Canned::Str("ghost")),
+        ]);
+
+        let walk = query_lldp_neighbors(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(
+            walk.records.len(),
+            1,
+            "the well-formed neighbour must still come through"
+        );
+        assert_eq!(walk.discarded, 1);
+    }
+
+    /// Nothing discarded means nothing to report — the count must not fire on a healthy walk.
+    #[tokio::test]
+    async fn a_clean_walk_discards_nothing() {
+        let mut agent = FakeAgent::new(&[
+            ("1.0.8802.1.1.2.1.4.1.1.4.0.1.1", Canned::Int(4)),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.0.1.1",
+                Canned::Str("00:1a:2b:00:10:00"),
+            ),
+            ("1.0.8802.1.1.2.1.4.1.1.7.0.1.1", Canned::Str("41")),
+        ]);
+
+        let walk = query_lldp_neighbors(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(walk.records.len(), 1);
+        assert_eq!(walk.discarded, 0);
+        assert!(walk.complete);
     }
 
     /// A complete neighbour record still comes through intact.

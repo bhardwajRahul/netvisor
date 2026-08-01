@@ -466,6 +466,9 @@ impl DiscoveryOps {
         if let Ok(records) = session.unresolved_lldp_ports.lock() {
             warnings.extend(warnings::render_unresolved_lldp_ports(&records));
         }
+        if let Ok(records) = session.malformed_neighbours.lock() {
+            warnings.extend(warnings::render_malformed_neighbours(&records));
+        }
         if let Ok(records) = session.vlan_recording_failures.lock() {
             warnings.extend(warnings::render_vlan_recording_failures(&records));
         }
@@ -684,6 +687,18 @@ impl DiscoveryOps {
         }
         if let Ok(session) = self.get_session().await
             && let Ok(mut buffer) = session.unresolved_lldp_ports.lock()
+        {
+            buffer.push(record);
+        }
+    }
+
+    /// Record neighbour records discarded for missing the identifier L2 resolution needs.
+    pub async fn record_malformed_neighbours(&self, record: warnings::MalformedNeighbours) {
+        if record.discarded == 0 {
+            return;
+        }
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.malformed_neighbours.lock()
         {
             buffer.push(record);
         }

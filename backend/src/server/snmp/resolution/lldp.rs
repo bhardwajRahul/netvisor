@@ -4,6 +4,7 @@
 //! along with resolution methods to convert LLDP neighbor data into
 //! database entity references.
 
+use crate::server::shared::storage::pg_value::strip_nuls;
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use strum_macros::VariantNames;
@@ -119,29 +120,31 @@ mod ip_addr_serde {
     }
 }
 
+/// Decode a textual LLDP TLV payload.
+///
+/// Lossy, so a single bad byte degrades one character rather than discarding the whole neighbour,
+/// and NUL-stripped, because these strings land in the `lldp_chassis_id` / `lldp_port_id` JSONB
+/// columns and PostgreSQL rejects the escape outright (SQLSTATE 22P05). D-Link's DGS series
+/// NUL-terminates its port identifiers — `31 00` for port `"1"` — which used to fail the write of
+/// the whole host (GH #668). Stripping here also makes the value comparable: `"1\0"` matches no
+/// interface named `"1"`.
+fn decode_tlv_text(value: &[u8]) -> String {
+    strip_nuls(&String::from_utf8_lossy(value)).into_owned()
+}
+
 impl LldpChassisId {
     /// Parse from SNMP raw values (subtype byte + value bytes).
     ///
     /// LLDP chassis ID TLV format: subtype (1 byte) + value (variable)
     pub fn from_snmp(subtype: u8, value: &[u8]) -> Option<Self> {
         match subtype {
-            1 => Some(Self::ChassisComponent(
-                String::from_utf8_lossy(value).to_string(),
-            )),
-            2 => Some(Self::InterfaceAlias(
-                String::from_utf8_lossy(value).to_string(),
-            )),
-            3 => Some(Self::PortComponent(
-                String::from_utf8_lossy(value).to_string(),
-            )),
+            1 => Some(Self::ChassisComponent(decode_tlv_text(value))),
+            2 => Some(Self::InterfaceAlias(decode_tlv_text(value))),
+            3 => Some(Self::PortComponent(decode_tlv_text(value))),
             4 => parse_mac_id(value).map(Self::MacAddress),
             5 => parse_network_address(value).map(Self::NetworkAddress),
-            6 => Some(Self::InterfaceName(
-                String::from_utf8_lossy(value).to_string(),
-            )),
-            7 => Some(Self::LocallyAssigned(
-                String::from_utf8_lossy(value).to_string(),
-            )),
+            6 => Some(Self::InterfaceName(decode_tlv_text(value))),
+            7 => Some(Self::LocallyAssigned(decode_tlv_text(value))),
             _ => None,
         }
     }
@@ -155,8 +158,7 @@ impl LldpChassisId {
     /// raw-string `hosts.chassis_id` fallback in [`Self::resolve_host_id`] match a device
     /// regardless of whether SNMP or a controller recorded it. Anything else is
     /// [`Self::LocallyAssigned`], the honest label for "device-specific identifier, subtype
-    /// unknown"; it resolves by name and then by `ifIndex`, which is strictly more than
-    /// `InterfaceName` would attempt.
+    /// unknown", and the one whose resolution assumes least about the value.
     pub fn from_identifier_str(value: &str) -> Self {
         match canonical_mac(value) {
             Some(mac) => Self::MacAddress(mac),
@@ -255,23 +257,13 @@ impl LldpPortId {
     /// LLDP port ID TLV format: subtype (1 byte) + value (variable)
     pub fn from_snmp(subtype: u8, value: &[u8]) -> Option<Self> {
         match subtype {
-            1 => Some(Self::InterfaceAlias(
-                String::from_utf8_lossy(value).to_string(),
-            )),
-            2 => Some(Self::PortComponent(
-                String::from_utf8_lossy(value).to_string(),
-            )),
+            1 => Some(Self::InterfaceAlias(decode_tlv_text(value))),
+            2 => Some(Self::PortComponent(decode_tlv_text(value))),
             3 => parse_mac_id(value).map(Self::MacAddress),
             4 => parse_network_address(value).map(Self::NetworkAddress),
-            5 => Some(Self::InterfaceName(
-                String::from_utf8_lossy(value).to_string(),
-            )),
-            6 => Some(Self::AgentCircuitId(
-                String::from_utf8_lossy(value).to_string(),
-            )),
-            7 => Some(Self::LocallyAssigned(
-                String::from_utf8_lossy(value).to_string(),
-            )),
+            5 => Some(Self::InterfaceName(decode_tlv_text(value))),
+            6 => Some(Self::AgentCircuitId(decode_tlv_text(value))),
+            7 => Some(Self::LocallyAssigned(decode_tlv_text(value))),
             _ => None,
         }
     }
@@ -292,10 +284,9 @@ impl LldpPortId {
     ///
     /// The resolution strategy depends on the port ID subtype:
     /// - MacAddress: Look up via interfaces.mac_address
-    /// - InterfaceName: Look up via interfaces.if_descr / if_name
     /// - NetworkAddress: Look up via ip_address_id FK on interfaces
-    /// - PortComponent/AgentCircuitId/LocallyAssigned: device-local port identifier — see
-    ///   [`Self::resolve_device_local_port`]
+    /// - InterfaceName/PortComponent/AgentCircuitId/LocallyAssigned: device-local port identifier
+    ///   — see [`Self::resolve_device_local_port`]
     /// - InterfaceAlias: user-configurable and non-unique, no reliable resolution
     pub async fn resolve_if_entry_id<R: LldpResolver>(
         &self,
@@ -306,20 +297,21 @@ impl LldpPortId {
             Self::MacAddress(mac) => {
                 IdentityResolution::found(resolver.find_if_entry_by_mac(mac, host_id).await)
             }
-            Self::InterfaceName(name) => {
-                IdentityResolution::found(resolver.find_if_entry_by_name(name, host_id).await)
-            }
             Self::InterfaceAlias(_) => IdentityResolution::NoStrategy, // user-configurable, non-unique
             Self::NetworkAddress(ip) => {
                 IdentityResolution::found(resolver.find_if_entry_by_ip(ip, host_id).await)
             }
-            Self::PortComponent(id) | Self::AgentCircuitId(id) | Self::LocallyAssigned(id) => {
+            Self::InterfaceName(id)
+            | Self::PortComponent(id)
+            | Self::AgentCircuitId(id)
+            | Self::LocallyAssigned(id) => {
                 Self::resolve_device_local_port(resolver, id, host_id).await
             }
         }
     }
 
-    /// Resolve a device-local port identifier (subtypes 2, 6 and 7) against one host's interfaces.
+    /// Resolve a device-local port identifier (subtypes 2, 5, 6 and 7) against one host's
+    /// interfaces.
     ///
     /// These subtypes are "whatever the device calls this port", which sounds unusable but in
     /// practice is one of two things, both of which the remote host's own ifTable already carries:
@@ -332,6 +324,13 @@ impl LldpPortId {
     /// because a bare port number is ambiguous between the two and the name is the device's own
     /// label; both are scoped to the single already-resolved host, so a wrong match cannot reach
     /// another device.
+    ///
+    /// Subtype 5 (`interfaceName`) is routed here too, despite the name promising a real ifName.
+    /// A D-Link DGS-1210-48 advertises subtype 5 with the bare port number `"2"` while its own
+    /// interfaces are `Slot0/1..Slot0/48` — the value is an ifIndex wearing the wrong label, and
+    /// name-only lookup could never match it (GH #668). This ladder is a strict superset of what
+    /// subtype 5 did before: names are still tried first, so a device that means what it says is
+    /// unaffected, and the index fallback is bounded to the one host already resolved.
     async fn resolve_device_local_port<R: LldpResolver>(
         resolver: &R,
         id: &str,
@@ -867,6 +866,86 @@ mod resolution_tests {
         assert_eq!(
             port.resolve_if_entry_id(&inventory, switch).await,
             IdentityResolution::Resolved(port_41)
+        );
+    }
+
+    /// GH #668: a D-Link DGS-1210-48 sets port-id subtype 5 (`interfaceName`) but sends the bare
+    /// port number, while its own interfaces are `Slot0/1..Slot0/48` with ifIndex == port number.
+    /// Name-only lookup — which is all subtype 5 used to get — can never match that, so the
+    /// neighbour stopped at the host and the switch drew no L2 edge.
+    #[tokio::test]
+    async fn interface_name_port_id_falls_back_to_the_remote_if_index() {
+        let switch = Uuid::new_v4();
+        let port_9 = Uuid::new_v4();
+        let inventory = FakeInventory {
+            interfaces: vec![FakeInterface {
+                id: port_9,
+                host_id: switch,
+                if_name: Some("Slot0/9".to_string()),
+                if_descr: Some("D-Link DGS-1210-48 Rev.GX/7.20.003 Port 9".to_string()),
+                if_index: 9,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let port = LldpPortId::InterfaceName("9".to_string());
+        assert_eq!(
+            port.resolve_if_entry_id(&inventory, switch).await,
+            IdentityResolution::Resolved(port_9)
+        );
+    }
+
+    /// The fallback must not cost subtype 5 its literal reading: a device that means `interfaceName`
+    /// still resolves by name, and the name is tried before the index.
+    #[tokio::test]
+    async fn interface_name_port_id_still_prefers_a_real_name() {
+        let switch = Uuid::new_v4();
+        let named = Uuid::new_v4();
+        let inventory = FakeInventory {
+            interfaces: vec![
+                FakeInterface {
+                    id: named,
+                    host_id: switch,
+                    if_name: Some("2".to_string()),
+                    if_index: 40,
+                    ..Default::default()
+                },
+                // Would win if the index were consulted first.
+                FakeInterface {
+                    id: Uuid::new_v4(),
+                    host_id: switch,
+                    if_name: Some("Gi0/2".to_string()),
+                    if_index: 2,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let port = LldpPortId::InterfaceName("2".to_string());
+        assert_eq!(
+            port.resolve_if_entry_id(&inventory, switch).await,
+            IdentityResolution::Resolved(named)
+        );
+    }
+
+    /// GH #668: D-Link NUL-terminates its port identifiers, so `lldpRemPortId` arrives as
+    /// `31 00`. The byte is valid UTF-8, so nothing rejected it — it reached `jsonb`, which
+    /// cannot store the escape, and would never have matched an interface named "1" anyway.
+    #[test]
+    fn tlv_text_decoding_strips_nul_padding() {
+        assert_eq!(
+            LldpPortId::from_snmp(5, b"1\0"),
+            Some(LldpPortId::InterfaceName("1".to_string()))
+        );
+        assert_eq!(
+            LldpPortId::from_snmp(7, b"eth1/0/51\0\0"),
+            Some(LldpPortId::LocallyAssigned("eth1/0/51".to_string()))
+        );
+        assert_eq!(
+            LldpChassisId::from_snmp(7, b"switch4\0"),
+            Some(LldpChassisId::LocallyAssigned("switch4".to_string()))
         );
     }
 

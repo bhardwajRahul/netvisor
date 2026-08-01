@@ -15,7 +15,7 @@ set -euo pipefail
 # simulator, not the product under test.
 # ══════════════════════════════════════════════════════════════════════
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243)
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244)
 CIDR="22"
 IFACE="eth0"
 
@@ -28,8 +28,12 @@ IFACE="eth0"
 #
 # .240/.241/.242 cover the three L2-resolution defects from GH #664/#649/#614
 # (July 2026) — see the block comments on their MIB data below.
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c)
-SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01)
+#
+# .244 covers the port-id shapes from GH #668 (August 2026): a D-Link that labels its
+# neighbour port ids `interfaceName` while sending a bare port number, and one that can
+# only be matched through lldpRemPortDesc.
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c)
+SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01)
 
 # SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
 # AuthPriv with SHA-256 / AES-128 — the broadly-supported pure-Rust default.
@@ -998,9 +1002,130 @@ cat > "$DATA_DIR/switch-flaky-01-lldp-nochassis.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
 EOF
 
+# Two more shapes that reach the same discard, added for GH #668. The old logging collapsed all
+# three causes into one `dropped=N`, so a customer had to run snmpwalk by hand to tell us which
+# one their switch produced. These make each counter reproducible against a real agent.
+
+# Subtype absent, value present: `.5` answers and `.4` does not. Recoverable in principle — the
+# subtype could be inferred from the value's shape — so it is the one worth being able to see.
+cat > "$DATA_DIR/switch-flaky-01-lldp-nosubtype.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 00:1a:2b:00:1f:00
+.1.0.8802.1.1.2.1.3.3.0 string switch-flaky-01
+.1.0.8802.1.1.2.1.3.4.0 string Scanopy SNMP simulator, flaky-LLDP profile
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 00:1a:2b:00:10:00
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/3
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/3
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
+EOF
+
+# Subtype present but the wrong ASN.1 type: `.4` is an INTEGER per the MIB and this agent sends a
+# string. Reads as a complete walk — no truncation signal anywhere — so before the per-cause
+# counters the only evidence it had happened at all was the record going missing.
+cat > "$DATA_DIR/switch-flaky-01-lldp-badsubtype.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 00:1a:2b:00:1f:00
+.1.0.8802.1.1.2.1.3.3.0 string switch-flaky-01
+.1.0.8802.1.1.2.1.3.4.0 string Scanopy SNMP simulator, flaky-LLDP profile
+.1.0.8802.1.1.2.1.4.1.1.4.0.1.1 string macAddress
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 00:1a:2b:00:10:00
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/3
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/3
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
+EOF
+
 # Start healthy. Re-running setup.sh resets it, which is the intended way to undo
 # a test that left the device broken.
 cp "$DATA_DIR/switch-flaky-01-lldp-complete.txt" "$DATA_DIR/switch-flaky-01-lldp-active.txt"
+
+# ══════════════════════════════════════════════════════════════════════
+# switch-dlink-01 — port ids that name-only matching cannot resolve (GH #668)
+#
+# Modelled on a D-Link DGS-1210-48. Two things about that firmware break L2 resolution, and
+# both are in its *neighbour* records rather than its own tables:
+#
+#   1. It sets lldpRemPortIdSubtype to 5 (interfaceName) and then sends a bare port number.
+#      Subtype 5 used to get a name lookup and nothing else, so "2" matched no interface on a
+#      switch whose ports are named Gi0/2 — the neighbour resolved as far as the host and
+#      stopped, and a host-only neighbour draws no edge.
+#   2. Where the port id matches nothing at all, lldpRemPortDesc still carries the remote
+#      port's own ifDescr verbatim. That field was stored and never matched on.
+#
+# Its own ifTable uses the D-Link shape as well (ifDescr "…Port N", ifName "Slot0/N", ifIndex
+# N), so it is also a ready-made target for a future fixture that needs a device where the
+# advertised number is the ifIndex and the name is something else.
+#
+# NOT covered here: the NUL-terminated port ids from the same report. net-snmp's `pass`
+# protocol is line-based — the handler prints OID, type and value as three lines — so an
+# embedded 0x00 cannot survive the transport, and no data file can express it. That half is
+# covered by unit tests instead (`value_to_string`, `LldpPortId::from_snmp`, `PgText`/`PgJson`).
+# ══════════════════════════════════════════════════════════════════════
+
+cat > "$DATA_DIR/switch-dlink-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.1.3 integer 3
+.1.3.6.1.2.1.2.2.1.2.1 string D-Link DGS-1210-48 Rev.GX/7.20.003 Port 1
+.1.3.6.1.2.1.2.2.1.2.2 string D-Link DGS-1210-48 Rev.GX/7.20.003 Port 2
+.1.3.6.1.2.1.2.2.1.2.3 string D-Link DGS-1210-48 Rev.GX/7.20.003 Port 3
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.3.3 integer 6
+.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.3 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.6.1 string 00:ad:24:af:4e:01
+.1.3.6.1.2.1.2.2.1.6.2 string 00:ad:24:af:4e:02
+.1.3.6.1.2.1.2.2.1.6.3 string 00:ad:24:af:4e:03
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.7.3 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.3 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string Slot0/1
+.1.3.6.1.2.1.31.1.1.1.1.2 string Slot0/2
+.1.3.6.1.2.1.31.1.1.1.1.3 string Slot0/3
+EOF
+
+# Both neighbours point at switch-core-01 (chassis 00:1a:2b:00:10:00). They deliberately share
+# Gi0/1 and Gi0/2 with links other sim devices also claim: this profile exists to exercise port-id
+# resolution, not to model a physically consistent lab, and resolution runs per interface row.
+#
+#   local port 1 → subtype 5, port id "2". No interface on switch-core-01 is named "2"
+#                  (ifDescr GigabitEthernet0/2, ifName Gi0/2), so this resolves only via the
+#                  ifIndex fallback subtype 5 did not previously get.
+#   local port 2 → subtype 5, port id "ethernet1/0/44". Matches no name and is not a number, so
+#                  the port id is a dead end; lldpRemPortDesc carries GigabitEthernet0/1, which
+#                  is exactly switch-core-01's ifDescr for ifIndex 1.
+cat > "$DATA_DIR/switch-dlink-01-lldp.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 00:ad:24:af:4e:00
+.1.0.8802.1.1.2.1.3.3.0 string switch-dlink-01
+.1.0.8802.1.1.2.1.3.4.0 string D-Link DGS-1210-48 Rev.GX/7.20.003
+.1.0.8802.1.1.2.1.3.7.1.2.1 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.2 integer 5
+.1.0.8802.1.1.2.1.3.7.1.3.1 string Slot0/1
+.1.0.8802.1.1.2.1.3.7.1.3.2 string Slot0/2
+.1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 00:1a:2b:00:10:00
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string 2
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/2
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
+.1.0.8802.1.1.2.1.4.1.1.4.0.2.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.2.1 string 00:1a:2b:00:10:00
+.1.0.8802.1.1.2.1.4.1.1.6.0.2.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.2.1 string ethernet1/0/44
+.1.0.8802.1.1.2.1.4.1.1.8.0.2.1 string GigabitEthernet0/1
+.1.0.8802.1.1.2.1.4.1.1.9.0.2.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string Cisco IOS Software, C2960
+EOF
 
 # ── 5. Write snmpd configs ───────────────────────────────────────────
 echo "Writing snmpd configs..."
@@ -1235,6 +1360,20 @@ sysservices 2
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-flaky-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-flaky-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-flaky-01-lldp-active.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-dlink-01.conf" << EOF
+agentAddress udp:${HOSTS[14]}:161
+rocommunity netdefault
+sysdescr D-Link DGS-1210-48 Rev.GX/7.20.003
+syscontact netops@example.com
+sysname switch-dlink-01
+syslocation Lab
+sysobjectid .1.3.6.1.4.1.171.10.76.28
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-dlink-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-dlink-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-dlink-01-lldp.txt
 EOF
 
 # ── 6. Create systemd services ───────────────────────────────────────

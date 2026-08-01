@@ -67,6 +67,28 @@ impl HostService {
                             }
                             None => IdentityResolution::NoStrategy,
                         };
+                        // Last resort: the port *description*. Distinct from the port id and
+                        // sometimes the only one that matches — a D-Link DGS-1210-48 advertises
+                        // the id as a bare port number but describes the port as
+                        // "D-Link DGS-1210-48 Rev.GX/7.20.003 Port 9", which is byte-identical to
+                        // that switch's own ifDescr (GH #668). Only consulted once the id has
+                        // failed, so a device whose id resolves is unaffected, and scoped to the
+                        // already-resolved host like every other tier.
+                        let port = match port {
+                            IdentityResolution::Resolved(id) => IdentityResolution::Resolved(id),
+                            unresolved => match interface.base.lldp_port_desc.as_deref() {
+                                Some(desc) if !desc.trim().is_empty() => {
+                                    match resolver.find_if_entry_by_name(desc, host_id).await {
+                                        Some(id) => IdentityResolution::Resolved(id),
+                                        // Keep the port id's own verdict rather than overwriting
+                                        // it: `NoStrategy` and `NotFound` are counted separately
+                                        // and mean different things to whoever reads the stats.
+                                        None => unresolved,
+                                    }
+                                }
+                                _ => unresolved,
+                            },
+                        };
                         Some(stats.record_port(port, host_id))
                     }
                 }

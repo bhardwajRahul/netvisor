@@ -1,6 +1,6 @@
 # SNMP Test Environment
 
-14 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record.
+15 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668.
 
 | IP | Host | Version | Credential | Device |
 |---|---|---|---|---|
@@ -18,6 +18,7 @@
 | 192.168.7.241 | switch-aruba-01 | v2c | community `netdefault` | HP/Aruba ProCurve 2910al |
 | 192.168.7.242 | switch (Omada) | v2c | community `public` | TP-Link Omada TL-SG3216 |
 | 192.168.7.243 | switch-flaky-01 | v2c | community `netdefault` | Malformed-LLDP profile (see below) |
+| 192.168.7.244 | switch-dlink-01 | v2c | community `netdefault` | D-Link DGS-1210-48 (see below) |
 
 **LLDP local-port remap (`.238`/`.239`).** ExtremeXOS reports its `lldpRemTable` local-port index as an `lldpLocPortNum` (1..N) that is a **separate namespace from `ifIndex`** (switch-exos-01 uses ifIndex 1001+, ifName `1:N`), so neighbours only resolve if the daemon walks `lldpLocPortTable` (`1.0.8802.1.1.2.1.3.7`) and suffix-matches `lldpLocPortId` against `ifName`. Before the Issue 2 fix, switch-exos-01 yields **zero** LLDP neighbours. Extreme VOSS (switch-voss-01) reports local-port == ifIndex with `lldpLocPortId` matching `ifName` exactly, so it stays correct on both old and new code — the regression guard for the fix.
 
@@ -36,7 +37,7 @@ Both links should render in L2 Physical, and the server's `LLDP/CDP link resolut
 
 Taken at face value that record is destructive: the chassis ID is a mandatory TLV (IEEE 802.1AB), so it is malformed, but writing it through overwrites a good chassis ID with NULL — and a row without one is excluded from L2 resolution entirely, freezing the link at whatever it last resolved to with no way back. That is what stranded `router-gw-01` in July 2026.
 
-`switch-flaky-01` links to `switch-core-01`'s `Gi0/3` (the one port on that switch with no other neighbour) and ships two LLDP variants. The agent serves whichever is copied over `-lldp-active.txt`, and the `pass` handler re-reads its file per request, so swapping takes effect immediately with **no snmpd restart**:
+`switch-flaky-01` links to `switch-core-01`'s `Gi0/3` (the one port on that switch with no other neighbour) and ships four LLDP variants. The agent serves whichever is copied over `-lldp-active.txt`, and the `pass` handler re-reads its file per request, so swapping takes effect immediately with **no snmpd restart**:
 
 ```bash
 # on the VM — serve the chassis-less record
@@ -48,7 +49,26 @@ cp /etc/snmp-test/data/switch-flaky-01-lldp-complete.txt \
    /etc/snmp-test/data/switch-flaky-01-lldp-active.txt
 ```
 
+The other two variants separate the causes that used to arrive as one number (#668). All three discard the record; the daemon's warning now says which happened, and the counters are what these files exercise:
+
+| Variant file | Serves | Counter it drives |
+|---|---|---|
+| `-lldp-nochassis.txt` | neither `.4` nor `.5` | `missing_subtype` + `missing_value` |
+| `-lldp-nosubtype.txt` | `.5` only | `missing_subtype` |
+| `-lldp-badsubtype.txt` | `.4` as a string, `.5` fine | `unexpected_subtype_type="OctetString"` |
+
+The last one matters most: it reads as a *complete* walk — no truncation signal anywhere — so before the per-cause counters the only evidence was the record silently going missing. A `ghost_rows` count exists too, for rows only the later columns mention; no fixture serves that shape, as it needs an agent whose columns disagree with each other.
+
 Re-running `lxc/setup.sh` also resets it, which is the simplest way to undo a test that left the device broken.
+
+**Port ids that name-only matching cannot resolve (`.244`).** Modelled on the D-Link DGS-1210-48 from #668. Its own ifTable uses the D-Link shape — `ifDescr` = `D-Link DGS-1210-48 Rev.GX/7.20.003 Port N`, `ifName` = `Slot0/N`, `ifIndex` = N — and its two neighbour records, both pointing at `switch-core-01`, each need a different fallback:
+
+- **Subtype 5 carrying a bare port number.** `lldpRemPortId` = `2` with `lldpRemPortIdSubtype` = 5 (`interfaceName`), while switch-core-01's ifIndex 2 is named `GigabitEthernet0/2`/`Gi0/2`. Subtype 5 used to get a name lookup and nothing else, so this resolved to the host and stopped — and a host-only neighbour draws no edge. It now falls through to `ifIndex`, the same ladder subtypes 2/6/7 already had.
+- **A port id that matches nothing, and a port description that does.** `lldpRemPortId` = `ethernet1/0/44` is neither a name on that device nor a number, so the id is a dead end; `lldpRemPortDesc` = `GigabitEthernet0/1` is byte-identical to switch-core-01's `ifDescr` for ifIndex 1. That field was stored and never matched on.
+
+Both should resolve to `Neighbor::Interface` and draw edges in L2 Physical. The records deliberately share `Gi0/1`/`Gi0/2` with links other sim devices also claim — the profile exercises port-id resolution, which runs per interface row, not a physically consistent lab.
+
+> **The NUL half of #668 is not reproducible here.** The same D-Links NUL-terminate their port ids (`lldpRemPortId` arrives as `31 00`, i.e. `"1\0"`), which used to fail the write of the entire host. net-snmp's `pass` protocol is line-based — the handler prints OID, type and value as three lines — so an embedded `0x00` cannot survive the transport and no data file can express it. That half is covered by unit tests instead: `value_to_string`, `LldpPortId::from_snmp`, and `PgText`/`PgJson` in `server/shared/storage/pg_value.rs`.
 
 ## Expect truncation warnings — the simulator races itself
 

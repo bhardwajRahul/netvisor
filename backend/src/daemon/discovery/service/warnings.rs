@@ -143,6 +143,55 @@ pub fn render_unresolved_lldp_ports(records: &[UnresolvedLldpPorts]) -> Vec<Stri
     )]
 }
 
+/// Neighbour records a device served without the identifier that makes them usable.
+///
+/// A third kind of problem again, and it must not read like either neighbour above. The walk
+/// finished and the rows arrived; they are missing a mandatory field — the LLDP chassis ID
+/// (IEEE 802.1AB) or the CDP device id — which is what L2 resolution matches the far end on, so
+/// they are discarded rather than written over good data.
+///
+/// The distinction that matters to an operator: **no rescan will fix this**. "Incomplete" invites
+/// a retry, and a retry against a switch whose firmware serves malformed records produces exactly
+/// the same result. It reached us as a bare `dropped=N` in the daemon log, which is how a customer
+/// ended up hand-running snmpwalk to tell us what their switch had sent (GH #668).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MalformedNeighbours {
+    pub ip: IpAddr,
+    pub group: SnmpWalkGroup,
+    pub discarded: usize,
+    /// Records that survived, so the line can say whether this cost the device some of its
+    /// topology or all of it.
+    pub kept: usize,
+}
+
+/// One line naming the devices, or empty if there were none.
+pub fn render_malformed_neighbours(records: &[MalformedNeighbours]) -> Vec<String> {
+    let affected: BTreeSet<IpAddr> = records
+        .iter()
+        .filter(|r| r.discarded > 0)
+        .map(|r| r.ip)
+        .collect();
+    if affected.is_empty() {
+        return Vec::new();
+    }
+    let discarded: usize = records.iter().map(|r| r.discarded).sum();
+    // "None left" and "some left" are different situations for whoever reads this: the first
+    // means the device is absent from L2 Physical, the second that it is there but incomplete.
+    let kept: usize = records.iter().map(|r| r.kept).sum();
+    let consequence = if kept == 0 {
+        "so those devices contribute no physical links at all"
+    } else {
+        "so some of their physical links are missing"
+    };
+    vec![format!(
+        "{} reported {discarded} neighbour record{} without the identifier needed to match the \
+         far end, {consequence}. The devices answered in full — the records themselves are \
+         incomplete, so rescanning will not change this.",
+        list_addresses_prose(&affected),
+        if discarded == 1 { "" } else { "s" }
+    )]
+}
+
 /// A device whose VLAN table was read and could not be recorded.
 ///
 /// Not a shortfall in a walk, and it must not read like one: the switch answered in full, and the
@@ -1082,6 +1131,56 @@ mod tests {
                 ip: ip("10.0.0.1"),
                 unresolved: 0,
                 total: 6,
+            }])
+            .is_empty()
+        );
+    }
+
+    /// GH #668. The one thing this line has to get across is that retrying is pointless — the
+    /// device answered in full and the records themselves are unusable. "Incomplete" invites a
+    /// rescan that produces the identical result.
+    #[test]
+    fn malformed_neighbours_promise_no_refresh() {
+        let msg = joined(&render_malformed_neighbours(&[MalformedNeighbours {
+            ip: ip("192.168.7.244"),
+            group: SnmpWalkGroup::Lldp,
+            discarded: 14,
+            kept: 0,
+        }]));
+
+        assert!(msg.contains("192.168.7.244"), "{msg}");
+        assert!(msg.contains("14 neighbour records"), "{msg}");
+        assert!(msg.contains("rescanning will not change this"), "{msg}");
+        assert!(msg.contains("no physical links at all"), "{msg}");
+    }
+
+    /// Losing some neighbours and losing all of them put the device in different places on the
+    /// map, so they must not read the same.
+    #[test]
+    fn a_partial_loss_does_not_claim_the_device_has_no_links() {
+        let msg = joined(&render_malformed_neighbours(&[MalformedNeighbours {
+            ip: ip("10.0.0.1"),
+            group: SnmpWalkGroup::Lldp,
+            discarded: 2,
+            kept: 5,
+        }]));
+
+        assert!(
+            msg.contains("some of their physical links are missing"),
+            "{msg}"
+        );
+    }
+
+    /// The common case by far — every device reports this group on every scan, and a device that
+    /// discarded nothing must stay silent.
+    #[test]
+    fn discarding_nothing_is_not_reported() {
+        assert!(
+            render_malformed_neighbours(&[MalformedNeighbours {
+                ip: ip("10.0.0.1"),
+                group: SnmpWalkGroup::Cdp,
+                discarded: 0,
+                kept: 3,
             }])
             .is_empty()
         );

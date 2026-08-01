@@ -63,8 +63,8 @@ use super::{
 };
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::{
-    AttemptOutcome, IncompleteInterfaceWalk, SnmpCollectionOutcome, SnmpGroupOutcome,
-    UnresolvedLldpPorts, snmp_walk_shortfalls,
+    AttemptOutcome, IncompleteInterfaceWalk, MalformedNeighbours, SnmpCollectionOutcome,
+    SnmpGroupOutcome, SnmpWalkGroup, UnresolvedLldpPorts, snmp_walk_shortfalls,
 };
 
 /// Handle returned by a successful SNMP probe — carries the working credential and port.
@@ -323,6 +323,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let lldp_complete = lldp.complete;
         let lldp_reason = lldp.reason;
         let lldp_authoritative = lldp.complete && !lldp.unsupported;
+        let lldp_discarded = lldp.discarded;
         let mut lldp_neighbors = lldp.records;
         tracing::debug!(
             ip = %ip,
@@ -337,6 +338,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let cdp = query_or_default(ip, "cdp", query_cdp_neighbors(&mut session, ip)).await;
         let cdp_complete = cdp.complete;
         let cdp_reason = cdp.reason;
+        let cdp_discarded = cdp.discarded;
         let cdp_neighbors = cdp.records;
         tracing::debug!(
             ip = %ip,
@@ -345,6 +347,24 @@ impl DiscoveryIntegration for SnmpIntegration {
             "CDP neighbors discovered"
         );
         let cdp_count = cdp_neighbors.len();
+
+        // Records the device served and we could not use. Reported per group because the
+        // consequence differs — losing every neighbour on a switch takes it off L2 Physical
+        // entirely, losing some leaves it there with holes — and because no rescan will change
+        // either, which is the part an operator most needs told (GH #668).
+        for (group, discarded, kept) in [
+            (SnmpWalkGroup::Lldp, lldp_discarded, lldp_count),
+            (SnmpWalkGroup::Cdp, cdp_discarded, cdp_count),
+        ] {
+            ctx.ops
+                .record_malformed_neighbours(MalformedNeighbours {
+                    ip,
+                    group,
+                    discarded,
+                    kept,
+                })
+                .await;
+        }
 
         // Translate LLDP local-port indices (which are lldpLocPortNum values, a
         // separate namespace from ifIndex on vendors like ExtremeXOS) to real ifIndex
