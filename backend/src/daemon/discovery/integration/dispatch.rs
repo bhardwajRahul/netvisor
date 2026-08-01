@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::daemon::discovery::credentials::resolve_credentials_for_ip;
 use crate::daemon::discovery::service::ops::{DiscoveryOps, HostData};
 use crate::daemon::discovery::service::warnings::{
-    CredentialIssue, CredentialIssueReason, issue_for_attempt,
+    AttemptOutcome, CredentialIssue, CredentialIssueReason, issue_for_attempt,
 };
 use crate::daemon::utils::base::PlatformDaemonUtils;
 use crate::server::credentials::r#impl::mapping::{
@@ -375,6 +375,33 @@ pub async fn execute_integrations(
             .any(|s| s.base.service_definition.id() == associated_service.id());
 
         if !service_matched {
+            // The credential authenticated and the collection never ran, which reads to an
+            // operator exactly like the integration being ignored — the symptom a customer spent
+            // days on, watching a controller they had authenticated to produce nothing.
+            //
+            // A successful probe feeds `ClientProbe` into service matching, so this failing is
+            // anomalous rather than routine, which is why it is worth a line rather than a
+            // per-host flood.
+            tracing::warn!(
+                ip = %params.ip,
+                integration = ?discriminant,
+                service = associated_service.name(),
+                "Credential worked but its service was not matched; skipping collection"
+            );
+            params
+                .ops
+                .record_attempt_failure(
+                    credential.discovery_label(),
+                    params.ip,
+                    AttemptOutcome::CollectionFailed,
+                    format!(
+                        "authenticated, but the {} service was not identified on this host, so \
+                         nothing was collected",
+                        associated_service.name()
+                    ),
+                    true,
+                )
+                .await;
             continue;
         }
 

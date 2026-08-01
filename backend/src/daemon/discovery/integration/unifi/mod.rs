@@ -43,6 +43,7 @@ use super::{
     ProbeSuccess,
 };
 use crate::daemon::discovery::service::ops::HostData;
+use crate::daemon::discovery::service::warnings::AttemptOutcome;
 use client::UnifiClient;
 use types::UnifiDevice;
 
@@ -129,12 +130,33 @@ impl DiscoveryIntegration for UnifiIntegration {
         let mapped = mapping::map_devices(&devices, network_id, &subnets);
 
         if mapped.len() < devices.len() {
-            // Silent truncation would read as "the controller only manages these devices".
-            tracing::info!(
-                skipped = devices.len() - mapped.len(),
+            // Silent truncation would read as "the controller only manages these devices", and
+            // in the total case as the integration doing nothing at all — which is how it
+            // presented when a rescan scoped the subnet list too narrowly and dropped every
+            // switch. An `info!` line was not enough: nobody reads the daemon log to find out
+            // why something they configured produced no visible effect.
+            let skipped = devices.len() - mapped.len();
+            tracing::warn!(
+                ip = %ctx.ip,
+                skipped,
+                total = devices.len(),
                 "Skipped UniFi devices with no IP in a known subnet — host identity is \
                  IP-based, so they cannot be deduplicated across scans"
             );
+            ctx.ops
+                .record_attempt_failure(
+                    ctx.credential.discovery_label(),
+                    ctx.ip,
+                    AttemptOutcome::CollectionFailed,
+                    format!(
+                        "the controller reported {} device{}, {skipped} of which have no address \
+                         on a known subnet and could not be recorded",
+                        devices.len(),
+                        if devices.len() == 1 { "" } else { "s" }
+                    ),
+                    true,
+                )
+                .await;
         }
 
         let mut created = 0usize;
