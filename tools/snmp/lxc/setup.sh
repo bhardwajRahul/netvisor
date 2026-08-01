@@ -1102,6 +1102,13 @@ EOF
 #   local port 2 → subtype 5, port id "ethernet1/0/44". Matches no name and is not a number, so
 #                  the port id is a dead end; lldpRemPortDesc carries GigabitEthernet0/1, which
 #                  is exactly switch-core-01's ifDescr for ifIndex 1.
+#
+# Rows are listed column-major (all of column 4, then all of column 5, …), matching every other
+# LLDP fixture here. That is not cosmetic: `pass` answers GETNEXT by scanning this file in the
+# order written, so grouping a row's columns together makes the traversal walk off the end of the
+# table after the first row. Written row-major, the second neighbour below is served only as
+# lldpRemSysDesc — an index with no chassis id, which the daemon correctly counts as a ghost row
+# and discards, and the port-desc tier this device exists to exercise never runs at all.
 cat > "$DATA_DIR/switch-dlink-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.1.0 integer 4
 .1.0.8802.1.1.2.1.3.2.0 string 00:ad:24:af:4e:00
@@ -1112,18 +1119,18 @@ cat > "$DATA_DIR/switch-dlink-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.7.1.3.1 string Slot0/1
 .1.0.8802.1.1.2.1.3.7.1.3.2 string Slot0/2
 .1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
-.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 00:1a:2b:00:10:00
-.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
-.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string 2
-.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/2
-.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
-.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
 .1.0.8802.1.1.2.1.4.1.1.4.0.2.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 00:1a:2b:00:10:00
 .1.0.8802.1.1.2.1.4.1.1.5.0.2.1 string 00:1a:2b:00:10:00
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.0.2.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string 2
 .1.0.8802.1.1.2.1.4.1.1.7.0.2.1 string ethernet1/0/44
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/2
 .1.0.8802.1.1.2.1.4.1.1.8.0.2.1 string GigabitEthernet0/1
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
 .1.0.8802.1.1.2.1.4.1.1.9.0.2.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
 .1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string Cisco IOS Software, C2960
 EOF
 
