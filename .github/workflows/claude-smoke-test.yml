@@ -1,7 +1,7 @@
-# Throwaway workflow to validate the Claude Code Action wiring used by
-# promote_to_latest.yml — OAuth token auth, --json-schema in claude_args, and
-# the structured_output step output. Run it once from the Actions tab; delete
-# this file (or keep it) once promote_to_latest has had a successful release run.
+# Throwaway workflow to validate the Claude API wiring used by
+# promote_to_latest.yml — the ANTHROPIC_API_KEY secret and the schema-
+# constrained JSON round trip. Run it once from the Actions tab; delete this
+# file once promote_to_latest has had a successful release run.
 name: Claude Smoke Test
 
 on:
@@ -9,10 +9,6 @@ on:
 
 permissions:
   contents: read
-  # claude-code-action requests a GitHub OIDC token on every run, not only
-  # under workload identity federation, so this is required even though the
-  # model call authenticates with claude_code_oauth_token.
-  id-token: write
 
 jobs:
   smoke-test:
@@ -20,25 +16,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Generate structured output
         id: probe
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Supplying a token skips the Claude GitHub App token exchange, which
-          # would otherwise require installing the app on this repo.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          claude_args: >-
-            --model claude-opus-5
-            --max-turns 3
-            --allowedTools "Read"
-            --json-schema '{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"],"additionalProperties":false}'
-          prompt: |
+        run: .github/scripts/claude-generate.sh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JSON_SCHEMA: '{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"],"additionalProperties":false}'
+          PROMPT: |
             Return a short made-up release title in `title`, and in `body` a
             two-paragraph markdown blurb containing a "quoted phrase", an
-            apostrophe, a $dollar sign, and a backtick `code span` — this is
-            checking that awkward characters survive the round trip. Do not
-            create branches, edit files, or post comments.
+            apostrophe, a $dollar sign, a 100% figure, and a backtick `code
+            span` — this is checking that awkward characters survive the
+            round trip intact.
 
       - name: Show what came back
         env:
@@ -46,15 +38,8 @@ jobs:
           TITLE: ${{ fromJSON(steps.probe.outputs.structured_output || '{}').title }}
           BODY: ${{ fromJSON(steps.probe.outputs.structured_output || '{}').body }}
         run: |
-          if [ -z "$RAW" ]; then
-            echo "FAIL: structured_output was empty — the model ran but the" \
-                 "--json-schema flag did not produce a structured result."
-            exit 1
-          fi
-
           echo "raw structured_output:"
-          echo "$RAW"
-          echo
+          printf '%s\n\n' "$RAW"
           echo "title: $TITLE"
           echo
           echo "body:"
@@ -65,4 +50,4 @@ jobs:
             exit 1
           fi
           echo
-          echo "PASS: auth, --json-schema, and structured_output all work."
+          echo "PASS: API key, structured outputs, and fromJSON wiring all work."

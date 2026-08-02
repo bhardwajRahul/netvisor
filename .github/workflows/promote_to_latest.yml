@@ -27,10 +27,6 @@ on:
 permissions:
   contents: write
   packages: write
-  # claude-code-action requests a GitHub OIDC token on every run, not only
-  # under workload identity federation, so this is required even though the
-  # model calls authenticate with claude_code_oauth_token.
-  id-token: write
 
 jobs:
   promote-to-latest:
@@ -39,7 +35,6 @@ jobs:
     permissions:
       contents: write
       packages: write
-      id-token: write
 
     steps:
       - name: Validate release exists and get details
@@ -206,20 +201,12 @@ jobs:
 
       - name: Generate release notes with AI
         id: ai_notes
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Supplying a token skips the Claude GitHub App token exchange, which
-          # would otherwise require installing the app on this repo. These steps
-          # only generate text — they never comment, branch, or open PRs.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          claude_args: >-
-            --model claude-opus-5
-            --max-turns 3
-            --allowedTools "Read"
-            --json-schema '{"type":"object","properties":{"notes":{"type":"string","description":"The release notes in markdown"}},"required":["notes"],"additionalProperties":false}'
-          prompt: |
-            Write the release notes described below and return them in the `notes` field. Do not create branches, edit files, or post comments — this is a text generation task only.
+        run: .github/scripts/claude-generate.sh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JSON_SCHEMA: '{"type":"object","properties":{"notes":{"type":"string","description":"The release notes in markdown"}},"required":["notes"],"additionalProperties":false}'
+          PROMPT: |
+            Write the release notes described below and return them in the `notes` field.
 
             You are a technical writer creating release notes for Scanopy, a network discovery and topology visualization tool. Write concise, user-focused release notes. Aim for quality over coverage — a shorter changelog that users actually read is better than an exhaustive one they skip.
 
@@ -282,20 +269,12 @@ jobs:
 
       - name: Generate title and social post
         id: social
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Supplying a token skips the Claude GitHub App token exchange, which
-          # would otherwise require installing the app on this repo. These steps
-          # only generate text — they never comment, branch, or open PRs.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          claude_args: >-
-            --model claude-opus-5
-            --max-turns 3
-            --allowedTools "Read"
-            --json-schema '{"type":"object","properties":{"title":{"type":"string"},"social_post":{"type":"string"}},"required":["title","social_post"],"additionalProperties":false}'
-          prompt: |
-            Generate a title and social media post for a software release. Return them in the `title` and `social_post` fields. Do not create branches, edit files, or post comments — this is a text generation task only.
+        run: .github/scripts/claude-generate.sh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JSON_SCHEMA: '{"type":"object","properties":{"title":{"type":"string"},"social_post":{"type":"string"}},"required":["title","social_post"],"additionalProperties":false}'
+          PROMPT: |
+            Generate a title and social media post for a software release. Return them in the `title` and `social_post` fields.
 
             Requirements:
             1. title: A short, descriptive title (3-6 words) summarizing the key changes. NOT promotional. Examples: "Topology Sharing & Demo Mode", "Performance Improvements & Bug Fixes", "Enhanced Network Discovery"
@@ -335,20 +314,12 @@ jobs:
       - name: Generate r/scanopy Reddit draft
         id: ai_reddit_scanopy
         if: ${{ inputs.generate_reddit_scanopy }}
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Supplying a token skips the Claude GitHub App token exchange, which
-          # would otherwise require installing the app on this repo. These steps
-          # only generate text — they never comment, branch, or open PRs.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          claude_args: >-
-            --model claude-opus-5
-            --max-turns 3
-            --allowedTools "Read"
-            --json-schema '{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"],"additionalProperties":false}'
-          prompt: |
-            Write the Reddit post described below, returning it in the `title` and `body` fields. Do not create branches, edit files, or post comments — this is a text generation task only.
+        run: .github/scripts/claude-generate.sh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JSON_SCHEMA: '{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"],"additionalProperties":false}'
+          PROMPT: |
+            Write the Reddit post described below, returning it in the `title` and `body` fields.
 
             Generate a Reddit post draft for a Scanopy release, for r/scanopy (the project's own subreddit).
 
@@ -369,20 +340,12 @@ jobs:
       - name: Generate community Reddit draft
         id: ai_reddit_community
         if: ${{ inputs.generate_reddit_community }}
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Supplying a token skips the Claude GitHub App token exchange, which
-          # would otherwise require installing the app on this repo. These steps
-          # only generate text — they never comment, branch, or open PRs.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          claude_args: >-
-            --model claude-opus-5
-            --max-turns 3
-            --allowedTools "Read"
-            --json-schema '{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"],"additionalProperties":false}'
-          prompt: |
-            Write the Reddit post described below, returning it in the `title` and `body` fields. Do not create branches, edit files, or post comments — this is a text generation task only.
+        run: .github/scripts/claude-generate.sh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JSON_SCHEMA: '{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"],"additionalProperties":false}'
+          PROMPT: |
+            Write the Reddit post described below, returning it in the `title` and `body` fields.
 
             Generate a Reddit post draft for a Scanopy release, for a community subreddit (r/selfhosted or r/homelab).
 
@@ -406,20 +369,12 @@ jobs:
       - name: Generate email content
         id: ai_email
         if: ${{ inputs.generate_email }}
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Supplying a token skips the Claude GitHub App token exchange, which
-          # would otherwise require installing the app on this repo. These steps
-          # only generate text — they never comment, branch, or open PRs.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          claude_args: >-
-            --model claude-opus-5
-            --max-turns 3
-            --allowedTools "Read"
-            --json-schema '{"type":"object","properties":{"subject":{"type":"string"},"body_html":{"type":"string"}},"required":["subject","body_html"],"additionalProperties":false}'
-          prompt: |
-            Write the email described below, returning it in the `subject` and `body_html` fields. Do not create branches, edit files, or post comments — this is a text generation task only.
+        run: .github/scripts/claude-generate.sh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JSON_SCHEMA: '{"type":"object","properties":{"subject":{"type":"string"},"body_html":{"type":"string"}},"required":["subject","body_html"],"additionalProperties":false}'
+          PROMPT: |
+            Write the email described below, returning it in the `subject` and `body_html` fields.
 
             Generate a product update email for a Scanopy release.
 
