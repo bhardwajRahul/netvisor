@@ -2,13 +2,13 @@
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import { useRetryDaemonConnectionMutation } from '$lib/features/daemons/queries';
+	import type { Host } from '$lib/features/hosts/types/base';
 	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
 	import { ArrowBigUp, Edit, RefreshCw, Trash2 } from 'lucide-svelte';
 	import { common_delete, common_edit, common_tags } from '$lib/paraglide/messages';
 	import { getDaemonStatusTag } from '$lib/features/daemons/utils';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import type { TagProps } from '$lib/shared/components/data/types';
@@ -45,13 +45,11 @@
 	const networksQuery = useNetworksQuery();
 	const retryConnectionMutation = useRetryDaemonConnectionMutation();
 	// Use limit: 0 to get all hosts for daemon card lookups
-	const hostsQuery = useHostsQuery({ limit: 0 });
 	const subnetsQuery = useSubnetsQuery();
 	const credentialsQuery = useCredentialsQuery();
 
 	// Derived data
 	let networksData = $derived(networksQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 	let credentialsData = $derived(credentialsQuery.data ?? []);
 
@@ -61,7 +59,8 @@
 		onEdit,
 		viewMode,
 		selected,
-		onSelectionChange = () => {}
+		onSelectionChange = () => {},
+		hosts
 	}: {
 		daemon: Daemon;
 		onDelete?: (daemon: Daemon) => void;
@@ -69,22 +68,38 @@
 		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
+		/**
+		 * Hosts the daemons in this list run on. Passed in rather than fetched
+		 * here: each card needs exactly one host, and fetching per card meant
+		 * every card subscribing to an unpaginated org-wide hosts query.
+		 */
+		hosts: Host[];
 	} = $props();
 
-	let host = $derived(hostsData.find((h) => h.id === daemon.host_id) ?? null);
+	let host = $derived(hosts.find((h) => h.id === daemon.host_id) ?? null);
 
 	let status: TagProps = $derived(getDaemonStatusTag(daemon));
 
 	let hasUpdateAvailable = $derived(
-		daemon.version_status.status === 'Outdated' || daemon.version_status.status === 'Deprecated'
+		daemon.version_status.status === 'Outdated' ||
+			daemon.version_status.status === 'Deprecated' ||
+			daemon.version_status.status === 'Unsupported'
 	);
+
+	// The scheduled sunset date for this daemon's version, if any (Deprecated /
+	// Unsupported). Server-published — the UI never computes it.
+	let sunsetDate = $derived(daemon.version_status.sunset_date ?? null);
 
 	let retryPending = $derived(retryConnectionMutation.isPending);
 
+	// Escalate the upgrade affordance by lifecycle stage: a scheduled/active
+	// sunset is a warning/danger action, a plain newer release is neutral-info.
 	let upgradeButtonClass = $derived.by(() => {
 		switch (daemon.version_status.status) {
+			case 'Unsupported':
+				return 'btn-icon-danger';
 			case 'Deprecated':
-				return 'btn-icon-info';
+				return 'btn-icon-warning';
 			case 'Outdated':
 				return 'btn-icon-info';
 			default:
@@ -172,7 +187,7 @@
 						}
 					]
 				: []),
-			...(hasUpdateAvailable && daemon.is_unreachable !== true
+			...(hasUpdateAvailable && (daemon.is_unreachable !== true || sunsetDate !== null)
 				? [
 						{
 							label: 'Update',

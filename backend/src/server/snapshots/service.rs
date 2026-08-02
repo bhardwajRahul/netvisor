@@ -252,6 +252,12 @@ impl SnapshotService {
         .await?;
         maps.interfaces = interface_map;
 
+        // Interface neighbors (Interface→Interface) are remapped inside the
+        // clone via `Interface::remap_own_clone_refs` (a self-reference that
+        // needs the full interface map); Interface→Host neighbors are handled
+        // in the per-row `remap_fks_for_clone`. Both keep the snapshot's
+        // PhysicalLink edges resolving against closed interfaces.
+
         // Bindings filter through service_id (Binding has no network_id).
         // BINDINGS must come before DEPENDENCY_MEMBERS so dep_member's
         // optional binding_id can be remapped.
@@ -449,6 +455,17 @@ fn remap_virtualization_service_id<T: VirtualizationServiceRef>(
     false
 }
 
+/// Rewrite each just-cloned interface's `neighbor` reference from its live id to
+/// the closed-copy id, using the interface and host maps. Runs after the full
+/// `FkMaps::interfaces` exists (interfaces self-reference via
+/// `Neighbor::Interface`, so this can't happen in the per-row clone pass).
+///
+/// Without this, a snapshot's `Neighbor::Interface(live_id)` points at a live
+/// interface whose closed copy has a different id, so the topology read's
+/// `get_interface_by_id` lookup misses and no `PhysicalLink` edge is drawn.
+/// Cross-network neighbors (absent from the maps) are left as-is. Re-reads by
+/// `snapshot_id`; `update_many_in_tx` leaves the raw-stamped `snapshot_id` and
+/// SCD2 columns intact (they aren't in `to_params`).
 async fn close_and_clone_for<T>(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     filter: StorableFilter<T>,
@@ -477,6 +494,14 @@ where
         mapping.insert(original.id_value(), new_id);
         closed_ids.push(new_id);
         closed.push(copy);
+    }
+
+    // Second pass: now that every row of this type has a closed id, rewrite
+    // self-references (e.g. an interface's `neighbor` pointing at another
+    // interface) to their closed copies before the bulk insert. Default no-op
+    // for types without self-references.
+    for copy in &mut closed {
+        copy.remap_own_clone_refs(&mapping);
     }
 
     GenericPostgresStorage::<T>::create_many_in_tx(&closed, tx).await?;

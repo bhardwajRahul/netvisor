@@ -15,13 +15,16 @@ use utoipa::ToSchema;
 
 pub mod container_proxy;
 pub mod snmp;
+pub mod unifi;
 
 mod fields;
 mod metadata;
 mod secrets;
 
 pub use fields::{FieldDefinition, FieldType, InlineFormat, PemTag, SelectOption};
-pub use metadata::{CredentialAssignment, CredentialCategory, CredentialHostAssignment};
+pub use metadata::{
+    CredentialAssignment, CredentialCategory, CredentialHostAssignment, CredentialStability,
+};
 // `Target` is the strum-discriminant of `IntegrationTarget` (single source of truth for the
 // scope scheme); re-export it here so `CredentialType::targets()` and existing imports resolve.
 pub use super::mapping::Target;
@@ -32,6 +35,8 @@ pub use secrets::{
 
 // Re-export SnmpVersion and v3 protocol enums from snmp submodule
 pub use snmp::{SnmpV3AuthProtocol, SnmpV3PrivProtocol, SnmpVersion};
+
+pub use unifi::{UnifiAuth, UnifiQueryCredential, default_unifi_port, default_unifi_site};
 
 fn default_docker_port() -> u16 {
     PortType::Docker.number()
@@ -62,21 +67,36 @@ fn default_docker_port() -> u16 {
 #[serde(tag = "type")]
 pub enum CredentialType {
     /// SNMPv1 community string — for legacy devices that only speak v1.
-    SnmpV1 { community: SecretValue },
+    #[schema(title = "SnmpV1")]
+    SnmpV1 {
+        /// SNMPv1 community string.
+        community: SecretValue,
+    },
     /// SNMPv2c community string for querying network devices
-    SnmpV2c { community: SecretValue },
+    #[schema(title = "SnmpV2c")]
+    SnmpV2c {
+        /// SNMPv2c community string.
+        community: SecretValue,
+    },
     /// SNMPv3 USM AuthPriv — security name + auth/priv protocols and passwords.
+    #[schema(title = "SnmpV3")]
     SnmpV3 {
+        /// USM security (user) name.
         security_name: String,
+        /// Hash algorithm used for authentication.
         auth_protocol: SnmpV3AuthProtocol,
+        /// Authentication passphrase.
         auth_password: SecretValue,
+        /// Cipher used for privacy (encryption).
         priv_protocol: SnmpV3PrivProtocol,
+        /// Privacy passphrase.
         priv_password: SecretValue,
         /// Optional context name (default/empty context used if unset).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         context_name: Option<String>,
     },
     /// Docker API proxy credentials. Target IP determined from host ip_addresses at scan time.
+    #[schema(title = "DockerProxy")]
     DockerProxy {
         /// Port for the Docker API proxy (default 2375)
         #[serde(default = "default_docker_port")]
@@ -108,13 +128,16 @@ pub enum CredentialType {
     },
     /// Local Docker socket access on the daemon host. `socket_path` optionally repoints the
     /// socket (non-default `DOCKER_HOST`); blank ⇒ the daemon auto-detects (bollard defaults).
+    #[schema(title = "DockerSocket")]
     DockerSocket {
+        /// Path to the Docker socket. Blank lets the daemon auto-detect it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         socket_path: Option<String>,
     },
     /// Podman API proxy credentials. Podman exposes a Docker-compatible REST API,
     /// so the fields mirror `DockerProxy`. Target IP determined from host
     /// ip_addresses at scan time.
+    #[schema(title = "PodmanProxy")]
     PodmanProxy {
         /// Port for the Podman API proxy (default 2375)
         #[serde(default = "default_docker_port")]
@@ -148,9 +171,44 @@ pub enum CredentialType {
     /// socket (e.g. rootful `/run/podman/podman.sock` vs rootless
     /// `$XDG_RUNTIME_DIR/podman/podman.sock`); blank ⇒ the daemon auto-detects via
     /// `resolve_podman_socket_path()`.
+    #[schema(title = "PodmanSocket")]
     PodmanSocket {
+        /// Path to the Podman socket. Blank lets the daemon auto-detect it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         socket_path: Option<String>,
+    },
+    /// UniFi Network Application (controller) via an API key.
+    ///
+    /// **UniFi OS only** — a UniFi OS console (443) or UniFi OS Server (11443). The legacy
+    /// self-hosted Network Application on 8443 does not support API keys; use
+    /// [`CredentialType::UnifiLocalAdmin`] there.
+    #[schema(title = "UnifiApiKey")]
+    UnifiApiKey {
+        /// Controller HTTPS port. 443 for a UniFi OS console, 11443 for UniFi OS Server.
+        #[serde(default = "default_unifi_port")]
+        port: u16,
+        /// Internal site name from the controller URL (`/manage/site/<name>`).
+        #[serde(default = "default_unifi_site")]
+        site: String,
+        /// Network Application API key, sent as `X-API-KEY`.
+        api_key: SecretValue,
+    },
+    /// UniFi Network Application (controller) via a local-admin account.
+    ///
+    /// Works on every controller type, including the legacy self-hosted Network Application on
+    /// 8443. Use a local-only admin account so MFA does not block the login.
+    #[schema(title = "UnifiLocalAdmin")]
+    UnifiLocalAdmin {
+        /// Controller HTTPS port. 443 UniFi OS console, 11443 UniFi OS Server, 8443 legacy.
+        #[serde(default = "default_unifi_port")]
+        port: u16,
+        /// Internal site name from the controller URL (`/manage/site/<name>`).
+        #[serde(default = "default_unifi_site")]
+        site: String,
+        /// Local admin account on the controller.
+        username: String,
+        /// Password for that account.
+        password: SecretValue,
     },
 }
 
@@ -238,9 +296,45 @@ impl CredentialType {
                     *ssl_key = existing_key.clone();
                 }
             }
-            (Self::DockerSocket { .. }, _) | (Self::PodmanSocket { .. }, _) => {}
-            // Type changed — no merging needed
-            _ => {}
+            (
+                Self::UnifiApiKey { api_key, .. },
+                Self::UnifiApiKey {
+                    api_key: existing_key,
+                    ..
+                },
+            ) => {
+                if api_key.is_redacted_sentinel() {
+                    *api_key = existing_key.clone();
+                }
+            }
+            (
+                Self::UnifiLocalAdmin { password, .. },
+                Self::UnifiLocalAdmin {
+                    password: existing_password,
+                    ..
+                },
+            ) => {
+                if password.is_redacted_sentinel() {
+                    *password = existing_password.clone();
+                }
+            }
+            // Every remaining arm is "nothing to merge": either the variant holds no secret, or
+            // the credential's type was changed in this edit so there is no prior secret of the
+            // same shape to restore.
+            //
+            // Enumerated rather than wildcarded on purpose. This match is the only thing standing
+            // between a redacted round-trip and destroying a stored secret — a `_ => {}` lets a
+            // newly added variant compile clean and silently persist the literal "********",
+            // which then fails every probe with the real secret already gone.
+            (Self::SnmpV1 { .. }, _)
+            | (Self::SnmpV2c { .. }, _)
+            | (Self::SnmpV3 { .. }, _)
+            | (Self::DockerProxy { .. }, _)
+            | (Self::DockerSocket { .. }, _)
+            | (Self::PodmanProxy { .. }, _)
+            | (Self::PodmanSocket { .. }, _)
+            | (Self::UnifiApiKey { .. }, _)
+            | (Self::UnifiLocalAdmin { .. }, _) => {}
         }
     }
 
@@ -253,6 +347,9 @@ impl CredentialType {
             | Self::DockerSocket { .. }
             | Self::PodmanProxy { .. }
             | Self::PodmanSocket { .. } => CredentialCategory::ContainerVirtualization,
+            Self::UnifiApiKey { .. } | Self::UnifiLocalAdmin { .. } => {
+                CredentialCategory::NetworkController
+            }
         }
     }
 
@@ -271,6 +368,13 @@ impl CredentialType {
             }
             // Local socket: only the daemon's own host.
             Self::DockerSocket { .. } | Self::PodmanSocket { .. } => vec![Target::DaemonHost],
+            // A controller is one specific endpoint: the daemon's own host (self-hosted
+            // controller) or a named host. Deliberately NOT `Network` — a network target is
+            // broadcast as the default credential for every IP in the subnet, which would
+            // spray controller credentials at unrelated hosts.
+            Self::UnifiApiKey { .. } | Self::UnifiLocalAdmin { .. } => {
+                vec![Target::DaemonHost, Target::Hosts]
+            }
         }
     }
 
@@ -297,7 +401,10 @@ impl CredentialType {
             Self::DockerProxy { .. }
             | Self::DockerSocket { .. }
             | Self::PodmanProxy { .. }
-            | Self::PodmanSocket { .. } => true,
+            | Self::PodmanSocket { .. }
+            // One controller instance per host; API key and local admin are two ways in.
+            | Self::UnifiApiKey { .. }
+            | Self::UnifiLocalAdmin { .. } => true,
             Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => false,
         }
     }
@@ -342,6 +449,14 @@ impl CredentialType {
                 },
                 _ => None,
             },
+            Self::UnifiApiKey { api_key, .. } => match field_id {
+                "api_key" => inline_secret(api_key),
+                _ => None,
+            },
+            Self::UnifiLocalAdmin { password, .. } => match field_id {
+                "password" => inline_secret(password),
+                _ => None,
+            },
             Self::DockerSocket { .. } | Self::PodmanSocket { .. } => None,
         }
     }
@@ -373,6 +488,9 @@ impl CredentialType {
             }
             Self::PodmanProxy { .. } | Self::PodmanSocket { .. } => {
                 Box::new(crate::server::services::definitions::podman::Podman)
+            }
+            Self::UnifiApiKey { .. } | Self::UnifiLocalAdmin { .. } => {
+                Box::new(crate::server::services::definitions::unifi_controller::UnifiController)
             }
         }
     }
@@ -445,6 +563,32 @@ impl CredentialType {
                     socket_path: socket_path.clone(),
                 })
             }
+            // Both UniFi transports collapse to one wire payload — same endpoint, same site,
+            // only the auth material differs.
+            CredentialType::UnifiApiKey {
+                port,
+                site,
+                api_key,
+            } => CredentialQueryPayload::UnifiController(UnifiQueryCredential {
+                port: *port,
+                site: site.clone(),
+                auth: UnifiAuth::ApiKey {
+                    api_key: secret_to_resolvable(api_key),
+                },
+            }),
+            CredentialType::UnifiLocalAdmin {
+                port,
+                site,
+                username,
+                password,
+            } => CredentialQueryPayload::UnifiController(UnifiQueryCredential {
+                port: *port,
+                site: site.clone(),
+                auth: UnifiAuth::LocalAdmin {
+                    username: username.clone(),
+                    password: secret_to_resolvable(password),
+                },
+            }),
         }
     }
 }
@@ -612,6 +756,58 @@ mod tests {
             }
         } else {
             panic!("Expected DockerProxy variant");
+        }
+    }
+
+    /// Both UniFi transports carry a secret, and the redacted round-trip is the one thing the
+    /// compiler cannot check for them: without an arm here the edit would silently persist the
+    /// literal "********" and destroy the stored credential.
+    #[test]
+    fn merge_redacted_secrets_preserves_both_unifi_transports() {
+        let mut updated = CredentialType::UnifiApiKey {
+            port: 443,
+            site: "default".to_string(),
+            api_key: SecretValue::Inline {
+                value: SecretString::from(REDACTED_SECRET_SENTINEL.to_string()),
+            },
+        };
+        updated.merge_redacted_secrets(&CredentialType::UnifiApiKey {
+            port: 443,
+            site: "default".to_string(),
+            api_key: SecretValue::Inline {
+                value: SecretString::from("real-api-key".to_string()),
+            },
+        });
+        match &updated {
+            CredentialType::UnifiApiKey {
+                api_key: SecretValue::Inline { value },
+                ..
+            } => assert_eq!(value.expose_secret(), "real-api-key"),
+            _ => panic!("Expected UnifiApiKey with an inline key"),
+        }
+
+        let mut updated = CredentialType::UnifiLocalAdmin {
+            port: 8443,
+            site: "default".to_string(),
+            username: "scanopy".to_string(),
+            password: SecretValue::Inline {
+                value: SecretString::from(REDACTED_SECRET_SENTINEL.to_string()),
+            },
+        };
+        updated.merge_redacted_secrets(&CredentialType::UnifiLocalAdmin {
+            port: 8443,
+            site: "default".to_string(),
+            username: "scanopy".to_string(),
+            password: SecretValue::Inline {
+                value: SecretString::from("real-password".to_string()),
+            },
+        });
+        match &updated {
+            CredentialType::UnifiLocalAdmin {
+                password: SecretValue::Inline { value },
+                ..
+            } => assert_eq!(value.expose_secret(), "real-password"),
+            _ => panic!("Expected UnifiLocalAdmin with an inline password"),
         }
     }
 
@@ -883,6 +1079,52 @@ mod tests {
                 ));
             }
             _ => panic!("expected PodmanProxy variant"),
+        }
+    }
+
+    /// The SNMP-sim seed script (`backend/scripts/seed-snmp-credentials.sql`, run by
+    /// `make snmp-seed-credentials`) writes `credential_type` JSONB straight into the table,
+    /// bypassing the API and therefore bypassing serde. Nothing else checks that what it writes
+    /// is a shape the server can read back — a rename or a retagged field would leave rows that
+    /// only fail at credential-load time, as a hand-written credential with a bare `community`
+    /// string already did in the field (GH #611). Parsing the literals out of the script keeps
+    /// this honest: the assertion is against the file the seed actually runs, not a copy of it.
+    #[test]
+    fn seeded_snmp_credential_json_deserializes() {
+        let sql = include_str!("../../../../../scripts/seed-snmp-credentials.sql");
+
+        // The JSONB literals are the single-quoted strings that open with `{"type":`.
+        let literals: Vec<&str> = sql
+            .split('\'')
+            .filter(|chunk| chunk.trim_start().starts_with("{\"type\":"))
+            .collect();
+
+        assert_eq!(
+            literals.len(),
+            5,
+            "expected the five sim credentials; found {} — did the script change shape?",
+            literals.len()
+        );
+
+        let mut seen = std::collections::HashSet::new();
+        for literal in &literals {
+            let parsed: CredentialType = serde_json::from_str(literal).unwrap_or_else(|e| {
+                panic!("seeded credential is not a CredentialType: {e}\n{literal}")
+            });
+            seen.insert(CredentialTypeDiscriminants::from(&parsed));
+        }
+
+        // The sim deliberately spreads devices across all three SNMP versions so a scan
+        // exercises each negotiation path; losing one silently narrows what the env tests.
+        for expected in [
+            CredentialTypeDiscriminants::SnmpV1,
+            CredentialTypeDiscriminants::SnmpV2c,
+            CredentialTypeDiscriminants::SnmpV3,
+        ] {
+            assert!(
+                seen.contains(&expected),
+                "sim seed no longer covers {expected:?}"
+            );
         }
     }
 }

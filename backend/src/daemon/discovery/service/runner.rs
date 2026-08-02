@@ -268,8 +268,15 @@ impl DiscoveryRunner {
             true, // skip the probe-gate: daemon-host integrations (e.g. a proxy) always self-probe here
             cancel,
             &self.service.utils,
+            ops.config_store.get_accept_invalid_scan_certs().await?,
         )
         .await?;
+
+        // Deliver before the early return below. These were built correctly and then dropped,
+        // so a wrong Docker or Podman socket credential on the daemon host reported nothing at
+        // all — and the early return is precisely the path a failing credential takes.
+        ops.record_credential_issues(&probe_results.credential_issues)
+            .await;
 
         if probe_results.client_responses.is_empty() {
             tracing::debug!("No localhost integration probes succeeded");
@@ -315,6 +322,8 @@ impl DiscoveryRunner {
             endpoint_responses: &vec![],
             virtualization: &None,
             client_responses: &probe_results.client_responses,
+            // The daemon's own host, probed locally.
+            managed_device: &None,
         };
 
         let mut host_data = match ops
@@ -340,7 +349,9 @@ impl DiscoveryRunner {
             endpoint_responses: &[],
             host_id: self.host_id,
             host_naming_fallback: self.host_naming_fallback,
-            created_subnets,
+            // The daemon-host phase runs before the network sweep, so the subnets it just
+            // created are all that is known at this point.
+            known_subnets: created_subnets,
             scanning_subnet: None,
             ip_address_id: Some(ip_address.id),
         };
@@ -368,6 +379,7 @@ impl DiscoveryRunner {
             host_data.interfaces,
             host_data.subnets,
             host_data.interfaces_complete,
+            host_data.interface_data_complete,
             cancel,
         )
         .await?;
@@ -386,24 +398,34 @@ impl DiscoveryRunner {
             self.host_naming_fallback,
             self.scan_settings.clone(),
             self.credential_mappings.clone(),
+            self.target_ips.clone(),
+            self.extra_ports.clone(),
         );
 
         let ops = super::ops::DiscoveryOps::new(&self.service, DiscoveryType::from(self));
         let utils = &self.service.utils;
 
-        let network_subnets = network_discovery
+        let resolved = network_discovery
             .resolve_scan_subnets(&ops, utils, cancel)
             .await?;
 
         tracing::info!(
-            cidrs = ?network_subnets.iter().map(|s| s.base.cidr.to_string()).collect::<Vec<_>>(),
+            cidrs = ?resolved.subnets.iter().map(|s| s.base.cidr.to_string()).collect::<Vec<_>>(),
+            targets = ?resolved.target_ips.as_ref().map(|t| t.len()),
             "Running network scan phase"
         );
 
         // scan_and_process_hosts uses the active session
         // (set by our start_discovery call above)
         let network_result = network_discovery
-            .scan_and_process_hosts(network_subnets, cancel.clone(), &ops, utils)
+            .scan_and_process_hosts(
+                resolved.subnets,
+                resolved.network_subnets,
+                resolved.target_ips,
+                cancel.clone(),
+                &ops,
+                utils,
+            )
             .await;
 
         match &network_result {

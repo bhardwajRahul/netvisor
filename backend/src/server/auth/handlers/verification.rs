@@ -1,10 +1,11 @@
 //! Email verification and resend handlers.
 use super::*;
+use crate::server::openapi::tags as api_tags;
 
 #[utoipa::path(
     post,
     path = "/verify-email",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     request_body = VerifyEmailRequest,
     responses(
         (status = 200, description = "Email verified successfully", body = ApiResponse<User>),
@@ -48,7 +49,7 @@ pub(crate) async fn verify_email(
 #[utoipa::path(
     post,
     path = "/resend-verification",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     request_body = ResendVerificationRequest,
     responses(
         (status = 200, description = "Verification email sent", body = EmptyApiResponse),

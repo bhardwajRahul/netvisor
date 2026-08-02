@@ -198,6 +198,24 @@
     "name": "FreshRSS"
   },
   {
+    "category": "Office",
+    "color": "Blue",
+    "description": "Open-source personal finance manager",
+    "discovery_pattern": "Any of: (Endpoint response from <ip> has header \"set-cookie\" with value \"firefly_iii_session\", Endpoint response body from <ip>:8080/ contains \"Login to Firefly III\", Endpoint response body from <ip>:80/ contains \"Login to Firefly III\", Endpoint response body from <ip>:443/ contains \"Login to Firefly III\")",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/firefly-iii.svg",
+    "name": "Firefly III"
+  },
+  {
+    "category": "ProjectManagement",
+    "color": "Indigo",
+    "description": "Open-source collaborative wiki and documentation platform",
+    "discovery_pattern": "Any of: (Endpoint response body from <ip>:3000/ contains \"<title>Docmost</title>\", Endpoint response body from <ip>:80/ contains \"<title>Docmost</title>\", Endpoint response body from <ip>:443/ contains \"<title>Docmost</title>\")",
+    "logo_needs_white_background": true,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/docmost.png",
+    "name": "Docmost"
+  },
+  {
     "category": "Media",
     "color": "Blue",
     "description": "Torrent cleanup tool for Sonarr and Radarr",
@@ -1350,6 +1368,15 @@
     "name": "Podman Container"
   },
   {
+    "category": "ContainerRuntime",
+    "color": "Blue",
+    "description": "Daemonless container runtime",
+    "discovery_pattern": "Client probe Podman succeeded",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/podman.svg",
+    "name": "Podman"
+  },
+  {
     "category": "Orchestrator",
     "color": "Purple",
     "description": "Enterprise Kubernetes",
@@ -1402,6 +1429,15 @@
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg",
     "name": "Docker Swarm"
+  },
+  {
+    "category": "ContainerRuntime",
+    "color": "Blue",
+    "description": "Docker",
+    "discovery_pattern": "Client probe Docker succeeded",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg",
+    "name": "Docker"
   },
   {
     "category": "Container",
@@ -2010,7 +2046,7 @@
     "category": "NetworkAccess",
     "color": "Green",
     "description": "Ubiquiti UniFi network controller",
-    "discovery_pattern": "Endpoint response body from <ip>:8443/manage contains \"UniFi\"",
+    "discovery_pattern": "Any of: (Endpoint response body from <ip>:8443/manage contains \"UniFi\", Client probe UnifiController succeeded)",
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/unifi.svg",
     "name": "UniFi Controller"
@@ -2019,7 +2055,7 @@
     "category": "NetworkAccess",
     "color": "Green",
     "description": "Ubiquiti UniFi wireless access point",
-    "discovery_pattern": "All of: (MAC Address belongs to Ubiquiti Inc, Endpoint response body from <ip>:80/ contains \"Unifi\")",
+    "discovery_pattern": "All of: (MAC Address belongs to Ubiquiti Inc, Any of: (Endpoint response body from <ip>:80/ contains \"Unifi\", Controller reports device type 'uap'))",
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/unifi.svg",
     "name": "Unifi Access Point"
@@ -2113,6 +2149,24 @@
     "logo_needs_white_background": false,
     "logo_url": "",
     "name": "Access Point"
+  },
+  {
+    "category": "NetworkCore",
+    "color": "Yellow",
+    "description": "Ubiquiti UniFi managed switch",
+    "discovery_pattern": "All of: (MAC Address belongs to Ubiquiti Inc, Controller reports device type 'usw')",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/unifi.svg",
+    "name": "UniFi Switch"
+  },
+  {
+    "category": "NetworkCore",
+    "color": "Yellow",
+    "description": "Ubiquiti UniFi security gateway or Dream Machine",
+    "discovery_pattern": "All of: (MAC Address belongs to Ubiquiti Inc, Any of: (Controller reports device type 'ugw', Controller reports device type 'udm'))",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/unifi.svg",
+    "name": "UniFi Gateway"
   },
   {
     "category": "RemoteAccess",
@@ -2221,23 +2275,5 @@
     "logo_needs_white_background": false,
     "logo_url": "",
     "name": "DHCP Server"
-  },
-  {
-    "category": "ContainerRuntime",
-    "color": "Blue",
-    "description": "Daemonless container runtime",
-    "discovery_pattern": "Client probe Podman succeeded",
-    "logo_needs_white_background": false,
-    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/podman.svg",
-    "name": "Podman"
-  },
-  {
-    "category": "ContainerRuntime",
-    "color": "Blue",
-    "description": "Docker",
-    "discovery_pattern": "Client probe Docker succeeded",
-    "logo_needs_white_background": false,
-    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg",
-    "name": "Docker"
   }
 ]

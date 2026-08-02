@@ -123,7 +123,7 @@ impl ViewBuilder for ApplicationBuilder {
                     parent_container_id: None,
                     entity_id: Some(*tag_id),
                     icon: Some(Concept::Application.icon().to_string()),
-                    color: Some(tag.base.color.to_string()),
+                    color: Some(tag.base.color),
                     associated_service_definition: None,
                     element_rule_id: None,
                     will_accept_edges: false,
@@ -155,7 +155,7 @@ impl ViewBuilder for ApplicationBuilder {
                     parent_container_id: None,
                     entity_id: None,
                     icon: Some(Concept::Application.icon().to_string()),
-                    color: Some(Concept::Application.color().to_string()),
+                    color: Some(Concept::Application.color()),
                     associated_service_definition: None,
                     element_rule_id: None,
                     will_accept_edges: false,
@@ -287,6 +287,7 @@ impl ViewBuilder for ApplicationBuilder {
                                 target_handle: EdgeHandle::Top,
                                 is_multi_hop: false,
                                 view_config: EdgeViewConfig::default(),
+                                relation_key: None,
                             });
                         }
                     }
@@ -311,6 +312,7 @@ impl ViewBuilder for ApplicationBuilder {
                                     target_handle: EdgeHandle::Top,
                                     is_multi_hop: false,
                                     view_config: EdgeViewConfig::default(),
+                                    relation_key: None,
                                 });
                             }
                         }
@@ -344,6 +346,7 @@ impl ViewBuilder for ApplicationBuilder {
                     target_handle: EdgeHandle::Top,
                     is_multi_hop: false,
                     view_config: EdgeViewConfig::default(),
+                    relation_key: None,
                 });
             }
         }

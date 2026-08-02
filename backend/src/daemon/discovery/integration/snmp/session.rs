@@ -5,6 +5,7 @@
 use anyhow::{Result, anyhow};
 use snmp2::AsyncSession;
 use std::net::IpAddr;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -43,11 +44,30 @@ pub const SNMP_SESSION_TIMEOUT: Duration = Duration::from_secs(5);
 /// ~2s instead of up to 7s. A responsive device answers in well under this on a LAN.
 pub const SNMP_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Default timeout for table walks (longer since they involve multiple requests)
-pub const SNMP_WALK_TIMEOUT: Duration = Duration::from_secs(30);
+/// Default timeout for table walks (longer since they involve multiple requests).
+///
+/// Sized against real switches rather than a round number: a busy device's bridge FDB and
+/// per-port VLAN membership are the two largest tables SNMP reads, and at 30s they were being
+/// cut short often enough that operators saw "incomplete" warnings on every scan. Raising this
+/// only costs time on devices that are genuinely slow — a healthy walk returns as soon as it is
+/// done. Keep [`super::SnmpIntegration::timeout`] above `13 * SNMP_WALK_TIMEOUT`, since the
+/// walks run sequentially and the outer cap would otherwise kill the last ones first.
+pub const SNMP_WALK_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Maximum number of varbinds to process in a single walk
 pub const MAX_WALK_ENTRIES: usize = 10000;
+
+/// A starting request id unique to this session.
+///
+/// Every session used to start at 0, so hosts scanned concurrently issued identical request ids in
+/// lockstep — leaving the community string as the only thing telling one collection's responses
+/// from another's. RFC 3416 asks for request ids that are hard to predict; a process-wide counter
+/// gives each session its own range at no cost.
+fn starting_request_id() -> i32 {
+    static NEXT: AtomicI32 = AtomicI32::new(0);
+    // Stride so two long-running sessions can't converge on the same id.
+    NEXT.fetch_add(0x0001_0000, Ordering::Relaxed)
+}
 
 /// Create an SNMP session with the given credentials.
 ///
@@ -79,9 +99,10 @@ pub async fn create_session(
             // both authenticate with a community string.
             let create = async {
                 if is_v1 {
-                    AsyncSession::new_v1(&target, community.as_bytes(), 0).await
+                    AsyncSession::new_v1(&target, community.as_bytes(), starting_request_id()).await
                 } else {
-                    AsyncSession::new_v2c(&target, community.as_bytes(), 0).await
+                    AsyncSession::new_v2c(&target, community.as_bytes(), starting_request_id())
+                        .await
                 }
             };
 
@@ -132,7 +153,7 @@ pub async fn create_session(
 
             let mut session = match timeout(
                 SNMP_SESSION_TIMEOUT,
-                AsyncSession::new_v3(&target, 0, security),
+                AsyncSession::new_v3(&target, starting_request_id(), security),
             )
             .await
             {
@@ -168,5 +189,81 @@ pub async fn create_session(
                 Err(_) => Err(anyhow!("Timeout during SNMPv3 engine discovery to {}", ip)),
             }
         }
+    }
+}
+
+/// Regressions for a session that has lost sync with its own traffic.
+///
+/// The daemon abandons SNMP requests constantly — a 5s cap per query and 30s per walk — and then
+/// keeps using the same session for the next query. That makes request-id hygiene load-bearing
+/// rather than theoretical: a timed-out request leaves its answer queued on the socket, so if the
+/// next request reuses the id, that stale answer validates and every subsequent response is one
+/// behind for the life of the session. Truncated columns then look like completed ones.
+#[cfg(test)]
+mod session_sync_tests {
+    use super::*;
+    use snmp2::{AsyncSession, Oid};
+    use tokio::net::UdpSocket;
+
+    const SYS_DESCR: &[u64] = &[1, 3, 6, 1, 2, 1, 1, 1, 0];
+
+    /// A socket that receives requests and answers only when told to.
+    async fn silent_agent() -> (UdpSocket, String) {
+        let agent = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let addr = agent.local_addr().unwrap().to_string();
+        (agent, addr)
+    }
+
+    async fn abandon_one_request(session: &mut AsyncSession) {
+        let oid = Oid::from(SYS_DESCR).unwrap();
+        // Drop the future mid-`recv`, exactly as `query_or_default` does on its timeout.
+        let _ = timeout(Duration::from_millis(150), session.get(&oid)).await;
+    }
+
+    /// A request that is abandoned must still consume its id. Reusing it is what lets the
+    /// previous request's answer satisfy the next one.
+    #[tokio::test]
+    async fn an_abandoned_request_does_not_reuse_its_id() {
+        let (agent, addr) = silent_agent().await;
+        let mut session = AsyncSession::new_v2c(&addr, b"public", 0).await.unwrap();
+
+        let mut ids = Vec::new();
+        for _ in 0..2 {
+            abandon_one_request(&mut session).await;
+            let mut buf = [0u8; 2048];
+            let (len, _) = agent.recv_from(&mut buf).await.unwrap();
+            ids.push(snmp2::pdu::Pdu::from_bytes(&buf[..len]).unwrap().req_id);
+        }
+
+        assert_ne!(
+            ids[0], ids[1],
+            "the second request reused the abandoned request's id"
+        );
+    }
+
+    /// The answer to an abandoned request is still sitting in the socket buffer. The next request
+    /// must not read it: it belongs to a question nobody is waiting for.
+    #[tokio::test]
+    async fn a_late_answer_is_not_served_to_the_next_request() {
+        let (agent, addr) = silent_agent().await;
+        let mut session = AsyncSession::new_v2c(&addr, b"public", 0).await.unwrap();
+
+        abandon_one_request(&mut session).await;
+
+        // The agent answers after the caller gave up; the datagram queues on the session socket.
+        let mut buf = [0u8; 2048];
+        let (len, from) = agent.recv_from(&mut buf).await.unwrap();
+        agent.send_to(&buf[..len], from).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // The next request goes unanswered, so it must stay pending. If the queued datagram were
+        // consumed the call would resolve immediately instead — right or wrong, but not pending.
+        let oid = Oid::from(SYS_DESCR).unwrap();
+        let outcome = timeout(Duration::from_millis(300), session.get(&oid)).await;
+
+        assert!(
+            outcome.is_err(),
+            "the stale datagram was served to a request that never got an answer"
+        );
     }
 }

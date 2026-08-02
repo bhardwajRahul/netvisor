@@ -1,3 +1,4 @@
+use crate::daemon::discovery::service::warnings::AttemptOutcome;
 use crate::daemon::discovery::types::base::DiscoveryCriticalError;
 use crate::server::services::r#impl::base::Service;
 use crate::server::services::r#impl::endpoints::{Endpoint, EndpointResponse};
@@ -26,7 +27,7 @@ use tokio::net::UdpSocket;
 use tokio::{net::TcpStream, time::timeout};
 use tokio_util::sync::CancellationToken;
 
-use crate::server::credentials::r#impl::mapping::SnmpQueryCredential;
+use crate::server::credentials::r#impl::mapping::{SnmpQueryCredential, SnmpVersion};
 use crate::server::ports::r#impl::base::{PortType, TransportProtocol};
 
 pub const SCAN_TIMEOUT: Duration = Duration::from_millis(800);
@@ -545,7 +546,9 @@ pub async fn scan_udp_ports(
 
             // Try each credential in specificity order (IP override → network default → public)
             for cred in snmp_credentials {
-                if let Ok(Some(p)) = try_snmp_with_credential_on_port(ip, cred, port).await {
+                if let SnmpProbeOutcome::Answered(p) =
+                    try_snmp_with_credential_on_port(ip, cred, port).await
+                {
                     if !port_detected {
                         open_ports.push(PortType::new_udp(p));
                         port_detected = true;
@@ -766,31 +769,66 @@ pub async fn test_ntp_service(ip: IpAddr) -> Result<Option<u16>, Error> {
 }
 
 /// Try an SNMP GET on a specific port using a credential
+/// What an SNMP liveness probe established, beyond "it did not work".
+///
+/// Every arm of this used to collapse into `Ok(None)`, and the caller reported "SNMP not
+/// responding with any credential". For SNMPv3 that was actively wrong: `create_session`
+/// performs engine discovery *and authentication*, so it had already produced "Failed SNMPv3
+/// engine discovery / authentication" — and an operator with a mistyped password was sent to
+/// check whether the device was online.
+pub enum SnmpProbeOutcome {
+    /// Answered sysDescr on this port.
+    Answered(u16),
+    Failed(AttemptOutcome, String),
+}
+
 pub async fn try_snmp_with_credential_on_port(
     ip: IpAddr,
     credential: &SnmpQueryCredential,
     port: u16,
-) -> Result<Option<u16>, Error> {
-    let sys_descr_oid =
-        Oid::from(&[1, 3, 6, 1, 2, 1, 1, 1, 0]).map_err(|e| anyhow!("Invalid Oid: {:?}", e))?;
+) -> SnmpProbeOutcome {
+    let sys_descr_oid = match Oid::from(&[1, 3, 6, 1, 2, 1, 1, 1, 0]) {
+        Ok(oid) => oid,
+        Err(e) => {
+            return SnmpProbeOutcome::Failed(
+                AttemptOutcome::Malformed,
+                format!("Invalid OID: {e:?}"),
+            );
+        }
+    };
 
-    match crate::daemon::discovery::integration::snmp::session::create_session(ip, credential, port)
-        .await
+    let mut session = match crate::daemon::discovery::integration::snmp::session::create_session(
+        ip, credential, port,
+    )
+    .await
     {
-        Ok(mut session) => {
-            match timeout(Duration::from_millis(2000), session.get(&sys_descr_oid)).await {
-                Ok(Ok(mut response)) => {
-                    if response.varbinds.next().is_some() {
-                        Ok(Some(port))
-                    } else {
-                        Ok(None)
-                    }
-                }
-                Ok(Err(_)) => Ok(None),
-                Err(_) => Ok(None),
+        Ok(session) => session,
+        // v3 authenticates during engine discovery, so a failure here *is* the credential's
+        // answer. v1/v2c carry no handshake — a failure is the socket, not the community.
+        Err(e) if matches!(credential.version, SnmpVersion::V3) => {
+            return SnmpProbeOutcome::Failed(AttemptOutcome::Rejected, e.to_string());
+        }
+        Err(e) => return SnmpProbeOutcome::Failed(AttemptOutcome::Unreachable, e.to_string()),
+    };
+
+    match timeout(Duration::from_millis(2000), session.get(&sys_descr_oid)).await {
+        Ok(Ok(mut response)) => {
+            if response.varbinds.next().is_some() {
+                SnmpProbeOutcome::Answered(port)
+            } else {
+                SnmpProbeOutcome::Failed(
+                    AttemptOutcome::NotThisService,
+                    "answered without any varbinds".to_string(),
+                )
             }
         }
-        Err(_) => Ok(None),
+        Ok(Err(e)) => SnmpProbeOutcome::Failed(AttemptOutcome::from(&e), e.to_string()),
+        // The overwhelmingly common case on a swept subnet: nothing there speaks SNMP. Reported
+        // only for a credential the user pinned to this address.
+        Err(_) => SnmpProbeOutcome::Failed(
+            AttemptOutcome::TimedOut,
+            "no answer to sysDescr".to_string(),
+        ),
     }
 }
 

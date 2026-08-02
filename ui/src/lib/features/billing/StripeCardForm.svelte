@@ -1,5 +1,14 @@
 <script lang="ts">
-	import { loadStripe, type Stripe, type StripeElements, type Appearance } from '@stripe/stripe-js';
+	// `/pure`, not the default entry. The default one injects the Stripe.js <script> as a
+	// top-level side effect of being imported (`Promise.resolve().then(getStripePromise)`), so
+	// merely importing this component loads Stripe — and this component is reachable from the
+	// root layout via AppShell -> PaymentMethodModal, meaning every page did. On share and embed
+	// routes, whose CSP deliberately allows no third-party scripts, that surfaced as a blocked
+	// script. `/pure` defers injection until `loadStripe()` is actually called.
+	import { loadStripe } from '@stripe/stripe-js/pure';
+	// Types only — `/pure` re-exports just the runtime function. `import type` is erased at
+	// compile time, so this never pulls the injecting module into the bundle.
+	import type { Stripe, StripeElements, Appearance } from '@stripe/stripe-js';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import {

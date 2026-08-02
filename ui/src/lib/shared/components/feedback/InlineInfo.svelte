@@ -3,7 +3,7 @@
 	import BaseInlineFeedback from './BaseInlineFeedback.svelte';
 
 	let {
-		title = 'Error',
+		title = '',
 		body = null,
 		dismissableKey = null
 	}: {

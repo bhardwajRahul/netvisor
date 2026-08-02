@@ -37,11 +37,17 @@ pub struct InviteCsvRow {
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema, Validate,
 )]
 pub struct InviteBase {
+    /// The organization that owns this record.
     pub organization_id: Uuid,
+    /// Role the invited user gets on acceptance.
     pub permissions: UserOrgPermissions,
+    /// The networks this entity applies to.
     pub network_ids: Vec<Uuid>,
+    /// Link the recipient follows to accept the invite.
     pub url: String,
+    /// User who sent the invite.
     pub created_by: Uuid,
+    /// When this record stops being valid.
     pub expires_at: DateTime<Utc>,
     #[schema(value_type = Option<String>, required)]
     /// Optional email address to send the invite to
@@ -52,12 +58,15 @@ pub struct InviteBase {
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema, Validate,
 )]
 pub struct Invite {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,

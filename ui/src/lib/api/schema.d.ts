@@ -1406,8 +1406,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all Discoveries */
-        get: operations["list_discoveries"];
+        /**
+         * List discoveries
+         * @description Returns discoveries the authenticated user has access to. The run history
+         *     grows without bound, so this is paginated and ordered server-side rather
+         *     than filtered in the browser.
+         */
+        get: operations["get_all_discoveries"];
         put?: never;
         /** Create new Discovery */
         post: operations["create_discovery"];
@@ -1554,9 +1559,10 @@ export interface paths {
         /**
          * List all hosts
          * @description Returns all hosts the authenticated user has access to, with their
-         *     ip_addresses, ports, and services included. Supports pagination via
-         *     `limit` and `offset` query parameters, and ordering via `group_by`,
-         *     `order_by`, and `order_direction`.
+         *     ip_addresses, ports, services and interfaces included — pass
+         *     `include_children=false` to omit those and get a much smaller payload.
+         *     Supports pagination via `limit` and `offset` query parameters, and ordering
+         *     via `group_by`, `order_by`, and `order_direction`.
          */
         get: operations["get_all_hosts"];
         put?: never;
@@ -1731,6 +1737,39 @@ export interface paths {
          * @description Prevents deletion if the host has a daemon associated with it
          */
         delete: operations["delete_host"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hosts/{id}/rescan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rescan a host
+         * @description Starts a one-shot scan of this host's addresses and nothing else, answering
+         *     "is this host still there, and is its data current?" without sweeping the
+         *     whole subnet.
+         *
+         *     The scan runs on the daemon that last discovered this host — evidence it can
+         *     reach the address — and only if that daemon still has an interface on a
+         *     subnet containing one of the host's IPs. That constraint is what lets the
+         *     daemon ARP the target rather than fall back to a TCP probe, which would
+         *     report a live but firewalled host as unresponsive. When it can't be met the
+         *     request is refused with the specific reason rather than run at lower fidelity.
+         *
+         *     Returns the session, which streams progress over `/api/v1/discovery/stream`
+         *     like any other scan. A `Queued` phase means the daemon is busy; it will start
+         *     when the running scan finishes.
+         */
+        post: operations["rescan_host"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2125,8 +2164,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Populate demo data (only available for demo organizations) */
+        /**
+         * Populate demo data (only available for demo organizations).
+         * @description Runs the population off the request thread (a `tokio::spawn`) and returns
+         *     `202` immediately — the work is a few hundred sequential DB round-trips and
+         *     would otherwise exceed the reverse-proxy request timeout against a remote
+         *     database. Poll `GET /{id}/populate-demo/status` for completion/failure.
+         */
         post: operations["populate_demo_data"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{id}/populate-demo/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Poll the status of an org's background demo-populate task. */
+        get: operations["populate_demo_status"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3079,7 +3141,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.5"
+         *       "server_version": "0.17.7"
          *     }
          */
         ApiMeta: {
@@ -3090,7 +3152,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.5
+             * @example 0.17.7
              */
             server_version: string;
         };
@@ -3104,19 +3166,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-22T18:58:51.216657Z",
+             *       "created_at": "2026-07-29T01:29:50.395268Z",
              *       "first_discovery_id": null,
-             *       "id": "5b5a34e0-493f-4b12-a260-1cef006aa089",
+             *       "id": "c321721b-ba13-4afb-af6b-5362e6999c61",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-22T18:58:51.216657Z",
+             *       "last_seen_at": "2026-07-29T01:29:50.395268Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-22T18:58:51.216657Z",
-             *       "valid_from": "2026-07-22T18:58:51.216657Z",
+             *       "updated_at": "2026-07-29T01:29:50.395268Z",
+             *       "valid_from": "2026-07-29T01:29:50.395268Z",
              *       "valid_to": null
              *     }
              */
@@ -3274,6 +3336,33 @@ export interface components {
                 networks: components["schemas"]["NetworkSummary"][];
                 plan_usage: components["schemas"]["PlanUsage"];
                 recent_discoveries: components["schemas"]["Discovery"][];
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_DemoPopulateStatus: {
+            /**
+             * @description Lifecycle of a demo-populate task. `Running` is set synchronously in the
+             *     POST handler (before the `202`), then flipped to a terminal variant by the
+             *     spawned task. `Failed` carries the error string so the UI can show why.
+             */
+            data?: {
+                /** Format: date-time */
+                started_at: string;
+                /** @enum {string} */
+                state: "running";
+            } | {
+                /** Format: date-time */
+                finished_at: string;
+                /** @enum {string} */
+                state: "complete";
+            } | {
+                error: string;
+                /** Format: date-time */
+                finished_at: string;
+                /** @enum {string} */
+                state: "failed";
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3457,6 +3546,7 @@ export interface components {
              *           "valid_to": null
              *         }
              *       ],
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
              *       "name": "web-server-01",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "ports": [
@@ -3481,19 +3571,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-22T18:58:51.198634Z",
+             *               "created_at": "2026-07-29T01:29:50.375136Z",
              *               "first_discovery_id": null,
-             *               "id": "43113784-e98c-45c7-af76-0451de6b4d77",
+             *               "id": "d3833ea5-c09f-4efe-8e67-4eb78751e20c",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-22T18:58:51.198634Z",
+             *               "last_seen_at": "2026-07-29T01:29:50.375136Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-22T18:58:51.198634Z",
-             *               "valid_from": "2026-07-22T18:58:51.198634Z",
+             *               "updated_at": "2026-07-29T01:29:50.375136Z",
+             *               "valid_from": "2026-07-29T01:29:50.375136Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3507,7 +3597,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Proxmox Datacenter Manager",
+             *           "service_definition": "MySQL",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3539,6 +3629,13 @@ export interface components {
                 /** @description SNMP ifTable entries */
                 interfaces: components["schemas"]["Interface"][];
                 ip_addresses: components["schemas"]["IPAddress"][];
+                /**
+                 * Format: date-time
+                 * @description Last time discovery observed this host. User-facing (drives the "Last
+                 *     seen" column and the stale badge), which is why it is carried here while
+                 *     the rest of the SCD2/audit columns are not.
+                 */
+                last_seen_at: string;
                 management_url?: string | null;
                 name: string;
                 /** Format: uuid */
@@ -3917,19 +4014,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-22T18:58:51.210748Z",
+             *           "created_at": "2026-07-29T01:29:50.389081Z",
              *           "first_discovery_id": null,
-             *           "id": "a2e0560c-9bea-43a4-a9bd-416abc35ee72",
+             *           "id": "675f1617-abbe-4aff-9f9e-93f031d95e84",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-22T18:58:51.210748Z",
+             *           "last_seen_at": "2026-07-29T01:29:50.389081Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-22T18:58:51.210748Z",
-             *           "valid_from": "2026-07-22T18:58:51.210748Z",
+             *           "updated_at": "2026-07-29T01:29:50.389081Z",
+             *           "valid_from": "2026-07-29T01:29:50.389081Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3943,7 +4040,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Proxmox Datacenter Manager",
+             *       "service_definition": "MySQL",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4447,19 +4544,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-22T18:58:51.199026Z",
+         *       "created_at": "2026-07-29T01:29:50.375516Z",
          *       "first_discovery_id": null,
-         *       "id": "e7aca420-b75a-4608-8777-dcfe4cf89bda",
+         *       "id": "3b2e6056-5f43-481f-8320-20c18568b0a0",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-22T18:58:51.199026Z",
+         *       "last_seen_at": "2026-07-29T01:29:50.375516Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-22T18:58:51.199026Z",
-         *       "valid_from": "2026-07-22T18:58:51.199026Z",
+         *       "updated_at": "2026-07-29T01:29:50.375516Z",
+         *       "valid_from": "2026-07-29T01:29:50.375516Z",
          *       "valid_to": null
          *     }
          */
@@ -4674,7 +4771,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Proxmox Datacenter Manager",
+         *           "service_definition": "MySQL",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4788,6 +4885,17 @@ export interface components {
         /** @enum {string} */
         CredentialOrderField: "created_at" | "name" | "updated_at";
         /**
+         * @description Release maturity of a credential type's integration.
+         *
+         *     Additive and exhaustive: a new credential variant will not compile until it declares its
+         *     stability, and every existing type is `Stable` by explicit arm rather than by wildcard, so
+         *     promoting an integration is a one-line reviewable change rather than a deletion nobody
+         *     notices. This is presentation metadata about the *code*, like `minimum_daemon_version` —
+         *     it is never stored on a credential row, so it carries no deploy-coexistence obligation.
+         * @enum {string}
+         */
+        CredentialStability: "Stable" | "Beta";
+        /**
          * @description Universal credential type — tagged enum stored as JSONB.
          *     Each variant represents a different credential protocol/method.
          */
@@ -4843,6 +4951,30 @@ export interface components {
             socket_path?: string | null;
             /** @enum {string} */
             type: "PodmanSocket";
+        } | {
+            /** @description Network Application API key, sent as `X-API-KEY`. */
+            api_key: components["schemas"]["SecretValue"];
+            /**
+             * Format: int32
+             * @description Controller HTTPS port. 443 for a UniFi OS console, 11443 for UniFi OS Server.
+             */
+            port?: number;
+            /** @description Internal site name from the controller URL (`/manage/site/<name>`). */
+            site?: string;
+            /** @enum {string} */
+            type: "UnifiApiKey";
+        } | {
+            password: components["schemas"]["SecretValue"];
+            /**
+             * Format: int32
+             * @description Controller HTTPS port. 443 UniFi OS console, 11443 UniFi OS Server, 8443 legacy.
+             */
+            port?: number;
+            /** @description Internal site name from the controller URL (`/manage/site/<name>`). */
+            site?: string;
+            /** @enum {string} */
+            type: "UnifiLocalAdmin";
+            username: string;
         };
         Daemon: components["schemas"]["DaemonBase"] & {
             /** Format: date-time */
@@ -5062,6 +5194,17 @@ export interface components {
         DaemonVersionStatus: {
             has_correct_docker_volume_mount?: boolean;
             status: components["schemas"]["VersionHealthStatus"];
+            /**
+             * @description The date this daemon's version stops being supported, if a sunset is
+             *     scheduled for it. Surfaced top-level (not only inside `warnings`) so the
+             *     UI can render a countdown from the same value the email uses.
+             */
+            sunset_date?: string | null;
+            /**
+             * @description Whether this daemon can run a single-host rescan. Server-computed so the
+             *     frontend never has to hardcode a version floor.
+             */
+            supports_targeted_rescan?: boolean;
             supports_unified_discovery?: boolean;
             version?: string | null;
             warnings?: components["schemas"]["DeprecationWarning"][];
@@ -5072,6 +5215,28 @@ export interface components {
             networks: components["schemas"]["NetworkSummary"][];
             plan_usage: components["schemas"]["PlanUsage"];
             recent_discoveries: components["schemas"]["Discovery"][];
+        };
+        /**
+         * @description Lifecycle of a demo-populate task. `Running` is set synchronously in the
+         *     POST handler (before the `202`), then flipped to a terminal variant by the
+         *     spawned task. `Failed` carries the error string so the UI can show why.
+         */
+        DemoPopulateStatus: {
+            /** Format: date-time */
+            started_at: string;
+            /** @enum {string} */
+            state: "running";
+        } | {
+            /** Format: date-time */
+            finished_at: string;
+            /** @enum {string} */
+            state: "complete";
+        } | {
+            error: string;
+            /** Format: date-time */
+            finished_at: string;
+            /** @enum {string} */
+            state: "failed";
         };
         /**
          * @example {
@@ -5209,6 +5374,14 @@ export interface components {
          */
         DiscoveryHostRequest: {
             host: components["schemas"]["Host"];
+            /**
+             * @description Which groups of per-interface data (LLDP, CDP, FDB, VLAN membership) this scan read in
+             *     full. A group the daemon could not finish reading must not overwrite what is already
+             *     stored: a cut-short walk returns the same empty result as a device with nothing to report,
+             *     and for the neighbour fields that also drops the row out of L2 resolution for good.
+             *     Daemons predating this field omit it; it defaults to all-complete so they behave as before.
+             */
+            interface_data_complete?: components["schemas"]["InterfaceDataComplete"];
             /** @description SNMP interface entries (ifTable data) - optional, populated when SNMP is enabled. */
             interfaces?: components["schemas"]["Interface"][];
             /**
@@ -5227,6 +5400,11 @@ export interface components {
              */
             subnets?: components["schemas"]["Subnet"][];
         };
+        /**
+         * @description Fields that discoveries can be ordered/grouped by.
+         * @enum {string}
+         */
+        DiscoveryOrderField: "created_at" | "name" | "updated_at" | "daemon_id" | "network_id" | "discovery_type";
         /** @enum {string} */
         DiscoveryPhase: "AwaitingSnapshot" | "Queued" | "Pending" | "Starting" | "Started" | "Scanning" | "Complete" | "Failed" | "Cancelled";
         /**
@@ -5255,6 +5433,29 @@ export interface components {
             host_naming_fallback: components["schemas"]["HostNamingFallback"];
             /** @enum {string} */
             type: "Docker";
+        } | {
+            /**
+             * Format: uuid
+             * @description ID of the host that the daemon is running on — same meaning as every
+             *     other variant. The host being rescanned is `target_host_id`.
+             */
+            host_id: string;
+            /** @description Addresses to scan on that host. */
+            ips: string[];
+            /**
+             * @description Ports already known on that host, re-checked to confirm they are
+             *     still open. Scanned in addition to the standard discovery set, so a
+             *     rescan also surfaces newly-opened services.
+             */
+            ports?: components["schemas"]["PortType"][];
+            settings?: components["schemas"]["RescanSettings"];
+            /**
+             * Format: uuid
+             * @description The host being rescanned.
+             */
+            target_host_id: string;
+            /** @enum {string} */
+            type: "Rescan";
         } | {
             /**
              * Format: uuid
@@ -5337,6 +5538,12 @@ export interface components {
             id: string;
             is_multi_hop: boolean;
             label: string | null;
+            /**
+             * @description Identity of the relation this edge stands for — see [`EdgeType::relation_key`]. Stamped
+             *     centrally from `edge_type` once the graph is built, so no construction site can forget
+             *     it. `None` marks an edge as interchangeable with its like.
+             */
+            relation_key: string | null;
             /** Format: uuid */
             source: string;
             source_handle: components["schemas"]["EdgeHandle"];
@@ -5420,9 +5627,17 @@ export interface components {
             source_entity_id: string;
             /** Format: uuid */
             target_entity_id: string;
+        } | {
+            /** @enum {string} */
+            edge_type: "NeighborLink";
+            protocol: components["schemas"]["DiscoveryProtocol"];
+            /** Format: uuid */
+            source_host_id: string;
+            /** Format: uuid */
+            target_host_id: string;
         };
         /** @enum {string} */
-        EdgeTypeDiscriminants: "SameHost" | "Hypervisor" | "ContainerRuntime" | "SameContainer" | "RequestPath" | "HubAndSpoke" | "PhysicalLink";
+        EdgeTypeDiscriminants: "SameHost" | "Hypervisor" | "ContainerRuntime" | "SameContainer" | "RequestPath" | "HubAndSpoke" | "PhysicalLink" | "NeighborLink";
         /** @description Per-view configuration for an edge: disabled (not in this view) or active with properties */
         EdgeViewConfig: {
             /** @enum {string} */
@@ -5568,6 +5783,19 @@ export interface components {
         ForgotPasswordRequest: {
             /** Format: email */
             email: string;
+        };
+        /** @description Size of one group in a grouped list, across every page. */
+        GroupCount: {
+            /**
+             * Format: int64
+             * @description How many rows fall in this group in total, not just on this page.
+             */
+            count: number;
+            /**
+             * @description The group's value, rendered as text. `null` for rows whose group key is
+             *     NULL (the "ungrouped" bucket).
+             */
+            value?: string | null;
         };
         /**
          * @example {
@@ -5751,6 +5979,7 @@ export interface components {
          *           "valid_to": null
          *         }
          *       ],
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
          *       "name": "web-server-01",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "ports": [
@@ -5775,19 +6004,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-22T18:58:51.198174Z",
+         *               "created_at": "2026-07-29T01:29:50.374682Z",
          *               "first_discovery_id": null,
-         *               "id": "0e418f70-f489-4a05-897f-e7387d8835dc",
+         *               "id": "b35fc726-f7d2-43fa-9f0b-405d90284d50",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-22T18:58:51.198174Z",
+         *               "last_seen_at": "2026-07-29T01:29:50.374682Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-22T18:58:51.198174Z",
-         *               "valid_from": "2026-07-22T18:58:51.198174Z",
+         *               "updated_at": "2026-07-29T01:29:50.374682Z",
+         *               "valid_from": "2026-07-29T01:29:50.374682Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5801,7 +6030,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Proxmox Datacenter Manager",
+         *           "service_definition": "MySQL",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5833,6 +6062,13 @@ export interface components {
             /** @description SNMP ifTable entries */
             interfaces: components["schemas"]["Interface"][];
             ip_addresses: components["schemas"]["IPAddress"][];
+            /**
+             * Format: date-time
+             * @description Last time discovery observed this host. User-facing (drives the "Last
+             *     seen" column and the stale badge), which is why it is carried here while
+             *     the rest of the SCD2/audit columns are not.
+             */
+            last_seen_at: string;
             management_url?: string | null;
             name: string;
             /** Format: uuid */
@@ -6157,6 +6393,31 @@ export interface components {
             speed_bps?: number | null;
             /** @description Tagged VLAN entity IDs on this port (resolved from Q-BRIDGE dot1qVlanCurrentEgressPorts) */
             vlan_ids?: string[] | null;
+        };
+        /**
+         * @description Which groups of per-interface data the daemon read in full during a scan.
+         *
+         *     Each group comes from its own SNMP walk, and a walk cut short by a timeout yields exactly the
+         *     same empty result as a device that genuinely has nothing to report. Without knowing which
+         *     happened, the server overwrote good data with NULL on every truncation — and for the neighbour
+         *     fields that also dropped the row out of L2 resolution permanently, since the resolution filter
+         *     requires a chassis id or CDP device id to be present.
+         *
+         *     Every field defaults to `true`, so a daemon predating this behaves exactly as before: it
+         *     reports everything as authoritative and the server overwrites.
+         */
+        InterfaceDataComplete: {
+            /** @description `cdp_device_id`, `cdp_port_id`, `cdp_platform`, `cdp_address` */
+            cdp?: boolean;
+            /** @description `fdb_macs` */
+            fdb?: boolean;
+            /**
+             * @description `lldp_chassis_id`, `lldp_port_id`, `lldp_sys_name`, `lldp_port_desc`, `lldp_mgmt_addr`,
+             *     `lldp_sys_desc`
+             */
+            lldp?: boolean;
+            /** @description `native_vlan_id`, `vlan_ids` */
+            vlan_membership?: boolean;
         };
         /**
          * @description Input for creating an SNMP interface entry (ifTable data).
@@ -6616,7 +6877,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.5"
+         *       "server_version": "0.17.7"
          *     }
          */
         PaginatedApiMeta: {
@@ -6629,7 +6890,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.5
+             * @example 0.17.7
              */
             server_version: string;
         };
@@ -6690,6 +6951,36 @@ export interface components {
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
+        PaginatedApiResponse_Discovery: {
+            data: (components["schemas"]["DiscoveryBase"] & {
+                /** Format: date-time */
+                readonly created_at: string;
+                /** @description When true, the next scan will be a full port scan regardless of interval */
+                force_full_scan?: boolean;
+                /** Format: uuid */
+                readonly id: string;
+                /**
+                 * @description Per-daemon integration targeting: which integrations (credentialed or credential-less
+                 *     local) run on this daemon, and on which IPs. Delivered via the init command at
+                 *     registration and editable via the discovery modal. Persistent — re-applied every scan.
+                 *     This is the single home for cred↔IP targeting; it replaces the global
+                 *     `credential.target_ips` (race-prone, consumed once) and the discovery modal's old
+                 *     one-shot `pending_credential_ids`.
+                 */
+                integration_targets: components["schemas"]["IntegrationTarget"][];
+                /**
+                 * Format: int32
+                 * @description Number of completed scans (incremented by server on session completion)
+                 */
+                readonly scan_count?: number;
+                /** Format: date-time */
+                readonly updated_at: string;
+            })[];
+            error?: string | null;
+            meta: components["schemas"]["PaginatedApiMeta"];
+            success: boolean;
+        };
+        /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_HostResponse: {
             data: {
                 chassis_id?: string | null;
@@ -6704,6 +6995,13 @@ export interface components {
                 /** @description SNMP ifTable entries */
                 interfaces: components["schemas"]["Interface"][];
                 ip_addresses: components["schemas"]["IPAddress"][];
+                /**
+                 * Format: date-time
+                 * @description Last time discovery observed this host. User-facing (drives the "Last
+                 *     seen" column and the stale badge), which is why it is carried here while
+                 *     the rest of the SCD2/audit columns are not.
+                 */
+                last_seen_at: string;
                 management_url?: string | null;
                 name: string;
                 /** Format: uuid */
@@ -6874,6 +7172,13 @@ export interface components {
          *     }
          */
         PaginationMeta: {
+            /**
+             * @description Size of every group, in the same order the rows are grouped, when the
+             *     request specified a `group_by`. Lets a paginated client show a group's
+             *     true size instead of the slice of it that happens to be on this page.
+             *     Absent when the list isn't grouped.
+             */
+            group_counts?: components["schemas"]["GroupCount"][] | null;
             /** @description Whether there are more items after this page */
             has_more: boolean;
             /**
@@ -7246,6 +7551,39 @@ export interface components {
             /** Format: email */
             new_email: string;
         };
+        /**
+         * @description Scan settings that apply to a single-host rescan.
+         *
+         *     Deliberately narrower than [`ScanSettings`]: a rescan verifies a known host
+         *     against a known port set, so the full-scan mechanism (`is_full_scan`,
+         *     `full_scan_interval`) must not be expressible — promoting a rescan to a
+         *     65,535-port sweep defeats the feature. The remaining omissions are settings
+         *     that cannot bind on a one-or-two address target.
+         */
+        RescanSettings: {
+            /**
+             * Format: int32
+             * @description ARP retry rounds. Matters more here than in a sweep: for a rescan, "did
+             *     it answer" is the entire answer, so a missed round reads as a dead host.
+             */
+            arp_retries?: number | null;
+            /** @description Ports scanned concurrently per host. */
+            port_scan_batch_size?: number | null;
+            /**
+             * @description Whether to probe raw-socket ports 9100-9107. Correctness-affecting: with
+             *     this off the scanner drops those ports from its results, so a printer's
+             *     known JetDirect port would look like it had disappeared.
+             */
+            probe_raw_socket_ports?: boolean;
+            /**
+             * Format: int32
+             * @description Port scan probes per second. Operators lower this for fragile devices or
+             *     noisy IDS, and a rescan must respect that as much as a discovery does.
+             */
+            scan_rate_pps?: number | null;
+            /** @description On Windows, use Npcap broadcast ARP instead of SendARP. */
+            use_npcap_arp?: boolean;
+        };
         /** @description Request to resend verification email */
         ResendVerificationRequest: {
             /** Format: email */
@@ -7412,19 +7750,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-22T18:58:51.198941Z",
+         *           "created_at": "2026-07-29T01:29:50.375430Z",
          *           "first_discovery_id": null,
-         *           "id": "d1bfd1fd-cc6c-4233-b784-b7a0bc5de20d",
+         *           "id": "4ae62916-3ed9-45e3-b466-086b827eaa1b",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-22T18:58:51.198941Z",
+         *           "last_seen_at": "2026-07-29T01:29:50.375430Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-22T18:58:51.198941Z",
-         *           "valid_from": "2026-07-22T18:58:51.198941Z",
+         *           "updated_at": "2026-07-29T01:29:50.375430Z",
+         *           "valid_from": "2026-07-29T01:29:50.375430Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7438,7 +7776,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Proxmox Datacenter Manager",
+         *       "service_definition": "MySQL",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7522,7 +7860,7 @@ export interface components {
          * @description Fields that services can be ordered/grouped by.
          * @enum {string}
          */
-        ServiceOrderField: "created_at" | "name" | "updated_at" | "host" | "network_id" | "position" | "last_seen_at";
+        ServiceOrderField: "created_at" | "name" | "updated_at" | "host" | "network_id" | "position" | "service_definition" | "last_seen_at";
         /** ServiceVirtualization */
         ServiceVirtualization: {
             details: components["schemas"]["DockerVirtualization"];
@@ -7861,7 +8199,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "10b02d38-a519-4c27-a680-fe04e85a6553",
+             *           "id": "e2d80d2a-921c-4496-9487-42a825ce0bea",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7871,23 +8209,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "9c4332aa-9c70-42c8-a040-2fc50417c3e2",
+             *           "id": "2fdfd835-9148-46db-8659-a0175129c885",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "fa2e26ab-9be1-498b-96b6-5ba76e1dc1f4",
+             *           "id": "476d1d97-9824-4f6d-a309-c64255a18717",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "a9c04512-8e08-43aa-9c99-b3a42212c214",
+             *           "id": "0165e666-580a-4708-a8fa-ebb9336cca4a",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "9c4332aa-9c70-42c8-a040-2fc50417c3e2",
+             *           "id": "2fdfd835-9148-46db-8659-a0175129c885",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7899,19 +8237,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "b768e641-adf5-4d6c-bcbb-74d9b17f6452",
+             *         "id": "09b47623-2b40-4a9d-b700-4f1e70c89f36",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "8be65a89-95ae-4098-bf9e-d7ce91ea4b95",
+             *         "id": "b1a31f9d-f3a2-40f6-960c-4606b62bfd35",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "241724e8-8b1a-4512-8b7a-28a971c02b36",
+             *         "id": "2d027190-f314-45da-9e01-773f5dd12625",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "74b9a6a6-c982-4a09-84cd-17116c0e4a6d",
+             *         "id": "cdf4b65e-a765-4ab0-992d-4a927aea7f41",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7929,7 +8267,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "c726e21e-35c1-4e72-adec-f47211886d28",
+             *         "id": "7cb2d807-033d-412c-acb3-06c2aa3f8d10",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7938,15 +8276,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "4d25d181-511a-42dd-a153-1cb69d25c1ae",
+             *         "id": "7ad49b15-b237-4239-816d-19658f4080a9",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "e211fcdd-db05-4f26-8cee-5b77d5b0dc1f",
+             *         "id": "15cc6e3c-ded9-4c56-8b9a-016bd94b4705",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "ee9f3f19-74d9-4d8a-8b9c-7b314d5b0c75",
+             *         "id": "359f5798-dfa1-4d43-993c-6661aa7da07b",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -8159,10 +8497,13 @@ export interface components {
             token: string;
         };
         /**
-         * @description Health status for daemon versions
+         * @description Health status for daemon versions.
+         *
+         *     Lifecycle order: `Current` → `Outdated` → `Deprecated` → `Unsupported`, with
+         *     `Unknown` for daemons whose version the server has no record of.
          * @enum {string}
          */
-        VersionHealthStatus: "Current" | "Outdated" | "Deprecated";
+        VersionHealthStatus: "Current" | "Outdated" | "Deprecated" | "Unsupported" | "Unknown";
         /** @description Version information for API compatibility checking */
         VersionInfo: {
             /**
@@ -8206,6 +8547,13 @@ export interface components {
             /** Format: uuid */
             organization_id: string;
             source?: components["schemas"]["EntitySource"];
+            /**
+             * @description Subnets associated with this VLAN, derived from discovered interface
+             *     native-VLAN data via the `subnet_vlans` junction. Hydrated by
+             *     `VlanService` on read; it is not a column on `vlans`, so anything sent
+             *     here on create/update is ignored by `to_params`.
+             */
+            subnet_ids?: string[];
             /**
              * Format: int32
              * @description The 802.1Q VLAN number (1-4094)
@@ -11289,13 +11637,29 @@ export interface operations {
             };
         };
     };
-    list_discoveries: {
+    get_all_discoveries: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
                 network_id?: string | null;
                 /** @description Filter by daemon ID */
                 daemon_id?: string | null;
+                /**
+                 * @description `true` returns only completed runs (the history view), `false` only the
+                 *     configurations that produce them. Omit for both.
+                 */
+                historical?: boolean | null;
+                /**
+                 * @description Free-text search across the discovery's name and the name of the daemon
+                 *     that runs it.
+                 */
+                search?: string | null;
+                /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
+                group_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Secondary ordering field (sorting within groups or standalone sort). */
+                order_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Direction for order_by field (group_by always uses ASC). */
+                order_direction?: null | components["schemas"]["OrderDirection"];
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
@@ -11307,18 +11671,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of Discoveries */
+            /** @description List of discoveries */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data: components["schemas"]["Discovery"][];
-                        error?: string | null;
-                        meta: components["schemas"]["PaginatedApiMeta"];
-                        success: boolean;
-                    };
+                    "application/json": components["schemas"]["PaginatedApiResponse_Discovery"];
                 };
             };
         };
@@ -11417,6 +11776,22 @@ export interface operations {
                 network_id?: string | null;
                 /** @description Filter by daemon ID */
                 daemon_id?: string | null;
+                /**
+                 * @description `true` returns only completed runs (the history view), `false` only the
+                 *     configurations that produce them. Omit for both.
+                 */
+                historical?: boolean | null;
+                /**
+                 * @description Free-text search across the discovery's name and the name of the daemon
+                 *     that runs it.
+                 */
+                search?: string | null;
+                /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
+                group_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Secondary ordering field (sorting within groups or standalone sort). */
+                order_by?: null | components["schemas"]["DiscoveryOrderField"];
+                /** @description Direction for order_by field (group_by always uses ASC). */
+                order_direction?: null | components["schemas"]["OrderDirection"];
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
@@ -11649,6 +12024,12 @@ export interface operations {
                 ids?: string[] | null;
                 /** @description Filter by tag IDs (returns hosts that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
+                /**
+                 * @description Free-text search. Case-insensitive substring match against the host's
+                 *     name, hostname and description, and against its IP addresses and the
+                 *     names of services running on it.
+                 */
+                search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["HostOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
@@ -11670,6 +12051,13 @@ export interface operations {
                  *     both. Evaluated per row against the host's own network's window.
                  */
                 stale?: boolean | null;
+                /**
+                 * @description `false` returns hosts with empty `ip_addresses`/`ports`/`services`/
+                 *     `interfaces`. The children dominate the payload, so callers that only need
+                 *     host identity — name pickers, id→name lookups, counts — should pass
+                 *     `false`. Defaults to `true`, so existing callers are unaffected.
+                 */
+                include_children?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -11806,6 +12194,12 @@ export interface operations {
                 ids?: string[] | null;
                 /** @description Filter by tag IDs (returns hosts that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
+                /**
+                 * @description Free-text search. Case-insensitive substring match against the host's
+                 *     name, hostname and description, and against its IP addresses and the
+                 *     names of services running on it.
+                 */
+                search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["HostOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
@@ -11827,6 +12221,13 @@ export interface operations {
                  *     both. Evaluated per row against the host's own network's window.
                  */
                 stale?: boolean | null;
+                /**
+                 * @description `false` returns hosts with empty `ip_addresses`/`ports`/`services`/
+                 *     `interfaces`. The children dominate the payload, so callers that only need
+                 *     host identity — name pickers, id→name lookups, counts — should pass
+                 *     `false`. Defaults to `true`, so existing callers are unaffected.
+                 */
+                include_children?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -11854,6 +12255,12 @@ export interface operations {
                 ids?: string[] | null;
                 /** @description Filter by tag IDs (returns hosts that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
+                /**
+                 * @description Free-text search. Case-insensitive substring match against the host's
+                 *     name, hostname and description, and against its IP addresses and the
+                 *     names of services running on it.
+                 */
+                search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["HostOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
@@ -11875,6 +12282,13 @@ export interface operations {
                  *     both. Evaluated per row against the host's own network's window.
                  */
                 stale?: boolean | null;
+                /**
+                 * @description `false` returns hosts with empty `ip_addresses`/`ports`/`services`/
+                 *     `interfaces`. The children dominate the payload, so callers that only need
+                 *     host identity — name pickers, id→name lookups, counts — should pass
+                 *     `false`. Defaults to `true`, so existing callers are unaffected.
+                 */
+                include_children?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -12045,6 +12459,47 @@ export interface operations {
             };
             /** @description Host has associated daemon */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    rescan_host: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Host ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rescan session started */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DiscoveryUpdatePayload"];
+                };
+            };
+            /** @description Host cannot be rescanned (never scanned, daemon gone, daemon unreachable, or daemon too old) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Host not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13132,13 +13587,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Demo data populated */
-            200: {
+            /** @description Demo data population started */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse"];
+                    "application/json": components["schemas"]["ApiResponse_DemoPopulateStatus"];
                 };
             };
             /** @description Only available for demo organizations */
@@ -13151,6 +13606,47 @@ export interface operations {
                 };
             };
             /** @description Organization not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Population already in progress */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    populate_demo_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Demo populate status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DemoPopulateStatus"];
+                };
+            };
+            /** @description No demo-populate task for this organization */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -13457,12 +13953,21 @@ export interface operations {
                 ids?: string[] | null;
                 /** @description Filter by tag IDs (returns services that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
+                /**
+                 * @description Free-text search. Case-insensitive substring match against the service's
+                 *     name and definition, and against the name of the host it runs on.
+                 */
+                search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
                 order_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Direction for order_by field (group_by always uses ASC). */
                 order_direction?: null | components["schemas"]["OrderDirection"];
+                /** @description Only services exposed on one of these port numbers. */
+                ports?: number[] | null;
+                /** @description Only services exposed over this transport protocol. */
+                protocol?: null | components["schemas"]["TransportProtocol"];
                 /** @description Exclude services belonging to these categories. */
                 exclude_categories?: components["schemas"]["ServiceCategory"][] | null;
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
@@ -13567,12 +14072,21 @@ export interface operations {
                 ids?: string[] | null;
                 /** @description Filter by tag IDs (returns services that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
+                /**
+                 * @description Free-text search. Case-insensitive substring match against the service's
+                 *     name and definition, and against the name of the host it runs on.
+                 */
+                search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
                 order_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Direction for order_by field (group_by always uses ASC). */
                 order_direction?: null | components["schemas"]["OrderDirection"];
+                /** @description Only services exposed on one of these port numbers. */
+                ports?: number[] | null;
+                /** @description Only services exposed over this transport protocol. */
+                protocol?: null | components["schemas"]["TransportProtocol"];
                 /** @description Exclude services belonging to these categories. */
                 exclude_categories?: components["schemas"]["ServiceCategory"][] | null;
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */

@@ -1,7 +1,7 @@
 import type { Node } from '@xyflow/svelte';
 import type { LayoutGraph } from '../layout/layout-graph';
 import type { RenderableTopology, TopologyNode } from '../types/base';
-import { resolveElementNode } from '../resolvers';
+import { getTopologyIndex } from '../entity-index';
 
 export interface BuildFlowNodesParams {
 	visibleNodes: TopologyNode[];
@@ -67,12 +67,14 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 
 	const currentPositions = new Map(liveNodes.map((n) => [n.id, n.position]));
 	const currentSizes = new Map(
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- @xyflow Node has runtime .computed not in type defs
-		(liveNodes as Record<string, any>[]).map((n) => [
+		// `measured`, not `computed` — see the note in measure.ts. The v0 name
+		// silently resolved to undefined, so this map only ever carried the
+		// literal node props rather than rendered sizes.
+		liveNodes.map((n) => [
 			n.id,
 			{
-				width: n.computed?.width ?? n.width,
-				height: n.computed?.height ?? n.height
+				width: n.measured?.width ?? n.width,
+				height: n.measured?.height ?? n.height
 			}
 		])
 	);
@@ -132,9 +134,14 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 			expandParent: true,
 			deletable: false,
 			selectable: node.node_type !== 'Container',
+			// `container_id` is a non-optional Uuid on the backend's NodeType::Element,
+			// so it is always present. This used to fall back to the resolved
+			// `subnetId`, which is L3-specific (only the IPAddress resolver ever
+			// returns one) — a view-specific lookup in a shared builder, and an O(n)
+			// resolver call per node, that could never actually fire.
 			parentId:
 				node.node_type == 'Element'
-					? (node.container_id ?? resolveElementNode(node.id, node, topology).subnetId)
+					? node.container_id
 					: node.node_type == 'Container' && node.parent_container_id
 						? (node.parent_container_id as string)
 						: undefined,
@@ -152,8 +159,9 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 						// Exclude infrastructure services subgroup from workload count
 						let excludedCount = 0;
 						if (infraRuleId) {
+							const { nodesById } = getTopologyIndex(topology);
 							for (const s of summaries) {
-								const groupNode = topology.nodes.find((n) => n.id === s.groupId);
+								const groupNode = nodesById.get(s.groupId);
 								if (
 									groupNode &&
 									(groupNode as Record<string, unknown>).element_rule_id === infraRuleId

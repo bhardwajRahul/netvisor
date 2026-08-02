@@ -1,3 +1,4 @@
+use crate::server::openapi::tags as api_tags;
 use crate::server::{
     auth::middleware::permissions::{Authorized, Viewer},
     config::AppState,
@@ -28,7 +29,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "/summary",
-    tags = ["dashboard", "internal"],
+    tags = [api_tags::DASHBOARD, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Dashboard summary", body = ApiResponse<DashboardSummary>),
     ),

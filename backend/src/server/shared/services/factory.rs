@@ -10,7 +10,10 @@ use crate::server::{
     dependencies::service::DependencyService,
     digest::service::DiscoveryDigestService,
     discovery::service::DiscoveryService,
-    email::{brevo::BrevoEmailProvider, service::EmailService, smtp::SmtpEmailProvider},
+    email::{
+        brevo::BrevoEmailProvider, logging::LoggingEmailProvider, service::EmailService,
+        smtp::SmtpEmailProvider,
+    },
     hosts::service::HostService,
     interfaces::service::InterfaceService,
     invites::service::InviteService,
@@ -296,7 +299,26 @@ impl ServiceFactory {
         let public_url = config.public_url.clone();
         let deployment_type = crate::server::config::get_deployment_type(&config);
 
-        let email_service = if let Some(ref brevo_api_key) = config.brevo_api_key {
+        // A configured email log directory wins over Brevo/SMTP: it is a
+        // testing transport you explicitly turn on, so it has to work with no
+        // credentials present and override any that happen to be set.
+        let email_service = if let Some(ref email_log_dir) = config.email_log_dir {
+            tracing::warn!(
+                dir = %email_log_dir.display(),
+                "SCANOPY_EMAIL_LOG_DIR is set: emails will be logged and written to disk, not delivered"
+            );
+            Some(Arc::new(EmailService::new(
+                Box::new(LoggingEmailProvider::new(Some(email_log_dir.clone()))),
+                user_service.clone(),
+                organization_service.clone(),
+                host_service.clone(),
+                network_service.clone(),
+                service_service.clone(),
+                daemon_service.clone(),
+                public_url,
+                deployment_type,
+            )))
+        } else if let Some(ref brevo_api_key) = config.brevo_api_key {
             let brevo_provider = BrevoEmailProvider::new(brevo_api_key.clone());
             Some(Arc::new(EmailService::new(
                 Box::new(brevo_provider),

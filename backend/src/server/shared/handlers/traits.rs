@@ -459,6 +459,8 @@ where
 
 #[derive(Serialize, ToSchema)]
 pub struct BulkDeleteResponse {
+    /// How many records were actually deleted.
     pub deleted_count: usize,
+    /// How many IDs the request asked to delete.
     pub requested_count: usize,
 }

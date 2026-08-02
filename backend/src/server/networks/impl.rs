@@ -33,9 +33,12 @@ pub struct NetworkCsvRow {
     Debug, Clone, Serialize, Deserialize, Validate, PartialEq, Eq, Hash, Default, ToSchema,
 )]
 pub struct NetworkBase {
+    /// Human-facing name for this network.
     #[validate(length(min = 0, max = 100))]
     pub name: String,
+    /// The organization that owns this record.
     pub organization_id: Uuid,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -84,12 +87,15 @@ impl NetworkBase {
 )]
 #[schema(example = crate::server::shared::types::examples::network)]
 pub struct Network {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,

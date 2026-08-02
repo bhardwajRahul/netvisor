@@ -392,6 +392,21 @@ impl DependencyMemberStorage {
         Ok(())
     }
 
+    /// Bulk-insert fully-formed member records across many dependencies in a
+    /// single INSERT, with no per-dependency lock or delete-first pass. For
+    /// seed paths (demo populate) where the org was just reset — there are no
+    /// existing rows to replace and no concurrent writers to serialize against,
+    /// so the `save_for_dependency` locking is unnecessary overhead. Callers
+    /// must supply records with `service_id`/`binding_id`/`position` already
+    /// resolved.
+    pub async fn create_many(&self, records: &[DependencyMemberRecord]) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        self.storage.create_many(records).await?;
+        Ok(())
+    }
+
     /// Delete all member associations for a dependency
     pub async fn delete_for_dependency(&self, dependency_id: &Uuid) -> Result<()> {
         let filter =

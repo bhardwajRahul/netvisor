@@ -15,7 +15,7 @@ use strum::IntoEnumIterator;
 use crate::server::services::r#impl::definitions::{ServiceDefinition, ServiceDefinitionExt};
 use crate::server::shared::fixtures::logo_slug;
 
-use super::types::{CredentialTypeDiscriminants, Target};
+use super::types::{CredentialStability, CredentialTypeDiscriminants, FieldDefinition, Target};
 
 /// One integration: a service plus the transports (credential types) that reach
 /// it, with a single canonical discovery description and a one-line summary.
@@ -38,6 +38,10 @@ pub struct Integration {
     pub discovers: String,
     /// One-line summary: the discovery text plus the available transports.
     pub summary: String,
+    /// Maturity and daemon-version floors are deliberately *not* summarized here.
+    /// They vary by transport — SNMP v2c reaches a 0.16.2 daemon while v1/v3 need
+    /// 0.17.0 — so an integration-level number would be wrong for some of its own
+    /// rows. Read them from each [`IntegrationTransport`].
     pub transports: Vec<IntegrationTransport>,
 }
 
@@ -48,12 +52,28 @@ pub struct IntegrationTransport {
     pub id: String,
     /// Short transport label (e.g. "Socket", "Proxy", "v2c").
     pub name: String,
+    /// Full credential-type name as the app shows it (e.g. "UniFi API Key").
+    ///
+    /// Not `"{integration name} {transport name}"`: consumers were composing that
+    /// themselves, which is right only where the service name is also the
+    /// credential's prefix. It isn't for UniFi — the service is "UniFi Controller"
+    /// but the credential is "UniFi API Key" — so the composed string named a type
+    /// that does not exist in the app.
+    pub display_name: String,
     /// Transport-specific note, derived from the credential's `transport_note`.
     pub description: String,
     pub requires_config: bool,
     pub single_endpoint_per_host: bool,
     /// Where this transport can be applied (daemon host, hosts, network).
     pub targets: Vec<Target>,
+    /// Release maturity of this specific transport.
+    pub stability: CredentialStability,
+    /// Minimum daemon version that can receive this transport.
+    pub minimum_daemon_version: semver::Version,
+    /// What the operator has to fill in, in the order the form asks for it. The
+    /// same definitions the app builds its credential form from, so a documented
+    /// field and the app's own label/help text cannot drift apart.
+    pub fields: Vec<FieldDefinition>,
 }
 
 /// Build every integration by grouping credential discriminants on their
@@ -70,10 +90,16 @@ pub fn all_integrations() -> Vec<Integration> {
         let transport = IntegrationTransport {
             id: <&'static str>::from(disc).to_string(),
             name: disc.transport_label().to_string(),
+            display_name: disc.display_name().to_string(),
             description: disc.transport_note().to_string(),
             requires_config: ct.requires_config(),
             single_endpoint_per_host: ct.single_endpoint_per_host(),
             targets: ct.targets(),
+            stability: disc.stability(),
+            minimum_daemon_version: disc.minimum_daemon_version(),
+            // Form order, not sorted: it is the order the fields are meant to be
+            // read in, and it is already deterministic.
+            fields: ct.field_definitions(),
         };
 
         if let Some(existing) = integrations.iter_mut().find(|i| i.id == service_id) {
@@ -175,6 +201,41 @@ mod tests {
                 "{} has no transports",
                 integration.id
             );
+
+            for transport in &integration.transports {
+                assert!(
+                    !transport.display_name.trim().is_empty(),
+                    "{}/{} has no display name",
+                    integration.id,
+                    transport.id
+                );
+                // A 0.0.0 floor means the field was defaulted rather than projected
+                // from `minimum_daemon_version()`.
+                assert!(
+                    transport.minimum_daemon_version > semver::Version::new(0, 0, 0),
+                    "{}/{} has no daemon version floor",
+                    integration.id,
+                    transport.id
+                );
+                assert!(
+                    !transport.requires_config || !transport.fields.is_empty(),
+                    "{}/{} requires configuration but projects no fields",
+                    integration.id,
+                    transport.id
+                );
+
+                let mut ids: Vec<&str> = transport.fields.iter().map(|f| f.id).collect();
+                let count = ids.len();
+                ids.sort_unstable();
+                ids.dedup();
+                assert_eq!(
+                    ids.len(),
+                    count,
+                    "{}/{} has duplicate field ids",
+                    integration.id,
+                    transport.id
+                );
+            }
 
             // Transports of one integration must be distinguishable.
             let mut notes: Vec<&str> = integration

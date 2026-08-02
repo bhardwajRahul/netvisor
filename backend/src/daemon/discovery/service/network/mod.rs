@@ -67,7 +67,10 @@ pub struct NetworkScan {
             crate::server::credentials::r#impl::mapping::CredentialQueryPayload,
         >,
     >,
-    /// Precomputed set of ports for light scans (discovery + credential ports)
+    /// Specific addresses to scan (a rescan). `None` sweeps the subnets.
+    target_ips: Option<HashSet<std::net::IpAddr>>,
+    /// Precomputed TCP port set: discovery ports, credential-required ports, and
+    /// for a rescan the ports already known on the target.
     light_scan_ports: HashSet<u16>,
 }
 
@@ -81,6 +84,8 @@ impl NetworkScan {
                 crate::server::credentials::r#impl::mapping::CredentialQueryPayload,
             >,
         >,
+        target_ips: Option<HashSet<std::net::IpAddr>>,
+        extra_ports: Vec<u16>,
     ) -> Self {
         // Build light scan port set: discovery ports + credential-required ports
         let mut light_scan_ports: HashSet<u16> = Service::all_discovery_ports()
@@ -99,11 +104,17 @@ impl NetworkScan {
             }
         }
 
+        // A rescan verifies the ports already recorded on its target, so fold
+        // them in the same way credentials widen the set. Cost and batching are
+        // derived from this set's size, so they stay correct for free.
+        light_scan_ports.extend(extra_ports);
+
         Self {
             subnet_ids,
             host_naming_fallback,
             scan_settings,
             credential_mappings,
+            target_ips,
             light_scan_ports,
         }
     }
@@ -171,7 +182,7 @@ pub(super) struct DeepScanParams<'a> {
     credential_mappings: &'a [crate::server::credentials::r#impl::mapping::CredentialMapping<
         crate::server::credentials::r#impl::mapping::CredentialQueryPayload,
     >],
-    created_subnets: Vec<Subnet>,
+    known_subnets: Vec<Subnet>,
 }
 
 #[cfg(test)]

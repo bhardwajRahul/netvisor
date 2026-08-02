@@ -1,0 +1,40 @@
+{
+  "meta": { "rc": "ok" },
+  "data": [
+    {
+      "mac": "78:8a:20:11:22:33",
+      "ip": "192.168.20.10",
+      "name": "Core Switch",
+      "model": "USL24P",
+      "type": "usw",
+      "some_future_device_key": { "nested": true },
+      "uplink": {
+        "name": "eth24",
+        "port_idx": "24",
+        "uplink_mac": "00:1a:2b:3c:4d:5e",
+        "uplink_remote_port": "4"
+      },
+      "port_table": [
+        {
+          "port_idx": "5",
+          "name": "Port 5",
+          "up": "true",
+          "enable": 1,
+          "speed": "1000",
+          "mac": "78:8a:20:11:22:33",
+          "some_future_port_key": 42,
+          "mac_table": []
+        },
+        {
+          "port_idx": 24,
+          "name": "Port 24",
+          "up": true,
+          "enable": true,
+          "speed": 1000,
+          "mac": "78:8a:20:11:22:47",
+          "mac_table": []
+        }
+      ]
+    }
+  ]
+}

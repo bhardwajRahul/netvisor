@@ -9,7 +9,7 @@
 	import type { ServiceDisplayContext } from '$lib/shared/components/forms/selection/display/ServiceDisplay.svelte';
 	import type { Host } from '$lib/features/hosts/types/base';
 	import type { Tag as TagType } from '$lib/features/tags/types/base';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import { useHostSummariesQuery } from '$lib/features/hosts/queries';
 	import { useServicesQuery } from '$lib/features/services/queries';
 	import { useBulkAddTagMutation } from '$lib/features/tags/queries';
 	import TagBadge from '$lib/shared/components/data/Tag.svelte';
@@ -28,7 +28,10 @@
 		networkId: string;
 	} = $props();
 
-	const hostsQuery = useHostsQuery(() => ({ limit: 0, network_id: networkId }));
+	// Bulk-tagging surface: it needs every host on the network, but only their
+	// id/name/hostname/tags. Per-host service lists come from `servicesQuery`
+	// below, so the nested children this used to download were never read.
+	const hostsQuery = useHostSummariesQuery(() => ({ network_id: networkId }));
 	const servicesQuery = useServicesQuery(() => ({
 		limit: 0,
 		network_id: networkId,
@@ -146,9 +149,9 @@
 							{hostServices.length} services
 						</button>
 						{#if expandedHostIds.has(host.id)}
-							<div class="mt-1 divide-y divide-gray-700/50">
+							<div class="mt-1 divide-y divide-gray-200 dark:divide-gray-700/50">
 								{#each hostServices as service (service.id)}
-									<div class="rounded px-2 py-1.5 pl-6 odd:bg-gray-800/30">
+									<div class="rounded px-2 py-1.5 pl-6 odd:bg-gray-50 dark:odd:bg-gray-800/30">
 										<ListSelectItem
 											item={service}
 											context={getServiceContext(service)}

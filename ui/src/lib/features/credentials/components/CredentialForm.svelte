@@ -15,8 +15,12 @@
 	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
 	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
 	import type { Credential, CredentialType } from '../types/base';
+	import type { Host } from '$lib/features/hosts/types/base';
 	import { createDefaultCredential } from '../types/base';
-	import { credentialTypes } from '$lib/shared/stores/metadata';
+	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
+	import { entityRef } from '$lib/shared/components/data/types';
+	import { credentialTypes, entities } from '$lib/shared/stores/metadata';
+	import { DAEMON_HOST_IP } from '../utils/credentialTargets';
 	import { translateFieldDefinitions } from '$lib/i18n/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
@@ -44,7 +48,8 @@
 		daemons_credentialWizardDaemonHostTargetLabel,
 		daemons_credentialWizardTargetSpecificHosts,
 		daemons_credentialWizardTargetAllHosts,
-		daemons_credentialWizardBroadcastHelp
+		daemons_credentialWizardBroadcastHelp,
+		credentials_alreadyAssignedTo
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -66,6 +71,17 @@
 		/** Disable the "Add daemon host" target when the daemon host is already
 		 *  claimed by another single-endpoint credential of the same integration. */
 		daemonHostUnavailable?: boolean;
+		/** Hosts this credential already reaches through the host/credential junction.
+		 *  Listed above the picker so the card reflects everything the credential hits,
+		 *  but owned elsewhere — not editable or removable here. */
+		lockedHosts?: Host[];
+		/** The row's target selection, owned by the parent. This component mirrors it for
+		 *  rendering and emits every edit back through `onChange`; it never decides a
+		 *  default of its own. Reading these back off the shared TanStack form instead was
+		 *  the source of a family of bugs: its defaults are built once, so they are stale
+		 *  for any row seeded afterwards. */
+		targetIps?: string[];
+		scope?: 'broadcast' | 'per_host';
 		onChange?: (data: {
 			targetIps?: string[];
 			fieldValues?: Record<string, string>;
@@ -86,6 +102,9 @@
 		hideTargets = false,
 		fieldPrefix = '',
 		daemonHostUnavailable = false,
+		lockedHosts = [],
+		targetIps,
+		scope,
 		onChange,
 		onTypeChange
 	}: Props = $props();
@@ -111,7 +130,6 @@
 	// network). The available modes and per-host buttons are gated by `targets()`.
 	let targetMode = $state<'per_host' | 'broadcast'>('per_host');
 
-	const DAEMON_HOST_IP = '127.0.0.1';
 	function isDaemonHostValue(value: string): boolean {
 		return value === '127.0.0.1' || value === '::1';
 	}
@@ -284,51 +302,53 @@
 			initDefaultFieldValues(typeId);
 		}
 
-		// Set fixed name if provided
-		if (fixedName && !compact) {
-			form.setFieldValue?.('name', fixedName);
+		// Set fixed name if provided. In compact mode this seeds this row's slice of the
+		// shared form: its defaults are built once, so a row the parent seeds afterwards has
+		// no entry and the name input renders blank. (Written inline rather than via
+		// `nameFieldName`, which is declared below this function's only call site.)
+		if (fixedName) {
+			form.setFieldValue?.(compact ? `${fieldPrefix}name` : 'name', fixedName);
 		}
 
-		// Initialize target mode and target IP values from the form.
-		// Only read from form if this credential's prefix has an explicitly set value
-		// (not inherited from another credential in the shared form).
+		// Mirror the parent's selection. No defaults are chosen here: the row's creator
+		// (handleAddCredential / handleAddExistingCredential / the modal's seeding) decides
+		// them, so a decision made here could not be emitted and would be silently lost.
 		if (compact) {
-			targetIpValues = [];
-			const formTargetIps = form.getFieldValue?.(`${fieldPrefix}targetIps`) as string[] | undefined;
-			const hasExplicitIps =
-				!!formTargetIps &&
-				formTargetIps.length > 0 &&
-				formTargetIps.some((ip: string) => ip !== '');
-			// Targets the type supports — computed inline (not via the derived) to
-			// avoid init-time staleness.
-			const supported = (credentialTypes.getMetadata(selectedTypeId)?.targets ?? []) as string[];
-			const canNetwork = supported.includes('Network');
-			if (hasExplicitIps) {
-				targetIpValues = [...formTargetIps];
-				targetMode = 'per_host';
-			} else {
-				// Network-capable types (e.g. SNMP) default to Networks (broadcast),
-				// matching the wizard's handleAddCredential; host-only types to Hosts.
-				targetMode = canNetwork ? 'broadcast' : 'per_host';
-				// When the daemon host is the only per-host target, preselect it (the
-				// disabled 127.0.0.1 row) so there's nothing for the user to add.
-				if (
-					targetMode === 'per_host' &&
-					supported.includes('DaemonHost') &&
-					!supported.includes('Hosts')
-				) {
-					targetIpValues = [DAEMON_HOST_IP];
-				}
-			}
+			targetIpValues = [...(targetIps ?? [])];
+			targetMode = scope ?? 'per_host';
+			form.setFieldValue?.(`${fieldPrefix}targetIps`, [...targetIpValues]);
 		}
 	}
 
 	// Initialize on mount (called once, not reactively)
 	reset();
 
+	/**
+	 * Reset the target selection to the new type's default.
+	 *
+	 * Reads `targets` inline rather than through the `supportedTargets` derived, which is
+	 * still stale at this point in the update (same reason `reset()` computes it inline).
+	 * Without this a broadcast mode chosen for a Network-capable type would survive a switch
+	 * to one that excludes Network: the toggle hides, but the mode — and the scope it emits —
+	 * stays broadcast, producing a target the server discards.
+	 */
+	function applyDefaultTargetForType(typeId: string) {
+		const supported = (credentialTypes.getMetadata(typeId)?.targets ?? []) as string[];
+		targetMode = supported.includes('Network') ? 'broadcast' : 'per_host';
+		// When the daemon host is the only per-host target, preselect it (the disabled
+		// 127.0.0.1 row) so there's nothing for the user to add.
+		targetIpValues =
+			targetMode === 'per_host' && supported.includes('DaemonHost') && !supported.includes('Hosts')
+				? [DAEMON_HOST_IP]
+				: [];
+		form.setFieldValue?.(`${fieldPrefix}targetIps`, [...targetIpValues]);
+		onChange?.({ targetIps: [...targetIpValues], scope: targetMode });
+	}
+
 	function handleTypeChange(typeId: string) {
 		selectedTypeId = typeId;
 		initDefaultFieldValues(selectedTypeId);
+		if (compact) applyDefaultTargetForType(selectedTypeId);
 	}
 
 	async function handleSubmit() {
@@ -524,8 +544,13 @@
 	 * always valid. The caller surfaces failures via a toast on advance.
 	 */
 	export function validateTarget(): boolean {
-		if (!compact || targetMode === 'broadcast') return true;
-		return targetIpValues.some((ip) => ip.trim() !== '');
+		// A hidden picker can never be a failure the user could act on: `hideTargets` types
+		// (the daemon-host socket, managed references) carry an implicit 127.0.0.1 target.
+		if (!compact || hideTargets || targetMode === 'broadcast') return true;
+		// Locked rows are real targets owned elsewhere, so the credential is already
+		// pointed somewhere even with nothing entered here.
+		if (lockedHosts.length > 0) return true;
+		return targetIpValues.some((ip) => (ip?.trim() ?? '') !== '');
 	}
 
 	// Target-IP field validator. Empty rows are valid at the field level — they're
@@ -534,8 +559,11 @@
 	// failing field validation. Only the IP format of non-empty rows is checked.
 	// Broadcast credentials always pass (stale targetIps fields left after toggling
 	// Hosts -> Networks can't block submission). Reads the live, reactive `targetMode`.
-	function validateTargetIp(value: string): string | undefined {
-		if (targetMode === 'broadcast' || !value.trim()) return undefined;
+	// `value` can be undefined: TanStack keeps a field registered after its row is removed,
+	// and `validateAllFields` on submit then runs it against an index the array no longer
+	// has. An absent value is an empty row, which is valid here.
+	function validateTargetIp(value: string | undefined): string | undefined {
+		if (targetMode === 'broadcast' || !value?.trim()) return undefined;
 		return ipAddressFormat(value);
 	}
 
@@ -560,7 +588,9 @@
 		targetIpValues = [...targetIpValues];
 		const formValues = [...targetIpValues];
 		form.setFieldValue?.(`${fieldPrefix}targetIps`, formValues);
-		onChange?.({ targetIps: formValues });
+		// Emits the mode too: every edit reports the complete selection, so the parent's
+		// copy can never drift from what is rendered here.
+		onChange?.({ targetIps: formValues, scope: targetMode });
 	}
 
 	function handleRemoveTarget(index: number) {
@@ -608,6 +638,25 @@
 {#if compact}
 	<div class="space-y-4">
 		{#if !hideTargets}
+			<!-- Hosts this credential already reaches through the host/credential junction.
+			     Informational, like the network-wide credential line in the wizard — these are
+			     owned elsewhere, so they are listed rather than offered as editable rows.
+			     Shown in both modes: it is a fact about the credential, not about the choice
+			     being made here. -->
+			{#if lockedHosts.length > 0}
+				<p class="text-tertiary flex flex-wrap items-center gap-1 text-xs">
+					<span>{credentials_alreadyAssignedTo()}</span>
+					{#each lockedHosts as host (host.id)}
+						<EntityTag
+							entityRef={entityRef('Host', host.id, host)}
+							label={host.name}
+							icon={entities.getIconComponent('Host')}
+							color={entities.getColorHelper('Host').color}
+						/>
+					{/each}
+				</p>
+			{/if}
+
 			<!-- Target mode selector — only when the type supports both modes -->
 			{#if showTargetModeToggle}
 				<SegmentedControl
@@ -638,9 +687,9 @@
 								<form.Field
 									name={targetIpFieldName(i)}
 									validators={{
-										onBlur: ({ value }: { value: string }) => validateTargetIp(value),
-										onChange: ({ value }: { value: string }) => validateTargetIp(value),
-										onSubmit: ({ value }: { value: string }) => validateTargetIp(value)
+										onBlur: ({ value }: { value: string | undefined }) => validateTargetIp(value),
+										onChange: ({ value }: { value: string | undefined }) => validateTargetIp(value),
+										onSubmit: ({ value }: { value: string | undefined }) => validateTargetIp(value)
 									}}
 									listeners={{
 										onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)

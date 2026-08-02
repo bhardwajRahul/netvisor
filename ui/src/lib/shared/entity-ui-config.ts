@@ -44,6 +44,7 @@ export const TAB_LABELS: Record<string, string> = {
 	'daemon-api-keys': 'API Keys',
 	networks: 'Networks',
 	subnets: 'Subnets',
+	vlans: 'VLANs',
 	hosts: 'Hosts',
 	services: 'Services',
 	tags: 'Tags',
@@ -69,7 +70,8 @@ export const entityUIConfig: Record<EntityDiscriminants, EntityUIConfig | null> 
 		parentIdField: 'host_id',
 		modalTab: 'interfaces'
 	},
-	Vlan: null,
+	// View-only tab: no edit modal, so no `modalName` / `displayComponent`.
+	Vlan: { tabId: 'vlans' },
 	Port: { tabId: 'hosts', parentType: 'Host', parentIdField: 'host_id', modalTab: 'ports' },
 	Binding: {
 		tabId: 'hosts',

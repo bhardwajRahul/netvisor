@@ -1,3 +1,4 @@
+use crate::server::openapi::tags as api_tags;
 use axum::{Extension, Json};
 use reqwest;
 use serde::{Deserialize, Serialize};
@@ -21,7 +22,7 @@ const CACHE_KEY: &str = "github_stars";
 #[utoipa::path(
     get,
     path = "/api/github-stars",
-    tags = ["github", "internal"],
+    tags = [api_tags::GITHUB, api_tags::INTERNAL],
     responses(
         (status = 200, description = "GitHub star count", body = ApiResponse<u32>)
     )

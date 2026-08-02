@@ -9,9 +9,11 @@
 	import { slugifyNetworkName } from '$lib/features/daemons/utils';
 	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
 	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
+	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import { credentialTypes, entities } from '$lib/shared/stores/metadata';
 	import type { TypedTypeMetadata, CredentialTypeMetadata } from '$lib/shared/stores/metadata';
 	import type { Credential, CredentialType } from '$lib/features/credentials/types/base';
+	import type { Host } from '$lib/features/hosts/types/base';
 	import {
 		createDefaultCredential,
 		isDaemonHostOnly as isDaemonHostOnlyTargets
@@ -20,6 +22,10 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import { daemonTooOldForCredential } from '$lib/features/credentials/utils/versionGate';
+	import {
+		DAEMON_HOST_IP,
+		hasExplicitTarget
+	} from '$lib/features/credentials/utils/credentialTargets';
 	import { v4 as uuidv4 } from 'uuid';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import { pushError } from '$lib/shared/stores/feedback';
@@ -37,7 +43,6 @@
 		daemons_credentialWizardAddExisting,
 		daemons_credentialWizardSelectExisting,
 		daemons_credentialWizardExistingDescription,
-		credentials_daemonHostManagedElsewhere,
 		daemons_credentialWizardDaemonHostUnavailable,
 		credentials_requiresDaemonVersion
 	} from '$lib/paraglide/messages';
@@ -47,9 +52,10 @@
 		targetIps: string[];
 		fieldValues: Record<string, string>;
 		isExisting?: boolean;
-		// Managed elsewhere (a daemon-host credential assigned via the host/credential
-		// modals): shown read-only, not removable here, never created/updated.
-		isManaged?: boolean;
+		/** Hosts on this network the credential is already assigned to through the
+		 *  host/credential junction. Listed on the card, not editable here. Resolved by
+		 *  the caller — this component has no hosts query. */
+		lockedHosts?: Host[];
 		// How the new credential is assigned: 'broadcast' (network default) or
 		// 'per_host' (target IPs). Defaults based on the type's scope_models.
 		scope?: 'broadcast' | 'per_host';
@@ -100,9 +106,17 @@
 
 	// Local items array for ListConfigEditor display
 	let items = $derived(pendingCredentials.map((p) => p.credential));
-	// Managed (daemon-host) credentials are read-only here — no remove affordance.
-	let managedCredIds = $derived(
-		pendingCredentials.filter((p) => p.isManaged).map((p) => p.credential.id)
+	/** A row listed only because the credential is assigned elsewhere — the user has not
+	 *  pointed it at anything on this discovery. It contributes no target. */
+	function isLockedOnly(p: PendingCredential): boolean {
+		return !!p.lockedHosts?.length && !hasExplicitTarget(p.scope, p.targetIps);
+	}
+
+	// A credential assigned through the junction is never removable from this list: the
+	// assignment lives on the host/credential, so the trash would either do nothing or
+	// imply it had unassigned it. Its targets *here* are removed row by row instead.
+	let assignedElsewhereCredIds = $derived(
+		pendingCredentials.filter((p) => p.lockedHosts?.length).map((p) => p.credential.id)
 	);
 
 	function isDaemonHostOnly(typeId: string): boolean {
@@ -110,7 +124,7 @@
 	}
 
 	function isLoopback(ip: string): boolean {
-		const t = ip.trim();
+		const t = ip?.trim() ?? '';
 		return t === '127.0.0.1' || t === '::1' || t === 'localhost';
 	}
 
@@ -162,10 +176,17 @@
 	// (e.g. multiple Docker Proxies on different hosts) are never blanket-blocked.
 	let typeOptions = $derived(
 		credentialTypes.getItems().filter((t) => {
-			// A daemon-host-only type (the local socket) can only be added once (one daemon host).
+			// A daemon-host-only type (the local socket) can only be added once (one daemon
+			// host). Locked-only rows are excluded: they span every host on the network, and
+			// one assigned to some *other* host leaves this daemon's host free. When one
+			// genuinely occupies it, that reaches the dropdown through
+			// `claimedDaemonHostIntegrations` instead, which disables the option with a
+			// reason rather than hiding it.
 			if (
 				isDaemonHostOnlyTargets(t.metadata?.targets) &&
-				pendingCredentials.some((p) => p.credential.credential_type.type === t.id)
+				pendingCredentials.some(
+					(p) => !isLockedOnly(p) && p.credential.credential_type.type === t.id
+				)
 			) {
 				return false;
 			}
@@ -197,6 +218,9 @@
 	// Available existing credentials (filter out already-added and network-level)
 	let availableExistingCredentials = $derived.by(() => {
 		if (!credentialsQuery.data) return [];
+		// Every credential gets exactly one card, junction-assigned ones included — adding
+		// a target to an existing card is how you target it here, so re-offering it would
+		// only produce a duplicate.
 		const pendingIds = new Set(pendingCredentials.map((p) => p.credential.id));
 		const networkCredIds = new Set(networkCredentials.map((c) => c.id));
 		return credentialsQuery.data.filter((c) => !pendingIds.has(c.id) && !networkCredIds.has(c.id));
@@ -289,9 +313,12 @@
 		pendingCredentials = [
 			...pendingCredentials,
 			{
-				// Start with no targets — the user adds IP / daemon-host targets explicitly
 				credential: cred,
-				targetIps: [],
+				// A daemon-host-only type (the local socket) has exactly one possible target
+				// and no picker, so carry it on the row: the save path reads targets from
+				// here, and a row that looks targeted in the UI but empty in its data is
+				// dropped silently.
+				targetIps: isDaemonHostOnly(typeId) ? [DAEMON_HOST_IP] : [],
 				fieldValues,
 				scope: supportsBroadcast ? 'broadcast' : 'per_host'
 			}
@@ -325,7 +352,22 @@
 		if (!existing) return;
 		pendingCredentials = [
 			...pendingCredentials,
-			{ credential: existing, targetIps: [''], fieldValues: {}, isExisting: true }
+			{
+				credential: existing,
+				// As in handleAddCredential: a daemon-host-only type's single target is
+				// implicit, so record it rather than leaving the row looking untargeted.
+				targetIps: isDaemonHostOnly(existing.credential_type.type) ? [DAEMON_HOST_IP] : [''],
+				fieldValues: {},
+				isExisting: true,
+				// Mirror handleAddCredential: reset() picks the same default internally, but
+				// never emits it, so the row must carry it or a broadcast type would be
+				// added with no recorded selection and written out as no target at all.
+				scope: (credentialTypes.getMetadata(existing.credential_type.type)?.targets ?? []).includes(
+					'Network'
+				)
+					? 'broadcast'
+					: 'per_host'
+			}
 		];
 		syncFormDefaults();
 	}
@@ -402,21 +444,37 @@
 		return `${credName}: ${fieldLabel}`;
 	}
 
-	/** Validate all fields across all credentials. Returns true if valid. */
-	export async function validate(): Promise<boolean> {
-		// validateForm surfaces field errors as a toast itself.
-		const fieldsValid = await validateForm(form, undefined, credentialFieldLabel);
-		// "Target Specific Hosts" requires at least one host. Auto-local items have no
-		// form ref (undefined) and are skipped. (Daemon-host conflicts are prevented
-		// proactively at input — the "Add daemon host" button is disabled.) Surface a
-		// toast on advance, naming the credentials that need a target.
-		const missingTargets = credentialFormRefs
-			.map((ref, i) => (ref && !ref.validateTarget() ? credentialName(i) : null))
+	/**
+	 * Validate every credential's target selection. Returns true if valid.
+	 *
+	 * "Target Specific Hosts" requires at least one host. Auto-local items have no form ref
+	 * (undefined) and are skipped. (Daemon-host conflicts are prevented proactively at input —
+	 * the "Add daemon host" button is disabled.) Surfaces a toast naming the credentials that
+	 * need a target.
+	 *
+	 * Split out from `validate` because this must run even when there is nothing new to create:
+	 * an already-persisted credential whose targets were emptied would otherwise be serialized
+	 * with no scope its type permits, and silently never run.
+	 */
+	export function validateTargets(): boolean {
+		// Iterate the credentials, not the ref array: `handleRemoveCredential` never truncates
+		// `credentialFormRefs`, so a stale entry past the end would report a phantom failure
+		// against a row that no longer exists.
+		const missingTargets = pendingCredentials
+			.map((p, i) => (credentialFormRefs[i]?.validateTarget() === false ? credentialName(i) : null))
 			.filter((n): n is string => n !== null);
-		if (fieldsValid && missingTargets.length > 0) {
+		if (missingTargets.length > 0) {
 			pushError(daemons_credentialWizardTargetRequired({ credentials: missingTargets.join(', ') }));
 		}
-		return fieldsValid && missingTargets.length === 0;
+		return missingTargets.length === 0;
+	}
+
+	/** Validate all fields and targets across all credentials. Returns true if valid. */
+	export async function validate(): Promise<boolean> {
+		// validateForm surfaces field errors as a toast itself. Only report missing targets
+		// once the fields are clean, so one advance doesn't stack two toasts.
+		const fieldsValid = await validateForm(form, undefined, credentialFieldLabel);
+		return fieldsValid && validateTargets();
 	}
 
 	/** Get new credentials ready for bulk creation (with built credential_type from fieldValues).
@@ -499,7 +557,7 @@
 				{items}
 				onAdd={handleAddCredential}
 				onRemove={handleRemoveCredential}
-				allowItemRemove={(c) => !managedCredIds.includes(c.id)}
+				allowItemRemove={(c) => !assignedElsewhereCredIds.includes(c.id)}
 				onClick={onItemSelect}
 				{onEdit}
 				{highlightedIndex}
@@ -510,37 +568,30 @@
 			<!-- Render ALL config panels, hide non-selected (like InterfacesForm) -->
 			{#each pendingCredentials as pending, index (`${pending.credential.id}-${index}`)}
 				<div class:hidden={selectedIndex !== index}>
-					{#if pending.isManaged}
-						<!-- Daemon-host credential assigned via the host/credential modals: read-only
-						     here. Managed (added/removed) by editing the host or the credential. -->
-						<p class="text-muted mb-4 text-xs">
-							{credentials_daemonHostManagedElsewhere()}
-						</p>
-						<CredentialForm
-							{form}
-							compact={true}
-							disabled={true}
-							hideTargets={true}
-							fieldPrefix={`credentials[${index}].`}
-							fixedCredentialType={pending.credential.credential_type.type}
-							fixedName={pending.credential.name}
-						/>
-					{:else if pending.isExisting}
+					{#if pending.isExisting}
 						<!-- Existing credential added by reference (incl. daemon-host-only sockets):
 						     read-only here (fields shown disabled). Checked before isDaemonHostOnly so an
-						     existing socket cred renders as a reference card, not an editable new form. -->
-						<p class="text-muted mb-4 text-xs">
-							{daemons_credentialWizardExistingDescription()}
-						</p>
+						     existing socket cred renders as a reference card, not an editable new form.
+						     A credential already assigned to a host through the junction lands here too,
+						     with those assignments rendered as locked target rows — one card per
+						     credential, whether this discovery targets it, it is assigned elsewhere,
+						     or both. -->
+						<div class="mb-4">
+							<InlineInfo body={daemons_credentialWizardExistingDescription()} />
+						</div>
 						<CredentialForm
 							bind:this={credentialFormRefs[index]}
 							{form}
+							credential={pending.credential}
 							compact={true}
 							disabled={true}
 							fieldPrefix={`credentials[${index}].`}
 							fixedCredentialType={pending.credential.credential_type.type}
 							fixedName={pending.credential.name}
 							daemonHostUnavailable={daemonHostUnavailableFor(index)}
+							lockedHosts={pending.lockedHosts ?? []}
+							targetIps={pending.targetIps}
+							scope={pending.scope}
 							onChange={(data) => handleConfigChange(index, data)}
 						/>
 					{:else if isDaemonHostOnly(pending.credential.credential_type.type)}
@@ -564,6 +615,8 @@
 							fieldPrefix={`credentials[${index}].`}
 							fixedCredentialType={pending.credential.credential_type.type}
 							daemonHostUnavailable={daemonHostUnavailableFor(index)}
+							targetIps={pending.targetIps}
+							scope={pending.scope}
 							onChange={(data) => handleConfigChange(index, data)}
 						/>
 					{/if}

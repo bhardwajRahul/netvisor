@@ -2,16 +2,23 @@
 use super::*;
 
 /// Decide whether the end-of-scan interface prune (delete interfaces no longer reported for a
-/// host) should run for this upsert. It runs only when BOTH hold:
+/// host) should run for this upsert. It runs only when ALL of these hold:
 ///   - `interfaces_complete`: the incoming set is an authoritative, complete ifTable. A partial
 ///     SNMP walk cut short by timeout/error reports fewer interfaces than really exist; pruning
 ///     against it deletes live interfaces and their server-resolved L2 neighbors (GH #649).
-///   - `incoming_count > 0`: a total SNMP failure / credential removal yields zero interfaces,
+///   - `persisted_count > 0`: a total SNMP failure / credential removal yields zero interfaces,
 ///     which means "none observed", not "all removed".
+///   - `skipped_count == 0`: every reported interface actually persisted. If some were skipped,
+///     what we hold is a subset of what the device reported, so it is no more authoritative than
+///     a partial walk — same rule, different cause.
 ///
 /// Returning false preserves existing interface rows — the safe direction (stale beats deleted).
-pub(crate) fn should_prune_interfaces(interfaces_complete: bool, incoming_count: usize) -> bool {
-    interfaces_complete && incoming_count > 0
+pub(crate) fn should_prune_interfaces(
+    interfaces_complete: bool,
+    persisted_count: usize,
+    skipped_count: usize,
+) -> bool {
+    interfaces_complete && persisted_count > 0 && skipped_count == 0
 }
 
 impl HostService {
@@ -125,8 +132,10 @@ impl HostService {
             ConflictBehavior::Error,
             authentication,
             None, // limit checked in handler
-            // A manual API create provides the full, authoritative interface list.
+            // A manual API create provides the full, authoritative interface list...
             true,
+            // ...and carries no SNMP-derived neighbour data, so there is nothing to preserve.
+            InterfaceDataComplete::default(),
         )
         .await
     }
@@ -275,6 +284,7 @@ impl HostService {
         // walk), the stale-interface prune is skipped so a transient partial scan cannot delete
         // interfaces and their resolved L2 neighbors (GH #649).
         interfaces_complete: bool,
+        interface_data_complete: InterfaceDataComplete,
     ) -> Result<HostResponse> {
         // For advancing `last_seen_at` on matched-existing child rows (see the upsert
         // branches below); mirrors how upsert_host refreshes the host's freshness signal.
@@ -1107,18 +1117,45 @@ impl HostService {
         // incoming ifTable entries can't collapse onto one existing row — e.g. an
         // L2 switch whose IP-less ports all share the chassis MAC and lack ifName
         // would otherwise all tier-3 onto the management interface (issue #614).
+        //
+        // A single interface that fails validation (e.g. it collides with a unique index) is
+        // skipped rather than propagated: `?` here would abandon the rest of the ifTable *and*
+        // every child created after this loop, silently, on every scan. Only validation failures
+        // are tolerated — anything else (a lost connection, a failed lock) is a systemic problem
+        // and must still abort the host.
         let mut created_interfaces = Vec::new();
+        let mut skipped_interfaces = 0usize;
         let mut claimed: HashSet<Uuid> = HashSet::new();
         for mut entry in interfaces {
             entry.base.host_id = created_host.id;
             entry.base.network_id = created_host.base.network_id;
+            let if_index = entry.base.if_index;
 
-            let created = self
+            match self
                 .interface_service
-                .create_or_update_from_discovery(entry, &claimed, authentication.clone())
-                .await?;
-            claimed.insert(created.id);
-            created_interfaces.push(created);
+                .create_or_update_from_discovery(
+                    entry,
+                    &claimed,
+                    interface_data_complete,
+                    authentication.clone(),
+                )
+                .await
+            {
+                Ok(created) => {
+                    claimed.insert(created.id);
+                    created_interfaces.push(created);
+                }
+                Err(e) if e.downcast_ref::<ValidationError>().is_some() => {
+                    skipped_interfaces += 1;
+                    tracing::warn!(
+                        host_id = %created_host.id,
+                        if_index = if_index,
+                        error = %e,
+                        "Skipped an interface that failed validation; continuing with the rest of the ifTable"
+                    );
+                }
+                Err(e) => return Err(e),
+            }
         }
 
         // Full-sweep prune of interfaces no longer reported for this host.
@@ -1127,11 +1164,17 @@ impl HostService {
         // (`interfaces_complete`). An SNMP walk cut short by timeout/error returns a partial,
         // smaller-than-real ifTable (see daemon `walk_if_table`); pruning against it would delete
         // live interfaces and the server-resolved L2 neighbors on them, tearing switches off the
-        // L2 topology map on every scan that hiccups (GH #649). Two guards, both required:
+        // L2 topology map on every scan that hiccups (GH #649). Three guards, all required:
         //   - `interfaces_complete`: skip pruning on a partial walk (daemon-signalled).
         //   - non-empty set: a total SNMP failure / credential removal yields zero interfaces,
         //     which is "none observed", not "all removed".
-        if should_prune_interfaces(interfaces_complete, created_interfaces.len()) {
+        //   - nothing skipped: an interface that failed to persist means what we hold is a subset
+        //     of what the device reported — as non-authoritative as a partial walk.
+        if should_prune_interfaces(
+            interfaces_complete,
+            created_interfaces.len(),
+            skipped_interfaces,
+        ) {
             let kept_ids: HashSet<Uuid> = created_interfaces.iter().map(|i| i.id).collect();
             let existing = self
                 .interface_service
@@ -1167,9 +1210,10 @@ impl HostService {
                 );
             }
         } else if !created_interfaces.is_empty() {
-            // Non-empty incoming set that we chose NOT to prune against ⇒ an incomplete (partial)
-            // walk. Surface it so a self-hosted operator can see why stale interfaces persist —
-            // and how many interfaces this partial scan would have deleted had the fix not gated it.
+            // Non-empty incoming set that we chose NOT to prune against ⇒ the set isn't
+            // authoritative: an incomplete (partial) walk, or an interface that failed to persist.
+            // Surface it so a self-hosted operator can see why stale interfaces persist — and how
+            // many interfaces this scan would have deleted had the fix not gated it.
             let existing_count = self
                 .interface_service
                 .get_for_host(&created_host.id)
@@ -1178,10 +1222,11 @@ impl HostService {
                 .unwrap_or_default();
             tracing::debug!(
                 host_id = %created_host.id,
-                interfaces_complete = false,
+                interfaces_complete = interfaces_complete,
+                skipped = skipped_interfaces,
                 incoming = created_interfaces.len(),
                 existing = existing_count,
-                "Skipped interface prune: SNMP ifTable walk was incomplete (partial scan) — preserving existing interfaces and L2 links"
+                "Skipped interface prune: incoming ifTable is not authoritative (partial walk, or an interface failed to persist) — preserving existing interfaces and L2 links"
             );
         }
 
@@ -1192,21 +1237,7 @@ impl HostService {
         // assignments (created_host.base.credential_assignments is empty after DB round-trip).
         let mut remapped_assignments = original_host.base.credential_assignments.clone();
         for assignment in &mut remapped_assignments {
-            if let Some(ref mut ids) = assignment.ip_address_ids {
-                *ids = ids
-                    .iter()
-                    .filter_map(|daemon_id| {
-                        let ip = daemon_ip_address_ips
-                            .iter()
-                            .find(|(id, _)| id == daemon_id)
-                            .map(|(_, ip)| *ip)?;
-                        created_ip_addresses
-                            .iter()
-                            .find(|i| i.base.ip_address == ip)
-                            .map(|i| i.id)
-                    })
-                    .collect();
-            }
+            remap_assignment_ip_ids(assignment, &daemon_ip_address_ips, &created_ip_addresses);
         }
         // MERGE (not replace): discovery self-reports only credentials that probed successfully,
         // so replacing would prune user/init-assigned daemon-host creds that didn't probe this
@@ -1260,9 +1291,54 @@ fn resolve_dangling_subnet_id(
         .map(|s| s.id)
 }
 
+/// Rewrite a credential assignment's `ip_address_ids` from the daemon's own
+/// interface UUIDs to the server-assigned ones, matching on the address itself.
+///
+/// A scoped assignment whose ids all fail to resolve widens to host-wide
+/// (`None`) rather than collapsing to `Some(vec![])`. An empty id list is not
+/// "no restriction" downstream — `build_all_credential_mappings` treats it as a
+/// restriction that matches no address, so the credential silently stops being
+/// dispatched. Since discovery only ever reports a credential that *probed
+/// successfully on this host*, host-wide is the honest fallback; SNMP already
+/// reports its assignments that way.
+pub(crate) fn remap_assignment_ip_ids(
+    assignment: &mut crate::server::credentials::r#impl::types::CredentialAssignment,
+    daemon_ip_address_ips: &[(Uuid, IpAddr)],
+    created_ip_addresses: &[IPAddress],
+) {
+    let Some(ids) = assignment.ip_address_ids.as_ref() else {
+        return;
+    };
+    let remapped: Vec<Uuid> = ids
+        .iter()
+        .filter_map(|daemon_id| {
+            let ip = daemon_ip_address_ips
+                .iter()
+                .find(|(id, _)| id == daemon_id)
+                .map(|(_, ip)| *ip)?;
+            created_ip_addresses
+                .iter()
+                .find(|i| i.base.ip_address == ip)
+                .map(|i| i.id)
+        })
+        .collect();
+
+    if remapped.is_empty() && !ids.is_empty() {
+        tracing::warn!(
+            credential_id = %assignment.credential_id,
+            "No reported address for this credential assignment resolved to a stored IP; \
+             widening it to the whole host so the credential keeps being dispatched"
+        );
+        assignment.ip_address_ids = None;
+        return;
+    }
+    assignment.ip_address_ids = Some(remapped);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::credentials::r#impl::types::CredentialAssignment;
     use crate::server::subnets::r#impl::base::SubnetBase;
 
     fn subnet(id: Uuid, cidr: &str) -> Subnet {
@@ -1335,25 +1411,87 @@ mod tests {
         );
     }
 
+    fn assignment(ip_address_ids: Option<Vec<Uuid>>) -> CredentialAssignment {
+        CredentialAssignment {
+            credential_id: Uuid::new_v4(),
+            ip_address_ids,
+        }
+    }
+
+    fn stored_ip(id: Uuid, addr: &str) -> IPAddress {
+        IPAddress {
+            id,
+            base: crate::server::ip_addresses::r#impl::base::IPAddressBase {
+                ip_address: ip(addr),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn assignment_ip_ids_are_rewritten_to_the_stored_rows() {
+        let daemon_id = Uuid::new_v4();
+        let stored_id = Uuid::new_v4();
+        let mut a = assignment(Some(vec![daemon_id]));
+
+        remap_assignment_ip_ids(
+            &mut a,
+            &[(daemon_id, ip("127.0.0.1"))],
+            &[stored_ip(stored_id, "127.0.0.1")],
+        );
+
+        assert_eq!(a.ip_address_ids, Some(vec![stored_id]));
+    }
+
+    // A scoped assignment whose addresses all fail to resolve must widen to the whole host, not
+    // collapse to an empty list: downstream, `Some(vec![])` is a restriction matching no address
+    // at all, so the credential would silently stop being dispatched — and with discovery's
+    // one-shot integration targets now pruned at completion, there is nothing left to re-add it.
+    #[test]
+    fn an_unresolvable_assignment_widens_to_the_host_instead_of_matching_nothing() {
+        let mut a = assignment(Some(vec![Uuid::new_v4()]));
+
+        remap_assignment_ip_ids(&mut a, &[], &[stored_ip(Uuid::new_v4(), "127.0.0.1")]);
+
+        assert_eq!(a.ip_address_ids, None);
+    }
+
+    #[test]
+    fn a_host_wide_assignment_stays_host_wide() {
+        let mut a = assignment(None);
+
+        remap_assignment_ip_ids(&mut a, &[], &[]);
+
+        assert_eq!(a.ip_address_ids, None);
+    }
+
     // GH #649: the interface prune must NOT run on a partial SNMP walk, or a transient timeout
     // deletes live switch ports and their resolved L2 neighbors every scan. These lock the gate.
     #[test]
     fn partial_walk_never_prunes_even_with_interfaces_present() {
         // The bug: an incomplete walk reported some (but not all) interfaces; pruning against it
         // would delete every interface it missed. It must be skipped.
-        assert!(!should_prune_interfaces(false, 5));
+        assert!(!should_prune_interfaces(false, 5, 0));
     }
 
     #[test]
     fn complete_walk_with_interfaces_prunes() {
         // An authoritative full ifTable is the only time stale interfaces may be removed.
-        assert!(should_prune_interfaces(true, 5));
+        assert!(should_prune_interfaces(true, 5, 0));
     }
 
     #[test]
     fn empty_set_never_prunes_regardless_of_completeness() {
         // Zero interfaces = "none observed" (total SNMP failure / cred removal), not "all removed".
-        assert!(!should_prune_interfaces(true, 0));
-        assert!(!should_prune_interfaces(false, 0));
+        assert!(!should_prune_interfaces(true, 0, 0));
+        assert!(!should_prune_interfaces(false, 0, 0));
+    }
+
+    #[test]
+    fn complete_walk_with_a_skipped_interface_never_prunes() {
+        // An interface that failed to persist means the set we hold is a subset of what the
+        // device reported — pruning against it would delete ports that are genuinely still there.
+        assert!(!should_prune_interfaces(true, 5, 1));
     }
 }

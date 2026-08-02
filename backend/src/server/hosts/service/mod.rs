@@ -11,7 +11,10 @@ use crate::server::{
         },
         base::{Host, HostBase},
     },
-    interfaces::{r#impl::base::Interface, service::InterfaceService},
+    interfaces::{
+        r#impl::base::{Interface, InterfaceDataComplete, Neighbor},
+        service::InterfaceService,
+    },
     ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},
     ports::{r#impl::base::Port, service::PortService},
     services::{
@@ -34,7 +37,10 @@ use crate::server::{
             entities::{EntitySource, EntitySourceDiscriminants},
         },
     },
-    snmp::resolution::{lldp::LldpResolver, resolver::LldpResolverImpl},
+    snmp::resolution::{
+        lldp::{IdentityResolution, LldpResolver},
+        resolver::LldpResolverImpl,
+    },
     subnets::{r#impl::base::Subnet, service::SubnetService},
     tags::entity_tags::EntityTagService,
     vlans::service::VlanService,
@@ -180,6 +186,11 @@ mod topology;
 mod update;
 
 /// Statistics from LLDP link resolution.
+///
+/// The outcome counters below are deliberately fixed-cardinality and are emitted on the
+/// end-of-resolution log line. Only a fully resolved neighbor (`ports_resolved`) draws an L2
+/// edge, so "the physical view is empty" has several very different causes that look identical
+/// from the outside; these split them apart without logging anything per-neighbor.
 #[derive(Default, Debug)]
 pub struct LldpResolutionStats {
     /// Total number of interfaces with unresolved LLDP data
@@ -188,6 +199,53 @@ pub struct LldpResolutionStats {
     pub hosts_resolved: usize,
     /// Number of interfaces where remote port (interface) was resolved
     pub ports_resolved: usize,
+    /// Neighbor advertised no identifier any strategy can look up.
+    pub host_no_strategy: usize,
+    /// Neighbor identified a device this network has never discovered.
+    pub host_not_found: usize,
+    /// Remote host known, but the port ID subtype has no lookup strategy.
+    pub port_no_strategy: usize,
+    /// Remote host known, port ID looked up, no such port on that host.
+    pub port_not_found: usize,
+}
+
+impl LldpResolutionStats {
+    /// Record a remote-host resolution outcome, returning the host id when there is one.
+    pub fn record_host(&mut self, host: IdentityResolution) -> Option<Uuid> {
+        match host {
+            IdentityResolution::Resolved(host_id) => {
+                self.hosts_resolved += 1;
+                Some(host_id)
+            }
+            IdentityResolution::NoStrategy => {
+                self.host_no_strategy += 1;
+                None
+            }
+            IdentityResolution::NotFound => {
+                self.host_not_found += 1;
+                None
+            }
+        }
+    }
+
+    /// Record a remote-port resolution outcome against an already-known host, returning the
+    /// neighbor to persist. Falling back to `Neighbor::Host` keeps the identification we do have.
+    pub fn record_port(&mut self, port: IdentityResolution, host_id: Uuid) -> Neighbor {
+        match port {
+            IdentityResolution::Resolved(interface_id) => {
+                self.ports_resolved += 1;
+                Neighbor::Interface(interface_id)
+            }
+            IdentityResolution::NoStrategy => {
+                self.port_no_strategy += 1;
+                Neighbor::Host(host_id)
+            }
+            IdentityResolution::NotFound => {
+                self.port_not_found += 1;
+                Neighbor::Host(host_id)
+            }
+        }
+    }
 }
 
 /// Check whether a claimer's `(port_id, ip_address_id)` overlaps with an

@@ -2,7 +2,7 @@ use crate::bail_validation;
 use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::daemon::runtime::service::LOG_TARGET;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
-use crate::server::credentials::r#impl::mapping::IntegrationTarget;
+use crate::server::credentials::r#impl::mapping::{IntegrationTarget, Target};
 use crate::server::credentials::service::CredentialService;
 use crate::server::daemons::r#impl::api::{DaemonDiscoveryRequest, DiscoveryUpdatePayload};
 use crate::server::daemons::service::DaemonService;
@@ -100,43 +100,30 @@ impl CrudService<Discovery> for DiscoveryService {
         // (the API client may send stale values for these read-only fields)
         entity.scan_count = current.scan_count;
 
-        // If it's a scheduled discovery and schedule or timezone has changed, need to reschedule
-        let schedule_changed = if let RunType::Scheduled {
-            cron_schedule: new_cron,
-            timezone: new_tz,
-            ..
-        } = &entity.base.run_type
-            && let RunType::Scheduled {
-                cron_schedule: current_cron,
-                timezone: current_tz,
-                ..
-            } = &current.base.run_type
-        {
-            current_cron != new_cron || current_tz != new_tz
-        } else {
-            false
-        };
+        // Scoped so the borrows on `entity`/`current` end before the update below.
+        let (schedule_changed, enabled_changed, entity_is_scheduled) = {
+            let new_schedule = entity.base.run_type.schedule();
+            let current_schedule = current.base.run_type.schedule();
 
-        // Detect enabled state transitions (disabled→enabled or enabled→disabled)
-        let enabled_changed = if let RunType::Scheduled {
-            enabled: new_enabled,
-            ..
-        } = &entity.base.run_type
-            && let RunType::Scheduled {
-                enabled: current_enabled,
-                ..
-            } = &current.base.run_type
-        {
-            current_enabled != new_enabled
-        } else {
-            false
+            // If it's a scheduled discovery and schedule or timezone has changed,
+            // it needs rescheduling; likewise on an enabled-state transition.
+            let schedule_changed = match (&new_schedule, &current_schedule) {
+                (Some(new), Some(cur)) => {
+                    cur.cron_schedule != new.cron_schedule || cur.timezone != new.timezone
+                }
+                _ => false,
+            };
+            let enabled_changed = match (&new_schedule, &current_schedule) {
+                (Some(new), Some(cur)) => cur.enabled != new.enabled,
+                _ => false,
+            };
+
+            (schedule_changed, enabled_changed, new_schedule.is_some())
         };
 
         let needs_reschedule = schedule_changed || enabled_changed;
 
-        let updated = if needs_reschedule
-            && matches!(entity.base.run_type, RunType::Scheduled { .. })
-        {
+        let updated = if needs_reschedule && entity_is_scheduled {
             tracing::debug!(
                 discovery_id = %entity.id,
                 "Rescheduling discovery (schedule_changed={}, enabled_changed={})",
@@ -154,10 +141,7 @@ impl CrudService<Discovery> for DiscoveryService {
                 && let Err(e) = Self::schedule_discovery(&arc_self, &updated).await
             {
                 // Only disable if we were trying to enable/reschedule (not if already disabling)
-                if matches!(
-                    updated.base.run_type,
-                    RunType::Scheduled { enabled: true, .. }
-                ) {
+                if updated.base.run_type.is_scheduled_enabled() {
                     updated.disable();
                     let disabled_discovery = self.discovery_storage.update(&mut updated).await?;
 

@@ -53,6 +53,10 @@ impl DiscoveryService {
     ) -> Result<Option<chrono::DateTime<Utc>>, anyhow::Error> {
         let filter = StorableFilter::<Discovery>::new_from_network_ids(&[network_id])
             .historical_discovery()
+            // A rescan touches one host, so letting it anchor "the previous scan"
+            // would make the next scheduled digest under-report everything that
+            // changed since the last real sweep.
+            .exclude_rescans()
             .updated_before(before)
             .limit(1);
         let discoveries = self
@@ -71,8 +75,7 @@ impl DiscoveryService {
         integration_targets: &[IntegrationTarget],
         daemon_version: Option<&semver::Version>,
     ) -> Result<DaemonDiscoveryRequest, anyhow::Error> {
-        let credential_mappings = if matches!(session.discovery_type, DiscoveryType::Unified { .. })
-        {
+        let credential_mappings = if session.discovery_type.runs_network_scan() {
             self.credential_service
                 .build_all_credential_mappings(network_id, integration_targets, daemon_version)
                 .await
@@ -108,11 +111,7 @@ impl DiscoveryService {
         }
 
         // Update last_run on the discovery (covers all code paths: handler, scheduler, registration)
-        match &mut discovery.base.run_type {
-            RunType::Scheduled { last_run, .. } => *last_run = Some(Utc::now()),
-            RunType::AdHoc { last_run, .. } => *last_run = Some(Utc::now()),
-            _ => {}
-        }
+        discovery.base.run_type.set_last_run(Utc::now());
         discovery.updated_at = Utc::now();
         if let Err(e) = self.discovery_storage.update(&mut discovery).await {
             tracing::error!(
@@ -251,24 +250,114 @@ impl DiscoveryService {
     /// Update progress for a session
     /// If the session doesn't exist (e.g., server restarted during discovery),
     /// auto-creates it from the payload context to maintain resilience.
-    /// Increment a discovery's `scan_count` (and clear `force_full_scan`)
-    /// atomically: the row is read `FOR UPDATE` inside a transaction so
-    /// concurrent session finalizations serialize instead of losing
-    /// increments.
-    async fn increment_scan_count(&self, discovery_id: &Uuid) -> Result<(), Error> {
+    /// Fold a successful scan into a discovery's config row: bump `scan_count`,
+    /// clear `force_full_scan`, and consume the one-shot `integration_targets`.
+    ///
+    /// The row is read `FOR UPDATE` inside a transaction so concurrent session
+    /// finalizations serialize instead of losing increments — and so the prune
+    /// can't race a concurrent finalization that already dispatched the targets.
+    ///
+    /// `Network`-scope targets are migrated into the `network_credentials`
+    /// junction first, because they are the one scope discovery never promotes
+    /// on its own (see `Discovery::take_network_scope_credential_ids`). If that
+    /// migration fails they are written back onto the row *after* the prune,
+    /// rather than dropping a working broadcast credential — the next successful
+    /// scan retries the migration.
+    async fn finalize_successful_scan(&self, discovery_id: &Uuid) -> Result<(), Error> {
         let mut tx = self.discovery_storage.begin_transaction().await?;
         let Some(mut parent_discovery) = tx.get_by_id_for_update(discovery_id).await? else {
             return Ok(());
         };
-        parent_discovery.scan_count += 1;
-        parent_discovery.force_full_scan = false;
-        // integration_targets persist across scans (per-daemon init-command
-        // targeting), so they are intentionally NOT cleared here — unlike the
-        // old one-shot pending_credential_ids.
+
+        let network_id = parent_discovery.base.network_id;
+        let network_scope_ids = parent_discovery.take_network_scope_credential_ids();
+        let (promotable, unpromotable) = self
+            .partition_network_promotable(&network_scope_ids, network_id)
+            .await;
+
+        for credential_id in unpromotable {
+            tracing::warn!(
+                discovery_id = %discovery_id,
+                %credential_id,
+                "Dropping broadcast integration target for a credential type that cannot be \
+                 assigned to a network; it was never dispatched"
+            );
+        }
+
+        let migration_failed = !promotable.is_empty()
+            && match self
+                .credential_service
+                .merge_network_credentials(&network_id, &promotable)
+                .await
+            {
+                Ok(()) => false,
+                Err(e) => {
+                    tracing::error!(
+                        discovery_id = %discovery_id,
+                        network_id = %network_id,
+                        error = ?e,
+                        "Failed to migrate broadcast integration targets to network credentials; \
+                         keeping them on the discovery so the credentials stay in effect"
+                    );
+                    true
+                }
+            };
+
+        parent_discovery.apply_successful_scan();
+        // After the prune, not before — `apply_successful_scan` clears the field.
+        if migration_failed {
+            parent_discovery.integration_targets = promotable
+                .into_iter()
+                .map(|credential_id| IntegrationTarget::Network { credential_id })
+                .collect();
+        }
         parent_discovery.updated_at = Utc::now();
         tx.update(&mut parent_discovery).await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    /// Split broadcast target credentials into those that may be assigned to a
+    /// network and those that may not.
+    ///
+    /// The discovery update handler validates a target's credential type against
+    /// the daemon version but not against the scope, so a `Network` target can
+    /// exist for a type whose `targets()` excludes it (`apply_integration_target`
+    /// warn-drops those at dispatch, so it was never sent to a daemon). Writing
+    /// one into the junction would create exactly the assignment
+    /// `POST /credentials` refuses. An unresolvable credential is treated as
+    /// unpromotable — it no longer exists to assign.
+    async fn partition_network_promotable(
+        &self,
+        credential_ids: &[Uuid],
+        network_id: Uuid,
+    ) -> (Vec<Uuid>, Vec<Uuid>) {
+        let mut promotable = Vec::new();
+        let mut unpromotable = Vec::new();
+        for credential_id in credential_ids {
+            match self.credential_service.get_by_id(credential_id).await {
+                Ok(Some(credential))
+                    if credential
+                        .base
+                        .credential_type
+                        .targets()
+                        .contains(&Target::Network) =>
+                {
+                    promotable.push(*credential_id)
+                }
+                Ok(_) => unpromotable.push(*credential_id),
+                Err(e) => {
+                    tracing::warn!(
+                        %credential_id,
+                        %network_id,
+                        error = ?e,
+                        "Failed to resolve broadcast integration target credential; not migrating it"
+                    );
+                    unpromotable.push(*credential_id);
+                }
+            }
+        }
+        (promotable, unpromotable)
     }
 
     pub async fn update_session(&self, mut update: DiscoveryUpdatePayload) -> Result<(), Error> {
@@ -374,6 +463,7 @@ impl DiscoveryService {
         *session = update.clone();
 
         if session.phase.is_terminal() {
+            let is_rescan = session.discovery_type.rescan_target_host_id().is_some();
             self.event_bus()
                 .publish(session.into_discovery_event())
                 .await?;
@@ -387,6 +477,31 @@ impl DiscoveryService {
                 _ => "Unknown Network".to_string(),
             };
 
+            // Reverse-lookup: find discovery_id from session_id
+            let parent_discovery_id = self
+                .discovery_sessions
+                .read()
+                .await
+                .iter()
+                .find(|(_, sid)| **sid == session.session_id)
+                .map(|(did, _)| *did);
+
+            // Inherit the transient parent's name for a rescan — it was minted as
+            // "Rescan of <host> (<ip>)", the only place host name and address are
+            // both known, and the parent is deleted moments from now. Frozen at
+            // scan time on purpose: a historical record should read as what was
+            // true then, even if the host is later renamed or removed.
+            let rescan_name = match (is_rescan, parent_discovery_id) {
+                (true, Some(parent_id)) => self
+                    .discovery_storage
+                    .get_by_id(&parent_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|parent| parent.base.name),
+                _ => None,
+            };
+
             let historical_discovery = Discovery {
                 id: Uuid::new_v4(),
                 created_at: session.started_at.unwrap_or(Utc::now()),
@@ -394,7 +509,9 @@ impl DiscoveryService {
                 base: DiscoveryBase {
                     daemon_id: session.daemon_id,
                     network_id: session.network_id,
-                    name: if matches!(session.discovery_type, DiscoveryType::Unified { .. }) {
+                    name: if let Some(name) = rescan_name {
+                        name
+                    } else if matches!(session.discovery_type, DiscoveryType::Unified { .. }) {
                         "Discovery".to_string()
                     } else {
                         format!("{} \u{2014} {}", session.discovery_type, network_name)
@@ -410,26 +527,20 @@ impl DiscoveryService {
                 integration_targets: vec![],
             };
 
-            // Increment scan_count and clear ephemeral fields only on successful completion.
-            // Failures/cancellations preserve these so the next retry uses the same config.
-            if session.phase == DiscoveryPhase::Complete {
-                // Reverse-lookup: find discovery_id from session_id
-                let discovery_id = self
-                    .discovery_sessions
-                    .read()
-                    .await
-                    .iter()
-                    .find(|(_, sid)| **sid == session.session_id)
-                    .map(|(did, _)| *did);
-
-                // Increment inside one transaction with a row lock: two
-                // finalizations for the same discovery (possible across
-                // backend instances) must not both read N and write N+1.
-                if let Some(discovery_id) = discovery_id
-                    && let Err(e) = self.increment_scan_count(&discovery_id).await
+            // Increment scan_count, clear ephemeral fields and consume the one-shot
+            // integration targets only on successful completion. Failures/cancellations
+            // preserve these so the next retry uses the same config. A rescan's parent is
+            // deleted below, so there is nothing to carry forward and the write would be
+            // wasted.
+            if session.phase == DiscoveryPhase::Complete && !is_rescan {
+                // Inside one transaction with a row lock: two finalizations for the
+                // same discovery (possible across backend instances) must not both
+                // read N and write N+1, nor prune targets the other just dispatched.
+                if let Some(discovery_id) = parent_discovery_id
+                    && let Err(e) = self.finalize_successful_scan(&discovery_id).await
                 {
                     tracing::error!(
-                        "Failed to increment scan_count for discovery {}: {}",
+                        "Failed to finalize successful scan for discovery {}: {}",
                         discovery_id,
                         e
                     );
@@ -455,6 +566,22 @@ impl DiscoveryService {
                             .with_flags(EntityEventFlags::default()),
                     )
                     .await?;
+            }
+
+            // A rescan's parent exists only to carry the targets to the daemon.
+            // Delete it now that the historical row (which the user actually sees)
+            // is persisted and its subscribers — including the scan-target subnet
+            // reaper — have run. Discovery FKs on scanned entities point at the
+            // historical row, not this one, and are ON DELETE SET NULL regardless.
+            if is_rescan
+                && let Some(discovery_id) = parent_discovery_id
+                && let Err(e) = self.discovery_storage.delete(&discovery_id).await
+            {
+                tracing::warn!(
+                    discovery_id = %discovery_id,
+                    error = ?e,
+                    "Failed to delete transient rescan discovery; the startup sweeper will retry"
+                );
             }
 
             // Get next session info BEFORE trying to send request
@@ -533,6 +660,8 @@ impl DiscoveryService {
         let daemon_id = session.daemon_id;
         let phase = session.phase;
         let discovery_id = self.lookup_discovery_id(&session_id).await;
+        // Capture before `session.discovery_type` is moved into the update below.
+        let is_rescan = session.discovery_type.rescan_target_host_id().is_some();
 
         let cancelled_update = DiscoveryUpdatePayload {
             session_id,
@@ -548,6 +677,8 @@ impl DiscoveryService {
             hosts_discovered: None,
             estimated_remaining_secs: None,
             discovery_id,
+            // Preserve it: a cancelled rescan still needs its transient subnet
+            // reaped and its digest suppressed.
             scanned: None,
         };
 
@@ -596,6 +727,21 @@ impl DiscoveryService {
                 let _ = self.update_tx.send(cancelled_update);
 
                 tracing::info!("Cancelled {} session {} from queue", phase, session_id);
+
+                // A rescan cancelled before dispatch never reaches the
+                // daemon-reported terminal finalization that deletes its transient
+                // parent, so the AdHoc Rescan row would linger in the UI with only a
+                // delete action. Reap it here, matching what completion does.
+                if is_rescan
+                    && let Some(discovery_id) = discovery_id
+                    && let Err(e) = self.discovery_storage.delete(&discovery_id).await
+                {
+                    tracing::warn!(
+                        discovery_id = %discovery_id,
+                        error = ?e,
+                        "Failed to delete cancelled transient rescan; the startup sweeper will retry"
+                    );
+                }
                 Ok(())
             }
 

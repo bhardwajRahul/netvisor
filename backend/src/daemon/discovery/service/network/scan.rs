@@ -1,11 +1,14 @@
 use super::arp::{self, ArpScanResult};
 use crate::daemon::discovery::service::ops::DiscoveryOps;
+use crate::daemon::discovery::service::warnings::{CredentialIssue, CredentialIssueReason};
 use crate::daemon::discovery::types::base::DiscoveryCriticalError;
 use crate::daemon::utils::base::{DaemonUtils, PlatformDaemonUtils};
 use crate::daemon::utils::scanner::{
     ScanConcurrencyController, can_arp_scan, scan_endpoints, scan_tcp_ports, scan_udp_ports,
 };
+use crate::server::credentials::r#impl::mapping::{CredentialMapping, CredentialQueryPayload};
 use crate::server::discovery::r#impl::scan_settings::defaults;
+use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::base::{Service, ServiceMatchBaselineParams};
@@ -42,6 +45,8 @@ impl NetworkScan {
     pub async fn scan_and_process_hosts(
         &self,
         subnets: Vec<Subnet>,
+        network_subnets: Vec<Subnet>,
+        target_ips: Option<HashSet<IpAddr>>,
         cancel: CancellationToken,
         ops: &DiscoveryOps,
         utils: &PlatformDaemonUtils,
@@ -58,6 +63,23 @@ impl NetworkScan {
             .into_iter()
             .filter(|s| !s.base.subnet_type.is_loopback())
             .collect();
+
+        // A targeted rescan narrows enumeration to specific addresses within the
+        // subnets above. `None` means sweep them entirely.
+        let is_targeted = |ip: &IpAddr| target_ips.as_ref().is_none_or(|t| t.contains(ip));
+
+        // Credentials resolve per-IP during the scan of that IP, and the enumeration above is
+        // the only source of addresses — `target_ips` narrows it and never adds to it. So a
+        // credential assigned to a host outside these subnets is skipped in complete silence,
+        // which is exactly how a correctly configured integration can produce no traffic and no
+        // error. Say so before the scan starts, while the reason is still knowable.
+        let unreachable = unreachable_credential_targets(&self.credential_mappings, &subnets);
+        if !unreachable.is_empty()
+            && let Ok(session_state) = ops.get_session().await
+            && let Ok(mut issues) = session_state.credential_issues.lock()
+        {
+            issues.extend(unreachable);
+        }
 
         // Get scan settings from discovery request, falling back to defaults
         let use_npcap = self.scan_settings.use_npcap_arp;
@@ -82,8 +104,9 @@ impl NetworkScan {
         // Check ARP capability once before partitioning
         let arp_available = can_arp_scan(use_npcap);
 
-        // Keep a copy of all subnets for integration context (Docker needs physical LAN subnets)
-        let all_subnets = subnets.clone();
+        // Scan scope, kept for the post-scan credential-reachability check: a credential
+        // targeting an address outside these was never contacted, and saying so is the point.
+        let scanned_subnets = subnets.clone();
 
         // Partition subnets (not IPs) into interfaced vs non-interfaced.
         // IPs are generated per-subnet at point of use to avoid allocating a
@@ -99,13 +122,8 @@ impl NetworkScan {
             (Vec::new(), subnets)
         };
 
-        // Compute IP counts from prefix lengths without materializing all IPs
-        let count_ips = |subnets: &[Subnet]| -> u64 {
-            subnets
-                .iter()
-                .map(|s| 1u64 << (32 - s.base.cidr.network_length() as u64))
-                .sum()
-        };
+        let count_ips =
+            |subnets: &[Subnet]| -> u64 { count_scan_ips(subnets, target_ips.as_ref()) };
         let interfaced_ip_count = count_ips(&interfaced_subnets);
         let non_interfaced_ip_count = count_ips(&non_interfaced_subnets);
         let total_ips = interfaced_ip_count + non_interfaced_ip_count;
@@ -179,6 +197,9 @@ impl NetworkScan {
                     .entry(subnet.base.cidr)
                     .or_insert_with(|| (subnet.clone(), Vec::new()));
                 for addr in subnet.base.cidr.iter().map(|a| a.address()) {
+                    if !is_targeted(&addr) {
+                        continue;
+                    }
                     if let IpAddr::V4(ipv4) = addr {
                         entry.1.push(ipv4);
                         if entry.1.len() >= max_arp_targets {
@@ -354,9 +375,13 @@ impl NetworkScan {
             // Stream IPs directly from CIDR iterators — zero allocation.
             // Each IP is generated on-the-fly and sent through the channel.
             let host_tx = host_tx.clone();
+            let stream_targets = target_ips.clone();
             tokio::spawn(async move {
                 for subnet in non_interfaced_subnets {
                     for addr in subnet.base.cidr.iter().map(|a| a.address()) {
+                        if stream_targets.as_ref().is_some_and(|t| !t.contains(&addr)) {
+                            continue;
+                        }
                         if host_tx.send((addr, subnet.clone(), None)).await.is_err() {
                             return; // Receiver dropped
                         }
@@ -566,6 +591,9 @@ impl NetworkScan {
                                         subnets: vec![],
                                         // Early host stub carries no ifTable; nothing to prune against.
                                         interfaces_complete: true,
+                                        // ...and no neighbour data either, so there is nothing
+                                        // for it to overwrite.
+                                        interface_data_complete: InterfaceDataComplete::default(),
                                     };
                                     early_entity_buffer.push_host(request.clone()).await;
                                     let mode = early_config_store.get_mode().await?;
@@ -608,7 +636,7 @@ impl NetworkScan {
                                 }
                                 let probe_raw_socket_ports = self.scan_settings.probe_raw_socket_ports;
                                 let light_scan_ports = self.light_scan_ports.clone();
-                                let all_subnets_ref = all_subnets.clone();
+                                let network_subnets_ref = network_subnets.clone();
                                 let early_host_handle = early_reported_hosts.remove(&ip);
                                 pending_scans.push(Box::pin(async move {
                                     let early_host_id = match early_host_handle {
@@ -639,7 +667,7 @@ impl NetworkScan {
                                             is_full_scan,
                                             light_scan_ports: &light_scan_ports,
                                             credential_mappings: &self.credential_mappings,
-                                            created_subnets: all_subnets_ref,
+                                            known_subnets: network_subnets_ref,
                                         }, ops, utils)
                                         .await;
 
@@ -719,7 +747,7 @@ impl NetworkScan {
                         let scan_controller = scan_controller.clone();
                         let probe_raw_socket_ports = self.scan_settings.probe_raw_socket_ports;
                         let light_scan_ports = self.light_scan_ports.clone();
-                        let all_subnets_ref = all_subnets.clone();
+                        let network_subnets_ref = network_subnets.clone();
                         let early_host_handle = early_reported_hosts.remove(&ip);
 
                         pending_scans.push(Box::pin(async move {
@@ -751,7 +779,7 @@ impl NetworkScan {
                                     is_full_scan,
                                     light_scan_ports: &light_scan_ports,
                                     credential_mappings: &self.credential_mappings,
-                                    created_subnets: all_subnets_ref,
+                                    known_subnets: network_subnets_ref,
                                 }, ops, utils)
                                 .await;
 
@@ -962,6 +990,24 @@ impl NetworkScan {
 
         ops.report_progress(100).await?;
 
+        // A credential pinned to an in-scope address that nothing answered at is skipped just as
+        // silently as one pinned outside the scanned subnets — the deep scan only ever runs for
+        // hosts that responded. Only knowable once the run is over, hence here rather than
+        // alongside the pre-scan check.
+        let answered: HashSet<IpAddr> = results.iter().map(|(ip, _, _)| *ip).collect();
+        let unanswered = unanswered_credential_targets(
+            &self.credential_mappings,
+            &scanned_subnets,
+            target_ips.as_ref(),
+            &answered,
+        );
+        if !unanswered.is_empty()
+            && let Ok(session_state) = ops.get_session().await
+            && let Ok(mut issues) = session_state.credential_issues.lock()
+        {
+            issues.extend(unanswered);
+        }
+
         let discovered = hosts_discovered.load(Ordering::Relaxed);
         tracing::info!(
             hosts_discovered = discovered,
@@ -999,7 +1045,7 @@ impl NetworkScan {
             is_full_scan,
             light_scan_ports,
             credential_mappings,
-            created_subnets,
+            known_subnets,
         } = params;
 
         if cancel.is_cancelled() {
@@ -1150,6 +1196,10 @@ impl NetworkScan {
         .await?;
         open_ports.extend(udp_ports);
 
+        // Read once here rather than at the endpoint scan below: integration probes make their
+        // own TLS calls and need the same policy.
+        let accept_invalid_certs = ops.config_store.get_accept_invalid_scan_certs().await?;
+
         // Integration probes — each checks connectivity and returns a ClientProbe for service matching
         use crate::daemon::discovery::integration::dispatch;
         let probe_results = dispatch::probe_integrations(
@@ -1159,9 +1209,14 @@ impl NetworkScan {
             false, // network scan: keep the probe-gate (cheap broad scan)
             &cancel,
             utils,
+            accept_invalid_certs,
         )
         .await?;
         open_ports.extend(probe_results.additional_ports.iter());
+        // Hand any IP-targeted credential that produced nothing to the session, which renders
+        // them as one line at the end. `probe_integrations` has no session handle of its own.
+        ops.record_credential_issues(&probe_results.credential_issues)
+            .await;
         // Mark this host's integration cost as completed once its probes resolve. Uses
         // the SAME per-distinct-integration cost that total_cost accrued for the host,
         // so completed_cost converges to total_cost (the scan ETA/progress stay accurate
@@ -1180,8 +1235,6 @@ impl NetworkScan {
         ports_to_check.extend(endpoint_only_ports);
         ports_to_check.sort_by_key(|p| (p.number(), p.protocol()));
         ports_to_check.dedup();
-
-        let accept_invalid_certs = ops.config_store.get_accept_invalid_scan_certs().await?;
 
         let endpoint_responses = scan_endpoints(
             ip,
@@ -1243,6 +1296,8 @@ impl NetworkScan {
                     endpoint_responses: &endpoint_responses,
                     virtualization: &None,
                     client_responses,
+                    // Directly scanned, not reported by a controller.
+                    managed_device: &None,
                 },
                 hostname,
                 self.host_naming_fallback,
@@ -1262,7 +1317,7 @@ impl NetworkScan {
                 endpoint_responses: &endpoint_responses,
                 host_id: early_host_id,
                 host_naming_fallback: self.host_naming_fallback,
-                created_subnets: &created_subnets,
+                known_subnets: &known_subnets,
                 scanning_subnet: Some(subnet),
                 ip_address_id: Some(ip_address.id),
             };
@@ -1277,6 +1332,7 @@ impl NetworkScan {
 
             // Extract final state from host_data
             let interfaces_complete = host_data.interfaces_complete;
+            let interface_data_complete = host_data.interface_data_complete;
             let host = host_data.host;
             let ip_addresses = host_data.ip_addresses;
             let ports = host_data.ports;
@@ -1309,6 +1365,7 @@ impl NetworkScan {
                     interfaces,
                     subnets,
                     interfaces_complete,
+                    interface_data_complete,
                     &cancel,
                 )
                 .await
@@ -1342,5 +1399,238 @@ impl NetworkScan {
         }
 
         Ok(None)
+    }
+}
+
+/// Number of addresses a scan will actually probe across `subnets`.
+///
+/// Without a target filter this is the full address space of each CIDR, derived
+/// from the prefix so nothing is materialized. With one — a rescan, which
+/// substitutes its /32 for the real subnet containing it — the prefix says
+/// nothing about the work: counting it would seed the progress budget with a
+/// whole subnet's worth of scanning for a single address, pinning the bar near
+/// zero and reporting an ETA in minutes for a job that takes seconds.
+pub(crate) fn count_scan_ips(subnets: &[Subnet], target_ips: Option<&HashSet<IpAddr>>) -> u64 {
+    match target_ips {
+        Some(targets) => subnets
+            .iter()
+            .map(|s| targets.iter().filter(|ip| s.base.cidr.contains(ip)).count() as u64)
+            .sum(),
+        None => subnets
+            .iter()
+            .map(|s| 1u64 << (32 - s.base.cidr.network_length() as u64))
+            .sum(),
+    }
+}
+
+/// Credentials pinned to an address that this scan will never visit.
+///
+/// Only `ip_overrides` are considered: a default credential is network-wide and has no target
+/// to be unreachable. Loopback overrides are excluded because they are how a daemon-host
+/// credential (a Docker or Podman socket) addresses the daemon's own machine — that address is
+/// deliberately absent from the scannable subnets and reporting it would be a false alarm on
+/// every scan.
+///
+/// Deliberately independent of `target_ips`. A targeted rescan narrows to one host on purpose,
+/// and flagging every other host's credentials as "not tried" would make the warning noise on
+/// the most common operation there is.
+pub(crate) fn unreachable_credential_targets(
+    mappings: &[CredentialMapping<CredentialQueryPayload>],
+    subnets: &[Subnet],
+) -> Vec<CredentialIssue> {
+    mappings
+        .iter()
+        .flat_map(|m| m.ip_overrides.iter())
+        .filter(|o| !o.ip.is_loopback())
+        .filter(|o| !subnets.iter().any(|s| s.base.cidr.contains(&o.ip)))
+        .map(|o| CredentialIssue {
+            label: o.credential.discovery_label(),
+            ip: o.ip,
+            reason: CredentialIssueReason::TargetNotScanned,
+        })
+        .collect()
+}
+
+/// Credentials pinned to an in-scope address that no host answered at.
+///
+/// The complement of [`unreachable_credential_targets`]: that one catches an address the scan
+/// never looked at, this one an address it looked at and found nobody home. Both end with the
+/// credential untried and nothing said about it, but they have different fixes, so they stay
+/// separate reasons.
+///
+/// `answered` is the set of addresses that produced a scanned host. Addresses narrowed out by a
+/// targeted rescan are excluded for the same reason as in the pre-scan check: skipping them is
+/// the point of a rescan, not a fault.
+pub(crate) fn unanswered_credential_targets(
+    mappings: &[CredentialMapping<CredentialQueryPayload>],
+    subnets: &[Subnet],
+    target_ips: Option<&HashSet<IpAddr>>,
+    answered: &HashSet<IpAddr>,
+) -> Vec<CredentialIssue> {
+    mappings
+        .iter()
+        .flat_map(|m| m.ip_overrides.iter())
+        .filter(|o| !o.ip.is_loopback())
+        .filter(|o| subnets.iter().any(|s| s.base.cidr.contains(&o.ip)))
+        .filter(|o| target_ips.is_none_or(|t| t.contains(&o.ip)))
+        .filter(|o| !answered.contains(&o.ip))
+        .map(|o| CredentialIssue {
+            label: o.credential.discovery_label(),
+            ip: o.ip,
+            reason: CredentialIssueReason::TargetNotResponding,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::shared::storage::traits::Storable;
+    use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::types::SubnetType;
+    use std::str::FromStr;
+
+    fn subnet(cidr: &str) -> Subnet {
+        Subnet::new(SubnetBase {
+            cidr: cidr::IpCidr::from_str(cidr).unwrap(),
+            network_id: uuid::Uuid::new_v4(),
+            name: cidr.to_string(),
+            description: None,
+            subnet_type: SubnetType::Lan,
+            virtualization: None,
+            source: crate::server::shared::types::entities::EntitySource::System,
+            tags: Vec::new(),
+        })
+    }
+
+    fn ip(s: &str) -> IpAddr {
+        IpAddr::from_str(s).unwrap()
+    }
+
+    #[test]
+    fn unfiltered_count_is_the_whole_address_space() {
+        let subnets = [subnet("10.0.5.0/24"), subnet("10.0.6.0/30")];
+        assert_eq!(count_scan_ips(&subnets, None), 256 + 4);
+    }
+
+    #[test]
+    fn a_rescan_costs_one_address_not_the_subnet_it_sits_in() {
+        // The substituted subnet is the real /24, so an unfiltered count would
+        // budget 256 addresses of work for a single-host rescan.
+        let subnets = [subnet("10.0.5.0/24")];
+        let targets = HashSet::from([ip("10.0.5.7")]);
+        assert_eq!(count_scan_ips(&subnets, Some(&targets)), 1);
+    }
+
+    #[test]
+    fn targets_outside_the_scanned_subnets_are_not_counted() {
+        let subnets = [subnet("10.0.5.0/24")];
+        let targets = HashSet::from([ip("10.0.5.7"), ip("192.168.1.9")]);
+        assert_eq!(count_scan_ips(&subnets, Some(&targets)), 1);
+    }
+
+    #[test]
+    fn multiple_targets_in_one_subnet_each_count() {
+        // A host with several addresses on the same NIC mints one /32 per
+        // address; all substitute to the same parent subnet.
+        let subnets = [subnet("10.0.5.0/24")];
+        let targets = HashSet::from([ip("10.0.5.7"), ip("10.0.5.8")]);
+        assert_eq!(count_scan_ips(&subnets, Some(&targets)), 2);
+    }
+
+    fn mapping_targeting(addr: &str) -> CredentialMapping<CredentialQueryPayload> {
+        use crate::server::credentials::r#impl::mapping::IpOverride;
+        CredentialMapping {
+            default_credential: None,
+            ip_overrides: vec![IpOverride {
+                ip: ip(addr),
+                credential: CredentialQueryPayload::default(), // Snmp
+                credential_id: Uuid::new_v4(),
+            }],
+        }
+    }
+
+    /// The reported failure mode: a credential assigned to a controller on a network the
+    /// discovery does not cover is never tried, and said nothing about it.
+    #[test]
+    fn a_target_outside_every_scanned_subnet_is_reported() {
+        let subnets = [subnet("10.0.5.0/24")];
+        let mappings = [mapping_targeting("192.168.1.9")];
+
+        let issues = unreachable_credential_targets(&mappings, &subnets);
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].ip, ip("192.168.1.9"));
+        assert_eq!(issues[0].reason, CredentialIssueReason::TargetNotScanned);
+    }
+
+    #[test]
+    fn a_target_inside_a_scanned_subnet_is_not_reported() {
+        let subnets = [subnet("10.0.5.0/24")];
+        let mappings = [mapping_targeting("10.0.5.7")];
+        assert!(unreachable_credential_targets(&mappings, &subnets).is_empty());
+    }
+
+    /// A Docker/Podman socket credential addresses the daemon's own machine over loopback,
+    /// which is deliberately not a scannable subnet. Reporting it would fire on every scan.
+    #[test]
+    fn a_loopback_target_is_never_reported() {
+        let subnets = [subnet("10.0.5.0/24")];
+        let mappings = [mapping_targeting("127.0.0.1")];
+        assert!(unreachable_credential_targets(&mappings, &subnets).is_empty());
+    }
+
+    /// The case a real scan exposed: the address sits inside a scanned subnet, so the pre-scan
+    /// check passes it, but nothing answers there and the deep scan never runs — leaving the
+    /// credential untried and, before this, entirely silent.
+    #[test]
+    fn an_in_scope_address_nobody_answered_at_is_reported() {
+        let subnets = [subnet("192.168.4.0/22")];
+        let mappings = [mapping_targeting("192.168.4.141")];
+        let answered = HashSet::from([ip("192.168.4.196")]);
+
+        assert!(
+            unreachable_credential_targets(&mappings, &subnets).is_empty(),
+            "the address is inside a scanned subnet, so it is not 'not scanned'"
+        );
+
+        let issues = unanswered_credential_targets(&mappings, &subnets, None, &answered);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].ip, ip("192.168.4.141"));
+        assert_eq!(issues[0].reason, CredentialIssueReason::TargetNotResponding);
+    }
+
+    #[test]
+    fn an_address_that_answered_is_not_reported() {
+        let subnets = [subnet("192.168.4.0/22")];
+        let mappings = [mapping_targeting("192.168.4.196")];
+        let answered = HashSet::from([ip("192.168.4.196")]);
+        assert!(unanswered_credential_targets(&mappings, &subnets, None, &answered).is_empty());
+    }
+
+    /// A rescan narrows to specific addresses on purpose. Reporting every other pinned
+    /// credential as unanswered would make the warning noise on the most common operation.
+    #[test]
+    fn a_rescan_does_not_report_the_hosts_it_deliberately_skipped() {
+        let subnets = [subnet("192.168.4.0/22")];
+        let mappings = [mapping_targeting("192.168.4.141")];
+        let targets = HashSet::from([ip("192.168.4.196")]);
+        let answered = HashSet::from([ip("192.168.4.196")]);
+        assert!(
+            unanswered_credential_targets(&mappings, &subnets, Some(&targets), &answered)
+                .is_empty()
+        );
+    }
+
+    /// A network default has no target, so it can never be unreachable — only pinned
+    /// `ip_overrides` can.
+    #[test]
+    fn a_network_default_is_not_reported() {
+        let subnets = [subnet("10.0.5.0/24")];
+        let mappings = [CredentialMapping {
+            default_credential: Some(CredentialQueryPayload::default()),
+            ip_overrides: Vec::new(),
+        }];
+        assert!(unreachable_credential_targets(&mappings, &subnets).is_empty());
     }
 }

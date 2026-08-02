@@ -253,7 +253,7 @@ macro_rules! crud_export_csv_handler {
             description = __EXPORT_CSV_DESC,
             params(__ExportCsvFilterQuery),
             responses(
-                (status = 200, description = __EXPORT_CSV_RESP_DESC, content_type = "text/csv"),
+                (status = 200, description = __EXPORT_CSV_RESP_DESC, content_type = "text/csv", body = String),
             ),
             security(("user_api_key" = []), ("session" = []))
         )]

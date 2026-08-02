@@ -6,7 +6,7 @@ use crate::server::shared::handlers::query::{
 use crate::server::shared::handlers::traits::create_handler;
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
-use crate::server::shared::storage::traits::{Entity, Storable, Storage};
+use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, PaginatedApiResponse};
 use crate::server::vlans::r#impl::base::Vlan;
 use crate::server::{
@@ -51,11 +51,16 @@ impl OrderField for VlanOrderField {
 
 #[derive(Deserialize, Default, Debug, Clone, IntoParams)]
 pub struct VlanFilterQuery {
+    /// Primary ordering field (used for grouping). Always sorts ASC to keep groups together.
     pub group_by: Option<VlanOrderField>,
+    /// Secondary ordering field (sorting within groups or standalone sort).
     pub order_by: Option<VlanOrderField>,
+    /// Direction for order_by field (group_by always uses ASC).
     pub order_direction: Option<OrderDirection>,
+    /// Maximum number of results to return (1-1000, default: 50). Use 0 for no limit.
     #[param(minimum = 0, maximum = 1000)]
     pub limit: Option<u32>,
+    /// Number of results to skip. Default: 0.
     #[param(minimum = 0)]
     pub offset: Option<u32>,
     /// Filter by network ID
@@ -159,11 +164,12 @@ async fn get_all_vlans(
 
     let (filter, order_by) = query.apply_ordering(filter);
 
+    // Through the service, not `storage()`, so each VLAN's `subnet_ids` are
+    // hydrated from the `subnet_vlans` junction.
     let result = state
         .services
         .vlan_service
-        .storage()
-        .get_paginated(filter, &order_by)
+        .get_paginated_ordered(filter, &order_by)
         .await?;
 
     let limit = pagination.effective_limit().unwrap_or(0);
@@ -232,13 +238,17 @@ pub async fn create_vlan(
 /// Request body for daemon VLAN discovery upsert
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct VlanDiscoveryRequest {
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// VLANs observed by the daemon.
     pub vlans: Vec<VlanDiscoveryItem>,
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct VlanDiscoveryItem {
+    /// 802.1Q VLAN ID.
     pub vlan_number: u16,
+    /// VLAN name as configured on the device.
     pub name: String,
 }
 
@@ -251,7 +261,9 @@ pub struct VlanDiscoveryResponse {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct VlanDiscoveryResponseItem {
+    /// 802.1Q VLAN ID.
     pub vlan_number: u16,
+    /// Server-assigned unique identifier.
     pub id: Uuid,
 }
 

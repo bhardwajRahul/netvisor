@@ -45,22 +45,31 @@ pub enum HostVirtualization {
 
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct ProxmoxVirtualization {
+    /// Guest name as configured in Proxmox.
     pub vm_name: Option<String>,
+    /// Proxmox VMID of the guest.
     pub vm_id: Option<String>,
+    /// The service this entity refers to.
     pub service_id: Uuid,
 }
 
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct VCenterVirtualization {
+    /// Guest name as configured in vCenter.
     pub vm_name: Option<String>,
+    /// vCenter managed object ID of the guest.
     pub vm_id: Option<String>,
+    /// The service this entity refers to.
     pub service_id: Uuid,
 }
 
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct EsxiVirtualization {
+    /// Guest name as configured on the ESXi host.
     pub vm_name: Option<String>,
+    /// ESXi identifier of the guest.
     pub vm_id: Option<String>,
+    /// The service this entity refers to.
     pub service_id: Uuid,
 }
 

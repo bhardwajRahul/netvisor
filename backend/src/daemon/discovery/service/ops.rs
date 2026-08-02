@@ -17,6 +17,7 @@ use crate::{
     daemon::{
         discovery::{
             buffer::EntityBuffer,
+            service::warnings,
             types::base::{
                 DiscoveryCriticalError, DiscoveryPhase, DiscoverySessionInfo,
                 DiscoverySessionUpdate,
@@ -36,7 +37,7 @@ use crate::{
             base::{Host, HostBase},
             virtualization::HostVirtualization,
         },
-        interfaces::r#impl::base::Interface,
+        interfaces::r#impl::base::{Interface, InterfaceDataComplete},
         ip_addresses::r#impl::base::IPAddress,
         ports::r#impl::base::{Port, PortType},
         services::{
@@ -103,6 +104,10 @@ pub struct HostData {
     /// Defaults to true — integrations that don't walk the ifTable report an authoritative (usually
     /// empty) interface set, and the empty set is guarded server-side regardless.
     pub interfaces_complete: bool,
+    /// Which groups of per-interface data (LLDP, CDP, FDB, VLAN membership) this scan read in
+    /// full. A group read only partially must not overwrite what the server already holds — an
+    /// empty result from a cut-short walk is indistinguishable from a device reporting nothing.
+    pub interface_data_complete: InterfaceDataComplete,
 }
 
 impl HostData {
@@ -122,6 +127,7 @@ impl HostData {
             interfaces,
             subnets,
             interfaces_complete: true,
+            interface_data_complete: InterfaceDataComplete::default(),
         }
     }
 
@@ -254,6 +260,11 @@ impl HostData {
 
     /// Record whether the collected `interfaces` are a complete ifTable. A partial walk
     /// (`false`) tells the server not to prune interfaces missing from this scan (#649).
+    pub fn set_interface_data_complete(&mut self, complete: InterfaceDataComplete) -> &mut Self {
+        self.interface_data_complete = complete;
+        self
+    }
+
     pub fn set_interfaces_complete(&mut self, complete: bool) -> &mut Self {
         self.interfaces_complete = complete;
         self
@@ -434,12 +445,36 @@ impl DiscoveryOps {
             .last_progress
             .load(std::sync::atomic::Ordering::Relaxed);
 
-        // Non-fatal warnings accumulated during the run (e.g. hit the time limit).
-        let warnings = session
+        // Non-fatal warnings accumulated during the run (e.g. hit the time limit), plus one
+        // rendered line for each kind that fires per host — see
+        // `crate::daemon::discovery::service::warnings` for why those are aggregated here rather
+        // than pushed as they occur.
+        let mut warnings = session
             .warnings
             .lock()
             .map(|w| w.clone())
             .unwrap_or_default();
+
+        // Each renderer returns one entry per distinct problem rather than a paragraph, so the
+        // wire format stays a list the UI can render as bullets.
+        if let Ok(records) = session.incomplete_interface_walks.lock() {
+            warnings.extend(warnings::render_incomplete_interface_walks(&records));
+        }
+        if let Ok(records) = session.incomplete_snmp_walks.lock() {
+            warnings.extend(warnings::render_incomplete_snmp_walks(&records));
+        }
+        if let Ok(records) = session.unresolved_lldp_ports.lock() {
+            warnings.extend(warnings::render_unresolved_lldp_ports(&records));
+        }
+        if let Ok(records) = session.malformed_neighbours.lock() {
+            warnings.extend(warnings::render_malformed_neighbours(&records));
+        }
+        if let Ok(records) = session.vlan_recording_failures.lock() {
+            warnings.extend(warnings::render_vlan_recording_failures(&records));
+        }
+        if let Ok(issues) = session.credential_issues.lock() {
+            warnings.extend(warnings::render_credential_issues(&issues));
+        }
 
         // Build the terminal update based on result
         let terminal_update = match &discovery_result {
@@ -607,6 +642,104 @@ impl DiscoveryOps {
         Ok(())
     }
 
+    /// Record a credential attempt that did not succeed, if it is worth telling the operator.
+    ///
+    /// The one route an integration has to the operator, and the reason the session's buffers are
+    /// not `pub`. Whether an attempt is a *finding* is not an integration's call to make — it
+    /// turns on whether the user pinned this credential to this host or it is a network default
+    /// tried at every address in the subnet, which the integration cannot see. The judgement
+    /// lives in [`warnings::issue_for_attempt`] so both callers share it.
+    pub async fn record_attempt_failure(
+        &self,
+        label: &'static str,
+        ip: std::net::IpAddr,
+        outcome: warnings::AttemptOutcome,
+        message: String,
+        user_assigned: bool,
+    ) {
+        let Some(issue) = warnings::issue_for_attempt(label, ip, outcome, message, user_assigned)
+        else {
+            return;
+        };
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut issues) = session.credential_issues.lock()
+        {
+            issues.push(issue);
+        }
+    }
+
+    /// Record the SNMP data groups this host came up short on.
+    pub async fn record_snmp_shortfalls(&self, records: Vec<warnings::IncompleteSnmpWalk>) {
+        if records.is_empty() {
+            return;
+        }
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.incomplete_snmp_walks.lock()
+        {
+            buffer.extend(records);
+        }
+    }
+
+    /// Hand a batch of already-classified credential issues to the session.
+    ///
+    /// `probe_integrations` has no session handle, so it returns its issues for the caller to
+    /// deliver — and a caller that forgets makes them disappear after being correctly built. That
+    /// is exactly what the localhost phase did, so a wrong Docker socket credential on the daemon
+    /// host reported nothing at all. One method both callers share, rather than the delivery being
+    /// re-implemented (or not) per phase.
+    pub async fn record_credential_issues(&self, issues: &[warnings::CredentialIssue]) {
+        if issues.is_empty() {
+            return;
+        }
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.credential_issues.lock()
+        {
+            buffer.extend(issues.iter().cloned());
+        }
+    }
+
+    /// Record LLDP neighbours whose local port could not be matched to an interface.
+    pub async fn record_unresolved_lldp_ports(&self, record: warnings::UnresolvedLldpPorts) {
+        if record.unresolved == 0 {
+            return;
+        }
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.unresolved_lldp_ports.lock()
+        {
+            buffer.push(record);
+        }
+    }
+
+    /// Record neighbour records discarded for missing the identifier L2 resolution needs.
+    pub async fn record_malformed_neighbours(&self, record: warnings::MalformedNeighbours) {
+        if record.discarded == 0 {
+            return;
+        }
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.malformed_neighbours.lock()
+        {
+            buffer.push(record);
+        }
+    }
+
+    /// Record a device whose VLAN table was read and could not be saved.
+    pub async fn record_vlan_recording_failure(&self, ip: std::net::IpAddr) {
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.vlan_recording_failures.lock()
+        {
+            buffer.push(warnings::VlanRecordingFailed { ip });
+        }
+    }
+
+    /// Record an ifTable walk that fell short, and in which of the two ways.
+    pub async fn record_interface_shortfall(&self, record: warnings::IncompleteInterfaceWalk) {
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.incomplete_interface_walks.lock()
+        {
+            buffer.push(record);
+        }
+    }
+
     /// Report scanning progress. Mode-aware: DaemonPoll POSTs to server,
     /// ServerPoll updates session atomics only.
     pub async fn report_progress(&self, percent: u8) -> Result<(), Error> {
@@ -698,6 +831,7 @@ impl DiscoveryOps {
         interfaces: Vec<Interface>,
         subnets: Vec<Subnet>,
         interfaces_complete: bool,
+        interface_data_complete: InterfaceDataComplete,
         cancel: &CancellationToken,
     ) -> Result<HostResponse, Error> {
         let mode = self.config_store.get_mode().await?;
@@ -711,6 +845,7 @@ impl DiscoveryOps {
             interfaces,
             subnets,
             interfaces_complete,
+            interface_data_complete,
         };
 
         self.entity_buffer.push_host(request.clone()).await;

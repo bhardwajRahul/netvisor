@@ -38,18 +38,26 @@ pub enum ServiceVirtualization {
 
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct DockerVirtualization {
+    /// Container name as reported by Docker.
     pub container_name: Option<String>,
+    /// Docker container ID.
     pub container_id: Option<String>,
+    /// The service this entity refers to.
     pub service_id: Uuid,
+    /// Compose project the container belongs to, when it was started by Compose.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compose_project: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct PodmanVirtualization {
+    /// Container name as reported by Podman.
     pub container_name: Option<String>,
+    /// Podman container ID.
     pub container_id: Option<String>,
+    /// The service this entity refers to.
     pub service_id: Uuid,
+    /// Compose project the container belongs to, when it was started by Compose.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compose_project: Option<String>,
 }

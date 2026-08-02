@@ -1,9 +1,8 @@
 use crate::daemon::discovery::integration::container::ContainerRuntime;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
-use crate::server::shared::storage::traits::Storable;
-use crate::server::shared::types::entities::EntitySource;
-use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
+use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::subnets::r#impl::types::SubnetType;
+use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 use anyhow::Error;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -163,6 +162,19 @@ pub trait DaemonUtils {
 
         for ip_address in ip_addresses.into_iter() {
             let name = ip_address.name.clone();
+
+            // Container bridges on this host belong to the container integration,
+            // which types them from the runtime API. Skip them here so an
+            // unreachable runtime can't leave them to be created and scanned as
+            // ordinary subnets (and so the heartbeat never reports them at all).
+            if ContainerRuntime::reserves_host_interface_name(&name) {
+                tracing::debug!(
+                    interface = %name,
+                    "Skipping container-runtime bridge interface"
+                );
+                continue;
+            }
+
             let mac_address = match ip_address.mac {
                 Some(mac) if !mac.octets().iter().all(|o| *o == 0) => {
                     Some(MacAddress::new(mac.octets()))
@@ -269,15 +281,15 @@ pub trait DaemonUtils {
                     15,
                     API_DEFAULT_VERSION,
                 )
-                .map_err(|e| anyhow::anyhow!("Failed to connect to Docker: {}", e))?
+                .map_err(|e| anyhow::Error::new(e).context("Failed to connect to Docker"))?
             } else {
                 Docker::connect_with_http(&docker_proxy, 4, API_DEFAULT_VERSION)
-                    .map_err(|e| anyhow::anyhow!("Failed to connect to Docker: {}", e))?
+                    .map_err(|e| anyhow::Error::new(e).context("Failed to connect to Docker"))?
             }
         } else {
             tracing::debug!("Using Docker local defaults");
             Docker::connect_with_local_defaults()
-                .map_err(|e| anyhow::anyhow!("Failed to connect to Docker: {}", e))?
+                .map_err(|e| anyhow::Error::new(e).context("Failed to connect to Docker"))?
         };
 
         // Ping Docker with retry and exponential backoff
@@ -294,7 +306,12 @@ pub trait DaemonUtils {
                     return Ok(negotiate_container_api_version(client).await);
                 }
                 Ok(Err(e)) => {
-                    last_error = Some(format!("Docker ping failed: {}", e));
+                    let rendered = e.to_string();
+                    // Keep the bollard error itself, not its text. `AttemptOutcome`'s
+                    // classification downcasts to it to tell a refused credential from an
+                    // unreachable socket, and a formatted string discards that.
+                    last_error = Some(anyhow::Error::new(e).context("Docker ping failed"));
+                    let e = rendered;
                     if attempt < MAX_PING_ATTEMPTS {
                         let backoff = Duration::from_millis(500 * 2u64.pow(attempt - 1));
                         tracing::warn!(
@@ -307,9 +324,8 @@ pub trait DaemonUtils {
                     }
                 }
                 Err(_) => {
-                    last_error = Some(format!(
-                        "Docker connection timed out after {:?}",
-                        DOCKER_CONNECT_TIMEOUT
+                    last_error = Some(anyhow::anyhow!(
+                        "Docker connection timed out after {DOCKER_CONNECT_TIMEOUT:?}"
                     ));
                     if attempt < MAX_PING_ATTEMPTS {
                         let backoff = Duration::from_millis(500 * 2u64.pow(attempt - 1));
@@ -328,9 +344,7 @@ pub trait DaemonUtils {
             "Docker ping failed after {} attempts",
             MAX_PING_ATTEMPTS
         );
-        Err(anyhow::anyhow!(
-            last_error.unwrap_or_else(|| "Docker connection failed".to_string())
-        ))
+        Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Docker connection failed")))
     }
 
     /// Connect to a container runtime's local Unix socket via bollard's
@@ -362,7 +376,7 @@ pub trait DaemonUtils {
             (None, ContainerRuntime::Docker) => {
                 tracing::debug!("Using Docker local defaults");
                 Docker::connect_with_local_defaults()
-                    .map_err(|e| anyhow::anyhow!("Failed to connect to Docker: {}", e))?
+                    .map_err(|e| anyhow::Error::new(e).context("Failed to connect to Docker"))?
             }
             // Podman with no resolved socket: fail cleanly rather than fall back to
             // the Docker default socket.
@@ -411,59 +425,28 @@ pub trait DaemonUtils {
         runtime: ContainerRuntime,
         runtime_service_id: Uuid,
     ) -> Result<Vec<Subnet>, Error> {
-        let bridge_subnet_type = runtime.bridge_subnet_type();
         let subnets: Vec<Subnet> = client
             .list_networks(None::<ListNetworksOptions>)
             .await?
             .into_iter()
             .filter_map(|n| {
-                let driver = n.driver.as_deref().unwrap_or("bridge");
-
-                // Include container networks that can be scanned
-                // Skip: host (no separate CIDR), none (no networking), null (invalid)
-                let subnet_type = match driver {
-                    "bridge" | "overlay" => bridge_subnet_type,
-                    "macvlan" => SubnetType::MacVlan,
-                    "ipvlan" => SubnetType::IpVlan,
-                    _ => {
-                        tracing::trace!(
-                            network_name = ?n.name,
-                            driver = driver,
-                            "Skipping unsupported container network driver"
-                        );
-                        return None;
-                    }
-                };
-
+                let driver = n.driver.clone().unwrap_or_else(|| "bridge".to_string());
                 let network_name = n.name.clone().unwrap_or("Unknown Network".to_string());
-                n.ipam.clone().map(|ipam| (network_name, ipam, subnet_type))
+                let configs = n.ipam.and_then(|ipam| ipam.config)?;
+                Some((network_name, driver, configs))
             })
-            .filter_map(|(network_name, ipam, subnet_type)| {
-                ipam.config
-                    .map(|config| (network_name, config, subnet_type))
-            })
-            .flat_map(|(network_name, configs, subnet_type)| {
+            .flat_map(|(network_name, driver, configs)| {
                 configs
                     .iter()
                     .filter_map(|c| {
-                        if let Some(cidr) = &c.subnet {
-                            let virtualization = if subnet_type == bridge_subnet_type {
-                                Some(runtime.subnet_virtualization(runtime_service_id))
-                            } else {
-                                None
-                            };
-                            return Some(Subnet::new(SubnetBase {
-                                cidr: IpCidr::from_str(cidr).ok()?,
-                                description: None,
-                                tags: Vec::new(),
-                                network_id,
-                                name: network_name.clone(),
-                                subnet_type,
-                                virtualization,
-                                source: EntitySource::Discovery,
-                            }));
-                        }
-                        None
+                        let cidr = IpCidr::from_str(c.subnet.as_ref()?).ok()?;
+                        runtime.subnet_from_network(
+                            network_id,
+                            cidr,
+                            network_name.clone(),
+                            &driver,
+                            runtime_service_id,
+                        )
                     })
                     .collect::<Vec<Subnet>>()
             })
@@ -532,7 +515,21 @@ pub trait DaemonUtils {
 
 /// Merge host (physical) and Docker subnets, giving host subnets precedence.
 /// - Host subnets are always kept
-/// - Docker subnets with CIDRs matching host subnets are dropped (host wins)
+/// - Docker subnets with CIDRs matching host subnets are dropped (host wins),
+///   but if the dropped one was a container *bridge*, the host record adopts its
+///   `subnet_type` and `virtualization`
+///
+/// The host record wins on identity (its CIDR and interface-derived name are
+/// what the rest of discovery keys off), but its type is only a guess from an
+/// interface name, whereas the Docker record's came from the runtime API. For a
+/// bridge — a distinct L3 network the runtime owns — that authoritative
+/// classification carries over, or the bridge would keep the guess and lose the
+/// `virtualization` that scopes it to its owning runtime service.
+///
+/// MacVLAN/IpVLAN are deliberately excluded: they are not separate networks but
+/// overlays on the physical LAN the host is already on, so the host's own
+/// classification is the correct one and adopting theirs would relabel a real
+/// LAN as a container network.
 ///
 /// Callers that don't want DockerBridge subnets (e.g., self-report) should
 /// filter them separately after calling this function.
@@ -542,6 +539,9 @@ pub fn merge_host_and_docker_subnets(
 ) -> Vec<Subnet> {
     let host_cidrs: HashSet<IpCidr> = host_subnets.iter().map(|s| s.base.cidr).collect();
 
+    let mut authoritative: HashMap<IpCidr, (SubnetType, Option<SubnetVirtualization>)> =
+        HashMap::new();
+
     let filtered_docker: Vec<Subnet> = docker_subnets
         .into_iter()
         .filter(|s| {
@@ -549,10 +549,28 @@ pub fn merge_host_and_docker_subnets(
             if dominated_by_host {
                 tracing::debug!(
                     cidr = %s.base.cidr,
+                    subnet_type = ?s.base.subnet_type,
                     "Filtering out Docker subnet (host takes precedence)"
                 );
+                if s.base.subnet_type.is_container_bridge() {
+                    authoritative.insert(
+                        s.base.cidr,
+                        (s.base.subnet_type, s.base.virtualization.clone()),
+                    );
+                }
             }
             !dominated_by_host
+        })
+        .collect();
+
+    let host_subnets: Vec<Subnet> = host_subnets
+        .into_iter()
+        .map(|mut s| {
+            if let Some((subnet_type, virtualization)) = authoritative.remove(&s.base.cidr) {
+                s.base.subnet_type = subnet_type;
+                s.base.virtualization = virtualization;
+            }
+            s
         })
         .collect();
 
@@ -588,6 +606,7 @@ mod tests {
     use super::*;
     use crate::server::shared::storage::traits::Storable;
     use crate::server::shared::types::entities::EntitySource;
+    use crate::server::subnets::r#impl::base::SubnetBase;
     use std::str::FromStr;
 
     fn make_subnet(cidr: &str, subnet_type: SubnetType) -> Subnet {
@@ -621,6 +640,33 @@ mod tests {
         let result = merge_host_and_docker_subnets(host, docker);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].base.subnet_type, SubnetType::DockerBridge);
+    }
+
+    /// A bridge the host is attached to appears twice: once from the host's own
+    /// interface (typed by name, no virtualization) and once from the runtime
+    /// API. The host row wins on identity, but must not keep the name guess —
+    /// losing the API's type and virtualization would leave the bridge
+    /// unrecognised and unscoped to its owning runtime service.
+    #[test]
+    fn bridge_overlap_adopts_authoritative_classification() {
+        let service_id = Uuid::new_v4();
+        let host = vec![make_subnet("172.17.0.0/16", SubnetType::Lan)];
+        let mut bridge = make_subnet("172.17.0.0/16", SubnetType::DockerBridge);
+        bridge.base.virtualization =
+            Some(ContainerRuntime::Docker.subnet_virtualization(service_id));
+
+        let result = merge_host_and_docker_subnets(host, vec![bridge]);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].base.subnet_type, SubnetType::DockerBridge);
+        assert_eq!(
+            result[0]
+                .base
+                .virtualization
+                .as_ref()
+                .and_then(|v| v.service_id()),
+            Some(service_id)
+        );
     }
 
     #[test]

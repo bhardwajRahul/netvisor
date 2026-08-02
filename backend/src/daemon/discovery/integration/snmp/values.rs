@@ -2,19 +2,60 @@
 //!
 //! Functions for extracting typed values from SNMP varbinds.
 
+use crate::server::shared::storage::pg_value::strip_nuls;
 use mac_address::MacAddress;
 use snmp2::Value;
 use std::net::IpAddr;
 
-/// Extract a string value from an SNMP varbind value
+/// Extract a string value from an SNMP varbind value.
+///
+/// NUL bytes are removed. Firmware NUL-terminates or NUL-pads OCTET STRINGs — D-Link's DGS series
+/// sends `lldpRemPortId` as `31 00`, i.e. `"1\0"` (GH #668) — and 0x00 is valid UTF-8, so nothing
+/// upstream rejects it. Two things then break: PostgreSQL cannot store the character at all, and
+/// the daemon's own in-memory matching (`remap_lldp_local_ports` comparing `lldpLocPortId` against
+/// `ifName`) never equates `"1\0"` with `"1"`. The storage layer sanitises independently, but it
+/// runs too late for that second one, so the trim belongs here as well as there.
 pub fn value_to_string(value: &Value) -> Option<String> {
     match value {
-        Value::OctetString(bytes) => String::from_utf8(bytes.to_vec()).ok(),
+        Value::OctetString(bytes) => String::from_utf8(bytes.to_vec())
+            .ok()
+            .map(|s| strip_nuls(&s).into_owned()),
         Value::ObjectIdentifier(oid) => oid.iter().map(|iter| {
             let parts: Vec<String> = iter.map(|n| n.to_string()).collect();
             parts.join(".")
         }),
         _ => None,
+    }
+}
+
+/// Name the ASN.1 shape a varbind arrived as.
+///
+/// Used where a value is rejected for being the wrong type. A count of rejections says something
+/// went wrong; the type says *what the agent actually sent*, which is the difference between
+/// "this device is quiet" and "this device answers chassis IDs with a `Null`".
+pub fn value_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Boolean(_) => "Boolean",
+        Value::Null => "Null",
+        Value::Integer(_) => "Integer",
+        Value::OctetString(_) => "OctetString",
+        Value::ObjectIdentifier(_) => "ObjectIdentifier",
+        Value::Sequence(_) => "Sequence",
+        Value::Set(_) => "Set",
+        Value::Constructed(_, _) => "Constructed",
+        Value::IpAddress(_) => "IpAddress",
+        Value::Counter32(_) => "Counter32",
+        Value::Unsigned32(_) => "Unsigned32",
+        Value::Timeticks(_) => "Timeticks",
+        Value::Opaque(_) => "Opaque",
+        Value::Counter64(_) => "Counter64",
+        Value::EndOfMibView => "EndOfMibView",
+        Value::NoSuchObject => "NoSuchObject",
+        Value::NoSuchInstance => "NoSuchInstance",
+        // The remaining variants are PDU shapes, not varbind values, so they cannot reach a
+        // column handler. Grouped rather than enumerated so adding a PDU kind upstream does not
+        // churn a diagnostic helper that would never name it.
+        _ => "Pdu",
     }
 }
 
@@ -169,6 +210,38 @@ mod tests {
     #[test]
     fn test_parse_portlist_bitmap_all_zeros() {
         assert_eq!(parse_portlist_bitmap(&[0x00, 0x00]), Vec::<i32>::new());
+    }
+
+    /// GH #668: D-Link's DGS series NUL-terminates its OCTET STRINGs. The byte is valid UTF-8, so
+    /// it survived the decode, and then PostgreSQL refused the whole row.
+    #[test]
+    fn value_to_string_strips_nul_padding() {
+        assert_eq!(
+            value_to_string(&Value::OctetString(&[0x31, 0x00])),
+            Some("1".to_string())
+        );
+        assert_eq!(
+            value_to_string(&Value::OctetString(b"Slot0/9\0\0")),
+            Some("Slot0/9".to_string())
+        );
+    }
+
+    #[test]
+    fn value_to_string_leaves_a_clean_string_alone() {
+        assert_eq!(
+            value_to_string(&Value::OctetString(b"ten-gigabitEthernet 1/0/1")),
+            Some("ten-gigabitEthernet 1/0/1".to_string())
+        );
+    }
+
+    /// Naming the type is the point: a count of rejections says something went wrong, the type
+    /// says what the agent actually sent.
+    #[test]
+    fn value_type_name_names_the_shapes_a_column_handler_can_reject() {
+        assert_eq!(value_type_name(&Value::Null), "Null");
+        assert_eq!(value_type_name(&Value::Integer(4)), "Integer");
+        assert_eq!(value_type_name(&Value::OctetString(b"x")), "OctetString");
+        assert_eq!(value_type_name(&Value::NoSuchObject), "NoSuchObject");
     }
 
     #[test]

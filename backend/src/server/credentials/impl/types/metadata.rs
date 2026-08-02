@@ -17,7 +17,10 @@ use crate::server::{
     },
 };
 
-use super::{CredentialType, CredentialTypeDiscriminants, SecretValue, default_docker_port};
+use super::{
+    CredentialType, CredentialTypeDiscriminants, SecretValue, default_docker_port,
+    default_unifi_port, default_unifi_site,
+};
 
 /// Category grouping for credential types.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, IntoStaticStr, ToSchema, PartialEq, Eq)]
@@ -28,11 +31,46 @@ pub enum CredentialCategory {
     /// Container and virtualization platforms (Docker, vSphere, ESXi)
     #[strum(serialize = "Container & Virtualization")]
     ContainerVirtualization,
+    /// Management controllers that hold an inventory of the devices they have adopted
+    /// (UniFi, Omada, Meraki, Aruba Central). Distinct from `NetworkMonitoring`, which is
+    /// for polling protocols — a controller is an API that reports someone else's devices.
+    #[strum(serialize = "Network Controllers")]
+    NetworkController,
+}
+
+/// Release maturity of a credential type's integration.
+///
+/// Additive and exhaustive: a new credential variant will not compile until it declares its
+/// stability, and every existing type is `Stable` by explicit arm rather than by wildcard, so
+/// promoting an integration is a one-line reviewable change rather than a deletion nobody
+/// notices. This is presentation metadata about the *code*, like `minimum_daemon_version` —
+/// it is never stored on a credential row, so it carries no deploy-coexistence obligation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, IntoStaticStr, ToSchema, PartialEq, Eq)]
+pub enum CredentialStability {
+    /// Generally available.
+    Stable,
+    /// Shipped for validation. Data collection may be incomplete and the credential's field
+    /// shape may change in a future release. Usable, but clearly marked in the UI.
+    Beta,
+}
+
+/// `Beta < Stable`. Not derived: declaration order puts `Stable` first, which would order
+/// these the other way round.
+impl PartialOrd for CredentialStability {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        use std::cmp::Ordering;
+        Some(match (self, other) {
+            (Self::Beta, Self::Stable) => Ordering::Less,
+            (Self::Stable, Self::Beta) => Ordering::Greater,
+            (Self::Beta, Self::Beta) | (Self::Stable, Self::Stable) => Ordering::Equal,
+        })
+    }
 }
 
 /// A credential assigned to a host, optionally limited to specific ip_addresses.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct CredentialAssignment {
+    /// The credential this entity refers to.
     pub credential_id: Uuid,
     /// Interface IDs to limit this credential to. None = all host ip_addresses.
     #[serde(default, alias = "interface_ids")]
@@ -45,6 +83,7 @@ pub struct CredentialAssignment {
 /// credential from the `host_credentials` junction (PerHost scope).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct CredentialHostAssignment {
+    /// The host this entity belongs to.
     pub host_id: Uuid,
     /// IP address IDs to limit this credential to on the host. None = all host ip_addresses.
     #[serde(default)]
@@ -95,6 +134,21 @@ impl CredentialTypeDiscriminants {
                 ssl_chain: None,
             },
             Self::PodmanSocket => CredentialType::PodmanSocket { socket_path: None },
+            Self::UnifiApiKey => CredentialType::UnifiApiKey {
+                port: default_unifi_port(),
+                site: default_unifi_site(),
+                api_key: SecretValue::Inline {
+                    value: SecretString::from(String::new()),
+                },
+            },
+            Self::UnifiLocalAdmin => CredentialType::UnifiLocalAdmin {
+                port: default_unifi_port(),
+                site: default_unifi_site(),
+                username: String::new(),
+                password: SecretValue::Inline {
+                    value: SecretString::from(String::new()),
+                },
+            },
         }
     }
 }
@@ -118,6 +172,8 @@ impl EntityMetadataProvider for CredentialTypeDiscriminants {
             Self::DockerProxy | Self::DockerSocket | Self::PodmanProxy | Self::PodmanSocket => {
                 Concept::Containerization.icon()
             }
+            // Fallback only — the UniFi service logo is what normally renders.
+            Self::UnifiApiKey | Self::UnifiLocalAdmin => Concept::L2.icon(),
         }
     }
 }
@@ -133,6 +189,8 @@ impl CredentialTypeDiscriminants {
             Self::DockerSocket => "Docker Socket",
             Self::PodmanProxy => "Podman Proxy",
             Self::PodmanSocket => "Podman Socket",
+            Self::UnifiApiKey => "UniFi API Key",
+            Self::UnifiLocalAdmin => "UniFi Local Admin",
         }
     }
 
@@ -154,6 +212,9 @@ impl CredentialTypeDiscriminants {
             Self::PodmanProxy | Self::PodmanSocket => {
                 "Discover Podman containers and the services they expose."
             }
+            Self::UnifiApiKey | Self::UnifiLocalAdmin => {
+                "Discover UniFi-managed switches, access points and gateways, their ports, and the LLDP neighbors and uplinks the controller sees."
+            }
         }
     }
 
@@ -167,6 +228,12 @@ impl CredentialTypeDiscriminants {
             Self::SnmpV3 => "Uses SNMPv3.",
             Self::DockerProxy | Self::PodmanProxy => "Connects over TCP, optionally with TLS.",
             Self::DockerSocket | Self::PodmanSocket => "Connects via the daemon's local socket.",
+            Self::UnifiApiKey => {
+                "Connects with a controller API key. Requires UniFi OS; the legacy self-hosted Network Application does not support API keys."
+            }
+            Self::UnifiLocalAdmin => {
+                "Connects with a local admin account. Works with every controller, including the legacy self-hosted Network Application."
+            }
         }
     }
 
@@ -178,6 +245,8 @@ impl CredentialTypeDiscriminants {
             Self::SnmpV3 => "v3",
             Self::DockerProxy | Self::PodmanProxy => "Proxy",
             Self::DockerSocket | Self::PodmanSocket => "Socket",
+            Self::UnifiApiKey => "API Key",
+            Self::UnifiLocalAdmin => "Local Admin",
         }
     }
 
@@ -215,6 +284,29 @@ impl CredentialTypeDiscriminants {
             Self::SnmpV1 | Self::SnmpV3 => semver::Version::new(0, 17, 0),
             // Podman variants shipped in 0.17.2.
             Self::PodmanProxy | Self::PodmanSocket => semver::Version::new(0, 17, 2),
+            // UniFi variants ship in 0.17.7.
+            Self::UnifiApiKey | Self::UnifiLocalAdmin => semver::Version::new(0, 17, 7),
+        }
+    }
+
+    /// Release maturity of this credential type's integration. See [`CredentialStability`].
+    ///
+    /// Exhaustive with no wildcard: adding a credential type forces an explicit maturity
+    /// declaration rather than defaulting a brand-new, unvalidated integration to `Stable`.
+    pub fn stability(&self) -> CredentialStability {
+        match self {
+            Self::SnmpV1
+            | Self::SnmpV2c
+            | Self::SnmpV3
+            | Self::DockerProxy
+            | Self::DockerSocket
+            | Self::PodmanProxy
+            | Self::PodmanSocket => CredentialStability::Stable,
+            // Built from Ubiquiti's documented API shapes and the unpoller reference structs,
+            // and validated against a self-hosted UniFi OS Server — but the adopted-device
+            // tables (`port_table`, `lldp_table`, `mac_table`, uplinks) have never been seen
+            // from real hardware. Promote once a real controller's `stat/device` confirms them.
+            Self::UnifiApiKey | Self::UnifiLocalAdmin => CredentialStability::Beta,
         }
     }
 
@@ -251,6 +343,8 @@ impl CredentialTypeDiscriminants {
             // Minimum daemon version that can receive this type (message-only on the
             // frontend; the actual gate uses the server-computed compat flag).
             "minimum_daemon_version": self.minimum_daemon_version().to_string(),
+            // Release maturity. The frontend renders a "Beta" tag; it is not a gate.
+            "stability": self.stability(),
             "associated_service": ServiceDefinition::name(&*service),
             "has_logo": service.has_logo(),
             "logo_ext": logo_ext,

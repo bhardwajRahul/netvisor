@@ -490,10 +490,30 @@ impl Snapshotable for Interface {
         {
             self.base.native_vlan_id = Some(*closed);
         }
-        // neighbor (Interface(id) | Host(id)) and vlan_ids JSONB array stay
-        // as-is — they're cross-host references that may point at entities
-        // outside this network's snapshot. Closed rows reference live ids
-        // for these; as-of joins handle resolution.
+        // An Interface→Host `neighbor` can be remapped here (hosts clone before
+        // interfaces, so `maps.hosts` is ready). An Interface→Interface neighbor
+        // self-references the set being cloned, so it's deferred to
+        // `remap_own_clone_refs` once the full interface map exists. `vlan_ids`
+        // (JSONB array) stays as-is — a cross-host reference that may point
+        // outside this network's snapshot; as-of joins handle resolution.
+        if let Some(Neighbor::Host(host_id)) = self.base.neighbor
+            && let Some(closed) = maps.hosts.get(&host_id)
+        {
+            self.base.neighbor = Some(Neighbor::Host(*closed));
+        }
+    }
+
+    fn remap_own_clone_refs(&mut self, own_map: &std::collections::HashMap<Uuid, Uuid>) {
+        // LLDP/CDP `neighbor` pointing at another interface in this same clone
+        // batch → its closed copy. Without this, a snapshot interface's neighbor
+        // keeps a live id absent from the snapshot, and the topology read's
+        // `get_interface_by_id` lookup misses, dropping the PhysicalLink edge.
+        // A neighbor outside this snapshot (absent from `own_map`) is left as-is.
+        if let Some(Neighbor::Interface(live_id)) = self.base.neighbor
+            && let Some(closed) = own_map.get(&live_id)
+        {
+            self.base.neighbor = Some(Neighbor::Interface(*closed));
+        }
     }
 }
 
@@ -635,5 +655,171 @@ mod tests {
         incoming.preserve_immutable_fields(&existing);
 
         assert_eq!(incoming.created_at, existing.created_at);
+    }
+}
+
+/// A scan that could not finish reading a group of data must not erase what is already stored.
+#[cfg(test)]
+mod preserve_uncollected_tests {
+    use super::*;
+    use crate::server::interfaces::r#impl::base::{
+        Interface, InterfaceBase, InterfaceDataComplete,
+    };
+    use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+
+    fn with_lldp(chassis: Option<&str>) -> Interface {
+        let mut base = InterfaceBase::default();
+        base.lldp_chassis_id = chassis.map(|c| LldpChassisId::MacAddress(c.to_string()));
+        base.lldp_port_id = chassis.map(|_| LldpPortId::LocallyAssigned("41".to_string()));
+        base.lldp_sys_name = chassis.map(|_| "switch-core-01".to_string());
+        base.fdb_macs = chassis.map(|_| vec!["00:1a:2b:00:10:00".to_string()]);
+        Interface::new(base)
+    }
+
+    /// The reported failure: a truncated chassis column produced an incoming row with no chassis
+    /// id, which overwrote a good one. That row then no longer matches the L2 resolution filter
+    /// (it requires a chassis id or CDP device id), so the link froze at whatever it had last
+    /// resolved to and no rescan could repair it.
+    #[test]
+    fn an_incomplete_lldp_walk_keeps_the_stored_neighbour() {
+        let existing = with_lldp(Some("00:1a:2b:00:12:00"));
+        let mut incoming = with_lldp(None);
+
+        incoming.preserve_uncollected_data(
+            &existing,
+            InterfaceDataComplete {
+                lldp: false,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            incoming.base.lldp_chassis_id, existing.base.lldp_chassis_id,
+            "a chassis id must survive a walk that never read it"
+        );
+        assert_eq!(incoming.base.lldp_port_id, existing.base.lldp_port_id);
+        assert_eq!(incoming.base.lldp_sys_name, existing.base.lldp_sys_name);
+    }
+
+    /// The other direction, which is why this cannot simply preserve whenever the incoming value
+    /// is absent: a device that genuinely lost its neighbour reports nothing, and that has to
+    /// clear — otherwise a decommissioned link is drawn for ever.
+    #[test]
+    fn a_complete_lldp_walk_clears_a_neighbour_that_is_gone() {
+        let existing = with_lldp(Some("00:1a:2b:00:12:00"));
+        let mut incoming = with_lldp(None);
+
+        incoming.preserve_uncollected_data(&existing, InterfaceDataComplete::default());
+
+        assert!(
+            incoming.base.lldp_chassis_id.is_none(),
+            "a complete walk reporting no neighbour is authoritative"
+        );
+        assert!(incoming.base.lldp_sys_name.is_none());
+    }
+
+    /// FDB has the same exposure and more field evidence: in the #649 export, 18 neighbours are
+    /// resolved from `fdb_macs` alone, and losing it drops them out of FDB re-resolution.
+    #[test]
+    fn an_incomplete_fdb_walk_keeps_the_stored_macs() {
+        let existing = with_lldp(Some("00:1a:2b:00:12:00"));
+        let mut incoming = with_lldp(None);
+
+        incoming.preserve_uncollected_data(
+            &existing,
+            InterfaceDataComplete {
+                fdb: false,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(incoming.base.fdb_macs, existing.base.fdb_macs);
+        assert!(
+            incoming.base.lldp_chassis_id.is_none(),
+            "only the group that was cut short is preserved; LLDP completed and must clear"
+        );
+    }
+
+    /// The guard must not freeze a row: a complete walk carrying new data still replaces the old.
+    #[test]
+    fn a_complete_walk_still_applies_changed_neighbour_data() {
+        let existing = with_lldp(Some("00:1a:2b:00:12:00"));
+        let mut incoming = with_lldp(Some("00:1a:2b:00:99:99"));
+
+        incoming.preserve_uncollected_data(&existing, InterfaceDataComplete::default());
+
+        assert_eq!(
+            incoming.base.lldp_chassis_id,
+            Some(LldpChassisId::MacAddress("00:1a:2b:00:99:99".to_string())),
+            "a device that moved must not be pinned to its old neighbour"
+        );
+    }
+
+    /// An older daemon omits the flags entirely, so serde fills them in as all-complete and the
+    /// upsert overwrites exactly as it did before this existed.
+    #[test]
+    fn an_old_daemon_payload_defaults_to_authoritative() {
+        let parsed: InterfaceDataComplete = serde_json::from_str("{}").unwrap();
+        assert!(parsed.all());
+    }
+}
+
+#[cfg(test)]
+mod clone_remap_tests {
+    use super::*;
+    use crate::server::shared::storage::snapshot::{FkMaps, Snapshotable};
+    use std::collections::HashMap;
+
+    fn iface_with(neighbor: Option<Neighbor>) -> Interface {
+        Interface::new(InterfaceBase {
+            neighbor,
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn remaps_interface_neighbor_self_reference_to_closed_copy() {
+        let live = Uuid::new_v4();
+        let closed = Uuid::new_v4();
+        let own_map = HashMap::from([(live, closed)]);
+
+        let mut iface = iface_with(Some(Neighbor::Interface(live)));
+        iface.remap_own_clone_refs(&own_map);
+        assert_eq!(iface.base.neighbor, Some(Neighbor::Interface(closed)));
+    }
+
+    #[test]
+    fn leaves_cross_snapshot_interface_neighbor_unchanged() {
+        // A neighbor pointing outside this clone batch (e.g. a cross-network
+        // LLDP link) is absent from the map and left as-is.
+        let outside = Uuid::new_v4();
+        let mut iface = iface_with(Some(Neighbor::Interface(outside)));
+        iface.remap_own_clone_refs(&HashMap::new());
+        assert_eq!(iface.base.neighbor, Some(Neighbor::Interface(outside)));
+    }
+
+    #[test]
+    fn remaps_host_neighbor_via_parent_maps() {
+        let live = Uuid::new_v4();
+        let closed = Uuid::new_v4();
+        let maps = FkMaps {
+            hosts: HashMap::from([(live, closed)]),
+            ..Default::default()
+        };
+        let mut iface = iface_with(Some(Neighbor::Host(live)));
+        iface.remap_fks_for_clone(&maps);
+        assert_eq!(iface.base.neighbor, Some(Neighbor::Host(closed)));
+    }
+
+    #[test]
+    fn own_refs_is_noop_without_an_interface_neighbor() {
+        let mut iface = iface_with(None);
+        iface.remap_own_clone_refs(&HashMap::new());
+        assert_eq!(iface.base.neighbor, None);
+
+        let mut host_neighbor = iface_with(Some(Neighbor::Host(Uuid::new_v4())));
+        let before = host_neighbor.base.neighbor.clone();
+        host_neighbor.remap_own_clone_refs(&HashMap::from([(Uuid::new_v4(), Uuid::new_v4())]));
+        assert_eq!(host_neighbor.base.neighbor, before);
     }
 }

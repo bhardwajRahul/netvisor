@@ -83,6 +83,9 @@ impl Storable for Vlan {
                     network_id,
                     organization_id,
                     source,
+                    // Hydrated from the `subnet_vlans` junction on read; not a
+                    // column, so nothing sent by a client is persisted.
+                    subnet_ids: _,
                 },
         } = self.clone();
 
@@ -144,6 +147,8 @@ impl Storable for Vlan {
                 organization_id: row.get("organization_id"),
                 source: serde_json::from_value(row.get::<serde_json::Value, _>("source"))
                     .map_err(|e| anyhow::anyhow!("Failed to deserialize source: {}", e))?,
+                // Populated by `VlanService` from the junction, not from this row.
+                subnet_ids: Vec::new(),
             },
         })
     }

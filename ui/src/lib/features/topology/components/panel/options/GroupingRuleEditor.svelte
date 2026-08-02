@@ -250,16 +250,21 @@
 		const elementEntities =
 			(
 				(viewMeta?.metadata as Record<string, unknown>)?.element_config as
-					| { element_entities?: Entity[] }
+					| { element_entities?: Array<{ entity_type: Entity; inline_entities: Entity[] }> }
 					| undefined
 			)?.element_entities ?? [];
 		const resolved = new SvelteSet<Entity>();
-		for (const e of elementEntities) {
-			const meta = entities.getMetadata(e);
-			if (meta?.is_taggable) {
-				resolved.add(e);
-			} else if (meta?.parent_taggable_entity) {
-				resolved.add(meta.parent_taggable_entity as Entity);
+		// Each config entry is { entity_type, inline_entities }; both the top-level
+		// entity and its inline entities render as elements the ByTag rule can match,
+		// so resolve every one to its nearest taggable ancestor (or itself).
+		for (const config of elementEntities) {
+			for (const e of [config.entity_type, ...(config.inline_entities ?? [])]) {
+				const meta = entities.getMetadata(e);
+				if (meta?.is_taggable) {
+					resolved.add(e);
+				} else if (meta?.parent_taggable_entity) {
+					resolved.add(meta.parent_taggable_entity as Entity);
+				}
 			}
 		}
 		return [...resolved];

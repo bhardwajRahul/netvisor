@@ -125,6 +125,11 @@ impl EdgeBuilder {
                 let mut target_by_subnet: BTreeMap<Uuid, (IpAddr, Uuid)> = BTreeMap::new();
                 // The containers reachable on each of those subnets — what the edge represents.
                 let mut containers_by_subnet: BTreeMap<Uuid, Vec<Uuid>> = BTreeMap::new();
+                // Every (bridge subnet, address) a container is actually attached at, keyed so
+                // iteration is deterministic. Needed for the views where subnets are not
+                // containers and each attachment has to carry its own edge.
+                let mut containers_by_attachment: BTreeMap<(Uuid, Uuid), Vec<Uuid>> =
+                    BTreeMap::new();
                 for containerized_id in docker_service_to_containerized_service_ids
                     .get(&s.id)
                     .unwrap_or(&Vec::new())
@@ -154,6 +159,12 @@ impl EdgeBuilder {
                         if !containers.contains(containerized_id) {
                             containers.push(*containerized_id);
                         }
+                        let at_address = containers_by_attachment
+                            .entry((*subnet_id, ip_address_id))
+                            .or_default();
+                        if !at_address.contains(containerized_id) {
+                            at_address.push(*containerized_id);
+                        }
                     }
                 }
 
@@ -179,7 +190,7 @@ impl EdgeBuilder {
                             target_by_subnet.keys().copied().collect(),
                             containers,
                         )]
-                    } else {
+                    } else if grouping.subnets_are_containers() {
                         target_by_subnet
                             .iter()
                             .map(|(subnet_id, (_, target))| {
@@ -191,6 +202,17 @@ impl EdgeBuilder {
                                         .cloned()
                                         .unwrap_or_default(),
                                 )
+                            })
+                            .collect()
+                    } else {
+                        // Subnets are not containers here, so there is no shared box for one
+                        // representative address to stand for the rest — each attachment needs
+                        // its own edge, or every container that is not the representative
+                        // renders unconnected to the runtime that owns it.
+                        containers_by_attachment
+                            .iter()
+                            .map(|((subnet_id, ip_address_id), containers)| {
+                                (*ip_address_id, vec![*subnet_id], containers.clone())
                             })
                             .collect()
                     };
@@ -215,6 +237,7 @@ impl EdgeBuilder {
                             target_handle: EdgeHandle::Top,
                             is_multi_hop,
                             view_config: EdgeViewConfig::default(),
+                            relation_key: None,
                         }
                     })
                     .collect::<Vec<Edge>>()
@@ -273,6 +296,7 @@ impl EdgeBuilder {
                         target_handle: EdgeHandle::Top,
                         is_multi_hop: ctx.edge_is_multi_hop(&anchor, target),
                         view_config: EdgeViewConfig::default(),
+                        relation_key: None,
                     })
                     .collect::<Vec<Edge>>()
             })
@@ -347,6 +371,7 @@ impl EdgeBuilder {
                                     target_handle: EdgeHandle::Top,
                                     is_multi_hop,
                                     view_config: EdgeViewConfig::default(),
+                                    relation_key: None,
                                 });
                             }
                             None
@@ -383,6 +408,7 @@ impl EdgeBuilder {
                     target_handle: EdgeHandle::Top,
                     is_multi_hop: false,
                     view_config: EdgeViewConfig::default(),
+                    relation_key: None,
                 })
             })
             .collect()
@@ -441,6 +467,7 @@ impl EdgeBuilder {
                                 target_handle: EdgeHandle::Top,
                                 is_multi_hop,
                                 view_config: EdgeViewConfig::default(),
+                                relation_key: None,
                             })
                         })
                         .collect::<Vec<_>>()
@@ -507,6 +534,107 @@ impl EdgeBuilder {
                     target_handle: EdgeHandle::Top,
                     is_multi_hop,
                     view_config: EdgeViewConfig::default(),
+                    relation_key: None,
+                })
+            })
+            .collect()
+    }
+
+    /// Order-independent key for a pair of hosts, so an adjacency reported from either end
+    /// collapses to one entry.
+    fn host_pair_key(a: Uuid, b: Uuid) -> (Uuid, Uuid) {
+        if a < b { (a, b) } else { (b, a) }
+    }
+
+    /// The host pairs `edges` already joins with a port-precise `PhysicalLink`. Pass to
+    /// `create_neighbor_link_edges` so the approximate edge is not drawn over the exact one.
+    pub fn physical_link_host_pairs(
+        ctx: &TopologyContext,
+        edges: &[Edge],
+    ) -> HashSet<(Uuid, Uuid)> {
+        edges
+            .iter()
+            .filter_map(|edge| match &edge.edge_type {
+                EdgeType::PhysicalLink {
+                    source_entity_id,
+                    target_entity_id,
+                    ..
+                } => {
+                    let source = ctx.get_interface_by_id(*source_entity_id)?;
+                    let target = ctx.get_interface_by_id(*target_entity_id)?;
+                    Some(Self::host_pair_key(
+                        source.base.host_id,
+                        target.base.host_id,
+                    ))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Create device-level adjacency edges for LLDP/CDP neighbours that resolved to a host but
+    /// not to a port. Without these the neighbour contributes nothing to the graph at all and
+    /// the device it identifies never appears (GH #649).
+    ///
+    /// `node_for_host` maps a host to the node the calling view anchors on — each view renders
+    /// against its own node-id space, so the caller owns that mapping. `linked_host_pairs` are
+    /// pairs already joined by a `PhysicalLink`: the precise edge supersedes the approximate
+    /// one, so those are skipped rather than drawn on top of it.
+    pub fn create_neighbor_link_edges(
+        ctx: &TopologyContext,
+        node_for_host: impl Fn(Uuid) -> Uuid,
+        linked_host_pairs: &HashSet<(Uuid, Uuid)>,
+    ) -> Vec<Edge> {
+        let mut processed_pairs: HashSet<(Uuid, Uuid)> = HashSet::new();
+
+        ctx.get_interfaces_with_host_neighbor()
+            .into_iter()
+            .filter_map(|source_entry| {
+                let target_host_id = match &source_entry.base.neighbor {
+                    Some(Neighbor::Host(id)) => *id,
+                    _ => return None, // Already filtered by get_interfaces_with_host_neighbor
+                };
+                let source_host_id = source_entry.base.host_id;
+                if source_host_id == target_host_id {
+                    return None;
+                }
+
+                // Both ends must be in this topology, or the edge dangles.
+                let source_host = ctx.get_host_by_id(source_host_id)?;
+                let target_host = ctx.get_host_by_id(target_host_id)?;
+
+                let pair_key = Self::host_pair_key(source_host_id, target_host_id);
+                if linked_host_pairs.contains(&pair_key) {
+                    return None;
+                }
+                if !processed_pairs.insert(pair_key) {
+                    return None;
+                }
+
+                let protocol = if source_entry.has_lldp_data() {
+                    DiscoveryProtocol::LLDP
+                } else {
+                    DiscoveryProtocol::CDP
+                };
+
+                Some(Edge {
+                    id: Uuid::new_v4(),
+                    source: node_for_host(source_host_id),
+                    target: node_for_host(target_host_id),
+                    edge_type: EdgeType::NeighborLink {
+                        source_host_id,
+                        target_host_id,
+                        protocol,
+                    },
+                    label: Some(format!(
+                        "{} ↔ {}",
+                        source_host.base.name, target_host.base.name
+                    )),
+                    source_handle: EdgeHandle::Bottom,
+                    target_handle: EdgeHandle::Top,
+                    is_multi_hop: false,
+                    view_config: EdgeViewConfig::default(),
+                    relation_key: None,
                 })
             })
             .collect()
@@ -590,6 +718,7 @@ impl EdgeBuilder {
             target_handle: EdgeHandle::Top,
             is_multi_hop,
             view_config: EdgeViewConfig::default(),
+            relation_key: None,
         })
     }
 }
@@ -614,17 +743,37 @@ mod tests {
     use std::net::Ipv4Addr;
 
     /// Bridges rendered as their own boxes — one runtime edge per bridge subnet.
+    ///
+    /// `BySubnet` is what makes a subnet a container, and so what makes one representative
+    /// address able to stand for every other member of it. The fixture used to leave
+    /// `container_rules` empty, which described no view at all: nothing rendered subnets as
+    /// boxes, yet the assertions expected the per-subnet collapsing that only a box justifies.
     fn ungrouped() -> GroupingConfig {
         GroupingConfig {
-            container_rules: vec![],
+            container_rules: vec![IdentifiedRule::new(ContainerRule::BySubnet)],
             element_rules: vec![],
         }
     }
 
-    /// Bridges merged into one box — one runtime edge for the box.
+    /// Elements grouped by application, as in the Application view — subnets are not containers,
+    /// so there is no shared box and every attachment carries its own edge.
+    fn by_application() -> GroupingConfig {
+        GroupingConfig {
+            container_rules: vec![IdentifiedRule::new(ContainerRule::ByApplication {
+                tag_ids: vec![],
+            })],
+            element_rules: vec![],
+        }
+    }
+
+    /// Bridges merged into one box — one runtime edge for the box. Carries `BySubnet` too,
+    /// because `MergeContainerBridges` only ever applies in the view that has it.
     fn merged() -> GroupingConfig {
         GroupingConfig {
-            container_rules: vec![IdentifiedRule::new(ContainerRule::MergeContainerBridges)],
+            container_rules: vec![
+                IdentifiedRule::new(ContainerRule::BySubnet),
+                IdentifiedRule::new(ContainerRule::MergeContainerBridges),
+            ],
             element_rules: vec![],
         }
     }
@@ -1044,6 +1193,107 @@ mod tests {
             2,
             "the subnet's edge stands for both containers on it"
         );
+    }
+
+    /// Reported against the Application view: a Docker host drew a runtime edge to every
+    /// container except one. Both sat on the same bridge; the lower-addressed one won the single
+    /// per-subnet edge, and because neither carried a compose project they grouped separately, so
+    /// nothing reached the other. Collapsing to one representative is only sound where the subnet
+    /// is itself a box every member elevates onto.
+    #[test]
+    fn every_container_gets_an_edge_where_subnets_are_not_containers() {
+        let network_id = Uuid::new_v4();
+        let host_id = Uuid::new_v4();
+        let runtime_id = Uuid::new_v4();
+
+        let lan = subnet(network_id, "lan", 30, SubnetType::Lan);
+        let shared = subnet(network_id, "bridge", 17, SubnetType::DockerBridge);
+
+        let host_ip = ip(network_id, host_id, lan.id, Ipv4Addr::new(172, 30, 0, 1));
+        // Deliberately in the order the reported data had them: the lower address is the one
+        // that used to win, and the higher one is the container that vanished.
+        let lower = ip(network_id, host_id, shared.id, Ipv4Addr::new(172, 17, 0, 2));
+        let higher = ip(network_id, host_id, shared.id, Ipv4Addr::new(172, 17, 0, 3));
+
+        let host = Host {
+            id: host_id,
+            base: HostBase {
+                network_id,
+                name: "docker-host".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let runtime = Service {
+            id: runtime_id,
+            base: ServiceBase {
+                network_id,
+                host_id,
+                name: "Docker".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let containerized = |name: &str, ip_id: Uuid| Service {
+            id: Uuid::new_v4(),
+            base: ServiceBase {
+                network_id,
+                host_id,
+                name: name.to_string(),
+                virtualization: Some(ServiceVirtualization::Docker(DockerVirtualization {
+                    container_id: Some(name.to_string()),
+                    container_name: Some(name.to_string()),
+                    service_id: runtime_id,
+                    compose_project: None,
+                })),
+                bindings: vec![Binding::new_ip_address_serviceless(ip_id)],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let hosts = vec![host];
+        let ip_addresses = vec![host_ip.clone(), lower.clone(), higher.clone()];
+        let subnets = vec![lan, shared];
+        let services = vec![
+            runtime,
+            containerized("buildkit", lower.id),
+            containerized("postgres", higher.id),
+        ];
+        let options = TopologyOptions::default();
+
+        let ctx = TopologyContext::new(
+            &hosts,
+            &ip_addresses,
+            &subnets,
+            &services,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &options,
+            TopologyView::Application,
+        );
+
+        let edges = EdgeBuilder::create_containerized_service_edges(&ctx, &by_application());
+
+        let mut targets: Vec<Uuid> = edges.iter().map(|e| e.target).collect();
+        targets.sort();
+        let mut expected = vec![lower.id, higher.id];
+        expected.sort();
+        assert_eq!(
+            targets, expected,
+            "both containers need their own edge when no subnet box can stand for them"
+        );
+
+        // Where the subnet *is* a box, the collapsing still holds — one edge, lowest address.
+        let collapsed = EdgeBuilder::create_containerized_service_edges(&ctx, &ungrouped());
+        assert_eq!(collapsed.len(), 1);
+        assert_eq!(collapsed[0].target, lower.id);
     }
 
     /// The set an edge stands for is scoped to the bridge subnet it reaches, not to everything

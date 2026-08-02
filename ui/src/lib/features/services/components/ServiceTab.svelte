@@ -29,18 +29,37 @@
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
 		common_lastSeen,
+		common_category,
 		common_noEntityYet,
+		common_port,
 		common_services,
+		common_type,
 		daemons_installPromptServices,
-		services_hiddenCategories,
 		services_subtitle
 	} from '$lib/paraglide/messages';
-	import { serviceDefinitions } from '$lib/shared/stores/metadata';
+	import { serviceDefinitions, ports as ports_metadata } from '$lib/shared/stores/metadata';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
 
 	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 	type ServiceOrderField = components['schemas']['ServiceOrderField'];
 	type OrderDirection = components['schemas']['OrderDirection'];
+
+	// Well-known port numbers for the filter panel. People look for 443, not
+	// "HTTPS", so the options are the numbers themselves. Deduplicated because
+	// some ports have both a TCP and a UDP definition (53, 515), and stripped of
+	// the Custom entry, whose number is a placeholder 0. Free-form port entry
+	// would need a control the value-list filter panel doesn't have.
+	let wellKnownPortNumbers = $derived(
+		[
+			...new Set(
+				(ports_metadata.getItems() ?? [])
+					.filter((port) => !port.metadata.is_custom)
+					.map((port) => port.metadata.number)
+			)
+		]
+			.sort((a, b) => a - b)
+			.map(String)
+	);
 
 	let { isReadOnly = false }: TabProps = $props();
 
@@ -63,8 +82,15 @@
 	// Exclude categories state (for server-side filtering)
 	let excludeCategories = $state<string[]>(['OpenPorts']);
 
+	// Port filter (server-side: a client-side pass would only narrow the loaded
+	// page)
+	let ports = $state<number[]>([]);
+
 	// Staleness filter state (server-side: the list is server-paginated)
 	let stale = $state<boolean | null>(null);
+
+	// Search state (server-side, for the same reason)
+	let search = $state('');
 
 	// Queries
 	const tagsQuery = useTagsQuery();
@@ -78,6 +104,8 @@
 			order_direction: orderDirection,
 			tag_ids: tagIds.length > 0 ? tagIds : undefined,
 			stale: stale ?? undefined,
+			search: search || undefined,
+			ports: ports.length > 0 ? ports : undefined,
 			exclude_categories:
 				excludeCategories.length > 0
 					? (excludeCategories as components['schemas']['ServiceCategory'][])
@@ -140,15 +168,24 @@
 		// Reset to page 1 is handled by DataControls
 	}
 
-	// Exclude filter change handler for server-side filtering
-	function handleExcludeFilterChange(fieldKey: string, values: string[]) {
+	// Server-side field filter handler. Each key here must match a field marked
+	// `serverFiltered`, otherwise DataControls would skip the client-side filter
+	// for a value nothing acts on.
+	function handleFilterChange(fieldKey: string, values: string[]) {
 		if (fieldKey === 'category') {
 			excludeCategories = values;
+		} else if (fieldKey === 'port') {
+			ports = values.map(Number).filter((port) => Number.isFinite(port));
 		}
 	}
 
 	function handleStaleFilterChange(next: boolean | null) {
 		stale = next;
+	}
+
+	// Search change handler for server-side search (debounced by DataControls)
+	function handleSearchChange(query: string) {
+		search = query;
 	}
 
 	// CSV export handler
@@ -253,24 +290,43 @@
 	let serviceFields = $derived(
 		defineFields<Service, ServiceOrderField>(
 			{
-				name: { label: 'Name', type: 'string', searchable: true },
+				// Identity field: grouping by it would render a header per service.
+				name: { label: 'Name', type: 'string', searchable: true, groupable: false },
 				host: {
 					label: 'Host',
 					type: 'string',
 					searchable: true,
 					filterable: true,
 					groupable: true,
+					// The server groups on the host's name, coalescing services
+					// with no host to an empty string.
+					getGroupValue: (service) => serviceHosts.get(service.id)?.name ?? '',
 					getValue: (service) => serviceHosts.get(service.id)?.name || 'Unknown Host'
 				},
 				network_id: {
 					label: 'Network',
 					type: 'string',
+					searchable: true,
 					filterable: true,
 					groupable: true,
+					// Displayed as a name, but grouped by id on the server.
+					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || 'Unknown Network'
 				},
-				position: { label: 'Position', type: 'string' },
+				// Per-service ordinal, so grouping by it is one header per service.
+				position: { label: 'Position', type: 'string', groupable: false },
+				service_definition: {
+					label: common_type(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					// The server groups on the raw definition id; the UI renders its
+					// friendly name, so the group key has to be supplied separately.
+					getGroupValue: (service) => service.service_definition,
+					getValue: (service) => serviceDefinitions.getName(service.service_definition)
+				},
 				created_at: { label: 'Created', type: 'date' },
 				updated_at: { label: 'Updated', type: 'date' },
 				last_seen_at: { label: common_lastSeen(), type: 'date' }
@@ -278,9 +334,11 @@
 			[
 				{
 					key: 'category',
-					label: services_hiddenCategories(),
+					label: common_category(),
 					type: 'string',
+					searchable: true,
 					filterable: true,
+					serverFiltered: true,
 					filterMode: 'exclude',
 					filterOptions: serviceCategories,
 					filterDefaults: ['OpenPorts'],
@@ -300,11 +358,20 @@
 					key: 'confidence',
 					label: 'Match Confidence',
 					type: 'string',
+					searchable: true,
 					filterable: true,
 					getValue: (item) =>
 						item.source.type == 'DiscoveryWithMatch'
 							? matchConfidenceLabel(item.source.details.confidence)
 							: 'N/A (Not a discovered service)'
+				},
+				{
+					key: 'port',
+					label: common_port(),
+					type: 'string',
+					filterable: true,
+					serverFiltered: true,
+					filterOptions: wellKnownPortNumbers
 				},
 				{
 					key: 'tags',
@@ -347,8 +414,9 @@
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
 			onTagFilterChange={handleTagFilterChange}
-			onExcludeFilterChange={handleExcludeFilterChange}
+			onFilterChange={handleFilterChange}
 			onStaleFilterChange={handleStaleFilterChange}
+			onSearchChange={handleSearchChange}
 			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(

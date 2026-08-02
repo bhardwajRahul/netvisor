@@ -1,15 +1,18 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use email_address::EmailAddress;
+use semver::Version;
 use uuid::Uuid;
 
 use super::messages::{
-    CancellationInitiated, CheckoutCompleted, DaemonStandby, DaemonUnreachable, DiscoveryDigest,
-    DiscoveryGuide, Email, EmailAttachment, EmailChangedOld, EmailPreference, InstallCommand,
-    Invite, OidcLinked, OidcUnlinked, OrganizationDeleted, PasswordChanged, PasswordReset,
-    PaymentActionRequired, PaymentFailed, PaymentMethodAdded, PaymentMethodRemoved,
+    CancellationInitiated, CheckoutCompleted, DaemonStandby, DaemonSunset, DaemonUnreachable,
+    DiscoveryDigest, DiscoveryGuide, Email, EmailAttachment, EmailChangedOld, EmailPreference,
+    InstallCommand, Invite, OidcLinked, OidcUnlinked, OrganizationDeleted, PasswordChanged,
+    PasswordReset, PaymentActionRequired, PaymentFailed, PaymentMethodAdded, PaymentMethodRemoved,
     PaymentRecovered, PlanChanged, PlanLimitApproaching, PlanLimitReached, SubscriptionCancelled,
     SubscriptionPaused, SubscriptionReactivated, SubscriptionResumed, TrialConverted, TrialEnding,
     TrialExpired, TrialStarted, UsageSummary, Verification,
@@ -19,7 +22,7 @@ use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     billing::types::base::{BillingInvoice, BillingPlan, BillingRate},
     config::DeploymentType,
-    daemons::service::DaemonService,
+    daemons::{r#impl::base::Daemon, service::DaemonService},
     digest::payload::DiscoveryDigestPayload,
     hosts::service::HostService,
     networks::{r#impl::Network, service::NetworkService},
@@ -466,6 +469,25 @@ impl EmailService {
         .await
     }
 
+    /// Notify a recipient that one or more of their org's daemons will lose
+    /// support on `sunset_date`. `daemon_names` aggregates every affected daemon
+    /// so the recipient gets one email, not one per daemon.
+    pub async fn send_daemon_sunset_email(
+        &self,
+        to: EmailAddress,
+        daemon_names: &[&str],
+        sunset_date: &str,
+    ) -> Result<()> {
+        self.dispatch(
+            to,
+            &DaemonSunset {
+                daemon_names,
+                sunset_date,
+            },
+        )
+        .await
+    }
+
     pub async fn send_install_command_email(
         &self,
         to: EmailAddress,
@@ -560,7 +582,7 @@ impl EmailService {
             .plan
             .unwrap_or_else(crate::server::billing::plans::get_free_plan);
         let plan_name = plan.to_string();
-        let mut notifications = org.base.plan_limit_notifications.clone();
+        let mut notifications = org.base.notifications.clone();
         let mut changed = false;
         let mut emails_to_send: Vec<PendingLimitEmail> = Vec::new();
 
@@ -695,12 +717,156 @@ impl EmailService {
         }
 
         if changed {
-            org.base.plan_limit_notifications = notifications;
+            org.base.notifications = notifications;
             self.organization_service
                 .update(&mut org, AuthenticatedEntity::System)
                 .await?;
         }
 
+        Ok(())
+    }
+
+    // ========================================================================
+    // Daemon sunset sweep (boot-time)
+    // ========================================================================
+
+    /// Email each organization whose active daemons face an announced sunset
+    /// cutover. Each daemon is matched to the cutover it actually faces — the
+    /// soonest one whose floor is above it — and daemons are grouped per (org,
+    /// floor), so one aggregated email per group (naming every affected daemon)
+    /// goes to the org owner plus each distinct daemon maintainer. An org-level
+    /// ratchet on the highest floor already announced to that org means each org
+    /// is emailed at most once per floor, so this is safe to run on every server
+    /// boot — including after a new cutover is appended to the list.
+    ///
+    /// No-op while the sunset machinery is dormant (no cutover has a date yet).
+    pub async fn announce_daemon_sunsets(&self) -> Result<()> {
+        use crate::server::daemons::r#impl::version::applicable_sunset;
+
+        // Nothing announced at all — skip the sweep entirely rather than query
+        // every daemon to learn that. A version-less daemon counts as below every
+        // floor, so "not even that faces a cutover" means no cutover has a date.
+        if applicable_sunset(None).is_none() {
+            return Ok(());
+        }
+
+        // Active daemons across all orgs. A daemon that reports no version is
+        // treated as genuinely old (modern daemons always report one) and is
+        // included — as long as it has actually connected (has a last_seen); a
+        // provisioned-but-never-connected daemon has no version yet for the
+        // benign reason that it hasn't checked in, so it is skipped rather than
+        // emailed about.
+        let daemons = self
+            .daemon_service
+            .get_all(StorableFilter::<Daemon>::new_for_active_daemons())
+            .await?;
+
+        let mut by_org_floor: HashMap<(Uuid, Version), (DateTime<Utc>, Vec<Daemon>)> =
+            HashMap::new();
+        for daemon in daemons {
+            let version = daemon.base.version.as_ref();
+            if version.is_none() && daemon.base.last_seen.is_none() {
+                continue;
+            }
+            // Dormant cutovers yield None here, which is what makes the whole
+            // sweep a no-op before a launch date is baked in.
+            let Some((floor, effective_on)) = applicable_sunset(version) else {
+                continue;
+            };
+            let Some(network) = self
+                .network_service
+                .get_by_id(&daemon.base.network_id)
+                .await?
+            else {
+                continue;
+            };
+            by_org_floor
+                .entry((network.base.organization_id, floor))
+                .or_insert_with(|| (effective_on, Vec::new()))
+                .1
+                .push(daemon);
+        }
+
+        // Ascending floor order, so if a send fails partway through an org's
+        // groups the ratchet is left at the highest floor actually emailed and
+        // the rest are retried on the next boot.
+        let mut groups: Vec<_> = by_org_floor.into_iter().collect();
+        groups.sort_by(|((_, a_floor), _), ((_, b_floor), _)| a_floor.cmp(b_floor));
+
+        for ((org_id, floor), (effective_on, affected)) in groups {
+            let sunset_display = effective_on.format("%B %-d, %Y").to_string();
+            if let Err(e) = self
+                .announce_org_sunset(org_id, &affected, &floor, &sunset_display)
+                .await
+            {
+                tracing::warn!(org_id = %org_id, error = %e, "Failed to send daemon sunset notification");
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Send the aggregated sunset email to one org's owner + maintainers, then
+    /// advance the org's ratchet. Skips orgs already notified for this floor.
+    async fn announce_org_sunset(
+        &self,
+        org_id: Uuid,
+        affected: &[Daemon],
+        floor: &Version,
+        sunset_display: &str,
+    ) -> Result<()> {
+        let mut org = match self.organization_service.get_by_id(&org_id).await? {
+            Some(o) => o,
+            None => return Ok(()),
+        };
+        // Ratchet: the stored value is the highest floor this org has been told
+        // about, and floors are totally ordered, so anything at or below it has
+        // already been communicated.
+        if org
+            .base
+            .notifications
+            .sunset_notified_floor
+            .as_ref()
+            .is_some_and(|notified| floor <= notified)
+        {
+            return Ok(());
+        }
+
+        let daemon_names: Vec<&str> = affected.iter().map(|d| d.base.name.as_str()).collect();
+
+        // Recipients: org owner + each distinct daemon maintainer (dedup by user
+        // id so a maintainer of several affected daemons is emailed once).
+        let owners = self.user_service.get_organization_owners(&org_id).await?;
+        let owner = owners.first();
+        let mut seen_users: HashSet<Uuid> = HashSet::new();
+        let mut recipients: Vec<EmailAddress> = Vec::new();
+        if let Some(owner) = owner {
+            seen_users.insert(owner.id);
+            recipients.push(owner.base.email.clone());
+        }
+        for daemon in affected {
+            if seen_users.insert(daemon.base.user_id)
+                && let Some(user) = self.user_service.get_by_id(&daemon.base.user_id).await?
+            {
+                recipients.push(user.base.email);
+            }
+        }
+
+        for to in recipients {
+            if let Err(e) = self
+                .send_daemon_sunset_email(to, &daemon_names, sunset_display)
+                .await
+            {
+                tracing::warn!(org_id = %org_id, error = %e, "Failed to dispatch daemon sunset email");
+            }
+        }
+
+        // Advance the ratchet so subsequent boots don't re-send for this floor
+        // (or any lower one). Monotonic: it only ever moves up.
+        org.base.notifications.sunset_notified_floor = Some(floor.clone());
+        self.organization_service
+            .update(&mut org, AuthenticatedEntity::System)
+            .await?;
         Ok(())
     }
 

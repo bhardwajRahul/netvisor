@@ -3,19 +3,18 @@
   "exchanges": [
     {
       "method": "POST",
-<<<<<<< HEAD
       "path": "/api/discovery/initiate",
       "request_body": {
         "discovery_type": {
-          "host_id": "69b0863b-0cc0-4fd3-864c-e82a292b27ff",
+          "host_id": "8f6b3991-b3ef-4d1d-9708-d2f57289a34f",
           "type": "SelfReport"
         },
-        "session_id": "13d0ccaf-3c75-4da4-9270-5f81d9a88e41"
+        "session_id": "f2d5414b-3369-4280-929d-5422dd11a4b4"
       },
       "response_status": 200,
       "response_body": {
         "data": {
-          "session_id": "13d0ccaf-3c75-4da4-9270-5f81d9a88e41"
+          "session_id": "f2d5414b-3369-4280-929d-5422dd11a4b4"
         },
         "meta": {
           "api_version": 1,
@@ -28,19 +27,17 @@
       "method": "POST",
       "path": "/api/initialize",
       "request_body": {
-        "api_key": "scp_d_A13Xqr7oAU1mZTtTCP5vUgQZ0Hd7yrYy",
-        "network_id": "d0569d71-d5f8-405e-b628-d5f3bf31dd20"
-=======
-      "path": "/api/initialize",
-      "request_body": {
-        "api_key": "scp_d_qawU9MQMdo5ogl5teXdWn7NMfm4aasW2",
-        "network_id": "071e9d04-ce22-4bea-8cbb-640e76ff2e66"
->>>>>>> weblate-scoping
+        "api_key": "scp_d_gGXVrxlG9yKG98K6XyoiBIbZPVumyFMh",
+        "network_id": "e7de183f-e7b7-4437-af5b-e23934100b87"
       },
-      "response_status": 500,
+      "response_status": 200,
       "response_body": {
-        "error": "Startup announcement failed: HTTP 404 Not Found",
-        "success": false
+        "data": "Daemon initialized successfully",
+        "meta": {
+          "api_version": 1,
+          "server_version": "0.13.3"
+        },
+        "success": true
       }
     }
   ]

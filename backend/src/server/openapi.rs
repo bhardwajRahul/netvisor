@@ -16,12 +16,14 @@ use utoipa::openapi::{Components, OpenApi, PathItem};
 use crate::server::bindings::r#impl::base::Binding;
 use crate::server::credentials::handlers::CredentialOrderField;
 use crate::server::credentials::r#impl::base::Credential;
+use crate::server::credentials::r#impl::types::{CredentialStability, CredentialTypeDiscriminants};
 use crate::server::daemon_api_keys::r#impl::base::DaemonApiKey;
 use crate::server::daemons::handlers::DaemonOrderField;
 use crate::server::daemons::r#impl::base::Daemon;
 use crate::server::daemons::r#impl::install_artifacts::InstallCommandKind;
 use crate::server::dependencies::handlers::DependencyOrderField;
 use crate::server::dependencies::r#impl::base::Dependency;
+use crate::server::discovery::handlers::DiscoveryOrderField;
 use crate::server::discovery::r#impl::base::Discovery;
 use crate::server::hosts::handlers::HostOrderField;
 use crate::server::hosts::r#impl::base::Host;
@@ -48,9 +50,36 @@ use crate::server::users::r#impl::base::User;
 use crate::server::vlans::handlers::VlanOrderField;
 use crate::server::vlans::r#impl::base::Vlan;
 
+/// OpenAPI tags that aren't derived from an `Entity`.
+///
+/// Entity endpoints tag themselves with `T::ENTITY_NAME_PLURAL` so the tag and the
+/// entity can never drift. These are the rest. They live here as constants for the
+/// same reason: a literal at the call site is how `"daemons"` and `"hosts"` ended up
+/// as separate, undeclared tags alongside `Daemons` and `Hosts`.
+pub mod tags {
+    /// Authentication and session management.
+    pub const AUTH: &str = "auth";
+    /// Subscription, plan and payment endpoints.
+    pub const BILLING: &str = "billing";
+    /// Server configuration exposed to clients.
+    pub const CONFIG: &str = "config";
+    /// Aggregate counts for the landing view.
+    pub const DASHBOARD: &str = "dashboard";
+    /// Superseded, still served for older clients.
+    pub const DEPRECATED: &str = "deprecated";
+    /// GitHub integration endpoints.
+    pub const GITHUB: &str = "github";
+    /// Hidden from the public spec, kept in the full one for client generation.
+    pub const INTERNAL: &str = "internal";
+    /// Entity metadata registry.
+    pub const METADATA: &str = "metadata";
+    /// Version and compatibility checking.
+    pub const SYSTEM: &str = "system";
+}
+
 /// Tag used to mark endpoints that should be hidden from public documentation
 /// but included in the full OpenAPI spec for client generation.
-const INTERNAL_TAG: &str = "internal";
+const INTERNAL_TAG: &str = tags::INTERNAL;
 pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// OpenAPI base configuration
@@ -69,14 +98,22 @@ pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
         SubnetOrderField,
         DaemonOrderField,
         CredentialOrderField,
+        DiscoveryOrderField,
         VlanOrderField,
         // Derived staleness status. Not a field on any entity (it's computed
         // per-request against the network's window), so nothing else pulls it
         // into the schema — but the frontend must derive its union from here
         // rather than hand-maintaining one.
         EntityFreshness,
+        // Credential-type release maturity. Travels to the frontend inside the untyped
+        // `TypeMetadata.metadata` blob, so nothing else pulls it into the schema — but the
+        // frontend must derive its union from here rather than hand-maintaining one.
+        CredentialStability,
         // Referenced by the install-command query parameter, so it needs a registered schema.
-        InstallCommandKind
+        InstallCommandKind,
+        // Referenced by the credential-list `?type` filter, which utoipa collects from
+        // `IntoParams` without registering the schema it points at.
+        CredentialTypeDiscriminants
     )),
     info(
         title = "Scanopy API",
@@ -186,6 +223,19 @@ Resources are scoped to your **organization** and **network(s)**:
 "#,
         license(name = "Dual (AGPL3.0, Commercial License Available)")
     ),
+    // Documentation renderers build their request examples from these. Without them
+    // they fall back to a placeholder host, which also breaks static-render hydration.
+    servers(
+        (url = "https://app.scanopy.net", description = "Scanopy Cloud"),
+        (
+            url = "{scheme}://{host}",
+            description = "Self-hosted server",
+            variables(
+                ("scheme" = (default = "https", enum_values("https", "http"))),
+                ("host" = (default = "scanopy.example.com", description = "Host and optional port of your Scanopy server"))
+            )
+        )
+    ),
     tags(
         // Entity tags - descriptions sourced from Entity trait for consistency
         (name = Binding::ENTITY_NAME_PLURAL, description = Binding::ENTITY_DESCRIPTION),
@@ -211,12 +261,15 @@ Resources are scoped to your **organization** and **network(s)**:
         (name = UserApiKey::ENTITY_NAME_PLURAL, description = UserApiKey::ENTITY_DESCRIPTION),
         (name = Vlan::ENTITY_NAME_PLURAL, description = Vlan::ENTITY_DESCRIPTION),
         // Non-entity tags with inline descriptions
-        (name = "auth", description = "Authentication and session management. Handle user login, logout, and session state."),
-        (name = "config", description = "Server configuration. Public configuration settings for client applications."),
-        (name = "github", description = "GitHub integration endpoints."),
-        (name = "internal", description = "Internal endpoints for system operations. Not part of the public API."),
-        (name = "metadata", description = "Entity metadata registry. Schema information for all entity types in the system."),
-        (name = "system", description = "System information endpoints. Version and compatibility checking."),
+        (name = tags::AUTH, description = "Authentication and session management. Handle user login, logout, and session state."),
+        (name = tags::BILLING, description = "Subscription, plan and payment management for the organization."),
+        (name = tags::CONFIG, description = "Server configuration. Public configuration settings for client applications."),
+        (name = tags::DASHBOARD, description = "Aggregate counts and recent activity for the landing view."),
+        (name = tags::DEPRECATED, description = "Superseded endpoints, still served for older clients. Avoid in new integrations."),
+        (name = tags::GITHUB, description = "GitHub integration endpoints."),
+        (name = tags::INTERNAL, description = "Internal endpoints for system operations. Not part of the public API."),
+        (name = tags::METADATA, description = "Entity metadata registry. Schema information for all entity types in the system."),
+        (name = tags::SYSTEM, description = "System information endpoints. Version and compatibility checking."),
     )
 )]
 pub struct ApiDoc;
@@ -257,6 +310,12 @@ pub fn build_openapi(paths_from_handlers: OpenApi) -> OpenApi {
     // Fix schema examples that utoipa doesn't handle well
     fix_schema_examples(&mut base);
 
+    // Carry the response-envelope docs onto every generic instantiation
+    propagate_envelope_descriptions(&mut base);
+
+    // Define the unit-type schema utoipa references but never emits
+    add_unit_schema(&mut base);
+
     // Sanitize operationIds: CRUD macros build them from ENTITY_NAME constants which
     // contain spaces for multi-word entities (e.g. "list_Daemon API Keys"). Normalize
     // to lowercase with underscores so they're valid identifiers.
@@ -280,6 +339,77 @@ fn fix_schema_examples(spec: &mut OpenApi) {
             "has_more": true
         }));
     }
+}
+
+/// Copy the response-envelope field descriptions onto every generic instantiation.
+///
+/// `ApiResponse<T>`/`PaginatedApiResponse<T>` document their own fields, but utoipa
+/// emits one schema per `T` and only carries the doc comments through for some of
+/// them. Without this, `data` shows up undescribed on most endpoints even though the
+/// Rust field is documented.
+fn propagate_envelope_descriptions(spec: &mut OpenApi) {
+    const FIELD_DOCS: [(&str, &str); 4] = [
+        (
+            "success",
+            "`true` when the request succeeded. `false` responses carry `error` instead of `data`.",
+        ),
+        ("data", "The result payload. Omitted on failure."),
+        (
+            "error",
+            "Human-readable failure message. Omitted on success.",
+        ),
+        ("meta", "API and server version metadata."),
+    ];
+
+    let Some(ref mut components) = spec.components else {
+        return;
+    };
+
+    for (name, schema) in components.schemas.iter_mut() {
+        if !(name.starts_with("ApiResponse") || name.starts_with("PaginatedApiResponse")) {
+            continue;
+        }
+        let RefOr::T(Schema::Object(object)) = schema else {
+            continue;
+        };
+        for (field, doc) in FIELD_DOCS {
+            let Some(RefOr::T(property)) = object.properties.get_mut(field) else {
+                continue;
+            };
+            let description = match property {
+                Schema::Object(o) => &mut o.description,
+                Schema::Array(a) => &mut a.description,
+                Schema::OneOf(o) => &mut o.description,
+                Schema::AllOf(a) => &mut a.description,
+                Schema::AnyOf(a) => &mut a.description,
+                _ => continue,
+            };
+            if description.is_none() {
+                *description = Some(doc.to_string());
+            }
+        }
+    }
+}
+
+/// Register the schema utoipa references but never emits for the unit type.
+///
+/// `ApiResponse<()>` (the empty-success envelope) points `data` at a `TupleUnit`
+/// component that nothing defines, leaving a dangling `$ref` that breaks renderers
+/// and generated clients.
+fn add_unit_schema(spec: &mut OpenApi) {
+    let Some(ref mut components) = spec.components else {
+        return;
+    };
+    components
+        .schemas
+        .entry("TupleUnit".to_string())
+        .or_insert(RefOr::T(Schema::Object(
+            utoipa::openapi::ObjectBuilder::new()
+                .description(Some(
+                    "No payload. Present only so the envelope keeps its shape.",
+                ))
+                .build(),
+        )));
 }
 
 /// Normalize operationIds: lowercase and replace spaces with underscores.

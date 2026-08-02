@@ -8,6 +8,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 use crate::{
     daemon::runtime::state::BufferedEntities,
     server::{
@@ -184,6 +185,7 @@ impl EntityBuffer {
                     interfaces: actual.interfaces,
                     subnets: vec![],
                     interfaces_complete: true,
+                    interface_data_complete: InterfaceDataComplete::default(),
                 };
                 *entry = BufferedEntity::Created {
                     pending_id,
@@ -424,6 +426,7 @@ mod tests {
             interfaces: vec![],
             subnets: vec![],
             interfaces_complete: true,
+            interface_data_complete: InterfaceDataComplete::default(),
         };
         buffer.push_host(host).await;
 
@@ -477,6 +480,7 @@ mod tests {
                         interfaces: vec![],
                         subnets: vec![],
                         interfaces_complete: true,
+                        interface_data_complete: InterfaceDataComplete::default(),
                     };
                     buf.push_host(host).await;
                 })
@@ -886,6 +890,7 @@ mod tests {
             interfaces: vec![],
             subnets: vec![],
             interfaces_complete: true,
+            interface_data_complete: InterfaceDataComplete::default(),
         };
         // Set the host ID to match our shared host_id
         let mut host1 = host1;
@@ -956,6 +961,7 @@ mod tests {
             interfaces: vec![],
             subnets: vec![],
             interfaces_complete: true,
+            interface_data_complete: InterfaceDataComplete::default(),
         };
         let mut host2 = host2;
         host2.host.id = host_id;
@@ -1153,6 +1159,7 @@ mod tests {
             interfaces: vec![],
             subnets: vec![],
             interfaces_complete: true,
+            interface_data_complete: InterfaceDataComplete::default(),
         };
         let mut host_req = host_req;
         host_req.host.id = host_id;

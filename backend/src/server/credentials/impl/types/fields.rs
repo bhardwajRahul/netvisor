@@ -10,19 +10,27 @@ use super::CredentialType;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FieldDefinition {
+    /// Server-assigned unique identifier.
     pub id: &'static str,
+    /// Human-facing field label.
     pub label: &'static str,
+    /// How the field should be rendered and validated.
     pub field_type: FieldType,
+    /// Placeholder text for the input.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<&'static str>,
+    /// Whether the value is a secret, so it is masked and never echoed back.
     pub secret: bool,
+    /// Whether the field may be left empty.
     pub optional: bool,
+    /// Explanatory text shown beneath the field.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub help_text: Option<&'static str>,
     /// Options for `Select` fields. Each option carries a wire `value` (the
     /// serialized enum variant) and a human-facing `label`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub options: Option<&'static [SelectOption]>,
+    /// Value pre-filled when the field is first shown.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_value: Option<&'static str>,
     /// For SecretPathOrInline fields: what format the inline value should be
@@ -37,7 +45,9 @@ pub struct FieldDefinition {
 /// enum variant, e.g. "Sha256"); `label` is the human-facing display text.
 #[derive(Debug, Clone, Copy, Serialize, ToSchema)]
 pub struct SelectOption {
+    /// Value submitted when this option is chosen.
     pub value: &'static str,
+    /// Human-facing option label.
     pub label: &'static str,
 }
 
@@ -272,8 +282,97 @@ impl CredentialType {
                 "/run/podman/podman.sock",
                 "Path to the Podman Unix socket. Leave blank to auto-detect (rootful /run/podman/podman.sock or the rootless $XDG_RUNTIME_DIR/podman/podman.sock).",
             )],
+            Self::UnifiApiKey { .. } => {
+                let mut fields = unifi_connection_fields();
+                fields.push(FieldDefinition {
+                    id: "api_key",
+                    label: "API Key",
+                    field_type: FieldType::SecretPathOrInline,
+                    placeholder: None,
+                    secret: true,
+                    optional: false,
+                    help_text: Some(
+                        "Network Application API key (Settings → Control Plane → Integrations → Create API Key). Requires UniFi OS; the legacy self-hosted Network Application on 8443 has no API keys — use a UniFi Local Admin credential there instead.",
+                    ),
+                    options: None,
+                    default_value: None,
+                    inline_format: Some(InlineFormat::Plain),
+                    group: Some("Authentication"),
+                });
+                fields
+            }
+            Self::UnifiLocalAdmin { .. } => {
+                let mut fields = unifi_connection_fields();
+                fields.push(FieldDefinition {
+                    id: "username",
+                    label: "Username",
+                    field_type: FieldType::String,
+                    placeholder: None,
+                    secret: false,
+                    optional: false,
+                    help_text: Some(
+                        "Controller admin username. Use a local-only admin account so multi-factor authentication does not block the login.",
+                    ),
+                    options: None,
+                    default_value: None,
+                    inline_format: None,
+                    group: Some("Authentication"),
+                });
+                fields.push(FieldDefinition {
+                    id: "password",
+                    label: "Password",
+                    field_type: FieldType::SecretPathOrInline,
+                    placeholder: None,
+                    secret: true,
+                    optional: false,
+                    help_text: Some("Password for the local admin account."),
+                    options: None,
+                    default_value: None,
+                    inline_format: Some(InlineFormat::Plain),
+                    group: Some("Authentication"),
+                });
+                fields
+            }
         }
     }
+}
+
+/// Connection fields shared by both UniFi transports. Only the auth fields differ, so the
+/// port/site pair is defined once — a UniFi credential of either kind points at the same
+/// controller endpoint.
+fn unifi_connection_fields() -> Vec<FieldDefinition> {
+    vec![
+        FieldDefinition {
+            id: "port",
+            label: "Controller Port",
+            field_type: FieldType::String,
+            placeholder: Some("443"),
+            secret: false,
+            optional: true,
+            help_text: Some(
+                "443 for a UniFi OS console (Dream Machine, Cloud Key, Cloud Gateway), 11443 for a self-hosted UniFi OS Server, or 8443 for the legacy self-hosted Network Application. Check the port in your controller's URL — the wrong port fails to connect.",
+            ),
+            options: None,
+            default_value: Some("443"),
+            inline_format: None,
+            group: Some("Connection"),
+        },
+        FieldDefinition {
+            id: "site",
+            label: "Site",
+            field_type: FieldType::String,
+            placeholder: Some("default"),
+            secret: false,
+            optional: true,
+            help_text: Some(
+                "Internal site name, taken from the controller URL (/manage/site/<name>) — not the site's display name. Most installations use 'default'.",
+            ),
+            options: None,
+            default_value: Some("default"),
+            inline_format: None,
+            group: Some("Connection"),
+        },
+    ]
 }
 
 /// Optional, non-secret socket-path field for local container-socket credentials. The

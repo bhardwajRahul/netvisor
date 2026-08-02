@@ -389,8 +389,9 @@ impl LegacyHostWithServicesRequest {
             interfaces: vec![], // Legacy requests don't include SNMP data
             subnets: vec![],
             // Legacy daemons carry no ifTable; empty interface set is authoritative for them
-            // (and guarded server-side regardless).
+            // (and guarded server-side regardless), and they send no neighbour data at all.
             interfaces_complete: true,
+            interface_data_complete: Default::default(),
         }
     }
 }

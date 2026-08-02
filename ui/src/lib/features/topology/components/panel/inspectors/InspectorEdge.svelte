@@ -7,6 +7,7 @@
 	import InspectorEdgeHypervisor from './edges/InspectorEdgeHypervisor.svelte';
 	import InspectorEdgeContainerRuntime from './edges/InspectorEdgeContainerRuntime.svelte';
 	import InspectorEdgePhysicalLink from './edges/InspectorEdgePhysicalLink.svelte';
+	import InspectorEdgeNeighborLink from './edges/InspectorEdgeNeighborLink.svelte';
 	import InspectorEdgeSameContainer from './edges/InspectorEdgeSameContainer.svelte';
 	import InspectorEdgeAggregated from './edges/InspectorEdgeAggregated.svelte';
 	import {
@@ -49,6 +50,12 @@
 		<InspectorEdgePhysicalLink
 			sourceEntityId={edgeData?.source_entity_id}
 			targetEntityId={edgeData?.target_entity_id}
+			protocol={edgeData?.protocol}
+		/>
+	{:else if edgeData.edge_type === 'NeighborLink'}
+		<InspectorEdgeNeighborLink
+			sourceHostId={edgeData?.source_host_id}
+			targetHostId={edgeData?.target_host_id}
 			protocol={edgeData?.protocol}
 		/>
 	{:else}

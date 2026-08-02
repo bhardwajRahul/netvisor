@@ -14,14 +14,18 @@ fn default_tags() -> Vec<Uuid> {
 
 #[derive(Debug, Clone, Validate, Serialize, Deserialize, ToSchema)]
 pub struct CredentialBase {
+    /// The organization that owns this record.
     pub organization_id: Uuid,
+    /// Human-facing name for this credential.
     #[validate(length(
         min = 1,
         max = 100,
         message = "Credential name must be between 1 and 100 characters"
     ))]
     pub name: String,
+    /// Protocol this credential authenticates with, and its settings.
     pub credential_type: CredentialType,
+    /// Tags assigned to this entity.
     #[serde(default = "default_tags")]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -69,12 +73,15 @@ impl Default for CredentialBase {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, Validate)]
 pub struct Credential {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,

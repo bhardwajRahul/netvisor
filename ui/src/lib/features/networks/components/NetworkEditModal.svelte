@@ -75,10 +75,15 @@
 	);
 	let isNonOwnerInDemo = $derived(isDemoOrg && currentUser?.permissions !== 'Owner');
 
-	// TanStack Query for credentials — filter to Network-targetable types for network assignment
+	// TanStack Query for credentials. Only Network-targetable types are offered for
+	// assignment, but the *selected* list resolves against every credential (as the host
+	// modal does): a credential whose type can't broadcast must still be visible here so it
+	// can be removed. Resolving against the filtered list instead would render it as nothing
+	// while still re-submitting its id on every unrelated network edit.
 	const credentialsQuery = useCredentialsQuery();
-	let allCredentials = $derived(
-		(credentialsQuery.data ?? []).filter((c) => {
+	let allCredentials = $derived(credentialsQuery.data ?? []);
+	let assignableCredentials = $derived(
+		allCredentials.filter((c) => {
 			const meta = credentialTypes.getMetadata(getCredentialTypeId(c));
 			return (meta?.targets ?? []).includes('Network');
 		})
@@ -257,7 +262,7 @@
 						placeholder={credentials_selectToAddPlaceholder()}
 						emptyMessage={networks_noCredentialsAssigned()}
 						allowReorder={false}
-						options={allCredentials}
+						options={assignableCredentials}
 						items={selectedCredentials}
 						optionDisplayComponent={CredentialDisplay}
 						itemDisplayComponent={CredentialDisplay}

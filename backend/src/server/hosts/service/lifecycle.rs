@@ -114,13 +114,23 @@ impl HostService {
         Ok(responses)
     }
 
-    /// Get paginated hosts with all children hydrated for API response.
+    /// Get paginated hosts for API response, with children hydrated unless
+    /// `include_children` is false.
+    ///
+    /// The child collections dominate the payload — a host list carrying them is
+    /// an order of magnitude larger than one without — so callers that only need
+    /// host identity (name pickers, id→name lookups, counts) pass `false` and
+    /// skip both the bytes and the four child queries. Tags are hydrated either
+    /// way: they live on the host row's own junction table, callers filter and
+    /// label by them, and they cost one query for the whole page.
+    ///
     /// Supports custom ordering via the `order_by` parameter.
     pub async fn get_all_host_responses_paginated(
         &self,
         filter: StorableFilter<Host>,
         order_by: &str,
         at: Option<DateTime<Utc>>,
+        include_children: bool,
     ) -> Result<PaginatedResult<HostResponse>> {
         let result = self.storage().get_paginated(filter, order_by).await?;
 
@@ -134,8 +144,11 @@ impl HostService {
         let host_ids: Vec<Uuid> = result.items.iter().map(|h| h.id).collect();
         // Hydrate children as-of the same instant as the host rows so a snapshot
         // view shows a coherent point-in-time host + children bundle.
-        let (ip_addresses_map, ports_map, services_map, interfaces_map) =
-            self.load_children_for_hosts(&host_ids, at).await?;
+        let (ip_addresses_map, ports_map, services_map, interfaces_map) = if include_children {
+            self.load_children_for_hosts(&host_ids, at).await?
+        } else {
+            Default::default()
+        };
 
         // Hydrate tags from junction table
         let tags_map = self

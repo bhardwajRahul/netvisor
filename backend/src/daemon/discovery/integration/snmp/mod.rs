@@ -14,9 +14,10 @@ pub mod values;
 
 // Re-export commonly used items
 pub use queries::{
-    query_arp_table, query_bridge_fdb, query_cdp_neighbors, query_entity_physical,
-    query_ip_addr_table, query_lldp_local, query_lldp_local_ports, query_lldp_neighbors,
-    query_port_vlan_membership, query_system_info, query_vlan_table, walk_if_table,
+    query_arp_table, query_bridge_fdb, query_bridge_port_mapping, query_cdp_neighbors,
+    query_entity_physical, query_ip_addr_table, query_lldp_local, query_lldp_local_ports,
+    query_lldp_neighbors, query_port_vlan_membership, query_system_info, query_vlan_table,
+    walk_if_table,
 };
 pub use session::SNMP_WALK_TIMEOUT;
 use session::{SNMP_PROBE_TIMEOUT, create_session};
@@ -28,14 +29,14 @@ pub use types::{
 use std::net::IpAddr;
 use std::time::Duration;
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use tokio::time::timeout;
 use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
-    daemon::utils::scanner::try_snmp_with_credential_on_port,
+    daemon::utils::scanner::{SnmpProbeOutcome, try_snmp_with_credential_on_port},
     server::{
         credentials::r#impl::{
             mapping::{
@@ -45,7 +46,7 @@ use crate::{
         },
         hosts::r#impl::base::{Host, HostBase},
         interfaces::r#impl::base::{
-            IfAdminStatus, IfOperStatus, Interface, InterfaceBase, if_type,
+            IfAdminStatus, IfOperStatus, Interface, InterfaceBase, InterfaceDataComplete, if_type,
         },
         ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
         ports::r#impl::base::PortType,
@@ -56,8 +57,15 @@ use crate::{
     },
 };
 
-use super::{DiscoveryIntegration, IntegrationContext, ProbeContext, ProbeFailure, ProbeSuccess};
+use super::{
+    DiscoveryIntegration, IntegrationContext, IntegrationFailure, ProbeContext, ProbeFailure,
+    ProbeSuccess,
+};
 use crate::daemon::discovery::service::ops::HostData;
+use crate::daemon::discovery::service::warnings::{
+    AttemptOutcome, IncompleteInterfaceWalk, MalformedNeighbours, SnmpCollectionOutcome,
+    SnmpGroupOutcome, SnmpWalkGroup, UnresolvedLldpPorts, snmp_walk_shortfalls,
+};
 
 /// Handle returned by a successful SNMP probe — carries the working credential and port.
 pub struct SnmpProbeHandle {
@@ -91,6 +99,18 @@ where
     }
 }
 
+/// How much a probe outcome tells us, for picking between the two SNMP ports' answers.
+///
+/// A device that refuses us on 161 and ignores us on 1161 has told us something on 161; reporting
+/// the silence would be reporting the less informative of the two.
+fn probe_specificity(outcome: AttemptOutcome) -> u8 {
+    match outcome {
+        AttemptOutcome::Rejected => 3,
+        AttemptOutcome::NotThisService | AttemptOutcome::Malformed => 2,
+        _ => 1,
+    }
+}
+
 pub struct SnmpIntegration;
 
 #[async_trait]
@@ -103,8 +123,12 @@ impl DiscoveryIntegration for SnmpIntegration {
         15
     }
 
+    /// Must exceed the sum of every sequential walk's own timeout, or the outer cap silently
+    /// kills the walks that run last — bridge FDB and per-port VLAN membership — which is
+    /// exactly the data operators were reporting as missing. 13 walks at
+    /// [`session::SNMP_WALK_TIMEOUT`] each is the worst case; this leaves headroom above it.
     fn timeout(&self) -> Duration {
-        Duration::from_secs(300)
+        Duration::from_secs(900)
     }
 
     // No probe_gate_ports — SNMP does its own UDP port probing.
@@ -112,21 +136,19 @@ impl DiscoveryIntegration for SnmpIntegration {
     async fn probe(&self, ctx: &ProbeContext<'_>) -> Result<ProbeSuccess, ProbeFailure> {
         let snmp_cred = match ctx.credential {
             CredentialQueryPayload::Snmp(cred) => cred,
-            _ => {
-                return Err(ProbeFailure {
-                    message: "Expected SNMP credential".to_string(),
-                });
-            }
+            _ => return Err(ProbeFailure::malformed("Expected SNMP credential")),
         };
 
         let snmp_ports: &[u16] = &[161, 1161];
 
-        // Try the provided credential on each SNMP port
+        // The most specific answer any port gave. A device listening on 161 and silent on 1161
+        // should be reported as whatever 161 said, not as the silence from 1161 — so a refusal
+        // outranks a timeout, which outranks nothing having been tried.
+        let mut best: Option<(AttemptOutcome, String)> = None;
+
         for &port in snmp_ports {
             if ctx.cancel.is_cancelled() {
-                return Err(ProbeFailure {
-                    message: "Cancelled".to_string(),
-                });
+                return Err(ProbeFailure::cancelled());
             }
 
             // Cap the whole probe (create-session + GET) so a non-responder — v3's
@@ -137,11 +159,15 @@ impl DiscoveryIntegration for SnmpIntegration {
             )
             .await
             {
-                Ok(res) => res,
-                Err(_) => Ok(None), // probe timed out → treat as no answer
+                Ok(outcome) => outcome,
+                Err(_) => SnmpProbeOutcome::Failed(
+                    AttemptOutcome::TimedOut,
+                    format!("no answer on port {port} within {SNMP_PROBE_TIMEOUT:?}"),
+                ),
             };
+
             match port_outcome {
-                Ok(Some(detected_port)) => {
+                SnmpProbeOutcome::Answered(detected_port) => {
                     return Ok(ProbeSuccess {
                         client_probe: ClientProbe::Snmp,
                         ports: vec![PortType::new_udp(detected_port)],
@@ -151,14 +177,19 @@ impl DiscoveryIntegration for SnmpIntegration {
                         })),
                     });
                 }
-                Ok(None) => continue,
-                Err(e) => {
+                SnmpProbeOutcome::Failed(outcome, message) => {
                     tracing::debug!(
                         ip = %ctx.ip,
-                        port = port,
-                        error = %e,
+                        port,
+                        ?outcome,
+                        error = %message,
                         "SNMP credential probe failed"
                     );
+                    if best.as_ref().is_none_or(|(seen, _)| {
+                        probe_specificity(outcome) > probe_specificity(*seen)
+                    }) {
+                        best = Some((outcome, format!("port {port}: {message}")));
+                    }
                 }
             }
         }
@@ -167,16 +198,18 @@ impl DiscoveryIntegration for SnmpIntegration {
         // with community "public" into credential_mappings, so it's tried as its own
         // integration dispatch. No special-casing needed.
 
-        Err(ProbeFailure {
-            message: format!("SNMP not responding on {} with any credential", ctx.ip),
-        })
+        let (outcome, message) = best.unwrap_or((
+            AttemptOutcome::TimedOut,
+            format!("SNMP not responding on {}", ctx.ip),
+        ));
+        Err(ProbeFailure::with_outcome(outcome, message))
     }
 
     async fn execute(
         &self,
         ctx: &IntegrationContext<'_>,
         host_data: &mut HostData,
-    ) -> Result<(), Error> {
+    ) -> Result<(), IntegrationFailure> {
         // Downcast probe handle to get the working credential and port
         let handle = ctx
             .probe_handle
@@ -221,19 +254,20 @@ impl DiscoveryIntegration for SnmpIntegration {
         };
 
         if ctx.cancel.is_cancelled() {
-            return Err(anyhow::anyhow!("Discovery was cancelled"));
+            return Err(IntegrationFailure::cancelled());
         }
 
         // Walk interface table. `if_table_complete` tells the server whether this is an
         // authoritative full ifTable (safe to prune stale interfaces against) or a partial walk
         // cut short by timeout/error (must NOT prune — see GH #649). A hard failure yields an
         // empty set, which the server's existing empty-set guard already protects.
-        let (snmp_if_entries, if_table_complete) =
-            query_or_default(ip, "if_table", walk_if_table(&mut session, ip)).await;
+        let if_table = query_or_default(ip, "if_table", walk_if_table(&mut session, ip)).await;
+        let snmp_if_entries = if_table.entries;
         tracing::debug!(
             ip = %ip,
             if_count = snmp_if_entries.len(),
-            complete = if_table_complete,
+            set_complete = if_table.set_complete,
+            attributes_complete = if_table.attributes_complete,
             "SNMP ifTable walked"
         );
 
@@ -252,35 +286,85 @@ impl DiscoveryIntegration for SnmpIntegration {
                 })
                 .collect(),
         );
-        host_data.set_interfaces_complete(if_table_complete);
+        // Pruning acts on the interface *set*, so that is what gates it — not whether every
+        // attribute column also finished (#649).
+        host_data.set_interfaces_complete(if_table.set_complete);
 
-        // A truncated ifTable means interfaces are missing from this scan. Surface it on the
-        // session so the operator sees it, rather than leaving it to debug logs (it also
-        // suppresses server-side pruning — GH #649).
-        if !if_table_complete
-            && !snmp_if_entries.is_empty()
-            && let Ok(session_state) = ctx.ops.get_session().await
-            && let Ok(mut warnings) = session_state.warnings.lock()
-        {
-            warnings.push(format!(
-                "SNMP interface collection for {ip} was incomplete — the device stopped \
-                 responding partway through its interface table, so some interfaces may be \
-                 missing. Collected {} so far.",
-                snmp_if_entries.len()
-            ));
+        // Record an incomplete walk on the session rather than leaving it to debug logs, keeping
+        // which kind it was: a short interface list means interfaces are genuinely missing, while
+        // a short attribute column only means some fields are blank. Reporting the second as
+        // possible data loss sends operators hunting for interfaces that were never absent.
+        // Rendered to one line per run at finalize — one paragraph per device drowns the
+        // notification on any real network.
+        let walk_fell_short = !if_table.set_complete || !if_table.attributes_complete;
+        if !snmp_if_entries.is_empty() && walk_fell_short {
+            ctx.ops
+                .record_interface_shortfall(IncompleteInterfaceWalk {
+                    ip,
+                    collected: snmp_if_entries.len(),
+                    set_complete: if_table.set_complete,
+                })
+                .await;
         }
 
         // Query LLDP neighbors
-        let mut lldp_neighbors =
-            query_or_default(ip, "lldp", query_lldp_neighbors(&mut session, ip)).await;
-        tracing::debug!(ip = %ip, count = lldp_neighbors.len(), "LLDP neighbors discovered");
+        let lldp = query_or_default(ip, "lldp", query_lldp_neighbors(&mut session, ip)).await;
+        // Two different questions, deliberately not one flag.
+        //
+        // `lldp_complete` — did the walk finish? An agent with no LLDP-MIB answers immediately
+        // and completely, so this stays true and no shortfall is reported. Warning about it
+        // every scan would be the same noise the bridge-MIB groups used to produce.
+        //
+        // `lldp_authoritative` — may this result overwrite what the server holds? Only a device
+        // that *has* the MIB and reports no neighbours is saying "there are none". Answering
+        // `noSuchObject` says nothing about neighbours, and treating it as authority erased the
+        // rows the UniFi integration writes for these very switches — the only source of LLDP
+        // they have — whenever the SNMP pass happened to land second.
+        let lldp_complete = lldp.complete;
+        let lldp_reason = lldp.reason;
+        let lldp_authoritative = lldp.complete && !lldp.unsupported;
+        let lldp_discarded = lldp.discarded;
+        let mut lldp_neighbors = lldp.records;
+        tracing::debug!(
+            ip = %ip,
+            count = lldp_neighbors.len(),
+            complete = lldp_complete,
+            unsupported = lldp.unsupported,
+            "LLDP neighbors discovered"
+        );
         let lldp_count = lldp_neighbors.len();
 
         // Query CDP neighbors (Cisco devices)
-        let cdp_neighbors =
-            query_or_default(ip, "cdp", query_cdp_neighbors(&mut session, ip)).await;
-        tracing::debug!(ip = %ip, count = cdp_neighbors.len(), "CDP neighbors discovered");
+        let cdp = query_or_default(ip, "cdp", query_cdp_neighbors(&mut session, ip)).await;
+        let cdp_complete = cdp.complete;
+        let cdp_reason = cdp.reason;
+        let cdp_discarded = cdp.discarded;
+        let cdp_neighbors = cdp.records;
+        tracing::debug!(
+            ip = %ip,
+            count = cdp_neighbors.len(),
+            complete = cdp_complete,
+            "CDP neighbors discovered"
+        );
         let cdp_count = cdp_neighbors.len();
+
+        // Records the device served and we could not use. Reported per group because the
+        // consequence differs — losing every neighbour on a switch takes it off L2 Physical
+        // entirely, losing some leaves it there with holes — and because no rescan will change
+        // either, which is the part an operator most needs told (GH #668).
+        for (group, discarded, kept) in [
+            (SnmpWalkGroup::Lldp, lldp_discarded, lldp_count),
+            (SnmpWalkGroup::Cdp, cdp_discarded, cdp_count),
+        ] {
+            ctx.ops
+                .record_malformed_neighbours(MalformedNeighbours {
+                    ip,
+                    group,
+                    discarded,
+                    kept,
+                })
+                .await;
+        }
 
         // Translate LLDP local-port indices (which are lldpLocPortNum values, a
         // separate namespace from ifIndex on vendors like ExtremeXOS) to real ifIndex
@@ -298,7 +382,24 @@ impl DiscoveryIntegration for SnmpIntegration {
         } else {
             std::collections::HashMap::new()
         };
-        remap_lldp_local_ports(&mut lldp_neighbors, &lldp_local_ports, &snmp_if_entries);
+        let unresolved_ports =
+            remap_lldp_local_ports(&mut lldp_neighbors, &lldp_local_ports, &snmp_if_entries);
+        if unresolved_ports > 0 {
+            tracing::warn!(
+                ip = %ip,
+                unresolved = unresolved_ports,
+                total = lldp_count,
+                "LLDP neighbours could not be matched to a local interface; their links may \
+                 attach to the wrong port"
+            );
+            ctx.ops
+                .record_unresolved_lldp_ports(UnresolvedLldpPorts {
+                    ip,
+                    unresolved: unresolved_ports,
+                    total: lldp_count,
+                })
+                .await;
+        }
 
         // Query ipAddrTable for IP->ifIndex+netMask mappings
         let ip_addr_table =
@@ -319,11 +420,41 @@ impl DiscoveryIntegration for SnmpIntegration {
             "ENTITY-MIB inventory queried"
         );
 
+        // Walk dot1dBasePortIfIndex once and share it. Both the bridge FDB and per-port VLAN
+        // membership are keyed by bridge port, and each used to walk this table for itself —
+        // so a switch that answers the OID with silence rather than `noSuchObject` (the
+        // Ubiquiti USW-Pro-Max does) paid the walk timeout twice per scan for a table that
+        // was never going to arrive.
+        let bridge_ports = query_or_default(
+            ip,
+            "bridge_port_mapping",
+            query_bridge_port_mapping(&mut session, ip),
+        )
+        .await;
+        tracing::debug!(
+            ip = %ip,
+            count = bridge_ports.records.len(),
+            complete = bridge_ports.complete,
+            "Bridge port mappings collected"
+        );
+
         // Query bridge FDB for MAC-to-port mappings
-        let bridge_fdb =
-            query_or_default(ip, "bridge_fdb", query_bridge_fdb(&mut session, ip)).await;
+        let fdb = query_or_default(
+            ip,
+            "bridge_fdb",
+            query_bridge_fdb(&mut session, ip, &bridge_ports),
+        )
+        .await;
+        let fdb_complete = fdb.complete;
+        let fdb_reason = fdb.reason;
+        let bridge_fdb = fdb.records;
         let fdb_count = bridge_fdb.len();
-        tracing::info!(ip = %ip, count = fdb_count, "Bridge FDB entries collected");
+        tracing::info!(
+            ip = %ip,
+            count = fdb_count,
+            complete = fdb_complete,
+            "Bridge FDB entries collected"
+        );
 
         // Query VLAN table for VLAN names and persist as VLAN entities
         let vlan_table =
@@ -345,6 +476,10 @@ impl DiscoveryIntegration for SnmpIntegration {
                 Err(e) => {
                     vlan_upsert = "failed";
                     tracing::warn!(ip = %ip, error = %e, "Failed to upsert VLANs, VLAN IDs will not be resolved");
+                    // The switch answered in full and we could not record it. Silent until now,
+                    // and the consequence is not small — every interface on this device loses
+                    // its VLAN ids, which looks identical to a switch that reports no VLANs.
+                    ctx.ops.record_vlan_recording_failure(ip).await;
                     std::collections::HashMap::new()
                 }
             }
@@ -356,10 +491,18 @@ impl DiscoveryIntegration for SnmpIntegration {
         let port_vlan_membership = query_or_default(
             ip,
             "port_vlan_membership",
-            query_port_vlan_membership(&mut session, ip),
+            query_port_vlan_membership(&mut session, ip, &bridge_ports),
         )
         .await;
-        tracing::info!(ip = %ip, count = port_vlan_membership.len(), "Port VLAN memberships collected");
+        let vlan_membership_complete = port_vlan_membership.complete;
+        let vlan_membership_reason = port_vlan_membership.reason;
+        let port_vlan_membership = port_vlan_membership.records;
+        tracing::info!(
+            ip = %ip,
+            count = port_vlan_membership.len(),
+            complete = vlan_membership_complete,
+            "Port VLAN memberships collected"
+        );
 
         // Query local LLDP identity
         let lldp_local =
@@ -417,15 +560,9 @@ impl DiscoveryIntegration for SnmpIntegration {
             && let Some(chassis) =
                 LldpChassisId::from_snmp(local.chassis_id_subtype, &local.chassis_id_bytes)
         {
-            host_data.with_chassis_id(match &chassis {
-                LldpChassisId::NetworkAddress(addr) => addr.to_string(),
-                LldpChassisId::MacAddress(s)
-                | LldpChassisId::ChassisComponent(s)
-                | LldpChassisId::InterfaceAlias(s)
-                | LldpChassisId::PortComponent(s)
-                | LldpChassisId::InterfaceName(s)
-                | LldpChassisId::LocallyAssigned(s) => s.clone(),
-            });
+            // Same canonical form the server matches a *neighbor's* chassis ID against, so a
+            // device whose chassis MAC appears on none of its ports is still identifiable.
+            host_data.with_chassis_id(chassis.identifier());
         }
 
         // --- Add ENTITY-MIB hardware inventory ---
@@ -471,7 +608,61 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Mark whether this SNMP interface set is a complete, authoritative ifTable. The server
         // only prunes interfaces no longer reported when this is true, so a partial walk cannot
         // tear down the host's L2 topology (GH #649).
-        host_data.set_interfaces_complete(if_table_complete);
+        host_data.set_interfaces_complete(if_table.set_complete);
+        // Tell the server which of these groups it may treat as authoritative. A group we only
+        // read partially must not overwrite what is already stored — an empty result from a
+        // cut-short walk is indistinguishable from a device reporting nothing, and for the
+        // neighbour fields losing them drops the row out of L2 resolution for good.
+        host_data.set_interface_data_complete(InterfaceDataComplete {
+            lldp: lldp_authoritative,
+            cdp: cdp_complete,
+            fdb: fdb_complete,
+            vlan_membership: vlan_membership_complete,
+        });
+
+        // A cut-short neighbour walk used to be entirely silent — it took a database query to
+        // discover that a switch had lost its chassis ids. Record it so the run can say so once,
+        // with what happened as a result: the previous values are kept, so this is a "no fresh
+        // data" notice rather than a loss.
+        //
+        // `returned_any` is carried per group because it separates two different problems that
+        // share the `complete: false` flag: a walk that returned rows and stopped was truncated,
+        // while one that returned nothing timed out or errored outright.
+        //
+        // Which groups are worth reporting — and which are merely downstream of a failure
+        // already being reported — is `snmp_walk_shortfalls`'s call, so it can be tested
+        // without a live agent.
+        let incomplete = snmp_walk_shortfalls(
+            ip,
+            SnmpCollectionOutcome {
+                lldp: SnmpGroupOutcome {
+                    complete: lldp_complete,
+                    returned_any: lldp_count > 0,
+                    reason: lldp_reason,
+                },
+                cdp: SnmpGroupOutcome {
+                    complete: cdp_complete,
+                    returned_any: cdp_count > 0,
+                    reason: cdp_reason,
+                },
+                bridge_port_numbering: SnmpGroupOutcome {
+                    complete: bridge_ports.complete,
+                    returned_any: !bridge_ports.records.is_empty(),
+                    reason: bridge_ports.reason,
+                },
+                bridge_forwarding: SnmpGroupOutcome {
+                    complete: fdb_complete,
+                    returned_any: fdb_count > 0,
+                    reason: fdb_reason,
+                },
+                vlan_membership: SnmpGroupOutcome {
+                    complete: vlan_membership_complete,
+                    returned_any: !port_vlan_membership.is_empty(),
+                    reason: vlan_membership_reason,
+                },
+            },
+        );
+        ctx.ops.record_snmp_shortfalls(incomplete).await;
 
         // GH #649: one consolidated per-host collection record. Ties together the scattered
         // per-query lines above so a self-hosted operator (and we, from their logs) can see, at a
@@ -481,7 +672,8 @@ impl DiscoveryIntegration for SnmpIntegration {
         tracing::debug!(
             ip = %ip,
             if_count = snmp_if_entries.len(),
-            if_table_complete = if_table_complete,
+            if_set_complete = if_table.set_complete,
+            if_attributes_complete = if_table.attributes_complete,
             arp = arp_count,
             fdb = fdb_count,
             lldp = lldp_count,
@@ -666,6 +858,8 @@ impl DiscoveryIntegration for SnmpIntegration {
                         vec![],
                         // ARP-discovered remote host has no ifTable of its own; nothing to prune.
                         true,
+                        // ...and no neighbour data, so nothing to preserve against.
+                        InterfaceDataComplete::default(),
                         ctx.cancel,
                     )
                     .await
@@ -688,21 +882,31 @@ impl DiscoveryIntegration for SnmpIntegration {
 /// interface table (`if_entries`). Neighbours whose port cannot be resolved keep their
 /// original index. An empty `loc_ports` is identity — correct for devices where
 /// `lldpLocPortNum == ifIndex` (e.g. Extreme VOSS) or that omit the table.
+/// Returns how many neighbours could not be resolved and kept their original index.
+///
+/// The count matters because this failure is *silent and wrong* rather than silent and missing.
+/// An unresolved neighbour keeps its `lldpLocPortNum`, which on a device where that is a separate
+/// namespace from `ifIndex` — ExtremeXOS reports ports 1..N against ifIndexes 1001+ — attaches
+/// the link to whatever interface happens to hold that index, or to none. A missing link is
+/// visibly missing; a link drawn to the wrong port is worse, because the map looks complete.
 fn remap_lldp_local_ports(
     neighbors: &mut [LldpNeighbor],
     loc_ports: &std::collections::HashMap<i32, LldpLocalPort>,
     if_entries: &[IfTableEntry],
-) {
+) -> usize {
+    // An empty table is the identity mapping, not a failure: devices where `lldpLocPortNum ==
+    // ifIndex` (Extreme VOSS, most vendors) legitimately omit it.
     if loc_ports.is_empty() {
-        return;
+        return 0;
     }
+    let mut unresolved = 0;
     for neighbor in neighbors.iter_mut() {
-        if let Some(if_index) =
-            resolve_lldp_local_port(neighbor.local_port_index, loc_ports, if_entries)
-        {
-            neighbor.local_port_index = if_index;
+        match resolve_lldp_local_port(neighbor.local_port_index, loc_ports, if_entries) {
+            Some(if_index) => neighbor.local_port_index = if_index,
+            None => unresolved += 1,
         }
     }
+    unresolved
 }
 
 /// Resolve a single `lldpLocPortNum` to an `ifIndex`. Returns `None` to keep the
@@ -868,19 +1072,21 @@ pub async fn poll_device(
         .await
         .map_err(|_| anyhow::anyhow!("System info query timeout"))??;
 
-    let (interfaces, _if_table_complete) =
-        timeout(SNMP_WALK_TIMEOUT, walk_if_table(&mut session, ip))
-            .await
-            .map_err(|_| anyhow::anyhow!("ifTable walk timeout"))?
-            .unwrap_or_default();
+    let interfaces = timeout(SNMP_WALK_TIMEOUT, walk_if_table(&mut session, ip))
+        .await
+        .map_err(|_| anyhow::anyhow!("ifTable walk timeout"))?
+        .map(|walk| walk.entries)
+        .unwrap_or_default();
 
     let lldp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_lldp_neighbors(&mut session, ip))
         .await
+        .map(|r| r.map(|c| c.records))
         .unwrap_or(Ok(vec![]))
         .unwrap_or_default();
 
     let cdp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_cdp_neighbors(&mut session, ip))
         .await
+        .map(|r| r.map(|c| c.records))
         .unwrap_or(Ok(vec![]))
         .unwrap_or_default();
 

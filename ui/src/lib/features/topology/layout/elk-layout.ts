@@ -8,6 +8,7 @@ import {
 } from '$lib/shared/stores/metadata';
 import type { LayoutInput, LayoutResult } from './engine';
 import { getOrgUseCase } from '../queries';
+import * as perf from '../perf';
 import { resolveCollapsedAncestor } from '../collapse';
 
 /**
@@ -46,15 +47,50 @@ export type ElkLayoutResult = LayoutResult;
 // @ts-expect-error -- elkjs module import type works at runtime but svelte-check disagrees
 let elkPromise: Promise<import('elkjs')['default']> | null = null;
 
+/**
+ * Load ELK in-process.
+ *
+ * NOTE: elkjs also ships a web-worker build (`elk-worker.min.js` + `elk-api`),
+ * and it was tried here — loading ELK is the largest single stage of a cold
+ * load (~900ms on a production build of a 440-host L2 view), so moving it off
+ * the main thread looked like the obvious win. **It measured worse and was
+ * reverted.** On that same view:
+ *
+ *   TTI              7007ms -> 7982ms
+ *   elk.module-load   908ms ->  959ms   (unchanged: ELK still awaits worker
+ *                                        readiness before it can lay out, so
+ *                                        the load stays on the critical path)
+ *   elk.layout        802ms -> 1116ms   (structured-cloning a 1246-node graph
+ *                                        twice per layout costs more than
+ *                                        running it in-process saves)
+ *
+ * Pan frame times did not improve either. Don't re-attempt without a way to
+ * avoid re-serialising the whole graph per pass.
+ */
+async function loadBundledElk() {
+	const mod = await import('elkjs/lib/elk.bundled.js');
+	return new mod.default();
+}
+
 // @ts-expect-error -- elkjs module import type works at runtime but svelte-check disagrees
 async function getElk(): Promise<import('elkjs/lib/elk-api')['default']> {
 	if (!elkPromise) {
-		elkPromise = import('elkjs/lib/elk.bundled.js').then((mod) => {
-			const ELK = mod.default;
-			return new ELK();
-		});
+		elkPromise = loadBundledElk();
 	}
 	return elkPromise;
+}
+
+/**
+ * Begin loading ELK without waiting for it.
+ *
+ * Started at the top of the pipeline so the import overlaps the measure pass
+ * rather than following it. Measured as no better in practice — the parse is
+ * main-thread-bound and the measure pass saturates that thread — but it cannot
+ * be worse, and it pays off if the measure pass ever stops being the blocker.
+ * Safe to call repeatedly; `getElk` memoizes.
+ */
+export function preloadElk(): void {
+	void getElk();
 }
 
 /** Root-level ELK layout options for layered compound layout. */
@@ -252,7 +288,17 @@ function buildElkGraph(
 			const parentId = node.container_id ?? '';
 			if (!parentId || collapsed.has(parentId)) continue;
 			if (!containers.has(parentId)) continue;
-			const size = input.elementNodeSizes?.get(node.id) ?? node.size;
+			// `node.size` is the server's value, which for elements is `Uxy::default()` — 0x0.
+			// A zero-sized ELK node is never legitimate: box packing puts such children a
+			// spacing apart and the DOM then renders them at their real size, overlapping.
+			// The measure pass is supposed to make this unreachable; counting it keeps a
+			// regression loud instead of silent, and the fallback keeps the graph merely
+			// imperfect rather than broken.
+			let size = input.elementNodeSizes?.get(node.id) ?? node.size;
+			if (!size || size.x <= 0 || size.y <= 0) {
+				perf.count('elk.element-size-missing');
+				size = { x: 250, y: 54 };
+			}
 			if (!elementsPerContainer.has(parentId)) elementsPerContainer.set(parentId, []);
 			elementsPerContainer.get(parentId)!.push({ node, size });
 		}
@@ -1493,12 +1539,18 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 		};
 	}
 
+	const elkLoadDone = perf.stage('elk.module-load');
 	const elk = await getElk();
+	elkLoadDone();
 
 	// Pass 1: compute layout with FIXED_SIDE ports (no position info).
 	// This gives us actual element positions within box-packed containers.
+	const build1Done = perf.stage('elk.build-graph');
 	const { graph: graph1, containerIds } = buildElkGraph(input);
+	build1Done();
+	const elkPass1Done = perf.stage('elk.layout');
 	const result1 = await elk.layout(graph1);
+	elkPass1Done();
 
 	// Extract actual element AND subcontainer positions from pass 1
 	const elementPositions = new Map<
@@ -1532,12 +1584,16 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 	if (result1.children) extractPositions(result1.children);
 
 	// Pass 2: rebuild graph with FIXED_POS ports at actual element positions
+	const build2Done = perf.stage('elk.build-graph');
 	const { graph: graph2, containerIds: cids2 } = buildElkGraph(
 		input,
 		elementPositions,
 		subcontainerPositions
 	);
+	build2Done();
+	const elkPass2Done = perf.stage('elk.layout');
 	const result2 = await elk.layout(graph2);
+	elkPass2Done();
 
 	// L2: top-align layers by shifting each layer's top node to the same Y.
 	// ELK centers layers independently, causing vertical misalignment.

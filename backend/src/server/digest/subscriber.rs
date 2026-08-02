@@ -11,7 +11,6 @@ use async_trait::async_trait;
 use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::server::daemons::r#impl::api::ScannedEntityIds;
 use crate::server::digest::service::DiscoveryDigestService;
-use crate::server::discovery::r#impl::types::RunType;
 use crate::server::shared::entities::{Entity, EntityDiscriminants};
 use crate::server::shared::events::registry::SubscriberRegistration;
 use crate::server::shared::events::traits::{EntityEventFilter, Event, Subscriber};
@@ -31,10 +30,16 @@ impl Subscriber<EntityOperation> for DiscoveryDigestService {
             let Entity::Discovery(discovery) = event.scope.entity_type() else {
                 continue;
             };
-            let RunType::Historical { results } = &discovery.base.run_type else {
+            let Some(results) = discovery.base.run_type.historical_results() else {
                 continue;
             };
             if results.phase != DiscoveryPhase::Complete {
+                continue;
+            }
+            // A rescan is user-initiated and watched live in the UI; mailing a
+            // digest about one host is noise. Scheduled sweeps are what the
+            // digest summarises.
+            if results.discovery_type.rescan_target_host_id().is_some() {
                 continue;
             }
             // ScannedEntityIds carries the daemon-reported, server-resolved

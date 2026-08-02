@@ -1,10 +1,11 @@
 //! Login, logout, and current-user session handlers.
 use super::*;
+use crate::server::openapi::tags as api_tags;
 
 #[utoipa::path(
     post,
     path = "/login",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     request_body = LoginRequest,
     responses(
         (status = 200, description = "Login successful", body = ApiResponse<User>),
@@ -76,7 +77,7 @@ pub(crate) async fn login(
 #[utoipa::path(
     post,
     path = "/logout",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Logout successful", body = EmptyApiResponse),
     )
@@ -108,7 +109,7 @@ pub(crate) async fn logout(
 #[utoipa::path(
     post,
     path = "/me",
-    tags = ["auth", "internal"],
+    tags = [api_tags::AUTH, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Current user", body = ApiResponse<User>),
         (status = 401, description = "Not authenticated", body = ApiErrorResponse),

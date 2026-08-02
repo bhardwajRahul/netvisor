@@ -70,7 +70,7 @@ impl Storable for Organization {
                     discount_save_offer_active_until,
                     next_renewal_at,
                     brevo_company_id,
-                    plan_limit_notifications,
+                    notifications,
                     use_case,
                 },
         } = self.clone();
@@ -96,6 +96,12 @@ impl Storable for Organization {
                 "discount_save_offer_active_until",
                 "next_renewal_at",
                 "brevo_company_id",
+                "notifications",
+                // Expand-phase dual-write: the column was renamed
+                // plan_limit_notifications -> notifications. Keep writing the old
+                // column so a not-yet-upgraded server container mid-rolling-deploy
+                // still reads fresh plan-limit ratchets. Drop it in the next
+                // release's contract migration (see db-expand-contract-ledger).
                 "plan_limit_notifications",
                 "use_case",
             ],
@@ -119,7 +125,9 @@ impl Storable for Organization {
                 SqlValue::OptionTimestamp(discount_save_offer_active_until),
                 SqlValue::OptionTimestamp(next_renewal_at),
                 SqlValue::OptionalString(brevo_company_id),
-                SqlValue::PlanLimitNotifications(plan_limit_notifications),
+                SqlValue::OrgNotifications(notifications.clone()),
+                // Dual-write (see column list note above).
+                SqlValue::OrgNotifications(notifications),
                 SqlValue::OptionalString(Some(
                     serde_json::to_value(use_case)
                         .ok()
@@ -178,10 +186,19 @@ impl Storable for Organization {
                     .unwrap_or(None),
                 next_renewal_at: row.try_get("next_renewal_at").unwrap_or(None),
                 brevo_company_id: row.get("brevo_company_id"),
-                plan_limit_notifications: row
-                    .try_get::<serde_json::Value, _>("plan_limit_notifications")
+                // Read the renamed `notifications` column, falling back to the
+                // old `plan_limit_notifications` (still dual-written this release)
+                // if the new column is somehow absent/null — e.g. a row last
+                // touched by a not-yet-upgraded container during the deploy.
+                notifications: row
+                    .try_get::<serde_json::Value, _>("notifications")
                     .ok()
                     .and_then(|v| serde_json::from_value(v).ok())
+                    .or_else(|| {
+                        row.try_get::<serde_json::Value, _>("plan_limit_notifications")
+                            .ok()
+                            .and_then(|v| serde_json::from_value(v).ok())
+                    })
                     .unwrap_or_default(),
                 use_case: row
                     .try_get::<Option<String>, _>("use_case")

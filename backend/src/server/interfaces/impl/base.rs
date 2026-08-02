@@ -8,6 +8,55 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
+/// Which groups of per-interface data the daemon read in full during a scan.
+///
+/// Each group comes from its own SNMP walk, and a walk cut short by a timeout yields exactly the
+/// same empty result as a device that genuinely has nothing to report. Without knowing which
+/// happened, the server overwrote good data with NULL on every truncation — and for the neighbour
+/// fields that also dropped the row out of L2 resolution permanently, since the resolution filter
+/// requires a chassis id or CDP device id to be present.
+///
+/// Every field defaults to `true`, so a daemon predating this behaves exactly as before: it
+/// reports everything as authoritative and the server overwrites.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct InterfaceDataComplete {
+    /// `lldp_chassis_id`, `lldp_port_id`, `lldp_sys_name`, `lldp_port_desc`, `lldp_mgmt_addr`,
+    /// `lldp_sys_desc`
+    #[serde(default = "crate::server::interfaces::r#impl::base::complete_default")]
+    pub lldp: bool,
+    /// `cdp_device_id`, `cdp_port_id`, `cdp_platform`, `cdp_address`
+    #[serde(default = "crate::server::interfaces::r#impl::base::complete_default")]
+    pub cdp: bool,
+    /// `fdb_macs`
+    #[serde(default = "crate::server::interfaces::r#impl::base::complete_default")]
+    pub fdb: bool,
+    /// `native_vlan_id`, `vlan_ids`
+    #[serde(default = "crate::server::interfaces::r#impl::base::complete_default")]
+    pub vlan_membership: bool,
+}
+
+pub(crate) fn complete_default() -> bool {
+    true
+}
+
+impl Default for InterfaceDataComplete {
+    fn default() -> Self {
+        Self {
+            lldp: true,
+            cdp: true,
+            fdb: true,
+            vlan_membership: true,
+        }
+    }
+}
+
+impl InterfaceDataComplete {
+    /// Whether every group was read in full.
+    pub fn all(&self) -> bool {
+        self.lldp && self.cdp && self.fdb && self.vlan_membership
+    }
+}
+
 /// Resolved LLDP/CDP neighbor connection.
 ///
 /// Represents the remote endpoint this port connects to, discovered via LLDP or CDP.
@@ -16,8 +65,10 @@ use validator::Validate;
 #[serde(tag = "type", content = "id")]
 pub enum Neighbor {
     /// Full resolution - the specific remote port was identified
+    #[schema(title = "Interface")]
     Interface(Uuid),
     /// Partial resolution - the remote device was identified but not the specific port
+    #[schema(title = "Host")]
     Host(Uuid),
 }
 
@@ -117,7 +168,9 @@ impl From<IfOperStatus> for i32 {
 
 #[derive(Debug, Clone, Validate, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct InterfaceBase {
+    /// The host this entity belongs to.
     pub host_id: Uuid,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
     /// SNMP ifIndex - stable identifier within device
     pub if_index: i32,
@@ -140,7 +193,7 @@ pub struct InterfaceBase {
     // Local links
     /// MAC address from SNMP ifPhysAddress - immutable once set
     #[serde(default)]
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, pattern = r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$", example = "a4:bb:6d:12:34:56")]
     pub mac_address: Option<MacAddress>,
     /// FK to IPAddress entity - this port's IP assignment (must be on same host).
     /// Old daemons send this as "interface_id".
@@ -160,8 +213,8 @@ pub struct InterfaceBase {
     pub lldp_sys_name: Option<String>,
     /// Remote port description from LLDP neighbor (lldpRemPortDesc)
     pub lldp_port_desc: Option<String>,
-    /// Remote management IP from LLDP neighbor (lldpRemManAddr)
-    #[schema(value_type = Option<String>)]
+    /// Remote management IP from LLDP neighbor (lldpRemManAddr). IPv4 or IPv6.
+    #[schema(value_type = Option<String>, example = "192.168.1.1")]
     pub lldp_mgmt_addr: Option<std::net::IpAddr>,
     /// Remote system description from LLDP neighbor (lldpRemSysDesc) - platform info
     pub lldp_sys_desc: Option<String>,
@@ -173,8 +226,8 @@ pub struct InterfaceBase {
     pub cdp_port_id: Option<String>,
     /// Remote platform from CDP (e.g., "Cisco IOS")
     pub cdp_platform: Option<String>,
-    /// Remote management IP from CDP (cdpCacheAddress)
-    #[schema(value_type = Option<String>)]
+    /// Remote management IP from CDP (cdpCacheAddress). IPv4 or IPv6.
+    #[schema(value_type = Option<String>, example = "192.168.1.1")]
     pub cdp_address: Option<std::net::IpAddr>,
 
     /// Bridge FDB: learned MAC addresses on this switch port.
@@ -229,30 +282,39 @@ impl Default for InterfaceBase {
     Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Default, ToSchema, Validate,
 )]
 pub struct Interface {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// Start of the interval this revision was current for (SCD2 history).
     #[serde(default)]
     #[schema(read_only)]
     pub valid_from: DateTime<Utc>,
+    /// End of the interval this revision was current for. `null` while it is the live revision.
     #[serde(default)]
     #[schema(read_only)]
     pub valid_to: Option<DateTime<Utc>>,
+    /// Stable identifier shared by every revision of the same entity across its history.
     #[serde(default)]
     #[schema(read_only)]
     pub lineage_id: Option<Uuid>,
+    /// When a discovery last observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_seen_at: DateTime<Utc>,
+    /// The most recent discovery that observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_discovery_id: Option<Uuid>,
+    /// The discovery that first observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub first_discovery_id: Option<Uuid>,
@@ -343,6 +405,71 @@ impl Interface {
     /// Returns true if this port has any neighbor discovery data (LLDP or CDP)
     pub fn has_neighbor_discovery_data(&self) -> bool {
         self.has_lldp_data() || self.has_cdp_data()
+    }
+
+    /// Keep the stored values for any group of data this scan did not finish reading.
+    ///
+    /// Each group of neighbour/VLAN fields comes from its own SNMP walk, and a walk cut short by a
+    /// timeout returns exactly what a device with nothing to report returns: nothing. Overwriting
+    /// on that is destructive rather than merely stale — losing `lldp_chassis_id` also drops the
+    /// row out of L2 resolution (the pass requires a chassis id or CDP device id), so the link
+    /// freezes at whatever it last resolved to and no rescan can repair it.
+    ///
+    /// A group the daemon *did* read in full is authoritative in both directions: absence means
+    /// the neighbour is genuinely gone and must be cleared, or a decommissioned link lingers for
+    /// ever.
+    pub fn preserve_uncollected_data(&mut self, existing: &Self, collected: InterfaceDataComplete) {
+        if !collected.lldp {
+            self.base.lldp_chassis_id = existing.base.lldp_chassis_id.clone();
+            self.base.lldp_port_id = existing.base.lldp_port_id.clone();
+            self.base.lldp_sys_name = existing.base.lldp_sys_name.clone();
+            self.base.lldp_port_desc = existing.base.lldp_port_desc.clone();
+            self.base.lldp_mgmt_addr = existing.base.lldp_mgmt_addr;
+            self.base.lldp_sys_desc = existing.base.lldp_sys_desc.clone();
+        }
+        if !collected.cdp {
+            self.base.cdp_device_id = existing.base.cdp_device_id.clone();
+            self.base.cdp_port_id = existing.base.cdp_port_id.clone();
+            self.base.cdp_platform = existing.base.cdp_platform.clone();
+            self.base.cdp_address = existing.base.cdp_address;
+        }
+        if !collected.fdb {
+            self.base.fdb_macs = existing.base.fdb_macs.clone();
+        }
+        if !collected.vlan_membership {
+            self.base.native_vlan_id = existing.base.native_vlan_id;
+            self.base.vlan_ids = existing.base.vlan_ids.clone();
+        }
+    }
+
+    /// Drop identity fields the device reported blank, so absence is recorded as absence.
+    ///
+    /// A zero-length ifXTable `ifName` is a legitimate SNMP answer meaning "this device has no
+    /// name for this port", but it reaches the server as `Some("")` and from there is treated as
+    /// a real name: the tiered discovery match keys on `if_name.is_some()`, and the partial unique
+    /// index `(host_id, if_name) WHERE if_name IS NOT NULL` counts `""` as a value. A switch that
+    /// answers `""` for every port then hits a duplicate-key violation on its second port —
+    /// truncating that host's whole ingest. `if_index` remains as the identity for such ports,
+    /// which is the correct one anyway.
+    ///
+    /// Called on the discovery ingest path so devices behind older daemons are covered too.
+    pub fn normalize_blank_identity(&mut self) {
+        if self
+            .base
+            .if_name
+            .as_deref()
+            .is_some_and(|name| name.trim().is_empty())
+        {
+            self.base.if_name = None;
+        }
+        if self
+            .base
+            .if_alias
+            .as_deref()
+            .is_some_and(|alias| alias.trim().is_empty())
+        {
+            self.base.if_alias = None;
+        }
     }
 }
 

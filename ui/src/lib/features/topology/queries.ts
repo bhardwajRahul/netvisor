@@ -214,10 +214,20 @@ export function useTopologiesQuery(enabled?: () => boolean) {
  * Single endpoint, single code path. The cache key includes the snapshot id
  * so live vs snapshot data don't collide. The SSE `live_topology_updates_stream`
  * consumer invalidates this query on live-view network updates.
+ *
+ * `enabled` exists so the caller can hold the fetch while the topology tab is
+ * off-screen. Every tab in the app is mounted at once (inactive ones are hidden
+ * with CSS), so without it this bundle — every host, service, ip-address and port
+ * on the network — loads on app boot and, because it is invalidated by the
+ * discovery SSE stream, refetches on a throttle for the whole of every scan, on
+ * pages that are not showing a graph. A disabled query is skipped by
+ * `invalidateQueries` (which refetches active queries only) and refetches when it
+ * is re-enabled and stale.
  */
 export function useTopologyDataQuery(
 	networkId: () => string | undefined,
-	snapshotId: () => string | undefined
+	snapshotId: () => string | undefined,
+	enabled?: () => boolean
 ) {
 	return createQuery(() => ({
 		queryKey: queryKeys.topology.data(networkId() ?? '', snapshotId()),
@@ -235,7 +245,7 @@ export function useTopologyDataQuery(
 			}
 			return data.data;
 		},
-		enabled: () => !!networkId()
+		enabled: () => !!networkId() && (enabled?.() ?? true)
 	}));
 }
 
@@ -637,8 +647,24 @@ export function hydrateStoresFromTopology(
 		}
 	} finally {
 		hydrating = false;
+		topologyOptionsHydrated.set(true);
 	}
 }
+
+/**
+ * True once `hydrateStoresFromTopology` has run at least once.
+ *
+ * The render pipeline reads `hide_edge_types` and the element rules out of
+ * these stores, but hydration happens in an effect — so the viewer's own effect
+ * could start a full layout against pre-hydration defaults, then be forced to
+ * throw it away and re-run once the real options landed. That cost two
+ * `elk.layout()` calls and a full DOM measure pass on every cold load.
+ *
+ * Deliberately latched rather than reset per topology: the race only exists
+ * before the first hydration. Later option changes are ordinary input changes
+ * and are handled by the pipeline's reload guard.
+ */
+export const topologyOptionsHydrated = writable<boolean>(false);
 
 export const optionsPanelExpanded = writable<boolean>(loadExpandedFromStorage());
 

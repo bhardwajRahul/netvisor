@@ -18,6 +18,10 @@ pub struct AsyncSession {
     version: Version,
     socket: UdpSocket,
     community: Vec<u8>,
+    /// Incremented the moment an id is taken for a request, never after the response arrives.
+    /// A request whose future is dropped mid-`recv` (the caller timed out) or that fails to decode
+    /// must still burn its id: otherwise the next request reuses it, and the previous request's
+    /// queued response validates against it — leaving the session permanently one answer behind.
     req_id: Wrapping<i32>,
     send_pdu: pdu::Buf,
     #[cfg(not(feature = "heap_buffers"))]
@@ -128,8 +132,8 @@ impl AsyncSession {
             security.reset_engine_counters();
             // send a request to get the engine id
             let req_id = self.req_id.0;
-            v3::build_init(req_id, &mut self.send_pdu);
             self.req_id += Wrapping(1);
+            v3::build_init(req_id, &mut self.send_pdu);
             if let Err(e) = Pdu::from_bytes_inner(
                 Self::send_and_recv(&self.socket, &self.send_pdu, &mut self.recv_buf).await?,
                 Some(security),
@@ -176,11 +180,27 @@ impl AsyncSession {
         }
     }
 
+    /// Discard any datagram left in the socket buffer by an earlier request.
+    ///
+    /// A request whose future is dropped mid-`recv` (the caller timed out) leaves its response
+    /// queued. `send_and_recv` reads exactly one datagram, so without draining, the next request
+    /// receives the *previous* request's answer and the session stays one response behind for the
+    /// rest of its life. The socket is connected, so only the peer's datagrams are ever queued
+    /// here, and a drained datagram is by definition one nobody is waiting for any more.
+    fn drain_stale(socket: &UdpSocket, scratch: &mut [u8]) -> usize {
+        let mut drained = 0;
+        while socket.try_recv(scratch).is_ok() {
+            drained += 1;
+        }
+        drained
+    }
+
     async fn send_and_recv<'a>(
         socket: &UdpSocket,
         pdu: &pdu::Buf,
         out: &'a mut [u8],
     ) -> Result<&'a [u8]> {
+        Self::drain_stale(socket, out);
         if let Ok(_pdu_len) = socket.send(pdu).await {
             match socket.recv(out).await {
                 Ok(len) => Ok(&out[..len]),
@@ -194,6 +214,7 @@ impl AsyncSession {
     pub async fn get(&mut self, oid: &Oid<'_>) -> Result<Pdu<'_>> {
         self.prepare();
         let req_id = self.req_id.0;
+        self.req_id += Wrapping(1);
         pdu::build_get(
             self.version,
             self.community.as_slice(),
@@ -208,7 +229,6 @@ impl AsyncSession {
             #[cfg(feature = "v3")]
             self.security.as_mut(),
         )?;
-        self.req_id += Wrapping(1);
         resp.validate(MessageType::Response, req_id, &self.community)?;
         Ok(resp)
     }
@@ -216,6 +236,7 @@ impl AsyncSession {
     pub async fn get_many(&mut self, oids: &[&Oid<'_>]) -> Result<Pdu<'_>> {
         self.prepare();
         let req_id = self.req_id.0;
+        self.req_id += Wrapping(1);
         pdu::build_get_many(
             self.version,
             self.community.as_slice(),
@@ -230,7 +251,6 @@ impl AsyncSession {
             #[cfg(feature = "v3")]
             self.security.as_mut(),
         )?;
-        self.req_id += Wrapping(1);
         resp.validate(MessageType::Response, req_id, &self.community)?;
         Ok(resp)
     }
@@ -238,6 +258,7 @@ impl AsyncSession {
     pub async fn getnext(&mut self, oid: &Oid<'_>) -> Result<Pdu<'_>> {
         self.prepare();
         let req_id = self.req_id.0;
+        self.req_id += Wrapping(1);
         pdu::build_getnext(
             self.version,
             self.community.as_slice(),
@@ -252,7 +273,6 @@ impl AsyncSession {
             #[cfg(feature = "v3")]
             self.security.as_mut(),
         )?;
-        self.req_id += Wrapping(1);
         resp.validate(MessageType::Response, req_id, &self.community)?;
         Ok(resp)
     }
@@ -265,6 +285,7 @@ impl AsyncSession {
     ) -> Result<Pdu<'_>> {
         self.prepare();
         let req_id = self.req_id.0;
+        self.req_id += Wrapping(1);
         pdu::build_getbulk(
             self.version,
             self.community.as_slice(),
@@ -281,7 +302,6 @@ impl AsyncSession {
             #[cfg(feature = "v3")]
             self.security.as_mut(),
         )?;
-        self.req_id += Wrapping(1);
         resp.validate(MessageType::Response, req_id, &self.community)?;
         Ok(resp)
     }
@@ -289,6 +309,7 @@ impl AsyncSession {
     pub async fn set(&mut self, values: &[(&Oid<'_>, Value<'_>)]) -> Result<Pdu<'_>> {
         self.prepare();
         let req_id = self.req_id.0;
+        self.req_id += Wrapping(1);
         pdu::build_set(
             self.version,
             self.community.as_slice(),
@@ -303,7 +324,6 @@ impl AsyncSession {
             #[cfg(feature = "v3")]
             self.security.as_mut(),
         )?;
-        self.req_id += Wrapping(1);
         resp.validate(MessageType::Response, req_id, &self.community)?;
         Ok(resp)
     }

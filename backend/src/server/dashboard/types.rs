@@ -8,30 +8,46 @@ use crate::server::discovery::r#impl::base::Discovery;
 /// Per-network summary of entity counts
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NetworkSummary {
+    /// Server-assigned unique identifier.
     pub id: Uuid,
+    /// Name of the network.
     pub name: String,
+    /// Hosts currently discovered on this network.
     pub host_count: u64,
+    /// Services currently discovered on this network.
     pub service_count: u64,
+    /// Subnets currently known on this network.
     pub subnet_count: u64,
+    /// Daemons assigned to this network.
     pub daemon_count: u64,
 }
 
 /// Plan usage limits and current counts
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PlanUsage {
+    /// Hosts included in the current plan. `null` when unlimited.
     pub host_limit: Option<u64>,
+    /// Hosts currently counted against the plan.
     pub host_count: u64,
+    /// Networks included in the current plan. `null` when unlimited.
     pub network_limit: Option<u64>,
+    /// Networks currently counted against the plan.
     pub network_count: u64,
+    /// Seats included in the current plan. `null` when unlimited.
     pub seat_limit: Option<u64>,
+    /// Seats currently in use.
     pub seat_count: u64,
 }
 
 /// Dashboard summary response
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DashboardSummary {
+    /// Per-network counts for every network the caller can see.
     pub networks: Vec<NetworkSummary>,
+    /// Daemons the caller can see, with their current status.
     pub daemons: Vec<DaemonResponse>,
+    /// The most recent discovery runs, newest first.
     pub recent_discoveries: Vec<Discovery>,
+    /// Current usage against the organization's plan allowances.
     pub plan_usage: PlanUsage,
 }

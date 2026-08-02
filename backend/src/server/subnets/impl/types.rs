@@ -79,7 +79,19 @@ impl FromStr for SubnetType {
             "Storage" => Ok(SubnetType::Storage),
             "Loopback" => Ok(SubnetType::Loopback),
             "Unknown" | "None" => Ok(SubnetType::Unknown),
-            _ => Err(anyhow::anyhow!("Unknown SubnetType: {}", s)),
+            // Degrade rather than error, matching the `#[serde(other)]` behaviour on
+            // the enum. This path is the DB read (`Subnet::from_row`), where an
+            // `Err` fails the whole row load — so a binary that predates a newly
+            // added variant would otherwise be unable to read those subnets at all.
+            // `SubnetType` persists via `SqlValue::String`, so it is not covered by
+            // the `db_enum_baseline` coexistence guard.
+            other => {
+                tracing::warn!(
+                    subnet_type = %other,
+                    "Unrecognized SubnetType; degrading to Unknown"
+                );
+                Ok(SubnetType::Unknown)
+            }
         }
     }
 }
@@ -97,20 +109,19 @@ impl SubnetType {
         )
     }
 
+    /// Classify a subnet from the interface name it was observed on.
+    ///
+    /// Interface names are a guess, so this deliberately **cannot** return a
+    /// container-runtime type (`DockerBridge`, `PodmanBridge`, `MacVlan`,
+    /// `IpVlan`). Those require evidence from the runtime's own API and are
+    /// produced only by `ContainerRuntime::subnet_from_network`. A router's
+    /// bridge (`br-guest`) and a Docker bridge (`br-1a2b3c4d5e6f`) are not
+    /// distinguishable by name, and guessing labelled a reporter's AP guest
+    /// network as Docker (#663).
     pub fn from_interface_name(interface_name: &str) -> Self {
         // Loopback ip_addresses (lo on Linux, lo0 on macOS)
         if Self::match_interface_names(&["lo"], interface_name) {
             return SubnetType::Loopback;
-        }
-
-        // Docker containers
-        if Self::match_interface_names(&["docker", "br-", "docker"], interface_name) {
-            return SubnetType::DockerBridge;
-        }
-
-        // Podman containers (default bridge is `podman0`, CNI uses `cni-podman0`)
-        if Self::match_interface_names(&["podman", "cni-podman"], interface_name) {
-            return SubnetType::PodmanBridge;
         }
 
         // VPN tunnels
@@ -149,21 +160,23 @@ impl SubnetType {
             return SubnetType::Storage;
         }
 
-        // MacVLAN ip_addresses
-        if Self::match_interface_names(&["macvlan", "mvlan"], interface_name) {
-            return SubnetType::MacVlan;
-        }
-
-        // ipvlan ip_addresses
-        if Self::match_interface_names(&["ipvlan"], interface_name) {
-            return SubnetType::IpVlan;
-        }
-
         // Standard LAN ip_addresses (catch-all for ethernet and Linux bridges)
         // Note: "br" (e.g., br0) is a Linux bridge, commonly used on Unraid/Proxmox for LAN
-        // This is distinct from "br-" which is Docker's bridge naming convention
-        if Self::match_interface_names(&["eth", "en", "eno", "enp", "ens", "br"], interface_name) {
+        if Self::match_interface_names(
+            &["eth", "en", "eno", "enp", "ens", "br", "lan"],
+            interface_name,
+        ) {
             return SubnetType::Lan;
+        }
+
+        // A `br-<name>` bridge is named after the network it bridges, so classify
+        // by the suffix: `br-guest` is a guest network, `br-iot` an IoT one.
+        // Docker's `br-<12 hex>` bridges reach here too and fall through to
+        // `Unknown` — container bridges are typed from the runtime API alone.
+        if let Some(bridged) = interface_name.to_lowercase().strip_prefix("br-")
+            && !bridged.is_empty()
+        {
+            return Self::from_interface_name(bridged);
         }
 
         SubnetType::Unknown
@@ -172,26 +185,13 @@ impl SubnetType {
     fn match_interface_names(patterns: &[&str], interface_name: &str) -> bool {
         let name_lower = interface_name.to_lowercase();
         patterns.iter().any(|pattern| {
-            if *pattern == "br-" || *pattern == "docker-" {
-                // Special case for Docker bridges: br- or docker- followed by hex chars
-                name_lower.starts_with(pattern)
-                    && name_lower
-                        .get(pattern.len()..)
-                        .map(|rest| {
-                            !rest.is_empty() && rest.chars().all(|c| c.is_ascii_alphanumeric())
-                        })
-                        .unwrap_or(false)
-            } else {
-                // Original logic for other patterns
-                name_lower.starts_with(pattern)
-                    && name_lower
-                        .get(pattern.len()..)
-                        .map(|rest| {
-                            rest.is_empty()
-                                || rest.chars().next().unwrap_or_default().is_ascii_digit()
-                        })
-                        .unwrap_or(false)
-            }
+            name_lower.starts_with(pattern)
+                && name_lower
+                    .get(pattern.len()..)
+                    .map(|rest| {
+                        rest.is_empty() || rest.chars().next().unwrap_or_default().is_ascii_digit()
+                    })
+                    .unwrap_or(false)
         })
     }
 
@@ -366,15 +366,67 @@ impl TypeMetadataProvider for SubnetType {
                 | SubnetType::IpVlan
         );
 
-        let show_label = !matches!(self, SubnetType::Unknown | SubnetType::Loopback);
-
         serde_json::json!({
             "network_scan_discovery_eligible": network_scan_discovery_eligible,
             "is_for_containers": is_for_containers,
             "is_container_bridge": self.is_container_bridge(),
-            "show_label": show_label,
+            "show_label": self.show_label(),
             "hide_from_subnet_list": self.hide_from_subnet_list()
         })
+    }
+}
+
+#[cfg(test)]
+mod interface_name_tests {
+    use super::*;
+
+    /// The invariant behind #663: no interface name, however Docker-shaped, may
+    /// yield a container-runtime type. Those come only from
+    /// `ContainerRuntime::subnet_from_network`, which has the runtime's own
+    /// driver as evidence. A name is never enough — `br-guest` on an access
+    /// point and `br-<12 hex>` on a Docker host are indistinguishable.
+    #[test]
+    fn no_interface_name_yields_a_container_type() {
+        for name in [
+            "docker0",
+            "docker_gwbridge",
+            "br-1a2b3c4d5e6f",
+            "br-guest",
+            "podman0",
+            "cni-podman0",
+            "macvlan0",
+            "ipvlan0",
+            "eth0",
+            "lo",
+            "",
+        ] {
+            let subnet_type = SubnetType::from_interface_name(name);
+            assert!(
+                !subnet_type.is_container_network(),
+                "{name} classified as {subnet_type:?}; interface names must never imply a container runtime"
+            );
+        }
+    }
+
+    /// #663: an Araknis access point's NAT guest bridge, reported over SNMP as an
+    /// `ifName`, was typed `DockerBridge` and rendered "Docker @ <AP>". A `br-`
+    /// bridge is named for the network it bridges, so classify by that.
+    #[test]
+    fn router_bridge_classifies_by_what_it_bridges() {
+        assert_eq!(
+            SubnetType::from_interface_name("br-guest"),
+            SubnetType::Guest
+        );
+        assert_eq!(SubnetType::from_interface_name("br-lan"), SubnetType::Lan);
+        assert_eq!(SubnetType::from_interface_name("br-iot"), SubnetType::IoT);
+        // Docker's own `br-<12 hex>` carries no such meaning and stays unknown
+        // until the runtime API reports it.
+        assert_eq!(
+            SubnetType::from_interface_name("br-1a2b3c4d5e6f"),
+            SubnetType::Unknown
+        );
+        // A plain Linux bridge is still a LAN.
+        assert_eq!(SubnetType::from_interface_name("br0"), SubnetType::Lan);
     }
 }
 

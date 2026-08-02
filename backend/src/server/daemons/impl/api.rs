@@ -32,6 +32,7 @@ use uuid::Uuid;
 /// `Vec<Subnet>` channel instead and leave this empty.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, ToSchema)]
 pub struct LegacyCapabilities {
+    /// Subnets the daemon has an interface on, as reported by older daemons.
     #[serde(default)]
     #[schema(required)]
     pub interfaced_subnet_ids: Vec<Uuid>,
@@ -40,13 +41,17 @@ pub struct LegacyCapabilities {
 /// Daemon registration request from daemon to server
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DaemonRegistrationRequest {
+    /// The daemon this entity refers to.
     pub daemon_id: Uuid,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Name the daemon reports for itself.
     pub name: String,
     /// URL is ignored by server - kept for backwards compat with old daemons.
     /// URL is only set via admin provisioning for ServerPoll daemons.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// How the daemon connects: it polls the server, or the server polls it.
     pub mode: DaemonMode,
     /// Legacy pre-0.15 interfaced-subnet channel (deserialize-only; see
     /// [`LegacyCapabilities`]). Repopulated by the first heartbeat, so registration
@@ -72,7 +77,9 @@ pub struct DaemonRegistrationRequest {
 /// Daemon registration response from server to daemon
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DaemonRegistrationResponse {
+    /// The registered daemon record.
     pub daemon: Daemon,
+    /// The host this entity belongs to.
     pub host_id: Uuid,
     /// Server capabilities (returned if daemon sends version info)
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -149,20 +156,28 @@ pub struct DaemonDiscoveryResponse {
 /// EntityBuffer with canonical (server-assigned) IDs.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct ScannedEntityIds {
+    /// Hosts touched by this discovery.
     #[serde(default)]
     pub host_ids: Vec<Uuid>,
+    /// Subnets touched by this discovery.
     #[serde(default)]
     pub subnet_ids: Vec<Uuid>,
+    /// VLANs touched by this discovery.
     #[serde(default)]
     pub vlan_ids: Vec<Uuid>,
+    /// IP addresses touched by this discovery.
     #[serde(default)]
     pub ip_address_ids: Vec<Uuid>,
+    /// Ports touched by this discovery.
     #[serde(default)]
     pub port_ids: Vec<Uuid>,
+    /// Services touched by this discovery.
     #[serde(default)]
     pub service_ids: Vec<Uuid>,
+    /// Interfaces touched by this discovery.
     #[serde(default)]
     pub interface_ids: Vec<Uuid>,
+    /// Service bindings touched by this discovery.
     #[serde(default)]
     pub binding_ids: Vec<Uuid>,
     // No `subnet_vlan_ids`: SubnetVlan is Snapshotable but not
@@ -174,21 +189,32 @@ pub struct ScannedEntityIds {
 /// Progress update from daemon to server during discovery
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct DiscoveryUpdatePayload {
+    /// The discovery run this update belongs to.
     pub session_id: Uuid,
+    /// The daemon this entity refers to.
     pub daemon_id: Uuid,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Which stage of the run is in progress.
     pub phase: DiscoveryPhase,
+    /// What kind of discovery is running.
     pub discovery_type: DiscoveryType,
+    /// Completion of the current phase, from 0 to 1.
     pub progress: u8,
+    /// Failure message, when the run did not complete.
     pub error: Option<String>,
     /// Non-fatal warnings for a completed run (e.g. the scan hit its time limit
     /// and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
     #[serde(default)]
     pub warnings: Vec<String>,
+    /// When the run started.
     pub started_at: Option<DateTime<Utc>>,
+    /// When the run finished. `null` while it is still going.
     pub finished_at: Option<DateTime<Utc>>,
+    /// Hosts found so far.
     #[serde(default)]
     pub hosts_discovered: Option<u32>,
+    /// Rough estimate of the time left, in seconds.
     #[serde(default)]
     pub estimated_remaining_secs: Option<u32>,
     /// The discovery configuration this session belongs to.
@@ -277,6 +303,8 @@ impl DiscoveryUpdatePayload {
             hosts_discovered: None,
             estimated_remaining_secs: None,
             discovery_id: Some(info.discovery_id),
+            // Daemon-side reconstruction; the server re-applies the flag from the
+            // session it owns (see `DiscoveryService::update_session`).
             scanned: None,
         }
     }
@@ -300,8 +328,11 @@ impl DiscoveryUpdatePayload {
 /// Old daemons call POST /api/daemons/{id}/heartbeat with this payload.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DaemonHeartbeatPayload {
+    /// URL the daemon is reachable at, as it sees itself.
     pub url: String,
+    /// Name the daemon reports for itself.
     pub name: String,
+    /// How the daemon connects: it polls the server, or the server polls it.
     pub mode: DaemonMode,
 }
 
@@ -380,8 +411,11 @@ pub struct FirstContactRequest {
 /// Daemon response for UI including computed version status
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DaemonResponse {
+    /// Server-assigned unique identifier.
     pub id: Uuid,
+    /// When this record was first created.
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     pub updated_at: DateTime<Utc>,
     #[serde(flatten)]
     pub base: DaemonBase,
@@ -446,6 +480,7 @@ pub struct ProvisionDaemonResponse {
     pub daemon: DaemonResponse,
     /// The API key (plaintext) for daemon authentication.
     /// This is shown only once - store it securely.
+    #[schema(format = "password", read_only)]
     pub daemon_api_key: String,
 }
 

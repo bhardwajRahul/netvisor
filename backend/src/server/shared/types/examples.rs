@@ -383,7 +383,7 @@ pub fn organization() -> Organization {
             discount_save_offer_active_until: None,
             next_renewal_at: None,
             brevo_company_id: None,
-            plan_limit_notifications: Default::default(),
+            notifications: Default::default(),
             use_case: Default::default(),
         },
     }

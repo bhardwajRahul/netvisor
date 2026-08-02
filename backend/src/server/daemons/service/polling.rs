@@ -126,8 +126,14 @@ impl DaemonService {
     ) -> Result<()> {
         Self::warn_if_insecure_daemon_url(&daemon.base.url);
 
-        // Skip polling for legacy daemons - they don't have the new endpoints
-        if !daemon.supports_full_server_poll() {
+        // Skip polling only for daemons KNOWN to predate the poll endpoints. A
+        // daemon with no recorded version has never contacted the server yet —
+        // it must be polled (first contact) precisely so it can report its
+        // version, so it is NOT treated as legacy here. Otherwise a provisioned
+        // daemon (whose version is None until first contact) would be skipped
+        // forever, never poll, and never get a version — a deadlock. A genuinely
+        // old daemon that can't be polled simply fails and is marked unreachable.
+        if daemon.base.version.is_some() && !daemon.supports_full_server_poll() {
             tracing::debug!(
                 daemon_id = %daemon.id,
                 daemon_name = %daemon.base.name,
@@ -350,18 +356,12 @@ impl DaemonService {
             Ok(poll_response) => {
                 let auth = AuthenticatedEntity::System;
 
-                // Process progress update if available
-                if let Some(progress) = poll_response.progress
-                    && let Err(e) = self.process_discovery_progress(progress).await
-                {
-                    tracing::warn!(
-                        daemon_id = %daemon.id,
-                        error = ?e,
-                        "Failed to process discovery progress"
-                    );
-                }
-
-                // Process entities if any
+                // Entities before progress. A poll response can carry both the
+                // session's terminal update and the last hosts of that session,
+                // and finalizing a session consumes the discovery's one-shot
+                // integration targets — which are only safe to consume once the
+                // credentials that probed successfully have been promoted to
+                // host assignments, which is what persisting these entities does.
                 if !poll_response.entities.is_empty() {
                     match self
                         .process_discovery_entities(poll_response.entities, auth.clone())
@@ -388,6 +388,17 @@ impl DaemonService {
                             );
                         }
                     }
+                }
+
+                // Process progress update if available
+                if let Some(progress) = poll_response.progress
+                    && let Err(e) = self.process_discovery_progress(progress).await
+                {
+                    tracing::warn!(
+                        daemon_id = %daemon.id,
+                        error = ?e,
+                        "Failed to process discovery progress"
+                    );
                 }
             }
             Err(e) => {

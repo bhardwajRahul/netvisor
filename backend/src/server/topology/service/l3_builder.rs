@@ -50,7 +50,7 @@ impl ViewBuilder for L3Builder {
                 && let Some(subnet_type) = subnet_map.get(&node.id)
             {
                 *icon = Some(subnet_type.icon().to_string());
-                *color = Some(subnet_type.color().to_string());
+                *color = Some(subnet_type.color());
             }
         }
 
@@ -344,5 +344,132 @@ mod tests {
             1,
             "the Docker bridge stays a separate container, got {headers:?}"
         );
+    }
+
+    /// A physical link's endpoints are IP addresses, and `add_edges_to_graph` drops — silently —
+    /// any edge whose endpoint is not a node. A host with several addresses is where that is
+    /// easiest to get wrong: the link resolves through the interface's own address, which has to
+    /// be the one L3 renders, not a bridge address that got merged into another box.
+    #[test]
+    fn l3_physical_link_endpoints_are_rendered_nodes() {
+        use crate::server::interfaces::r#impl::base::{Interface, InterfaceBase, Neighbor};
+        use crate::server::subnets::r#impl::types::SubnetType;
+        use crate::server::topology::types::edges::EdgeType;
+        use crate::server::topology::types::views::TopologyView;
+
+        let network_id = Uuid::new_v4();
+        let mgmt_subnet_id = Uuid::new_v4();
+        let servers_subnet_id = Uuid::new_v4();
+        let bridge_subnet_id = Uuid::new_v4();
+
+        let make_host = |name: &str| Host {
+            id: Uuid::new_v4(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            base: HostBase {
+                name: name.to_string(),
+                network_id,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let make_subnet = |id: Uuid, third: u8, subnet_type: SubnetType| Subnet {
+            id,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            base: SubnetBase {
+                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, third, 0), 24).unwrap()),
+                network_id,
+                name: format!("subnet-{third}"),
+                subnet_type,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let make_ip = |host_id: Uuid, subnet_id: Uuid, third: u8, last: u8| IPAddress {
+            id: Uuid::new_v4(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            base: IPAddressBase {
+                network_id,
+                host_id,
+                subnet_id,
+                ip_address: std::net::IpAddr::V4(Ipv4Addr::new(10, 0, third, last)),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let make_if = |host_id: Uuid, if_index: i32, ip_address_id: Uuid| Interface {
+            id: Uuid::new_v4(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            base: InterfaceBase {
+                host_id,
+                network_id,
+                if_index,
+                if_descr: format!("eth{if_index}"),
+                if_type: 6,
+                ip_address_id: Some(ip_address_id),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let switch = make_host("switch");
+        let container_host = make_host("docker-host");
+
+        // The container host carries a bridge address alongside its real one, so the graph has
+        // to pick the right address for the cable.
+        let switch_ip = make_ip(switch.id, mgmt_subnet_id, 1, 3);
+        let host_ip = make_ip(container_host.id, servers_subnet_id, 20, 20);
+        let host_bridge_ip = make_ip(container_host.id, bridge_subnet_id, 30, 1);
+
+        let host_if = make_if(container_host.id, 1, host_ip.id);
+        let mut switch_if = make_if(switch.id, 5, switch_ip.id);
+        switch_if.base.neighbor = Some(Neighbor::Interface(host_if.id));
+
+        let hosts = vec![switch, container_host];
+        let ip_addresses = vec![switch_ip, host_ip, host_bridge_ip];
+        let subnets = vec![
+            make_subnet(mgmt_subnet_id, 1, SubnetType::default()),
+            make_subnet(servers_subnet_id, 20, SubnetType::default()),
+            make_subnet(bridge_subnet_id, 30, SubnetType::DockerBridge),
+        ];
+        let interfaces = vec![switch_if, host_if];
+
+        let options = TopologyOptions::default();
+        let ctx = TopologyContext::new(
+            &hosts,
+            &ip_addresses,
+            &subnets,
+            &[],
+            &[],
+            &[],
+            &[],
+            &interfaces,
+            &[],
+            &[],
+            &options,
+            TopologyView::L3Logical,
+        );
+        let grouping =
+            GroupingConfig::from_request_options(&ctx.options.request, TopologyView::L3Logical);
+        let (nodes, edges) = L3Builder.build(&ctx, &grouping);
+
+        let node_ids: std::collections::HashSet<Uuid> = nodes.iter().map(|n| n.id).collect();
+        let links: Vec<&Edge> = edges
+            .iter()
+            .filter(|e| matches!(e.edge_type, EdgeType::PhysicalLink { .. }))
+            .collect();
+
+        assert_eq!(links.len(), 1, "expected the one cable, got {links:?}");
+        for link in links {
+            assert!(
+                node_ids.contains(&link.source) && node_ids.contains(&link.target),
+                "physical link {:?} → {:?} has no node to land on, so the graph drops it",
+                link.source,
+                link.target
+            );
+        }
     }
 }

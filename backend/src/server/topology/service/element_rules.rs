@@ -6,6 +6,7 @@ use crate::server::{
     interfaces::r#impl::base::IfOperStatus,
     services::r#impl::{base::Service, categories::ServiceCategory},
     shared::entities::EntityDiscriminants,
+    shared::types::Color,
     subnets::r#impl::base::Subnet,
     topology::types::{
         grouping::{
@@ -716,12 +717,11 @@ fn compute_port_op_status_placements(ctx: &PlacementContext) -> RulePlacement {
             let group_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, group_key.as_bytes());
 
             let color = match status {
-                IfOperStatus::Up => "Green",
-                IfOperStatus::Down | IfOperStatus::LowerLayerDown => "Red",
-                IfOperStatus::Testing => "Amber",
-                IfOperStatus::Dormant => "Blue",
-                IfOperStatus::Unknown => "Gray",
-                IfOperStatus::NotPresent => "Gray",
+                IfOperStatus::Up => Color::Green,
+                IfOperStatus::Down | IfOperStatus::LowerLayerDown => Color::Red,
+                IfOperStatus::Testing => Color::Amber,
+                IfOperStatus::Dormant => Color::Blue,
+                IfOperStatus::Unknown | IfOperStatus::NotPresent => Color::Gray,
             };
 
             result.containers.push(Node {
@@ -731,7 +731,7 @@ fn compute_port_op_status_placements(ctx: &PlacementContext) -> RulePlacement {
                     parent_container_id: Some(*parent_id),
                     entity_id: None,
                     icon: None,
-                    color: Some(color.to_string()),
+                    color: Some(color),
                     associated_service_definition: None,
                     element_rule_id: Some(ctx.rule_id),
                     will_accept_edges: false,

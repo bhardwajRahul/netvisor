@@ -6,7 +6,9 @@ use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateCheckoutRequest {
+    /// Plan to subscribe to.
     pub plan: BillingPlan,
+    /// URL to return the user to after checkout completes.
     pub url: String,
 }
 
@@ -33,22 +35,28 @@ impl PauseDuration {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PauseSubscriptionRequest {
+    /// How long to pause billing for, in days.
     pub duration_days: PauseDuration,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CancelSubscriptionRequest {
+    /// Why the customer is cancelling, as picked from the cancel flow.
     pub reason_code: CancelReason,
+    /// Free-text detail the customer added to their cancellation reason.
     #[serde(default)]
     pub comment: Option<String>,
+    /// Whether the retention discount was offered during this flow.
     #[serde(default)]
     pub save_offer_shown: Vec<SaveOffer>,
+    /// Whether the customer accepted the retention discount instead of cancelling.
     #[serde(default)]
     pub save_offer_redeemed: Option<SaveOffer>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CancelSubscriptionResponse {
+    /// When the current paid period ends and access drops to the free tier.
     pub period_end: DateTime<Utc>,
 }
 
@@ -56,6 +64,7 @@ pub struct CancelSubscriptionResponse {
 /// Payment Element uses to collect and confirm a card in-app.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SetupIntentResponse {
+    /// Stripe SetupIntent client secret, used to mount the Payment Element.
     pub client_secret: String,
 }
 
@@ -63,19 +72,25 @@ pub struct SetupIntentResponse {
 /// as the customer's default payment method).
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FinalizePaymentMethodRequest {
+    /// Stripe SetupIntent to attach as the organization's payment method.
     pub setup_intent_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ChangePlanRequest {
+    /// Plan to move the subscription to.
     pub plan: BillingPlan,
+    /// Billing interval to move to.
     pub rate: BillingRate,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ChangePlanPreview {
+    /// Hosts over the target plan's allowance, which would be billed as overage.
     pub excess_hosts: u64,
+    /// Networks over the target plan's allowance.
     pub excess_networks: u64,
+    /// Seats over the target plan's allowance.
     pub excess_seats: u64,
 }
 
@@ -94,8 +109,12 @@ pub struct ChangePlanPreview {
 /// thinks in terms of "my next renewal on {date}."
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SaveOfferCoupon {
+    /// Discount applied by the retention offer.
     pub percent_off: i64,
+    /// How many months the discount lasts.
     pub duration_in_months: i64,
+    /// When the discounted subscription next renews.
     pub next_renewal_at: DateTime<Utc>,
+    /// Billing interval the discount applies to.
     pub billing_rate: BillingRate,
 }

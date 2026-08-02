@@ -1,6 +1,9 @@
 use crate::server::auth::middleware::permissions::{Admin, Authorized, Viewer};
 use crate::server::credentials::r#impl::base::Credential;
+use crate::server::credentials::r#impl::mapping::Target;
+use crate::server::credentials::r#impl::types::CredentialTypeDiscriminants;
 use crate::server::credentials::service::CredentialService;
+use crate::server::daemons::r#impl::base::Daemon;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
@@ -69,9 +72,9 @@ impl OrderField for CredentialOrderField {
 
 #[derive(Deserialize, Default, Debug, Clone, IntoParams)]
 pub struct CredentialFilterQuery {
-    /// Filter by credential type (e.g. "Snmp", "DockerProxy")
+    /// Filter by credential type (e.g. `SnmpV2c`, `DockerProxy`).
     #[serde(rename = "type")]
-    pub credential_type: Option<String>,
+    pub credential_type: Option<CredentialTypeDiscriminants>,
     /// Primary ordering field (used for grouping). Always sorts ASC to keep groups together.
     pub group_by: Option<CredentialOrderField>,
     /// Secondary ordering field (sorting within groups or standalone sort).
@@ -108,8 +111,9 @@ impl FilterQueryExtractor for CredentialFilterQuery {
         _user_network_ids: &[Uuid],
         _user_organization_id: Uuid,
     ) -> StorableFilter<T> {
-        if let Some(ref cred_type) = self.credential_type {
-            filter = filter.json_field_eq("credential_type", "type", cred_type);
+        if let Some(cred_type) = self.credential_type {
+            // The JSONB tag is the variant name, which is what `IntoStaticStr` yields.
+            filter = filter.json_field_eq("credential_type", "type", cred_type.into());
         }
         filter
     }
@@ -197,6 +201,73 @@ async fn enforce_single_endpoint(
             "{integration} allows only one credential per host, but \"{existing}\" already targets an overlapping host, network, or IP. Remove or retarget it first."
         )));
     }
+    Ok(())
+}
+
+/// Reject a create/update whose assignments contradict the credential type's `targets()`.
+///
+/// `targets()` is the single source of truth for where a type may apply, and it is load-bearing:
+/// a controller type deliberately excludes `Network` because a network assignment is dispatched
+/// as the default credential for every IP in the subnet, spraying that controller's secret at
+/// unrelated hosts. Only the per-daemon `integration_targets` path was checked (and there only by
+/// skipping, at scan time) — the junction assignments written here reached dispatch unchecked, so
+/// this is the authoritative "prevent writing it" for every client, UI or API.
+/// A type targeting only `DaemonHost` is additionally checked against the hosts that actually run
+/// a daemon: a local socket is reachable over the daemon's own loopback and nowhere else, so an
+/// assignment to an ordinary host would be dispatched as a 127.0.0.1 override on a machine with no
+/// daemon to serve it — a probe that can only ever fail.
+async fn enforce_supported_targets(
+    state: &AppState,
+    credential: &Credential,
+    user_network_ids: &[Uuid],
+) -> Result<(), ApiError> {
+    let permitted = credential.base.credential_type.targets();
+    let integration =
+        ServiceDefinition::name(&*credential.base.credential_type.associated_service());
+
+    if !credential.base.assigned_network_ids.is_empty() && !permitted.contains(&Target::Network) {
+        return Err(ApiError::bad_request(&format!(
+            "{integration} credentials cannot be assigned to a network — a network assignment is offered to every host on the subnet. Assign it to specific hosts instead."
+        )));
+    }
+
+    if credential.base.host_assignments.is_empty() {
+        return Ok(());
+    }
+
+    if !permitted.contains(&Target::Hosts) {
+        if !permitted.contains(&Target::DaemonHost) {
+            return Err(ApiError::bad_request(&format!(
+                "{integration} credentials cannot be assigned to hosts."
+            )));
+        }
+
+        // Daemon-host-only: every assignment must name a host that runs a daemon. Read through
+        // the daemon service (never its storage), scoped to the caller's networks so this can't
+        // be used to probe for daemons in another tenant.
+        let daemon_filter = StorableFilter::<Daemon>::new_from_network_ids(user_network_ids);
+        let daemon_host_ids: Vec<Uuid> = state
+            .services
+            .daemon_service
+            .get_all(daemon_filter)
+            .await
+            .map_err(|e| ApiError::internal_error(&e.to_string()))?
+            .into_iter()
+            .map(|d| d.base.host_id)
+            .collect();
+
+        if credential
+            .base
+            .host_assignments
+            .iter()
+            .any(|a| !daemon_host_ids.contains(&a.host_id))
+        {
+            return Err(ApiError::bad_request(&format!(
+                "{integration} credentials run on a daemon's own host, so they can only be assigned to a host that runs a daemon."
+            )));
+        }
+    }
+
     Ok(())
 }
 
@@ -295,6 +366,7 @@ async fn update_credential(
     let host_assignments = entity.base.host_assignments.clone();
     let network_ids = auth.network_ids();
 
+    enforce_supported_targets(&state, &entity, &network_ids).await?;
     enforce_single_endpoint(&state, &entity).await?;
 
     let mut response = update_handler::<Credential>(
@@ -351,7 +423,7 @@ async fn delete_credential(
     post,
     path = "/bulk-delete",
     tag = Credential::ENTITY_NAME_PLURAL,
-    request_body = Vec<Uuid>,
+    request_body(content = Vec<Uuid>, description = "Array of Credential IDs to delete"),
     responses(
         (status = 200, description = "Credentials deleted successfully", body = ApiResponse<BulkDeleteResponse>),
         (status = 400, description = "Validation error", body = ApiErrorResponse),
@@ -374,7 +446,7 @@ async fn bulk_delete_credentials(
 /// List all Credentials
 ///
 /// Returns all credentials in the authenticated user's organization.
-/// Optionally filter by type (e.g. ?type=Snmp).
+/// Optionally filter by type (e.g. `?type=SnmpV2c`).
 #[utoipa::path(
     get,
     path = "",
@@ -445,6 +517,7 @@ pub async fn create_credential(
     let host_assignments = credential.base.host_assignments.clone();
     let network_ids = auth.network_ids();
 
+    enforce_supported_targets(&state, &credential, &network_ids).await?;
     enforce_single_endpoint(&state, &credential).await?;
 
     let mut response = create_handler::<Credential>(
@@ -493,21 +566,24 @@ async fn bulk_create_credentials(
         return Ok(Json(ApiResponse::success(vec![])));
     }
 
-    // Validate all credential types
-    for credential in &credentials {
-        credential
-            .base
-            .credential_type
-            .validate()
-            .map_err(|e| ApiError::bad_request(&e.to_string()))?;
-    }
-
     // This path calls credential_service.create directly (bypassing the generic
     // create_handler's validate_create_access), so enforce tenancy here: force
     // each credential's org to the caller's rather than trusting the body, and
     // validate assignment references (inside save_assignments).
     let org_id = auth.require_organization_id()?;
     let network_ids = auth.network_ids();
+
+    // Validate all credential types and their assignments up front, so a batch containing one
+    // contradicting credential creates none of them.
+    for credential in &credentials {
+        credential
+            .base
+            .credential_type
+            .validate()
+            .map_err(|e| ApiError::bad_request(&e.to_string()))?;
+        enforce_supported_targets(&state, credential, &network_ids).await?;
+    }
+
     let auth_entity = auth.into_entity();
     let mut created = Vec::with_capacity(credentials.len());
     for mut credential in credentials {

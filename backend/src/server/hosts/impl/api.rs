@@ -13,7 +13,9 @@ use crate::server::{
         base::{Host, HostBase},
         virtualization::HostVirtualization,
     },
-    interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
+    interfaces::r#impl::base::{
+        IfAdminStatus, IfOperStatus, Interface, InterfaceBase, InterfaceDataComplete,
+    },
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
     ports::r#impl::base::{Port, PortBase, PortConfig, PortType, TransportProtocol},
     services::r#impl::{
@@ -60,9 +62,13 @@ pub enum ConflictBehavior {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(into = "DiscoveryHostRequestWire")]
 pub struct DiscoveryHostRequest {
+    /// The host as observed by the daemon.
     pub host: Host,
+    /// IP addresses observed on the host.
     pub ip_addresses: Vec<IPAddress>,
+    /// Open ports observed on the host.
     pub ports: Vec<Port>,
+    /// Services identified on the host.
     pub services: Vec<Service>,
     /// SNMP interface entries (ifTable data) - optional, populated when SNMP is enabled.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -77,6 +83,13 @@ pub struct DiscoveryHostRequest {
     /// predate this field omit it; it defaults to true so their behavior is unchanged.
     #[serde(default = "default_interfaces_complete")]
     pub interfaces_complete: bool,
+    /// Which groups of per-interface data (LLDP, CDP, FDB, VLAN membership) this scan read in
+    /// full. A group the daemon could not finish reading must not overwrite what is already
+    /// stored: a cut-short walk returns the same empty result as a device with nothing to report,
+    /// and for the neighbour fields that also drops the row out of L2 resolution for good.
+    /// Daemons predating this field omit it; it defaults to all-complete so they behave as before.
+    #[serde(default)]
+    pub interface_data_complete: InterfaceDataComplete,
 }
 
 /// Serde default for `interfaces_complete`: absent (old daemon) ⇒ treat as a complete/authoritative
@@ -108,6 +121,8 @@ struct DiscoveryHostRequestWire {
     subnets: Vec<crate::server::subnets::r#impl::base::Subnet>,
     #[serde(default = "default_interfaces_complete")]
     interfaces_complete: bool,
+    #[serde(default)]
+    interface_data_complete: InterfaceDataComplete,
 }
 
 impl From<DiscoveryHostRequest> for DiscoveryHostRequestWire {
@@ -125,6 +140,7 @@ impl From<DiscoveryHostRequest> for DiscoveryHostRequestWire {
             if_entries: vec![],
             subnets: req.subnets,
             interfaces_complete: req.interfaces_complete,
+            interface_data_complete: req.interface_data_complete,
         }
     }
 }
@@ -152,6 +168,7 @@ impl<'de> serde::Deserialize<'de> for DiscoveryHostRequest {
                 interfaces,
                 subnets: wire.subnets,
                 interfaces_complete: wire.interfaces_complete,
+                interface_data_complete: wire.interface_data_complete,
             })
         } else {
             // Old format (< v0.16.0): interfaces = IPAddress data, if_entries = SNMP data
@@ -169,6 +186,7 @@ impl<'de> serde::Deserialize<'de> for DiscoveryHostRequest {
                 interfaces: wire.if_entries,
                 subnets: wire.subnets,
                 interfaces_complete: wire.interfaces_complete,
+                interface_data_complete: wire.interface_data_complete,
             })
         }
     }
@@ -187,6 +205,7 @@ mod discovery_request_interfaces_complete_tests {
             interfaces: vec![],
             subnets: vec![],
             interfaces_complete,
+            interface_data_complete: InterfaceDataComplete::default(),
         }
     }
 
@@ -227,11 +246,15 @@ mod discovery_request_interfaces_complete_tests {
 pub struct IPAddressInput {
     /// Client-provided UUID for this interface
     pub id: Uuid,
+    /// The subnet this entity belongs to.
     pub subnet_id: Uuid,
-    #[schema(value_type = String)]
+    /// IPv4 or IPv6 address.
+    #[schema(value_type = String, example = "192.168.1.10")]
     pub ip_address: IpAddr,
-    #[schema(value_type = Option<String>)]
+    /// MAC address, when known.
+    #[schema(value_type = Option<String>, pattern = r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$", example = "a4:bb:6d:12:34:56")]
     pub mac_address: Option<MacAddress>,
+    /// Human-facing name for this IP address.
     pub name: Option<String>,
     /// Position in the host's interface list (for ordering).
     /// If omitted on create: appends to end of list.
@@ -414,6 +437,7 @@ pub enum BindingInput {
     IPAddress {
         /// Client-provided UUID for this binding
         id: Uuid,
+        /// The IP address the service is present at.
         ip_address_id: Uuid,
     },
     /// Bind to a port (optionally on a specific ip_address)
@@ -421,6 +445,7 @@ pub enum BindingInput {
     Port {
         /// Client-provided UUID for this binding
         id: Uuid,
+        /// The port the service listens on.
         port_id: Uuid,
         #[serde(skip_serializing_if = "Option::is_none")]
         /// null = bind to all ip_addresses
@@ -502,7 +527,7 @@ pub struct InterfaceInput {
     pub oper_status: Option<IfOperStatus>,
     /// MAC address from SNMP ifPhysAddress
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, pattern = r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$", example = "a4:bb:6d:12:34:56")]
     pub mac_address: Option<MacAddress>,
     /// Optional FK to Interface - links this SNMP port to its IP assignment
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -568,32 +593,46 @@ impl InterfaceInput {
 #[schema(example = crate::server::shared::types::examples::create_host_request)]
 pub struct CreateHostRequest {
     // Host fields
+    /// Human-facing name for the host.
     #[validate(length(max = 100, message = "Name must be 100 characters or less"))]
     pub name: String,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Hostname as resolved or reported by the host.
     pub hostname: Option<String>,
+    /// Free-text notes about the host.
     #[validate(length(max = 500, message = "Description must be 500 characters or less"))]
     pub description: Option<String>,
+    /// How the host is virtualized, when it is a VM or container guest.
     pub virtualization: Option<HostVirtualization>,
+    /// Hide the host from topology views without deleting it.
     #[serde(default)]
     pub hidden: bool,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
 
     // SNMP System MIB fields
+    /// SNMP sysDescr — the device's own description of itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_descr: Option<String>,
+    /// SNMP sysObjectID — the vendor's identifier for the device model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_object_id: Option<String>,
+    /// SNMP sysLocation — physical location as configured on the device.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_location: Option<String>,
+    /// SNMP sysContact — administrative contact as configured on the device.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_contact: Option<String>,
+    /// Link to the host's own management interface.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub management_url: Option<String>,
+    /// LLDP chassis identifier, used to match the host to its neighbours.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chassis_id: Option<String>,
+    /// Credentials to scan this host with.
     #[serde(default)]
     pub credential_assignments: Vec<CredentialAssignment>,
 
@@ -620,14 +659,21 @@ pub struct CreateHostRequest {
 /// Server will sync children (create new, update existing, delete removed) only if provided.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct UpdateHostRequest {
+    /// Server-assigned unique identifier.
     pub id: Uuid,
+    /// Human-facing name for the host.
     #[validate(length(max = 100, message = "Name must be 100 characters or less"))]
     pub name: String,
+    /// Hostname as resolved or reported by the host.
     pub hostname: Option<String>,
+    /// Free-text notes about the host.
     #[validate(length(max = 500, message = "Description must be 500 characters or less"))]
     pub description: Option<String>,
+    /// How the host is virtualized, when it is a VM or container guest.
     pub virtualization: Option<HostVirtualization>,
+    /// Hide the host from topology views without deleting it.
     pub hidden: bool,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -669,8 +715,11 @@ pub struct UpdateHostRequest {
 #[schema(example = crate::server::shared::types::examples::host_response)]
 pub struct HostResponse {
     // Host identity
+    /// Server-assigned unique identifier.
     pub id: Uuid,
+    /// When this record was first created.
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     pub updated_at: DateTime<Utc>,
     /// Last time discovery observed this host. User-facing (drives the "Last
     /// seen" column and the stale badge), which is why it is carried here while
@@ -678,38 +727,56 @@ pub struct HostResponse {
     pub last_seen_at: DateTime<Utc>,
 
     // Host fields
+    /// Human-facing name for the host.
     pub name: String,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Hostname as resolved or reported by the host.
     pub hostname: Option<String>,
+    /// Free-text notes about the host.
     pub description: Option<String>,
+    /// How this host came to be known — discovered, imported, or created by hand.
     pub source: EntitySource,
+    /// How the host is virtualized, when it is a VM or container guest.
     #[serde(
         default,
         deserialize_with = "crate::server::shared::types::api::deserialize_lenient_option"
     )]
     pub virtualization: Option<HostVirtualization>,
+    /// Whether the host is hidden from topology views.
     pub hidden: bool,
+    /// Tags assigned to this entity.
     pub tags: Vec<Uuid>,
 
     // SNMP System MIB fields
+    /// SNMP sysDescr — the device's own description of itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_descr: Option<String>,
+    /// SNMP sysObjectID — the vendor's identifier for the device model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_object_id: Option<String>,
+    /// SNMP sysLocation — physical location as configured on the device.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_location: Option<String>,
+    /// SNMP sysContact — administrative contact as configured on the device.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_contact: Option<String>,
+    /// Link to the host's own management interface.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub management_url: Option<String>,
+    /// LLDP chassis identifier, used to match the host to its neighbours.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chassis_id: Option<String>,
+    /// Credentials assigned to scan this host.
     #[serde(default)]
     pub credential_assignments: Vec<CredentialAssignment>,
 
     // Children (fetched by service layer)
+    /// IP addresses on this host.
     pub ip_addresses: Vec<IPAddress>,
+    /// Open ports on this host.
     pub ports: Vec<Port>,
+    /// Services running on this host.
     pub services: Vec<Service>,
     /// SNMP ifTable entries
     pub interfaces: Vec<Interface>,

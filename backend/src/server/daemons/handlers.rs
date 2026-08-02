@@ -6,7 +6,7 @@ use crate::server::daemons::r#impl::api::{
     DaemonDiscoveryRequest, DaemonHeartbeatPayload, ProvisionDaemonRequest,
     ProvisionDaemonResponse, TestReachabilityRequest, TestReachabilityResponse,
 };
-use crate::server::discovery::r#impl::types::DiscoveryType;
+use crate::server::openapi::tags as api_tags;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::ordering::OrderField;
@@ -163,7 +163,7 @@ fn active_session_error() -> ApiError {
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "update_daemon",
     summary = "Update daemon",
     params(("id" = Uuid, Path, description = "daemon ID")),
@@ -212,11 +212,17 @@ async fn update_daemon(
 pub struct InstallCommandQuery {
     /// `install` (with the api-key placeholder) or `reconfigure` (credential-free).
     pub purpose: InstallCommandKind,
+    /// Log verbosity the daemon should run at (e.g. `info`, `debug`).
     pub log_level: Option<String>,
+    /// Path the daemon should write its log file to.
     pub log_file: Option<String>,
+    /// How often the daemon reports in, in seconds.
     pub heartbeat_interval: Option<u64>,
+    /// Address and port the daemon should listen on, for server-polled mode.
     pub bind_address: Option<String>,
+    /// Accept a self-signed certificate when connecting back to the server.
     pub allow_self_signed_certs: Option<bool>,
+    /// Continue scanning targets that present an untrusted certificate.
     pub accept_invalid_scan_certs: Option<bool>,
     /// Comma-separated interface names.
     pub interfaces: Option<String>,
@@ -273,7 +279,7 @@ impl InstallCommandQuery {
 #[utoipa::path(
     get,
     path = "/{id}/install-command",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "get_daemon_install_command",
     summary = "Generate daemon install command",
     params(("id" = Uuid, Path, description = "daemon ID"), InstallCommandQuery),
@@ -319,7 +325,7 @@ async fn get_install_command(
 #[utoipa::path(
     delete,
     path = "/{id}",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "delete_daemon",
     summary = "Delete daemon",
     params(("id" = Uuid, Path, description = "daemon ID")),
@@ -350,10 +356,10 @@ async fn delete_daemon(
 #[utoipa::path(
     post,
     path = "/bulk-delete",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "bulk_delete_daemons",
     summary = "Bulk delete daemons",
-    request_body(content = Vec<Uuid>, description = "Array of daemon IDs to delete"),
+    request_body(content = Vec<Uuid>, description = "Array of Daemon IDs to delete"),
     responses(
         (status = 200, description = "daemons deleted", body = ApiResponse<crate::server::shared::handlers::traits::BulkDeleteResponse>),
         (status = 409, description = "daemon has active sessions", body = ApiErrorResponse),
@@ -378,18 +384,33 @@ async fn bulk_delete_daemons(
     generated::bulk_delete(state, auth, Json(ids)).await
 }
 
+/// Operating system the install command was generated for.
+#[derive(
+    Debug, Clone, Copy, Deserialize, Serialize, strum_macros::IntoStaticStr, utoipa::ToSchema,
+)]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+pub enum DaemonOs {
+    Linux,
+    MacOS,
+    Windows,
+    FreeBsd,
+}
+
 /// Request body for emailing an install command to the authenticated user.
 #[derive(Deserialize, Serialize, utoipa::ToSchema)]
 pub struct EmailInstallCommandRequest {
+    /// The install command to send, exactly as shown in the UI.
     pub install_command: String,
-    pub os: String,
+    /// Operating system the command targets, used to pick the email wording.
+    pub os: DaemonOs,
 }
 
 /// Email the install command to the authenticated user's email address.
 #[utoipa::path(
     post,
     path = "/email-install-command",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "email_install_command",
     summary = "Email install command to current user",
     request_body = EmailInstallCommandRequest,
@@ -417,7 +438,7 @@ async fn email_install_command(
         .ok_or_else(|| ApiError::bad_request("Email service is not configured"))?;
 
     email_service
-        .send_install_command_email(email, &request.install_command, &request.os)
+        .send_install_command_email(email, &request.install_command, request.os.into())
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to send email: {e}")))?;
 
@@ -599,7 +620,7 @@ async fn get_by_id(
 #[utoipa::path(
     post,
     path = "/register",
-    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     request_body = DaemonRegistrationRequest,
     responses(
         (status = 200, description = "Daemon registered successfully", body = ApiResponse<DaemonRegistrationResponse>),
@@ -630,7 +651,7 @@ async fn register_daemon(
 #[utoipa::path(
     post,
     path = "/{id}/startup",
-    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Daemon ID")),
     request_body = DaemonStartupRequest,
     responses(
@@ -679,7 +700,7 @@ async fn daemon_startup(
 #[utoipa::path(
     post,
     path = "/{id}/update-capabilities",
-    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Daemon ID")),
     request_body = LegacyCapabilities,
     responses(
@@ -727,7 +748,7 @@ async fn update_capabilities(
 #[utoipa::path(
     post,
     path = "/{id}/request-work",
-    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Daemon ID")),
     request_body = DaemonStatus,
     responses(
@@ -758,10 +779,10 @@ async fn receive_work_request(
             // Daemon was deleted or DB was reset. Version-split the response:
             // - Daemons >= 0.15.0 get DaemonNotRegistered (they handle it explicitly)
             // - Older daemons get DaemonStandby (which they already handle by entering standby)
-            let supports_not_registered = status
-                .version
-                .as_ref()
-                .is_some_and(|v| *v >= semver::Version::new(0, 15, 0));
+            let supports_not_registered =
+                crate::server::daemons::r#impl::version::supports_unified_discovery(
+                    status.version.as_ref(),
+                );
             if supports_not_registered {
                 return Err(ApiError::coded(
                     StatusCode::NOT_FOUND,
@@ -833,7 +854,7 @@ async fn receive_work_request(
     // Unified: build credential_mappings via discovery_service and use with_exposed_credentials()
     // Legacy: use with_exposed_snmp() (SNMP inline in DiscoveryType::Network)
     let next_session_value = match next_session {
-        Some(payload) if matches!(payload.discovery_type, DiscoveryType::Unified { .. }) => {
+        Some(payload) if payload.discovery_type.runs_network_scan() => {
             let integration_targets = state
                 .services
                 .discovery_service
@@ -878,7 +899,7 @@ async fn receive_work_request(
 #[utoipa::path(
     post,
     path = "/{id}/heartbeat",
-    tags = [Daemon::ENTITY_NAME_PLURAL, "internal", "deprecated"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, api_tags::INTERNAL, api_tags::DEPRECATED],
     params(("id" = Uuid, Path, description = "Daemon ID")),
     request_body = DaemonHeartbeatPayload,
     responses(
@@ -970,19 +991,21 @@ async fn load_reprovision_target(
 
 /// Provision a Daemon, or re-provision an existing one
 ///
-/// Creates a daemon record on the server before the daemon is installed, mints an API key bound
-/// to it 1:1, and returns ready-to-run install artifacts.
+/// Creates a daemon record on the server before the daemon is installed and mints an API key
+/// bound to it 1:1. Returns the daemon record and that key, which is shown only once and must
+/// be configured on the daemon.
 ///
-/// When `daemon_id` is supplied the existing record is reused instead of creating a new one —
-/// this both re-issues install artifacts after install config changes and gives a legacy daemon
-/// (one with no bound key) a pathway to a dedicated key without losing its host, discovery jobs,
-/// or history.
+/// When `daemon_id` is supplied the existing record is reused instead of creating a new one,
+/// giving a legacy daemon (one with no bound key) a pathway to a dedicated key without losing
+/// its host, discovery jobs, or history. Re-provisioning always mints a fresh key.
 ///
-/// Returns the daemon record and an API key that must be configured on the daemon.
+/// Install commands are not built here — fetch them from the install-command endpoint, which
+/// builds them idempotently and fills in the key this returns. That keeps a display-only
+/// regenerate (an OS switch, an advanced-setting change) from re-minting the key.
 #[utoipa::path(
     post,
     path = "/provision",
-    tags = ["internal", Daemon::ENTITY_NAME_PLURAL],
+    tags = [Daemon::ENTITY_NAME_PLURAL],
     operation_id = "provision_daemon",
     summary = "Provision a daemon, or re-provision an existing one",
     request_body = ProvisionDaemonRequest,

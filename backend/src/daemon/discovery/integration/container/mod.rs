@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use anyhow::{Error, Result};
 use bollard::Docker;
+use cidr::IpCidr;
 use uuid::Uuid;
 
 use crate::daemon::utils::base::DaemonUtils;
@@ -25,12 +26,16 @@ use crate::server::services::r#impl::patterns::ClientProbe;
 use crate::server::services::r#impl::virtualization::{
     DockerVirtualization, PodmanVirtualization, ServiceVirtualization,
 };
+use crate::server::shared::storage::traits::Storable;
+use crate::server::shared::types::entities::EntitySource;
+use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
 use crate::server::subnets::r#impl::types::SubnetType;
 use crate::server::subnets::r#impl::virtualization::{
     DockerSubnetVirtualization, PodmanSubnetVirtualization, SubnetVirtualization,
 };
 
 use super::{ProbeContext, ProbeFailure, ProbeSuccess};
+use crate::daemon::discovery::service::warnings::AttemptOutcome;
 
 const CONTAINER_PROBE_MAX_ATTEMPTS: u32 = 3;
 
@@ -74,6 +79,85 @@ impl ContainerRuntime {
             Self::Docker => SubnetVirtualization::Docker(DockerSubnetVirtualization { service_id }),
             Self::Podman => SubnetVirtualization::Podman(PodmanSubnetVirtualization { service_id }),
         }
+    }
+
+    /// Build a subnet from one IPAM entry of a network reported by the runtime's
+    /// own API.
+    ///
+    /// This is the **only** constructor permitted to produce a container-runtime
+    /// subnet type. `driver` is the evidence: it comes from the runtime, not from
+    /// guessing at an interface name (`SubnetType::from_interface_name`
+    /// deliberately cannot return these types — see #663). Bridge networks also
+    /// carry `virtualization`, which scopes an otherwise-ambiguous CIDR like
+    /// `172.17.0.0/16` to the runtime service that owns it.
+    ///
+    /// `None` for drivers that own no routable L3 network (`host`, `none`, `null`).
+    pub fn subnet_from_network(
+        &self,
+        network_id: Uuid,
+        cidr: IpCidr,
+        name: String,
+        driver: &str,
+        runtime_service_id: Uuid,
+    ) -> Option<Subnet> {
+        let bridge_subnet_type = self.bridge_subnet_type();
+        let subnet_type = match driver {
+            "bridge" | "overlay" => bridge_subnet_type,
+            "macvlan" => SubnetType::MacVlan,
+            "ipvlan" => SubnetType::IpVlan,
+            _ => {
+                tracing::trace!(
+                    network_name = %name,
+                    driver = driver,
+                    "Skipping unsupported container network driver"
+                );
+                return None;
+            }
+        };
+
+        // MacVLAN/IpVLAN sit on a physical LAN the host shares with everything
+        // else, so they are not host-scoped and take no virtualization.
+        let virtualization = (subnet_type == bridge_subnet_type)
+            .then(|| self.subnet_virtualization(runtime_service_id));
+
+        Some(Subnet::new(SubnetBase {
+            cidr,
+            description: None,
+            tags: Vec::new(),
+            network_id,
+            name,
+            subnet_type,
+            virtualization,
+            source: EntitySource::Discovery,
+        }))
+    }
+
+    /// Whether `interface_name` is one a container runtime reserves for its own
+    /// bridges on the host it runs on.
+    ///
+    /// This is a **filter, never a label** — it keeps the daemon from creating
+    /// and scanning its own host's container bridges, which matters most when
+    /// the runtime API is unreachable and no authoritative record will arrive.
+    /// Classification is not allowed to consult it: a false negative here just
+    /// means a bridge shows up as an ordinary subnet, whereas a false positive
+    /// in classification labels an unrelated network "Docker" (#663).
+    pub fn reserves_host_interface_name(interface_name: &str) -> bool {
+        let name = interface_name.to_lowercase();
+
+        // Docker's per-network bridges are `br-` + the first 12 hex chars of the
+        // network id. Anything else after `br-` is someone else's bridge.
+        if let Some(suffix) = name.strip_prefix("br-") {
+            return suffix.len() == 12 && suffix.chars().all(|c| c.is_ascii_hexdigit());
+        }
+
+        // Swarm's ingress bridge, plus the default bridges: docker0, podman0,
+        // cni-podman0.
+        name == "docker_gwbridge"
+            || ["docker", "podman", "cni-podman"].iter().any(|prefix| {
+                name.strip_prefix(prefix).is_some_and(|rest| {
+                    !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+                })
+            })
     }
 
     /// Build the service virtualization stamped onto a discovered container.
@@ -169,27 +253,26 @@ pub async fn probe_proxy(
     ctx: &ProbeContext<'_>,
     runtime: ContainerRuntime,
 ) -> Result<ProbeSuccess, ProbeFailure> {
-    let cred = ctx
-        .credential
-        .as_container_proxy()
-        .ok_or_else(|| ProbeFailure {
-            message: format!("Expected {} proxy credential", runtime.label()),
-        })?;
+    let cred = ctx.credential.as_container_proxy().ok_or_else(|| {
+        ProbeFailure::malformed(format!("Expected {} proxy credential", runtime.label()))
+    })?;
 
     let proxy_url = build_container_proxy_url(ctx.ip, cred);
     let label = ctx.credential.discovery_label();
-    let (ssl_paths, ssl_temp_handles) =
-        resolve_container_ssl(cred, label).map_err(|e| ProbeFailure {
-            message: format!("Failed to resolve {} SSL: {}", runtime.label(), e),
-        })?;
+    let (ssl_paths, ssl_temp_handles) = resolve_container_ssl(cred, label).map_err(|e| {
+        // The certificate material on the credential could not be read or parsed. That is our
+        // stored configuration, not the remote host, so it is the one failure here an operator
+        // fixes in Scanopy.
+        ProbeFailure::malformed(format!("Failed to resolve {} SSL: {}", runtime.label(), e))
+    })?;
 
     tracing::info!(ip = %ctx.ip, proxy_url = %proxy_url, runtime = runtime.label(), "Attempting container proxy probe");
 
     for attempt in 1..=CONTAINER_PROBE_MAX_ATTEMPTS {
         if ctx.cancel.is_cancelled() {
-            return Err(ProbeFailure {
-                message: "Cancelled".to_string(),
-            });
+            // Never reported. The operator stopped the scan; telling them their credential was
+            // rejected — which is what this used to do — is worse than saying nothing.
+            return Err(ProbeFailure::cancelled());
         }
 
         match ctx
@@ -214,22 +297,35 @@ pub async fn probe_proxy(
                     tracing::debug!(ip = %ctx.ip, attempt, error = %e, "Container client probe failed, retrying");
                     tokio::time::sleep(Duration::from_secs(2)).await;
                 } else {
-                    return Err(ProbeFailure {
-                        message: format!(
-                            "{} probe failed after {} attempts: {}",
-                            runtime.label(),
-                            CONTAINER_PROBE_MAX_ATTEMPTS,
-                            e
-                        ),
-                    });
+                    return Err(classify_container_error(&e).with_context(format!(
+                        "{} probe failed after {} attempts",
+                        runtime.label(),
+                        CONTAINER_PROBE_MAX_ATTEMPTS
+                    )));
                 }
             }
         }
     }
 
-    Err(ProbeFailure {
-        message: format!("{} probe exhausted all attempts", runtime.label()),
-    })
+    Err(ProbeFailure::unreachable(format!(
+        "{} probe exhausted all attempts",
+        runtime.label()
+    )))
+}
+
+/// Classify a container-client failure.
+///
+/// `new_docker_client` returns `anyhow::Error`, but it now preserves the underlying
+/// `bollard::errors::Error` in the chain rather than formatting it into a string — so a socket
+/// that refused us (fix the credential) is distinguishable from one nothing is listening on (fix
+/// the address), which the single "probe failed after N attempts" message could never say.
+fn classify_container_error(error: &anyhow::Error) -> ProbeFailure {
+    let outcome = error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<bollard::errors::Error>())
+        .map(AttemptOutcome::from)
+        .unwrap_or(AttemptOutcome::Unreachable);
+    ProbeFailure::with_outcome(outcome, error.to_string())
 }
 
 /// Probe a container-runtime local Unix socket. `socket_path` of `None` uses the
@@ -257,9 +353,8 @@ pub async fn probe_socket(
                 })),
             })
         }
-        Err(e) => Err(ProbeFailure {
-            message: format!("{} socket connection failed: {}", runtime.label(), e),
-        }),
+        Err(e) => Err(classify_container_error(&e)
+            .with_context(format!("{} socket connection failed", runtime.label()))),
     }
 }
 
@@ -269,7 +364,7 @@ pub async fn execute(
     ctx: &super::IntegrationContext<'_>,
     host_data: &mut crate::daemon::discovery::service::ops::HostData,
     runtime: ContainerRuntime,
-) -> Result<(), Error> {
+) -> Result<(), super::IntegrationFailure> {
     use std::sync::Arc;
     use std::sync::atomic::AtomicU8;
 
@@ -312,7 +407,7 @@ pub async fn execute(
     ctx.ops.report_progress(10).await.ok();
 
     let all_subnets: Vec<_> = ctx
-        .created_subnets
+        .known_subnets
         .iter()
         .cloned()
         .chain(bridge_subnets)
@@ -401,6 +496,86 @@ mod tests {
             ContainerRuntime::Podman.subnet_virtualization(id),
             SubnetVirtualization::Podman(p) if p.service_id == id
         ));
+    }
+
+    fn cidr(s: &str) -> IpCidr {
+        s.parse().unwrap()
+    }
+
+    /// The runtime API is the only evidence that can produce a container subnet
+    /// type, and `driver` is that evidence. Bridges are host-scoped so they carry
+    /// virtualization; MacVLAN/IpVLAN sit on the shared physical LAN and don't.
+    #[test]
+    fn subnet_from_network_types_by_driver() {
+        let id = Uuid::new_v4();
+        let build = |runtime: ContainerRuntime, driver: &str| {
+            runtime.subnet_from_network(
+                Uuid::nil(),
+                cidr("172.17.0.0/16"),
+                "net".into(),
+                driver,
+                id,
+            )
+        };
+
+        let docker = build(ContainerRuntime::Docker, "bridge").expect("bridge is a network");
+        assert_eq!(docker.base.subnet_type, SubnetType::DockerBridge);
+        assert_eq!(
+            docker.base.virtualization.and_then(|v| v.service_id()),
+            Some(id)
+        );
+
+        let podman = build(ContainerRuntime::Podman, "overlay").expect("overlay is a network");
+        assert_eq!(podman.base.subnet_type, SubnetType::PodmanBridge);
+        assert!(matches!(
+            podman.base.virtualization,
+            Some(SubnetVirtualization::Podman(_))
+        ));
+
+        let macvlan = build(ContainerRuntime::Docker, "macvlan").expect("macvlan is a network");
+        assert_eq!(macvlan.base.subnet_type, SubnetType::MacVlan);
+        assert!(macvlan.base.virtualization.is_none());
+
+        // Drivers with no routable L3 network of their own.
+        assert!(build(ContainerRuntime::Docker, "host").is_none());
+        assert!(build(ContainerRuntime::Docker, "none").is_none());
+    }
+
+    /// The filter must catch the bridges a runtime actually creates without
+    /// claiming bridges it doesn't. `br-<12 hex>` is Docker's naming convention;
+    /// a router's `br-guest`/`br-lan` is someone else's bridge, and treating it
+    /// as Docker's is what produced #663.
+    #[test]
+    fn reserved_interface_names_exclude_foreign_bridges() {
+        for reserved in [
+            "docker0",
+            "podman0",
+            "cni-podman0",
+            "docker_gwbridge",
+            "br-1a2b3c4d5e6f",
+            "BR-1A2B3C4D5E6F",
+        ] {
+            assert!(
+                ContainerRuntime::reserves_host_interface_name(reserved),
+                "{reserved} should be recognised as a container bridge"
+            );
+        }
+
+        for foreign in [
+            "br-guest",
+            "br-lan",
+            "br-iot",
+            "br0",
+            "eth0",
+            "wlan0",
+            "lo",
+            "dockerhub",
+        ] {
+            assert!(
+                !ContainerRuntime::reserves_host_interface_name(foreign),
+                "{foreign} must not be claimed as a container bridge"
+            );
+        }
     }
 
     #[test]

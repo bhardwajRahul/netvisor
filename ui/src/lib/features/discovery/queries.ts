@@ -2,10 +2,16 @@
  * TanStack Query hooks for Discovery
  */
 
-import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
+import {
+	createQuery,
+	createMutation,
+	useQueryClient,
+	keepPreviousData
+} from '@tanstack/svelte-query';
 import { queryClient, queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { Discovery } from './types/base';
+import type { components } from '$lib/api/schema';
 import type { DiscoveryUpdatePayload } from './types/api';
 import type { Organization } from '../organizations/types';
 import { pushError, pushSuccess, pushWarning } from '$lib/shared/stores/feedback';
@@ -14,9 +20,14 @@ import { writable } from 'svelte/store';
 import * as m from '$lib/paraglide/messages';
 
 /**
- * Query hook for fetching all discoveries
+ * Query hook for fetching all discoveries.
+ *
+ * Loads the full list, which is fine for scan configurations — there are only
+ * ever a handful. Run *history* grows one row per run forever, so that tab uses
+ * `useDiscoveryHistoryQuery` instead. This hook stays unpaginated because
+ * several callers (the scheduled tab, CreateDaemonModal) need every row.
  */
-export function useDiscoveriesQuery() {
+export function useDiscoveriesQuery(enabled?: () => boolean) {
 	return createQuery(() => ({
 		queryKey: queryKeys.discovery.all,
 		queryFn: async () => {
@@ -27,8 +38,79 @@ export function useDiscoveriesQuery() {
 				throw new Error(data?.error || 'Failed to fetch discoveries');
 			}
 			return data.data;
-		}
+		},
+		...(enabled ? { enabled } : {})
 	}));
+}
+
+/** Query parameters for the paginated discovery-history list. */
+export interface DiscoveryHistoryQueryParams {
+	limit?: number;
+	offset?: number;
+	/** Primary ordering field (used for grouping). Always sorts ASC. */
+	group_by?: components['schemas']['DiscoveryOrderField'];
+	/** Secondary ordering field (sorting within groups or standalone sort). */
+	order_by?: components['schemas']['DiscoveryOrderField'];
+	/** Direction for order_by field. */
+	order_direction?: components['schemas']['OrderDirection'];
+	/** Free-text search across the run's name and its daemon's name. */
+	search?: string;
+}
+
+/** Pagination metadata, derived from the generated schema. */
+export type PaginationMeta = components['schemas']['PaginationMeta'];
+
+/**
+ * Paginated, server-ordered run history.
+ *
+ * Separate from `useDiscoveriesQuery` so paginating here doesn't truncate the
+ * full list every other caller depends on. `historical: true` replaces what the
+ * history tab used to do by filtering `run_type` in the browser — which only
+ * ever worked because the whole table was loaded.
+ */
+export function useDiscoveryHistoryQuery(
+	paramsOrGetter: DiscoveryHistoryQueryParams | (() => DiscoveryHistoryQueryParams) = {},
+	// Every tab is mounted at once (inactive ones hidden with CSS), so an ungated
+	// query fetches on app boot and refetches on every discovery SSE invalidation
+	// for a tab nobody is looking at. Gate it on tab activity.
+	enabled: () => boolean = () => true
+) {
+	return createQuery(() => {
+		const params = typeof paramsOrGetter === 'function' ? paramsOrGetter() : paramsOrGetter;
+		const { limit, offset, group_by, order_by, order_direction, search } = params;
+
+		return {
+			queryKey: [
+				...queryKeys.discovery.all,
+				'history',
+				{ limit, offset, group_by, order_by, order_direction, search }
+			],
+			enabled: enabled(),
+			queryFn: async (): Promise<{ items: Discovery[]; pagination: PaginationMeta | null }> => {
+				const { data } = await apiClient.GET('/api/v1/discovery', {
+					params: {
+						query: {
+							limit,
+							offset,
+							group_by,
+							order_by,
+							order_direction,
+							search,
+							historical: true
+						}
+					}
+				});
+				if (!data?.success || !data.data) {
+					throw new Error(data?.error || 'Failed to fetch discovery history');
+				}
+				return {
+					items: data.data,
+					pagination: data.meta?.pagination ?? null
+				};
+			},
+			placeholderData: keepPreviousData
+		};
+	});
 }
 
 /**
@@ -49,6 +131,9 @@ export function useCreateDiscoveryMutation() {
 			queryClient.setQueryData<Discovery[]>(queryKeys.discovery.all, (old) =>
 				old ? [...old, newDiscovery] : [newDiscovery]
 			);
+			// The history tab reads a paginated key under this prefix, which
+			// setQueryData above doesn't touch.
+			queryClient.invalidateQueries({ queryKey: queryKeys.discovery.all });
 		}
 	}));
 }
@@ -75,6 +160,7 @@ export function useUpdateDiscoveryMutation() {
 				queryKeys.discovery.all,
 				(old) => old?.map((d) => (d.id === updatedDiscovery.id ? updatedDiscovery : d)) ?? []
 			);
+			queryClient.invalidateQueries({ queryKey: queryKeys.discovery.all });
 		}
 	}));
 }
@@ -100,6 +186,7 @@ export function useDeleteDiscoveryMutation() {
 				queryKeys.discovery.all,
 				(old) => old?.filter((d) => d.id !== id) ?? []
 			);
+			queryClient.invalidateQueries({ queryKey: queryKeys.discovery.all });
 		}
 	}));
 }
@@ -123,6 +210,7 @@ export function useBulkDeleteDiscoveriesMutation() {
 				queryKeys.discovery.all,
 				(old) => old?.filter((d) => !ids.includes(d.id)) ?? []
 			);
+			queryClient.invalidateQueries({ queryKey: queryKeys.discovery.all });
 		}
 	}));
 }
@@ -312,12 +400,21 @@ export const discoveryFields = (
 		type: 'string',
 		searchable: true,
 		sortable: true,
+		// Identity field: grouping by it would render a header per discovery.
+		groupable: false,
 		getValue: (item: Discovery) => item.name
+	},
+	{
+		key: 'created_at',
+		label: m.common_created(),
+		type: 'date',
+		sortable: true
 	},
 	{
 		key: 'daemon_id',
 		label: m.common_daemon(),
 		type: 'string',
+		searchable: true,
 		filterable: true,
 		groupable: true,
 		getValue: (item: Discovery) =>
@@ -328,6 +425,7 @@ export const discoveryFields = (
 		key: 'network_id',
 		label: m.common_network(),
 		type: 'string',
+		searchable: true,
 		filterable: true,
 		groupable: true,
 		getValue: (item: Discovery) =>
@@ -337,6 +435,7 @@ export const discoveryFields = (
 		key: 'discovery_type',
 		label: m.common_type(),
 		type: 'string',
+		searchable: true,
 		filterable: true,
 		groupable: true,
 		getValue: (item: Discovery) => item.discovery_type.type
@@ -516,13 +615,11 @@ class DiscoverySSEManager extends BaseSSEManager<DiscoveryUpdatePayload> {
 
 				// Handle terminal phases
 				if (update.phase === 'Complete') {
-					if (update.warnings && update.warnings.length > 0) {
-						// e.g. the scan hit its time limit and left hosts un-scanned;
-						// sticky so the user notices what needs a rescan or a higher limit.
-						pushWarning(update.warnings.join(' '), -1);
-					} else {
-						pushSuccess(m.discovery_completed({ type: update.discovery_type.type }));
-					}
+					// The scan completed either way, so that is what the toast says. Warnings are
+					// not toasted: a sticky toast carrying several paragraphs is the wrong surface
+					// for detail the user needs to read at their own pace, and the run's history
+					// card already tags itself "Warnings" and lists them in full.
+					pushSuccess(m.discovery_completed({ type: update.discovery_type.type }));
 					// Final refresh on completion - do this immediately, not throttled
 					await Promise.all([
 						queryClient.invalidateQueries({ queryKey: queryKeys.hosts.all }),

@@ -1,3 +1,4 @@
+use crate::server::openapi::tags as api_tags;
 use std::{num::NonZeroU32, sync::Arc};
 
 use axum::{
@@ -81,6 +82,7 @@ mod generated {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ShareQuery {
+    /// Return the share prepared for embedding in another page.
     #[serde(default)]
     pub embed: bool,
 }
@@ -318,7 +320,7 @@ async fn get_public_share_metadata(
 #[utoipa::path(
     post,
     path = "/public/{id}/verify",
-    tags = [Share::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Share::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Share ID")),
     request_body = String,
     responses(

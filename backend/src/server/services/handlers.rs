@@ -43,6 +43,9 @@ pub enum ServiceOrderField {
     Host,
     NetworkId,
     Position,
+    /// Sort by what the service *is* (Postgres, Nginx, ...) rather than what it
+    /// was named. Plain text column, no JOIN.
+    ServiceDefinition,
     /// Sort by when discovery last observed the service. Surfaces stale assets.
     LastSeenAt,
 }
@@ -55,6 +58,7 @@ impl OrderField for ServiceOrderField {
             Self::UpdatedAt => "services.updated_at",
             Self::NetworkId => "services.network_id",
             Self::Position => "services.position",
+            Self::ServiceDefinition => "services.service_definition",
             Self::LastSeenAt => "services.last_seen_at",
             Self::Host => "COALESCE(service_host.name, '')",
         }
@@ -85,12 +89,17 @@ pub struct ServiceFilterQuery {
     pub ids: Option<Vec<Uuid>>,
     /// Filter by tag IDs (returns services that have ANY of the specified tags)
     pub tag_ids: Option<Vec<Uuid>>,
+    /// Free-text search. Case-insensitive substring match against the service's
+    /// name and definition, and against the name of the host it runs on.
+    pub search: Option<String>,
     /// Primary ordering field (used for grouping). Always sorts ASC to keep groups together.
     pub group_by: Option<ServiceOrderField>,
     /// Secondary ordering field (sorting within groups or standalone sort).
     pub order_by: Option<ServiceOrderField>,
     /// Direction for order_by field (group_by always uses ASC).
     pub order_direction: Option<OrderDirection>,
+    /// Only services exposed on one of these port numbers, over either protocol.
+    pub ports: Option<Vec<u16>>,
     /// Exclude services belonging to these categories.
     pub exclude_categories: Option<Vec<ServiceCategory>>,
     /// Maximum number of results to return (1-1000, default: 50). Use 0 for no limit.
@@ -222,6 +231,19 @@ async fn get_all_services(
         _ => filter,
     };
 
+    // Server-side because the list is paginated: a client-side search would
+    // only ever match the page already loaded.
+    let filter = match query.search.as_deref() {
+        Some(search) if !search.trim().is_empty() => filter.text_search(search),
+        _ => filter,
+    };
+
+    // Ports reach services through the bindings junction.
+    let filter = match &query.ports {
+        Some(ports) if !ports.is_empty() => filter.bound_to_port(ports),
+        _ => filter,
+    };
+
     // Exclude services by category if specified
     let filter = match &query.exclude_categories {
         Some(categories) if !categories.is_empty() => {
@@ -260,6 +282,20 @@ async fn get_all_services(
     // Apply ordering and JOINs
     let (filter, order_by) = query.apply_ordering(filter);
 
+    // Grouped lists report each group's full size, not the slice of it that
+    // landed on this page. Runs against the same filter — including the JOIN
+    // `apply_ordering` just added, which the group expression may reference.
+    let group_counts = match query.group_by {
+        Some(group_field) => Some(
+            state
+                .services
+                .service_service
+                .count_by_group(filter.clone(), group_field.to_sql())
+                .await?,
+        ),
+        None => None,
+    };
+
     let result = state
         .services
         .service_service
@@ -293,12 +329,12 @@ async fn get_all_services(
     let limit = pagination.effective_limit().unwrap_or(0);
     let offset = pagination.effective_offset();
 
-    Ok(Json(PaginatedApiResponse::success(
-        items,
-        result.total_count,
-        limit,
-        offset,
-    )))
+    let response = PaginatedApiResponse::success(items, result.total_count, limit, offset);
+
+    Ok(Json(match group_counts {
+        Some(counts) => response.with_group_counts(counts),
+        None => response,
+    }))
 }
 
 /// Create a new service

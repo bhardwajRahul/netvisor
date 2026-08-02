@@ -22,6 +22,10 @@ pub enum StartupOutcome {
     ConnectionFailed(anyhow::Error),
     /// Auth failed (invalid API key) — fatal, don't poll
     AuthFailed(anyhow::Error),
+    /// The server rejected this daemon's version as too old — fatal and not
+    /// retryable. Distinct from AuthFailed so the process can exit non-zero with
+    /// the prescriptive upgrade message instead of parking.
+    VersionRejected(anyhow::Error),
 }
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -111,6 +115,16 @@ impl DaemonRuntimeService {
         error
             .downcast_ref::<ApiErrorResponse>()
             .is_some_and(|e| e.matches_error(&ApiError::daemon_key_not_yet_active()))
+    }
+
+    /// Check if the error is the server rejecting this daemon's version as too
+    /// old. Terminal and server-reachable — retrying it as an outage is wrong;
+    /// the daemon must be upgraded. (`matches_error` compares the error code
+    /// only, so the placeholder version args are irrelevant.)
+    fn is_version_too_old_error(error: &anyhow::Error) -> bool {
+        error
+            .downcast_ref::<ApiErrorResponse>()
+            .is_some_and(|e| e.matches_error(&ApiError::daemon_version_too_old("", "")))
     }
 
     /// Maximum consecutive poll failures before falling back to outer retry loop
@@ -343,6 +357,9 @@ impl DaemonRuntimeService {
             Err(e) if Self::is_daemon_not_found_error(&e, &daemon_id) => {
                 tracing::info!(target: LOG_TARGET, "  Status:          Daemon not yet registered; beginning registration");
             }
+            Err(e) if Self::is_version_too_old_error(&e) => {
+                return Ok(StartupOutcome::VersionRejected(e));
+            }
             Err(e)
                 if Self::is_registered_daemon_auth_error(&e)
                     || Self::is_unregistered_auth_error(&e) =>
@@ -367,8 +384,11 @@ impl DaemonRuntimeService {
 
         match self.register_with_server(daemon_id, network_id).await {
             Ok(()) => Ok(StartupOutcome::Ok),
+            // Version rejection is terminal and gets its own outcome so the process
+            // exits non-zero with the upgrade message rather than a generic reject.
+            Err(e) if Self::is_version_too_old_error(&e) => Ok(StartupOutcome::VersionRejected(e)),
             // A definitive server response (any ApiErrorResponse — "must be provisioned",
-            // version too old, key not active, demo mode) is terminal: the server is reachable
+            // key not active, demo mode) is terminal: the server is reachable
             // and answered, so retrying it as "unreachable" is wrong. Only transport failures
             // (which are NOT an ApiErrorResponse) fall through to the retryable ConnectionFailed.
             Err(e) if e.downcast_ref::<ApiErrorResponse>().is_some() => {
@@ -441,6 +461,10 @@ impl DaemonRuntimeService {
                 if let Some(caps) = response.server_capabilities {
                     tracing::info!(target: LOG_TARGET, "  Server version:  {}", caps.server_version);
                     tracing::info!(target: LOG_TARGET, "  Min daemon ver:  {}", caps.minimum_daemon_version);
+                    // Surface any deprecation/sunset warnings on the register path
+                    // too — previously only the startup-announce path logged them,
+                    // so a first-time-registering deprecated daemon saw nothing.
+                    caps.log_warnings();
                 }
                 // Cache the server-authoritative identity. For a provisioned daemon the
                 // server resolves the record from the 1:1 key (ignoring the id/network we

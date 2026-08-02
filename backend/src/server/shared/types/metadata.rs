@@ -7,22 +7,35 @@ use super::{Color, Icon};
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct MetadataRegistry {
+    /// Every service Scanopy can identify, with its display metadata.
     pub service_definitions: Vec<TypeMetadata>,
+    /// The subnet types entities can be classified as.
     pub subnet_types: Vec<TypeMetadata>,
+    /// The relationships topology edges can represent.
     pub edge_types: Vec<TypeMetadata>,
+    /// The ways nodes can be grouped into containers.
     pub group_types: Vec<TypeMetadata>,
+    /// The entity types the API exposes, with their display metadata.
     pub entities: Vec<EntityMetadata>,
+    /// The well-known ports Scanopy recognises.
     pub ports: Vec<TypeMetadata>,
+    /// The kinds of discovery that can be run.
     pub discovery_types: Vec<TypeMetadata>,
+    /// The plans available on this deployment.
     pub billing_plans: Vec<TypeMetadata>,
+    /// Feature flags and the plans they belong to.
     pub features: Vec<TypeMetadata>,
+    /// The roles a user or key can hold.
     pub permissions: Vec<TypeMetadata>,
+    /// Cross-cutting concepts used for grouping and colouring.
     pub concepts: Vec<EntityMetadata>,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct TypeMetadata {
+    /// Server-assigned unique identifier.
     pub id: &'static str,
+    /// Human-facing name for this type.
     #[schema(required)]
     pub name: Option<&'static str>,
     /// Most providers supply a `&'static str` (wrapped as `Cow::Borrowed`); types
@@ -31,19 +44,26 @@ pub struct TypeMetadata {
     /// `Cow::Owned`.
     #[schema(value_type = Option<String>, required)]
     pub description: Option<Cow<'static, str>>,
+    /// Group this type is listed under.
     #[schema(required)]
     pub category: Option<&'static str>,
+    /// Icon representing this type.
     #[schema(value_type = Option<String>, required)]
     pub icon: Option<Icon>,
+    /// Colour representing this type.
     pub color: Color,
+    /// Extra type-specific detail, shape depending on the registry it came from.
     #[schema(required)]
     pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct EntityMetadata {
+    /// Server-assigned unique identifier.
     pub id: &'static str,
+    /// Colour representing this entity type.
     pub color: Color,
+    /// Icon representing this entity type.
     #[schema(value_type = String)]
     pub icon: Icon,
 }

@@ -5,7 +5,12 @@
 	import type { ModalTab } from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import { entities, credentialTypes } from '$lib/shared/stores/metadata';
-	import { isDaemonHostOnly } from '$lib/features/credentials/types/base';
+	import {
+		DAEMON_HOST_IP,
+		hasExplicitTarget,
+		integrationTargetFor,
+		supportsTarget
+	} from '$lib/features/credentials/utils/credentialTargets';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import DiscoveryDetailsForm from './DiscoveryDetailsForm.svelte';
 	import DiscoveryTargetsForm from './DiscoveryTargetsForm.svelte';
@@ -37,6 +42,7 @@
 		type PendingCredential
 	} from '$lib/features/credentials/components/CredentialsStep.svelte';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
+	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import {
 		common_back,
 		common_cancel,
@@ -51,6 +57,7 @@
 		common_detection,
 		common_performance,
 		common_targets,
+		daemons_credentialWizardTargetRequired,
 		discovery_couldNotGetNetworkId,
 		discovery_createDiscovery,
 		discovery_createScheduled,
@@ -159,6 +166,90 @@
 		return all.filter((c, i) => all.findIndex((x) => x.id === c.id) === i);
 	}
 	let daemonHostCredentials = $derived(computeDaemonHostCredentials(daemonHostId));
+
+	// Hosts the credentials are assigned to through the `host_credentials` junction, fetched
+	// by id. The `hosts` prop is whatever the parent happened to load (in practice only the
+	// daemons' own hosts), which is why assignments to any other host went unseen — and
+	// pulling every host just to resolve a handful of ids would be wasteful.
+	let assignedHostIds = $derived([
+		...new Set(
+			(allCredentialsQuery.data ?? []).flatMap((c) =>
+				(c.host_assignments ?? []).map((a) => a.host_id)
+			)
+		)
+	]);
+	const assignedHostsQuery = useHostsByIds(() => assignedHostIds);
+
+	/**
+	 * Credential id → the hosts on THIS discovery's network it is already assigned to.
+	 *
+	 * The scan already runs all of these (the server builds host-level mappings for every host
+	 * on the network, independent of this discovery's targets), so omitting them made the step
+	 * an incomplete picture of what a scan will do. They surface on the credential's own card.
+	 *
+	 * Deliberately separate from `computeDaemonHostCredentials`: that one feeds the daemon-host
+	 * endpoint blocking, and generalizing it in place would let another host's credential type
+	 * falsely claim the daemon host.
+	 */
+	let junctionHostsByCredential = $derived.by(() => {
+		const onNetwork = new Map(
+			(assignedHostsQuery.data ?? [])
+				.filter((h) => h.network_id === formData.network_id)
+				.map((h) => [h.id, h])
+		);
+		return new Map(
+			(allCredentialsQuery.data ?? []).flatMap((c) => {
+				// The junction holds a row per host+IP-scope, so a host id can repeat.
+				const assigned = [...new Set((c.host_assignments ?? []).map((a) => a.host_id))]
+					.map((id) => onNetwork.get(id))
+					.filter((h): h is Host => !!h);
+				return assigned.length > 0 ? [[c.id, assigned] as const] : [];
+			})
+		);
+	});
+
+	// Identity of the map above, so the effect that applies it runs once per real change
+	// rather than on every re-derivation (it both reads and writes `pendingCredentials`).
+	let junctionFingerprint = $derived(
+		[...junctionHostsByCredential]
+			.map(([id, hs]) => `${id}:${hs.map((h) => h.id).join(',')}`)
+			.sort()
+			.join('|')
+	);
+	let appliedJunctionFingerprint = $state('');
+
+	// Applied reactively, not in handleOpen: the by-id host query resolves after the modal
+	// opens, and handleOpen runs once. Only ever attaches hosts and appends rows, so it
+	// cannot clobber anything the user has entered.
+	$effect(() => {
+		if (!isOpen || !allCredentialsQuery.data) return;
+		if (junctionFingerprint === appliedJunctionFingerprint) return;
+		appliedJunctionFingerprint = junctionFingerprint;
+
+		const byCredential = junctionHostsByCredential;
+		const withLocked = pendingCredentials.map((p) => {
+			const assigned = byCredential.get(p.credential.id);
+			return assigned ? { ...p, lockedHosts: assigned } : p;
+		});
+		const credentialById = new Map(allCredentialsQuery.data.map((c) => [c.id, c]));
+		const lockedOnly: PendingCredential[] = [...byCredential]
+			.filter(([id]) => !withLocked.some((p) => p.credential.id === id))
+			.flatMap(([id, assigned]) => {
+				const credential = credentialById.get(id);
+				return credential
+					? [
+							{
+								credential,
+								targetIps: [],
+								fieldValues: {},
+								isExisting: true,
+								lockedHosts: assigned
+							}
+						]
+					: [];
+			});
+		pendingCredentials = [...withLocked, ...lockedOnly];
+	});
 
 	// Claimed integrations (credential types) on the daemon host — feeds the shared
 	// CredentialsStep's bidirectional socket↔proxy blocking. Generic across
@@ -391,30 +482,39 @@
 				}
 				try {
 					// Per-credential targeting comes from the wizard and is delivered as per-daemon
-					// integration targets on the Discovery. Parity with the daemon-create modal: a
-					// daemon-host-only credential (e.g. a Docker/Podman socket) OR a loopback-only IP
-					// target → DaemonHost scope; explicit non-loopback IPs → Hosts; otherwise Network.
-					// The backend (apply_integration_targets) merges DaemonHost targets into the
-					// host_credentials junction and keeps Network/Hosts on the Discovery — so adding a
-					// socket here works exactly like the create modal / host modal.
+					// integration targets on the Discovery. Parity with the daemon-create modal: the
+					// scope comes from the type's `targets` metadata, so a type that excludes Network
+					// (e.g. a UniFi controller) can never be emitted as a network-wide broadcast the
+					// server would drop at dispatch.
 					const persisted = new Set(ids ?? []);
-					// Managed (already-junction-assigned) daemon-host cards are read-only here.
-					formData.integration_targets = pendingCredentials
-						.filter((p) => !p.isManaged && persisted.has(p.credential.id))
-						.map((p) => {
-							const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
-							const isDaemonHost =
-								isDaemonHostOnly(
-									credentialTypes.getMetadata(p.credential.credential_type.type)?.targets
-								) ||
-								(ips.length > 0 && ips.every(ipIsLoopback));
-							if (isDaemonHost) {
-								return { scope: 'DaemonHost' as const, credential_id: p.credential.id };
-							}
-							return ips.length > 0
-								? { scope: 'Hosts' as const, credential_id: p.credential.id, ips }
-								: { scope: 'Network' as const, credential_id: p.credential.id };
-						});
+					// Only rows the user actually pointed somewhere: a credential listed purely
+					// because it is assigned elsewhere has no selection here, and an empty IP list
+					// would otherwise read as "network-wide" for a broadcast-capable type —
+					// inventing a scope nobody asked for.
+					const targeted = pendingCredentials
+						.filter(
+							(p) => hasExplicitTarget(p.scope, p.targetIps) && persisted.has(p.credential.id)
+						)
+						.map((p) => ({
+							name: p.credential.name,
+							target: integrationTargetFor(
+								p.credential.id,
+								credentialTypes.getMetadata(p.credential.credential_type.type)?.targets,
+								p.targetIps
+							)
+						}));
+					// The wizard validates targets first, so a credential with no permitted scope
+					// should be unreachable. Fail closed rather than saving a discovery that quietly
+					// drops it — a credential targeted nowhere never runs, with nothing to show why.
+					const untargetable = targeted.filter((t) => t.target === null).map((t) => t.name);
+					if (untargetable.length > 0) {
+						pushError(
+							daemons_credentialWizardTargetRequired({ credentials: untargetable.join(', ') })
+						);
+						loading = false;
+						return;
+					}
+					formData.integration_targets = targeted.flatMap((t) => (t.target ? [t.target] : []));
 					if (isEditing && discovery) {
 						await onUpdate(discovery.id, formData);
 					} else {
@@ -434,40 +534,46 @@
 
 	function handleOpen() {
 		activeTab = 'details';
+		appliedJunctionFingerprint = '';
 		furthestReached = discovery ? Infinity : 0;
 		formData = getDefaultFormData();
 		pendingCredentials = [];
 		credentialIds = [];
 		if (allCredentialsQuery.data) {
 			const credMap = new Map(allCredentialsQuery.data.map((c) => [c.id, c]));
-			// Editable: network/host credentialed targets from integration_targets. Daemon-host
-			// targeting (DaemonHost scope or loopback Hosts) is junction-managed — excluded here.
+			// Editable: every credentialed target that lives on THIS discovery, daemon-host ones
+			// included. They were previously excluded as "junction-managed", but nothing writes a
+			// junction row for them — a daemon-host target created here lives only on the
+			// discovery, so rendering it read-only left it impossible to remove or retarget and
+			// dropped it from the record on the next save. A daemon-host target round-trips as a
+			// loopback IP row, which `integrationTargetFor` maps back to the DaemonHost scope.
 			const editable: PendingCredential[] = (discovery?.integration_targets ?? []).flatMap((t) => {
-				if (t.scope === 'DaemonHost') return [];
-				if (t.scope === 'Hosts' && t.ips.length > 0 && t.ips.every(ipIsLoopback)) return [];
 				const c = credMap.get(t.credential_id);
 				if (!c) return [];
-				const ips = t.scope === 'Hosts' ? t.ips : [];
+				// Drop a target whose scope the credential's type doesn't permit — rows written
+				// before the scope was gated. Such a target is already discarded at dispatch, and
+				// seeding it would surface as a row with no valid selection that blocks the save.
+				// Omitting it here lets the submit mapping rewrite the record without it.
+				if (!supportsTarget(credentialTypes.getMetadata(c.credential_type.type)?.targets, t.scope))
+					return [];
+				// A daemon-host target is shown as the loopback row the picker already renders (a
+				// disabled "daemon host" label with a remove button), so it reads back as the same
+				// scope it was saved with. Network scope carries no IPs; an empty row is the
+				// picker's "nothing chosen" placeholder.
+				const ips = t.scope === 'Hosts' ? t.ips : t.scope === 'DaemonHost' ? [DAEMON_HOST_IP] : [];
 				return [
-					{ credential: c, targetIps: ips.length ? ips : [''], fieldValues: {}, isExisting: true }
+					{
+						credential: c,
+						targetIps: ips.length ? ips : [''],
+						fieldValues: {},
+						isExisting: true,
+						// Record the scope this target was saved with, so a Network-scope row
+						// round-trips as broadcast rather than reading back as "nothing chosen".
+						scope: t.scope === 'Network' ? ('broadcast' as const) : ('per_host' as const)
+					}
 				];
 			});
-			// Read-only managed cards: credentials assigned to the daemon host (via the
-			// host/credential modals). Resolve the daemon host inline (formData not yet settled).
-			const dForDiscovery = daemons.find((d) => d.id === discovery?.daemon_id) ?? null;
-			const dHostId = dForDiscovery
-				? (hosts.find((h) => h.id === dForDiscovery.host_id)?.id ?? null)
-				: null;
-			const managed: PendingCredential[] = computeDaemonHostCredentials(dHostId)
-				.filter((c) => !editable.some((p) => p.credential.id === c.id))
-				.map((c) => ({
-					credential: c,
-					targetIps: [],
-					fieldValues: {},
-					isExisting: true,
-					isManaged: true
-				}));
-			pendingCredentials = [...editable, ...managed];
+			pendingCredentials = editable;
 		}
 		// Always open straight on the wizard (the Integrations-grid picker is skipped).
 		credentialSubStep = 'wizard';
@@ -507,8 +613,12 @@
 
 		form.reset({
 			name: formData.name,
-			run_type_type: formData.run_type.type === 'Historical' ? 'AdHoc' : formData.run_type.type,
-			discovery_type_type: formData.discovery_type.type,
+			// This form only edits user-owned config. Server-managed rows —
+			// Historical runs and Rescans — never open here, so coerce both
+			// fields to the editable options rather than widening the form type.
+			run_type_type: formData.run_type.type === 'Scheduled' ? 'Scheduled' : 'AdHoc',
+			discovery_type_type:
+				formData.discovery_type.type === 'Rescan' ? 'Unified' : formData.discovery_type.type,
 			host_naming_fallback: hostNamingFallback,
 			schedule_days_of_week: scheduleDaysOfWeek,
 			schedule_time: scheduleTime,

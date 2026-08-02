@@ -184,7 +184,9 @@ impl ViewElementConfig {
 /// from this list.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct ViewElementEntityConfig {
+    /// Entity type drawn as an element in this view.
     pub entity_type: EntityDiscriminants,
+    /// Entity types folded into that element rather than drawn separately.
     pub inline_entities: Vec<EntityDiscriminants>,
 }
 
@@ -237,17 +239,23 @@ impl HasId for MetadataFilterType {
 /// and can change freely.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MetadataFilter {
+    /// What the filter narrows by.
     pub filter_type: MetadataFilterType,
     /// User-facing sub-section label (e.g. "By Category", "By Virtualization").
     pub label: String,
+    /// The choices offered for this filter.
     pub values: Vec<FilterValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FilterValue {
+    /// Server-assigned unique identifier.
     pub id: String,
+    /// Human-facing label for this choice.
     pub label: String,
+    /// Colour shown on the filter chip.
     pub color: Color,
+    /// Icon shown on the filter chip.
     #[schema(value_type = Option<String>, required)]
     pub icon: Option<Icon>,
 }
@@ -341,9 +349,13 @@ pub enum InspectorSection {
 /// Determines which sections appear and in what order for each view.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct ViewInspectorConfig {
+    /// Inspector sections shown when an element is selected.
     pub element_sections: Vec<InspectorSection>,
+    /// Inspector sections shown when a container is selected.
     pub container_sections: Vec<InspectorSection>,
+    /// What kind of member a dependency can be drawn between in this view.
     pub dependency_creation: Option<DependencyMemberType>,
+    /// Whether the inspector offers the application picker.
     pub show_application_picker: bool,
 }
 
@@ -543,6 +555,9 @@ impl TopologyView {
                 HubAndSpoke => active(false, Visible, Dashed, WhenVisible, false, true),
                 Hypervisor => active(false, Hidden, Dashed, WhenVisible, true, false),
                 PhysicalLink => active(false, Hidden, Dashed, WhenVisible, false, false),
+                // Connects two hosts, and this view has no host node to land on — its
+                // elements are IP addresses.
+                NeighborLink => EdgeViewConfig::Disabled,
                 // Annotates the graph rather than structuring it: no layout influence, off by
                 // default, and never elevated to the subnet box — the point is that one
                 // container spans them, which is lost if the edge targets the boxes.
@@ -550,6 +565,10 @@ impl TopologyView {
             },
             Self::L2Physical => match edge_type {
                 PhysicalLink => active(true, Visible, Solid, WhenVisible, false, false),
+                // Home view for an adjacency we can only place at device level: dashed marks
+                // it as the approximate one, and it still steers layout so the neighbour is
+                // drawn beside the device it neighbours.
+                NeighborLink => active(true, Visible, Dashed, WhenVisible, false, false),
                 SameHost => active(false, Hidden, Dashed, WhenVisible, false, false),
                 Hypervisor | ContainerRuntime | RequestPath | HubAndSpoke | SameContainer => {
                     EdgeViewConfig::Disabled
@@ -557,6 +576,7 @@ impl TopologyView {
             },
             Self::Workloads => match edge_type {
                 PhysicalLink => active(false, Hidden, Dashed, WhenVisible, false, false),
+                NeighborLink => active(false, Hidden, Dashed, WhenVisible, false, false),
                 RequestPath | HubAndSpoke => {
                     active(false, Hidden, Dashed, WhenVisible, false, true)
                 }
@@ -568,7 +588,9 @@ impl TopologyView {
                 RequestPath => active(true, Visible, Solid, WhenVisible, false, true),
                 HubAndSpoke => active(true, Visible, Solid, WhenVisible, false, true),
                 ContainerRuntime => active(true, Hidden, Dashed, Always, true, false),
-                SameHost | Hypervisor | PhysicalLink | SameContainer => EdgeViewConfig::Disabled,
+                SameHost | Hypervisor | PhysicalLink | SameContainer | NeighborLink => {
+                    EdgeViewConfig::Disabled
+                }
             },
         }
     }

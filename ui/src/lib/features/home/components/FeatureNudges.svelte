@@ -9,6 +9,7 @@
 	} from '$lib/features/topology/queries';
 	import { entities, billingPlans } from '$lib/shared/stores/metadata';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
+	import { hasSunsetWarning } from '$lib/features/daemons/utils';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import { onMount } from 'svelte';
 	import {
@@ -59,8 +60,13 @@
 	} = $props();
 
 	const daemonsQuery = useDaemonsQuery();
-	let hasUnreachableDaemons = $derived(
-		(daemonsQuery.data ?? []).some((d) => d.standby === true || d.is_unreachable === true)
+	// Surface the daemon nudge for connectivity issues AND for an upcoming/active
+	// version sunset — an aging daemon needs attention just as much as an
+	// unreachable one, and this is the population most likely to have one.
+	let hasDaemonsNeedingAttention = $derived(
+		(daemonsQuery.data ?? []).some(
+			(d) => d.standby === true || d.is_unreachable === true || hasSunsetWarning(d)
+		)
 	);
 
 	let mounted = $state(false);
@@ -100,7 +106,7 @@
 				action: () => {
 					onNavigate('daemons');
 				},
-				visible: hasUnreachableDaemons,
+				visible: hasDaemonsNeedingAttention,
 				icon: entities.getIconComponent('Daemon'),
 				iconColor: entities.getColorHelper('Daemon').icon
 			},

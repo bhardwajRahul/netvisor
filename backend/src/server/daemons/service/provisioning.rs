@@ -242,15 +242,11 @@ impl DaemonService {
             tracing::warn!(host_id = %created_host.id, error = %e, "Failed to seed daemon host loopback");
         }
 
-        let version = semver::Version::parse(SERVER_VERSION).map_err(|_| {
-            ApiError::internal_error(&format!(
-                "Could not parse server version {}",
-                SERVER_VERSION
-            ))
-        })?;
-
         // Create daemon record with the linked API key.
-        // last_seen is None until first successful contact from poller
+        // last_seen is None until first successful contact from poller.
+        // version stays NULL until the daemon actually reports it — writing the
+        // SERVER_VERSION optimistically here made a provisioned-but-never-installed
+        // daemon read as "Current" forever and poisoned any installed-base view.
         let daemon = Daemon::new(DaemonBase {
             host_id: created_host.id,
             network_id,
@@ -259,7 +255,7 @@ impl DaemonService {
             mode,
             name,
             tags: Vec::new(),
-            version: Some(version),
+            version: None,
             user_id,
             api_key_id: Some(api_key_id),
             is_unreachable: false,

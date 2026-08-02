@@ -34,7 +34,9 @@
 		common_noEntityYet,
 		common_tags,
 		common_updated,
+		tags_applicationGroup,
 		tags_noTagsHelp,
+		tags_standardTag,
 		tags_subtitle
 	} from '$lib/paraglide/messages';
 
@@ -144,18 +146,33 @@
 	// Uses defineFields to ensure all TagOrderField values are covered
 	const tagFields = defineFields<Tag, TagOrderField>(
 		{
-			name: { label: common_name(), type: 'string', searchable: true },
-			color: { label: common_color(), type: 'string', filterable: true },
+			// Identity field: grouping by it would render a header per tag.
+			name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+			color: { label: common_color(), type: 'string', searchable: true, filterable: true },
 			is_application: {
 				label: common_application(),
 				type: 'boolean',
-				filterable: true,
-				groupable: true
+				filterable: true
 			},
 			created_at: { label: common_created(), type: 'date' },
 			updated_at: { label: common_updated(), type: 'date' }
 		},
-		[{ key: 'description', label: common_description(), type: 'string', searchable: true }]
+		[
+			{ key: 'description', label: common_description(), type: 'string', searchable: true },
+			{
+				// The orderable `is_application` above is a boolean, and the filter
+				// panel needs it that way (Show true / Show false). Grouping needs a
+				// readable value, and a boolean field can't supply one without
+				// `Boolean(getValue())` breaking that filter — so the group axis is
+				// its own display field.
+				key: 'application_group',
+				label: common_application(),
+				type: 'string',
+				groupable: true,
+				sortable: true,
+				getValue: (tag) => (tag.is_application ? tags_applicationGroup() : tags_standardTag())
+			}
+		]
 	);
 </script>
 

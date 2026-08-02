@@ -324,7 +324,7 @@ async fn delete_network(
     post,
     path = "/bulk-delete",
     tag = Network::ENTITY_NAME_PLURAL,
-    request_body(content = Vec<Uuid>, description = "Array of network IDs to delete"),
+    request_body(content = Vec<Uuid>, description = "Array of Network IDs to delete"),
     responses(
         (status = 200, description = "Networks deleted successfully", body = ApiResponse<BulkDeleteResponse>),
         (status = 403, description = "User not admin", body = ApiErrorResponse),

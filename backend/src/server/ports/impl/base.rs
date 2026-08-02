@@ -38,8 +38,11 @@ pub enum TransportProtocol {
 /// The base data for a Port entity (everything except id, created_at, updated_at)
 #[derive(Copy, Debug, Clone, Eq, Validate, Serialize, Deserialize, ToSchema)]
 pub struct PortBase {
+    /// The host this entity belongs to.
     pub host_id: Uuid,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Port number, transport protocol, and the well-known service they identify.
     #[serde(flatten)]
     #[schema(required)]
     pub port_type: PortType,
@@ -86,30 +89,39 @@ impl Hash for PortBase {
 #[derive(Copy, Debug, Validate, Clone, Eq, Serialize, Deserialize, ToSchema)]
 #[schema(example = crate::server::shared::types::examples::port)]
 pub struct Port {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// Start of the interval this revision was current for (SCD2 history).
     #[serde(default)]
     #[schema(read_only)]
     pub valid_from: DateTime<Utc>,
+    /// End of the interval this revision was current for. `null` while it is the live revision.
     #[serde(default)]
     #[schema(read_only)]
     pub valid_to: Option<DateTime<Utc>>,
+    /// Stable identifier shared by every revision of the same entity across its history.
     #[serde(default)]
     #[schema(read_only)]
     pub lineage_id: Option<Uuid>,
+    /// When a discovery last observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_seen_at: DateTime<Utc>,
+    /// The most recent discovery that observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_discovery_id: Option<Uuid>,
+    /// The discovery that first observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub first_discovery_id: Option<Uuid>,
@@ -320,8 +332,10 @@ impl FromStr for PortType {
 
 #[derive(Copy, Debug, Clone, Validate, Default, Eq, Serialize, Deserialize, ToSchema)]
 pub struct PortConfig {
+    /// TCP or UDP port number.
     #[validate(range(min = 1, max = 65535))]
     pub number: u16,
+    /// Transport protocol the port is open on.
     pub protocol: TransportProtocol,
 }
 
@@ -852,6 +866,7 @@ impl<'de> Deserialize<'de> for PortType {
 /// On create, only number+protocol are required; type is auto-derived from them.
 impl utoipa::PartialSchema for PortType {
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::Schema> {
+        use strum::IntoEnumIterator;
         use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
         use utoipa::openapi::{RefOr, Schema};
 
@@ -862,15 +877,27 @@ impl utoipa::PartialSchema for PortType {
                     "number",
                     ObjectBuilder::new()
                         .schema_type(SchemaType::new(Type::Integer))
+                        .description(Some("TCP or UDP port number"))
+                        .minimum(Some(0.0))
+                        .maximum(Some(f64::from(u16::MAX)))
                         .build(),
                 )
-                .property("protocol", TransportProtocol::schema())
+                .property(
+                    "protocol",
+                    ObjectBuilder::new()
+                        .schema_type(SchemaType::new(Type::String))
+                        .enum_values(Some(["Udp", "Tcp"]))
+                        .description(Some("Transport protocol the port is open on.")),
+                )
                 .property(
                     "type",
                     ObjectBuilder::new()
                         .schema_type(SchemaType::new(Type::String))
+                        .enum_values(Some(
+                            PortTypeDiscriminants::iter().map(|v| v.to_string()),
+                        ))
                         .description(Some(
-                            "Auto-derived from number+protocol; optional on create",
+                            "Well-known port identifier. Auto-derived from number+protocol, so it is optional on create.",
                         ))
                         .build(),
                 )

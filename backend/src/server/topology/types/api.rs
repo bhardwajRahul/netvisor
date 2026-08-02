@@ -26,21 +26,32 @@ use utoipa::ToSchema;
 /// active view's slice client-side.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct TopologyData {
+    /// Hosts included in this topology.
     pub hosts: Vec<Host>,
+    /// IP addresses included in this topology.
     pub ip_addresses: Vec<IPAddress>,
+    /// Subnets included in this topology.
     pub subnets: Vec<Subnet>,
+    /// Dependencies included in this topology.
     pub dependencies: Vec<Dependency>,
+    /// Ports included in this topology.
     pub ports: Vec<Port>,
+    /// Service bindings included in this topology.
     pub bindings: Vec<Binding>,
+    /// Interfaces included in this topology.
     pub interfaces: Vec<Interface>,
+    /// Services included in this topology.
     pub services: Vec<Service>,
+    /// VLANs included in this topology.
     pub vlans: Vec<Vlan>,
+    /// Tags assigned to this entity.
     pub tags: Vec<Tag>,
     /// Per-view graph built on request from the entities above + grouping
     /// options. Keyed by view so switching the active perspective is a
     /// client-side slice selection.
     #[serde(default)]
     pub nodes: HashMap<TopologyView, Vec<Node>>,
+    /// Connections between the nodes of the built graph.
     #[serde(default)]
     pub edges: HashMap<TopologyView, Vec<Edge>>,
     /// Views whose data is present in this entity set (L3/Workloads always;

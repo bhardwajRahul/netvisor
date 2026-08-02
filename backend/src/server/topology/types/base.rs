@@ -19,12 +19,15 @@ use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default, ToSchema, Validate)]
 pub struct Topology {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
@@ -65,7 +68,9 @@ impl Topology {
 
 #[derive(Debug, Clone, Validate, Serialize, Deserialize, Eq, PartialEq, Default, ToSchema)]
 pub struct TopologyBase {
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Saved layout and view settings for this topology.
     pub options: TopologyOptions,
     // The per-view node/edge graph is no longer persisted — it's a pure
     // function of entities + `options` and is built on request by the read
@@ -107,9 +112,11 @@ impl Display for Topology {
 pub struct TopologyOptions {
     // `#[serde(default)]` keeps deserialization lenient (missing -> default), but
     // these are always present in responses, so mark them required in the schema.
+    /// Settings applied in the viewer, which do not change what the server returns.
     #[serde(default)]
     #[schema(required)]
     pub local: TopologyLocalOptions,
+    /// Settings that change how the server builds the graph.
     #[serde(default)]
     #[schema(required)]
     pub request: TopologyRequestOptions,
@@ -132,12 +139,17 @@ pub struct TopologyTagFilter {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
 #[serde(default)]
 pub struct TopologyLocalOptions {
+    /// Keep unrelated edges at full opacity when something is selected.
     pub no_fade_edges: bool,
+    /// Edge types to leave out of the drawing.
     pub hide_edge_types: Vec<EdgeTypeDiscriminants>,
+    /// Restrict the view to entities carrying these tags.
     #[serde(default)]
     pub tag_filter: TopologyTagFilter,
+    /// Show the minimap.
     #[serde(default = "default_true")]
     pub show_minimap: bool,
+    /// Collapse parallel edges between the same pair of nodes into one.
     #[serde(default = "default_true")]
     pub bundle_edges: bool,
 }
@@ -177,8 +189,10 @@ pub struct TopologyRequestOptions {
         TopologyView,
         HashMap<EntityDiscriminants, HashMap<MetadataFilterType, Vec<String>>>,
     >,
+    /// Rules deciding how nodes are grouped into containers.
     #[serde(default = "default_container_rules")]
     pub container_rules: HashMap<TopologyView, Vec<IdentifiedRule<ContainerRule>>>,
+    /// Rules deciding how entities are placed and inlined within containers.
     #[serde(default = "default_element_rules")]
     pub element_rules: Vec<IdentifiedRule<ElementRule>>,
 }

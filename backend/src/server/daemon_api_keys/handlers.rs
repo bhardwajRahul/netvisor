@@ -255,7 +255,7 @@ pub async fn delete_daemon_api_key(
     tag = DaemonApiKey::ENTITY_NAME_PLURAL,
     operation_id = "bulk_delete_daemon_api_keys",
     summary = "Bulk delete daemon_api_keys",
-    request_body(content = Vec<Uuid>, description = "Array of daemon_api_key IDs to delete"),
+    request_body(content = Vec<Uuid>, description = "Array of Daemon API Key IDs to delete"),
     responses(
         (status = 200, description = "daemon_api_keys deleted", body = ApiResponse<BulkDeleteResponse>),
         (status = 409, description = "One or more API keys are in use by daemons", body = ApiErrorResponse),

@@ -2,9 +2,15 @@ use crate::daemon::runtime::state::BufferedEntities;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Or, Viewer};
 use crate::server::billing::types::base::{LimitSource, LimitType};
+use crate::server::daemons::r#impl::api::DiscoveryUpdatePayload;
+use crate::server::daemons::r#impl::version::{minimum_targeted_rescan, supports_targeted_rescan};
+use crate::server::discovery::r#impl::base::{Discovery, DiscoveryBase};
+use crate::server::discovery::r#impl::scan_settings::{RescanSettings, ScanSettings};
+use crate::server::discovery::r#impl::types::{DiscoveryType, RunType};
 use crate::server::interfaces::r#impl::base::Interface;
 use crate::server::ip_addresses::r#impl::base::IPAddress;
-use crate::server::ports::r#impl::base::Port;
+use crate::server::openapi::tags as api_tags;
+use crate::server::ports::r#impl::base::{Port, PortType};
 use crate::server::services::r#impl::base::Service;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::events::traits::{Event, OrgScope};
@@ -116,6 +122,10 @@ pub struct HostFilterQuery {
     pub ids: Option<Vec<Uuid>>,
     /// Filter by tag IDs (returns hosts that have ANY of the specified tags)
     pub tag_ids: Option<Vec<Uuid>>,
+    /// Free-text search. Case-insensitive substring match against the host's
+    /// name, hostname and description, and against its IP addresses and the
+    /// names of services running on it.
+    pub search: Option<String>,
     /// Primary ordering field (used for grouping). Always sorts ASC to keep groups together.
     pub group_by: Option<HostOrderField>,
     /// Secondary ordering field (sorting within groups or standalone sort).
@@ -135,6 +145,11 @@ pub struct HostFilterQuery {
     /// network's staleness window; `false` returns only those it has. Omit for
     /// both. Evaluated per row against the host's own network's window.
     pub stale: Option<bool>,
+    /// `false` returns hosts with empty `ip_addresses`/`ports`/`services`/
+    /// `interfaces`. The children dominate the payload, so callers that only need
+    /// host identity — name pickers, id→name lookups, counts — should pass
+    /// `false`. Defaults to `true`, so existing callers are unaffected.
+    pub include_children: Option<bool>,
 }
 
 impl HostFilterQuery {
@@ -194,14 +209,16 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(export_hosts_zip))
         .routes(routes!(consolidate_hosts))
         .routes(routes!(create_host_discovery))
+        .routes(routes!(rescan_host))
 }
 
 /// List all hosts
 ///
 /// Returns all hosts the authenticated user has access to, with their
-/// ip_addresses, ports, and services included. Supports pagination via
-/// `limit` and `offset` query parameters, and ordering via `group_by`,
-/// `order_by`, and `order_direction`.
+/// ip_addresses, ports, services and interfaces included — pass
+/// `include_children=false` to omit those and get a much smaller payload.
+/// Supports pagination via `limit` and `offset` query parameters, and ordering
+/// via `group_by`, `order_by`, and `order_direction`.
 #[utoipa::path(
     get,
     path = "",
@@ -238,6 +255,13 @@ async fn get_all_hosts(
         _ => filter,
     };
 
+    // Server-side because the list is paginated: a client-side search would
+    // only ever match the page already loaded.
+    let filter = match query.search.as_deref() {
+        Some(search) if !search.trim().is_empty() => filter.text_search(search),
+        _ => filter,
+    };
+
     // Staleness is per-network, so resolve each accessible network's cutoff and
     // let the filter compare every row against its own.
     let filter = match query.stale {
@@ -259,10 +283,29 @@ async fn get_all_hosts(
     // Apply ordering and JOINs
     let (filter, order_by) = query.apply_ordering(filter);
 
+    // Grouped lists report each group's full size, not the slice of it that
+    // landed on this page. Runs against the same filter — including the JOIN
+    // `apply_ordering` just added, which the group expression may reference.
+    let group_counts = match query.group_by {
+        Some(group_field) => Some(
+            state
+                .services
+                .host_service
+                .count_by_group(filter.clone(), group_field.to_sql())
+                .await?,
+        ),
+        None => None,
+    };
+
     let mut result = state
         .services
         .host_service
-        .get_all_host_responses_paginated(filter, &order_by, query.at)
+        .get_all_host_responses_paginated(
+            filter,
+            &order_by,
+            query.at,
+            query.include_children.unwrap_or(true),
+        )
         .await?;
 
     // Hydrate credential assignments from junction table
@@ -283,12 +326,12 @@ async fn get_all_hosts(
     let limit = pagination.effective_limit().unwrap_or(0);
     let offset = pagination.effective_offset();
 
-    Ok(Json(PaginatedApiResponse::success(
-        result.items,
-        result.total_count,
-        limit,
-        offset,
-    )))
+    let response = PaginatedApiResponse::success(result.items, result.total_count, limit, offset);
+
+    Ok(Json(match group_counts {
+        Some(counts) => response.with_group_counts(counts),
+        None => response,
+    }))
 }
 
 /// Get a host by ID
@@ -497,6 +540,7 @@ async fn create_host(
                 interfaces,
                 subnets,
                 interfaces_complete,
+                interface_data_complete,
             } = discovery_request;
 
             // Capture one scan_time for the whole submission so all entities
@@ -512,6 +556,7 @@ async fn create_host(
                     interfaces,
                     subnets,
                     interfaces_complete,
+                    interface_data_complete,
                     Some(&scan_ctx),
                     entity,
                     None,
@@ -637,7 +682,7 @@ async fn update_host(
 #[utoipa::path(
     post,
     path = "/discovery",
-    tags = ["hosts", "internal"],
+    tags = [Host::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     request_body = DiscoveryHostRequest,
     responses(
         (status = 200, description = "Host discovered/updated successfully", body = ApiResponse<HostResponse>),
@@ -708,6 +753,264 @@ async fn create_host_discovery(
         serde_json::to_value(ApiResponse::success(host_response))
             .map_err(|e| ApiError::internal_error(&e.to_string()))?,
     ))
+}
+
+/// Rescan a host
+///
+/// Starts a one-shot scan of this host's addresses and nothing else, answering
+/// "is this host still there, and is its data current?" without sweeping the
+/// whole subnet.
+///
+/// The scan runs on the daemon that last discovered this host — evidence it can
+/// reach the address — and only if that daemon still has an interface on a
+/// subnet containing one of the host's scannable IPs. Where that interface has a
+/// MAC the daemon ARPs the target, which sees a live host even when every port
+/// is firewalled; on a MAC-less interface (a point-to-point tunnel) it falls
+/// back to a TCP probe. When no interface covers any of the host's addresses the
+/// request is refused with the specific reason. A loopback address is not a
+/// scannable IP — it is reached locally and is excluded from the target set.
+///
+/// Returns the session, which streams progress over `/api/v1/discovery/stream`
+/// like any other scan. A `Queued` phase means the daemon is busy; it will start
+/// when the running scan finishes.
+#[utoipa::path(
+    post,
+    path = "/{id}/rescan",
+    tag = Host::ENTITY_NAME_PLURAL,
+    params(("id" = uuid::Uuid, Path, description = "Host ID")),
+    responses(
+        (status = 200, description = "Rescan session started", body = ApiResponse<DiscoveryUpdatePayload>),
+        (status = 404, description = "Host not found", body = ApiErrorResponse),
+        (status = 400, description = "Host cannot be rescanned (never scanned, daemon gone, daemon unreachable, or daemon too old)", body = ApiErrorResponse),
+    ),
+     security(("user_api_key" = []), ("session" = []))
+)]
+async fn rescan_host(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Member>,
+    Path(host_id): Path<Uuid>,
+) -> ApiResult<Json<ApiResponse<DiscoveryUpdatePayload>>> {
+    let network_ids = auth.network_ids();
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    let host = state
+        .services
+        .host_service
+        .get_by_id(&host_id)
+        .await?
+        .ok_or_else(|| ApiError::entity_not_found::<Host>(host_id))?;
+
+    validate_read_access(
+        Some(host.base.network_id),
+        None,
+        &network_ids,
+        organization_id,
+    )?;
+
+    let ip_addresses = state
+        .services
+        .ip_address_service
+        .get_for_host(&host_id)
+        .await?;
+    if ip_addresses.is_empty() {
+        return Err(ApiError::bad_request(
+            "This host has no IP addresses to scan.",
+        ));
+    }
+
+    let daemon = resolve_rescan_daemon(&state, &host).await?;
+
+    // Only the addresses this daemon has a route to. The daemon ARPs the ones
+    // on an interface with a MAC and falls back to a TCP probe on the ones
+    // without (a point-to-point tunnel has no MAC but is perfectly routable) —
+    // refusing the latter outright made rescan impossible on VPN-only daemons
+    // rather than merely lower fidelity.
+    //
+    // A loopback address passes the junction check — the daemon reports its own
+    // 127.0.0.0/8 as an interfaced subnet — but is not scannable by either path:
+    // loopback subnets are dropped from every scan. Excluding it here keeps this
+    // endpoint and the daemon's own target resolution agreeing, and keeps
+    // 127.0.0.1 out of the frozen rescan name.
+    let interfaced = state
+        .services
+        .daemon_service
+        .get_interfaced_subnet_ids(&daemon.id)
+        .await;
+    let reachable: Vec<&IPAddress> = ip_addresses
+        .iter()
+        .filter(|ip| interfaced.contains(&ip.base.subnet_id) && !ip.base.ip_address.is_loopback())
+        .collect();
+
+    if reachable.is_empty() {
+        return Err(ApiError::bad_request(&format!(
+            "Daemon \"{}\" last scanned this host but has no interface on a subnet holding any \
+             of its scannable addresses, so it can't scan them directly.",
+            daemon.base.name
+        )));
+    }
+
+    // The ports already recorded on this host. `get_for_hosts` applies the live
+    // filter; `get_for_host` does not, and would resurrect historically-closed
+    // ports into the scan list.
+    let ports: Vec<PortType> = state
+        .services
+        .port_service
+        .get_for_hosts(&[host_id], None)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?
+        .remove(&host_id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| p.base.port_type)
+        .collect();
+
+    // Inherit the daemon's configured scan settings so a deliberately lowered
+    // scan rate — or raw-socket probing the operator turned on — carries over.
+    // The conversion drops the full-scan fields, which a rescan must not have.
+    let settings = RescanSettings::from(
+        &daemon_scan_settings(&state, daemon.id)
+            .await
+            .unwrap_or_default(),
+    );
+
+    let discovery = Discovery::new(DiscoveryBase {
+        run_type: RunType::AdHoc { last_run: None },
+        discovery_type: DiscoveryType::Rescan {
+            host_id: daemon.base.host_id,
+            target_host_id: host.id,
+            ips: reachable.iter().map(|ip| ip.base.ip_address).collect(),
+            ports,
+            settings,
+        },
+        // Both the host name and the addresses are only known here, and the
+        // historical record inherits this name — so it carries the address the
+        // scan actually aimed at, not just the host's current name.
+        name: format!(
+            "Rescan of {} ({})",
+            host.base.name,
+            reachable
+                .iter()
+                .map(|ip| ip.base.ip_address.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        daemon_id: daemon.id,
+        network_id: host.base.network_id,
+        tags: Vec::new(),
+    });
+
+    let discovery = state
+        .services
+        .discovery_service
+        .create_discovery(discovery, AuthenticatedEntity::System)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+    // Auto-wake the daemon, matching POST /discovery/start-session — start_session
+    // itself doesn't clear standby, and a standby daemon never picks up the work.
+    let mut daemon = daemon;
+    if daemon.base.standby {
+        daemon.base.standby = false;
+        daemon.base.standby_cleared_at = Some(chrono::Utc::now());
+        state
+            .services
+            .daemon_service
+            .update(&mut daemon, AuthenticatedEntity::System)
+            .await?;
+        tracing::info!(daemon_id = %daemon.id, "Cleared daemon standby (rescan started)");
+    }
+
+    let update = state
+        .services
+        .discovery_service
+        .start_session(discovery, auth.into_entity())
+        .await?;
+
+    Ok(Json(ApiResponse::success(update)))
+}
+
+/// The scan settings on this daemon's own discovery configuration, if it has one.
+async fn daemon_scan_settings(state: &Arc<AppState>, daemon_id: Uuid) -> Option<ScanSettings> {
+    let filter = StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).live_configs();
+    let discoveries = state
+        .services
+        .discovery_service
+        .get_all(filter)
+        .await
+        .ok()?;
+    discoveries
+        .into_iter()
+        .find_map(|d| match d.base.discovery_type {
+            DiscoveryType::Unified { scan_settings, .. } => Some(scan_settings),
+            _ => None,
+        })
+}
+
+/// The daemon that last discovered this host, validated as usable for a rescan.
+///
+/// Provenance beats inference here: the daemon that produced this host's data
+/// demonstrably reached the address, which is a stronger signal than any
+/// subnet-membership calculation over the interfaced-subnet junction.
+async fn resolve_rescan_daemon(state: &Arc<AppState>, host: &Host) -> Result<Daemon, ApiError> {
+    let Some(discovery_id) = host.last_discovery_id else {
+        return Err(ApiError::bad_request(
+            "This host hasn't been scanned yet, so there is no daemon known to reach it. \
+             Run a discovery first.",
+        ));
+    };
+
+    // The FK is ON DELETE SET NULL, so a pruned historical row lands above rather
+    // than here; this covers a row that vanished between reads.
+    let last_scan = state
+        .services
+        .discovery_service
+        .get_by_id(&discovery_id)
+        .await?
+        .ok_or_else(|| {
+            ApiError::bad_request(
+                "The scan that last found this host is no longer on record, so its daemon \
+                 can't be identified. Run a discovery first.",
+            )
+        })?;
+
+    let daemon = state
+        .services
+        .daemon_service
+        .get_by_id(&last_scan.base.daemon_id)
+        .await?
+        .ok_or_else(|| {
+            ApiError::bad_request(
+                "The daemon that last scanned this host no longer exists. Run a discovery from \
+                 another daemon to refresh it.",
+            )
+        })?;
+
+    if daemon.base.network_id != host.base.network_id {
+        return Err(ApiError::bad_request(&format!(
+            "Daemon \"{}\" has moved to a different network and can no longer reach this host.",
+            daemon.base.name
+        )));
+    }
+
+    if !supports_targeted_rescan(daemon.base.version.as_ref()) {
+        return Err(match daemon.base.version {
+            None => ApiError::bad_request(&format!(
+                "Daemon \"{}\" has not connected to the server yet, so its version is unknown. \
+                 Wait for it to check in, then try again.",
+                daemon.base.name
+            )),
+            Some(_) => ApiError::bad_request(&format!(
+                "Daemon \"{}\" does not support rescanning a single host. Upgrade it to version \
+                 {} or later.",
+                daemon.base.name,
+                minimum_targeted_rescan()
+            )),
+        });
+    }
+
+    Ok(daemon)
 }
 
 /// Consolidate hosts
@@ -864,7 +1167,7 @@ pub async fn delete_host(
     post,
     path = "/bulk-delete",
     tag = Host::ENTITY_NAME_PLURAL,
-    request_body(content = Vec<Uuid>, description = "Array of host IDs to delete"),
+    request_body(content = Vec<Uuid>, description = "Array of Host IDs to delete"),
     responses(
         (status = 200, description = "Hosts deleted successfully", body = ApiResponse<BulkDeleteResponse>),
         (status = 409, description = "One or more hosts has an associated daemon - delete daemons first", body = ApiErrorResponse),
@@ -908,7 +1211,7 @@ pub async fn bulk_delete_hosts(
     operation_id = "export_hosts_zip",
     params(HostFilterQuery),
     responses(
-        (status = 200, description = "ZIP file containing CSVs", content_type = "application/zip"),
+        (status = 200, description = "ZIP file containing CSVs", content_type = "application/zip", body = String),
     ),
     security(("user_api_key" = []), ("session" = []))
 )]

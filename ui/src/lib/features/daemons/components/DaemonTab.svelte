@@ -2,8 +2,10 @@
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
+	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import DaemonCard from './DaemonCard.svelte';
+	import { hasSunsetWarning } from '$lib/features/daemons/utils';
 	import CreateDaemonModal from './CreateDaemonModal/CreateDaemonModal.svelte';
 	import { defineFields } from '$lib/shared/components/data/types';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
@@ -15,13 +17,14 @@
 		useBulkDeleteDaemonsMutation
 	} from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
 	import DaemonEditModal from './DaemonEditModal.svelte';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
+		common_active,
 		common_create,
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
@@ -29,11 +32,19 @@
 		common_daemons,
 		common_name,
 		common_network,
+		common_standby,
+		common_status,
 		common_tags,
 		common_noEntityYet,
 		common_unknownNetwork,
+		common_unreachable,
 		common_updated,
-		daemons_lastSeen
+		daemons_config_mode,
+		daemons_lastSeen,
+		daemons_mode_daemonPoll,
+		daemons_mode_serverPoll,
+		daemons_sunsetBannerTitle,
+		daemons_sunsetBannerBody
 	} from '$lib/paraglide/messages';
 
 	type DaemonOrderField = components['schemas']['DaemonOrderField'];
@@ -44,8 +55,6 @@
 	const tagsQuery = useTagsQuery();
 	const daemonsQuery = useDaemonsQuery();
 	const networksQuery = useNetworksQuery();
-	// Hosts query to ensure data is loaded (needed for daemon display)
-	useHostsQuery({ limit: 0 });
 
 	// Mutations
 	const deleteDaemonMutation = useDeleteDaemonMutation();
@@ -54,6 +63,34 @@
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
+
+	// Only the hosts the daemons actually run on. This was an unpaginated
+	// org-wide hosts query (~1.9MB on a few hundred hosts) issued to resolve one
+	// name per daemon card — and because TanStack dedupes by key, it was shared
+	// with every other consumer, so it loaded on pages that never showed a
+	// daemon. Scoped to the ids in hand and passed down to the cards.
+	let daemonHostIds = $derived([
+		...new Set(daemonsData.map((d) => d.host_id).filter((id): id is string => !!id))
+	]);
+	const daemonHostsQuery = useHostsByIds(() => daemonHostIds);
+	let daemonHosts = $derived(daemonHostsQuery.data ?? []);
+
+	// Any daemon with a scheduled/active sunset. Drives a non-dismissable banner
+	// so the warning re-arms as long as an affected daemon exists.
+	let hasSunsetDaemons = $derived(daemonsData.some(hasSunsetWarning));
+	// The shared sunset date across affected daemons (server-published, same value
+	// the email uses), formatted for display. All below-floor daemons share the
+	// one announced date.
+	let sunsetDateDisplay = $derived.by(() => {
+		const iso = daemonsData.find(hasSunsetWarning)?.version_status.sunset_date;
+		if (!iso) return null;
+		return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', {
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric',
+			timeZone: 'UTC'
+		});
+	});
 	let networksData = $derived(networksQuery.data ?? []);
 	let isLoading = $derived(daemonsQuery.isPending || networksQuery.isPending);
 
@@ -132,10 +169,12 @@
 	let daemonFields = $derived(
 		defineFields<Daemon, DaemonOrderField>(
 			{
-				name: { label: common_name(), type: 'string', searchable: true },
+				// Identity field: grouping by it would render a header per daemon.
+				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
 				network_id: {
 					label: common_network(),
 					type: 'string',
+					searchable: true,
 					filterable: true,
 					groupable: true,
 					getValue: (item) =>
@@ -146,6 +185,33 @@
 				updated_at: { label: common_updated(), type: 'date' }
 			},
 			[
+				{
+					// Reachability as one value rather than a raw boolean: "which
+					// daemons are down" is the question during an incident, and a
+					// standby daemon is a third answer, not a shade of unreachable.
+					key: 'status',
+					label: common_status(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					getValue: (daemon) =>
+						daemon.is_unreachable
+							? common_unreachable()
+							: daemon.standby
+								? common_standby()
+								: common_active()
+				},
+				{
+					key: 'mode',
+					label: daemons_config_mode(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					getValue: (daemon) =>
+						daemon.mode === 'server_poll' ? daemons_mode_serverPoll() : daemons_mode_daemonPoll()
+				},
 				{
 					key: 'tags',
 					label: common_tags(),
@@ -186,6 +252,14 @@
 			cta={common_create()}
 		/>
 	{:else}
+		{#if hasSunsetDaemons && sunsetDateDisplay}
+			<div class="mb-4">
+				<InlineWarning
+					title={daemons_sunsetBannerTitle()}
+					body={daemons_sunsetBannerBody({ date: sunsetDateDisplay })}
+				/>
+			</div>
+		{/if}
 		<DataControls
 			items={daemonsData}
 			fields={daemonFields}
@@ -204,6 +278,7 @@
 			)}
 				<DaemonCard
 					daemon={item}
+					hosts={daemonHosts}
 					{viewMode}
 					onDelete={isReadOnly ? undefined : handleDeleteDaemon}
 					onEdit={isReadOnly ? undefined : handleEditDaemon}

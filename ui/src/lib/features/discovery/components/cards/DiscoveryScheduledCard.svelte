@@ -9,7 +9,7 @@
 	import type { DiscoveryUpdatePayload } from '../../types/api';
 	import { cancellingSessions } from '../../queries';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import type { Host } from '$lib/features/hosts/types/base';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
@@ -19,7 +19,7 @@
 	import { entityRef } from '$lib/shared/components/data/types';
 	import type { TagProps } from '$lib/shared/components/data/types';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { billingPlans } from '$lib/shared/stores/metadata';
+	import { billingPlans, discoveryTypes } from '$lib/shared/stores/metadata';
 	import {
 		common_delete,
 		common_disable,
@@ -37,7 +37,6 @@
 	// Queries
 	const daemonsQuery = useDaemonsQuery();
 	const networksQuery = useNetworksQuery();
-	const hostsQuery = useHostsQuery({ limit: 0 });
 	const subnetsQuery = useSubnetsQuery();
 	const credentialsQuery = useCredentialsQuery();
 	const organizationQuery = useOrganizationQuery();
@@ -45,7 +44,6 @@
 	// Derived data
 	let daemonsData = $derived(daemonsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 	let credentialsData = $derived(credentialsQuery.data ?? []);
 	let org = $derived(organizationQuery.data);
@@ -57,6 +55,7 @@
 	let {
 		viewMode,
 		discovery,
+		hosts = [],
 		activeSession = null,
 		onEdit,
 		onDelete,
@@ -68,6 +67,12 @@
 	}: {
 		viewMode: 'card' | 'list';
 		discovery: Discovery;
+		/**
+		 * Hosts the daemons in this list run on. Passed in rather than fetched
+		 * here: each card needs one host name for a popover, and fetching per card
+		 * meant every card subscribing to an unpaginated org-wide hosts query.
+		 */
+		hosts?: Host[];
 		activeSession?: DiscoveryUpdatePayload | null;
 		onEdit?: (discovery: Discovery) => void;
 		onDelete?: (discovery: Discovery) => void;
@@ -78,14 +83,20 @@
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
 
+	let hostsData = $derived(hosts);
+
 	let isEnabled = $derived(discovery.run_type.type === 'Scheduled' && discovery.run_type.enabled);
 	let hasActiveSession = $derived(!!activeSession);
 	let isCancelling = $derived(
 		activeSession?.session_id ? $cancellingSessions.get(activeSession.session_id) === true : false
 	);
 
+	// Legacy-ness comes from the backend's own `is_legacy`, not a local list —
+	// a `!== 'Unified'` check flagged Rescan, which is new rather than frozen.
 	let legacyStatus: TagProps | null = $derived(
-		discovery.discovery_type.type !== 'Unified' ? { label: common_legacy(), color: 'Yellow' } : null
+		discoveryTypes.getMetadata(discovery.discovery_type.type).is_legacy
+			? { label: common_legacy(), color: 'Yellow' }
+			: null
 	);
 
 	let cardData = $derived({

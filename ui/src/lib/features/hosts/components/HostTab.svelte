@@ -52,6 +52,7 @@
 		useDeleteHostMutation,
 		useBulkDeleteHostsMutation,
 		useConsolidateHostsMutation,
+		useRescanHostMutation,
 		type HostQueryOptions
 	} from '../queries';
 	import { useServicesByIds, useServicesCacheQuery } from '$lib/features/services/queries';
@@ -79,6 +80,8 @@
 	let tagIds = $state<string[]>([]);
 	// Staleness filter state (server-side: the list is server-paginated)
 	let stale = $state<boolean | null>(null);
+	// Search state (server-side, for the same reason)
+	let search = $state('');
 
 	// Queries
 	const organizationQuery = useOrganizationQuery();
@@ -90,7 +93,15 @@
 	let onboarding = $derived((org?.onboarding ?? []) as OnboardingOperation[]);
 
 	const tagsQuery = useTagsQuery();
-	// Paginated hosts with server-side pagination, ordering, and tag filtering
+	// Paginated hosts with server-side pagination, ordering, and tag filtering.
+	//
+	// Deliberately NOT gated on `isActive`, unlike the other tabs' list queries.
+	// `useHostsQuery` is the last remaining writer of the ip-addresses / ports /
+	// services / interfaces caches (it populates them from its nested response),
+	// and those caches have no fetcher of their own. Gating this would leave the
+	// services tab's binding chips and the host editor's interface lists empty for
+	// anyone who never opens the hosts tab. Un-gate it only once those caches have
+	// real queries — see planned-work/child-cache-rearchitecture.md.
 	const hostsQuery = useHostsQuery(
 		(): HostQueryOptions => ({
 			limit: pageSize,
@@ -99,7 +110,8 @@
 			order_by: orderBy,
 			order_direction: orderDirection,
 			tag_ids: tagIds.length > 0 ? tagIds : undefined,
-			stale: stale ?? undefined
+			stale: stale ?? undefined,
+			search: search || undefined
 		})
 	);
 	const networksQuery = useNetworksQuery();
@@ -121,6 +133,7 @@
 	const deleteHostMutation = useDeleteHostMutation();
 	const bulkDeleteHostsMutation = useBulkDeleteHostsMutation();
 	const consolidateHostsMutation = useConsolidateHostsMutation();
+	const rescanHostMutation = useRescanHostMutation();
 
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
@@ -174,6 +187,11 @@
 		stale = next;
 	}
 
+	// Search change handler for server-side search (debounced by DataControls)
+	function handleSearchChange(query: string) {
+		search = query;
+	}
+
 	// Export modal state
 	let showExportModal = $state(false);
 	let exportParams = $derived({
@@ -220,13 +238,24 @@
 	let hostFields = $derived(
 		defineFields<Host, HostOrderField>(
 			{
-				name: { label: common_name(), type: 'string', searchable: true },
-				hostname: { label: common_hostname(), type: 'string', searchable: true },
+				// Identity fields: grouping by one would render a header per host.
+				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+				hostname: {
+					label: common_hostname(),
+					type: 'string',
+					searchable: true,
+					groupable: false
+				},
 				virtualized_by: {
 					label: hosts_fields_virtualizedBy(),
 					type: 'string',
+					searchable: true,
 					filterable: true,
 					groupable: true,
+					// The server groups on the virtualizing service's name,
+					// coalescing hosts without one to an empty string.
+					getGroupValue: (host) =>
+						servicesData.find((s) => s.id === host.virtualization?.details.service_id)?.name ?? '',
 					getValue: (host) => {
 						if (host.virtualization) {
 							const virtualizationService = servicesData.find(
@@ -244,6 +273,9 @@
 				interface_ip: {
 					label: hosts_fields_interfaceIp(),
 					type: 'string',
+					searchable: true,
+					// Near-unique per host, so grouping by it is one header per host.
+					groupable: false,
 					getValue: (host) => {
 						const iface = ipAddressesData
 							.filter((i) => i.host_id === host.id)
@@ -254,9 +286,12 @@
 				network_id: {
 					label: common_network(),
 					type: 'string',
+					searchable: true,
 					filterable: true,
 					groupable: true,
 					filterOptions: networksData.map((n) => n.name),
+					// Displayed as a name, but grouped by id on the server.
+					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
 				},
@@ -309,6 +344,10 @@
 	function handleStartConsolidate(host: Host) {
 		otherHost = host;
 		showHostConsolidationModal = true;
+	}
+
+	function handleRescanHost(host: Host) {
+		rescanHostMutation.mutate({ id: host.id, name: host.name });
 	}
 
 	function handleDeleteHost(host: Host) {
@@ -438,6 +477,7 @@
 			onOrderChange={handleOrderChange}
 			onTagFilterChange={handleTagFilterChange}
 			onStaleFilterChange={handleStaleFilterChange}
+			onSearchChange={handleSearchChange}
 			onExportClick={() => {
 				showExportModal = true;
 			}}
@@ -455,6 +495,7 @@
 					{onSelectionChange}
 					onEdit={isReadOnly ? undefined : handleEditHost}
 					onDelete={isReadOnly ? undefined : handleDeleteHost}
+					onRescan={isReadOnly ? undefined : handleRescanHost}
 					onConsolidate={isReadOnly ? undefined : handleStartConsolidate}
 					onHide={isReadOnly ? undefined : handleHostHide}
 				/>

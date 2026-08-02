@@ -1,0 +1,157 @@
+<script lang="ts">
+	import VlanCard from './VlanCard.svelte';
+	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
+	import Loading from '$lib/shared/components/feedback/Loading.svelte';
+	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
+	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
+	import DataControls from '$lib/shared/components/data/DataControls.svelte';
+	import { defineFields } from '$lib/shared/components/data/types';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import { useSubnetsQuery } from '$lib/features/subnets/queries';
+	import type { Subnet } from '$lib/features/subnets/types/base';
+	import { useVlansQuery } from '../queries';
+	import type { Vlan, VlanOrderField } from '../types/base';
+	import type { components } from '$lib/api/schema';
+	import { downloadCsv } from '$lib/shared/utils/csvExport';
+	import {
+		common_created,
+		common_description,
+		common_lastSeen,
+		common_name,
+		common_network,
+		common_noEntityYet,
+		common_subnets,
+		common_unknownNetwork,
+		common_updated,
+		common_vlans,
+		daemons_installPromptVlans,
+		vlans_emptySubtitle,
+		vlans_vlanNumber
+	} from '$lib/paraglide/messages';
+	import { hasDaemon } from '$lib/shared/onboarding/checklist';
+
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
+
+	// No `$props()`: unlike the sibling tabs this one declares no `TabProps`.
+	// It is view-only for every permission level, so `isReadOnly` would have
+	// nothing to gate.
+
+	// Organization query for onboarding state
+	const organizationQuery = useOrganizationQuery();
+	let onboarding = $derived((organizationQuery.data?.onboarding ?? []) as OnboardingOperation[]);
+
+	// Queries
+	const vlansQuery = useVlansQuery();
+	const networksQuery = useNetworksQuery();
+	// Shared full-list subnets cache — used to resolve the hydrated `subnet_ids`
+	// on each VLAN into names.
+	const subnetsQuery = useSubnetsQuery();
+
+	// Derived data
+	let vlansData = $derived(vlansQuery.data ?? []);
+	let networksData = $derived(networksQuery.data ?? []);
+	let subnetsById = $derived(new Map((subnetsQuery.data ?? []).map((s) => [s.id, s])));
+	let isLoading = $derived(vlansQuery.isPending);
+
+	function getSubnets(vlan: Vlan): Subnet[] {
+		return (vlan.subnet_ids ?? []).map((id) => subnetsById.get(id)).filter((s): s is Subnet => !!s);
+	}
+
+	function getSubnetNames(vlan: Vlan): string[] {
+		return getSubnets(vlan).map((s) => s.name);
+	}
+
+	// CSV export handler
+	async function handleCsvExport() {
+		await downloadCsv('Vlan', {});
+	}
+
+	// Define field configuration for the DataTableControls
+	// Uses defineFields to ensure all VlanOrderField values are covered
+	let vlanFields = $derived(
+		defineFields<Vlan, VlanOrderField>(
+			{
+				// Identity fields: grouping by one would render a header per VLAN.
+				vlan_number: {
+					label: vlans_vlanNumber(),
+					type: 'string',
+					searchable: true,
+					groupable: false
+				},
+				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+				created_at: { label: common_created(), type: 'date' },
+				updated_at: { label: common_updated(), type: 'date' }
+			},
+			[
+				{ key: 'description', label: common_description(), type: 'string', searchable: true },
+				{
+					key: 'network_id',
+					label: common_network(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					getValue: (item) =>
+						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
+				},
+				{
+					key: 'subnet_ids',
+					label: common_subnets(),
+					type: 'array',
+					searchable: true,
+					filterable: true,
+					getValue: getSubnetNames
+				},
+				{
+					// Not in VlanOrderField, so display-only with client-side sorting.
+					key: 'last_seen_at',
+					label: common_lastSeen(),
+					type: 'date',
+					sortable: true
+				}
+			]
+		)
+	);
+</script>
+
+<div class="space-y-6">
+	<!-- Header: no actions — VLANs are discovery-populated and view-only -->
+	<TabHeader title={common_vlans()} />
+
+	{#if !hasDaemon(onboarding)}
+		<PreDaemonEmptyState title={daemons_installPromptVlans()} />
+	{:else if isLoading}
+		<!-- Loading state -->
+		<Loading />
+	{:else if vlansData.length === 0}
+		<!-- Empty state: no CTA, there is nothing to create -->
+		<EmptyState
+			title={common_noEntityYet({ entity: common_vlans() })}
+			subtitle={vlans_emptySubtitle()}
+		/>
+	{:else}
+		<DataControls
+			items={vlansData}
+			fields={vlanFields}
+			storageKey="scanopy-vlans-table-state"
+			getItemId={(item) => item.id}
+			onCsvExport={handleCsvExport}
+		>
+			{#snippet children(
+				item: Vlan,
+				viewMode: 'card' | 'list',
+				isSelected: boolean,
+				onSelectionChange: (selected: boolean) => void
+			)}
+				<VlanCard
+					vlan={item}
+					subnets={getSubnets}
+					selected={isSelected}
+					{onSelectionChange}
+					{viewMode}
+				/>
+			{/snippet}
+		</DataControls>
+	{/if}
+</div>

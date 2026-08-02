@@ -49,7 +49,19 @@
 	}: Props = $props();
 
 	// TanStack Query hooks for context data
-	// Use limit: 0 to get all hosts for virtualization form
+	//
+	// Still the full nested query, deliberately. The VM picker labels each
+	// candidate host with its services (`VmManagerConfigPanel.getHostServices`),
+	// and those come from the services cache — which has no fetcher of its own and
+	// is populated as a side effect of *this* query. Switching to a children-free
+	// host list would leave the picker's service chips empty for any host not on
+	// the hosts tab's current page.
+	//
+	// Fixing that properly means giving the services cache a real source, which is
+	// the deferred child-cache re-architecture (see
+	// planned-work/child-cache-rearchitecture.md). This surface is lazy — it only
+	// mounts inside the host editor's workloads tab — so it no longer costs
+	// anything on page load.
 	const hostsQuery = useHostsQuery({ limit: 0 });
 	const servicesQuery = useServicesCacheQuery();
 	let hostsData = $derived(hostsQuery.data?.items ?? []);

@@ -59,8 +59,9 @@ export interface FieldDefinition {
 
 export interface CredentialTypeMetadata {
 	fields: FieldDefinition[];
-	/** Where this credential type can apply: 'DaemonHost' | 'Hosts' | 'Network' */
-	targets?: ('DaemonHost' | 'Hosts' | 'Network')[];
+	/** Where this credential type can apply. Union derived from the backend
+	 *  `IntegrationTarget` scope discriminant, never hand-written. */
+	targets?: components['schemas']['IntegrationTarget']['scope'][];
 	/** Whether the user must provide config/fields (false ⇒ rendered as a toggle, not a form) */
 	requires_config?: boolean;
 	/** Single service instance per host ⇒ access methods at a target are mutually exclusive */
@@ -71,6 +72,9 @@ export interface CredentialTypeMetadata {
 	 *  discovery credential picker compares the selected daemon's `version` against
 	 *  this to disable too-new types (and to build the requirement tooltip). */
 	minimum_daemon_version?: string;
+	/** Release maturity of this type's integration. Beta types render a "Beta" tag in the
+	 *  picker but stay selectable. Union derived from the backend enum, never hand-written. */
+	stability?: components['schemas']['CredentialStability'];
 	/** Whether the associated service has a logo */
 	has_logo?: boolean;
 	/** Whether the logo needs a white background */
@@ -193,12 +197,9 @@ export interface SubnetTypeMetadata {
 /**
  * What a click on an edge highlights. An edge is one segment of a relation — a dependency's
  * chain, a host's addresses, a runtime's bridges — and a click either lights up the whole
- * relation (following `relation_field`, the payload field holding that relation's id) or only
- * the clicked segment.
+ * relation (every segment sharing the edge's `relation_key`) or only the clicked segment.
  */
-export type EdgeSelectionScope =
-	| { type: 'connected_nodes'; relation_field: string }
-	| { type: 'segment' };
+export type EdgeSelectionScope = { type: 'connected_nodes' } | { type: 'segment' };
 
 export interface EdgeTypeMetadata {
 	has_start_marker: boolean;
@@ -227,8 +228,9 @@ export interface PortTypeMetadata {
 	protocol: 'Tcp' | 'Udp';
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface DiscoveryTypeMetadata {}
+export interface DiscoveryTypeMetadata {
+	is_legacy: boolean;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface DiscoveryPhaseMetadata {}

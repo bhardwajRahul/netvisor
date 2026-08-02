@@ -1,3 +1,4 @@
+use crate::server::openapi::tags as api_tags;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::storage::traits::Entity;
 use crate::server::{
@@ -112,7 +113,7 @@ pub struct TopologyExportQuery {
 #[utoipa::path(
     get,
     path = "/data",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(TopologyDataQuery),
     responses(
         (status = 200, description = "Topology entity bundle", body = ApiResponse<TopologyData>),
@@ -198,7 +199,7 @@ async fn get_topology_data(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL],
     params(("id" = Uuid, Path, description = "Topology ID")),
     responses(
         (status = 200, description = "Topology updated", body = ApiResponse<Topology>),
@@ -227,7 +228,7 @@ async fn update_topology(
 #[utoipa::path(
     get,
     path = "",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL],
     params(NetworkFilterQuery),
     responses(
         (status = 200, description = "List of topologies", body = PaginatedApiResponse<Topology>),
@@ -277,7 +278,7 @@ async fn get_all_topologies(
 #[utoipa::path(
     post,
     path = "/{id}/node-position",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Topology ID")),
     request_body = TopologyNodePositionUpdate,
     responses(
@@ -331,7 +332,7 @@ async fn update_node_position(
 #[utoipa::path(
     post,
     path = "/{id}/edge-handles",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Topology ID")),
     request_body = TopologyEdgeHandleUpdate,
     responses(
@@ -386,7 +387,7 @@ async fn update_edge_handles(
 #[utoipa::path(
     post,
     path = "/{id}/node-resize",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Topology ID")),
     request_body = TopologyNodeResizeUpdate,
     responses(
@@ -442,10 +443,10 @@ async fn update_node_resize(
 #[utoipa::path(
     get,
     path = "/{id}/export/mermaid",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL],
     params(("id" = Uuid, Path, description = "Topology ID"), TopologyExportQuery),
     responses(
-        (status = 200, description = "Mermaid flowchart export", content_type = "text/plain"),
+        (status = 200, description = "Mermaid flowchart export", content_type = "text/plain", body = String),
         (status = 403, description = "Access denied", body = ApiErrorResponse),
         (status = 404, description = "Topology not found", body = ApiErrorResponse),
     ),
@@ -506,10 +507,10 @@ async fn export_mermaid(
 #[utoipa::path(
     get,
     path = "/{id}/export/confluence",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL],
     params(("id" = Uuid, Path, description = "Topology ID"), TopologyExportQuery),
     responses(
-        (status = 200, description = "Confluence wiki markup export", content_type = "text/plain"),
+        (status = 200, description = "Confluence wiki markup export", content_type = "text/plain", body = String),
         (status = 403, description = "Access denied", body = ApiErrorResponse),
         (status = 404, description = "Topology not found", body = ApiErrorResponse),
     ),

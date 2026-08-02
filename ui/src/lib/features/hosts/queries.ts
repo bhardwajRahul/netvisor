@@ -13,7 +13,9 @@ import {
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import { pushSuccess } from '$lib/shared/stores/feedback';
-import { hosts_consolidatedToast } from '$lib/paraglide/messages';
+import { hosts_consolidatedToast, hosts_rescanStartedToast } from '$lib/paraglide/messages';
+import { discoverySSEManager } from '$lib/features/discovery/queries';
+import type { DiscoveryUpdatePayload } from '$lib/features/discovery/types/api';
 import type {
 	Host,
 	HostResponse,
@@ -150,20 +152,19 @@ export interface HostQueryOptions {
 	/** `true` returns only hosts discovery hasn't observed within their network's
 	 * staleness window; omit for no staleness constraint. */
 	stale?: boolean;
+	/** Free-text search across host name, hostname, description, IP addresses
+	 * and the names of services running on the host. */
+	search?: string;
 	/** As-of timestamp (ISO 8601). When set, returns SCD2 state as of this instant
 	 * (snapshot view) instead of live state. */
 	at?: string;
 }
 
 /**
- * Pagination metadata from API response
+ * Pagination metadata from API response. Derived from the generated schema so
+ * fields the server adds (e.g. per-group totals) reach consumers automatically.
  */
-export interface PaginationMeta {
-	total_count: number;
-	limit: number;
-	offset: number;
-	has_more: boolean;
-}
+export type PaginationMeta = components['schemas']['PaginationMeta'];
 
 /**
  * Result of a paginated query
@@ -202,6 +203,7 @@ export function useHostsQuery(optionsOrGetter: HostQueryOptions | (() => HostQue
 							order_direction: options.order_direction,
 							tag_ids: options.tag_ids,
 							stale: options.stale,
+							search: options.search,
 							at: options.at
 						}
 					}
@@ -259,6 +261,94 @@ export function useHostsQuery(optionsOrGetter: HostQueryOptions | (() => HostQue
 }
 
 /**
+ * Options for {@link useHostSummariesQuery}. Deliberately narrower than
+ * {@link HostQueryOptions}: a summary query is for picking and labelling hosts,
+ * so it takes scoping and ordering but no offset paging.
+ */
+export interface HostSummaryQueryOptions {
+	/** Filter by network ID. Prefer this over an org-wide query wherever the surface is network-scoped. */
+	network_id?: string;
+	/** Filter by specific host IDs. */
+	ids?: string[];
+	/** Filter by tag IDs (returns hosts that have ANY of the specified tags). */
+	tag_ids?: string[];
+	/** Maximum number of results. Defaults to 0 (no limit) — scope with `network_id` or `ids`. */
+	limit?: number;
+	/** As-of timestamp (ISO 8601) for a snapshot read instead of live state. */
+	at?: string;
+	/**
+	 * Set false to hold the fetch — e.g. a picker inside a modal that is rendered
+	 * unconditionally but not yet open. Excluded from the query key, so toggling it
+	 * reuses the same cache entry rather than starting a new one.
+	 */
+	enabled?: boolean;
+}
+
+/**
+ * Query hook for host identity only — no nested children.
+ *
+ * Use this for anything that needs hosts as *labels or options*: name lookups,
+ * pickers, per-network lists. It requests `include_children=false`, so the
+ * response carries the host row and its tags but not ip_addresses, ports,
+ * services or interfaces — which are the bulk of a host payload.
+ *
+ * Deliberately a separate hook rather than an option on {@link useHostsQuery},
+ * for two reasons:
+ *
+ *  1. `useHostsQuery` populates the ip-addresses/ports/services/interfaces
+ *     caches as a side effect, and that write *replaces* every cached row for
+ *     the hosts in its response. A children-free response run through it would
+ *     silently delete real child rows for those hosts. This hook has no such
+ *     side effect, which is only safe because it never claims to carry children.
+ *  2. It keys off `['hosts','summary',…]`, so a summary result can never be
+ *     mistaken for — or dedupe against — a full nested `['hosts','list',…]`
+ *     entry that some other feature is relying on.
+ *
+ * If you need children, you need {@link useHostsQuery} (paginated) or
+ * `GET /api/v1/hosts/{id}` for a single host.
+ *
+ * @param optionsOrGetter - Options, or a getter for reactive options.
+ */
+export function useHostSummariesQuery(
+	optionsOrGetter: HostSummaryQueryOptions | (() => HostSummaryQueryOptions) = {}
+) {
+	return createQuery(() => {
+		const { enabled = true, ...options } =
+			typeof optionsOrGetter === 'function' ? optionsOrGetter() : optionsOrGetter;
+		// An explicitly empty id list means "nothing to look up", not "fetch everything".
+		const hasEmptyIdFilter = options.ids !== undefined && options.ids.length === 0;
+
+		return {
+			queryKey: [...queryKeys.hosts.all, 'summary', options],
+			queryFn: async (): Promise<PaginatedResult<Host>> => {
+				const { data } = await apiClient.GET('/api/v1/hosts', {
+					params: {
+						query: {
+							network_id: options.network_id,
+							ids: options.ids,
+							tag_ids: options.tag_ids,
+							limit: options.limit ?? 0,
+							at: options.at,
+							include_children: false
+						}
+					}
+				});
+				if (!data?.success || !data.data) {
+					throw new Error(data?.error || 'Failed to fetch hosts');
+				}
+
+				return {
+					items: data.data.map(toHostPrimitive),
+					pagination: data.meta?.pagination ?? null
+				};
+			},
+			enabled: enabled && !hasEmptyIdFilter,
+			placeholderData: keepPreviousData
+		};
+	});
+}
+
+/**
  * Query hook for fetching specific hosts by IDs (for selective loading)
  * Used for lookups where only a subset of hosts is needed (e.g., service → host name)
  *
@@ -277,7 +367,11 @@ export function useHostsByIds(idsGetter: () => string[]) {
 					params: {
 						query: {
 							ids: ids,
-							limit: 0 // No pagination when fetching by IDs
+							limit: 0, // No pagination when fetching by IDs
+							// This hook returns primitives (`toHostPrimitive` drops the
+							// children) and populates no child cache, so the nested
+							// entities were downloaded and thrown away.
+							include_children: false
 						}
 					}
 				});
@@ -314,8 +408,8 @@ export function useCreateHostMutation() {
 			queryClient.invalidateQueries({ queryKey: queryKeys.credentials.all });
 
 			// Add children to their caches
-			queryClient.setQueryData<Interface[]>(queryKeys.interfaces.all, (old) =>
-				old ? [...old, ...response.interfaces] : response.interfaces
+			queryClient.setQueryData<IPAddress[]>(queryKeys.ipAddresses.all, (old) =>
+				old ? [...old, ...response.ip_addresses] : response.ip_addresses
 			);
 			queryClient.setQueryData<Port[]>(queryKeys.ports.all, (old) =>
 				old ? [...old, ...response.ports] : response.ports
@@ -405,10 +499,10 @@ export function useUpdateHostMutation() {
 			// credential_assignments changes are reflected on credentials' host_assignments
 			queryClient.invalidateQueries({ queryKey: queryKeys.credentials.all });
 
-			// Replace interfaces for this host
-			queryClient.setQueryData<Interface[]>(queryKeys.interfaces.all, (old) => {
+			// Replace ip addresses for this host
+			queryClient.setQueryData<IPAddress[]>(queryKeys.ipAddresses.all, (old) => {
 				const others = old?.filter((i) => i.host_id !== hostId) ?? [];
-				return [...others, ...response.interfaces];
+				return [...others, ...response.ip_addresses];
 			});
 
 			// Replace ports for this host
@@ -486,8 +580,8 @@ export function useDeleteHostMutation() {
 			queryClient.invalidateQueries({ queryKey: queryKeys.hosts.lists() });
 
 			// Remove children from their caches
-			queryClient.setQueryData<Interface[]>(
-				queryKeys.interfaces.all,
+			queryClient.setQueryData<IPAddress[]>(
+				queryKeys.ipAddresses.all,
 				(old) => old?.filter((i) => i.host_id !== id) ?? []
 			);
 			queryClient.setQueryData<Port[]>(
@@ -527,8 +621,8 @@ export function useBulkDeleteHostsMutation() {
 			queryClient.invalidateQueries({ queryKey: queryKeys.hosts.lists() });
 
 			// Remove children from their caches
-			queryClient.setQueryData<Interface[]>(
-				queryKeys.interfaces.all,
+			queryClient.setQueryData<IPAddress[]>(
+				queryKeys.ipAddresses.all,
 				(old) => old?.filter((i) => !idSet.has(i.host_id)) ?? []
 			);
 			queryClient.setQueryData<Port[]>(
@@ -579,10 +673,10 @@ export function useConsolidateHostsMutation() {
 			queryClient.invalidateQueries({ queryKey: queryKeys.hosts.lists() });
 
 			// Remove children of consolidated host and update destination host children
-			queryClient.setQueryData<Interface[]>(queryKeys.interfaces.all, (old) => {
+			queryClient.setQueryData<IPAddress[]>(queryKeys.ipAddresses.all, (old) => {
 				const others =
 					old?.filter((i) => i.host_id !== otherHostId && i.host_id !== response.id) ?? [];
-				return [...others, ...response.interfaces];
+				return [...others, ...response.ip_addresses];
 			});
 			queryClient.setQueryData<Port[]>(queryKeys.ports.all, (old) => {
 				const others =
@@ -603,6 +697,44 @@ export function useConsolidateHostsMutation() {
 			if (otherHostName) {
 				pushSuccess(hosts_consolidatedToast({ source: otherHostName, destination: response.name }));
 			}
+		}
+	}));
+}
+
+/**
+ * Rescan a single host.
+ *
+ * Returns a discovery session, so the result streams over the same SSE channel
+ * as any other scan — seed the sessions cache and connect, or the UI won't see
+ * it until the next poll. Refusals (never scanned, daemon gone, daemon too old,
+ * daemon not on a subnet holding the host's IPs) come back as a 400 whose
+ * message the API client toasts automatically.
+ */
+export function useRescanHostMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async ({ id }: { id: string; name?: string }) => {
+			const { data } = await apiClient.POST('/api/v1/hosts/{id}/rescan', {
+				params: { path: { id } }
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to start rescan');
+			}
+			return data.data as DiscoveryUpdatePayload;
+		},
+		onSuccess: (session: DiscoveryUpdatePayload, { name }) => {
+			queryClient.setQueryData<DiscoveryUpdatePayload[]>(queryKeys.discovery.sessions(), (old) => {
+				if (!old) return [session];
+				const exists = old.find((s) => s.session_id === session.session_id);
+				return exists
+					? old.map((s) => (s.session_id === session.session_id ? session : s))
+					: [...old, session];
+			});
+
+			discoverySSEManager.connect();
+
+			pushSuccess(hosts_rescanStartedToast({ name: name ?? '' }));
 		}
 	}));
 }
@@ -633,12 +765,25 @@ export function hydrateHostToFormData(
 	const allServices = queryClient.getQueryData<Service[]>(queryKeys.services.all) ?? [];
 	const allInterfaces = queryClient.getQueryData<Interface[]>(queryKeys.interfaces.all) ?? [];
 
+	// Sort explicitly rather than trusting the cache's arrival order. The form's
+	// ListManagers render these in array order and `useUpdateHostMutation` writes
+	// `position: index` back from that order — so if the cache is ever populated
+	// from a source with different ordering (the standalone child endpoints return
+	// `created_at ASC`, not `position ASC`), opening a host and saving it would
+	// silently rewrite and persist the user's ordering.
 	return {
 		...host,
-		ip_addresses: allIPAddresses.filter((i) => i.host_id === host.id),
+		// `position` is optional on IPAddress; unordered entries sort first.
+		ip_addresses: allIPAddresses
+			.filter((i) => i.host_id === host.id)
+			.toSorted((a, b) => (a.position ?? 0) - (b.position ?? 0)),
 		ports: allPorts.filter((p) => p.host_id === host.id),
-		services: allServices.filter((s) => s.host_id === host.id),
-		interfaces: allInterfaces.filter((e) => e.host_id === host.id),
+		services: allServices
+			.filter((s) => s.host_id === host.id)
+			.toSorted((a, b) => a.position - b.position),
+		interfaces: allInterfaces
+			.filter((e) => e.host_id === host.id)
+			.toSorted((a, b) => a.if_index - b.if_index),
 		// SNMP fields from host
 		sys_descr: host.sys_descr ?? null,
 		sys_object_id: host.sys_object_id ?? null,

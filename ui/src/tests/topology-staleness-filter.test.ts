@@ -3,7 +3,7 @@ import { get } from 'svelte/store';
 import {
 	updateTagFilter,
 	tagHiddenNodeIds,
-	tagHiddenServiceIds,
+	hiddenEntityIds,
 	presentFilterValues
 } from '$lib/features/topology/interactions';
 import type { RenderableTopology } from '$lib/features/topology/types/base';
@@ -97,11 +97,50 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(NOW);
 	tagHiddenNodeIds.set(new Set());
-	tagHiddenServiceIds.set(new Set());
+	hiddenEntityIds.set(new Set());
 });
 afterEach(() => vi.useRealTimers());
 
 describe('topology staleness filter', () => {
+	// The two spaces the filter resolves into. Before these were unified, entity-space was a
+	// Service-only store and every pass had to special-case `entityType === 'Service'`.
+	it('records a hidden entity in entity-space and its node in node-space', () => {
+		updateTagFilter(
+			buildTopology(),
+			undefined,
+			'Workloads',
+			{ Service: { Staleness: ['stale'] } },
+			[],
+			network
+		);
+		// It is an element node, so it resolves to node-space by id...
+		expect(get(tagHiddenNodeIds).has('svc-itself-stale')).toBe(true);
+		// ...and it is an entity either way, so inline render gates see it too.
+		expect(get(hiddenEntityIds).has('svc-itself-stale')).toBe(true);
+	});
+
+	it('hides an entity that has no node of its own', () => {
+		// A Port renders only inline on another node's card. There is nothing to remove from the
+		// graph, so node-space stays empty — but the render gate still has to know, which is the
+		// case the old Service-only store could not express at all.
+		const topo = buildTopology();
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		(topo as any).ports = [
+			{
+				id: 'port-1',
+				network_id: NETWORK_ID,
+				host_id: 'fresh-host',
+				source: { type: 'Discovery' },
+				tags: []
+			}
+		];
+
+		updateTagFilter(topo, undefined, 'Workloads', undefined, ['Port'], network);
+
+		expect(get(hiddenEntityIds).has('port-1')).toBe(true);
+		expect(get(tagHiddenNodeIds).has('port-1')).toBe(false);
+	});
+
 	it('hides a service that is stale on its own merits', () => {
 		updateTagFilter(
 			buildTopology(),

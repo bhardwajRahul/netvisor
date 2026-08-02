@@ -88,13 +88,36 @@ export interface CardField {
 interface BaseFieldConfig<T> {
 	type: 'string' | 'boolean' | 'date' | 'array';
 	label: string;
+	/**
+	 * Whether the search box matches against this field. Opt-in: leave it off for
+	 * date and boolean fields, whose stringified values match far too broadly
+	 * (a date field turns "2026" into a hit on every row).
+	 *
+	 * Ignored by lists that search server-side — those match against the
+	 * entity's `Storable::search_predicates` instead.
+	 */
 	searchable?: boolean;
 	filterable?: boolean;
 	getValue?: (item: T) => string | boolean | Date | string[] | null;
 	/** 'include' (default): checked values shown. 'exclude': checked values hidden. */
 	filterMode?: 'include' | 'exclude';
+	/**
+	 * The parent applies this filter server-side via `onFilterChange`, so the
+	 * client-side pass leaves it alone. Required for any filter on a
+	 * server-paginated list: filtering the loaded rows would only ever narrow the
+	 * page in hand, silently hiding matches on every other page.
+	 */
+	serverFiltered?: boolean;
 	/** External filter options (bypasses getUniqueValues). Use when values aren't derivable from current items (e.g., server-side pagination). */
 	filterOptions?: string[];
+	/**
+	 * The raw value the server groups this item under, when it differs from
+	 * what `getValue` renders (e.g. `network_id` is a UUID in the database but
+	 * a network name in the UI). Only needed on groupable fields of
+	 * server-paginated lists: it's the key that matches a group to its total in
+	 * the response's `group_counts`. Defaults to the displayed value.
+	 */
+	getGroupValue?: (item: T) => string | null;
 	/** Default checked values for the filter (applied on first load if no localStorage state). */
 	filterDefaults?: string[];
 }
@@ -156,6 +179,49 @@ export function isDisplayField<T, O extends string>(
  */
 export function getFieldKey<T, O extends string>(field: FieldConfig<T, O>): string {
 	return isOrderableField(field) ? field.orderField : field.key;
+}
+
+// ============================================================================
+// Grouped Pagination
+// ============================================================================
+
+/** Where a group sits in the full ordered result set. */
+export interface GroupPosition {
+	/** Index of the group's first row across all pages. */
+	start: number;
+	/** How many rows the group holds in total. */
+	count: number;
+}
+
+/** The portion of a group visible on the current page. */
+export interface GroupSlice {
+	total: number;
+	/** 1-based index within the group of its first row on this page. */
+	start: number;
+	/** 1-based index within the group of its last row on this page. */
+	end: number;
+}
+
+/**
+ * Which slice of a group the current page is showing.
+ *
+ * A page can straddle group boundaries, so this intersects the page's span with
+ * the group's rather than assuming a group starts where the page does.
+ *
+ * Returns `null` when the group is shown in full — there is no "1–5 of 5" worth
+ * saying, and the caller falls back to a plain count.
+ */
+export function groupPageSlice(
+	group: GroupPosition,
+	pageOffset: number,
+	pageLength: number
+): GroupSlice | null {
+	const pageEnd = pageOffset + pageLength;
+	const start = Math.max(pageOffset, group.start) - group.start + 1;
+	const end = Math.min(pageEnd, group.start + group.count) - group.start;
+
+	if (start === 1 && end === group.count) return null;
+	return { total: group.count, start, end };
 }
 
 // ============================================================================

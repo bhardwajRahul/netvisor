@@ -1,6 +1,7 @@
 use crate::server::auth::middleware::permissions::{
     Admin, Authorized, IsUser, Member, RequireVerified,
 };
+use crate::server::openapi::tags as api_tags;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::query::{FilterQueryExtractor, NoFilterQuery};
 use crate::server::shared::handlers::traits::{BulkDeleteResponse, CrudHandlers, delete_handler};
@@ -232,7 +233,7 @@ pub async fn delete_user(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tags = [User::ENTITY_NAME_PLURAL, "internal"],
+    tags = [User::ENTITY_NAME_PLURAL],
     params(("id" = Uuid, Path, description = "User ID")),
     request_body = User,
     responses(
@@ -290,7 +291,7 @@ pub async fn update_user(
 #[utoipa::path(
     put,
     path = "/{id}/admin",
-    tags = [User::ENTITY_NAME_PLURAL, "internal"],
+    tags = [User::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "User ID")),
     request_body = User,
     responses(
@@ -390,7 +391,7 @@ async fn admin_update_user(
     post,
     path = "/bulk-delete",
     tag = User::ENTITY_NAME_PLURAL,
-    request_body(content = Vec<Uuid>, description = "Array of user IDs to delete"),
+    request_body(content = Vec<Uuid>, description = "Array of User IDs to delete"),
     responses(
         (status = 200, description = "Users deleted successfully", body = ApiResponse<BulkDeleteResponse>),
         (status = 403, description = "Cannot delete users with higher permissions", body = ApiErrorResponse),

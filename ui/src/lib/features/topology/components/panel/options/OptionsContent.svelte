@@ -15,9 +15,9 @@
 	import { edgeTypes, views } from '$lib/shared/stores/metadata';
 	import { activeView } from '../../../queries';
 	import { type Color } from '$lib/shared/utils/styling';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
+	import type { RenderableTopology } from '../../../types/base';
 	import viewsJson from '$lib/data/views.json';
 	import TagFilterGroup from './TagFilterGroup.svelte';
 	import OptionToggle from './OptionToggle.svelte';
@@ -46,7 +46,14 @@
 
 	type EntityType = components['schemas']['EntityDiscriminants'];
 
-	let { activeTab }: { activeTab: 'filter' | 'group' | 'visual' } = $props();
+	let {
+		activeTab,
+		renderableTopology
+	}: {
+		activeTab: 'filter' | 'group' | 'visual';
+		/** Enriched bundle for the active view — network- and snapshot-scoped. */
+		renderableTopology: RenderableTopology | undefined;
+	} = $props();
 
 	// Get topology row for layout/edit state.
 	const topologiesQuery = useTopologiesQuery();
@@ -69,10 +76,21 @@
 
 	// Live entity arrays drive tag-filter sections. Hosts query populates the
 	// services cache as a side-effect; subnets fetch directly.
-	const hostsQuery = useHostsQuery({ limit: 0 });
+	// Host tags come from the topology bundle rather than a separate hosts fetch.
+	//
+	// This used to be `useHostsQuery({ limit: 0 })` — every host in the
+	// organisation, unpaginated (~1.9MB on a 440-host estate), downloaded and
+	// parsed on the critical path to interactive, to produce a set of tag ids and
+	// one boolean.
+	//
+	// It also disagreed with the graph. That query passed neither `network_id`
+	// nor `at`, so the filter offered tags from hosts on networks you were not
+	// viewing, and in snapshot mode offered *live* host tags while the graph
+	// showed the snapshot. The bundle is already scoped to the selected network
+	// and snapshot, so reading from it makes the filter match what is on screen.
 	const servicesCacheQuery = useServicesCacheQuery();
 	const subnetsQuery = useSubnetsQuery();
-	let hostsData = $derived(hostsQuery.data?.items ?? []);
+	let hostsData = $derived(renderableTopology?.hosts ?? []);
 	let servicesData = $derived(servicesCacheQuery.data ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 

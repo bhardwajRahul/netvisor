@@ -4,6 +4,8 @@ use crate::server::auth::service::hash_password;
 use crate::server::bindings::r#impl::base::Binding;
 use crate::server::config::AppState;
 use crate::server::networks::r#impl::{Network, NetworkBase};
+use crate::server::openapi::tags as api_tags;
+use crate::server::organizations::demo_status::DemoPopulateStatus;
 use crate::server::organizations::r#impl::base::Organization;
 use crate::server::shared::events::traits::{Event, OrgScope};
 use crate::server::shared::events::types::{OnboardingOperation, OnboardingOperationDiscriminants};
@@ -24,6 +26,7 @@ use anyhow::anyhow;
 use axum::Json;
 use axum::extract::Path;
 use axum::extract::State;
+use axum::http::StatusCode;
 use email_address::EmailAddress;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -44,6 +47,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(reset))
         .routes(routes!(delete_organization))
         .routes(routes!(populate_demo_data))
+        .routes(routes!(populate_demo_status))
 }
 
 /// Get the current user's organization
@@ -121,7 +125,9 @@ pub async fn update_org_name(
 /// Request to update user profile (deferred marketing fields)
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ProfileUpdateRequest {
+    /// The user's job title, collected during onboarding.
     pub job_title: Option<String>,
+    /// Company size bracket, collected during onboarding.
     pub company_size: Option<String>,
 }
 
@@ -164,10 +170,31 @@ async fn update_profile(
     Ok(Json(ApiResponse::success(())))
 }
 
+/// How a user first heard about Scanopy, as offered by the onboarding prompt.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferralSource {
+    SearchEngine,
+    AiAssistant,
+    Youtube,
+    Tiktok,
+    BlogArticle,
+    Reddit,
+    HackerNews,
+    SocialMedia,
+    WordOfMouth,
+    ProxmoxCommunityScripts,
+    SelfHosted,
+    Other,
+    PreferNotToSay,
+}
+
 /// Request to submit referral source
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ReferralSourceRequest {
-    pub referral_source: String,
+    /// How the user heard about Scanopy.
+    pub referral_source: ReferralSource,
+    /// Free-text detail, sent when `referral_source` is `other`.
     pub referral_source_other: Option<String>,
 }
 
@@ -221,6 +248,7 @@ pub enum DaemonPromptAction {
 /// Request recording the user's response to the "Start Discovering Your Network" prompt.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DaemonPromptResponseRequest {
+    /// What the user chose to do about the daemon prompt.
     pub action: DaemonPromptAction,
 }
 
@@ -271,7 +299,7 @@ async fn daemon_prompt_response(
 #[utoipa::path(
     post,
     path = "/{id}/reset",
-    tags = [Organization::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Organization::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Organization ID")),
     responses(
         (status = 200, description = "Organization reset", body = EmptyApiResponse),
@@ -344,7 +372,7 @@ pub async fn reset(
 #[utoipa::path(
     delete,
     path = "/{id}",
-    tags = [Organization::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Organization::ENTITY_NAME_PLURAL],
     params(("id" = Uuid, Path, description = "Organization ID")),
     responses(
         (status = 200, description = "Organization deleted", body = EmptyApiResponse),
@@ -452,16 +480,22 @@ pub async fn delete_organization(
     Ok(Json(ApiResponse::success(())))
 }
 
-/// Populate demo data (only available for demo organizations)
+/// Populate demo data (only available for demo organizations).
+///
+/// Runs the population off the request thread (a `tokio::spawn`) and returns
+/// `202` immediately — the work is a few hundred sequential DB round-trips and
+/// would otherwise exceed the reverse-proxy request timeout against a remote
+/// database. Poll `GET /{id}/populate-demo/status` for completion/failure.
 #[utoipa::path(
     post,
     path = "/{id}/populate-demo",
-    tags = [Organization::ENTITY_NAME_PLURAL, "internal"],
+    tags = [Organization::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
     params(("id" = Uuid, Path, description = "Organization ID")),
     responses(
-        (status = 200, description = "Demo data populated", body = EmptyApiResponse),
+        (status = 202, description = "Demo data population started", body = ApiResponse<DemoPopulateStatus>),
         (status = 403, description = "Only available for demo organizations", body = ApiErrorResponse),
         (status = 404, description = "Organization not found", body = ApiErrorResponse),
+        (status = 409, description = "Population already in progress", body = ApiErrorResponse),
     ),
      security(("user_api_key" = []), ("session" = []))
 )]
@@ -469,16 +503,13 @@ pub async fn populate_demo_data(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Owner>,
     Path(id): Path<Uuid>,
-) -> ApiResult<Json<ApiResponse<()>>> {
-    use crate::server::organizations::demo_data::DemoData;
-    use crate::server::services::r#impl::base::Service;
-
+) -> ApiResult<(StatusCode, Json<ApiResponse<DemoPopulateStatus>>)> {
     let user_org_id = auth
         .organization_id()
         .ok_or_else(ApiError::organization_required)?;
     let user_id = auth.user_id().ok_or_else(ApiError::user_required)?;
 
-    let mut org = state
+    let org = state
         .services
         .organization_service
         .get_by_id(&id)
@@ -501,6 +532,86 @@ pub async fn populate_demo_data(
     }
 
     let entity: AuthenticatedEntity = auth.into_entity();
+
+    // Single-flight per org: a retry while a run is in flight must not stack a
+    // second population (it would race the reset). `try_begin_demo` sets the
+    // `Running` status we hand back in the 202 body.
+    let Some(started) = state.services.organization_service.try_begin_demo(id).await else {
+        return Err(ApiError::conflict(
+            "Demo data population is already in progress for this organization",
+        ));
+    };
+
+    let task_state = state.clone();
+    tokio::spawn(async move {
+        let org_service = task_state.services.organization_service.clone();
+        let terminal = match run_populate_demo(task_state.clone(), id, user_id, entity, org).await {
+            Ok(()) => DemoPopulateStatus::Complete {
+                finished_at: chrono::Utc::now(),
+            },
+            Err(e) => {
+                tracing::error!(
+                    organization_id = %id,
+                    error = %e,
+                    "Demo data population failed",
+                );
+                DemoPopulateStatus::Failed {
+                    error: e.to_string(),
+                    finished_at: chrono::Utc::now(),
+                }
+            }
+        };
+        org_service.set_demo_status(id, terminal).await;
+    });
+
+    Ok((StatusCode::ACCEPTED, Json(ApiResponse::success(started))))
+}
+
+/// Poll the status of an org's background demo-populate task.
+#[utoipa::path(
+    get,
+    path = "/{id}/populate-demo/status",
+    tags = [Organization::ENTITY_NAME_PLURAL, api_tags::INTERNAL],
+    params(("id" = Uuid, Path, description = "Organization ID")),
+    responses(
+        (status = 200, description = "Demo populate status", body = ApiResponse<DemoPopulateStatus>),
+        (status = 404, description = "No demo-populate task for this organization", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+pub async fn populate_demo_status(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<ApiResponse<DemoPopulateStatus>>> {
+    let user_org_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+    if id != user_org_id {
+        return Err(ApiError::permission_denied());
+    }
+    let status = state
+        .services
+        .organization_service
+        .get_demo_status(&id)
+        .await
+        .ok_or_else(|| {
+            ApiError::not_found("No demo-populate task for this organization".to_string())
+        })?;
+    Ok(Json(ApiResponse::success(status)))
+}
+
+/// The population work itself — runs in the spawned task, off the request
+/// thread. Returns `Ok(())` on success; the caller records the terminal status.
+async fn run_populate_demo(
+    state: Arc<AppState>,
+    id: Uuid,
+    user_id: Uuid,
+    entity: AuthenticatedEntity,
+    mut org: Organization,
+) -> ApiResult<()> {
+    use crate::server::organizations::demo_data::DemoData;
+    use crate::server::services::r#impl::base::Service;
 
     // First, reset all existing data
     reset_organization_data(&state, &id, entity.clone()).await?;
@@ -566,15 +677,24 @@ pub async fn populate_demo_data(
         .await?;
     collect_entity_tags(&created_networks, &mut all_entity_tags);
 
-    // 3.5. Network-credential associations
-    for assignment in demo_data.network_credential_assignments {
-        state
-            .services
-            .credential_service
-            .set_network_credentials(&assignment.network_id, &assignment.credential_ids)
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-    }
+    // 3.5. Network-credential associations — one bulk insert across all
+    // networks (no per-network lock/delete; the org was just reset).
+    let network_cred_pairs: Vec<(Uuid, Uuid)> = demo_data
+        .network_credential_assignments
+        .iter()
+        .flat_map(|a| {
+            let network_id = a.network_id;
+            a.credential_ids
+                .iter()
+                .map(move |&cred_id| (network_id, cred_id))
+        })
+        .collect();
+    state
+        .services
+        .credential_service
+        .create_network_credentials(&network_cred_pairs)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
     // 4. Subnets (depends on networks)
     let created_subnets = state
@@ -592,17 +712,28 @@ pub async fn populate_demo_data(
         .create_many(&demo_data.vlans)
         .await?;
 
+    // 4.6. Subnet↔VLAN junction rows (depend on subnets + VLANs). One bulk
+    // insert, no per-subnet lock (fresh org). Derived to mirror the discovery
+    // reconciler, so demo subnets show their VLANs like a real deployment.
+    state
+        .services
+        .vlan_service
+        .subnet_vlan_storage
+        .create_many(&demo_data.subnet_vlan_records)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
     // 5. Hosts + children — bypass discover_host (no collisions in fresh org)
     // Flatten hosts, ip_addresses, ports, services from HostWithServices bundles
     let mut all_hosts = Vec::new();
-    let mut all_interfaces = Vec::new();
+    let mut all_ip_addresses = Vec::new();
     let mut all_ports = Vec::new();
     let mut all_services: Vec<Service> = Vec::new();
     for hws in &demo_data.hosts_with_services {
         let host_id = hws.host.id;
         let network_id = hws.host.base.network_id;
         all_hosts.push(hws.host.clone());
-        all_interfaces.extend(hws.ip_addresses.clone());
+        all_ip_addresses.extend(hws.ip_addresses.clone());
         all_ports.extend(
             hws.ports
                 .iter()
@@ -619,46 +750,9 @@ pub async fn populate_demo_data(
         .await?;
     collect_entity_tags(&created_hosts, &mut all_entity_tags);
 
-    state
-        .services
-        .ip_address_service
-        .create_many(&all_interfaces, entity.clone())
-        .await?;
-
-    state
-        .services
-        .port_service
-        .create_many(&all_ports, entity.clone())
-        .await?;
-
-    let created_services = state
-        .services
-        .service_service
-        .create_many(&all_services, entity.clone())
-        .await?;
-    collect_entity_tags(&created_services, &mut all_entity_tags);
-
-    // 5.3. Bindings (child entities of services, stored in separate table)
-    let all_bindings: Vec<Binding> = created_services
-        .iter()
-        .flat_map(|s| {
-            s.base
-                .bindings
-                .iter()
-                .cloned()
-                .map(|b| b.with_service(s.id, s.base.network_id))
-        })
-        .collect();
-    state
-        .services
-        .binding_service
-        .create_many(&all_bindings, entity.clone())
-        .await?;
-
-    // 5.5. IfEntries (depends on hosts)
-    // Resolve neighbor relationships in memory before inserting, so we can set
-    // neighbor_interface_id directly and avoid N individual UPDATEs after insert.
-    {
+    // 5.3. Resolve interface neighbor links in memory, so neighbor_interface_id
+    // is set at insert time and we avoid N post-insert UPDATEs.
+    let interfaces = {
         use crate::server::interfaces::r#impl::base::Neighbor;
         use std::collections::HashMap;
 
@@ -700,13 +794,68 @@ pub async fn populate_demo_data(
                 entry.base.neighbor = Some(Neighbor::Interface(target_id));
             }
         }
+        interfaces
+    };
 
-        state
-            .services
-            .interface_service
-            .create_many(&interfaces, entity.clone())
-            .await?;
-    }
+    // 5.4. ip_addresses must be committed before interfaces: interfaces.ip_address_id
+    // FKs into ip_addresses(id), and create_many is not transactional — each chunk
+    // autocommits on its own pooled connection. Run concurrently, the child batch can
+    // reach the server before the parent rows exist and fail the FK, which is exactly
+    // what connection-acquisition skew against a remote database produces. Awaiting
+    // here makes the ordering unconditional, at the cost of one serialized round trip.
+    state
+        .services
+        .ip_address_service
+        .create_many(&all_ip_addresses, entity.clone())
+        .await?;
+
+    // 5.5. The remaining three host-children have no interdependency, so they stay
+    // concurrent — each takes its own pooled connection. The services result is
+    // needed downstream for bindings + entity tags.
+    let (_, created_services, _) = tokio::try_join!(
+        async {
+            state
+                .services
+                .port_service
+                .create_many(&all_ports, entity.clone())
+                .await
+                .map_err(ApiError::from)
+        },
+        async {
+            state
+                .services
+                .service_service
+                .create_many(&all_services, entity.clone())
+                .await
+                .map_err(ApiError::from)
+        },
+        async {
+            state
+                .services
+                .interface_service
+                .create_many(&interfaces, entity.clone())
+                .await
+                .map_err(ApiError::from)
+        },
+    )?;
+    collect_entity_tags(&created_services, &mut all_entity_tags);
+
+    // 5.6. Bindings (child entities of services, stored in a separate table).
+    let all_bindings: Vec<Binding> = created_services
+        .iter()
+        .flat_map(|s| {
+            s.base
+                .bindings
+                .iter()
+                .cloned()
+                .map(|b| b.with_service(s.id, s.base.network_id))
+        })
+        .collect();
+    state
+        .services
+        .binding_service
+        .create_many(&all_bindings, entity.clone())
+        .await?;
 
     // 6. Daemons (depends on hosts, networks, subnets)
     state
@@ -732,27 +881,74 @@ pub async fn populate_demo_data(
         .create_many(&demo_data.discoveries)
         .await?;
 
-    // 9. Dependencies — pre-generated during DemoData::generate()
-    // create_many bypasses per-entity service logic, so persist members separately.
+    // 9. Dependencies + members — pre-generated during DemoData::generate().
+    // create_many bypasses per-entity service logic, so persist members
+    // separately — as one bulk insert across all dependencies, resolving each
+    // Bindings member's service_id from the in-memory bindings (avoiding a
+    // SELECT per binding) and skipping the per-dependency lock/delete.
     let created_deps = state
         .services
         .dependency_service
         .create_many(&demo_data.dependencies, entity.clone())
         .await?;
-    for dep in &created_deps {
-        if !dep.base.members.is_empty() {
-            state
-                .services
-                .dependency_service
-                .save_members_for_dependency(&dep.id, &dep.base.members)
-                .await?;
+    {
+        use crate::server::dependencies::dependency_members::{
+            DependencyMemberRecord, DependencyMemberRecordBase,
+        };
+        use crate::server::dependencies::r#impl::base::DependencyMembers;
+        use std::collections::{HashMap, HashSet};
+
+        let binding_to_service: HashMap<Uuid, Uuid> = all_bindings
+            .iter()
+            .map(|b| (b.id, b.base.service_id))
+            .collect();
+
+        let mut member_records: Vec<DependencyMemberRecord> = Vec::new();
+        for dep in &created_deps {
+            match &dep.base.members {
+                DependencyMembers::Services { service_ids } => {
+                    let mut seen = HashSet::new();
+                    for (position, service_id) in service_ids
+                        .iter()
+                        .filter(|id| seen.insert(**id))
+                        .enumerate()
+                    {
+                        member_records.push(DependencyMemberRecord::new(
+                            DependencyMemberRecordBase::new(
+                                dep.id,
+                                *service_id,
+                                None,
+                                position as i32,
+                            ),
+                        ));
+                    }
+                }
+                DependencyMembers::Bindings { binding_ids } => {
+                    for (position, binding_id) in binding_ids.iter().enumerate() {
+                        if let Some(&service_id) = binding_to_service.get(binding_id) {
+                            member_records.push(DependencyMemberRecord::new(
+                                DependencyMemberRecordBase::new(
+                                    dep.id,
+                                    service_id,
+                                    Some(*binding_id),
+                                    position as i32,
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
         }
+        state
+            .services
+            .dependency_service
+            .create_members(&member_records)
+            .await?;
     }
 
     // 10. Topologies (depends on networks + the entities created above).
-    // Live-view rows are auto-built by `TopologyService::create` when
-    // nodes/edges are empty — it reads the now-persisted hosts/subnets/services
-    // and builds each view's graph. Must run before shares (step 11), whose
+    // The graph is built on request from the persisted entities, so `create`
+    // just persists the row + options. Must run before shares (step 11), whose
     // `topology_id` FK references these rows.
     for topology in demo_data.topologies {
         state
@@ -811,28 +1007,121 @@ pub async fn populate_demo_data(
     // 14. One snapshot per network so the snapshot UI is exercised in demo orgs.
     // Must run last: close-and-clone captures the live entity set, so all demo
     // entities (and their entity-tags + live topology rows) must already exist.
-    for network in &created_networks {
-        let snapshot = Snapshot {
-            base: SnapshotBase::new(network.id, chrono::Utc::now(), Some(user_id)),
-            ..Default::default()
-        };
-        let created = state
+    // Each network's snapshot is scoped to its own network_id and runs in its
+    // own transaction, so the networks' snapshots run concurrently.
+    let snapshot_futures = created_networks.iter().map(|network| {
+        let state = &state;
+        let entity = entity.clone();
+        async move {
+            let snapshot = Snapshot {
+                base: SnapshotBase::new(network.id, chrono::Utc::now(), Some(user_id)),
+                ..Default::default()
+            };
+            let created = state
+                .services
+                .snapshot_service
+                .create(snapshot, entity)
+                .await
+                .map_err(ApiError::from)?;
+            state
+                .services
+                .snapshot_service
+                .run_close_and_clone(created.base.network_id, created.base.taken_at, created.id)
+                .await
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+            // No snapshot topology row — the graph is built on request from the
+            // closed copies stamped above.
+            Ok::<(), ApiError>(())
+        }
+    });
+    futures::future::try_join_all(snapshot_futures).await?;
+
+    // 15. "Recently discovered" hosts — created AFTER the snapshot so the
+    // snapshot captures the earlier state and the live view visibly differs
+    // (these hosts/services appear only in live). Self-contained (no
+    // dependencies, neighbors, or interfaces), so the main flatten→create
+    // pattern applies, minus interfaces.
+    if !demo_data.recent_hosts_with_services.is_empty() {
+        let mut recent_hosts = Vec::new();
+        let mut recent_ips = Vec::new();
+        let mut recent_ports = Vec::new();
+        let mut recent_services: Vec<Service> = Vec::new();
+        for hws in &demo_data.recent_hosts_with_services {
+            let host_id = hws.host.id;
+            let network_id = hws.host.base.network_id;
+            recent_hosts.push(hws.host.clone());
+            recent_ips.extend(hws.ip_addresses.clone());
+            recent_ports.extend(
+                hws.ports
+                    .iter()
+                    .cloned()
+                    .map(|p| p.with_host(host_id, network_id)),
+            );
+            recent_services.extend(hws.services.clone());
+        }
+
+        let mut recent_entity_tags: Vec<EntityTag> = Vec::new();
+        let created_recent_hosts = state
             .services
-            .snapshot_service
-            .create(snapshot, entity.clone())
-            .await
-            .map_err(ApiError::from)?;
+            .host_service
+            .create_many(&recent_hosts, entity.clone())
+            .await?;
+        collect_entity_tags(&created_recent_hosts, &mut recent_entity_tags);
+
+        let (_, _, created_recent_services) = tokio::try_join!(
+            async {
+                state
+                    .services
+                    .ip_address_service
+                    .create_many(&recent_ips, entity.clone())
+                    .await
+                    .map_err(ApiError::from)
+            },
+            async {
+                state
+                    .services
+                    .port_service
+                    .create_many(&recent_ports, entity.clone())
+                    .await
+                    .map_err(ApiError::from)
+            },
+            async {
+                state
+                    .services
+                    .service_service
+                    .create_many(&recent_services, entity.clone())
+                    .await
+                    .map_err(ApiError::from)
+            },
+        )?;
+        collect_entity_tags(&created_recent_services, &mut recent_entity_tags);
+
+        let recent_bindings: Vec<Binding> = created_recent_services
+            .iter()
+            .flat_map(|s| {
+                s.base
+                    .bindings
+                    .iter()
+                    .cloned()
+                    .map(|b| b.with_service(s.id, s.base.network_id))
+            })
+            .collect();
         state
             .services
-            .snapshot_service
-            .run_close_and_clone(created.base.network_id, created.base.taken_at, created.id)
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-        // No snapshot topology row — the graph is built on request from the
-        // closed copies stamped above.
+            .binding_service
+            .create_many(&recent_bindings, entity.clone())
+            .await?;
+
+        if !recent_entity_tags.is_empty() {
+            state
+                .services
+                .entity_tag_service
+                .create_many(&recent_entity_tags)
+                .await?;
+        }
     }
 
-    Ok(Json(ApiResponse::success(())))
+    Ok(())
 }
 
 /// Internal function to reset organization data (reused by populate_demo_data).
@@ -852,6 +1141,12 @@ async fn reset_organization_data(
     use crate::server::invites::r#impl::base::Invite;
     use crate::server::tags::r#impl::base::Tag;
     use crate::server::user_api_keys::r#impl::base::UserApiKey;
+
+    // Deletes run sequentially: several of these cascades overlap on shared
+    // junction rows (e.g. networks and user_api_keys both cascade
+    // user_api_key_network_access; tags cascade entity_tags), so running them
+    // concurrently risks lock-ordering deadlocks for negligible gain — the
+    // reset is a handful of deletes and was never the slow part.
 
     // 1. Delete tags — CASCADE on tag_id cleans up entity_tags automatically.
     state
@@ -895,7 +1190,7 @@ async fn reset_organization_data(
         ))
         .await?;
 
-    // 3. Delete non-owner users
+    // 4. Delete non-owner users
     let user_filter = StorableFilter::<User>::new_from_org_id(organization_id);
     let non_owner_user_ids: Vec<Uuid> = state
         .services

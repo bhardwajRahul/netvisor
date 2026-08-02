@@ -46,7 +46,9 @@
     "SnmpV1",
     "SnmpV3",
     "PodmanProxy",
-    "PodmanSocket"
+    "PodmanSocket",
+    "UnifiApiKey",
+    "UnifiLocalAdmin"
   ],
   "DaemonMode": [
     "ServerPoll",
@@ -56,7 +58,8 @@
     "SelfReport",
     "Network",
     "Docker",
-    "Unified"
+    "Unified",
+    "Rescan"
   ],
   "EdgeStyle": [
     "Straight",

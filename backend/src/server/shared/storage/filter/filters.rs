@@ -313,6 +313,34 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// Case-insensitive free-text search across `T::search_predicates()`.
+    ///
+    /// The entity's fragments are OR'd together and each `{}` is replaced with
+    /// the one bound `%pattern%` parameter, so a multi-column search costs a
+    /// single bind. LIKE wildcards typed by the user are escaped: searching
+    /// `100%` looks for that literal string rather than matching every row.
+    ///
+    /// Matches nothing when the query is blank or the entity declares no
+    /// predicates. Falling through to "no condition" would answer an
+    /// unsupported search with the entire table, which reads as success.
+    pub fn text_search(mut self, query: &str) -> Self {
+        let predicates = T::search_predicates();
+        let trimmed = query.trim();
+
+        if predicates.is_empty() || trimmed.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+
+        let param = format!("${}", self.values.len() + 1);
+        let clauses: Vec<String> = predicates.iter().map(|p| p.replace("{}", &param)).collect();
+
+        self.conditions.push(format!("({})", clauses.join(" OR ")));
+        self.values
+            .push(SqlValue::String(format!("%{}%", escape_like(trimmed))));
+        self
+    }
+
     pub fn service_definition_not_in(mut self, definitions: &[String]) -> Self {
         if definitions.is_empty() {
             return self;
@@ -429,6 +457,41 @@ impl<T: Storable> StorableFilter<T> {
     pub fn exclude_historical(mut self) -> Self {
         self.conditions
             .push("run_type->>'type' != 'Historical'".to_string());
+        self
+    }
+
+    /// Transient one-shot rescan rows only.
+    pub fn rescan_discovery(mut self) -> Self {
+        self.conditions
+            .push("discovery_type->>'type' = 'Rescan'".to_string());
+        self
+    }
+
+    /// Exclude historical rows produced by a rescan. The marker survives the
+    /// transient parent's deletion because the historical row keeps the
+    /// session's `discovery_type`.
+    pub fn exclude_rescans(mut self) -> Self {
+        self.conditions
+            .push("discovery_type->>'type' != 'Rescan'".to_string());
+        self
+    }
+
+    /// Discovery *configurations* a user owns — excludes `Historical` records of
+    /// past runs and transient `Targeted` rescan rows, neither of which is
+    /// something anyone configured. Mirrors `RunType::is_live_config`.
+    ///
+    /// Prefer this over [`Self::exclude_historical`] anywhere the question is
+    /// "does this daemon have discoveries the user configured": a `Targeted` row
+    /// left behind by a crashed session would otherwise read as one, and at
+    /// `create_default_discovery_jobs` that permanently blocks the daemon from
+    /// ever getting its default discovery.
+    pub fn live_configs(mut self) -> Self {
+        // Two conditions, not one: a rescan's *run* type is `AdHoc`, so only its
+        // discovery type marks it as transient.
+        self.conditions
+            .push("run_type->>'type' != 'Historical'".to_string());
+        self.conditions
+            .push("discovery_type->>'type' != 'Rescan'".to_string());
         self
     }
 
@@ -752,6 +815,43 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// Entities exposed on one of `ports`, matched through the `bindings`
+    /// junction.
+    ///
+    /// Matches on the port number alone, so 53 finds a service whether its
+    /// binding is TCP or UDP — which is what someone filtering by port means.
+    ///
+    /// `IN (subquery)` rather than a JOIN so a service bound to several ports is
+    /// still one row: a JOIN would repeat it and inflate the paginated
+    /// `COUNT(*)`.
+    pub fn bound_to_port(mut self, ports: &[u16]) -> Self {
+        if ports.is_empty() {
+            return self;
+        }
+
+        let placeholders: Vec<String> = ports
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("${}", self.values.len() + i + 1))
+            .collect();
+        let col = self.qualify_column("id");
+
+        self.conditions.push(format!(
+            "{} IN (SELECT b.service_id FROM bindings b \
+             JOIN ports p ON b.port_id = p.id \
+             WHERE b.valid_to IS NULL AND p.valid_to IS NULL \
+             AND p.port_number IN ({}))",
+            col,
+            placeholders.join(", ")
+        ));
+
+        for port in ports {
+            self.values.push(SqlValue::I32(i32::from(*port)));
+        }
+
+        self
+    }
+
     pub fn to_where_clause(&self) -> String {
         if self.conditions.is_empty() {
             String::new()
@@ -763,4 +863,18 @@ impl<T: Storable> StorableFilter<T> {
     pub fn values(&self) -> &[SqlValue] {
         &self.values
     }
+}
+
+/// Neutralize LIKE wildcards in user input so they match literally.
+/// Postgres' default LIKE escape character is a backslash, so no `ESCAPE`
+/// clause is needed alongside this.
+fn escape_like(input: &str) -> String {
+    let mut escaped = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if matches!(ch, '\\' | '%' | '_') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
 }

@@ -1,37 +1,31 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import { concepts, entities, serviceDefinitions, views } from '$lib/shared/stores/metadata';
+	import { concepts, entities, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import {
 		selectedEdge as globalSelectedEdge,
 		selectedNode as globalSelectedNode,
-		selectedNodes as globalSelectedNodes,
 		topologyOptions,
 		activeView
 	} from '../../queries';
 	import { useTopology, selectedTopologyId } from '../../context';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { getFreshnessTag } from '$lib/shared/utils/freshness';
 
 	const networksQuery = useNetworksQuery();
 	import type { TopologyNode, ElementRenderData, RenderableTopology } from '../../types/base';
 	import { resolveElementNode } from '../../resolvers';
-	import { type Writable, get } from 'svelte/store';
+	import { buildElementRender } from '../../element-render-data';
+	import { getTopologyIndex } from '../../entity-index';
+	import type { Writable } from 'svelte/store';
 	import { formatPort } from '$lib/shared/utils/formatting';
 	import {
-		connectedNodeIds,
-		isExporting,
-		newNodeIds,
-		tagHiddenServiceIds,
-		searchHiddenNodeIds,
-		hoveredTag,
-		hoveredMetadata,
 		FILTER_VALUE_EXTRACTORS,
 		expandedPortNodeIds,
 		toggleExpandedPorts,
 		UNTAGGED_SENTINEL
 	} from '../../interactions';
+	import * as sharedStores from '../../reactive-stores.svelte';
 	import { createColorHelper } from '$lib/shared/utils/styling';
 	import { getContext } from 'svelte';
 	import type { Port } from '$lib/features/hosts/types/base';
@@ -40,55 +34,20 @@
 
 	let { id, data, width }: NodeProps = $props();
 
-	// Subscribe to isExporting for reactivity
-	let isExportingValue = $state(get(isExporting));
-	isExporting.subscribe((value) => {
-		isExportingValue = value;
-	});
-
-	// Subscribe to tag filter stores for reactivity
-	let hiddenServices = $state(get(tagHiddenServiceIds));
-	tagHiddenServiceIds.subscribe((value) => {
-		hiddenServices = value;
-	});
-
-	// Subscribe to search filter store for reactivity
-	let searchHiddenNodes = $state(get(searchHiddenNodeIds));
-	searchHiddenNodeIds.subscribe((value) => {
-		searchHiddenNodes = value;
-	});
-
-	// Subscribe to connected node IDs for reactivity (manual subscription needed
-	// because $derived.by may not read this store on initial evaluation, so auto-
-	// subscription via $connectedNodeIds would miss the first update)
-	let connectedNodes = $state(get(connectedNodeIds));
-	connectedNodeIds.subscribe((value) => {
-		connectedNodes = value;
-	});
-
-	// Subscribe to new node highlight store
-	let highlightedNewNodes = $state(get(newNodeIds));
-	newNodeIds.subscribe((value) => {
-		highlightedNewNodes = value;
-	});
-
-	// Subscribe to multi-select store
-	let multiSelectedNodes = $state(get(globalSelectedNodes));
-	globalSelectedNodes.subscribe((value) => {
-		multiSelectedNodes = value;
-	});
-
-	// Subscribe to tag hover state
-	let currentHoveredTag = $state(get(hoveredTag));
-	hoveredTag.subscribe((value) => {
-		currentHoveredTag = value;
-	});
-
-	// Subscribe to service category hover state
-	let currentHoveredMetadata = $state(get(hoveredMetadata));
-	hoveredMetadata.subscribe((value) => {
-		currentHoveredMetadata = value;
-	});
+	// Shared, refcounted views over the module-level stores — see
+	// `reactive-stores.svelte.ts`. One subscription serves every node component,
+	// and it tears down with the component instead of leaking on every unmount.
+	// `.current` falls back to `get(store)` outside a tracking context, so the
+	// first value can't be missed — which is what the previous hand-rolled
+	// subscriptions existed to work around.
+	let isExportingValue = $derived(sharedStores.exporting.current);
+	let hiddenEntities = $derived(sharedStores.hiddenEntities.current);
+	let searchHiddenNodes = $derived(sharedStores.searchHiddenNodes.current);
+	let connectedNodes = $derived(sharedStores.connectedNodes.current);
+	let highlightedNewNodes = $derived(sharedStores.highlightedNewNodes.current);
+	let multiSelectedNodes = $derived(sharedStores.multiSelectedNodes.current);
+	let currentHoveredTag = $derived(sharedStores.currentHoveredTag.current);
+	let currentHoveredMetadata = $derived(sharedStores.currentHoveredMetadata.current);
 
 	const topo = useTopology();
 	const topoStore = topo.fromContext ? topo.store : null;
@@ -111,298 +70,50 @@
 	) as Edge | null;
 
 	let resolved = $derived(topology ? resolveElementNode(id, data as TopologyNode, topology) : null);
-	let host = $derived(resolved?.host);
 
-	// Staleness marker. Deliberately additive rather than an opacity change:
-	// node opacity is already the filter/search dimming channel (see
-	// `nodeOpacity`), so fading stale nodes would make "stale" and "filtered
-	// out" indistinguishable — and a node that is both, invisible as either.
+	// Networks are still needed locally for the metadata-filter extractors below.
 	let networksData = $derived(networksQuery.data ?? []);
 	const networkFor = (entity: { network_id?: string } | undefined | null) =>
 		networksData.find((n) => n.id === entity?.network_id);
-
-	// The entity this node actually depicts.
-	let elementEntity = $derived.by(() => {
-		switch (resolved?.elementType) {
-			case 'Service':
-				return resolved.services[0];
-			case 'IPAddress':
-				return resolved.ipAddress;
-			case 'Interface':
-				return resolved.snmpInterface;
-			default:
-				return host;
-		}
-	});
-
-	// The verdict applies the digest's parent/child rule via `resolvedFreshness`,
-	// so a child of a stale host inherits rather than claiming its own decay.
-	// Judged on the node's own entity, with no inheritance from its host — the
-	// same rule the inventory cards apply, so the two surfaces agree and the
-	// tooltip's timestamp can never contradict the tag. Type names come from
-	// the entity metadata fixture, so they stay localized and in step with the
-	// backend.
-	let subject = $derived(elementEntity ?? host);
-	let staleTag = $derived(
-		subject
-			? getFreshnessTag(subject, networkFor(subject), {
-					entityTypeLabel: entities.getName(resolved?.elementType ?? 'Host') || undefined
-				})
-			: null
-	);
-	let servicesForHost = $derived(resolved?.services ?? []);
-	let ipAddress = $derived(resolved?.ipAddress ?? null);
 
 	let effectiveWidth = $derived(width ? width : 0);
 
 	// Per-card toggle for expanding hidden open ports (lifted to topology-level store for re-layout)
 	let expandedOpenPorts = $derived($expandedPortNodeIds.has(id));
 
-	// All services for this host (tag-hidden services stay in list to preserve card height)
-	let visibleServicesForHost = $derived(servicesForHost);
-
-	// Inline entity types declared for THIS element entity in the active view.
-	// Drives what renders inside the card (services list, port rows) — replaces
-	// the old per-element hardcoded gates.
-	let inlineForThisElement = $derived(
-		(
-			views.getMetadata($activeView) as {
-				element_config?: {
-					element_entities?: Array<{ entity_type: string; inline_entities: string[] }>;
-				};
-			} | null
-		)?.element_config?.element_entities?.find((e) => e.entity_type === resolved?.elementType)
-			?.inline_entities ?? []
+	// All card content — and therefore card height — is computed by one function
+	// in `element-render-data.ts`, shared with the render pipeline so it can reason
+	// about card shape without mounting the card. Do not recompute any of this
+	// locally; add to that function instead.
+	let elementRender = $derived(
+		topology
+			? buildElementRender({
+					nodeId: id,
+					node: data as TopologyNode,
+					topology,
+					activeView: $activeView,
+					options: $topologyOptions,
+					hiddenEntityIds: hiddenEntities,
+					networks: networksData
+				})
+			: null
 	);
-	let inlinesService = $derived(inlineForThisElement.includes('Service'));
-	let inlinesPort = $derived(inlineForThisElement.includes('Port'));
+	let nodeRenderData: ElementRenderData | null = $derived(elementRender?.data ?? null);
+	let inlinesService = $derived(elementRender?.flags.inlinesService ?? false);
+	let inlinesPort = $derived(elementRender?.flags.inlinesPort ?? false);
+	let serviceInlineHidden = $derived(elementRender?.flags.serviceInlineHidden ?? false);
+	let portInlineHidden = $derived(elementRender?.flags.portInlineHidden ?? false);
+	let inlineForThisElement = $derived(elementRender?.flags.inlineEntities ?? []);
+	// Staleness pill — computed with the rest of the card content because it
+	// renders in flow and therefore affects card height.
+	let staleTag = $derived(elementRender?.staleTag ?? null);
 
-	// Entity types the user has hidden in this view via the filter panel's
-	// eye toggle. Gates inline rendering of Service rows and Port lines.
-	// (Element/container-level hiding is applied upstream via tagHiddenNodeIds.)
-	let hiddenEntitiesThisView = $derived(
-		(($topologyOptions.request.hide_entities ?? {}) as Record<string, string[]>)[$activeView] ?? []
-	);
-	let portInlineHidden = $derived(hiddenEntitiesThisView.includes('Port'));
-	let serviceInlineHidden = $derived(hiddenEntitiesThisView.includes('Service'));
-
-	// Reactively subscribe to the container subnet store
-	let isContainerSubnetValue = $derived(
-		ipAddress
-			? topology?.subnets.find((s) => s.id == ipAddress.subnet_id)?.cidr == '0.0.0.0/0'
-			: false
-	);
-
+	// Called once per service binding while rendering, so this must not scan
+	// `topology.ports` — on a large graph that is nodes x bindings x ports.
+	let portsById = $derived(topology ? getTopologyIndex(topology).portsById : null);
 	function getPortById(portId: string): Port | null {
-		return topology?.ports.find((p) => p.id == portId) ?? null;
+		return portsById?.get(portId) ?? null;
 	}
-
-	// Compute nodeRenderData reactively
-	let nodeRenderData: ElementRenderData | null = $derived.by(() => {
-		if (!resolved) return null;
-		return (() => {
-			const elementType = resolved.elementType ?? 'Interface';
-
-			// Service elements: simpler rendering — single service with host name.
-			// Intentionally does NOT read $topologyOptions here — category/tag
-			// fading is handled by shouldFadeOut via hiddenServices store, so
-			// category toggles don't trigger nodeRenderData recomputation.
-			if (elementType === 'Service') {
-				const service = resolved.services[0];
-				// Hide hostname in views where Host is the container — it's redundant
-				const viewConfig = (
-					views.getMetadata($activeView) as {
-						element_config?: { container_entity?: string };
-					} | null
-				)?.element_config;
-				const showHostname = viewConfig?.container_entity !== 'Host';
-				return {
-					elementType,
-					footerText: null,
-					services: service ? [service] : [],
-					hiddenOpenPorts: [],
-					headerText: showHostname ? (host?.name ?? null) : null,
-					bodyText: service ? null : 'Unknown Service',
-					showServices: !!service,
-					isVirtualized: false,
-					isContainerized: service?.virtualization != null,
-					isCategoryHidden: false,
-					ip_address_id: id
-				} as ElementRenderData;
-			}
-
-			// Host elements: show host name with services
-			if (elementType === 'Host') {
-				if (!host || !resolved.hostId) return null;
-
-				// Hidden Service categories come from the generic metadata-filter
-				// hide-set: request.hide_metadata_values[view].Service.Category.
-				const hiddenCategories =
-					(
-						($topologyOptions.request.hide_metadata_values ?? {}) as Record<
-							string,
-							Record<string, Record<string, string[]>>
-						>
-					)[$activeView]?.['Service']?.['Category'] ?? [];
-
-				type CategoryType = (typeof hiddenCategories)[number];
-				// Services visible in card. Filter = structural remove: hidden
-				// services are dropped from the list entirely, not faded. The
-				// OpenPorts-category subset is routed to the collapsed
-				// "+N open ports" indicator below (expand-to-see UX).
-				const servicesOnHost = visibleServicesForHost.filter((s) => {
-					if (hiddenServices.has(s.id)) return false;
-					const category = serviceDefinitions.getCategory(s.service_definition);
-					if (category === 'OpenPorts' && hiddenCategories.includes(category as CategoryType))
-						return false;
-					return true;
-				});
-
-				// OpenPorts hidden by category → collapsed indicator.
-				// (Tag-hidden services of any category are already removed above.)
-				const hiddenOpenPorts = visibleServicesForHost.filter((s) => {
-					if (hiddenServices.has(s.id)) return false;
-					const category = serviceDefinitions.getCategory(s.service_definition);
-					return category === 'OpenPorts' && hiddenCategories.includes(category as CategoryType);
-				});
-
-				// Service names and port lines hide independently. Render the
-				// services block if the view declares EITHER inlined and the
-				// user hasn't hidden it — so toggling Services off still
-				// leaves port lines visible (and vice versa).
-				const showServiceNames = inlinesService && !serviceInlineHidden;
-				const showPortLines = inlinesPort && !portInlineHidden;
-				const showServices =
-					(showServiceNames || showPortLines) &&
-					(servicesOnHost.length !== 0 || hiddenOpenPorts.length !== 0);
-
-				const hostLabel = (data as TopologyNode).header ?? (host.name || host.hostname || null);
-
-				return {
-					elementType,
-					footerText: null,
-					services: servicesOnHost,
-					hiddenOpenPorts,
-					headerText: hostLabel,
-					bodyText: showServices ? null : hostLabel,
-					showServices,
-					isVirtualized: host.virtualization !== null,
-					isContainerized: false,
-					ip_address_id: id
-				} as ElementRenderData;
-			}
-
-			// Port elements: show port name + status/MAC info
-			if (elementType === 'Interface') {
-				const ifEntryId =
-					'interface_id' in (data as Record<string, unknown>)
-						? ((data as Record<string, unknown>).interface_id as string)
-						: undefined;
-				const iface = ifEntryId ? topology?.interfaces.find((e) => e.id === ifEntryId) : undefined;
-
-				let speed: string | null = null;
-				if (iface?.speed_bps) {
-					const bps = iface?.speed_bps;
-					if (bps >= 1_000_000_000) speed = `${(bps / 1_000_000_000).toFixed(0)}G`;
-					else if (bps >= 1_000_000) speed = `${(bps / 1_000_000).toFixed(0)}M`;
-					else speed = `${bps} bps`;
-				}
-
-				return {
-					elementType,
-					headerText: (data as TopologyNode).header ?? null,
-					footerText: null,
-					bodyText: null,
-					showServices: false,
-					isVirtualized: false,
-					isContainerized: false,
-					services: [],
-					hiddenOpenPorts: [],
-					ip_address_id: '',
-					portStatus: iface
-						? {
-								operStatus: iface.oper_status,
-								speed,
-								macAddress: iface.mac_address ?? null
-							}
-						: undefined
-				} as ElementRenderData;
-			}
-
-			// Interface elements: existing behavior
-			if (!host || !resolved.hostId) return null;
-
-			const hiddenCategories =
-				(
-					($topologyOptions.request.hide_metadata_values ?? {}) as Record<
-						string,
-						Record<string, Record<string, string[]>>
-					>
-				)[$activeView]?.['Service']?.['Category'] ?? [];
-
-			// All services bound to this interface (after tag filtering)
-			const allServicesOnIPAddress = visibleServicesForHost
-				? visibleServicesForHost.filter((s) =>
-						s.bindings.some(
-							(b) => b.ip_address_id == null || (ipAddress && b.ip_address_id == ipAddress.id)
-						)
-					)
-				: [];
-
-			// Filter = structural remove (see Host branch for context).
-			type CategoryType = (typeof hiddenCategories)[number];
-			const servicesOnIPAddress = allServicesOnIPAddress.filter((s) => {
-				if (hiddenServices.has(s.id)) return false;
-				const category = serviceDefinitions.getCategory(s.service_definition);
-				if (category === 'OpenPorts' && hiddenCategories.includes(category as CategoryType))
-					return false;
-				return true;
-			});
-
-			const hiddenOpenPorts = allServicesOnIPAddress.filter((s) => {
-				if (hiddenServices.has(s.id)) return false;
-				const category = serviceDefinitions.getCategory(s.service_definition);
-				return category === 'OpenPorts' && hiddenCategories.includes(category as CategoryType);
-			});
-
-			let bodyText: string | null = null;
-			let footerText: string | null = null;
-			let subtitleText: string | null = null;
-			let headerText: string | null = (data as TopologyNode).header ?? null;
-			// Service names and port lines hide independently — see the Host
-			// branch above for the same pattern.
-			const showServiceNames = inlinesService && !serviceInlineHidden;
-			const showPortLines = inlinesPort && !portInlineHidden;
-			let showServices =
-				(showServiceNames || showPortLines) &&
-				(servicesOnIPAddress.length != 0 || hiddenOpenPorts.length != 0);
-
-			if (ipAddress && !isContainerSubnetValue) {
-				subtitleText = (ipAddress.name ? ipAddress.name + ': ' : '') + ipAddress.ip_address;
-			}
-
-			if (!showServices) {
-				bodyText = host.name;
-			}
-
-			return {
-				elementType,
-				footerText,
-				subtitleText,
-				services: servicesOnIPAddress,
-				hiddenOpenPorts,
-				headerText,
-				bodyText,
-				showServices,
-				isVirtualized:
-					headerText?.startsWith('Docker @') || isContainerSubnetValue
-						? false
-						: host.virtualization !== null,
-				isContainerized: false,
-				ip_address_id: resolved?.ipAddressId ?? ''
-			} as ElementRenderData;
-		})();
-	});
 
 	// Group services into bare vs containerized for dotted-border rendering.
 	// Uses inline_groups from the topology node (populated by element rules)

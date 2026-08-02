@@ -1,6 +1,6 @@
 # SNMP Test Environment
 
-10 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026).
+15 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668.
 
 | IP | Host | Version | Credential | Device |
 |---|---|---|---|---|
@@ -14,13 +14,124 @@
 | 192.168.7.237 | secure-switch-01 | **v3 only** | user `scanopyv3` (see below) | Huawei S5000 |
 | 192.168.7.238 | switch-exos-01 | v2c | community `netdefault` | Extreme X435 (EXOS) |
 | 192.168.7.239 | switch-voss-01 | v2c | community `netdefault` | Extreme VSP-7400 (VOSS) |
+| 192.168.7.240 | switch-netgear-01 | v2c | community `netdefault` | Netgear GS724Tv3 |
+| 192.168.7.241 | switch-aruba-01 | v2c | community `netdefault` | HP/Aruba ProCurve 2910al |
+| 192.168.7.242 | switch (Omada) | v2c | community `public` | TP-Link Omada TL-SG3216 |
+| 192.168.7.243 | switch-flaky-01 | v2c | community `netdefault` | Malformed-LLDP profile (see below) |
+| 192.168.7.244 | switch-dlink-01 | v2c | community `netdefault` | D-Link DGS-1210-48 (see below) |
 
 **LLDP local-port remap (`.238`/`.239`).** ExtremeXOS reports its `lldpRemTable` local-port index as an `lldpLocPortNum` (1..N) that is a **separate namespace from `ifIndex`** (switch-exos-01 uses ifIndex 1001+, ifName `1:N`), so neighbours only resolve if the daemon walks `lldpLocPortTable` (`1.0.8802.1.1.2.1.3.7`) and suffix-matches `lldpLocPortId` against `ifName`. Before the Issue 2 fix, switch-exos-01 yields **zero** LLDP neighbours. Extreme VOSS (switch-voss-01) reports local-port == ifIndex with `lldpLocPortId` matching `ifName` exactly, so it stays correct on both old and new code — the regression guard for the fix.
+
+**L2 neighbour resolution (`.240`/`.241`).** These two are cabled to each other in the fixture data — `switch-netgear-01 g1 ↔ switch-aruba-01 port 41` and `g2 ↔ A5` — and between them cover both halves of a physical link:
+
+- **Chassis MAC that is on no port (#664).** switch-netgear-01's LLDP chassis id is `00:1a:2b:3c:4d:63`, while its ports report `…:65/:66/:67` and it bears no IP with that MAC. switch-aruba-01's neighbour entries advertise that chassis MAC, so the remote host is identifiable **only** through the `chassis_id` recorded from switch-netgear-01's own LLDP local identity. Matching MACs against interfaces and IPs alone yields `hosts_resolved=0` and an empty L2 Physical view.
+- **Locally-assigned port ids (#649).** switch-netgear-01's neighbour entries use port-ID subtype 7 with values `41` (which is switch-aruba-01's `ifDescr`) and `197` (which matches only its `ifIndex` — that port is labelled `A5`). Both shapes occur on real Aruba/HP gear. Treating subtype 7 as unresolvable stops resolution at the host, and a host-only neighbour draws **no edge at all**, so the switch is missing from L2 Physical entirely.
+
+Both links should render in L2 Physical, and the server's `LLDP/CDP link resolution complete` line should report `ports_resolved` covering all four neighbour records (two per device).
+
+**High-ifIndex interface persistence (`.242`).** The Omada TL-SG3216 puts its 16 physical ports at ifIndex 49153–49168, reports **no** ifXTable `ifName` for any of them, and returns the same chassis `ifPhysAddress` on every port; only ifIndex 1 (`Vlan-interface1`) carries a name and an IP. All 17 must persist as distinct interfaces. It advertises no LLDP neighbours at all — deliberately, so it exercises the interface-persistence path in isolation. Note its `sysName` is the literal `switch`, matching the reporter's device.
+
+> **MAC octet padding.** Every fixture wrote MACs abbreviated (`0:1a:2b:0:10:0`) until 2026-07-27, and the daemon's string-parsing fallback rejected that form outright — so no LLDP data persisted for *any* sim device and no host ever got a `chassis_id`. Silently: an unparseable chassis id discards the whole neighbour record, which is indistinguishable from a switch that advertises none. The daemon now accepts both forms, and the fixtures are padded **except switch-exos-01's own chassis id**, deliberately left abbreviated as the standing guard for that tolerance (ExtremeXOS is one of the two vendors known to send this identifier as a string rather than octets).
+
+**Malformed neighbour records (`.243`).** A truncated `lldpRemChassisId` column and a device that simply serves no chassis ID are indistinguishable to the daemon — both yield a neighbour carrying a port ID and a system name but no chassis ID. The first is a transient nobody can schedule; the second is static and reproduces on every scan, which is what makes this path testable at all.
+
+Taken at face value that record is destructive: the chassis ID is a mandatory TLV (IEEE 802.1AB), so it is malformed, but writing it through overwrites a good chassis ID with NULL — and a row without one is excluded from L2 resolution entirely, freezing the link at whatever it last resolved to with no way back. That is what stranded `router-gw-01` in July 2026.
+
+`switch-flaky-01` links to `switch-core-01`'s `Gi0/3` (the one port on that switch with no other neighbour) and ships four LLDP variants. The agent serves whichever is copied over `-lldp-active.txt`, and the `pass` handler re-reads its file per request, so swapping takes effect immediately with **no snmpd restart**:
+
+```bash
+# on the VM — serve the chassis-less record
+cp /etc/snmp-test/data/switch-flaky-01-lldp-nochassis.txt \
+   /etc/snmp-test/data/switch-flaky-01-lldp-active.txt
+
+# ...and restore the well-formed one
+cp /etc/snmp-test/data/switch-flaky-01-lldp-complete.txt \
+   /etc/snmp-test/data/switch-flaky-01-lldp-active.txt
+```
+
+The other two variants separate the causes that used to arrive as one number (#668). All three discard the record; the daemon's warning now says which happened, and the counters are what these files exercise:
+
+| Variant file | Serves | Counter it drives |
+|---|---|---|
+| `-lldp-nochassis.txt` | neither `.4` nor `.5` | `missing_subtype` + `missing_value` |
+| `-lldp-nosubtype.txt` | `.5` only | `missing_subtype` |
+| `-lldp-badsubtype.txt` | `.4` as a string, `.5` fine | `unexpected_subtype_type="OctetString"` |
+
+The last one matters most: it reads as a *complete* walk — no truncation signal anywhere — so before the per-cause counters the only evidence was the record silently going missing. A `ghost_rows` count exists too, for rows only the later columns mention; no fixture serves that shape, as it needs an agent whose columns disagree with each other.
+
+Re-running `lxc/setup.sh` also resets it, which is the simplest way to undo a test that left the device broken.
+
+**Port ids that name-only matching cannot resolve (`.244`).** Modelled on the D-Link DGS-1210-48 from #668. Its own ifTable uses the D-Link shape — `ifDescr` = `D-Link DGS-1210-48 Rev.GX/7.20.003 Port N`, `ifName` = `Slot0/N`, `ifIndex` = N — and its two neighbour records, both pointing at `switch-core-01`, each need a different fallback:
+
+- **Subtype 5 carrying a bare port number.** `lldpRemPortId` = `2` with `lldpRemPortIdSubtype` = 5 (`interfaceName`), while switch-core-01's ifIndex 2 is named `GigabitEthernet0/2`/`Gi0/2`. Subtype 5 used to get a name lookup and nothing else, so this resolved to the host and stopped — and a host-only neighbour draws no edge. It now falls through to `ifIndex`, the same ladder subtypes 2/6/7 already had.
+- **A port id that matches nothing, and a port description that does.** `lldpRemPortId` = `ethernet1/0/44` is neither a name on that device nor a number, so the id is a dead end; `lldpRemPortDesc` = `GigabitEthernet0/1` is byte-identical to switch-core-01's `ifDescr` for ifIndex 1. That field was stored and never matched on.
+
+Both should resolve to `Neighbor::Interface` and draw edges in L2 Physical. The records deliberately share `Gi0/1`/`Gi0/2` with links other sim devices also claim — the profile exercises port-id resolution, which runs per interface row, not a physically consistent lab.
+
+> **The NUL half of #668 is not reproducible here.** The same D-Links NUL-terminate their port ids (`lldpRemPortId` arrives as `31 00`, i.e. `"1\0"`), which used to fail the write of the entire host. net-snmp's `pass` protocol is line-based — the handler prints OID, type and value as three lines — so an embedded `0x00` cannot survive the transport and no data file can express it. That half is covered by unit tests instead: `value_to_string`, `LldpPortId::from_snmp`, and `PgText`/`PgJson` in `server/shared/storage/pg_value.rs`.
+
+## Expect truncation warnings — the simulator races itself
+
+A scan of this environment normally reports several incomplete SNMP walks. **That is the simulator, not the product under test.**
+
+`snmpd` forks the `pass` handler — a bash script that then forks awk — once per SNMP request. With 14 agents on one VM and ~17 column walks per host, a single scan is hundreds of concurrent forks, and under that load the agents answer some requests with the *wrong* OID: one belonging to a request the daemon made earlier.
+
+Measured 2026-07-27, walking all 12 v2c devices from a single client:
+
+| | truncated |
+|---|---|
+| serial | **0** of 12 |
+| concurrent | **4–5** of 12, a *different* set of devices each run |
+
+Every truncation was a stale response — an in-subtree walk answered with an OID *lower* than the one requested (asking for `lldpRemChassisId` and getting `lldpRemChassisIdSubtype`; asking within ifXTable and being handed an LLDP OID that sorts below the entire subtree). A correct agent walking forward cannot produce that, and it is not the client desyncing: the responses pass request-id and community validation, each session owns its own connected socket and request-id range, and the identical walks are clean run serially.
+
+### The daemon now recovers from it (2026-07-31)
+
+Re-measured after the walk gained a bounded re-ask on a misdirected answer:
+
+| | truncated | re-asks |
+|---|---|---|
+| concurrent, 2 scans | **0** | **13**, every one `StaleResponse` |
+
+Re-asking is safe because a wrong-OID response is rejected before it reaches the row callback, so nothing from it was collected and the retry cannot duplicate rows. Bounded at two attempts, so an agent answering persistently out of step still reports as truncated rather than spinning the scan.
+
+**The simulator is still doing exactly what it did** — 13 misdirected answers across two scans, on a different set of devices each time. What changed is that the daemon no longer converts them into lost columns. Judge future changes against *0 truncated*, and treat a rise in the re-ask count as the simulator being busier rather than the product regressing.
+
+Note this arrived by way of a null result worth remembering: an earlier retry keyed on `snmp2::Error::RequestIdMismatch` — a transport error where the session rejects the datagram — and moved these numbers not at all, because the simulator never produces that. A customer's switches did. Two environments, two different faults; the first fix was aimed at the wrong one.
+
+The remaining `set_complete=false` results here are a *different* simulator misbehaviour: columns answering for ifIndexes the device never listed (`foreign_rows=1, 7, 19` in one two-scan window). Those rows are discarded and reported separately, so warning count is not a clean proxy for truncation — count `SNMP walk truncated` lines instead.
+
+### Control: a correct agent under load (2026-07-31)
+
+The agents here are deliberately incorrect, so they cannot answer "is the *scanner* losing data?". A control agent settles it: one `snmpd` with **no `pass` directives at all**, serving the built-in MIBs from real kernel state, on its own macvlan behind `tc netem`.
+
+| impairment | rescans | truncations | re-asks | ifTable |
+|---|---|---|---|---|
+| none | 5 | 0 | 0 | 17/17, complete |
+| 200 ms delay, 2% loss | 6 | 0 | 0 | 17/17, complete |
+| 400 ms delay, 15% loss | 6 | 0 | 0 | 17/17, complete |
+
+Against an agent that is correct by construction, the scanner loses nothing — including at loss rates well past anything a LAN produces. (At 800 ms / 55% loss only 1 of 3 rescans got past the probe at all, so that arm proves little either way.)
+
+To rebuild it: a macvlan on the parent interface, a conf file with `agentAddress`, `rocommunity` and the `sys*` values and **nothing else**, a systemd unit running `snmpd -f -Lo -C -c <conf>` — note *without* the `-I -ifTable,-ifXTable` the other units carry, since here the built-in implementations are the point — then `tc qdisc replace dev <iface> root netem delay Xms loss Y%`. Remove the qdisc, unit, conf and macvlan afterwards.
+
+**How to read a scan.** Judge a change by whether *data* was lost — interfaces pruned, neighbours wiped, links frozen — not by whether warnings appeared. A warning saying previously discovered values "were kept rather than overwritten" is the daemon handling the chaos correctly.
+
+**Worth keeping.** This free adversarial agent surfaced three real defects in July 2026: a foreign interface appearing on a switch, a chassis ID overwritten with NULL leaving a link permanently unresolvable, and a truncated column reported as authoritative. If the noise ever needs quieting, `pass_persist` replaces the fork-per-request with one long-lived handler per agent — but leave a device or two on `pass` deliberately, or the environment loses the property that found those bugs.
 
 **What a scan exercises (session-reuse + getbulk).** Every device is scanned with a single reused SNMP session across all ~11 queries (one v3 engine discovery instead of ~12), and each table is walked with `getbulk` (v1 falls back to `getnext`). To make the getbulk walks land on real data for the subtrees stock `snmpd` does **not** implement:
 - **switch-core-01** additionally serves BRIDGE-MIB / Q-BRIDGE (`dot1dBasePortIfIndex`, `dot1qVlanStaticName` → VLANs "DATA"/"VOICE", `dot1qPvid`), ENTITY-MIB (chassis inventory) and CDP (a `router-gw-01` neighbour) — exercising those getbulk walks end-to-end.
 - **legacy-switch-01 (v1-only)** additionally serves a small bridge table, so the **getbulk → getnext fallback** is exercised on a non-ifTable walk, not just ifTable/LLDP.
 - `ipAddrTable` and `ipNetToMedia` (ARP) are answered by snmpd's built-in IP module, so those walks run on every device already. (net-snmp `pass` can't emit binary MAC octet-strings, so FDB/ARP MAC *rows* aren't simulated — the daemon still walks those subtrees and terminates cleanly.)
+- **ap-wireless-01** is the one exception: it serves its own `ipAddrTable` so it can advertise a second subnet (see below).
+
+**Access-point guest subnet (`.235`) — #663.** The built-in IP module answers `ipAddrTable` from the VM's real kernel state, so every other agent only ever reports addresses inside the scanned `192.168.4.0/22`. `ap-wireless-01` overrides it and serves the table from `ap-wireless-01-ipaddr.txt`, advertising **172.30.10.1/24 on ifIndex 4**, whose `ifName` is **`br-guest`** — the built-in NAT guest network of a real access point.
+
+> Unlike ifTable/ifXTable, this subtree **cannot** be freed by disabling its module: `-I -ipaddr` (or `-ipAddr`) does not stop `mibII/ipaddr` registering. It also registers per *column* (`.4.20.1.1`…`.4.20.1.5`), so a single `pass` at the `.4.20` root always loses on specificity, whatever priority it carries. The override therefore registers one `pass -p 1` per column — matching granularity and beating the default priority of 255. Confirm what owns a subtree with `snmpd -Dregister_mib -C -c <conf>`.
+
+That combination is what issue #663 reported: a `br-` prefixed `ifName` on a remote device used to be classified as a Docker bridge, so the AP's guest subnet rendered as "Docker @ *AP*" in Topology. A scan of `.235` should now discover `172.30.10.0/24` as a **Guest** subnet, with no Docker/container label anywhere.
+
+Because `.235` is the only agent serving its own `ipAddrTable`, it is also the only one that can fail *silently* — if the module displacement doesn't take, the `pass` directive loses the duplicate registration and the agent quietly reports just the scanned subnet. `make snmp-verify` checks this fixture explicitly for that reason; don't run a scan against it until that check passes.
 
 The two version-locked hosts use net-snmp VACM/USM so the other protocol versions are genuinely refused (a plain `rocommunity` answers both v1 and v2c, which wouldn't prove version negotiation):
 
@@ -28,6 +139,18 @@ The two version-locked hosts use net-snmp VACM/USM so the other protocol version
 - **secure-switch-01 (v3 only):** USM user `scanopyv3`, AuthPriv, **SHA-256 / AES-128**, auth password `authpass12345`, priv password `privpass12345`. No `rocommunity`, so v1/v2c are denied.
 
 > **AES-256 note:** the v3 host uses AES-128, which stock Debian/Ubuntu net-snmp supports out of the box. AES-256 (`createUser … AES-256`) requires net-snmp built with Blumenthal AES (`--enable-blumenthal-aes`); change `createUser`/the verify command in `lxc/setup.sh` only if your build supports it.
+
+## Credentials
+
+The devices deliberately span five credentials so a scan exercises credential selection, the v1/v2c/v3 negotiation paths, and the "try the next credential" fallback rather than one community answering everything. Seed all five into the dev database with:
+
+```bash
+make snmp-seed-credentials
+```
+
+It assigns each one to **every network in the database** (Broadcast scope — the only option that works before a scan, since PerHost assignment needs hosts that don't exist yet), and is idempotent: re-running updates the existing rows rather than accumulating duplicates. If it reports `networks | 0`, create a network first — nothing was seeded.
+
+The credential values live in `backend/scripts/seed-snmp-credentials.sql` and must stay in step with the community strings in `lxc/setup.sh`.
 
 ## Setup
 
@@ -42,7 +165,7 @@ Before pasting, verify:
 If each device shares the host's MAC (secondary IPs on eth0), run on the VM:
 
 ```bash
-IFACE=eth0; CIDR=22; HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237); for i in "${!HOSTS[@]}"; do ip addr del "${HOSTS[$i]}/$CIDR" dev "$IFACE" 2>/dev/null; ip link del "mv-snmp${i}" 2>/dev/null; ip link add "mv-snmp${i}" link "$IFACE" type macvlan mode bridge; ip addr add "${HOSTS[$i]}/$CIDR" dev "mv-snmp${i}"; ip link set "mv-snmp${i}" up; done && sysctl -w net.ipv4.conf.all.arp_ignore=1 net.ipv4.conf.all.arp_announce=2 && for iface in mv-snmp0 mv-snmp1 mv-snmp2 mv-snmp3 mv-snmp4 mv-snmp5 mv-snmp6 mv-snmp7 eth0; do sysctl -w net.ipv4.conf.${iface}.arp_ignore=1 net.ipv4.conf.${iface}.arp_announce=2; done
+IFACE=eth0; CIDR=22; HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242); for i in "${!HOSTS[@]}"; do ip addr del "${HOSTS[$i]}/$CIDR" dev "$IFACE" 2>/dev/null; ip link del "mv-snmp${i}" 2>/dev/null; ip link add "mv-snmp${i}" link "$IFACE" type macvlan mode bridge; ip addr add "${HOSTS[$i]}/$CIDR" dev "mv-snmp${i}"; ip link set "mv-snmp${i}" up; done && sysctl -w net.ipv4.conf.all.arp_ignore=1 net.ipv4.conf.all.arp_announce=2 && for i in "${!HOSTS[@]}"; do sysctl -w net.ipv4.conf.mv-snmp${i}.arp_ignore=1 net.ipv4.conf.mv-snmp${i}.arp_announce=2; done && sysctl -w net.ipv4.conf.${IFACE}.arp_ignore=1 net.ipv4.conf.${IFACE}.arp_announce=2
 ```
 
 Then flush the ARP cache on the scanning host (`sudo arp -a -d` on macOS).
@@ -52,27 +175,28 @@ Then flush the ARP cache on the scanning host (`sudo arp -a -d` on macOS).
 If snmpd logs show `duplicate registration: MIB modules ifTable and pass`, run:
 
 ```bash
-for f in /etc/systemd/system/snmpd-*.service; do sed -i 's|snmpd -f -Lo -C|snmpd -f -Lo -I -ifTable,-ifXTable -C|' "$f"; done && systemctl daemon-reload && for name in switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01; do systemctl restart "snmpd-${name}"; done
+for f in /etc/systemd/system/snmpd-*.service; do sed -i 's|snmpd -f -Lo -C|snmpd -f -Lo -I -ifTable,-ifXTable -C|' "$f"; done && systemctl daemon-reload && for f in /etc/systemd/system/snmpd-*.service; do systemctl restart "$(basename "$f" .service)"; done
 ```
 
 ## Updating an already-running VM
 
-`lxc/setup.sh` is idempotent (existing macvlan interfaces and services are skipped), so the simplest update path adds the two new hosts without disturbing the existing six.
-
-**Option 1 — full re-run (recommended).** Copy the updated `tools/snmp/` to the VM and re-run the setup script as root:
+`lxc/setup.sh` is idempotent — existing macvlan interfaces are left alone, while MIB data files, snmpd configs and systemd units are rewritten and every agent is restarted. So a full re-run is always the update path; there is no separate partial script.
 
 ```bash
-# from your Mac
-scp -r tools/snmp root@192.168.7.230:/root/snmp-test
-# on the VM (root shell)
-bash /root/snmp-test/lxc/setup.sh
+ssh -i ~/.ssh/snmp-test-vm root@192.168.7.230 'rm -rf /root/snmp-test' \
+  && scp -i ~/.ssh/snmp-test-vm -r tools/snmp root@192.168.7.230:/root/snmp-test \
+  && ssh -i ~/.ssh/snmp-test-vm root@192.168.7.230 'bash /root/snmp-test/lxc/setup.sh'
 ```
 
-The existing 6 hosts are no-ops; 192.168.7.236 (v1) and 192.168.7.237 (v3) come up.
+Hosts that gained nothing are effectively no-ops; anything whose data file, config or unit changed comes back with the new content.
 
-**Option 2 — incremental (only the two new hosts).** Paste `lxc/setup.sh` into a root shell as in Option 1 — there is no separate partial script. The macvlan/config/service steps for indices 6–7 are the only ones that create anything new; the rest short-circuit.
+> **The `rm -rf` is required, not tidiness.** `scp -r tools/snmp <host>:/root/snmp-test` only lands at that path the *first* time. Once `/root/snmp-test` exists, scp copies *into* it — the new tree lands at `/root/snmp-test/snmp/` while `bash /root/snmp-test/lxc/setup.sh` re-runs the **stale** copy. Every agent restarts and the run reports success, so this fails silently and looks like a broken fixture rather than a stale deploy. Sanity-check with `grep -c br-guest /root/snmp-test/lxc/setup.sh` before running it.
 
-After either option, flush the scanning host's ARP cache (`sudo arp -a -d` on macOS) so the two new MACs are learned.
+> **SSH key.** The VM accepts publickey only (password auth is disabled) and there is no `~/.ssh/config` entry, so `-i ~/.ssh/snmp-test-vm` is required or you get `Permission denied (publickey)`. Add a `Host 192.168.7.2*` / `IdentityFile ~/.ssh/snmp-test-vm` block to `~/.ssh/config` to drop the flag.
+
+Afterwards, flush the scanning host's ARP cache (`sudo arp -a -d` on macOS) so any new MACs are learned, then run `make snmp-verify` from your Mac.
+
+> Re-running is required after any change to the MIB data or a systemd unit — including the `ap-wireless-01` guest-subnet fixture (#663), which changes both its `ipAddrTable` data and its `ExecStart` module exclusions.
 
 ## Verify
 

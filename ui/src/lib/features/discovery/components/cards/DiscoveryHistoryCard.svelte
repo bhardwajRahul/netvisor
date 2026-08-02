@@ -6,56 +6,70 @@
 	import type { Discovery } from '../../types/base';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
 	import type { TagProps } from '$lib/shared/components/data/types';
 	import { entityRef } from '$lib/shared/components/data/types';
+	import type { Host } from '$lib/features/hosts/types/base';
+	import { common_cancelled, common_failed, common_warnings } from '$lib/paraglide/messages';
 
 	// Queries
 	const daemonsQuery = useDaemonsQuery();
 	const networksQuery = useNetworksQuery();
-	const hostsQuery = useHostsQuery({ limit: 0 });
 	const subnetsQuery = useSubnetsQuery();
 	const credentialsQuery = useCredentialsQuery();
 
 	// Derived data
 	let daemonsData = $derived(daemonsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 	let credentialsData = $derived(credentialsQuery.data ?? []);
 
 	let {
 		viewMode,
 		discovery,
+		hosts = [],
 		onView = () => {},
 		selected,
 		onSelectionChange = () => {}
 	}: {
 		viewMode: 'card' | 'list';
 		discovery: Discovery;
+		/**
+		 * Hosts the daemons in this list run on. Passed in rather than fetched
+		 * here: each card needs one host name for a popover, and fetching per card
+		 * meant every card subscribing to an unpaginated org-wide hosts query.
+		 */
+		hosts?: Host[];
 		onView?: (discovery: Discovery) => void;
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
 
+	let hostsData = $derived(hosts);
+
 	let results = $derived(
 		discovery.run_type.type == 'Historical' ? discovery.run_type.results : null
 	);
 
+	// A tag only where there is something to act on. A clean completion is the expected
+	// outcome, so tagging it every time spends the reader's attention to say "nothing
+	// happened" — and makes the runs that do need attention harder to pick out of a list.
 	let status = $derived.by((): TagProps | null => {
 		const phase = results?.phase ?? null;
 		if (!phase) return null;
 		switch (phase) {
 			case 'Complete':
-				return { label: 'Complete', color: toColor('green') };
+				return results?.warnings && results.warnings.length > 0
+					? { label: common_warnings(), color: toColor('yellow') }
+					: null;
 			case 'Failed':
-				return { label: 'Failed', color: toColor('red') };
+				return { label: common_failed(), color: toColor('red') };
 			case 'Cancelled':
-				return { label: 'Cancelled', color: toColor('yellow') };
+				return { label: common_cancelled(), color: toColor('yellow') };
 			default:
+				// Still running, so worth showing — the phase names its stage.
 				return { label: phase, color: toColor('blue') };
 		}
 	});

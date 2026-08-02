@@ -2,6 +2,7 @@ use crate::server::auth::middleware::billing::require_billing_for_users;
 use crate::server::auth::middleware::fixture_capture::capture_fixtures_middleware;
 use crate::server::config::{__path_get_public_config, get_public_config};
 use crate::server::github::handlers::{__path_get_stars, get_stars};
+use crate::server::openapi::tags as api_tags;
 use crate::server::shared::types::api::ApiResponse;
 use crate::server::{
     auth::handlers as auth_handlers, billing::handlers as billing_handlers,
@@ -50,7 +51,7 @@ pub struct VersionInfo {
 #[utoipa::path(
     get,
     path = "/api/version",
-    tags = ["system", "internal"],
+    tags = [api_tags::SYSTEM, api_tags::INTERNAL],
     responses(
         (status = 200, description = "Version information", body = ApiResponse<VersionInfo>)
     )

@@ -14,16 +14,21 @@ use validator::Validate;
 
 #[derive(Debug, Clone, Validate, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct TagBase {
+    /// Human-facing name for this tag.
     #[validate(length(
         min = 1,
         max = 100,
         message = "Tag name must be between 1 and 100 characters"
     ))]
     pub name: String,
+    /// Free-text notes about the tag.
     #[serde(deserialize_with = "deserialize_empty_string_as_none")]
     pub description: Option<String>,
+    /// Colour the tag is drawn in.
     pub color: Color,
+    /// The organization that owns this record.
     pub organization_id: Uuid,
+    /// Whether this tag groups an application, so it drives the application view.
     #[serde(default)]
     pub is_application: bool,
 }
@@ -45,21 +50,27 @@ impl Default for TagBase {
 )]
 #[schema(example = crate::server::shared::types::examples::tag)]
 pub struct Tag {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// Start of the interval this revision was current for (SCD2 history).
     #[serde(default)]
     #[schema(read_only)]
     pub valid_from: DateTime<Utc>,
+    /// End of the interval this revision was current for. `null` while it is the live revision.
     #[serde(default)]
     #[schema(read_only)]
     pub valid_to: Option<DateTime<Utc>>,
+    /// Stable identifier shared by every revision of the same entity across its history.
     #[serde(default)]
     #[schema(read_only)]
     pub lineage_id: Option<Uuid>,

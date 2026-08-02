@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Edit, Eye, Replace, Trash2 } from 'lucide-svelte';
+	import { Edit, Eye, RefreshCw, Replace, Trash2 } from 'lucide-svelte';
 	import { formatIPAddress } from '../queries';
 	import type { Host } from '../types/base';
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
@@ -20,6 +20,7 @@
 		common_ipAddresses,
 		common_lastSeen,
 		common_never,
+		common_rescan,
 		common_service,
 		common_services,
 		common_tags,
@@ -63,6 +64,7 @@
 		onDelete,
 		onHide,
 		onConsolidate,
+		onRescan,
 		viewMode,
 		selected,
 		onSelectionChange = () => {}
@@ -72,6 +74,7 @@
 		onDelete?: (host: Host) => void;
 		onHide?: (host: Host) => void;
 		onConsolidate?: (host: Host) => void;
+		onRescan?: (host: Host) => void;
 		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
@@ -215,6 +218,9 @@
 								onClick: () => onDelete(host)
 							}
 						]
+					: []),
+				...(onRescan
+					? [{ label: common_rescan(), icon: RefreshCw, onClick: () => onRescan(host) }]
 					: []),
 				...(onConsolidate
 					? [{ label: common_consolidate(), icon: Replace, onClick: () => onConsolidate(host) }]

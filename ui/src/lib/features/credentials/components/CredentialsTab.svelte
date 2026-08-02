@@ -24,7 +24,8 @@
 	import type { TabProps } from '$lib/shared/types';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import { useHostsByIds } from '$lib/features/hosts/queries';
+	import type { Host } from '$lib/features/hosts/types/base';
 	import {
 		common_confirmDeleteName,
 		common_create,
@@ -74,14 +75,34 @@
 	const deleteCredentialMutation = useDeleteCredentialMutation();
 	const bulkDeleteCredentialsMutation = useBulkDeleteCredentialsMutation();
 
-	// Networks and hosts for delete impact preview
+	// Networks for delete impact preview
 	const networksQuery = useNetworksQuery();
-	const hostsQuery = useHostsQuery({ limit: 0 });
 	let networksData = $derived(networksQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data?.items ?? []);
 
 	// Derived state
 	let credentials = $derived(credentialsQuery.data ?? []);
+
+	// Which hosts a credential is assigned to is already on the credential —
+	// `host_assignments` is hydrated from the same `host_credentials` junction
+	// table that produces the host's `credential_assignments`. So the impact
+	// counts need no host data at all, and the card's host chips only need those
+	// ids resolved to names.
+	//
+	// This was `useHostsQuery({ limit: 0 })`: every host in the organisation,
+	// unpaginated (~1.9MB on a 440-host estate), to label a few chips and put two
+	// numbers in a confirm() dialog. Because TanStack dedupes by key it was shared
+	// with every other consumer, so it loaded on pages that never showed a
+	// credential.
+	let assignedHostIds = $derived([
+		...new Set(credentials.flatMap((c) => (c.host_assignments ?? []).map((a) => a.host_id)))
+	]);
+	const assignedHostsQuery = useHostsByIds(() => assignedHostIds);
+	let assignedHostsData = $derived(assignedHostsQuery.data ?? []);
+
+	function hostsForCredential(credential: Credential): Host[] {
+		const ids = new Set((credential.host_assignments ?? []).map((a) => a.host_id));
+		return assignedHostsData.filter((h) => ids.has(h.id));
+	}
 	let isLoading = $derived(credentialsQuery.isLoading);
 
 	// Demo mode check
@@ -117,16 +138,14 @@
 		const affectedNetworks = networksData.filter((n) =>
 			(n.credential_ids ?? []).includes(credential.id)
 		);
-		const affectedHosts = hostsData.filter((h) =>
-			(h.credential_assignments ?? []).some((a) => a.credential_id === credential.id)
-		);
+		const affectedHostCount = (credential.host_assignments ?? []).length;
 		let message: string = common_confirmDeleteName({ name: credential.name });
-		if (affectedNetworks.length > 0 || affectedHosts.length > 0) {
+		if (affectedNetworks.length > 0 || affectedHostCount > 0) {
 			message +=
 				'\n\n' +
 				credentials_deleteImpact({
 					networkCount: affectedNetworks.length,
-					hostCount: affectedHosts.length
+					hostCount: affectedHostCount
 				});
 		}
 		if (confirm(message)) {
@@ -155,16 +174,20 @@
 		const affectedNetworks = networksData.filter((n) =>
 			(n.credential_ids ?? []).some((id) => ids.includes(id))
 		);
-		const affectedHosts = hostsData.filter((h) =>
-			(h.credential_assignments ?? []).some((a) => ids.includes(a.credential_id))
-		);
+		// Distinct hosts across the selected credentials — a host assigned two of
+		// them must not be counted twice.
+		const affectedHostCount = new Set(
+			credentials
+				.filter((c) => ids.includes(c.id))
+				.flatMap((c) => (c.host_assignments ?? []).map((a) => a.host_id))
+		).size;
 		let message: string = credentials_bulkDeleteConfirm({ count: ids.length });
-		if (affectedNetworks.length > 0 || affectedHosts.length > 0) {
+		if (affectedNetworks.length > 0 || affectedHostCount > 0) {
 			message +=
 				'\n\n' +
 				credentials_bulkDeleteImpact({
 					networkCount: affectedNetworks.length,
-					hostCount: affectedHosts.length
+					hostCount: affectedHostCount
 				});
 		}
 		if (confirm(message)) {
@@ -184,7 +207,8 @@
 	// Define field configuration for the DataTableControls
 	const credentialFields = defineFields<Credential, CredentialOrderField>(
 		{
-			name: { label: common_name(), type: 'string', searchable: true },
+			// Identity field: grouping by it would render a header per credential.
+			name: { label: common_name(), type: 'string', searchable: true, groupable: false },
 			created_at: { label: common_created(), type: 'date' },
 			updated_at: { label: common_updated(), type: 'date' }
 		},
@@ -193,7 +217,11 @@
 				key: 'credential_type',
 				label: 'Type',
 				type: 'string',
+				searchable: true,
 				filterable: true,
+				// Type is the axis credentials are actually organized by.
+				groupable: true,
+				sortable: true,
 				filterMode: 'include',
 				filterOptions: credentialTypes.getItems().map((t) => t.name ?? t.id),
 				getValue: (item: Credential) => credentialTypes.getName(getCredentialTypeId(item))
@@ -202,6 +230,7 @@
 				key: 'target',
 				label: common_scope(),
 				type: 'array',
+				searchable: true,
 				filterable: true,
 				groupable: true,
 				filterMode: 'include',
@@ -257,9 +286,7 @@
 				<CredentialCard
 					credential={item}
 					assignedNetworks={networksData.filter((n) => (n.credential_ids ?? []).includes(item.id))}
-					assignedHosts={hostsData.filter((h) =>
-						(h.credential_assignments ?? []).some((a) => a.credential_id === item.id)
-					)}
+					assignedHosts={hostsForCredential(item)}
 					selected={isSelected}
 					{onSelectionChange}
 					{viewMode}

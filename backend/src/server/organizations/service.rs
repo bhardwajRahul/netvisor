@@ -1,5 +1,6 @@
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::billing::types::base::BillingPlan;
+use crate::server::organizations::demo_status::DemoPopulateStatus;
 use crate::server::shared::events::bus::EventBus;
 use crate::server::shared::events::traits::{Event, OrgScope};
 use crate::server::shared::events::types::BillingOperation;
@@ -13,12 +14,18 @@ use crate::server::{
 };
 use anyhow::Error;
 use async_trait::async_trait;
+use chrono::Utc;
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 pub struct OrganizationService {
     storage: Arc<GenericPostgresStorage<Organization>>,
     event_bus: Arc<EventBus>,
+    /// In-memory status of each org's background demo-populate task, polled by
+    /// the frontend after the `202`. See [`super::demo_status`].
+    demo_status: RwLock<HashMap<Uuid, DemoPopulateStatus>>,
 }
 
 impl EventBusService<Organization> for OrganizationService {
@@ -50,7 +57,37 @@ impl OrganizationService {
         storage: Arc<GenericPostgresStorage<Organization>>,
         event_bus: Arc<EventBus>,
     ) -> Self {
-        Self { storage, event_bus }
+        Self {
+            storage,
+            event_bus,
+            demo_status: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Claim the single-flight demo-populate slot for `org_id`. Returns the
+    /// initial `Running` status (to hand straight back in the `202` body) when
+    /// the slot was free, or `None` if a populate is already `Running` for this
+    /// org — the caller should then respond `409`.
+    pub async fn try_begin_demo(&self, org_id: Uuid) -> Option<DemoPopulateStatus> {
+        let mut map = self.demo_status.write().await;
+        if matches!(map.get(&org_id), Some(DemoPopulateStatus::Running { .. })) {
+            return None;
+        }
+        let status = DemoPopulateStatus::Running {
+            started_at: Utc::now(),
+        };
+        map.insert(org_id, status.clone());
+        Some(status)
+    }
+
+    /// Record the terminal status of an org's demo-populate task.
+    pub async fn set_demo_status(&self, org_id: Uuid, status: DemoPopulateStatus) {
+        self.demo_status.write().await.insert(org_id, status);
+    }
+
+    /// Current demo-populate status for `org_id`, if a task has ever run.
+    pub async fn get_demo_status(&self, org_id: &Uuid) -> Option<DemoPopulateStatus> {
+        self.demo_status.read().await.get(org_id).cloned()
     }
 
     /// Reconcile self-hosted org plans to the `target` plan the license key

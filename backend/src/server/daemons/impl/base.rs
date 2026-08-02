@@ -15,26 +15,33 @@ use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema, Validate,
 )]
 pub struct DaemonBase {
+    /// The host this entity belongs to.
     pub host_id: Uuid,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
     /// Address the *server* dials for a ServerPoll daemon. Editable (a daemon can move);
     /// unused and not editable for DaemonPoll, which dials out instead.
     #[serde(default)]
     #[schema(required)]
+    /// Base URL the server reaches this daemon on.
+    #[schema(format = "uri", example = "https://daemon.example.com:60073")]
     pub url: String,
     /// Timestamp of last successful contact with daemon.
     /// NULL for provisioned ServerPoll daemons that haven't been contacted yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(read_only)]
     pub last_seen: Option<DateTime<Utc>>,
+    /// How the daemon connects: it polls the server, or the server polls it.
     pub mode: DaemonMode,
+    /// Human-facing name for this daemon.
     pub name: String,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
     /// Daemon software version (semver format)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, pattern = r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$", example = "0.17.7")]
     pub version: Option<Version>,
     /// User responsible for maintaining this daemon
     pub user_id: Uuid,
@@ -65,12 +72,15 @@ pub struct DaemonBase {
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema, Validate,
 )]
 pub struct Daemon {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
@@ -96,12 +106,10 @@ impl Daemon {
     ///
     /// Returns `false` for daemons without a version (assume legacy).
     pub fn supports_full_server_poll(&self) -> bool {
-        const SERVER_POLL_VERSION: Version = Version::new(0, 14, 0);
-        self.base
-            .version
-            .as_ref()
-            .map(|v| v >= &SERVER_POLL_VERSION)
-            .unwrap_or(false)
+        // Floor owned by the version registry (single source of truth).
+        crate::server::daemons::r#impl::version::supports_full_server_poll(
+            self.base.version.as_ref(),
+        )
     }
 }
 

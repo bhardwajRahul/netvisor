@@ -12,18 +12,25 @@ use validator::Validate;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema, Validate)]
 pub struct DaemonApiKeyBase {
+    /// The stored key. Returned redacted except on creation and rotation.
     #[serde(default)]
     #[serde(serialize_with = "serialize_sensitive_info")]
     #[schema(read_only, required)]
     pub key: String,
+    /// Human-facing name for this key.
     pub name: String,
+    /// When a daemon last authenticated with this key.
     #[serde(default)]
     #[schema(read_only, required)]
     pub last_used: Option<DateTime<Utc>>,
+    /// When this record stops being valid.
     pub expires_at: Option<DateTime<Utc>>,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Whether the key may still be used. Disabled keys are rejected.
     #[serde(default)]
     pub is_enabled: bool,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -75,12 +82,15 @@ impl std::hash::Hash for DaemonApiKeyBase {
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema, Validate,
 )]
 pub struct DaemonApiKey {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,

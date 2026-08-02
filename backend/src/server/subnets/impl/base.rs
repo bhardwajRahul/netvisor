@@ -39,18 +39,24 @@ where
 
 #[derive(Debug, Clone, Validate, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct SubnetBase {
-    #[schema(value_type = String)]
+    /// Subnet in CIDR notation, IPv4 or IPv6.
+    #[schema(value_type = String, pattern = r"^[0-9A-Fa-f.:]+/\d{1,3}$", example = "192.168.1.0/24")]
     #[serde(deserialize_with = "deserialize_cidr")]
     pub cidr: IpCidr,
+    /// The network this entity belongs to.
     pub network_id: Uuid,
+    /// Human-facing name for this subnet.
     #[validate(length(min = 0, max = 100))]
     pub name: String,
+    /// Free-text notes about the subnet.
     #[serde(deserialize_with = "deserialize_empty_string_as_none")]
     #[validate(length(min = 0, max = 500))]
     pub description: Option<String>,
+    /// What kind of subnet this is — physical, virtual, container bridge, and so on.
     pub subnet_type: SubnetType,
     /// Virtualization provider that owns this subnet.
     /// Docker bridge subnets use this for per-host dedup (same CIDR on different hosts = distinct).
+    /// Virtualization platform that owns the subnet, when it is virtual.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -61,6 +67,7 @@ pub struct SubnetBase {
     #[schema(required)]
     /// Will be automatically set to Manual for creation through API
     pub source: EntitySource,
+    /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -84,30 +91,39 @@ impl Default for SubnetBase {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, Default, ToSchema, Validate)]
 #[schema(example = crate::server::shared::types::examples::subnet)]
 pub struct Subnet {
+    /// Server-assigned unique identifier.
     #[serde(default)]
     #[schema(read_only, required)]
     pub id: Uuid,
+    /// When this record was first created.
     #[serde(default)]
     #[schema(read_only, required)]
     pub created_at: DateTime<Utc>,
+    /// When this record was last modified.
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// Start of the interval this revision was current for (SCD2 history).
     #[serde(default)]
     #[schema(read_only)]
     pub valid_from: DateTime<Utc>,
+    /// End of the interval this revision was current for. `null` while it is the live revision.
     #[serde(default)]
     #[schema(read_only)]
     pub valid_to: Option<DateTime<Utc>>,
+    /// Stable identifier shared by every revision of the same entity across its history.
     #[serde(default)]
     #[schema(read_only)]
     pub lineage_id: Option<Uuid>,
+    /// When a discovery last observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_seen_at: DateTime<Utc>,
+    /// The most recent discovery that observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub last_discovery_id: Option<Uuid>,
+    /// The discovery that first observed this entity.
     #[serde(default)]
     #[schema(read_only)]
     pub first_discovery_id: Option<Uuid>,
@@ -124,6 +140,28 @@ impl Subnet {
 
     pub fn is_vpn_subnet(&self) -> bool {
         self.base.subnet_type == SubnetType::VpnTunnel
+    }
+
+    /// Whether this fresh observation should correct `existing`'s container-bridge
+    /// classification.
+    ///
+    /// Bridge types are produced only by `ContainerRuntime::subnet_from_network`,
+    /// which always stamps `virtualization` to scope the bridge to its owning
+    /// runtime service. A bridge row without one therefore predates that rule and
+    /// can only have come from the interface-name heuristic that used to type an
+    /// access point's `br-`-prefixed guest bridge as Docker (#663) — so a current
+    /// non-bridge observation of the same CIDR supersedes it.
+    ///
+    /// Both rows must be `Discovery`. A `Manual` subnet type is a user's explicit
+    /// assertion, not a guess to be repaired, and discovery must never silently
+    /// overwrite it — the CIDR dedup happily matches a Manual row against an
+    /// incoming discovered one, so this is the only thing keeping them apart.
+    pub fn corrects_container_bridge_guess(&self, existing: &Subnet) -> bool {
+        existing.base.source == EntitySource::Discovery
+            && self.base.source == EntitySource::Discovery
+            && existing.base.subnet_type.is_container_bridge()
+            && existing.base.virtualization.is_none()
+            && !self.base.subnet_type.is_container_bridge()
     }
 
     pub fn from_discovery(
@@ -225,6 +263,7 @@ impl ChangeTriggersTopologyStaleness<Subnet> for Subnet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::subnets::r#impl::virtualization::DockerSubnetVirtualization;
     use pnet::ipnetwork::IpNetwork;
     use std::str::FromStr;
 
@@ -240,6 +279,72 @@ mod tests {
         let ip = IpNetwork::from_str("10.0.0.0/2").unwrap();
         let result = Subnet::from_discovery("eth0".to_string(), &ip, Uuid::nil());
         assert!(result.is_some(), "/2 prefix should be accepted");
+    }
+
+    fn subnet(subnet_type: SubnetType, virtualization: Option<SubnetVirtualization>) -> Subnet {
+        sourced_subnet(subnet_type, virtualization, EntitySource::Discovery)
+    }
+
+    fn sourced_subnet(
+        subnet_type: SubnetType,
+        virtualization: Option<SubnetVirtualization>,
+        source: EntitySource,
+    ) -> Subnet {
+        Subnet::new(SubnetBase {
+            cidr: cidr::IpCidr::from_str("172.30.10.0/24").unwrap(),
+            network_id: Uuid::nil(),
+            name: "172.30.10.0/24".into(),
+            description: None,
+            subnet_type,
+            virtualization,
+            source,
+            tags: Vec::new(),
+        })
+    }
+
+    /// #663: the reporter's access-point guest subnet was already stored as
+    /// `DockerBridge`, so the classification fix alone would never reach them —
+    /// rediscovery dedups into the stale row. A bridge row with no virtualization
+    /// can only be a name-derived guess, so a current non-bridge observation
+    /// corrects it.
+    #[test]
+    fn stale_bridge_guess_is_corrected_by_a_fresh_observation() {
+        let guess = subnet(SubnetType::DockerBridge, None);
+        assert!(subnet(SubnetType::Guest, None).corrects_container_bridge_guess(&guess));
+    }
+
+    /// A bridge carrying virtualization came from the runtime API, so nothing
+    /// derived from an interface name may downgrade it.
+    #[test]
+    fn authoritative_bridge_is_never_downgraded() {
+        let authoritative = subnet(
+            SubnetType::DockerBridge,
+            Some(SubnetVirtualization::Docker(DockerSubnetVirtualization {
+                service_id: Uuid::new_v4(),
+            })),
+        );
+        assert!(!subnet(SubnetType::Guest, None).corrects_container_bridge_guess(&authoritative));
+        // Nor may one bridge observation replace another.
+        assert!(
+            !subnet(SubnetType::DockerBridge, None)
+                .corrects_container_bridge_guess(&subnet(SubnetType::DockerBridge, None))
+        );
+    }
+
+    /// A manually-set subnet type is a user's assertion, not a guess to repair.
+    /// The CIDR dedup matches a Manual row against an incoming discovered one,
+    /// so without the source check discovery would silently overwrite it.
+    #[test]
+    fn manual_subnet_type_is_never_overwritten_by_discovery() {
+        let manual = sourced_subnet(SubnetType::DockerBridge, None, EntitySource::Manual);
+        assert!(!subnet(SubnetType::Guest, None).corrects_container_bridge_guess(&manual));
+
+        // ...and a manual observation may not rewrite a discovered row either.
+        let discovered = subnet(SubnetType::DockerBridge, None);
+        assert!(
+            !sourced_subnet(SubnetType::Guest, None, EntitySource::Manual)
+                .corrects_container_bridge_guess(&discovered)
+        );
     }
 
     /// Guards the invariants `HostService::seed_loopback` depends on: the daemon-host

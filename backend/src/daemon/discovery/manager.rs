@@ -9,6 +9,7 @@ use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::runtime::service::LOG_TARGET;
 use crate::server::credentials::r#impl::mapping::CredentialQueryPayload;
 use crate::server::daemons::r#impl::api::DaemonDiscoveryRequest;
+use crate::server::discovery::r#impl::scan_settings::ScanSettings;
 use crate::server::discovery::r#impl::types::DiscoveryType;
 
 pub struct DaemonDiscoverySessionManager {
@@ -54,7 +55,17 @@ impl DaemonDiscoverySessionManager {
         tracing::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         tracing::info!("  {:<20}{}", "Session ID:", request.session_id);
 
-        if let DiscoveryType::Unified { scan_settings, .. } = &request.discovery_type {
+        // Both scanning types report their settings and credentials the same way;
+        // a rescan's narrower settings widen back for display.
+        let banner_settings = match &request.discovery_type {
+            DiscoveryType::Unified { scan_settings, .. } => Some(scan_settings.clone()),
+            DiscoveryType::Rescan { settings, .. } => Some(ScanSettings::from(settings)),
+            DiscoveryType::SelfReport { .. }
+            | DiscoveryType::Network { .. }
+            | DiscoveryType::Docker { .. } => None,
+        };
+
+        if let Some(scan_settings) = banner_settings {
             // Scan settings
             tracing::info!("  ───────────────────────────────────────────────────────────");
             tracing::info!("  Scan Settings:");
@@ -125,22 +136,16 @@ impl DaemonDiscoverySessionManager {
                     cancel_token,
                 )
             }
-            DiscoveryType::Unified {
-                host_id,
-                subnet_ids,
-                host_naming_fallback,
-                scan_settings,
-                ..
-            } => {
-                let runner = DiscoveryRunner::new(
+            DiscoveryType::Unified { .. } | DiscoveryType::Rescan { .. } => {
+                // `new` returns None only for the legacy types handled above.
+                let Some(runner) = DiscoveryRunner::new(
                     self.discovery_service.clone(),
                     self.clone(),
-                    *host_id,
-                    subnet_ids.clone(),
-                    *host_naming_fallback,
-                    scan_settings.clone(),
+                    request.discovery_type.clone(),
                     request.credential_mappings.clone(),
-                );
+                ) else {
+                    unreachable!("legacy discovery types are stubbed in the arm above")
+                };
                 self.clone()
                     .spawn_discovery(runner, request.clone(), cancel_token)
             }

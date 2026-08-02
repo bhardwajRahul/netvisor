@@ -9,34 +9,16 @@ import {
 	inferCurrentLevel,
 	computeCollapsedForLevel,
 	buildElementToContainer,
-	computeCollapsedEdges
+	computeCollapsedEdges,
+	isScaleCollapsed,
+	scaleCollapseCandidates
 } from '../collapse';
 import { elevateEdgesToContainers } from '../layout/edge-elevation';
 import { containerTypes, views } from '$lib/shared/stores/metadata';
 import { activeView, topologyOptions } from '../queries';
-import { tagHiddenNodeIds } from '../interactions';
+import { tagHiddenNodeIds, hiddenEntityIds } from '../interactions';
 import { buildTopologyParentIndex } from '../topology-parent-index';
-
-/**
- * Collections on Topology that can surface as inline entity content on element
- * cards. Keyed by EntityDiscriminants name — matches what views declare in
- * element_config.element_entities[].inline_entities.
- *
- * Entity-registry data, not view-specific: the only knowledge encoded here is
- * "Service entities live in topology.services". Adding a new inlinable entity
- * type is a one-line append.
- */
-const INLINE_ENTITY_COLLECTIONS: Record<string, keyof RenderableTopology> = {
-	Service: 'services',
-	Port: 'ports',
-	Interface: 'interfaces',
-	IPAddress: 'ip_addresses',
-	Host: 'hosts',
-	Subnet: 'subnets',
-	Binding: 'bindings',
-	Dependency: 'dependencies',
-	Vlan: 'vlans'
-};
+import { ENTITY_COLLECTIONS } from '../resolvers';
 
 /**
  * Build a stable signature of everything the active view inlines on its
@@ -62,7 +44,7 @@ function getInlineContentKey(topo: RenderableTopology, view: string): string {
 
 	const sigs: string[] = [];
 	for (const type of inlineTypes) {
-		const collectionKey = INLINE_ENTITY_COLLECTIONS[type];
+		const collectionKey = ENTITY_COLLECTIONS[type];
 		if (!collectionKey) continue;
 		const collection = topo[collectionKey] as unknown;
 		if (!Array.isArray(collection)) continue;
@@ -80,15 +62,135 @@ function getInlineContentKey(topo: RenderableTopology, view: string): string {
 // stepExpand to 4) is respected on later navigations.
 let defaultsAppliedThisSession = false;
 
-/** Signature of the currently filtered-out set. Since the pipeline now
- *  removes these nodes structurally (not just fades), any change here must
- *  trigger a full re-run so ELK sees the new node/edge set. Hashes the
- *  resolved hidden-node set directly — which already reflects tag filters,
- *  category/metadata filters, and entity-hide via updateTagFilter. */
-function getHideStateKey(): string {
-	const hidden = get(tagHiddenNodeIds);
-	if (hidden.size === 0) return '';
-	return [...hidden].sort().join(',');
+/**
+ * Everything currently filtered out, in a form the structure key can compare.
+ *
+ * Hiding a node is only one of three ways a filter changes what has to be laid out, and the
+ * other two do not touch `tagHiddenNodeIds` at all:
+ *
+ *  - An **entity shown inline** on another node's card (a service, a port) resizes that card
+ *    when hidden or shown, while every node id stays the same.
+ *  - A **metadata-value filter** (e.g. the OpenPorts service category) is applied at render
+ *    time straight from the options and never reaches either hidden-id store.
+ *
+ * Both still resize cards, so both belong in the structure key: it is what clears
+ * `viewSizeCache`/`containerSizeCache`, and without that ELK re-runs against the sizes the
+ * cards used to have and the new ones overlap.
+ */
+function getHideStateKey(view: string): string {
+	const parts: string[] = [];
+
+	const hiddenNodes = get(tagHiddenNodeIds);
+	if (hiddenNodes.size > 0) parts.push(`n:${[...hiddenNodes].sort().join(',')}`);
+
+	const hiddenEntities = get(hiddenEntityIds);
+	if (hiddenEntities.size > 0) parts.push(`e:${[...hiddenEntities].sort().join(',')}`);
+
+	const metadata = hiddenMetadataKey(view);
+	if (metadata) parts.push(`m:${metadata}`);
+
+	return parts.join('|');
+}
+
+/**
+ * The active view's metadata-value filters, serialized deterministically.
+ *
+ * Sorted at every level rather than `JSON.stringify`d, because object key order follows
+ * insertion and would make an unchanged filter set produce a different string — a spurious
+ * full re-layout every time the options object is rebuilt.
+ */
+export function hiddenMetadataKey(view: string): string {
+	const byView = (get(topologyOptions).request.hide_metadata_values ?? {}) as Record<
+		string,
+		Record<string, Record<string, string[]>>
+	>;
+	const forView = byView[view];
+	if (!forView) return '';
+	return Object.entries(forView)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.flatMap(([entityType, fields]) =>
+			Object.entries(fields ?? {})
+				.sort(([a], [b]) => a.localeCompare(b))
+				.map(([field, values]) => `${entityType}.${field}=${[...(values ?? [])].sort().join('+')}`)
+		)
+		.join(',');
+}
+
+/**
+ * Collapse containers marked `collapsed_by_default`, plus the infrastructure
+ * subcontainer, and return the resulting collapsed set.
+ *
+ * Returns the set rather than relying on the store write alone: the caller must
+ * use this value for the rest of the run, so that the run it belongs to already
+ * reflects it and no corrective re-layout is needed.
+ *
+ * `seenAutoCollapseIds` makes this one-shot per container — a container the user
+ * has since expanded is never re-collapsed behind them.
+ */
+function applyAutoCollapse(
+	topology: RenderableTopology,
+	state: LayoutState,
+	collapsed: Set<string>,
+	getInfrastructureRuleId: () => string | null
+): Set<string> {
+	const currentLevel = get(collapseLevel);
+	const infraRuleId = getInfrastructureRuleId();
+
+	// Above a size threshold, containers also start collapsed regardless of type.
+	// Collapsing is the only lever that reduces the node *count* rather than the
+	// cost per node. The candidate set comes from `collapse.ts` so that the
+	// manual ladder computes exactly the same thing — see
+	// `scaleCollapseCandidates`.
+	//
+	// Routed through the same candidate/seen machinery as `collapsed_by_default`
+	// so a container the user expands is never re-collapsed behind them.
+	const scaleIds = scaleCollapseCandidates(topology.nodes, containerTypes);
+
+	const allCandidates = topology.nodes.filter((n) => {
+		if (n.node_type !== 'Container') return false;
+		const data = n as Record<string, unknown>;
+		const ct = data.container_type as string | undefined;
+		if (scaleIds.has(n.id)) return true;
+		return (
+			(ct && containerTypes.getMetadata(ct).collapsed_by_default === true) ||
+			(infraRuleId && data.element_rule_id === infraRuleId)
+		);
+	});
+
+	const userExplicitlyExpandedAll = currentLevel === 4 && state.collapseLevelInferred;
+	const autoCollapseIds = userExplicitlyExpandedAll
+		? []
+		: allCandidates
+				.filter((n) => !collapsed.has(n.id) && !state.seenAutoCollapseIds.has(n.id))
+				.map((n) => n.id);
+
+	let next = collapsed;
+	if (autoCollapseIds.length > 0) {
+		for (const id of autoCollapseIds) state.seenAutoCollapseIds.add(id);
+		next = new Set(collapsed);
+		for (const id of autoCollapseIds) next.add(id);
+		collapsedContainers.set(next);
+	}
+
+	// Re-infer the level from what auto-collapse actually produced.
+	//
+	// Gated on its own flag, not `collapseLevelInferred`. The seeding step upstream consumes
+	// that one in the same run and sets the level from the stored default — *before* this
+	// function scale-collapses the graph — so this correction never ran: the view opened fully
+	// collapsed while the indicator read 3, and every subsequent step walked from a number that
+	// described a graph nobody had drawn.
+	if (!state.collapseLevelReconciled) {
+		state.collapseLevelReconciled = true;
+		const inferred = inferCurrentLevel(
+			next,
+			topology.nodes,
+			containerTypes,
+			getInfrastructureRuleId()
+		);
+		collapseLevel.set(inferred);
+	}
+
+	return next;
 }
 
 function getStructureKey(topo: RenderableTopology, view: string): string {
@@ -100,7 +202,7 @@ function getStructureKey(topo: RenderableTopology, view: string): string {
 		.sort()
 		.join(',');
 	const inlineKey = getInlineContentKey(topo, view);
-	const hideKey = getHideStateKey();
+	const hideKey = getHideStateKey(view);
 	return `${topo.nodes.length}:${topo.edges.length}:${nodeKeys}|${inlineKey}|${hideKey}`;
 }
 
@@ -212,6 +314,8 @@ export function prepareTopologyData(
 		state.seenAutoCollapseIds = new Set<string>();
 		state.containerSizeCache.clear();
 		state.collapseLevelInferred = false;
+		// A new topology re-runs auto-collapse, so its level needs reconciling again too.
+		state.collapseLevelReconciled = false;
 
 		if (collapsed.size > 0) {
 			const newContainerIds = new Set(
@@ -247,6 +351,17 @@ export function prepareTopologyData(
 		}
 	}
 	state.lastSeenTopologyId = topologyId;
+
+	// Collapse containers whose type is marked collapsed_by_default (plus the
+	// infrastructure subcontainer).
+	//
+	// This runs here, before layout, rather than after it. It depends only on
+	// node metadata and collapse state — never on layout output — and doing it
+	// afterwards meant writing `collapsedContainers` once ELK had already laid
+	// the graph out expanded, which the viewer saw as an external change and
+	// answered with a second complete pipeline run: another full DOM measure
+	// pass and two more elk.layout() calls, on every cold load.
+	collapsed = applyAutoCollapse(topology, state, collapsed, getInfrastructureRuleId);
 
 	// Filter out nodes hidden by any filter source (tag, category/metadata,
 	// entity-hide). Filter = structural remove, uniformly across sources —
@@ -342,8 +457,15 @@ export function prepareTopologyData(
 
 	// Defer collapse so ELK runs with everything expanded — only if
 	// no expanded size is available from either the graph or the cache.
+	//
+	// Skipped entirely when collapse is scale-driven. Deferring means mounting
+	// every element card in the graph purely to learn expanded container sizes
+	// for containers we are about to collapse — the dominant cost of a cold load
+	// — and then discovering their collapsed sizes afterwards, which triggers a
+	// corrective re-layout. At scale it is far cheaper to learn a container's
+	// expanded size lazily, if and when the user expands it.
 	let deferCollapse = false;
-	if (isNewStructure && collapsed.size > 0) {
+	if (isNewStructure && collapsed.size > 0 && !isScaleCollapsed(topology.nodes)) {
 		for (const id of collapsed) {
 			const hasChildren = layoutNodes.some(
 				(n) =>

@@ -12,11 +12,16 @@ use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
 pub struct Node {
+    /// Whether this node is a container or an element, and what it stands for.
     #[serde(flatten)]
     pub node_type: NodeType,
+    /// Server-assigned unique identifier.
     pub id: Uuid,
+    /// Where the node sits in the layout.
     pub position: Ixy,
+    /// Width and height of the node.
     pub size: Uxy,
+    /// Heading drawn at the top of a container node.
     pub header: Option<String>,
 }
 
@@ -223,14 +228,21 @@ impl TypeMetadataProvider for ContainerType {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 #[serde(tag = "element_type")]
 pub enum ElementEntityType {
+    #[schema(title = "IPAddress")]
     IPAddress {
+        /// Subnet the address sits in.
         subnet_id: Uuid,
+        /// The IP address itself, when one is known.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         ip_address_id: Option<Uuid>,
     },
+    #[schema(title = "Service")]
     Service {},
+    #[schema(title = "Host")]
     Host {},
+    #[schema(title = "Interface")]
     Interface {
+        /// The interface this element stands for.
         interface_id: Uuid,
     },
 }
@@ -270,9 +282,12 @@ impl From<&ElementEntityType> for EntityDiscriminants {
 #[serde(tag = "node_type")]
 #[strum_discriminants(derive(Display, Hash, Serialize, Deserialize, EnumIter))]
 pub enum NodeType {
+    #[schema(title = "Container")]
     Container {
+        /// What this container groups — a host, a subnet, an application, and so on.
         #[serde(default)]
         container_type: ContainerType,
+        /// Container this one nests inside, for subcontainers.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         parent_container_id: Option<Uuid>,
         /// The entity this container represents (e.g. host ID for Host containers,
@@ -282,9 +297,9 @@ pub enum NodeType {
         /// Display icon name (set by graph builder from the source entity, e.g. subnet type)
         #[serde(default, skip_serializing_if = "Option::is_none")]
         icon: Option<String>,
-        /// Display color name (set by graph builder from the source entity, e.g. subnet type)
+        /// Display color (set by graph builder from the source entity, e.g. subnet type)
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        color: Option<String>,
+        color: Option<Color>,
         /// Service definition ID for logo rendering (e.g. "Docker", "Proxmox VE").
         /// Used by Hypervisor and Stack subcontainers to show the service's logo.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -297,9 +312,12 @@ pub enum NodeType {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         will_accept_edges: bool,
     },
+    #[schema(title = "Element")]
     Element {
+        /// Container this element is drawn inside.
         #[serde(default)]
         container_id: Uuid,
+        /// Host the element belongs to.
         host_id: Uuid,
         #[serde(flatten)]
         element: ElementEntityType,
@@ -498,7 +516,7 @@ mod tests {
             parent_container_id: None,
             entity_id: None,
             icon: Some("Zap".to_string()),
-            color: Some("Purple".to_string()),
+            color: Some(Color::Purple),
             associated_service_definition: None,
             element_rule_id: None,
             will_accept_edges: false,

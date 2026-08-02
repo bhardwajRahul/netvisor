@@ -33,7 +33,9 @@ pub struct MatchResult {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct MatchDetails {
+    /// Why the service was matched to this definition.
     pub reason: MatchReason,
+    /// How strong the match is.
     pub confidence: MatchConfidence,
 }
 
@@ -72,6 +74,7 @@ impl utoipa::PartialSchema for MatchReason {
 
         // Variant 1: { type: "reason", data: string }
         let reason_variant = ObjectBuilder::new()
+            .title(Some("Reason"))
             .property(
                 "type",
                 ObjectBuilder::new()
@@ -81,7 +84,9 @@ impl utoipa::PartialSchema for MatchReason {
             .required("type")
             .property(
                 "data",
-                ObjectBuilder::new().schema_type(SchemaType::new(Type::String)),
+                ObjectBuilder::new()
+                    .schema_type(SchemaType::new(Type::String))
+                    .description(Some("Why the service was matched.")),
             )
             .required("data")
             .build();
@@ -89,6 +94,7 @@ impl utoipa::PartialSchema for MatchReason {
         // Variant 2: { type: "container", data: [string, MatchReason[]] }
         // Note: JSON Schema doesn't perfectly represent Rust tuples, so we use an array
         let container_variant = ObjectBuilder::new()
+            .title(Some("Container"))
             .property(
                 "type",
                 ObjectBuilder::new()
@@ -151,6 +157,31 @@ pub enum ClientProbe {
     Docker,
     Podman,
     Snmp,
+    UnifiController,
+}
+
+/// A device reported by a management controller the daemon authenticated to, rather than one
+/// probed directly over the network.
+///
+/// The controller is authoritative for the devices it has adopted, so what it says a device
+/// *is* counts as match evidence — the same way [`Pattern::ContainerVirtualization`] treats the
+/// container runtime's own inventory as evidence. This keeps controller-sourced devices inside
+/// the normal matcher instead of having integrations construct `Service` rows directly.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ManagedDevice {
+    /// Vendor-specific device class, verbatim from the controller (e.g. UniFi's `"usw"`).
+    /// Compared against the vendor-namespaced constants below.
+    pub device_type: String,
+}
+
+/// UniFi's `stat/device` `type` values.
+/// unpoller: the discriminator it switches on to pick `USW` / `UAP` / `USG` / `UDM`.
+pub struct UnifiDeviceType;
+impl UnifiDeviceType {
+    pub const ACCESS_POINT: &'static str = "uap";
+    pub const SWITCH: &'static str = "usw";
+    pub const GATEWAY: &'static str = "ugw";
+    pub const DREAM_MACHINE: &'static str = "udm";
 }
 
 #[derive(Debug, Clone, EnumDiscriminants)]
@@ -213,6 +244,12 @@ pub enum Pattern<'a> {
     /// per-runtime container definitions narrow to their virtualization via a custom check.
     ContainerVirtualization,
 
+    /// Whether a management controller reported this device as the given device class.
+    /// Takes a vendor-specific class string (see [`UnifiDeviceType`]), mirroring how
+    /// [`Pattern::MacVendor`] takes a vendor string. Only matches when the host was
+    /// discovered via a controller integration that supplied a [`ManagedDevice`].
+    ManagedDeviceType(&'static str),
+
     /// No match pattern (only added manually or by the system)
     None,
 }
@@ -269,6 +306,7 @@ impl PartialEq for Pattern<'_> {
             }
             (Pattern::ClientResponse(a), Pattern::ClientResponse(b)) => a == b,
             (Pattern::ContainerVirtualization, Pattern::ContainerVirtualization) => true,
+            (Pattern::ManagedDeviceType(a), Pattern::ManagedDeviceType(b)) => a == b,
             (Pattern::None, Pattern::None) => true,
             _ => false,
         }
@@ -342,6 +380,9 @@ impl Display for Pattern<'_> {
             }
             Pattern::ClientResponse(probe) => write!(f, "Client probe {:?} succeeded", probe),
             Pattern::ContainerVirtualization => write!(f, "Service is running in a container"),
+            Pattern::ManagedDeviceType(device_type) => {
+                write!(f, "Controller reports device type '{}'", device_type)
+            }
             Pattern::None => write!(f, "No match pattern provided"),
         }
     }
@@ -367,6 +408,7 @@ impl Pattern<'_> {
             ip_address,
             endpoint_responses,
             virtualization,
+            managed_device,
             ..
         } = baseline_params;
 
@@ -879,6 +921,33 @@ impl Pattern<'_> {
                 _ => Err(anyhow!("Service is not running in a container")),
             },
 
+            // The controller authenticated to us and named this device's class. That is a
+            // direct statement from the device's own management plane, not an inference from
+            // a banner, so it is `Certain` — the same confidence a credentialed client probe
+            // earns. It is still ANDed with a MacVendor guard in the service definitions.
+            Pattern::ManagedDeviceType(expected) => match managed_device {
+                Some(device) if device.device_type.eq_ignore_ascii_case(expected) => {
+                    Ok(MatchResult {
+                        ports: vec![],
+                        endpoint: None,
+                        mac_vendor: None,
+                        details: MatchDetails {
+                            reason: MatchReason::Reason(format!(
+                                "Controller reported device type '{}'",
+                                device.device_type
+                            )),
+                            confidence: MatchConfidence::Certain,
+                        },
+                    })
+                }
+                Some(device) => Err(anyhow!(
+                    "Controller reported device type '{}', not '{}'",
+                    device.device_type,
+                    expected
+                )),
+                None => Err(anyhow!("Host was not reported by a management controller")),
+            },
+
             Pattern::None => Err(anyhow!("No match pattern provided")),
         }
     }
@@ -987,6 +1056,7 @@ mod tests {
         virtualization: Option<ServiceVirtualization>,
         matched_services: Vec<Service>,
         client_responses: std::collections::HashMap<super::ClientProbe, Vec<PortType>>,
+        managed_device: Option<super::ManagedDevice>,
     }
 
     impl TestContext {
@@ -1022,6 +1092,7 @@ mod tests {
                 virtualization: None,
                 matched_services: vec![],
                 client_responses: std::collections::HashMap::new(),
+                managed_device: None,
             }
         }
 
@@ -1056,6 +1127,7 @@ mod tests {
                 endpoint_responses: &self.endpoint_responses,
                 virtualization: &self.virtualization,
                 client_responses: &self.client_responses,
+                managed_device: &self.managed_device,
             }
         }
     }
@@ -1254,6 +1326,7 @@ mod tests {
             endpoint_responses: &endpoint_responses,
             virtualization: &ctx.virtualization,
             client_responses: &client_responses,
+            managed_device: &None,
         };
         let params = DiscoverySessionServiceMatchParams {
             host_id: &ctx.host_id,
@@ -1298,6 +1371,7 @@ mod tests {
             endpoint_responses: &endpoint_responses,
             virtualization: &ctx.virtualization,
             client_responses: &client_responses,
+            managed_device: &None,
         };
         let params = DiscoverySessionServiceMatchParams {
             host_id: &ctx.host_id,
@@ -1417,6 +1491,53 @@ mod tests {
         assert!(
             result.is_err(),
             "MacVendor should error when ip_address has no MAC"
+        );
+    }
+
+    /// A UniFi switch answers no distinguishing network probe, so the controller's report is
+    /// the only thing that can identify it. Both halves matter: the report must be sufficient,
+    /// and it must also be *necessary* — a Ubiquiti MAC alone must not claim every Ubiquiti
+    /// device on the network is a switch.
+    #[test]
+    fn controller_report_is_what_identifies_a_unifi_switch() {
+        use crate::server::services::definitions::unifi_switch::UnifiSwitch;
+
+        let mut ctx = TestContext::new();
+        ctx.ip_address.base.mac_address = Some("78:8A:20:00:00:01".parse().expect("valid MAC"));
+
+        let ports = vec![];
+        let pattern = UnifiSwitch.discovery_pattern();
+
+        // Without the controller's report, a Ubiquiti MAC is not enough.
+        let baseline = ctx.create_baseline_params(&ports);
+        let params = ctx.create_params_with_ports(&baseline, &ports);
+        assert!(
+            pattern.matches(&params).is_err(),
+            "a Ubiquiti MAC alone must not identify a switch"
+        );
+
+        // With it, the switch is identified.
+        ctx.managed_device = Some(super::ManagedDevice {
+            device_type: super::UnifiDeviceType::SWITCH.to_string(),
+        });
+        let baseline = ctx.create_baseline_params(&ports);
+        let params = ctx.create_params_with_ports(&baseline, &ports);
+        let result = pattern.matches(&params);
+        assert!(
+            result.is_ok(),
+            "controller-reported 'usw' should identify a UniFi switch: {:?}",
+            result.err()
+        );
+
+        // A different device class on the same host must not match the switch definition.
+        ctx.managed_device = Some(super::ManagedDevice {
+            device_type: super::UnifiDeviceType::ACCESS_POINT.to_string(),
+        });
+        let baseline = ctx.create_baseline_params(&ports);
+        let params = ctx.create_params_with_ports(&baseline, &ports);
+        assert!(
+            pattern.matches(&params).is_err(),
+            "an access point must not match the switch definition"
         );
     }
 }

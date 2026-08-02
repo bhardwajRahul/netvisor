@@ -186,6 +186,16 @@ impl<'a> TopologyContext<'a> {
             .collect()
     }
 
+    /// Interfaces whose LLDP/CDP neighbour resolved to a host but not to a specific port.
+    /// The adjacency is known, the remote port is not — see `EdgeType::NeighborLink`.
+    pub fn get_interfaces_with_host_neighbor(&self) -> Vec<&'a Interface> {
+        use crate::server::interfaces::r#impl::base::Neighbor;
+        self.interfaces
+            .iter()
+            .filter(|e| matches!(e.base.neighbor, Some(Neighbor::Host(_))))
+            .collect()
+    }
+
     // ============================================================================
     // Virtualization Relationship Methods
     // ============================================================================

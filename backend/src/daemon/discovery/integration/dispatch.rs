@@ -14,6 +14,9 @@ use uuid::Uuid;
 
 use crate::daemon::discovery::credentials::resolve_credentials_for_ip;
 use crate::daemon::discovery::service::ops::{DiscoveryOps, HostData};
+use crate::daemon::discovery::service::warnings::{
+    AttemptOutcome, CredentialIssue, CredentialIssueReason, issue_for_attempt,
+};
 use crate::daemon::utils::base::PlatformDaemonUtils;
 use crate::server::credentials::r#impl::mapping::{
     CredentialMapping, CredentialQueryPayload, CredentialQueryPayloadDiscriminants,
@@ -29,6 +32,141 @@ use super::{
     execute_with_progress_reporting,
 };
 
+/// Run one credential against one integration and say what happened.
+///
+/// The single path from a *probe failure* to an operator-visible outcome. That is narrower than it
+/// first appears, and the narrowness is what made three paths go quiet: this can only speak for
+/// attempts that produce an error. A branch that skips, a collection that half-succeeds, and a
+/// caller that drops the result all bypass it without touching it. [`Disposition`] is what covers
+/// those.
+///
+/// Returns `Ok` on success, or the issue worth reporting — `None` inside the `Err` for the
+/// failures that are noise rather than news.
+async fn attempt_credential(
+    integration: &dyn DiscoveryIntegration,
+    ctx: &ProbeContext<'_>,
+    label: &'static str,
+    discriminant: CredentialQueryPayloadDiscriminants,
+    user_assigned: bool,
+) -> Result<ProbeSuccess, Option<CredentialIssue>> {
+    let failure = match integration.probe(ctx).await {
+        Ok(success) => return Ok(success),
+        Err(failure) => failure,
+    };
+    let outcome = failure.outcome();
+
+    // Whether this is a finding is `issue_for_attempt`'s call, not ours — a network default
+    // failing is routine (it is broadcast at every address in the subnet) and a cancelled attempt
+    // is not news at all. The log level follows the same verdict, so an operator reading the log
+    // and an operator reading the scan warnings see the same set of problems.
+    let issue = issue_for_attempt(
+        label,
+        ctx.ip,
+        outcome,
+        failure.message().to_string(),
+        user_assigned,
+    );
+
+    if issue.is_none() {
+        tracing::debug!(
+            ip = %ctx.ip,
+            integration = ?discriminant,
+            ?outcome,
+            error = failure.message(),
+            "Integration probe failed, trying next credential"
+        );
+    } else {
+        tracing::warn!(
+            ip = %ctx.ip,
+            integration = ?discriminant,
+            ?outcome,
+            error = failure.message(),
+            "Configured credential did not work"
+        );
+    }
+    Err(issue)
+}
+
+/// What became of one credential mapping at one address.
+///
+/// # Why this exists
+///
+/// The reporting mechanism this replaces guarded the *error* channel: a failure could not be
+/// built without a classification, and only `DiscoveryOps` could deliver one. That is a real
+/// guarantee and it covered none of the ways a credential actually went quiet — a `continue` with
+/// nothing to classify, a partial success returning `Ok`, an issue built and never read. Silence
+/// was the default, and a branch got it by saying nothing.
+///
+/// So the default is inverted. An entry is opened the moment a mapping resolves to an
+/// integration, before any branch can skip it, and every path has to write its outcome. A future
+/// branch that says nothing leaves [`Self::Unresolved`], which is loud rather than absent — see
+/// [`resolve_ledger`]. That does not make the mistake impossible; Rust will not require a field be
+/// set before a `continue`. It changes which way the mistake falls: we find out instead of a
+/// customer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Disposition {
+    /// Nothing has claimed this. Never correct at the end of a dispatch.
+    Unresolved,
+    /// The probe succeeded. What happens next is `execute_integrations`' to account for.
+    Probed,
+    /// Deliberately not reported. The reason is carried so "why was this silent?" is answerable
+    /// from the record rather than by re-deriving it from the control flow.
+    Suppressed(&'static str),
+    Failed(AttemptOutcome, String),
+}
+
+/// One credential mapping's slot in the ledger.
+struct DispositionEntry {
+    label: &'static str,
+    discriminant: CredentialQueryPayloadDiscriminants,
+    /// Whether the user pinned this to a host, which decides if a failure is a finding.
+    user_assigned: bool,
+    disposition: Disposition,
+}
+
+/// Turn the ledger into the issues worth reporting, and complain about anything unaccounted for.
+///
+/// The `Unresolved` check is the whole point of the type: it fires in tests and in the SNMP
+/// simulator long before a customer scan, which is where the three gaps this replaced should have
+/// been caught and were not.
+fn resolve_ledger(ledger: Vec<DispositionEntry>, ip: IpAddr) -> Vec<CredentialIssue> {
+    let mut issues = Vec::new();
+    for entry in ledger {
+        match entry.disposition {
+            Disposition::Unresolved => {
+                debug_assert!(
+                    false,
+                    "credential dispatch left {:?} for {} unaccounted for — a branch was added \
+                     without recording what it did",
+                    entry.discriminant, ip
+                );
+                tracing::error!(
+                    ip = %ip,
+                    integration = ?entry.discriminant,
+                    "Credential dispatch finished without recording an outcome; this is a bug"
+                );
+            }
+            Disposition::Probed => {}
+            Disposition::Suppressed(reason) => tracing::debug!(
+                ip = %ip,
+                integration = ?entry.discriminant,
+                reason,
+                "Credential produced nothing, deliberately not reported"
+            ),
+            Disposition::Failed(outcome, message) => {
+                issues.extend(issue_for_attempt(
+                    entry.label,
+                    ip,
+                    outcome,
+                    message,
+                    entry.user_assigned,
+                ));
+            }
+        }
+    }
+    issues
+}
+
 /// Results from probing all integrations for a single host IP.
 pub struct IntegrationProbeResults {
     pub client_responses: HashMap<ClientProbe, Vec<PortType>>,
@@ -42,6 +180,10 @@ pub struct IntegrationProbeResults {
         HashMap<CredentialQueryPayloadDiscriminants, (Option<Uuid>, CredentialQueryPayload)>,
     /// Ports discovered by integration probes (added to open_ports).
     pub additional_ports: Vec<PortType>,
+    /// IP-targeted credentials that produced nothing at this address, for the caller to
+    /// surface. Only credentials the user deliberately assigned to a host appear here — a
+    /// network default failing is routine, since it is tried at every address in the subnet.
+    pub credential_issues: Vec<CredentialIssue>,
 }
 
 /// Probe all integrations for a host IP against credential mappings.
@@ -59,12 +201,14 @@ pub async fn probe_integrations(
     skip_gate: bool,
     cancel: &CancellationToken,
     utils: &PlatformDaemonUtils,
+    accept_invalid_certs: bool,
 ) -> Result<IntegrationProbeResults, Error> {
     let mut results = IntegrationProbeResults {
         client_responses: HashMap::new(),
         probe_handles: HashMap::new(),
         working_credential_ids: HashMap::new(),
         additional_ports: Vec::new(),
+        credential_issues: Vec::new(),
     };
 
     // Combine caller's open ports with probe-discovered ports for gate checks
@@ -76,11 +220,15 @@ pub async fn probe_integrations(
     // in practice — probes surface their own service's ports — and it lets the probes
     // run concurrently below).
     struct ProbeTask<'a> {
+        /// Index into `ledger`. Carried through the concurrent probe so each task's outcome lands
+        /// back in the slot opened for it.
+        entry: usize,
         discriminant: CredentialQueryPayloadDiscriminants,
         integration: Box<dyn DiscoveryIntegration>,
         credentials: Vec<(&'a CredentialQueryPayload, Option<Uuid>)>,
     }
     let mut tasks: Vec<ProbeTask> = Vec::new();
+    let mut ledger: Vec<DispositionEntry> = Vec::new();
     for mapping in credential_mappings {
         let Some(discriminant) = mapping
             .default_credential
@@ -88,23 +236,79 @@ pub async fn probe_integrations(
             .map(|c| c.into())
             .or_else(|| mapping.ip_overrides.first().map(|o| (&o.credential).into()))
         else {
+            // An empty mapping carries no credential, so there is nothing to account for. This
+            // is the one skip above the ledger, deliberately: opening a slot would mean
+            // reporting on a credential that does not exist.
             continue;
         };
+
+        // Opened before any branch below can skip, which is what makes the rest of this loop
+        // unable to go quiet by omission.
+        let entry = ledger.len();
+        let label = mapping
+            .default_credential
+            .as_ref()
+            .or(mapping.ip_overrides.first().map(|o| &o.credential))
+            .map(|c| c.discovery_label())
+            .unwrap_or("credential");
+        // Same rule `resolve_credentials_for_ip` applies: an override counts only at the address
+        // it names, and a nil id means a broadcast default rather than something a user pinned
+        // here. Without the address filter a mapping targeting some *other* host would make this
+        // one look user-assigned and start reporting network defaults at every address in a /24.
+        let user_assigned = mapping
+            .ip_overrides
+            .iter()
+            .any(|o| o.ip == ip && o.credential_id != Uuid::nil());
+        ledger.push(DispositionEntry {
+            label,
+            discriminant,
+            user_assigned,
+            disposition: Disposition::Unresolved,
+        });
+
         let Some(integration) = IntegrationRegistry::get(discriminant) else {
             tracing::warn!(integration = ?discriminant, "Skipping unrecognized credential type from newer server");
+            // A credential type this daemon cannot run. The server blocks configuring one, so
+            // reaching here means a mixed-version fleet — reported, because the operator's
+            // credential silently does nothing on this daemon until it is upgraded.
+            ledger[entry].disposition = Disposition::Failed(
+                AttemptOutcome::Malformed,
+                "this daemon is too old to use this credential type; upgrade it".to_string(),
+            );
             continue;
         };
         let credentials = resolve_credentials_for_ip(mapping, ip);
         if credentials.is_empty() {
+            ledger[entry].disposition =
+                Disposition::Suppressed("no credential in this mapping applies to this address");
             continue;
         }
         if !skip_gate {
             let gate_ports = integration.probe_gate_ports(credentials[0].0);
             if !gate_ports.is_empty() && !gate_ports.iter().all(|gp| all_open_ports.contains(gp)) {
+                // Silent until now, and the single likeliest reason a working credential
+                // appears to do nothing: the port on the credential does not match the port
+                // the service actually listens on, so no connection is ever attempted.
+                if let Some((credential, _)) = credentials.iter().find(|(_, id)| id.is_some()) {
+                    results.credential_issues.push(CredentialIssue {
+                        label: credential.discovery_label(),
+                        ip,
+                        reason: CredentialIssueReason::GateClosed {
+                            ports: gate_ports.clone(),
+                        },
+                    });
+                    ledger[entry].disposition =
+                        Disposition::Suppressed("gate closed; reported as GateClosed");
+                } else {
+                    ledger[entry].disposition = Disposition::Suppressed(
+                        "gate closed on a network default, which is routine on a sweep",
+                    );
+                }
                 continue;
             }
         }
         tasks.push(ProbeTask {
+            entry,
             discriminant,
             integration,
             credentials,
@@ -121,34 +325,61 @@ pub async fn probe_integrations(
     // multi-second UDP timeouts on non-responders) into roughly one probe's wall-clock.
     let outcomes = futures::future::join_all(tasks.into_iter().map(|task| {
         let ProbeTask {
+            entry,
             discriminant,
             integration,
             credentials,
         } = task;
         async move {
+            // Failures of IP-targeted credentials, reported only if nothing here wins.
+            // Reporting them eagerly would flag the benign try-many case: SnmpV1, V2c and V3
+            // assigned to one host are all attempted and the first success wins, so the ones
+            // tried before it "failed" without anything being wrong.
+            let mut targeted_failures: Vec<CredentialIssue> = Vec::new();
             for (credential, cred_id) in &credentials {
                 if cancel.is_cancelled() {
-                    return None;
+                    return (
+                        entry,
+                        None,
+                        Vec::new(),
+                        Disposition::Suppressed("the scan was cancelled"),
+                    );
                 }
-                match integration
-                    .probe(&ProbeContext {
+                match attempt_credential(
+                    integration.as_ref(),
+                    &ProbeContext {
                         ip,
                         credential,
                         credential_id: *cred_id,
                         cancel,
                         utils,
-                    })
-                    .await
+                        accept_invalid_certs,
+                    },
+                    credential.discovery_label(),
+                    discriminant,
+                    cred_id.is_some(),
+                )
+                .await
                 {
                     Ok(success) => {
-                        return Some((discriminant, *cred_id, (*credential).clone(), success));
+                        return (
+                            entry,
+                            Some((discriminant, *cred_id, (*credential).clone(), success)),
+                            Vec::new(),
+                            Disposition::Probed,
+                        );
                     }
-                    Err(failure) => {
-                        tracing::debug!(ip = %ip, integration = ?discriminant, error = %failure, "Integration probe failed, trying next credential");
-                    }
+                    Err(issue) => targeted_failures.extend(issue),
                 }
             }
-            None
+            // Nothing in this mapping worked. `attempt_credential` already applied the reporting
+            // policy, so the ledger records that this was accounted for rather than repeating it.
+            let disposition = if targeted_failures.is_empty() {
+                Disposition::Suppressed("every credential here is a network default; routine")
+            } else {
+                Disposition::Suppressed("reported by attempt_credential")
+            };
+            (entry, None, targeted_failures, disposition)
         }
     }))
     .await;
@@ -160,7 +391,18 @@ pub async fn probe_integrations(
     // Merge in original mapping order so winner-selection is unchanged from the serial
     // version: for a given integration the last successful mapping's credential wins
     // (overwrite), and probe-discovered ports are unioned.
-    for (discriminant, cred_id, credential, success) in outcomes.into_iter().flatten() {
+    let mut winners = Vec::new();
+    for (entry, winner, failures, disposition) in outcomes {
+        ledger[entry].disposition = disposition;
+        results.credential_issues.extend(failures);
+        winners.push(winner);
+    }
+
+    // Every mapping now has to have said what became of it. Anything still `Unresolved` is a
+    // branch added without recording an outcome, which is the class of bug this replaced.
+    results.credential_issues.extend(resolve_ledger(ledger, ip));
+
+    for (discriminant, cred_id, credential, success) in winners.into_iter().flatten() {
         let ProbeSuccess {
             client_probe,
             ports,
@@ -197,7 +439,7 @@ pub struct ExecuteParams<'a> {
     pub endpoint_responses: &'a [crate::server::services::r#impl::endpoints::EndpointResponse],
     pub host_id: Uuid,
     pub host_naming_fallback: HostNamingFallback,
-    pub created_subnets: &'a [Subnet],
+    pub known_subnets: &'a [Subnet],
     pub scanning_subnet: Option<&'a Subnet>,
     pub ip_address_id: Option<Uuid>,
 }
@@ -285,6 +527,33 @@ pub async fn execute_integrations(
             .any(|s| s.base.service_definition.id() == associated_service.id());
 
         if !service_matched {
+            // The credential authenticated and the collection never ran, which reads to an
+            // operator exactly like the integration being ignored — the symptom a customer spent
+            // days on, watching a controller they had authenticated to produce nothing.
+            //
+            // A successful probe feeds `ClientProbe` into service matching, so this failing is
+            // anomalous rather than routine, which is why it is worth a line rather than a
+            // per-host flood.
+            tracing::warn!(
+                ip = %params.ip,
+                integration = ?discriminant,
+                service = associated_service.name(),
+                "Credential worked but its service was not matched; skipping collection"
+            );
+            params
+                .ops
+                .record_attempt_failure(
+                    credential.discovery_label(),
+                    params.ip,
+                    AttemptOutcome::CollectionFailed,
+                    format!(
+                        "authenticated, but the {} service was not identified on this host, so \
+                         nothing was collected",
+                        associated_service.name()
+                    ),
+                    true,
+                )
+                .await;
             continue;
         }
 
@@ -315,7 +584,7 @@ pub async fn execute_integrations(
             endpoint_responses: params.endpoint_responses,
             host_id: params.host_id,
             host_naming_fallback: params.host_naming_fallback,
-            created_subnets: params.created_subnets,
+            known_subnets: params.known_subnets,
             accept_invalid_certs,
             scanning_subnet: params.scanning_subnet,
         };
@@ -339,35 +608,77 @@ pub async fn execute_integrations(
             tracing::warn!(
                 ip = %params.ip,
                 integration = ?discriminant,
-                error = %e,
+                outcome = ?e.outcome(),
+                error = e.message(),
                 "Integration execute failed"
             );
+
+            // …and tell the operator, which the log alone never did. The credential worked and
+            // the collection after it did not, so this host's data is missing rather than stale
+            // — a materially different thing from every other credential issue, and previously
+            // knowable only by reading the daemon log.
+            //
+            // `user_assigned: true` unconditionally: unlike a probe, execute only runs after a
+            // credential has already succeeded against this host, so there is no broadcast-noise
+            // case to suppress here.
+            params
+                .ops
+                .record_attempt_failure(
+                    credential.discovery_label(),
+                    params.ip,
+                    e.outcome(),
+                    e.message().to_string(),
+                    true,
+                )
+                .await;
         }
     }
 
-    // Populate credential_assignments from successful integration probes
-    // whose execute() doesn't handle credential assignments itself.
-    // SNMP is handled by SnmpIntegration.execute().
-    // Only user-configured credentials (Some id) are auto-assigned; network
-    // defaults (None id) are network-wide and not host-scoped.
-    for (discriminant, (cred_id, _credential)) in &probe_results.working_credential_ids {
-        if *discriminant == CredentialQueryPayloadDiscriminants::Snmp {
-            continue;
-        }
-        let Some(cred_id) = cred_id else {
-            continue;
-        };
-        host_data
-            .host
-            .base
-            .credential_assignments
-            .push(CredentialAssignment {
-                credential_id: *cred_id,
-                ip_address_ids: params.ip_address_id.map(|id| vec![id]),
-            });
-    }
+    host_data
+        .host
+        .base
+        .credential_assignments
+        .extend(credential_assignments_from_probes(
+            &probe_results.working_credential_ids,
+            params.ip_address_id,
+        ));
 
     Ok(())
+}
+
+/// Turn the credentials that probed successfully into host credential assignments.
+///
+/// This is how a discovery-scoped credential earns its keep: the server drops a
+/// discovery's one-shot `integration_targets` once a scan completes, and what
+/// survives is exactly the assignments produced here (written to the
+/// `host_credentials` junction by `discover_host`). A Docker/Podman socket
+/// credential probed over the daemon's own loopback address earns an assignment
+/// on the daemon host and so keeps scanning containers on every later scan.
+///
+/// Two kinds are deliberately excluded:
+/// - **SNMP**, which records its own assignments in `SnmpIntegration::execute`.
+/// - **Network defaults** (`None` id), which are network-wide by definition and
+///   must not be pinned to whichever host happened to answer them.
+///
+/// Runs on probe success alone — a matched-service skip or a failed `execute()`
+/// does not suppress it, because the credential is proven either way.
+pub(crate) fn credential_assignments_from_probes(
+    working_credential_ids: &HashMap<
+        CredentialQueryPayloadDiscriminants,
+        (Option<Uuid>, CredentialQueryPayload),
+    >,
+    ip_address_id: Option<Uuid>,
+) -> Vec<CredentialAssignment> {
+    working_credential_ids
+        .iter()
+        .filter(|(discriminant, _)| **discriminant != CredentialQueryPayloadDiscriminants::Snmp)
+        .filter_map(|(_, (cred_id, _credential))| {
+            Some(CredentialAssignment {
+                credential_id: (*cred_id)?,
+                ip_address_ids: ip_address_id.map(|id| vec![id]),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -460,5 +771,164 @@ mod tests {
                 (CredentialQueryPayloadDiscriminants::DockerSocket, docker_id),
             ]
         );
+    }
+
+    fn docker_socket_payload() -> CredentialQueryPayload {
+        CredentialQueryPayload::DockerSocket(ContainerSocketQueryCredential { socket_path: None })
+    }
+
+    /// A local Docker/Podman socket credential arrives as a `DaemonHost` integration target,
+    /// which the server drops from the discovery once the scan completes. What has to carry it
+    /// into every later scan is the assignment produced here, on the daemon host's own loopback
+    /// address — without it, container discovery would silently stop after the first scan.
+    #[test]
+    fn a_working_socket_credential_earns_an_assignment_on_the_address_it_probed() {
+        let cred_id = Uuid::new_v4();
+        let loopback_ip_id = Uuid::new_v4();
+        let w = winners(vec![(
+            CredentialQueryPayloadDiscriminants::DockerSocket,
+            Some(cred_id),
+            docker_socket_payload(),
+        )]);
+
+        let assignments = credential_assignments_from_probes(&w, Some(loopback_ip_id));
+
+        assert_eq!(assignments.len(), 1);
+        assert_eq!(assignments[0].credential_id, cred_id);
+        assert_eq!(assignments[0].ip_address_ids, Some(vec![loopback_ip_id]));
+    }
+
+    /// Two kinds must never be promoted here: SNMP records its own assignments inside
+    /// `SnmpIntegration::execute`, and a network default (`None` id) is network-wide by
+    /// definition — pinning it to whichever host answered would turn a broadcast credential
+    /// into a host-scoped one.
+    #[test]
+    fn snmp_and_network_defaults_are_not_promoted() {
+        let w = winners(vec![
+            (
+                CredentialQueryPayloadDiscriminants::Snmp,
+                Some(Uuid::new_v4()),
+                CredentialQueryPayload::default(),
+            ),
+            (
+                CredentialQueryPayloadDiscriminants::DockerSocket,
+                None,
+                docker_socket_payload(),
+            ),
+        ]);
+
+        assert!(
+            credential_assignments_from_probes(&w, Some(Uuid::new_v4())).is_empty(),
+            "neither an SNMP winner nor an unidentified network default earns a host assignment"
+        );
+    }
+}
+
+#[cfg(test)]
+mod ledger_tests {
+    use super::*;
+
+    fn ip() -> IpAddr {
+        "10.0.0.1".parse().unwrap()
+    }
+
+    fn entry(user_assigned: bool, disposition: Disposition) -> DispositionEntry {
+        DispositionEntry {
+            label: "SNMP queries",
+            discriminant: CredentialQueryPayloadDiscriminants::Snmp,
+            user_assigned,
+            disposition,
+        }
+    }
+
+    /// The reason the ledger exists. Three paths went quiet by saying nothing, and each was found
+    /// by reading the code rather than by anything failing — this is what should have caught them.
+    ///
+    /// `debug_assert!` fires in test builds, so reaching the assertion is the pass condition and
+    /// this has to check it the long way round.
+    #[test]
+    #[should_panic(expected = "unaccounted for")]
+    fn a_branch_that_records_nothing_is_loud() {
+        resolve_ledger(vec![entry(true, Disposition::Unresolved)], ip());
+    }
+
+    /// A credential the user pinned to this host, which failed, is the case the whole mechanism
+    /// exists for.
+    #[test]
+    fn a_recorded_failure_becomes_an_issue() {
+        let issues = resolve_ledger(
+            vec![entry(
+                true,
+                Disposition::Failed(AttemptOutcome::Rejected, "refused".to_string()),
+            )],
+            ip(),
+        );
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].ip, ip());
+        assert!(matches!(
+            issues[0].reason,
+            CredentialIssueReason::Attempted {
+                outcome: AttemptOutcome::Rejected,
+                ..
+            }
+        ));
+    }
+
+    /// The same failure on a network default stays quiet. It is broadcast at every address in the
+    /// subnet, so reporting it would put a line per unresponsive host into the notification —
+    /// the policy lives in `issue_for_attempt` and the ledger defers to it rather than
+    /// second-guessing it.
+    #[test]
+    fn a_recorded_failure_on_a_network_default_stays_quiet() {
+        let issues = resolve_ledger(
+            vec![entry(
+                false,
+                Disposition::Failed(AttemptOutcome::Rejected, "refused".to_string()),
+            )],
+            ip(),
+        );
+        assert!(issues.is_empty());
+    }
+
+    /// Silence has to be a choice with a reason attached, not the absence of code. These are the
+    /// states a branch writes when it means "nothing to say here", and none of them reports.
+    #[test]
+    fn deliberate_silences_are_recorded_and_not_reported() {
+        let issues = resolve_ledger(
+            vec![
+                entry(true, Disposition::Probed),
+                entry(true, Disposition::Suppressed("the scan was cancelled")),
+                entry(
+                    true,
+                    Disposition::Suppressed(
+                        "no credential in this mapping applies to this address",
+                    ),
+                ),
+            ],
+            ip(),
+        );
+        assert!(issues.is_empty());
+    }
+
+    /// Several mappings at one address each get their own slot, so one failing does not mask
+    /// another and one succeeding does not swallow a failure beside it.
+    #[test]
+    fn entries_are_independent() {
+        let issues = resolve_ledger(
+            vec![
+                entry(true, Disposition::Probed),
+                entry(
+                    true,
+                    Disposition::Failed(AttemptOutcome::TlsFailed, "bad cert".to_string()),
+                ),
+                entry(
+                    true,
+                    Disposition::Suppressed("gate closed; reported as GateClosed"),
+                ),
+            ],
+            ip(),
+        );
+        assert_eq!(issues.len(), 1, "{issues:?}");
     }
 }

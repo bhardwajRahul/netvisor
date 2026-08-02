@@ -156,10 +156,15 @@ impl SnmpV3PrivProtocol {
 /// daemon-read file path) and never logged in plaintext.
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct SnmpV3Params {
+    /// SNMPv3 USM security (user) name.
     pub security_name: String,
+    /// Hash algorithm used for authentication.
     pub auth_protocol: SnmpV3AuthProtocol,
+    /// Authentication passphrase.
     pub auth_password: ResolvableSecret,
+    /// Cipher used for privacy (encryption).
     pub priv_protocol: SnmpV3PrivProtocol,
+    /// Privacy passphrase.
     pub priv_password: ResolvableSecret,
     /// Context name. snmp2 0.4.10 only transmits the default (empty) context;
     /// stored and forwarded for forward-compatibility but not yet sent on the wire.
@@ -184,9 +189,12 @@ impl std::fmt::Debug for SnmpV3Params {
 /// string; `v3` carries USM parameters when `version` is `V3`.
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct SnmpQueryCredential {
+    /// SNMP version to query with.
     #[serde(default)]
     pub version: SnmpVersion,
+    /// Community string, for v1 and v2c.
     pub community: ResolvableSecret,
+    /// USM parameters, for v3.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub v3: Option<SnmpV3Params>,
 }

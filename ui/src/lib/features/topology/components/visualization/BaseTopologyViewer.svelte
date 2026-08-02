@@ -37,7 +37,9 @@
 		MINIMAP_OFFSET_PX,
 		aggregatedEdgeOriginals,
 		getInfrastructureRuleIdForTopology,
-		topologyReadOnly
+		topologyReadOnly,
+		topologyOptionsHydrated,
+		activeView
 	} from '../../queries';
 	import { isExporting, expandedPortNodeIds } from '../../interactions';
 
@@ -47,7 +49,13 @@
 	import CustomEdge from './CustomEdge.svelte';
 	import TopologySidebarControls from './TopologySidebarControls.svelte';
 	import type { RenderableTopology } from '../../types/base';
-	import { collapsedContainers, collapseLevel, stepExpand, stepCollapse } from '../../collapse';
+	import {
+		collapsedContainers,
+		collapseLevel,
+		stepExpand,
+		stepCollapse,
+		nextEffectiveLevel
+	} from '../../collapse';
 	import type { CollapseLevel } from '../../collapse';
 	import {
 		updateConnectedNodes,
@@ -56,7 +64,8 @@
 		expandedBundles,
 		collapseAllBundles,
 		searchHiddenNodeIds,
-		tagHiddenNodeIds
+		tagHiddenNodeIds,
+		hiddenEntityIds
 	} from '../../interactions';
 	import {
 		selectNode,
@@ -73,13 +82,22 @@
 
 	// Pipeline imports
 	import { createInitialState } from '../../pipeline/types';
-	import { prepareTopologyData } from '../../pipeline/prepare';
+	import { prepareTopologyData, hiddenMetadataKey } from '../../pipeline/prepare';
 	import { resolveNodeSizes } from '../../pipeline/measure';
 	import { executeLayout, handlePortExpansion } from '../../pipeline/execute-layout';
+	import { preloadElk } from '../../layout/elk-layout';
 	import { buildFlowNodes, sortFlowNodes } from '../../pipeline/build-flow-nodes';
 	import { buildFlowEdges } from '../../pipeline/build-flow-edges';
 	import { cacheCollapsedSizes } from '../../pipeline/post-render';
 	import { computeEdgeDisplayUpdates } from '../../pipeline/sync-edge-display';
+	import { shouldCull } from '../../pipeline/render-mode';
+	import { installDiagnostics, recordAfterRun, recordAfterViewportMove } from '../../diagnostics';
+	import * as perf from '../../perf';
+	import {
+		reloadInputsDiff,
+		snapshotReloadInputs,
+		type ReloadInputs
+	} from '../../pipeline/reload-guard';
 
 	// Props
 	let {
@@ -302,6 +320,26 @@
 	let isMeasuring = $state(false);
 	let animatingCollapse = $state(false);
 
+	// Cull off-screen nodes once the graph is big enough — see
+	// `pipeline/render-mode.ts` for why measuring and exporting must suspend it.
+	let cullOffscreen = $derived(
+		shouldCull({
+			renderedCount: $nodes.length,
+			measuring: isMeasuring,
+			exporting: $isExporting
+		})
+	);
+
+	/// Everything the blank-canvas diagnostic cannot read from the DOM. Gathered here so the
+	/// sample sees the same numbers the culling gate above was given, not a re-derived guess.
+	const diagnosticInputs = () => ({
+		storeNodes: $nodes.length,
+		storeEdges: $edges.length,
+		measuring: isMeasuring,
+		exporting: $isExporting
+	});
+	installDiagnostics(diagnosticInputs);
+
 	// --- Reactive triggers ---
 
 	// Clear expanded bundles when bundling is toggled off
@@ -316,6 +354,12 @@
 	const hideEdgeTypesStore = derived(topologyOptions, (o) =>
 		(o.local.hide_edge_types ?? []).join(',')
 	);
+	// Metadata-value filters (e.g. hiding the OpenPorts service category) are read at render
+	// time straight from the options, so no hidden-id store ever fires for them. Without this
+	// the cards resize under a layout that never re-runs, and they overlap.
+	const hiddenMetadataStore = derived([topologyOptions, activeView], ([, view]) =>
+		hiddenMetadataKey(view)
+	);
 
 	// Infra rule id derived from the topology bundle being rendered (not the
 	// global options store, which hydrates out-of-band and lags a network
@@ -324,11 +368,56 @@
 
 	let loadInProgress = false;
 	let pendingReload = false;
-	function triggerLoad() {
-		if (!topology || loadInProgress) {
-			if (topology && loadInProgress) pendingReload = true;
+	/**
+	 * Escape hatch for the hydration gate below.
+	 *
+	 * If `hydrateStoresFromTopology` never runs on some path, the view must still
+	 * render — a blank topology is a far worse failure than one wasted layout. The
+	 * timeout only ever costs something when hydration is genuinely absent.
+	 */
+	let hydrationWaivedAt = $state(false);
+	/**
+	 * The store values the in-flight run actually consumed, snapshotted once
+	 * `prepare` has returned. A pending reload is honoured only if the current
+	 * values differ from these — see `pipeline/reload-guard.ts`.
+	 */
+	let inFlightInputs: ReloadInputs | null = null;
+
+	function currentReloadInputs(): ReloadInputs {
+		return {
+			collapsed: get(collapsedContainers),
+			expandedBundles: get(expandedBundles),
+			expandedPorts: get(expandedPortNodeIds),
+			bundleEdges: get(topologyOptions).local.bundle_edges ?? false,
+			hiddenEdgeTypes: (get(topologyOptions).local.hide_edge_types ?? []).join(','),
+			tagHidden: get(tagHiddenNodeIds),
+			hiddenEntities: get(hiddenEntityIds),
+			hiddenMetadata: hiddenMetadataKey(get(activeView))
+		};
+	}
+	function triggerLoad(source = 'unknown') {
+		// Hold every entry point, not just the topology effect: the option stores
+		// fire during hydration too, and any one of them starting the pipeline
+		// early would defeat the gate. The effect below re-triggers once hydration
+		// lands, so nothing is lost by returning here.
+		if (topology && !loadInProgress && !$topologyOptionsHydrated && !hydrationWaivedAt) {
+			perf.count(`deferred-until-hydration:${source}`);
 			return;
 		}
+		if (!topology || loadInProgress) {
+			if (topology && loadInProgress) {
+				// A store wrote while the pipeline was mid-flight, so the whole run
+				// will be repeated. Attributed by source because each one costs a
+				// full re-layout (two elk.layout() calls).
+				perf.count(`pending-reload:${source}`);
+				pendingReload = true;
+			}
+			return;
+		}
+		// Counted at the point a run actually begins (as opposed to being queued),
+		// so each full pipeline execution — two elk.layout() calls — is attributable
+		// to what started it.
+		perf.count(`run-start:${source}`);
 		loadInProgress = true;
 		pendingReload = false;
 		void loadTopologyData()
@@ -340,37 +429,76 @@
 				loadInProgress = false;
 				if (pendingReload) {
 					pendingReload = false;
-					triggerLoad();
+					// Only re-run if an input actually differs from what the run
+					// consumed. Most mid-run writes are the pipeline's own (prepare
+					// seeding collapse state) or derived stores re-emitting an
+					// identical value during option hydration — re-running for those
+					// costs two elk.layout() calls and changes nothing.
+					const consumed = inFlightInputs;
+					inFlightInputs = null;
+					if (consumed) {
+						const changed = reloadInputsDiff(consumed, currentReloadInputs());
+						if (changed.length === 0) {
+							perf.count('reload-suppressed');
+							return;
+						}
+						for (const field of changed) perf.count(`reload-cause:${field}`);
+					}
+					triggerLoad('pending');
 				}
+				inFlightInputs = null;
 			});
 	}
 
 	let storesInitialized = false;
 	collapsedContainers.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('collapsed');
 	});
 	expandedBundles.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('bundles');
 	});
 	expandedPortNodeIds.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('ports');
 	});
 	bundleEdgesStore.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('bundle-option');
 	});
 	hideEdgeTypesStore.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('hidden-edge-types');
 	});
-	// Filter changes (tag / metadata / entity-hide all funnel through here)
-	// must re-run the pipeline so ELK sees the new node set and containers
-	// reflow around the removed cards.
+	// Filter changes must re-run the pipeline so ELK sees the new node set and containers
+	// reflow around the removed cards. Three stores, because a filter can change the layout
+	// without removing a node: an entity shown inline on another node's card resizes that card,
+	// and a metadata-value filter never reaches either hidden-id store at all.
 	tagHiddenNodeIds.subscribe(() => {
-		if (storesInitialized) triggerLoad();
+		if (storesInitialized) triggerLoad('tag-filter');
+	});
+	hiddenEntityIds.subscribe(() => {
+		if (storesInitialized) triggerLoad('entity-filter');
+	});
+	hiddenMetadataStore.subscribe(() => {
+		if (storesInitialized) triggerLoad('metadata-filter');
 	});
 	storesInitialized = true;
 
+	onMount(() => {
+		if (get(topologyOptionsHydrated)) return;
+		const timer = setTimeout(() => {
+			// Re-check rather than waive blindly: on a slow first load hydration may
+			// simply not have arrived yet when the timer was armed, and waiving then
+			// would reintroduce the pre-hydration layout this gate exists to avoid.
+			if (get(topologyOptionsHydrated)) return;
+			perf.count('hydration-gate-waived');
+			hydrationWaivedAt = true;
+		}, 2000);
+		return () => clearTimeout(timer);
+	});
+
+	// Wait for options to hydrate before the first layout. Without this the
+	// pipeline races hydration and discards its first full run — see
+	// `topologyOptionsHydrated`.
 	$effect(() => {
-		if (topology) triggerLoad();
+		if (topology && ($topologyOptionsHydrated || hydrationWaivedAt)) triggerLoad('topology');
 	});
 
 	// Update edges when selection or search/tag filter changes
@@ -395,15 +523,14 @@
 				multiSelected,
 				opts.local.hide_edge_types ?? []
 			);
-			baseFlowEdges.set(
-				computeEdgeDisplayUpdates(
-					currentBaseEdges,
-					curSelectedNode,
-					curSelectedEdge,
-					searchHidden,
-					tagHidden
-				)
+			const updatedEdges = computeEdgeDisplayUpdates(
+				currentBaseEdges,
+				curSelectedNode,
+				curSelectedEdge,
+				searchHidden,
+				tagHidden
 			);
+			if (updatedEdges !== currentBaseEdges) baseFlowEdges.set(updatedEdges);
 		}
 	});
 
@@ -427,8 +554,19 @@
 		const isStale = (): boolean => thisGeneration !== layoutState.layoutGeneration;
 
 		if (!topology || (!topology.edges && !topology.nodes)) return;
+		perf.beginRun();
+		// Fire-and-forget: elkjs is a large module and the measure pass below takes
+		// far longer than loading it, so the two should overlap rather than run
+		// back to back.
+		preloadElk();
 
+		const prepareDone = perf.stage('prepare');
 		const prep = prepareTopologyData(topology, layoutState, getInfrastructureRuleId);
+		prepareDone();
+		// Inputs are fixed once prepare has run — it is the last stage that writes
+		// to the watched stores as part of its own work. Snapshot here so those
+		// self-writes don't read as external change at the end of the run.
+		inFlightInputs = snapshotReloadInputs(currentReloadInputs());
 		if (!prep) return;
 		const { needsElk, collapsed, visibleNodes: initialVisibleNodes } = prep;
 		let visibleNodes = initialVisibleNodes;
@@ -450,9 +588,11 @@
 			);
 
 		if (needsElk) {
+			const measureDone = perf.stage('measure');
 			const elementNodeSizes = await resolveNodeSizes(
 				layoutState,
 				prep,
+				topology,
 				getNodes,
 				containerElement,
 				isStale,
@@ -488,46 +628,58 @@
 						// Poll for DOM nodes with a short timeout — nodesInitialized
 						// can hang indefinitely for large topologies.
 						const start = performance.now();
+						const expectedCount = expectedIds?.size ?? 0;
 						while (performance.now() - start < 2000) {
 							const nodeEls = containerElement?.querySelectorAll('.svelte-flow__node');
 							if (nodeEls && nodeEls.length > 0) {
-								if (!expectedIds || expectedIds.size === 0) break;
-								// Require every expected id to be present before breaking.
-								// Breaking on the first node (old-render leftovers) lets a
-								// newly-added SSE host miss measurement, so ELK falls back
-								// to metadata defaults and positions siblings too close.
-								const present = new Set(
-									Array.from(nodeEls)
-										.map((el) => (el as HTMLElement).dataset.id)
-										.filter((id): id is string => !!id)
-								);
-								let allPresent = true;
-								for (const id of expectedIds) {
-									if (!present.has(id)) {
-										allPresent = false;
-										break;
+								if (expectedCount === 0) break;
+								// Cheap gate first. Verifying every expected id means building
+								// a Set of all rendered ids, which is O(nodes) — doing that on
+								// every frame of a wait that can span a hundred frames is
+								// itself a meaningful cost at a thousand-plus nodes. The DOM
+								// can only hold every expected node once it holds at least
+								// that many, so the count check rules out almost every frame
+								// for the price of a property read.
+								if (nodeEls.length >= expectedCount) {
+									// Require every expected id to be present before breaking.
+									// Breaking on the first node (old-render leftovers) lets a
+									// newly-added SSE host miss measurement, so ELK falls back
+									// to metadata defaults and positions siblings too close.
+									const present = new Set(
+										Array.from(nodeEls)
+											.map((el) => (el as HTMLElement).dataset.id)
+											.filter((id): id is string => !!id)
+									);
+									let allPresent = true;
+									for (const id of expectedIds!) {
+										if (!present.has(id)) {
+											allPresent = false;
+											break;
+										}
 									}
+									if (allPresent) break;
 								}
-								if (allPresent) break;
 							}
 							await new Promise((r) => requestAnimationFrame(r));
 						}
 					}
 				}
 			);
+			measureDone();
 			if (!elementNodeSizes) {
 				isMeasuring = false;
 				return;
 			}
 
+			const layoutDone = perf.stage('layout');
 			const layoutResult = await executeLayout(
 				topology,
 				layoutState,
 				prep,
 				elementNodeSizes,
-				isStale,
-				getInfrastructureRuleId
+				isStale
 			);
+			layoutDone();
 			if (!layoutResult) {
 				isMeasuring = false;
 				return;
@@ -553,6 +705,7 @@
 		const needsLayout = needsElk || portsChanged || prep.collapseChanged;
 		const allNodes = makeNodes(needsLayout);
 
+		const buildEdgesDone = perf.stage('build-edges');
 		const { flowEdges, originalsMap } = buildFlowEdges({
 			elevatedEdges: prep.elevatedEdges,
 			collapsed,
@@ -566,6 +719,7 @@
 			currentExpandedBundles: get(expandedBundles),
 			selectionStores
 		});
+		buildEdgesDone();
 		aggregatedEdgeOriginals.set(originalsMap);
 
 		// Render
@@ -647,13 +801,19 @@
 		// nodes are in the DOM by the time we measure.
 		if (containerElement && layoutState.layoutGraph) {
 			await tick();
+			const cacheSizesDone = perf.stage('post-render.cache-collapsed');
 			const newEntries = cacheCollapsedSizes(
 				containerElement,
 				layoutState.layoutGraph,
 				collapsed,
 				layoutState.containerSizeCache
 			);
+			cacheSizesDone();
 			if (newEntries > 0 && !isStale()) {
+				// Counted because on a cold load with many collapsed containers this
+				// self-heal fires every time, and each recursion is a full pipeline
+				// run including two more elk.layout() calls.
+				perf.count('post-render-relayout');
 				// Invalidate structureKey to force ELK re-run. Do NOT
 				// invalidate baseKey — base structure hasn't changed, and
 				// clearing it would delete viewSizeCache (element sizes).
@@ -679,8 +839,20 @@
 			layoutState.fitViewPending = false;
 			// Double rAF: first lets SvelteFlow process node positions, second triggers fitView
 			requestAnimationFrame(() =>
-				requestAnimationFrame(() => fitView({ padding: getFitViewPadding() }))
+				requestAnimationFrame(() => {
+					fitView({ padding: getFitViewPadding() });
+					// fitView is the last thing a cold load does, so this is the
+					// point the harness treats as "interactive".
+					perf.count('fit-view');
+					perf.endRun();
+					// …and the first moment the canvas is final, so the honest place to ask
+					// whether anything is actually on it.
+					recordAfterRun(diagnosticInputs());
+				})
 			);
+		} else {
+			perf.endRun();
+			recordAfterRun(diagnosticInputs());
 		}
 	}
 
@@ -724,18 +896,23 @@
 		viewportMoveTimer = setTimeout(() => {
 			viewportMoved = false;
 		}, 50);
+		// Moving the viewport is what re-evaluates which nodes are inside it, so it is the other
+		// moment a canvas can go blank — and the one a customer reported as "locking it in".
+		recordAfterViewportMove(diagnosticInputs());
 	}
 
 	function syncEdgeDisplayState() {
-		baseFlowEdges.set(
-			computeEdgeDisplayUpdates(
-				get(baseFlowEdges),
-				get(selectionStores.selectedNode),
-				get(selectionStores.selectedEdge),
-				get(searchHiddenNodeIds),
-				get(tagHiddenNodeIds)
-			)
+		const current = get(baseFlowEdges);
+		const updated = computeEdgeDisplayUpdates(
+			current,
+			get(selectionStores.selectedNode),
+			get(selectionStores.selectedEdge),
+			get(searchHiddenNodeIds),
+			get(tagHiddenNodeIds)
 		);
+		// Identity means nothing changed. Skipping the write matters on the hover
+		// path, which calls this on every pointer enter/leave.
+		if (updated !== current) baseFlowEdges.set(updated);
 	}
 
 	function handlePaneClick() {
@@ -813,8 +990,27 @@
 		}
 	}
 
-	let expandDisabled = $derived($collapseLevel === 4 || !!editMode);
-	let collapseDisabled = $derived($collapseLevel === 1 || !!editMode);
+	// Disabled when nothing further would change, not merely when the level is at its numeric
+	// end. A view whose only root is collapsed_by_default has fewer distinct states than the
+	// ladder has rungs, so the button can run out before the number does — and a button that
+	// still looks live while doing nothing is worse than one that greys out.
+	// `$collapsedContainers` is read so this re-evaluates when the rendered set changes.
+	let expandDisabled = $derived(
+		!!editMode ||
+			($collapsedContainers &&
+				nextEffectiveLevel('expand', topology.nodes, containerTypes, getInfrastructureRuleId()) ===
+					null)
+	);
+	let collapseDisabled = $derived(
+		!!editMode ||
+			($collapsedContainers &&
+				nextEffectiveLevel(
+					'collapse',
+					topology.nodes,
+					containerTypes,
+					getInfrastructureRuleId()
+				) === null)
+	);
 	let collapseLevelTooltipCollapse = $derived(
 		$collapseLevel > 1
 			? `${common_collapse()}: ${getCollapseLevelName(($collapseLevel - 1) as CollapseLevel)}`
@@ -826,11 +1022,18 @@
 			: ''
 	);
 
+	// Both step handlers only write the collapse stores; the relayout that
+	// follows is a full asynchronous pipeline run (measure pass, ELK, and a
+	// 350ms animation phase). Refitting on a fixed timer therefore fits the
+	// *previous* graph — and nothing refits afterwards, because a collapse
+	// change is neither `viewChanged` nor `topologyChanged` (`getStructureKey`
+	// does not include collapse state). Hand the intent to the pipeline instead
+	// and let the post-layout branch fit once the new layout exists.
 	function handleStepCollapse() {
 		if (editMode) return;
 		clearSelection(selectionStores);
 		stepCollapse(topology.nodes, containerTypes, getInfrastructureRuleId());
-		setTimeout(() => fitView({ padding: getFitViewPadding(), duration: 300 }), 100);
+		layoutState.fitViewPending = true;
 	}
 
 	function handleStepExpand() {
@@ -842,7 +1045,7 @@
 			getInfrastructureRuleId()
 		);
 		for (const id of autoCollapseIds) layoutState.seenAutoCollapseIds.add(id);
-		setTimeout(() => fitView({ padding: getFitViewPadding(), duration: 300 }), 100);
+		layoutState.fitViewPending = true;
 	}
 
 	export function triggerStepExpand() {
@@ -922,6 +1125,7 @@
 		onmove={handleMove}
 		onmoveend={handleMoveEnd}
 		fitView={true}
+		onlyRenderVisibleElements={cullOffscreen}
 		minZoom={0.1}
 		noPanClass="nopan"
 		snapGrid={[25, 25]}

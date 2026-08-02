@@ -12,6 +12,7 @@
 	import { SvelteFlowProvider } from '@xyflow/svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { onMount, onDestroy, setContext } from 'svelte';
+	import { preloadElk } from '$lib/features/topology/layout/elk-layout';
 	import { get, writable } from 'svelte/store';
 	import {
 		useTopologiesQuery,
@@ -119,9 +120,14 @@
 	// undefined` returns live entities; `snapshot_id = <id>` returns the
 	// captured set as-of that snapshot's `taken_at`. Same code path for both
 	// — see backend `GET /api/v1/topology/data`.
+	// Gated on `isActive`: this is the heaviest query in the app and it is the only
+	// subscriber to its key, so holding it while the tab is off-screen keeps the
+	// bundle — and the discovery SSE stream's throttled refetch of it — off pages
+	// that are not showing a graph.
 	const topologyDataQuery = useTopologyDataQuery(
 		() => $selectedNetworkId ?? undefined,
-		() => $selectedSnapshotId ?? undefined
+		() => $selectedSnapshotId ?? undefined,
+		() => isActive
 	);
 
 	// Derived data
@@ -597,6 +603,13 @@
 	}
 
 	onMount(() => {
+		// Start loading ELK as soon as the tab opens, not when the pipeline runs.
+		// The module costs ~1s to parse and is the largest single stage of a cold
+		// load; kicking it off here lets it overlap the topology data fetch, which
+		// is otherwise idle main-thread time. Starting it at pipeline start (as
+		// BaseTopologyViewer also does, harmlessly) is too late to overlap
+		// anything — the measure pass begins immediately after.
+		preloadElk();
 		window.addEventListener('popstate', handlePopState);
 	});
 

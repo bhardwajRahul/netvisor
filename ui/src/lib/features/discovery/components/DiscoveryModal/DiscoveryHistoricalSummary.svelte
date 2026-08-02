@@ -9,6 +9,7 @@
 	import type { DiscoveryUpdatePayload } from '../../types/api';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
 	import { useSubnetsQuery, getSubnetById } from '$lib/features/subnets/queries';
+	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import scanSettingsFields from '$lib/data/scan-settings.json';
 	import {
 		discovery_runDetails,
@@ -25,7 +26,12 @@
 		discovery_scanMode,
 		discovery_scanTuning,
 		discovery_selfReportDetails,
+		discovery_rescanDetails,
+		discovery_portsVerified,
 		common_duration,
+		common_host,
+		common_ipAddresses,
+		common_unknownEntity,
 		common_finished,
 		common_hostId,
 		common_ipAddress,
@@ -42,6 +48,13 @@
 	// TanStack Query for subnets
 	const subnetsQuery = useSubnetsQuery();
 	let subnetsData = $derived(subnetsQuery.data ?? []);
+	// Only a rescan names a target host, and we only need that one host's name —
+	// fetch it by id rather than downloading every host with its nested entities.
+	let rescanTargetIds = $derived(
+		payload.discovery_type.type === 'Rescan' ? [payload.discovery_type.target_host_id] : []
+	);
+	const hostsQuery = useHostsByIds(() => rescanTargetIds);
+	let hostsData = $derived(hostsQuery.data ?? []);
 
 	let duration = $derived(
 		payload.started_at && payload.finished_at
@@ -65,12 +78,19 @@
 
 	const fields = scanSettingsFields as FieldDef[];
 
-	// Get non-default scan settings as label/value pairs
+	// Get non-default scan settings as label/value pairs. A rescan carries the
+	// narrower RescanSettings, whose fields are a subset of the same definitions,
+	// so it reports the ones it does have rather than showing nothing.
 	let nonDefaultSettings = $derived.by(() => {
-		if (payload.discovery_type.type !== 'Unified' || !payload.discovery_type.scan_settings) {
+		const settings =
+			payload.discovery_type.type === 'Unified'
+				? payload.discovery_type.scan_settings
+				: payload.discovery_type.type === 'Rescan'
+					? payload.discovery_type.settings
+					: null;
+		if (!settings) {
 			return [];
 		}
-		const settings = payload.discovery_type.scan_settings;
 		const result: { label: string; value: string }[] = [];
 		for (const field of fields) {
 			const val = settings[field.id as keyof typeof settings];
@@ -84,6 +104,13 @@
 		return result;
 	});
 
+	// Hoisted: narrowing on `payload.discovery_type` doesn't survive into the
+	// nested callback, and `ports` is optional in the generated type.
+	let rescan = $derived(payload.discovery_type.type === 'Rescan' ? payload.discovery_type : null);
+	let rescanHostName = $derived(
+		rescan ? (hostsData.find((h) => h.id === rescan.target_host_id)?.name ?? null) : null
+	);
+
 	let hostNamingLabel = $derived(
 		payload.discovery_type.type === 'Unified'
 			? payload.discovery_type.host_naming_fallback === 'Ip'
@@ -96,7 +123,7 @@
 <div class="space-y-4">
 	<!-- Status Banner -->
 	{#if payload.phase === 'Complete' && payload.warnings && payload.warnings.length > 0}
-		<InlineWarning title={discovery_completedWithWarnings()} body={payload.warnings.join(' ')} />
+		<InlineWarning title={discovery_completedWithWarnings()} items={payload.warnings} />
 	{:else if payload.phase === 'Complete'}
 		<InlineSuccess title={payload.phase} />
 	{:else if payload.phase === 'Failed'}
@@ -135,8 +162,25 @@
 		{/if}
 	</InfoCard>
 
-	<!-- Settings for Unified -->
-	{#if payload.discovery_type.type === 'Unified'}
+	<!-- A rescan names its target directly, so there are no subnets to resolve -->
+	{#if rescan}
+		<InfoCard title={discovery_rescanDetails()}>
+			<InfoRow label={common_host()}>
+				{rescanHostName ?? common_unknownEntity({ entity: common_host() })}
+			</InfoRow>
+			<InfoRow label={common_ipAddresses()}>{rescan.ips.join(', ')}</InfoRow>
+			<InfoRow label={discovery_portsVerified()}>{(rescan.ports ?? []).length}</InfoRow>
+			{#if nonDefaultSettings.length > 0}
+				{#each nonDefaultSettings as setting (setting.label)}
+					<InfoRow label={setting.label}>{setting.value}</InfoRow>
+				{/each}
+			{:else}
+				<InfoRow label={discovery_scanTuning()}>{discovery_defaultSettings()}</InfoRow>
+			{/if}
+		</InfoCard>
+
+		<!-- Settings for Unified -->
+	{:else if payload.discovery_type.type === 'Unified'}
 		<InfoCard title={discovery_scanSettings()}>
 			<InfoRow label={discovery_subnetsScanned()}>
 				{#if payload.discovery_type.subnet_ids === null}
