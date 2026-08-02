@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:670aaab2-e251-4e67-9e76-10d411ae191f",
+  "serialNumber": "urn:uuid:760504ec-c691-465d-addb-173f73af371f",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-02T14:42:27Z",
+    "timestamp": "2026-08-02T15:05:40Z",
     "tools": {
       "components": [
         {
@@ -6818,52 +6818,6 @@
       ]
     },
     {
-      "bom-ref": "pkg:github/actions/ai-inference@v1?package-id=6540832d424764bd",
-      "type": "library",
-      "name": "actions/ai-inference",
-      "version": "v1",
-      "cpe": "cpe:2.3:a:actions\\/ai-inference:actions\\/ai-inference:v1:*:*:*:*:*:*:*",
-      "purl": "pkg:github/actions/ai-inference@v1",
-      "properties": [
-        {
-          "name": "syft:package:foundBy",
-          "value": "github-actions-usage-cataloger"
-        },
-        {
-          "name": "syft:package:type",
-          "value": "github-action"
-        },
-        {
-          "name": "syft:package:metadataType",
-          "value": "github-actions-use-statement"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/ai-inference:actions\\/ai_inference:v1:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/ai_inference:actions\\/ai-inference:v1:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/ai_inference:actions\\/ai_inference:v1:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/ai:actions\\/ai-inference:v1:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/ai:actions\\/ai_inference:v1:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:location:0:path",
-          "value": "/.github/workflows/promote_to_latest.yml"
-        }
-      ]
-    },
-    {
       "bom-ref": "pkg:github/actions/cache@v4?package-id=d274269420714ebe",
       "type": "library",
       "name": "actions/cache",
@@ -8206,6 +8160,130 @@
         {
           "name": "syft:location:0:path",
           "value": "/backend/Cargo.lock"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:github/anthropics/claude-code-action@v1?package-id=3e5f60ab8973c03e",
+      "type": "library",
+      "name": "anthropics/claude-code-action",
+      "version": "v1",
+      "cpe": "cpe:2.3:a:anthropics\\/claude-code-action:anthropics\\/claude-code-action:v1:*:*:*:*:*:*:*",
+      "purl": "pkg:github/anthropics/claude-code-action@v1",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "github-actions-usage-cataloger"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "github-action"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "github-actions-use-statement"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude-code-action:anthropics\\/claude_code_action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude_code_action:anthropics\\/claude-code-action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude_code_action:anthropics\\/claude_code_action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude-code:anthropics\\/claude-code-action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude-code:anthropics\\/claude_code_action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude_code:anthropics\\/claude-code-action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude_code:anthropics\\/claude_code_action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude:anthropics\\/claude-code-action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude:anthropics\\/claude_code_action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/.github/workflows/claude-smoke-test.yml"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:github/anthropics/claude-code-action@v1?package-id=e7b040d1d8ccf2ed",
+      "type": "library",
+      "name": "anthropics/claude-code-action",
+      "version": "v1",
+      "cpe": "cpe:2.3:a:anthropics\\/claude-code-action:anthropics\\/claude-code-action:v1:*:*:*:*:*:*:*",
+      "purl": "pkg:github/anthropics/claude-code-action@v1",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "github-actions-usage-cataloger"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "github-action"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "github-actions-use-statement"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude-code-action:anthropics\\/claude_code_action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude_code_action:anthropics\\/claude-code-action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude_code_action:anthropics\\/claude_code_action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude-code:anthropics\\/claude-code-action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude-code:anthropics\\/claude_code_action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude_code:anthropics\\/claude-code-action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude_code:anthropics\\/claude_code_action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude:anthropics\\/claude-code-action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:anthropics\\/claude:anthropics\\/claude_code_action:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/.github/workflows/promote_to_latest.yml"
         }
       ]
     },
@@ -55956,6 +56034,21 @@
       ]
     },
     {
+      "bom-ref": "6e632b5668a28f22",
+      "type": "file",
+      "name": "/home/runner/work/scanopy/scanopy/.github/workflows/claude-smoke-test.yml",
+      "hashes": [
+        {
+          "alg": "SHA-1",
+          "content": "b9b4209f74722d91efde50be681ef5b189b335d8"
+        },
+        {
+          "alg": "SHA-256",
+          "content": "69901e59ca47a45926669eed47629ce9736d44195a0b5e4ed683aff1ee838ca3"
+        }
+      ]
+    },
+    {
       "bom-ref": "3c127273a592fcbb",
       "type": "file",
       "name": "/home/runner/work/scanopy/scanopy/.github/workflows/close-stale.yml",
@@ -56007,11 +56100,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "80dbdfa567d49a2ac2ad8613b7bce7338e068d14"
+          "content": "e713333f5c73fe3400927a146c030758270f849f"
         },
         {
           "alg": "SHA-256",
-          "content": "4714a04e7fbeef65c28eeb96cebd5de1d9f65b2c9c0f69930ef2749c660b1751"
+          "content": "89db4ea8a3381703b8edc23d38ec9b71e78767b63ff2b790f6c86aeb7fb455fa"
         }
       ]
     },
