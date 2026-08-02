@@ -298,9 +298,17 @@ jobs:
           SOCIAL_POST: ${{ fromJSON(steps.social.outputs.structured_output || '{}').social_post }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          # Title and social post arrive pre-parsed via the model's JSON schema.
-          # Both are single-line by contract (the social post uses a literal \n
-          # between bullets) so they can go straight into YAML frontmatter.
+          # The schema asks for a single-line social post (a literal \n between
+          # bullets) because it lands in single-line YAML frontmatter, but the
+          # model does not reliably comply. Collapse any real newlines here
+          # rather than trusting the instruction: a multi-line value breaks
+          # both the key=value write below and the changelog frontmatter.
+          to_single_line() {
+            printf '%s' "$1" | awk 'NR>1 {printf "\\n"} {printf "%s", $0}'
+          }
+          TITLE=$(to_single_line "$TITLE")
+          SOCIAL_POST=$(to_single_line "$SOCIAL_POST")
+
           echo "title=$TITLE" >> $GITHUB_OUTPUT
           echo "social_post=$SOCIAL_POST" >> $GITHUB_OUTPUT
 
@@ -419,15 +427,23 @@ jobs:
             SOCIAL_POST_LINE=""
           fi
 
+          # Emit model-authored values as single-quoted YAML scalars. Unquoted
+          # they corrupt the frontmatter as soon as a title or bullet contains
+          # ": ", and single quotes (unlike double) keep the literal \n in the
+          # social post rather than expanding it to a newline at parse time.
+          yaml_quote() {
+            printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"
+          }
+
           {
             echo "---"
             echo "version: ${VERSION}"
             echo "date: ${DATE}"
-            echo "title: ${TITLE}"
-            echo "social_post: ${SOCIAL_POST_LINE}"
+            echo "title: $(yaml_quote "${TITLE}")"
+            echo "social_post: $(yaml_quote "${SOCIAL_POST_LINE}")"
             echo "publish_social: ${GEN_SOCIAL}"
-            echo "contributors: ${CONTRIBUTORS}"
-            echo "email_subject: ${EMAIL_SUBJECT}"
+            echo "contributors: $(yaml_quote "${CONTRIBUTORS}")"
+            echo "email_subject: $(yaml_quote "${EMAIL_SUBJECT}")"
             echo "---"
             echo ""
             printf '%s\n' "$NOTES"
