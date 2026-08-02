@@ -9,6 +9,10 @@ on:
 
 permissions:
   contents: read
+  # claude-code-action requests a GitHub OIDC token on every run, not only
+  # under workload identity federation, so this is required even though the
+  # model call authenticates with claude_code_oauth_token.
+  id-token: write
 
 jobs:
   smoke-test:
