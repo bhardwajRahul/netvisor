@@ -27,7 +27,6 @@ on:
 permissions:
   contents: write
   packages: write
-  models: read
 
 jobs:
   promote-to-latest:
@@ -36,7 +35,6 @@ jobs:
     permissions:
       contents: write
       packages: write
-      models: read
 
     steps:
       - name: Validate release exists and get details
@@ -203,11 +201,17 @@ jobs:
 
       - name: Generate release notes with AI
         id: ai_notes
-        uses: actions/ai-inference@v1
+        uses: anthropics/claude-code-action@v1
         with:
-          model: openai/gpt-4.1
-          max-tokens: 2048
-          system-prompt: |
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --model claude-opus-5
+            --max-turns 3
+            --allowedTools "Read"
+            --json-schema '{"type":"object","properties":{"notes":{"type":"string","description":"The release notes in markdown"}},"required":["notes"],"additionalProperties":false}'
+          prompt: |
+            Write the release notes described below and return them in the `notes` field. Do not create branches, edit files, or post comments — this is a text generation task only.
+
             You are a technical writer creating release notes for Scanopy, a network discovery and topology visualization tool. Write concise, user-focused release notes. Aim for quality over coverage — a shorter changelog that users actually read is better than an exhaustive one they skip.
 
             Format requirements:
@@ -244,7 +248,9 @@ jobs:
             - Test-only changes
             - Internal refactoring unless user-visible
             - Improvements or fixes to features that are brand new in this same release
-          prompt: |
+
+            ---
+
             Generate release notes for Scanopy ${{ inputs.release_tag }}.
             Previous version: ${{ steps.prev_tag.outputs.prev_tag }}
             Repository: https://github.com/scanopy/scanopy
@@ -256,7 +262,7 @@ jobs:
       - name: Post-process release notes
         id: cleaned_notes
         env:
-          RAW_NOTES: ${{ steps.ai_notes.outputs.response }}
+          RAW_NOTES: ${{ fromJSON(steps.ai_notes.outputs.structured_output || '{}').notes }}
         run: |
           # Strip any h1 headings the AI might have added (title is in frontmatter)
           NOTES=$(echo "$RAW_NOTES" | sed '/^# /d')
@@ -267,26 +273,28 @@ jobs:
 
       - name: Generate title and social post
         id: social
-        uses: actions/ai-inference@v1
+        uses: anthropics/claude-code-action@v1
         with:
-          model: openai/gpt-4.1
-          max-tokens: 512
-          system-prompt: |
-            Generate a title and social media post for a software release.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --model claude-opus-5
+            --max-turns 3
+            --allowedTools "Read"
+            --json-schema '{"type":"object","properties":{"title":{"type":"string"},"social_post":{"type":"string"}},"required":["title","social_post"],"additionalProperties":false}'
+          prompt: |
+            Generate a title and social media post for a software release. Return them in the `title` and `social_post` fields. Do not create branches, edit files, or post comments — this is a text generation task only.
 
             Requirements:
-            1. TITLE: A short, descriptive title (3-6 words) summarizing the key changes. NOT promotional. Examples: "Topology Sharing & Demo Mode", "Performance Improvements & Bug Fixes", "Enhanced Network Discovery"
+            1. title: A short, descriptive title (3-6 words) summarizing the key changes. NOT promotional. Examples: "Topology Sharing & Demo Mode", "Performance Improvements & Bug Fixes", "Enhanced Network Discovery"
 
-            2. SOCIAL_POST: A short post for Twitter/Bluesky (max 175 characters). Version number and changelog URL are auto-added, so exclude them. Requirements:
-               - Use bullet points (•) to list key highlights, formatted as a single string with \n between bullets (e.g., "• First item\n• Second item")
+            2. social_post: A short post for Twitter/Bluesky (max 175 characters). Version number and changelog URL are auto-added, so exclude them. Requirements:
+               - Use bullet points (•) to list key highlights, as a single-line string using a literal backslash-n between bullets (e.g. "• First item\n• Second item"). It must not contain real line breaks — it is written into single-line YAML frontmatter.
                - Write naturally and clearly - prioritize readability over cramming in content
                - NOT promotional language
                - No version number, hashtags, or URLs
 
-            Output format (exactly like this):
-            TITLE: Your Title Here
-            SOCIAL_POST: Your social post text here
-          prompt: |
+            ---
+
             Based on these release notes for Scanopy ${{ inputs.release_tag }}:
 
             ${{ steps.cleaned_notes.outputs.notes }}
@@ -294,15 +302,14 @@ jobs:
       - name: Parse social outputs
         id: parsed
         env:
-          RESPONSE: ${{ steps.social.outputs.response }}
+          TITLE: ${{ fromJSON(steps.social.outputs.structured_output || '{}').title }}
+          SOCIAL_POST: ${{ fromJSON(steps.social.outputs.structured_output || '{}').social_post }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          # Extract title
-          TITLE=$(echo "$RESPONSE" | grep "^TITLE:" | head -1 | sed 's/^TITLE: //')
+          # Title and social post arrive pre-parsed via the model's JSON schema.
+          # Both are single-line by contract (the social post uses a literal \n
+          # between bullets) so they can go straight into YAML frontmatter.
           echo "title=$TITLE" >> $GITHUB_OUTPUT
-
-          # Extract social post
-          SOCIAL_POST=$(echo "$RESPONSE" | grep "^SOCIAL_POST:" | head -1 | sed 's/^SOCIAL_POST: //')
           echo "social_post=$SOCIAL_POST" >> $GITHUB_OUTPUT
 
           # Get version without v prefix
@@ -315,11 +322,17 @@ jobs:
       - name: Generate r/scanopy Reddit draft
         id: ai_reddit_scanopy
         if: ${{ inputs.generate_reddit_scanopy }}
-        uses: actions/ai-inference@v1
+        uses: anthropics/claude-code-action@v1
         with:
-          model: openai/gpt-4.1
-          max-tokens: 1500
-          system-prompt: |
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --model claude-opus-5
+            --max-turns 3
+            --allowedTools "Read"
+            --json-schema '{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"],"additionalProperties":false}'
+          prompt: |
+            Write the Reddit post described below, returning it in the `title` and `body` fields. Do not create branches, edit files, or post comments — this is a text generation task only.
+
             Generate a Reddit post draft for a Scanopy release, for r/scanopy (the project's own subreddit).
 
             About Scanopy: A self-hosted network discovery and topology mapping tool built for homelabbers, sysadmins, and IT teams. It deploys as Docker containers — a server and one or more daemons. Daemons scan your network using ping sweep, ARP, and SNMP to discover hosts, services (200+ recognized, including Docker, PostgreSQL, nginx, Prometheus, Active Directory), and subnets. It maps physical connections via LLDP/CDP neighbor discovery and generates interactive topology visualizations. It has a free tier for small networks. GitHub: https://github.com/scanopy/scanopy
@@ -330,11 +343,8 @@ jobs:
             - Full technical details, changelog style
             - Link to full changelog: https://scanopy.net/changelog
 
-            Output format (use these exact labels on their own lines):
-            SCANOPY_TITLE: <title>
-            SCANOPY_BODY:
-            <body text>
-          prompt: |
+            ---
+
             Generate the r/scanopy Reddit post draft for Scanopy ${{ inputs.release_tag }}:
 
             ${{ steps.cleaned_notes.outputs.notes }}
@@ -342,11 +352,17 @@ jobs:
       - name: Generate community Reddit draft
         id: ai_reddit_community
         if: ${{ inputs.generate_reddit_community }}
-        uses: actions/ai-inference@v1
+        uses: anthropics/claude-code-action@v1
         with:
-          model: openai/gpt-4.1
-          max-tokens: 1500
-          system-prompt: |
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --model claude-opus-5
+            --max-turns 3
+            --allowedTools "Read"
+            --json-schema '{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"],"additionalProperties":false}'
+          prompt: |
+            Write the Reddit post described below, returning it in the `title` and `body` fields. Do not create branches, edit files, or post comments — this is a text generation task only.
+
             Generate a Reddit post draft for a Scanopy release, for a community subreddit (r/selfhosted or r/homelab).
 
             About Scanopy: A self-hosted network discovery and topology mapping tool built for homelabbers, sysadmins, and IT teams. It deploys as Docker containers — a server and one or more daemons. Daemons scan your network using ping sweep, ARP, and SNMP to discover hosts, services (200+ recognized, including Docker, PostgreSQL, nginx, Prometheus, Active Directory), and subnets. It maps physical connections via LLDP/CDP neighbor discovery and generates interactive topology visualizations. It has a free tier for small networks. GitHub: https://github.com/scanopy/scanopy
@@ -360,11 +376,8 @@ jobs:
             - Mention it's free for small networks and runs as Docker containers
             - End with: GitHub link (https://github.com/scanopy/scanopy), docs (https://scanopy.net/docs), and mention r/scanopy for updates
 
-            Output format (use these exact labels on their own lines):
-            COMMUNITY_TITLE: <title>
-            COMMUNITY_BODY:
-            <body text>
-          prompt: |
+            ---
+
             Generate the community Reddit post draft for Scanopy ${{ inputs.release_tag }}:
 
             ${{ steps.cleaned_notes.outputs.notes }}
@@ -372,11 +385,17 @@ jobs:
       - name: Generate email content
         id: ai_email
         if: ${{ inputs.generate_email }}
-        uses: actions/ai-inference@v1
+        uses: anthropics/claude-code-action@v1
         with:
-          model: openai/gpt-4.1
-          max-tokens: 1500
-          system-prompt: |
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --model claude-opus-5
+            --max-turns 3
+            --allowedTools "Read"
+            --json-schema '{"type":"object","properties":{"subject":{"type":"string"},"body_html":{"type":"string"}},"required":["subject","body_html"],"additionalProperties":false}'
+          prompt: |
+            Write the email described below, returning it in the `subject` and `body_html` fields. Do not create branches, edit files, or post comments — this is a text generation task only.
+
             Generate a product update email for a Scanopy release.
 
             About Scanopy: A self-hosted network discovery and topology mapping tool for homelabbers, sysadmins, and IT teams. Deploys as Docker containers (server + daemons). Discovers hosts, services, subnets via ping sweep, ARP, and SNMP. Maps physical connections via LLDP/CDP. Generates interactive topology maps. Free tier for small networks.
@@ -391,54 +410,11 @@ jobs:
             - Do NOT copy-paste the changelog — write a concise, scannable email
             - Do NOT include unsubscribe links (Brevo adds these automatically)
 
-            Output format (use these exact labels):
-            EMAIL_SUBJECT: <subject line>
-            EMAIL_BODY:
-            <html content>
-          prompt: |
+            ---
+
             Generate a product update email for Scanopy ${{ inputs.release_tag }}:
 
             ${{ steps.cleaned_notes.outputs.notes }}
-
-      - name: Parse new AI outputs
-        id: ai_parsed
-        env:
-          SCANOPY_RESPONSE: ${{ steps.ai_reddit_scanopy.outputs.response }}
-          COMMUNITY_RESPONSE: ${{ steps.ai_reddit_community.outputs.response }}
-          EMAIL_RESPONSE: ${{ steps.ai_email.outputs.response }}
-        run: |
-          # Parse Reddit - scanopy title
-          SCANOPY_TITLE=$(echo "$SCANOPY_RESPONSE" | grep "^SCANOPY_TITLE:" | head -1 | sed 's/^SCANOPY_TITLE: *//')
-          echo "scanopy_title=$SCANOPY_TITLE" >> $GITHUB_OUTPUT
-
-          # Parse Reddit - scanopy body (after SCANOPY_BODY: to end)
-          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-          SCANOPY_BODY=$(echo "$SCANOPY_RESPONSE" | awk '/^SCANOPY_BODY:/{found=1; sub(/^SCANOPY_BODY: */, ""); if(length>0) print; next} found{print}')
-          echo "scanopy_body<<$EOF" >> $GITHUB_OUTPUT
-          echo "$SCANOPY_BODY" >> $GITHUB_OUTPUT
-          echo "$EOF" >> $GITHUB_OUTPUT
-
-          # Parse Reddit - community title
-          COMMUNITY_TITLE=$(echo "$COMMUNITY_RESPONSE" | grep "^COMMUNITY_TITLE:" | head -1 | sed 's/^COMMUNITY_TITLE: *//')
-          echo "community_title=$COMMUNITY_TITLE" >> $GITHUB_OUTPUT
-
-          # Parse Reddit - community body (after COMMUNITY_BODY: to end)
-          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-          COMMUNITY_BODY=$(echo "$COMMUNITY_RESPONSE" | awk '/^COMMUNITY_BODY:/{found=1; sub(/^COMMUNITY_BODY: */, ""); if(length>0) print; next} found{print}')
-          echo "community_body<<$EOF" >> $GITHUB_OUTPUT
-          echo "$COMMUNITY_BODY" >> $GITHUB_OUTPUT
-          echo "$EOF" >> $GITHUB_OUTPUT
-
-          # Parse email subject
-          EMAIL_SUBJECT=$(echo "$EMAIL_RESPONSE" | grep "^EMAIL_SUBJECT:" | head -1 | sed 's/^EMAIL_SUBJECT: *//')
-          echo "email_subject=$EMAIL_SUBJECT" >> $GITHUB_OUTPUT
-
-          # Parse email body (after EMAIL_BODY: to end)
-          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-          EMAIL_BODY=$(echo "$EMAIL_RESPONSE" | awk '/^EMAIL_BODY:/{found=1; sub(/^EMAIL_BODY: */, ""); if(length>0) print; next} found{print}')
-          echo "email_body<<$EOF" >> $GITHUB_OUTPUT
-          echo "$EMAIL_BODY" >> $GITHUB_OUTPUT
-          echo "$EOF" >> $GITHUB_OUTPUT
 
       - name: Create changelog file
         env:
@@ -447,7 +423,7 @@ jobs:
           SOCIAL_POST: ${{ steps.parsed.outputs.social_post }}
           GEN_SOCIAL: ${{ inputs.generate_social }}
           CONTRIBUTORS: ${{ steps.diff.outputs.contributors }}
-          EMAIL_SUBJECT: ${{ steps.ai_parsed.outputs.email_subject }}
+          EMAIL_SUBJECT: ${{ fromJSON(steps.ai_email.outputs.structured_output || '{}').subject }}
           NOTES: ${{ steps.cleaned_notes.outputs.notes }}
           REPO: ${{ github.repository }}
           PREV_TAG: ${{ steps.prev_tag.outputs.prev_tag }}
@@ -509,7 +485,7 @@ jobs:
       - name: Create email HTML file
         if: ${{ inputs.generate_email }}
         env:
-          EMAIL_BODY: ${{ steps.ai_parsed.outputs.email_body }}
+          EMAIL_BODY: ${{ fromJSON(steps.ai_email.outputs.structured_output || '{}').body_html }}
         run: |
           # Write email HTML alongside the changelog .md
           printf '%s\n' "$EMAIL_BODY" > website/src/lib/changelog/${{ inputs.release_tag }}.email.html
@@ -536,12 +512,12 @@ jobs:
           GEN_REDDIT_SCANOPY: ${{ inputs.generate_reddit_scanopy }}
           GEN_REDDIT_COMMUNITY: ${{ inputs.generate_reddit_community }}
           SOCIAL_POST: ${{ steps.parsed.outputs.social_post }}
-          SCANOPY_TITLE: ${{ steps.ai_parsed.outputs.scanopy_title }}
-          SCANOPY_BODY: ${{ steps.ai_parsed.outputs.scanopy_body }}
-          COMMUNITY_TITLE: ${{ steps.ai_parsed.outputs.community_title }}
-          COMMUNITY_BODY: ${{ steps.ai_parsed.outputs.community_body }}
-          EMAIL_SUBJECT: ${{ steps.ai_parsed.outputs.email_subject }}
-          EMAIL_BODY: ${{ steps.ai_parsed.outputs.email_body }}
+          SCANOPY_TITLE: ${{ fromJSON(steps.ai_reddit_scanopy.outputs.structured_output || '{}').title }}
+          SCANOPY_BODY: ${{ fromJSON(steps.ai_reddit_scanopy.outputs.structured_output || '{}').body }}
+          COMMUNITY_TITLE: ${{ fromJSON(steps.ai_reddit_community.outputs.structured_output || '{}').title }}
+          COMMUNITY_BODY: ${{ fromJSON(steps.ai_reddit_community.outputs.structured_output || '{}').body }}
+          EMAIL_SUBJECT: ${{ fromJSON(steps.ai_email.outputs.structured_output || '{}').subject }}
+          EMAIL_BODY: ${{ fromJSON(steps.ai_email.outputs.structured_output || '{}').body_html }}
           IMAGE_PATHS: ${{ steps.images.outputs.paths }}
         run: |
           BRANCH="changelog/${{ inputs.release_tag }}"
@@ -663,7 +639,7 @@ jobs:
 
             echo ""
             echo "---"
-            echo "*Generated with GitHub Models AI*"
+            echo "*Generated with Claude*"
           } > /tmp/pr_body.md
 
           # Create PR
