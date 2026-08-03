@@ -11,7 +11,6 @@ use crate::server::daemons::r#impl::api::{DiscoveryUpdatePayload, ScannedEntityI
 use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::discovery::service::DiscoveryService;
 use crate::server::services::r#impl::definitions::{ServiceDefinition, ServiceDefinitionExt};
-use crate::server::services::r#impl::virtualization::ServiceVirtualization;
 use crate::server::shared::storage::snapshot::DiscoveryTracked;
 use crate::server::{
     digest::payload::{
@@ -706,10 +705,9 @@ fn service_summary(
             Some(url.to_string())
         }
     };
-    let is_container = matches!(
-        s.base.virtualization,
-        Some(ServiceVirtualization::Docker(_))
-    );
+    // Any container runtime, not just Docker: matching one variant left Podman containers
+    // uncounted in the digest.
+    let is_container = s.base.virtualization_metadata.is_some();
     ServiceSummary {
         id: s.id,
         host_id: s.base.host_id,

@@ -84,8 +84,11 @@ impl ServiceService {
             }
         }
 
-        if let Some(virtualization) = &new_service_data.base.virtualization {
-            existing_service.base.virtualization = Some(virtualization.clone())
+        if let Some(virtualization_metadata) = &new_service_data.base.virtualization_metadata {
+            existing_service.base.virtualization_metadata = Some(virtualization_metadata.clone())
+        }
+        if let Some(virtualization_service_id) = new_service_data.base.virtualization_service_id {
+            existing_service.base.virtualization_service_id = Some(virtualization_service_id)
         }
 
         existing_service.base.source = match (

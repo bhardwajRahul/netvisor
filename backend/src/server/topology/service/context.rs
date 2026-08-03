@@ -4,11 +4,11 @@ use uuid::Uuid;
 use crate::server::{
     bindings::r#impl::base::Binding,
     dependencies::r#impl::base::Dependency,
-    hosts::r#impl::{base::Host, virtualization::HostVirtualization},
+    hosts::r#impl::base::Host,
     interfaces::r#impl::base::Interface,
     ip_addresses::r#impl::base::IPAddress,
     ports::r#impl::base::Port,
-    services::r#impl::{base::Service, virtualization::ServiceVirtualization},
+    services::r#impl::base::Service,
     subnets::r#impl::base::Subnet,
     tags::r#impl::base::Tag,
     topology::types::{
@@ -200,30 +200,23 @@ impl<'a> TopologyContext<'a> {
     // Virtualization Relationship Methods
     // ============================================================================
 
+    /// The hypervisor service this host runs on.
+    ///
+    /// Reads the column rather than matching a variant. This used to match `Proxmox` only, so a
+    /// vCenter or ESXi guest reported no hypervisor at all despite carrying one — the kind of gap
+    /// a single-variant match creates silently and a column cannot.
     pub fn get_host_is_virtualized_by(&self, host_id: &Uuid) -> Option<&Service> {
-        if let Some(host) = self.get_host_by_id(*host_id)
-            && let Some(HostVirtualization::Proxmox(proxmox_virtualization)) =
-                &host.base.virtualization
-        {
-            return self
-                .services
-                .iter()
-                .find(|s| s.id == proxmox_virtualization.service_id);
-        }
-        None
+        let host = self.get_host_by_id(*host_id)?;
+        let service_id = host.base.virtualization_service_id?;
+        self.services.iter().find(|s| s.id == service_id)
     }
 
+    /// The container runtime service hosting this service. Was `Docker`-only; Podman containers
+    /// were invisible here for the same reason.
     pub fn get_service_is_containerized_by(&self, service_id: &Uuid) -> Option<&Service> {
-        if let Some(service) = self.get_service_by_id(*service_id)
-            && let Some(ServiceVirtualization::Docker(docker_virtualization)) =
-                &service.base.virtualization
-        {
-            return self
-                .services
-                .iter()
-                .find(|s| s.id == docker_virtualization.service_id);
-        }
-        None
+        let service = self.get_service_by_id(*service_id)?;
+        let runtime_service_id = service.base.virtualization_service_id?;
+        self.services.iter().find(|s| s.id == runtime_service_id)
     }
 
     pub fn get_node_subnet(&self, node_id: Uuid, nodes: &[Node]) -> Option<Uuid> {

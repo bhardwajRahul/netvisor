@@ -81,8 +81,11 @@ pub struct CreateServiceRequest {
     /// `service_id` and `network_id` are assigned by the server.
     #[serde(default)]
     pub bindings: Vec<CreateBindingInput>,
-    /// Container runtime the service runs in, when it is containerized.
-    pub virtualization: Option<ServiceVirtualization>,
+    /// Container identity (name, id, compose project), when it is containerized.
+    pub virtualization_metadata: Option<ServiceVirtualization>,
+    /// The container runtime service hosting this container, if any.
+    #[serde(default)]
+    pub virtualization_service_id: Option<Uuid>,
     /// Tags assigned to this entity.
     #[serde(default)]
     #[schema(required)]
@@ -99,7 +102,8 @@ impl CreateServiceRequest {
             service_definition,
             name,
             bindings: binding_inputs,
-            virtualization,
+            virtualization_metadata,
+            virtualization_service_id,
             tags,
         } = self;
 
@@ -129,7 +133,8 @@ impl CreateServiceRequest {
                 service_definition,
                 name,
                 bindings,
-                virtualization,
+                virtualization_metadata,
+                virtualization_service_id,
                 source,
                 tags,
                 position: 0, // Position assigned during creation based on existing services

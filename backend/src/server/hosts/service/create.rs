@@ -40,7 +40,8 @@ impl HostService {
             network_id,
             hostname,
             description,
-            virtualization,
+            virtualization_metadata,
+            virtualization_service_id,
             hidden,
             tags,
             sys_descr,
@@ -80,7 +81,8 @@ impl HostService {
             hostname,
             description,
             source: source.clone(),
-            virtualization,
+            virtualization_metadata,
+            virtualization_service_id,
             hidden,
             tags,
             sys_descr,
@@ -497,11 +499,13 @@ impl HostService {
             // network. Mirrors how ports/interfaces force host_id + network_id.
             subnet.base.network_id = created_host.base.network_id;
 
-            if let Some(ref mut virt) = subnet.base.virtualization
-                && let Some(old_id) = virt.service_id()
+            // Best-effort remap with what is known so far. Services are created below, so ids
+            // that only move during that loop cannot be reflected here — the pass after it
+            // (`patch_container_bridge_virtualization`) is what catches those.
+            if let Some(old_id) = subnet.base.virtualization_service_id
                 && let Some(&new_id) = service_id_remap.get(&old_id)
             {
-                virt.set_service_id(new_id);
+                subnet.base.virtualization_service_id = Some(new_id);
             }
             let original_id = subnet.id;
             let created = self
@@ -753,7 +757,7 @@ impl HostService {
                         "Re-discovered service has partial binding conflicts - proceeding with valid bindings for upsert"
                     );
                     reassigned.base.bindings = valid_bindings;
-                } else if reassigned.base.virtualization.is_some()
+                } else if reassigned.base.virtualization_metadata.is_some()
                     && ServiceDefinitionExt::is_generic(&reassigned.base.service_definition)
                 {
                     // Safety net for Docker container → specific service reconciliation.
@@ -778,7 +782,7 @@ impl HostService {
                         .iter()
                         .filter(|s| {
                             !ServiceDefinitionExt::is_generic(&s.base.service_definition)
-                                && s.base.virtualization.is_none()
+                                && s.base.virtualization_metadata.is_none()
                                 && s.base.bindings.iter().any(|b| {
                                     b.port_id()
                                         .is_some_and(|pid| conflicting_port_ids.contains(&pid))
@@ -795,7 +799,10 @@ impl HostService {
                                 "Setting Docker virtualization on existing service from conflicting Docker Container"
                             );
                             let mut updated = existing_svc.clone();
-                            updated.base.virtualization = reassigned.base.virtualization.clone();
+                            updated.base.virtualization_metadata =
+                                reassigned.base.virtualization_metadata.clone();
+                            updated.base.virtualization_service_id =
+                                reassigned.base.virtualization_service_id;
                             let _ = self
                                 .service_service
                                 .update(&mut updated, authentication.clone())
@@ -959,10 +966,19 @@ impl HostService {
                 }
             }
 
+            let reassigned_id = reassigned.id;
             let created = self
                 .service_service
                 .create(reassigned, authentication.clone())
                 .await?;
+            // `create` can hand back a different id than it was given — a singleton upsert, or
+            // Docker-Container reconciling onto an existing specific service. That hop was never
+            // recorded anywhere, so anything referencing the old id (bridge subnets, container
+            // service virtualization) was left pointing at nothing. Record it here, where it is
+            // the only place the two ids are both in scope (GH #650).
+            if created.id != reassigned_id {
+                service_id_remap.insert(reassigned_id, created.id);
+            }
             // Add to existing_services_for_match so subsequent services in this batch
             // can find it for ID alignment and Docker Container → specific service reconciliation
             existing_services_for_match.push(created.clone());
@@ -986,7 +1002,8 @@ impl HostService {
                 service_definition: Box::new(OpenPortsDef),
                 name: "Unclaimed Open Ports".to_string(),
                 bindings: orphaned_bindings,
-                virtualization: None,
+                virtualization_metadata: None,
+                virtualization_service_id: None,
                 source: EntitySource::Discovery,
                 tags: Vec::new(),
                 position: 0,
@@ -1001,27 +1018,38 @@ impl HostService {
             created_services.push(created);
         }
 
-        // Patch service virtualization.service_id for container services
-        // whose parent service ID was remapped during dedup.
-        // Uses service_id_remap which was pre-computed before subnet creation
-        // and may have additional entries from in-batch service creation above.
+        // Repoint container services at their runtime service when its id was remapped during
+        // dedup. `service_id_remap` is complete by now: pre-computed before subnet creation, and
+        // extended by the in-batch hop recorded in the service loop above.
         for svc in &created_services {
-            if let Some(ref virt) = svc.base.virtualization
-                && let Some(old_id) = virt.service_id()
+            if let Some(old_id) = svc.base.virtualization_service_id
                 && let Some(&new_id) = service_id_remap.get(&old_id)
             {
                 let mut updated = svc.clone();
-                updated
-                    .base
-                    .virtualization
-                    .as_mut()
-                    .unwrap()
-                    .set_service_id(new_id);
+                updated.base.virtualization_service_id = Some(new_id);
                 let _ = self
                     .service_service
                     .update(&mut updated, authentication.clone())
                     .await;
             }
+        }
+
+        // The same repair for bridge subnets. They were created before any service existed, so
+        // they carry whatever `service_id_remap` held at that point — which is nothing for a
+        // service whose id only moved during the loop above. Left unpatched, the subnet's owning
+        // id matches no live service, dedup fails on every later scan, and the network gains a
+        // duplicate bridge row each time (GH #650).
+        if let Err(e) = self
+            .subnet_service
+            .patch_container_bridge_virtualization(&created_host.base.network_id, &service_id_remap)
+            .await
+        {
+            tracing::warn!(
+                host_id = %created_host.id,
+                error = %e,
+                "Failed to repoint bridge subnet virtualization; duplicate bridge subnets may \
+                 accumulate on subsequent scans"
+            );
         }
 
         // Binding fixup: remap provisional daemon interface/port IDs to server-assigned IDs.

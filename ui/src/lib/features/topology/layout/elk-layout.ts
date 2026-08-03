@@ -873,20 +873,17 @@ function buildElkGraph(
 		}
 
 		// Count VM hosts as workloads on their hypervisor host.
-		// VM hosts have virtualization: { type, details: { service_id } }.
-		// The service_id points to the virtualizer service on the hypervisor.
+		// virtualization_service_id points to the virtualizer service on the hypervisor.
 		const serviceHostMap = new Map<string, string>();
 		for (const svc of input.topology.services ?? []) {
 			serviceHostMap.set(svc.id, svc.host_id);
 		}
 		for (const host of input.topology.hosts ?? []) {
-			if (host.virtualization) {
-				const serviceId = host.virtualization.details?.service_id;
-				if (serviceId) {
-					const hypervisorHostId = serviceHostMap.get(serviceId);
-					if (hypervisorHostId) {
-						countByHostId.set(hypervisorHostId, (countByHostId.get(hypervisorHostId) ?? 0) + 1);
-					}
+			const serviceId = host.virtualization_service_id;
+			if (serviceId) {
+				const hypervisorHostId = serviceHostMap.get(serviceId);
+				if (hypervisorHostId) {
+					countByHostId.set(hypervisorHostId, (countByHostId.get(hypervisorHostId) ?? 0) + 1);
 				}
 			}
 		}

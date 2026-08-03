@@ -2,7 +2,6 @@ use crate::daemon::discovery::integration::container::ContainerRuntime;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::subnets::r#impl::types::SubnetType;
-use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 use anyhow::Error;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -539,8 +538,7 @@ pub fn merge_host_and_docker_subnets(
 ) -> Vec<Subnet> {
     let host_cidrs: HashSet<IpCidr> = host_subnets.iter().map(|s| s.base.cidr).collect();
 
-    let mut authoritative: HashMap<IpCidr, (SubnetType, Option<SubnetVirtualization>)> =
-        HashMap::new();
+    let mut authoritative: HashMap<IpCidr, (SubnetType, Option<Uuid>)> = HashMap::new();
 
     let filtered_docker: Vec<Subnet> = docker_subnets
         .into_iter()
@@ -555,7 +553,7 @@ pub fn merge_host_and_docker_subnets(
                 if s.base.subnet_type.is_container_bridge() {
                     authoritative.insert(
                         s.base.cidr,
-                        (s.base.subnet_type, s.base.virtualization.clone()),
+                        (s.base.subnet_type, s.base.virtualization_service_id),
                     );
                 }
             }
@@ -566,9 +564,11 @@ pub fn merge_host_and_docker_subnets(
     let host_subnets: Vec<Subnet> = host_subnets
         .into_iter()
         .map(|mut s| {
-            if let Some((subnet_type, virtualization)) = authoritative.remove(&s.base.cidr) {
+            if let Some((subnet_type, virtualization_service_id)) =
+                authoritative.remove(&s.base.cidr)
+            {
                 s.base.subnet_type = subnet_type;
-                s.base.virtualization = virtualization;
+                s.base.virtualization_service_id = virtualization_service_id;
             }
             s
         })
@@ -616,7 +616,7 @@ mod tests {
             name: String::new(),
             description: None,
             subnet_type,
-            virtualization: None,
+            virtualization_service_id: None,
             source: EntitySource::Manual,
             tags: Vec::new(),
         })
@@ -652,21 +652,13 @@ mod tests {
         let service_id = Uuid::new_v4();
         let host = vec![make_subnet("172.17.0.0/16", SubnetType::Lan)];
         let mut bridge = make_subnet("172.17.0.0/16", SubnetType::DockerBridge);
-        bridge.base.virtualization =
-            Some(ContainerRuntime::Docker.subnet_virtualization(service_id));
+        bridge.base.virtualization_service_id = Some(service_id);
 
         let result = merge_host_and_docker_subnets(host, vec![bridge]);
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].base.subnet_type, SubnetType::DockerBridge);
-        assert_eq!(
-            result[0]
-                .base
-                .virtualization
-                .as_ref()
-                .and_then(|v| v.service_id()),
-            Some(service_id)
-        );
+        assert_eq!(result[0].base.virtualization_service_id, Some(service_id));
     }
 
     #[test]

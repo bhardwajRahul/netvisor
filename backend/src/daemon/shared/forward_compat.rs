@@ -45,7 +45,6 @@ use crate::server::shared::types::entities::EntitySource;
 use crate::server::shared::types::examples;
 use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
 use crate::server::subnets::r#impl::types::SubnetType;
-use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 use crate::server::vlans::handlers::{VlanDiscoveryResponse, VlanDiscoveryResponseItem};
 
 /// Sentinel string standing in for an enum variant or field a *newer* server
@@ -133,14 +132,6 @@ impl DaemonResponse for EntitySource {
     }
 }
 
-impl DaemonResponse for SubnetVirtualization {
-    // Internally tagged, single variant; tolerated via the lenient `Option`
-    // deserializer on the field that holds it (degrades to `None`).
-    fn skewed() -> Value {
-        json!({ "type": Self::SENTINEL })
-    }
-}
-
 impl DaemonResponse for HostVirtualization {
     // Adjacently tagged; tolerated via the lenient `Option` field deserializer.
     fn skewed() -> Value {
@@ -191,7 +182,7 @@ impl DaemonResponse for Subnet {
                     name: _,
                     description: _,
                     subnet_type: _,
-                    virtualization: _,
+                    virtualization_service_id: _,
                     source: _,
                     tags: _,
                 },
@@ -201,7 +192,8 @@ impl DaemonResponse for Subnet {
         // `base` is `#[serde(flatten)]`, so these sit at the top level.
         v["subnet_type"] = SubnetType::skewed();
         v["source"] = EntitySource::skewed();
-        v["virtualization"] = SubnetVirtualization::skewed();
+        // No skew case for the owning runtime: it is a plain UUID column now, not a tagged enum
+        // a newer server could add a variant to.
         with_unknown_field(v)
     }
 }
@@ -220,7 +212,8 @@ impl DaemonResponse for HostResponse {
             hostname: _,
             description: _,
             source: _,
-            virtualization: _,
+            virtualization_metadata: _,
+            virtualization_service_id: _,
             hidden: _,
             tags: _,
             sys_descr: _,

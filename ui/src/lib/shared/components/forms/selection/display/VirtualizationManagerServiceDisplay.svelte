@@ -19,11 +19,9 @@
 			const hostsData = context?.hosts ?? [];
 			const servicesData = context?.services ?? [];
 			let container_count = servicesData.filter(
-				(s) => s.virtualization && s.virtualization.details.service_id == service.id
+				(s) => s.virtualization_service_id == service.id
 			).length;
-			let vm_count = hostsData.filter(
-				(h) => h.virtualization && h.virtualization.details.service_id == service.id
-			).length;
+			let vm_count = hostsData.filter((h) => h.virtualization_service_id == service.id).length;
 			return container_count > 0
 				? container_count + ' container' + (container_count == 1 ? '' : 's')
 				: vm_count + ' VM' + (vm_count == 1 ? '' : 's');
@@ -34,9 +32,9 @@
 		getTags: (service: Service) => {
 			let tags = [];
 
-			if (service.virtualization) {
+			if (service.virtualization_metadata) {
 				const tag: TagProps = {
-					label: service.virtualization.type,
+					label: service.virtualization_metadata.type,
 					color: concepts.getColorHelper('Virtualization').color
 				};
 

@@ -1003,7 +1003,7 @@ export interface paths {
         /**
          * List all Credentials
          * @description Returns all credentials in the authenticated user's organization.
-         *     Optionally filter by type (e.g. ?type=Snmp).
+         *     Optionally filter by type (e.g. `?type=SnmpV2c`).
          */
         get: operations["get_all_credentials"];
         put?: never;
@@ -1183,15 +1183,17 @@ export interface paths {
         put?: never;
         /**
          * Provision a daemon, or re-provision an existing one
-         * @description Creates a daemon record on the server before the daemon is installed, mints an API key bound
-         *     to it 1:1, and returns ready-to-run install artifacts.
+         * @description Creates a daemon record on the server before the daemon is installed and mints an API key
+         *     bound to it 1:1. Returns the daemon record and that key, which is shown only once and must
+         *     be configured on the daemon.
          *
-         *     When `daemon_id` is supplied the existing record is reused instead of creating a new one —
-         *     this both re-issues install artifacts after install config changes and gives a legacy daemon
-         *     (one with no bound key) a pathway to a dedicated key without losing its host, discovery jobs,
-         *     or history.
+         *     When `daemon_id` is supplied the existing record is reused instead of creating a new one,
+         *     giving a legacy daemon (one with no bound key) a pathway to a dedicated key without losing
+         *     its host, discovery jobs, or history. Re-provisioning always mints a fresh key.
          *
-         *     Returns the daemon record and an API key that must be configured on the daemon.
+         *     Install commands are not built here — fetch them from the install-command endpoint, which
+         *     builds them idempotently and fills in the key this returns. That keeps a display-only
+         *     regenerate (an OS switch, an advanced-setting change) from re-minting the key.
          */
         post: operations["provision_daemon"];
         delete?: never;
@@ -1759,10 +1761,12 @@ export interface paths {
          *
          *     The scan runs on the daemon that last discovered this host — evidence it can
          *     reach the address — and only if that daemon still has an interface on a
-         *     subnet containing one of the host's IPs. That constraint is what lets the
-         *     daemon ARP the target rather than fall back to a TCP probe, which would
-         *     report a live but firewalled host as unresponsive. When it can't be met the
-         *     request is refused with the specific reason rather than run at lower fidelity.
+         *     subnet containing one of the host's scannable IPs. Where that interface has a
+         *     MAC the daemon ARPs the target, which sees a live host even when every port
+         *     is firewalled; on a MAC-less interface (a point-to-point tunnel) it falls
+         *     back to a TCP probe. When no interface covers any of the host's addresses the
+         *     request is refused with the specific reason. A loopback address is not a
+         *     scannable IP — it is reached locally and is excluded from the target set.
          *
          *     Returns the session, which streams progress over `/api/v1/discovery/stream`
          *     like any other scan. A `Queued` phase means the daemon is busy; it will start
@@ -3128,6 +3132,7 @@ export interface components {
         ApiErrorResponse: {
             /** @description Machine-readable error code for i18n translation */
             code?: string | null;
+            /** @description Human-readable failure message. */
             error?: string | null;
             /** @description API metadata (version info) */
             meta: components["schemas"]["ApiMeta"];
@@ -3135,13 +3140,14 @@ export interface components {
             params?: {
                 [key: string]: unknown;
             } | null;
+            /** @description Always `false` on this response shape. */
             success: boolean;
         };
         /**
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.7"
+         *       "server_version": "0.17.8"
          *     }
          */
         ApiMeta: {
@@ -3152,67 +3158,107 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.7
+             * @example 0.17.8
              */
             server_version: string;
         };
         ApiResponse: {
-            data?: null;
+            /** @description The result payload. Omitted on failure. */
+            data?: null | components["schemas"]["TupleUnit"];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Binding: {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-29T01:29:50.395268Z",
+             *       "created_at": "2026-08-03T19:06:30.690316Z",
              *       "first_discovery_id": null,
-             *       "id": "c321721b-ba13-4afb-af6b-5362e6999c61",
+             *       "id": "3b7ac356-18e6-40df-8c0d-d13bdc2f5f1b",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-29T01:29:50.395268Z",
+             *       "last_seen_at": "2026-08-03T19:06:30.690316Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-29T01:29:50.395268Z",
-             *       "valid_from": "2026-07-29T01:29:50.395268Z",
+             *       "updated_at": "2026-08-03T19:06:30.690316Z",
+             *       "valid_from": "2026-08-03T19:06:30.690316Z",
              *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery that first observed this entity.
+                 */
                 readonly first_discovery_id?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The most recent discovery that observed this entity.
+                 */
                 readonly last_discovery_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When a discovery last observed this entity.
+                 */
                 readonly last_seen_at?: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_BulkDeleteResponse: {
+            /** @description The result payload. Omitted on failure. */
             data?: {
+                /** @description How many records were actually deleted. */
                 deleted_count: number;
+                /** @description How many IDs the request asked to delete. */
                 requested_count: number;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_BulkTagResponse: {
@@ -3221,98 +3267,182 @@ export interface components {
                 /** @description Number of entities affected */
                 affected_count: number;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_CancelSubscriptionResponse: {
+            /** @description The result payload. Omitted on failure. */
             data?: {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When the current paid period ends and access drops to the free tier.
+                 */
                 period_end: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_ChangePlanPreview: {
+            /** @description The result payload. Omitted on failure. */
             data?: {
-                /** Format: int64 */
+                /**
+                 * Format: int64
+                 * @description Hosts over the target plan's allowance, which would be billed as overage.
+                 */
                 excess_hosts: number;
-                /** Format: int64 */
+                /**
+                 * Format: int64
+                 * @description Networks over the target plan's allowance.
+                 */
                 excess_networks: number;
-                /** Format: int64 */
+                /**
+                 * Format: int64
+                 * @description Seats over the target plan's allowance.
+                 */
                 excess_seats: number;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Credential: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["CredentialBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Daemon: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["DaemonBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_DaemonApiKey: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["DaemonApiKeyBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_DaemonApiKeyResponse: {
+            /** @description The result payload. Omitted on failure. */
             data?: {
+                /** @description The stored key record. */
                 api_key: components["schemas"]["DaemonApiKey"];
-                key: string;
+                /**
+                 * Format: password
+                 * @description The plaintext API key - only returned once during creation or rotation.
+                 */
+                readonly key: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_DaemonRegistrationResponse: {
             /** @description Daemon registration response from server to daemon */
             data?: {
+                /** @description The registered daemon record. */
                 daemon: components["schemas"]["Daemon"];
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The host this entity belongs to.
+                 */
                 host_id: string;
                 server_capabilities?: null | components["schemas"]["ServerCapabilities"];
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_DaemonResponse: {
             /** @description Daemon response for UI including computed version status */
             data?: components["schemas"]["DaemonBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 id: string;
                 /**
                  * @description Subnets this daemon has interfaces on, loaded from the
@@ -3320,25 +3450,38 @@ export interface components {
                  *     `capabilities.interfaced_subnet_ids` JSONB field).
                  */
                 interfaced_subnet_ids: string[];
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 updated_at: string;
                 /** @description Computed version status including health and warnings */
                 version_status: components["schemas"]["DaemonVersionStatus"];
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_DashboardSummary: {
             /** @description Dashboard summary response */
             data?: {
+                /** @description Daemons the caller can see, with their current status. */
                 daemons: components["schemas"]["DaemonResponse"][];
+                /** @description Per-network counts for every network the caller can see. */
                 networks: components["schemas"]["NetworkSummary"][];
+                /** @description Current usage against the organization's plan allowances. */
                 plan_usage: components["schemas"]["PlanUsage"];
+                /** @description The most recent discovery runs, newest first. */
                 recent_discoveries: components["schemas"]["Discovery"][];
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_DemoPopulateStatus: {
@@ -3348,28 +3491,42 @@ export interface components {
              *     spawned task. `Failed` carries the error string so the UI can show why.
              */
             data?: {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When population began.
+                 */
                 started_at: string;
                 /** @enum {string} */
                 state: "running";
             } | {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When population finished.
+                 */
                 finished_at: string;
                 /** @enum {string} */
                 state: "complete";
             } | {
+                /** @description Why population failed. */
                 error: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When it gave up.
+                 */
                 finished_at: string;
                 /** @enum {string} */
                 state: "failed";
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Dependency: {
             /**
+             * @description The result payload. Omitted on failure.
              * @example {
              *       "color": "Blue",
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -3394,38 +3551,70 @@ export interface components {
              *     }
              */
             data?: components["schemas"]["DependencyBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Discovery: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["DiscoveryBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
                 /** @description When true, the next scan will be a full port scan regardless of interval */
                 force_full_scan?: boolean;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
                 /**
-                 * @description Per-daemon integration targeting: which integrations (credentialed or credential-less
-                 *     local) run on this daemon, and on which IPs. Delivered via the init command at
-                 *     registration and editable via the discovery modal. Persistent — re-applied every scan.
-                 *     This is the single home for cred↔IP targeting; it replaces the global
-                 *     `credential.target_ips` (race-prone, consumed once) and the discovery modal's old
-                 *     one-shot `pending_credential_ids`.
+                 * @description Per-daemon integration targeting: which integrations run on this daemon, and on which
+                 *     IPs. Delivered via the init command at registration and editable via the discovery
+                 *     modal. This is the single home for cred↔IP targeting; it replaces the global
+                 *     `credential.target_ips` (race-prone, consumed once).
+                 *
+                 *     One-shot: a target is offered to the daemon until a scan completes successfully, then
+                 *     dropped by [`Discovery::apply_successful_scan`]. Credentials that earned a durable home
+                 *     during the scan keep being retried from there — `host_credentials` for one that probed
+                 *     successfully, `network_credentials` for a broadcast one (see
+                 *     [`Discovery::take_network_scope_credential_ids`]).
                  */
                 integration_targets: components["schemas"]["IntegrationTarget"][];
                 /**
@@ -3433,17 +3622,26 @@ export interface components {
                  * @description Number of completed scans (incremented by server on session completion)
                  */
                 readonly scan_count?: number;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_DiscoveryUpdatePayload: {
             /** @description Progress update from daemon to server during discovery */
             data?: {
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The daemon this entity refers to.
+                 */
                 daemon_id: string;
                 /**
                  * Format: uuid
@@ -3451,23 +3649,47 @@ export interface components {
                  *     Always enriched server-side; daemons do not send this field.
                  */
                 discovery_id?: string | null;
+                /** @description What kind of discovery is running. */
                 discovery_type: components["schemas"]["DiscoveryType"];
+                /** @description Failure message, when the run did not complete. */
                 error?: string | null;
-                /** Format: int32 */
+                /**
+                 * Format: int32
+                 * @description Rough estimate of the time left, in seconds.
+                 */
                 estimated_remaining_secs?: number | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When the run finished. `null` while it is still going.
+                 */
                 finished_at?: string | null;
-                /** Format: int32 */
+                /**
+                 * Format: int32
+                 * @description Hosts found so far.
+                 */
                 hosts_discovered?: number | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The network this entity belongs to.
+                 */
                 network_id: string;
+                /** @description Which stage of the run is in progress. */
                 phase: components["schemas"]["DiscoveryPhase"];
-                /** Format: int32 */
+                /**
+                 * Format: int32
+                 * @description Completion of the current phase, from 0 to 1.
+                 */
                 progress: number;
                 scanned?: null | components["schemas"]["ScannedEntityIds"];
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery run this update belongs to.
+                 */
                 session_id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When the run started.
+                 */
                 started_at?: string | null;
                 /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
@@ -3475,8 +3697,11 @@ export interface components {
                  */
                 warnings?: string[];
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_HostResponse: {
@@ -3571,19 +3796,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-29T01:29:50.375136Z",
+             *               "created_at": "2026-08-03T19:06:30.671280Z",
              *               "first_discovery_id": null,
-             *               "id": "d3833ea5-c09f-4efe-8e67-4eb78751e20c",
+             *               "id": "778db3b7-5a61-4b49-8808-b4cdbd4e899f",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-29T01:29:50.375136Z",
+             *               "last_seen_at": "2026-08-03T19:06:30.671280Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-29T01:29:50.375136Z",
-             *               "valid_from": "2026-07-29T01:29:50.375136Z",
+             *               "updated_at": "2026-08-03T19:06:30.671280Z",
+             *               "valid_from": "2026-08-03T19:06:30.671280Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3597,7 +3822,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "MySQL",
+             *           "service_definition": "Tasmota",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3605,7 +3830,8 @@ export interface components {
              *           "updated_at": "2026-01-15T10:30:00Z",
              *           "valid_from": "2026-01-15T10:30:00Z",
              *           "valid_to": null,
-             *           "virtualization": null
+             *           "virtualization_metadata": null,
+             *           "virtualization_service_id": null
              *         }
              *       ],
              *       "source": {
@@ -3613,21 +3839,34 @@ export interface components {
              *       },
              *       "tags": [],
              *       "updated_at": "2026-01-15T10:30:00Z",
-             *       "virtualization": null
+             *       "virtualization_metadata": null,
+             *       "virtualization_service_id": null
              *     }
              */
             data?: {
+                /** @description LLDP chassis identifier, used to match the host to its neighbours. */
                 chassis_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 created_at: string;
+                /** @description Credentials assigned to scan this host. */
                 credential_assignments?: components["schemas"]["CredentialAssignment"][];
+                /** @description Free-text notes about the host. */
                 description?: string | null;
+                /** @description Whether the host is hidden from topology views. */
                 hidden: boolean;
+                /** @description Hostname as resolved or reported by the host. */
                 hostname?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 id: string;
                 /** @description SNMP ifTable entries */
                 interfaces: components["schemas"]["Interface"][];
+                /** @description IP addresses on this host. */
                 ip_addresses: components["schemas"]["IPAddress"][];
                 /**
                  * Format: date-time
@@ -3636,28 +3875,53 @@ export interface components {
                  *     the rest of the SCD2/audit columns are not.
                  */
                 last_seen_at: string;
+                /** @description Link to the host's own management interface. */
                 management_url?: string | null;
+                /** @description Human-facing name for the host. */
                 name: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The network this entity belongs to.
+                 */
                 network_id: string;
+                /** @description Open ports on this host. */
                 ports: components["schemas"]["Port"][];
+                /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
+                /** @description How this host came to be known — discovered, imported, or created by hand. */
                 source: components["schemas"]["EntitySource"];
+                /** @description SNMP sysContact — administrative contact as configured on the device. */
                 sys_contact?: string | null;
+                /** @description SNMP sysDescr — the device's own description of itself. */
                 sys_descr?: string | null;
+                /** @description SNMP sysLocation — physical location as configured on the device. */
                 sys_location?: string | null;
+                /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
                 sys_object_id?: string | null;
+                /** @description Tags assigned to this entity. */
                 tags: string[];
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 updated_at: string;
-                virtualization?: null | components["schemas"]["HostVirtualization"];
+                virtualization_metadata?: null | components["schemas"]["HostVirtualization"];
+                /**
+                 * Format: uuid
+                 * @description The hypervisor service this VM runs on.
+                 */
+                virtualization_service_id?: string | null;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_IPAddress: {
             /**
+             * @description The result payload. Omitted on failure.
              * @example {
              *       "created_at": "2026-01-15T10:30:00Z",
              *       "first_discovery_id": null,
@@ -3678,27 +3942,57 @@ export interface components {
              *     }
              */
             data?: components["schemas"]["IPAddressBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery that first observed this entity.
+                 */
                 readonly first_discovery_id?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The most recent discovery that observed this entity.
+                 */
                 readonly last_discovery_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When a discovery last observed this entity.
+                 */
                 readonly last_seen_at?: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_InstallArtifacts: {
@@ -3709,57 +4003,111 @@ export interface components {
              *     filled in client-side); docker and msi carry their own structured content.
              */
             data?: {
+                /** @description Container image reference. */
                 docker: components["schemas"]["DockerInstall"];
+                /** @description Download for FreeBSD. */
                 freebsd: string;
+                /** @description Download for Linux. */
                 linux: string;
+                /** @description Download for macOS. */
                 macos: string;
+                /** @description Windows installer package. */
                 msi: components["schemas"]["MsiInstall"];
+                /** @description Download for Windows. */
                 windows: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Interface: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["InterfaceBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery that first observed this entity.
+                 */
                 readonly first_discovery_id?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The most recent discovery that observed this entity.
+                 */
                 readonly last_discovery_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When a discovery last observed this entity.
+                 */
                 readonly last_seen_at?: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Invite: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["InviteBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Network: {
             /**
+             * @description The result payload. Omitted on failure.
              * @example {
              *       "created_at": "2026-01-15T10:30:00Z",
              *       "credential_ids": [],
@@ -3773,7 +4121,10 @@ export interface components {
              *     }
              */
             data?: components["schemas"]["NetworkBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
                 /**
                  * Format: int64
@@ -3785,13 +4136,22 @@ export interface components {
                  *     and a host could read stale in the app but current in the digest email.
                  */
                 readonly effective_stale_after_hours?: number;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_OnboardingStateResponse: {
@@ -3809,35 +4169,65 @@ export interface components {
                 step?: string | null;
                 use_case?: null | components["schemas"]["UseCase"];
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Option_SaveOfferCoupon: {
+            /** @description The result payload. Omitted on failure. */
             data?: null | {
+                /** @description Billing interval the discount applies to. */
                 billing_rate: components["schemas"]["BillingRate"];
-                /** Format: int64 */
+                /**
+                 * Format: int64
+                 * @description How many months the discount lasts.
+                 */
                 duration_in_months: number;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When the discounted subscription next renews.
+                 */
                 next_renewal_at: string;
-                /** Format: int64 */
+                /**
+                 * Format: int64
+                 * @description Discount applied by the retention offer.
+                 */
                 percent_off: number;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Organization: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["OrganizationBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Port: {
@@ -3861,27 +4251,57 @@ export interface components {
              *     }
              */
             data?: components["schemas"]["PortBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery that first observed this entity.
+                 */
                 readonly first_discovery_id?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The most recent discovery that observed this entity.
+                 */
                 readonly last_discovery_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When a discovery last observed this entity.
+                 */
                 readonly last_seen_at?: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_ProvisionDaemonResponse: {
@@ -3897,20 +4317,29 @@ export interface components {
                 /** @description The created daemon record (with version status). */
                 daemon: components["schemas"]["DaemonResponse"];
                 /**
+                 * Format: password
                  * @description The API key (plaintext) for daemon authentication.
                  *     This is shown only once - store it securely.
                  */
-                daemon_api_key: string;
+                readonly daemon_api_key: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_PublicConfigResponse: {
+            /** @description The result payload. Omitted on failure. */
             data?: {
+                /** @description Whether this deployment has billing configured. */
                 billing_enabled: boolean;
+                /** @description How this instance is run: cloud, commercial self-hosted, or community. */
                 deployment_type: components["schemas"]["DeploymentType"];
+                /** @description Whether email/password login is turned off, leaving OIDC as the only method. */
                 disable_password_login: boolean;
+                /** @description Whether self-service sign-up is turned off on this deployment. */
                 disable_registration: boolean;
                 /**
                  * @description `STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the
@@ -3918,10 +4347,14 @@ export interface components {
                  *     doesn't see an option the deployment can't fulfil.
                  */
                 discount_save_offer_available: boolean;
+                /** @description Whether the deployment asks users to opt in to product email. */
                 has_email_opt_in: boolean;
+                /** @description Whether outbound email is configured. Invites and password resets need it. */
                 has_email_service: boolean;
+                /** @description Whether a daemon runs alongside the server, so no separate install is needed to start scanning. */
                 has_integrated_daemon: boolean;
                 /**
+                 * Format: date
                  * @description Hard expiry — the drop-dead date after which the server rejects
                  *     the key. Referenced by the grace-period banner.
                  */
@@ -3932,13 +4365,16 @@ export interface components {
                  */
                 license_in_grace_period: boolean;
                 /**
+                 * Format: date
                  * @description User-visible expiry — the date displayed to end users under
                  *     normal operation. 7 days earlier than `license_expiry` for keys
                  *     issued after grace-period support landed.
                  */
                 license_intended_expiry?: string | null;
-                license_status?: string | null;
+                license_status?: null | components["schemas"]["LicenseStatusDiscriminants"];
+                /** @description Whether the client should show a cookie-consent prompt. */
                 needs_cookie_consent: boolean;
+                /** @description Identity providers available on the login screen. */
                 oidc_providers: components["schemas"]["OidcProviderMetadata"][];
                 /**
                  * @description True when this self-hosted instance has reached its licensed
@@ -3946,7 +4382,12 @@ export interface components {
                  *     Always false on cloud (multi-tenant) and on unlimited-org plans.
                  */
                 org_limit_reached: boolean;
+                /** @description Public analytics key, when analytics is enabled. */
                 posthog_key?: string | null;
+                /**
+                 * Format: uri
+                 * @description Base URL this server is reachable at, as configured by the operator.
+                 */
                 public_url: string;
                 /**
                  * Format: email
@@ -3954,7 +4395,10 @@ export interface components {
                  *     from `SCANOPY_SERVER_ADMIN_CONTACT_EMAIL`.
                  */
                 server_admin_contact_email: string;
-                /** Format: int32 */
+                /**
+                 * Format: int32
+                 * @description Port this server listens on.
+                 */
                 server_port: number;
                 /**
                  * Format: int32
@@ -3972,8 +4416,11 @@ export interface components {
                  */
                 stripe_publishable_key?: string | null;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_PublicShareMetadata: {
@@ -3985,14 +4432,23 @@ export interface components {
                  *     First element is the default view.
                  */
                 enabled_views: components["schemas"]["TopologyView"][];
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 id: string;
+                /** @description Human-facing name for this share. */
                 name: string;
+                /** @description What the viewer can see and do. */
                 options: components["schemas"]["ShareOptions"];
+                /** @description Whether a password must be supplied before the topology is returned. */
                 requires_password: boolean;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_ServerCapabilities: {
@@ -4005,28 +4461,32 @@ export interface components {
                 /** @description Server software version */
                 server_version: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Service: {
             /**
+             * @description The result payload. Omitted on failure.
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-29T01:29:50.389081Z",
+             *           "created_at": "2026-08-03T19:06:30.684204Z",
              *           "first_discovery_id": null,
-             *           "id": "675f1617-abbe-4aff-9f9e-93f031d95e84",
+             *           "id": "99339589-6317-4468-8c09-3c12cfeb929d",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-29T01:29:50.389081Z",
+             *           "last_seen_at": "2026-08-03T19:06:30.684204Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-29T01:29:50.389081Z",
-             *           "valid_from": "2026-07-29T01:29:50.389081Z",
+             *           "updated_at": "2026-08-03T19:06:30.684204Z",
+             *           "valid_from": "2026-08-03T19:06:30.684204Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4040,7 +4500,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "MySQL",
+             *       "service_definition": "Tasmota",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4048,31 +4508,62 @@ export interface components {
              *       "updated_at": "2026-01-15T10:30:00Z",
              *       "valid_from": "2026-01-15T10:30:00Z",
              *       "valid_to": null,
-             *       "virtualization": null
+             *       "virtualization_metadata": null,
+             *       "virtualization_service_id": null
              *     }
              */
             data?: components["schemas"]["ServiceBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery that first observed this entity.
+                 */
                 readonly first_discovery_id?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The most recent discovery that observed this entity.
+                 */
                 readonly last_discovery_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When a discovery last observed this entity.
+                 */
                 readonly last_seen_at?: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_SetupIntentResponse: {
@@ -4081,33 +4572,56 @@ export interface components {
              *     Payment Element uses to collect and confirm a card in-app.
              */
             data?: {
+                /** @description Stripe SetupIntent client secret, used to mount the Payment Element. */
                 client_secret: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_SetupResponse: {
             /** @description Response from setup endpoint */
             data?: {
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The network this entity belongs to.
+                 */
                 network_id: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Share: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["ShareBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_ShareAccessTokenResponse: {
@@ -4118,35 +4632,60 @@ export interface components {
              *     the share password implicitly invalidates all outstanding tokens.
              */
             data?: {
+                /** @description Bearer token granting access to this share for the rest of the session. */
                 access_token: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record stops being valid.
+                 */
                 expires_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Snapshot: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["SnapshotBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_String: {
+            /** @description The result payload. Omitted on failure. */
             data?: string;
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Subnet: {
             /**
+             * @description The result payload. Omitted on failure.
              * @example {
              *       "cidr": "192.168.1.0/24",
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -4165,35 +4704,67 @@ export interface components {
              *       "tags": [],
              *       "updated_at": "2026-01-15T10:30:00Z",
              *       "valid_from": "2026-01-15T10:30:00Z",
-             *       "valid_to": null
+             *       "valid_to": null,
+             *       "virtualization_service_id": null
              *     }
              */
             data?: components["schemas"]["SubnetBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery that first observed this entity.
+                 */
                 readonly first_discovery_id?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The most recent discovery that observed this entity.
+                 */
                 readonly last_discovery_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When a discovery last observed this entity.
+                 */
                 readonly last_seen_at?: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Tag: {
             /**
+             * @description The result payload. Omitted on failure.
              * @example {
              *       "color": "Green",
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -4209,21 +4780,42 @@ export interface components {
              *     }
              */
             data?: components["schemas"]["TagBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_TestReachabilityResponse: {
@@ -4236,21 +4828,37 @@ export interface components {
                 /** @description Whether the TCP connection succeeded */
                 reachable: boolean;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Topology: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["TopologyBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_TopologyData: {
@@ -4274,13 +4882,19 @@ export interface components {
                  *     snapshot — while the live view shows all views with setup prompts.
                  */
                 available_views?: components["schemas"]["TopologyView"][];
+                /** @description Service bindings included in this topology. */
                 bindings: components["schemas"]["Binding"][];
+                /** @description Dependencies included in this topology. */
                 dependencies: components["schemas"]["Dependency"][];
+                /** @description Connections between the nodes of the built graph. */
                 edges?: {
                     [key: string]: components["schemas"]["Edge"][];
                 };
+                /** @description Hosts included in this topology. */
                 hosts: components["schemas"]["Host"][];
+                /** @description Interfaces included in this topology. */
                 interfaces: components["schemas"]["Interface"][];
+                /** @description IP addresses included in this topology. */
                 ip_addresses: components["schemas"]["IPAddress"][];
                 /**
                  * @description Per-view graph built on request from the entities above + grouping
@@ -4290,40 +4904,74 @@ export interface components {
                 nodes?: {
                     [key: string]: components["schemas"]["Node"][];
                 };
+                /** @description Ports included in this topology. */
                 ports: components["schemas"]["Port"][];
+                /** @description Services included in this topology. */
                 services: components["schemas"]["Service"][];
+                /** @description Subnets included in this topology. */
                 subnets: components["schemas"]["Subnet"][];
+                /** @description Tags assigned to this entity. */
                 tags: components["schemas"]["Tag"][];
+                /** @description VLANs included in this topology. */
                 vlans: components["schemas"]["Vlan"][];
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_User: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["UserBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_UserApiKey: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["UserApiKeyBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_UserApiKeyResponse: {
@@ -4332,15 +4980,23 @@ export interface components {
              *     Contains the full API key record plus the plaintext key (shown only once)
              */
             data?: {
+                /** @description The stored key record. */
                 api_key: components["schemas"]["UserApiKey"];
-                /** @description The plaintext API key - only returned once during creation or rotation */
-                key: string;
+                /**
+                 * Format: password
+                 * @description The plaintext API key - only returned once during creation or rotation
+                 */
+                readonly key: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Vec_BillingPlan: {
+            /** @description The result payload. Omitted on failure. */
             data?: ((components["schemas"]["PlanConfig"] & {
                 /** @enum {string} */
                 type: "Community";
@@ -4375,26 +5031,46 @@ export interface components {
                 /** @enum {string} */
                 type: "SelfHostedPlus";
             }))[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Vec_Credential: {
+            /** @description The result payload. Omitted on failure. */
             data?: (components["schemas"]["CredentialBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Vec_DiscoveryUpdatePayload: {
+            /** @description The result payload. Omitted on failure. */
             data?: {
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The daemon this entity refers to.
+                 */
                 daemon_id: string;
                 /**
                  * Format: uuid
@@ -4402,23 +5078,47 @@ export interface components {
                  *     Always enriched server-side; daemons do not send this field.
                  */
                 discovery_id?: string | null;
+                /** @description What kind of discovery is running. */
                 discovery_type: components["schemas"]["DiscoveryType"];
+                /** @description Failure message, when the run did not complete. */
                 error?: string | null;
-                /** Format: int32 */
+                /**
+                 * Format: int32
+                 * @description Rough estimate of the time left, in seconds.
+                 */
                 estimated_remaining_secs?: number | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When the run finished. `null` while it is still going.
+                 */
                 finished_at?: string | null;
-                /** Format: int32 */
+                /**
+                 * Format: int32
+                 * @description Hosts found so far.
+                 */
                 hosts_discovered?: number | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The network this entity belongs to.
+                 */
                 network_id: string;
+                /** @description Which stage of the run is in progress. */
                 phase: components["schemas"]["DiscoveryPhase"];
-                /** Format: int32 */
+                /**
+                 * Format: int32
+                 * @description Completion of the current phase, from 0 to 1.
+                 */
                 progress: number;
                 scanned?: null | components["schemas"]["ScannedEntityIds"];
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery run this update belongs to.
+                 */
                 session_id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When the run started.
+                 */
                 started_at?: string | null;
                 /**
                  * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
@@ -4426,21 +5126,37 @@ export interface components {
                  */
                 warnings?: string[];
             }[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Vec_Invite: {
+            /** @description The result payload. Omitted on failure. */
             data?: (components["schemas"]["InviteBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_VersionInfo: {
@@ -4459,33 +5175,67 @@ export interface components {
                  */
                 server_version: string;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_Vlan: {
+            /** @description The result payload. Omitted on failure. */
             data?: components["schemas"]["VlanBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery that first observed this entity.
+                 */
                 readonly first_discovery_id?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The most recent discovery that observed this entity.
+                 */
                 readonly last_discovery_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When a discovery last observed this entity.
+                 */
                 readonly last_seen_at?: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_VlanDiscoveryResponse: {
@@ -4494,15 +5244,24 @@ export interface components {
                 /** @description Mapping of vlan_number → VLAN entity UUID */
                 vlans: components["schemas"]["VlanDiscoveryResponseItem"][];
             };
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         ApiResponse_u32: {
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description The result payload. Omitted on failure.
+             */
             data?: number;
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata. */
             meta: components["schemas"]["ApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         BillingPlan: (components["schemas"]["PlanConfig"] & {
@@ -4544,47 +5303,80 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-29T01:29:50.375516Z",
+         *       "created_at": "2026-08-03T19:06:30.671658Z",
          *       "first_discovery_id": null,
-         *       "id": "3b2e6056-5f43-481f-8320-20c18568b0a0",
+         *       "id": "ca0478cb-6d49-4b13-9fb6-344652876bb8",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-29T01:29:50.375516Z",
+         *       "last_seen_at": "2026-08-03T19:06:30.671658Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-29T01:29:50.375516Z",
-         *       "valid_from": "2026-07-29T01:29:50.375516Z",
+         *       "updated_at": "2026-08-03T19:06:30.671658Z",
+         *       "valid_from": "2026-08-03T19:06:30.671658Z",
          *       "valid_to": null
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The discovery that first observed this entity.
+             */
             readonly first_discovery_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The most recent discovery that observed this entity.
+             */
             readonly last_discovery_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When a discovery last observed this entity.
+             */
             readonly last_seen_at?: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Stable identifier shared by every revision of the same entity across its history.
+             */
             readonly lineage_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Start of the interval this revision was current for (SCD2 history).
+             */
             readonly valid_from?: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description End of the interval this revision was current for. `null` while it is the live revision.
+             */
             readonly valid_to?: string | null;
         };
         /** @description The base data for a Binding entity (everything except id, created_at, updated_at) */
         BindingBase: components["schemas"]["BindingType"] & {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The service this entity refers to.
+             */
             service_id: string;
         };
         /**
@@ -4598,7 +5390,10 @@ export interface components {
              * @description Client-provided UUID for this binding
              */
             id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The IP address the service is present at.
+             */
             ip_address_id: string;
             /** @enum {string} */
             type: "IPAddress";
@@ -4613,7 +5408,10 @@ export interface components {
              * @description null = bind to all ip_addresses
              */
             ip_address_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The port the service listens on.
+             */
             port_id: string;
             /** @enum {string} */
             type: "Port";
@@ -4632,7 +5430,10 @@ export interface components {
          *       existing specific-interface bindings for the same port.
          */
         BindingType: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The IP address the service is present at.
+             */
             ip_address_id: string;
             /** @enum {string} */
             type: "IPAddress";
@@ -4643,13 +5444,18 @@ export interface components {
              *     IP addresses on the host (and supersedes specific-IP-address bindings for this port).
              */
             ip_address_id: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The port the service listens on.
+             */
             port_id: string;
             /** @enum {string} */
             type: "Port";
         };
         BulkDeleteResponse: {
+            /** @description How many records were actually deleted. */
             deleted_count: number;
+            /** @description How many IDs the request asked to delete. */
             requested_count: number;
         };
         /** @description Request body for bulk tag operations */
@@ -4677,30 +5483,50 @@ export interface components {
          */
         CancelReason: "too_expensive" | "missing_features" | "switched_service" | "unused" | "customer_service" | "low_quality" | "too_complex" | "other";
         CancelSubscriptionRequest: {
+            /** @description Free-text detail the customer added to their cancellation reason. */
             comment?: string | null;
+            /** @description Why the customer is cancelling, as picked from the cancel flow. */
             reason_code: components["schemas"]["CancelReason"];
             save_offer_redeemed?: null | components["schemas"]["SaveOffer"];
+            /** @description Whether the retention discount was offered during this flow. */
             save_offer_shown?: components["schemas"]["SaveOffer"][];
         };
         CancelSubscriptionResponse: {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the current paid period ends and access drops to the free tier.
+             */
             period_end: string;
         };
         ChangePlanPreview: {
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Hosts over the target plan's allowance, which would be billed as overage.
+             */
             excess_hosts: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Networks over the target plan's allowance.
+             */
             excess_networks: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Seats over the target plan's allowance.
+             */
             excess_seats: number;
         };
         ChangePlanRequest: {
+            /** @description Plan to move the subscription to. */
             plan: components["schemas"]["BillingPlan"];
+            /** @description Billing interval to move to. */
             rate: components["schemas"]["BillingRate"];
         };
         /** @description Check email availability request */
         CheckEmailRequest: {
-            /** Format: email */
+            /**
+             * Format: email
+             * @description Email address to check for an existing account.
+             */
             email: string;
         };
         /** @enum {string} */
@@ -4712,20 +5538,31 @@ export interface components {
          *     `service_id` and `network_id` are assigned by the server after the service is created.
          */
         CreateBindingInput: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The IP address the service is present at.
+             */
             ip_address_id: string;
             /** @enum {string} */
             type: "IPAddress";
         } | {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The IP address this port binding applies to. `null` binds to every IP address on the host.
+             */
             ip_address_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The port the service listens on.
+             */
             port_id: string;
             /** @enum {string} */
             type: "Port";
         };
         CreateCheckoutRequest: {
+            /** @description Plan to subscribe to. */
             plan: components["schemas"]["BillingPlan"];
+            /** @description URL to return the user to after checkout completes. */
             url: string;
         };
         /**
@@ -4771,45 +5608,73 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "MySQL",
+         *           "service_definition": "Tasmota",
          *           "tags": [],
-         *           "virtualization": null
+         *           "virtualization_metadata": null,
+         *           "virtualization_service_id": null
          *         }
          *       ],
          *       "tags": [],
-         *       "virtualization": null
+         *       "virtualization_metadata": null,
+         *       "virtualization_service_id": null
          *     }
          */
         CreateHostRequest: {
+            /** @description LLDP chassis identifier, used to match the host to its neighbours. */
             chassis_id?: string | null;
+            /** @description Credentials to scan this host with. */
             credential_assignments?: components["schemas"]["CredentialAssignment"][];
+            /** @description Free-text notes about the host. */
             description?: string | null;
+            /** @description Hide the host from topology views without deleting it. */
             hidden?: boolean;
+            /** @description Hostname as resolved or reported by the host. */
             hostname?: string | null;
             /** @description SNMP interface entries (ifTable data) - server assigns UUIDs */
             interfaces?: components["schemas"]["InterfaceInput"][];
             /** @description Interfaces to create with this host (client provides UUIDs) */
             ip_addresses?: components["schemas"]["IPAddressInput"][];
+            /** @description Link to the host's own management interface. */
             management_url?: string | null;
+            /** @description Human-facing name for the host. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
             /** @description Ports to create with this host (client provides UUIDs) */
             ports?: components["schemas"]["PortInput"][];
             /** @description Services to create with this host (can reference ip_addresses/ports by their UUIDs) */
             services?: components["schemas"]["ServiceInput"][];
+            /** @description SNMP sysContact — administrative contact as configured on the device. */
             sys_contact?: string | null;
+            /** @description SNMP sysDescr — the device's own description of itself. */
             sys_descr?: string | null;
+            /** @description SNMP sysLocation — physical location as configured on the device. */
             sys_location?: string | null;
+            /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
             sys_object_id?: string | null;
+            /** @description Tags assigned to this entity. */
             tags: string[];
-            virtualization?: null | components["schemas"]["HostVirtualization"];
+            virtualization_metadata?: null | components["schemas"]["HostVirtualization"];
+            /**
+             * Format: uuid
+             * @description The hypervisor service this VM runs on.
+             */
+            virtualization_service_id?: string | null;
         };
         CreateInviteRequest: {
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description How long the invite stays valid, in hours.
+             */
             expiration_hours?: number | null;
+            /** @description The networks this entity applies to. */
             network_ids: string[];
+            /** @description Role the invited user gets on acceptance. */
             permissions: components["schemas"]["UserOrgPermissions"];
+            /** @description Address to email the invite to. Omit to create a link without sending. */
             send_to?: string | null;
         };
         /**
@@ -4823,33 +5688,63 @@ export interface components {
              *     `service_id` and `network_id` are assigned by the server.
              */
             bindings?: components["schemas"]["CreateBindingInput"][];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host this entity belongs to.
+             */
             host_id: string;
+            /** @description Human-facing name for the service. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
+            /** @description Which known software this service is, if identified. */
             service_definition: string;
+            /** @description Tags assigned to this entity. */
             tags: string[];
-            virtualization?: null | components["schemas"]["ServiceVirtualization"];
+            virtualization_metadata?: null | components["schemas"]["ServiceVirtualization"];
+            /**
+             * Format: uuid
+             * @description The container runtime service hosting this container, if any.
+             */
+            virtualization_service_id?: string | null;
         };
         CreateSnapshotRequest: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
         };
         CreateUpdateShareRequest: {
+            /** @description The share to create or replace. */
             share: components["schemas"]["Share"];
         };
         Credential: components["schemas"]["CredentialBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         /** @description A credential assigned to a host, optionally limited to specific ip_addresses. */
         CredentialAssignment: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The credential this entity refers to.
+             */
             credential_id: string;
             /** @description Interface IDs to limit this credential to. None = all host ip_addresses. */
             ip_address_ids: string[] | null;
@@ -4860,15 +5755,21 @@ export interface components {
              *     Hydrated from the `network_credentials` junction table.
              */
             assigned_network_ids: string[];
+            /** @description Protocol this credential authenticates with, and its settings. */
             credential_type: components["schemas"]["CredentialType"];
             /**
              * @description Hosts this credential is assigned to (PerHost scope), with optional IP scoping.
              *     Hydrated from the `host_credentials` junction table.
              */
             host_assignments: components["schemas"]["CredentialHostAssignment"][];
+            /** @description Human-facing name for this credential. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The organization that owns this record.
+             */
             organization_id: string;
+            /** @description Tags assigned to this entity. */
             tags: string[];
         };
         /**
@@ -4877,7 +5778,10 @@ export interface components {
          *     credential from the `host_credentials` junction (PerHost scope).
          */
         CredentialHostAssignment: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host this entity belongs to.
+             */
             host_id: string;
             /** @description IP address IDs to limit this credential to on the host. None = all host ip_addresses. */
             ip_address_ids: string[] | null;
@@ -4900,20 +5804,27 @@ export interface components {
          *     Each variant represents a different credential protocol/method.
          */
         CredentialType: {
+            /** @description SNMPv1 community string. */
             community: components["schemas"]["SecretValue"];
             /** @enum {string} */
             type: "SnmpV1";
         } | {
+            /** @description SNMPv2c community string. */
             community: components["schemas"]["SecretValue"];
             /** @enum {string} */
             type: "SnmpV2c";
         } | {
+            /** @description Authentication passphrase. */
             auth_password: components["schemas"]["SecretValue"];
+            /** @description Hash algorithm used for authentication. */
             auth_protocol: components["schemas"]["SnmpV3AuthProtocol"];
             /** @description Optional context name (default/empty context used if unset). */
             context_name?: string | null;
+            /** @description Privacy passphrase. */
             priv_password: components["schemas"]["SecretValue"];
+            /** @description Cipher used for privacy (encryption). */
             priv_protocol: components["schemas"]["SnmpV3PrivProtocol"];
+            /** @description USM security (user) name. */
             security_name: string;
             /** @enum {string} */
             type: "SnmpV3";
@@ -4931,6 +5842,7 @@ export interface components {
             /** @enum {string} */
             type: "DockerProxy";
         } | {
+            /** @description Path to the Docker socket. Blank lets the daemon auto-detect it. */
             socket_path?: string | null;
             /** @enum {string} */
             type: "DockerSocket";
@@ -4948,6 +5860,7 @@ export interface components {
             /** @enum {string} */
             type: "PodmanProxy";
         } | {
+            /** @description Path to the Podman socket. Blank lets the daemon auto-detect it. */
             socket_path?: string | null;
             /** @enum {string} */
             type: "PodmanSocket";
@@ -4964,6 +5877,7 @@ export interface components {
             /** @enum {string} */
             type: "UnifiApiKey";
         } | {
+            /** @description Password for that account. */
             password: components["schemas"]["SecretValue"];
             /**
              * Format: int32
@@ -4974,22 +5888,43 @@ export interface components {
             site?: string;
             /** @enum {string} */
             type: "UnifiLocalAdmin";
+            /** @description Local admin account on the controller. */
             username: string;
         };
+        /** @enum {string} */
+        CredentialTypeDiscriminants: "SnmpV1" | "SnmpV2c" | "SnmpV3" | "DockerProxy" | "DockerSocket" | "PodmanProxy" | "PodmanSocket" | "UnifiApiKey" | "UnifiLocalAdmin";
         Daemon: components["schemas"]["DaemonBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         DaemonApiKey: components["schemas"]["DaemonApiKeyBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         DaemonApiKeyBase: {
@@ -5000,20 +5935,38 @@ export interface components {
              *     which resolve daemon identity from the X-Daemon-ID header instead.
              */
             readonly daemon_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record stops being valid.
+             */
             expires_at?: string | null;
+            /** @description Whether the key may still be used. Disabled keys are rejected. */
             is_enabled?: boolean;
+            /** @description The stored key. Returned redacted except on creation and rotation. */
             readonly key: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When a daemon last authenticated with this key.
+             */
             readonly last_used: string | null;
+            /** @description Human-facing name for this key. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
+            /** @description Tags assigned to this entity. */
             tags: string[];
         };
         DaemonApiKeyResponse: {
+            /** @description The stored key record. */
             api_key: components["schemas"]["DaemonApiKey"];
-            key: string;
+            /**
+             * Format: password
+             * @description The plaintext API key - only returned once during creation or rotation.
+             */
+            readonly key: string;
         };
         DaemonBase: {
             /**
@@ -5022,7 +5975,10 @@ export interface components {
              *     NULL for DaemonPoll daemons or those not yet linked to a key.
              */
             api_key_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host this entity belongs to.
+             */
             host_id: string;
             /**
              * @description Whether the daemon is unreachable (for ServerPoll circuit breaker).
@@ -5035,9 +5991,14 @@ export interface components {
              *     NULL for provisioned ServerPoll daemons that haven't been contacted yet.
              */
             readonly last_seen?: string | null;
+            /** @description How the daemon connects: it polls the server, or the server polls it. */
             mode: components["schemas"]["DaemonMode"];
+            /** @description Human-facing name for this daemon. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
             /** @description Whether the daemon is on standby due to inactivity (no discovery in 30 days). */
             readonly standby?: boolean;
@@ -5051,10 +6012,14 @@ export interface components {
              *     runs" race.
              */
             readonly standby_cleared_at?: string | null;
+            /** @description Tags assigned to this entity. */
             tags: string[];
             /**
+             * Format: uri
              * @description Address the *server* dials for a ServerPoll daemon. Editable (a daemon can move);
              *     unused and not editable for DaemonPoll, which dials out instead.
+             *     Base URL the server reaches this daemon on.
+             * @example https://daemon.example.com:60073
              */
             url: string;
             /**
@@ -5062,7 +6027,10 @@ export interface components {
              * @description User responsible for maintaining this daemon
              */
             user_id: string;
-            /** @description Daemon software version (semver format) */
+            /**
+             * @description Daemon software version (semver format)
+             * @example 0.17.7
+             */
             version?: string | null;
         };
         /**
@@ -5070,8 +6038,11 @@ export interface components {
          *     Old daemons call POST /api/daemons/{id}/heartbeat with this payload.
          */
         DaemonHeartbeatPayload: {
+            /** @description How the daemon connects: it polls the server, or the server polls it. */
             mode: components["schemas"]["DaemonMode"];
+            /** @description Name the daemon reports for itself. */
             name: string;
+            /** @description URL the daemon is reachable at, as it sees itself. */
             url: string;
         };
         /**
@@ -5092,12 +6063,18 @@ export interface components {
          */
         DaemonOrderField: "created_at" | "name" | "last_seen" | "updated_at" | "network_id";
         /**
+         * @description Operating system the install command was generated for.
+         * @enum {string}
+         */
+        DaemonOs: "linux" | "macos" | "windows" | "freebsd";
+        /**
          * @description Which daemon-prompt CTA the user chose.
          * @enum {string}
          */
         DaemonPromptAction: "dismissed" | "accepted";
         /** @description Request recording the user's response to the "Start Discovering Your Network" prompt. */
         DaemonPromptResponseRequest: {
+            /** @description What the user chose to do about the daemon prompt. */
             action: components["schemas"]["DaemonPromptAction"];
         };
         /** @description Daemon registration request from daemon to server */
@@ -5108,7 +6085,10 @@ export interface components {
              *     does not persist it.
              */
             capabilities?: components["schemas"]["LegacyCapabilities"];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The daemon this entity refers to.
+             */
             daemon_id: string;
             /**
              * @description Per-daemon integration targeting from the init command (credentialed cred↔IP and
@@ -5118,9 +6098,14 @@ export interface components {
              *     is handled in the daemon's env parser, never on the wire.
              */
             integration_targets?: components["schemas"]["IntegrationTarget"][];
+            /** @description How the daemon connects: it polls the server, or the server polls it. */
             mode: components["schemas"]["DaemonMode"];
+            /** @description Name the daemon reports for itself. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
             /**
              * @description URL is ignored by server - kept for backwards compat with old daemons.
@@ -5138,16 +6123,26 @@ export interface components {
         };
         /** @description Daemon registration response from server to daemon */
         DaemonRegistrationResponse: {
+            /** @description The registered daemon record. */
             daemon: components["schemas"]["Daemon"];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host this entity belongs to.
+             */
             host_id: string;
             server_capabilities?: null | components["schemas"]["ServerCapabilities"];
         };
         /** @description Daemon response for UI including computed version status */
         DaemonResponse: components["schemas"]["DaemonBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             id: string;
             /**
              * @description Subnets this daemon has interfaces on, loaded from the
@@ -5155,7 +6150,10 @@ export interface components {
              *     `capabilities.interfaced_subnet_ids` JSONB field).
              */
             interfaced_subnet_ids: string[];
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             updated_at: string;
             /** @description Computed version status including health and warnings */
             version_status: components["schemas"]["DaemonVersionStatus"];
@@ -5175,7 +6173,9 @@ export interface components {
              *     v0.15.0+ daemons populate this; pre-v0.15.0 daemons leave it empty.
              */
             interfaced_subnets?: components["schemas"]["Subnet"][];
+            /** @description How the daemon connects: it polls the server, or the server polls it. */
             mode: components["schemas"]["DaemonMode"];
+            /** @description Name the daemon reports for itself. */
             name: string;
             /**
              * @description Whether the daemon can accept a new discovery session.
@@ -5192,7 +6192,9 @@ export interface components {
         };
         /** @description Daemon version status including health and any warnings */
         DaemonVersionStatus: {
+            /** @description Whether a containerized daemon is mounted so it can read the Docker socket. */
             has_correct_docker_volume_mount?: boolean;
+            /** @description Whether that version is current, ageing, or out of support. */
             status: components["schemas"]["VersionHealthStatus"];
             /**
              * @description The date this daemon's version stops being supported, if a sunset is
@@ -5205,15 +6207,22 @@ export interface components {
              *     frontend never has to hardcode a version floor.
              */
             supports_targeted_rescan?: boolean;
+            /** @description Whether the daemon can run a combined discovery pass. */
             supports_unified_discovery?: boolean;
+            /** @description Version the daemon reports. */
             version?: string | null;
+            /** @description Upgrade warnings that apply to this version. */
             warnings?: components["schemas"]["DeprecationWarning"][];
         };
         /** @description Dashboard summary response */
         DashboardSummary: {
+            /** @description Daemons the caller can see, with their current status. */
             daemons: components["schemas"]["DaemonResponse"][];
+            /** @description Per-network counts for every network the caller can see. */
             networks: components["schemas"]["NetworkSummary"][];
+            /** @description Current usage against the organization's plan allowances. */
             plan_usage: components["schemas"]["PlanUsage"];
+            /** @description The most recent discovery runs, newest first. */
             recent_discoveries: components["schemas"]["Discovery"][];
         };
         /**
@@ -5222,18 +6231,28 @@ export interface components {
          *     spawned task. `Failed` carries the error string so the UI can show why.
          */
         DemoPopulateStatus: {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When population began.
+             */
             started_at: string;
             /** @enum {string} */
             state: "running";
         } | {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When population finished.
+             */
             finished_at: string;
             /** @enum {string} */
             state: "complete";
         } | {
+            /** @description Why population failed. */
             error: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When it gave up.
+             */
             finished_at: string;
             /** @enum {string} */
             state: "failed";
@@ -5263,31 +6282,58 @@ export interface components {
          *     }
          */
         Dependency: components["schemas"]["DependencyBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Stable identifier shared by every revision of the same entity across its history.
+             */
             readonly lineage_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Start of the interval this revision was current for (SCD2 history).
+             */
             readonly valid_from?: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description End of the interval this revision was current for. `null` while it is the live revision.
+             */
             readonly valid_to?: string | null;
         };
         DependencyBase: {
+            /** @description Colour the dependency edge is drawn in. */
             color: components["schemas"]["Color"];
+            /** @description What kind of relationship this dependency records. */
             dependency_type: components["schemas"]["DependencyType"];
+            /** @description Free-text notes about the dependency. */
             description?: string | null;
+            /** @description Line style the dependency edge is drawn with. */
             edge_style: components["schemas"]["EdgeStyle"];
             /** @description Members of this dependency: either service IDs or binding IDs. */
             members: components["schemas"]["DependencyMembers"];
+            /** @description Human-facing name for this dependency. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
             /** @description Will be automatically set to Manual for creation through API */
             source?: components["schemas"]["EntitySource"];
+            /** @description Tags assigned to this entity. */
             tags: string[];
         };
         /**
@@ -5296,10 +6342,12 @@ export interface components {
          *     or none do (Application-level only).
          */
         DependencyMembers: {
+            /** @description The services in the chain, in order. */
             service_ids: string[];
             /** @enum {string} */
             type: "Services";
         } | {
+            /** @description The bindings in the chain, in order — one per service. */
             binding_ids: string[];
             /** @enum {string} */
             type: "Bindings";
@@ -5320,24 +6368,37 @@ export interface components {
         DeprecationSeverity: "Info" | "Warning" | "Critical" | "Unknown";
         /** @description Deprecation warning for daemon version */
         DeprecationWarning: {
+            /** @description What the operator needs to do, and by when. */
             message: string;
+            /** @description How urgent the upgrade is. */
             severity: components["schemas"]["DeprecationSeverity"];
+            /** @description Date after which this daemon version stops being supported. */
             sunset_date?: string | null;
         };
         Discovery: components["schemas"]["DiscoveryBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
             /** @description When true, the next scan will be a full port scan regardless of interval */
             force_full_scan?: boolean;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
             /**
-             * @description Per-daemon integration targeting: which integrations (credentialed or credential-less
-             *     local) run on this daemon, and on which IPs. Delivered via the init command at
-             *     registration and editable via the discovery modal. Persistent — re-applied every scan.
-             *     This is the single home for cred↔IP targeting; it replaces the global
-             *     `credential.target_ips` (race-prone, consumed once) and the discovery modal's old
-             *     one-shot `pending_credential_ids`.
+             * @description Per-daemon integration targeting: which integrations run on this daemon, and on which
+             *     IPs. Delivered via the init command at registration and editable via the discovery
+             *     modal. This is the single home for cred↔IP targeting; it replaces the global
+             *     `credential.target_ips` (race-prone, consumed once).
+             *
+             *     One-shot: a target is offered to the daemon until a scan completes successfully, then
+             *     dropped by [`Discovery::apply_successful_scan`]. Credentials that earned a durable home
+             *     during the scan keep being retried from there — `host_credentials` for one that probed
+             *     successfully, `network_credentials` for a broadcast one (see
+             *     [`Discovery::take_network_scope_credential_ids`]).
              */
             integration_targets: components["schemas"]["IntegrationTarget"][];
             /**
@@ -5345,17 +6406,30 @@ export interface components {
              * @description Number of completed scans (incremented by server on session completion)
              */
             readonly scan_count?: number;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         DiscoveryBase: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The daemon this entity refers to.
+             */
             daemon_id: string;
+            /** @description What this run scans — a subnet, a single host, a container runtime, and so on. */
             discovery_type: components["schemas"]["DiscoveryType"];
+            /** @description Human-facing name for this discovery. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
+            /** @description Whether this run was triggered by hand or on a schedule. */
             run_type: components["schemas"]["RunType"];
+            /** @description Tags assigned to this entity. */
             tags: string[];
         };
         /**
@@ -5373,6 +6447,7 @@ export interface components {
          *     and remaps fields automatically. This can be removed once all daemons are ≥ v0.16.0.
          */
         DiscoveryHostRequest: {
+            /** @description The host as observed by the daemon. */
             host: components["schemas"]["Host"];
             /**
              * @description Which groups of per-interface data (LLDP, CDP, FDB, VLAN membership) this scan read in
@@ -5391,8 +6466,11 @@ export interface components {
              *     predate this field omit it; it defaults to true so their behavior is unchanged.
              */
             interfaces_complete?: boolean;
+            /** @description IP addresses observed on the host. */
             ip_addresses: components["schemas"]["IPAddress"][];
+            /** @description Open ports observed on the host. */
             ports: components["schemas"]["Port"][];
+            /** @description Services identified on the host. */
             services: components["schemas"]["Service"][];
             /**
              * @description Integration-derived subnets (e.g., Docker bridge networks) — created during
@@ -5413,23 +6491,32 @@ export interface components {
          */
         DiscoveryProtocol: "LLDP" | "CDP";
         DiscoveryType: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host the daemon is running on.
+             */
             host_id: string;
             /** @enum {string} */
             type: "SelfReport";
         } | {
+            /** @description What to name a host by when reverse DNS gives nothing. */
             host_naming_fallback: components["schemas"]["HostNamingFallback"];
             /**
              * @description SNMP credentials for querying devices during discovery
              *     Server builds this mapping before initiating discovery
              */
             snmp_credentials?: Record<string, never>;
+            /** @description Subnets to sweep. `null` sweeps every subnet on the network. */
             subnet_ids: string[] | null;
             /** @enum {string} */
             type: "Network";
         } | {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host the daemon is running on.
+             */
             host_id: string;
+            /** @description What to name a host by when reverse DNS gives nothing. */
             host_naming_fallback: components["schemas"]["HostNamingFallback"];
             /** @enum {string} */
             type: "Docker";
@@ -5473,7 +6560,10 @@ export interface components {
         };
         /** @description Progress update from daemon to server during discovery */
         DiscoveryUpdatePayload: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The daemon this entity refers to.
+             */
             daemon_id: string;
             /**
              * Format: uuid
@@ -5481,23 +6571,47 @@ export interface components {
              *     Always enriched server-side; daemons do not send this field.
              */
             discovery_id?: string | null;
+            /** @description What kind of discovery is running. */
             discovery_type: components["schemas"]["DiscoveryType"];
+            /** @description Failure message, when the run did not complete. */
             error?: string | null;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description Rough estimate of the time left, in seconds.
+             */
             estimated_remaining_secs?: number | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the run finished. `null` while it is still going.
+             */
             finished_at?: string | null;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description Hosts found so far.
+             */
             hosts_discovered?: number | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
+            /** @description Which stage of the run is in progress. */
             phase: components["schemas"]["DiscoveryPhase"];
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description Completion of the current phase, from 0 to 1.
+             */
             progress: number;
             scanned?: null | components["schemas"]["ScannedEntityIds"];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The discovery run this update belongs to.
+             */
             session_id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the run started.
+             */
             started_at?: string | null;
             /**
              * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
@@ -5518,25 +6632,23 @@ export interface components {
              */
             env: string[];
         };
-        DockerSubnetVirtualization: {
-            /**
-             * Format: uuid
-             * @description The Docker daemon service that owns this bridge network.
-             *     Different Docker daemons on different hosts = distinct bridge subnets.
-             */
-            service_id: string;
-        };
         DockerVirtualization: {
+            /** @description Compose project the container belongs to, when it was started by Compose. */
             compose_project?: string | null;
+            /** @description Docker container ID. */
             container_id?: string | null;
+            /** @description Container name as reported by Docker. */
             container_name?: string | null;
-            /** Format: uuid */
-            service_id: string;
         };
         Edge: components["schemas"]["EdgeType"] & {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             id: string;
+            /** @description Whether the edge stands in for a path that crosses intermediate nodes. */
             is_multi_hop: boolean;
+            /** @description Text drawn on the edge. */
             label: string | null;
             /**
              * @description Identity of the relation this edge stands for — see [`EdgeType::relation_key`]. Stamped
@@ -5544,12 +6656,21 @@ export interface components {
              *     it. `None` marks an edge as interchangeable with its like.
              */
             relation_key: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Node the edge starts at.
+             */
             source: string;
+            /** @description Which side of the source node the edge leaves from. */
             source_handle: components["schemas"]["EdgeHandle"];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Node the edge ends at.
+             */
             target: string;
+            /** @description Which side of the target node the edge arrives at. */
             target_handle: components["schemas"]["EdgeHandle"];
+            /** @description Per-view overrides for how this edge is drawn. */
             view_config?: components["schemas"]["EdgeViewConfig"];
         };
         /**
@@ -5574,21 +6695,33 @@ export interface components {
         EdgeType: {
             /** @enum {string} */
             edge_type: "SameHost";
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host both endpoints sit on.
+             */
             host_id: string;
         } | {
             /** @enum {string} */
             edge_type: "Hypervisor";
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The hypervisor service running the guest.
+             */
             hypervisor_service_id: string;
         } | {
             /** @description The containerized services this edge stands for — the ones on those subnets. */
             containerized_service_ids: string[];
             /** @enum {string} */
             edge_type: "ContainerRuntime";
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host running the container runtime.
+             */
             host_id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The container runtime service itself.
+             */
             service_id: string;
             /**
              * @description The bridge subnet(s) this edge reaches: one when they render as their own boxes,
@@ -5599,41 +6732,76 @@ export interface components {
         } | {
             /** @enum {string} */
             edge_type: "SameContainer";
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The containerized service reachable at several addresses.
+             */
             service_id: string;
         } | {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The dependency this edge was drawn from.
+             */
             dependency_id: string;
             /** @enum {string} */
             edge_type: "RequestPath";
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Member the request starts at.
+             */
             source_id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Member the request arrives at.
+             */
             target_id: string;
         } | {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The dependency this edge was drawn from.
+             */
             dependency_id: string;
             /** @enum {string} */
             edge_type: "HubAndSpoke";
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The hub member.
+             */
             source_id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The spoke member.
+             */
             target_id: string;
         } | {
             /** @enum {string} */
             edge_type: "PhysicalLink";
+            /** @description Neighbour-discovery protocol the link was learned from. */
             protocol: components["schemas"]["DiscoveryProtocol"];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Interface at one end of the cable.
+             */
             source_entity_id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Interface at the other end.
+             */
             target_entity_id: string;
         } | {
             /** @enum {string} */
             edge_type: "NeighborLink";
+            /** @description Neighbour-discovery protocol the adjacency was learned from. */
             protocol: components["schemas"]["DiscoveryProtocol"];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description One of the adjacent devices.
+             */
             source_host_id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The other adjacent device.
+             */
             target_host_id: string;
         };
         /** @enum {string} */
@@ -5664,9 +6832,15 @@ export interface components {
         ElementEntityType: {
             /** @enum {string} */
             element_type: "IPAddress";
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The IP address itself, when one is known.
+             */
             ip_address_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Subnet the address sits in.
+             */
             subnet_id: string;
         } | {
             /** @enum {string} */
@@ -5677,13 +6851,18 @@ export interface components {
         } | {
             /** @enum {string} */
             element_type: "Interface";
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The interface this element stands for.
+             */
             interface_id: string;
         };
         /** @description Request body for emailing an install command to the authenticated user. */
         EmailInstallCommandRequest: {
+            /** @description The install command to send, exactly as shown in the UI. */
             install_command: string;
-            os: string;
+            /** @description Operating system the command targets, used to pick the email wording. */
+            os: components["schemas"]["DaemonOs"];
         };
         /**
          * @description Per-user toggles for the user-pausable email categories. Each field maps
@@ -5695,16 +6874,23 @@ export interface components {
          *     JSON.
          */
         EmailSettings: {
+            /** @description Send an alert when a daemon stops reporting. */
             daemon_alerts?: boolean;
+            /** @description Send a periodic summary of what discovery found. */
             discovery_digest: boolean;
+            /** @description Send getting-started guidance. */
             product_onboarding?: boolean;
+            /** @description Send trial reminders and plan-usage warnings. */
             trial_and_usage?: boolean;
         };
         /** @description Enterprise plan inquiry request */
         EnterpriseInquiryRequest: {
             /** @description Company name */
             company: string;
-            /** @description Contact email */
+            /**
+             * Format: email
+             * @description Contact email
+             */
             email: string;
             /** @description Message/use case description */
             message: string;
@@ -5715,12 +6901,14 @@ export interface components {
              * @description Number of networks/sites
              */
             network_count?: number | null;
-            /** @description Plan type being inquired about */
+            /**
+             * @description Plan the enquiry is about — the `type` tag of a `BillingPlan`
+             *     (e.g. `Team`, `Business`, `Enterprise`).
+             */
             plan_type?: string | null;
-            /** @description Team/company size: 1-10, 11-25, 26-50, 51-100, 101-250, 251-500, 501-1000, 1001+ */
-            team_size: string;
-            /** @description Urgency: immediately, 1-3 months, 3-6 months, exploring */
-            urgency?: string | null;
+            /** @description Team/company size */
+            team_size: components["schemas"]["TeamSize"];
+            urgency?: null | components["schemas"]["InquiryTimeline"];
         };
         /** @enum {string} */
         EntityDiscriminants: "Organization" | "Invite" | "Share" | "Network" | "DaemonApiKey" | "UserApiKey" | "User" | "Tag" | "Discovery" | "Daemon" | "Host" | "Service" | "Port" | "Binding" | "IPAddress" | "Interface" | "Credential" | "Subnet" | "Vlan" | "Dependency" | "Topology" | "Snapshot" | "Unknown";
@@ -5758,19 +6946,21 @@ export interface components {
             type: "Unknown";
         };
         EsxiVirtualization: {
-            /** Format: uuid */
-            service_id: string;
+            /** @description ESXi identifier of the guest. */
             vm_id?: string | null;
+            /** @description Guest name as configured on the ESXi host. */
             vm_name?: string | null;
         };
         /** @description Non-secret value that can be inline content or a file path on daemon host. */
         FileOrInline: {
             /** @enum {string} */
             mode: "Inline";
+            /** @description The value itself. */
             value: string;
         } | {
             /** @enum {string} */
             mode: "FilePath";
+            /** @description Path to a file on the daemon host holding the value. */
             path: string;
         };
         /**
@@ -5778,10 +6968,14 @@ export interface components {
          *     as the customer's default payment method).
          */
         FinalizePaymentMethodRequest: {
+            /** @description Stripe SetupIntent to attach as the organization's payment method. */
             setup_intent_id: string;
         };
         ForgotPasswordRequest: {
-            /** Format: email */
+            /**
+             * Format: email
+             * @description Email address to send the password-reset link to.
+             */
             email: string;
         };
         /** @description Size of one group in a grouped list, across every page. */
@@ -5818,11 +7012,15 @@ export interface components {
          *       "updated_at": "2026-01-15T10:30:00Z",
          *       "valid_from": "2026-01-15T10:30:00Z",
          *       "valid_to": null,
-         *       "virtualization": null
+         *       "virtualization_metadata": null,
+         *       "virtualization_service_id": null
          *     }
          */
         Host: components["schemas"]["HostBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
             /**
              * Format: uuid
@@ -5831,7 +7029,10 @@ export interface components {
              *     `update_discovery_fks`.
              */
             readonly first_discovery_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
             /**
              * Format: uuid
@@ -5853,7 +7054,10 @@ export interface components {
              *     state they capture. NULL on live rows.
              */
             readonly lineage_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
             /**
              * Format: date-time
@@ -5878,20 +7082,31 @@ export interface components {
             chassis_id?: string | null;
             /** @description Credential assignments for this host (hydrated from junction table). */
             credential_assignments: components["schemas"]["CredentialAssignment"][];
+            /** @description Free-text notes about the host. */
             description: string | null;
+            /** @description Whether the host is hidden from topology views. */
             hidden: boolean;
+            /** @description Hostname as resolved or reported by the host. */
             hostname: string | null;
-            /** @description URL for device management interface (manual or discovered) */
+            /**
+             * Format: uri
+             * @description URL for device management interface (manual or discovered)
+             */
             management_url?: string | null;
             /** @description ENTITY-MIB entPhysicalMfgName - hardware manufacturer */
             manufacturer?: string | null;
             /** @description ENTITY-MIB entPhysicalModelName - hardware model */
             model?: string | null;
+            /** @description Human-facing name for the host. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
             /** @description ENTITY-MIB entPhysicalSerialNum - hardware serial number */
             serial_number?: string | null;
+            /** @description How this host came to be known — discovered, imported, or created by hand. */
             source: components["schemas"]["EntitySource"];
             /** @description SNMP sysContact.0 - admin contact info */
             sys_contact?: string | null;
@@ -5903,8 +7118,19 @@ export interface components {
             sys_name?: string | null;
             /** @description SNMP sysObjectID.0 - vendor OID for device identification */
             sys_object_id?: string | null;
+            /** @description Tags assigned to this entity. */
             tags: string[];
-            virtualization: null | components["schemas"]["HostVirtualization"];
+            virtualization_metadata: null | components["schemas"]["HostVirtualization"];
+            /**
+             * Format: uuid
+             * @description The service doing the virtualizing — the hypervisor this VM runs on.
+             *
+             *     Its own column with a foreign key rather than a field inside
+             *     [`HostVirtualization`]: a reference that no longer resolves now fails the write instead of
+             *     surviving as a value nothing matches, and `ON DELETE SET NULL` clears it when the
+             *     hypervisor service goes away (GH #650).
+             */
+            virtualization_service_id: string | null;
         };
         /** @enum {string} */
         HostNamingFallback: "Ip" | "BestService";
@@ -6004,19 +7230,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-29T01:29:50.374682Z",
+         *               "created_at": "2026-08-03T19:06:30.670854Z",
          *               "first_discovery_id": null,
-         *               "id": "b35fc726-f7d2-43fa-9f0b-405d90284d50",
+         *               "id": "46e98061-733c-446d-800f-2cc1efe90719",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-29T01:29:50.374682Z",
+         *               "last_seen_at": "2026-08-03T19:06:30.670854Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-29T01:29:50.374682Z",
-         *               "valid_from": "2026-07-29T01:29:50.374682Z",
+         *               "updated_at": "2026-08-03T19:06:30.670854Z",
+         *               "valid_from": "2026-08-03T19:06:30.670854Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -6030,7 +7256,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "MySQL",
+         *           "service_definition": "Tasmota",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6038,7 +7264,8 @@ export interface components {
          *           "updated_at": "2026-01-15T10:30:00Z",
          *           "valid_from": "2026-01-15T10:30:00Z",
          *           "valid_to": null,
-         *           "virtualization": null
+         *           "virtualization_metadata": null,
+         *           "virtualization_service_id": null
          *         }
          *       ],
          *       "source": {
@@ -6046,21 +7273,34 @@ export interface components {
          *       },
          *       "tags": [],
          *       "updated_at": "2026-01-15T10:30:00Z",
-         *       "virtualization": null
+         *       "virtualization_metadata": null,
+         *       "virtualization_service_id": null
          *     }
          */
         HostResponse: {
+            /** @description LLDP chassis identifier, used to match the host to its neighbours. */
             chassis_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             created_at: string;
+            /** @description Credentials assigned to scan this host. */
             credential_assignments?: components["schemas"]["CredentialAssignment"][];
+            /** @description Free-text notes about the host. */
             description?: string | null;
+            /** @description Whether the host is hidden from topology views. */
             hidden: boolean;
+            /** @description Hostname as resolved or reported by the host. */
             hostname?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             id: string;
             /** @description SNMP ifTable entries */
             interfaces: components["schemas"]["Interface"][];
+            /** @description IP addresses on this host. */
             ip_addresses: components["schemas"]["IPAddress"][];
             /**
              * Format: date-time
@@ -6069,21 +7309,42 @@ export interface components {
              *     the rest of the SCD2/audit columns are not.
              */
             last_seen_at: string;
+            /** @description Link to the host's own management interface. */
             management_url?: string | null;
+            /** @description Human-facing name for the host. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
+            /** @description Open ports on this host. */
             ports: components["schemas"]["Port"][];
+            /** @description Services running on this host. */
             services: components["schemas"]["Service"][];
+            /** @description How this host came to be known — discovered, imported, or created by hand. */
             source: components["schemas"]["EntitySource"];
+            /** @description SNMP sysContact — administrative contact as configured on the device. */
             sys_contact?: string | null;
+            /** @description SNMP sysDescr — the device's own description of itself. */
             sys_descr?: string | null;
+            /** @description SNMP sysLocation — physical location as configured on the device. */
             sys_location?: string | null;
+            /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
             sys_object_id?: string | null;
+            /** @description Tags assigned to this entity. */
             tags: string[];
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             updated_at: string;
-            virtualization?: null | components["schemas"]["HostVirtualization"];
+            virtualization_metadata?: null | components["schemas"]["HostVirtualization"];
+            /**
+             * Format: uuid
+             * @description The hypervisor service this VM runs on.
+             */
+            virtualization_service_id?: string | null;
         };
         /** HostVirtualization */
         HostVirtualization: {
@@ -6120,40 +7381,84 @@ export interface components {
          *     }
          */
         IPAddress: components["schemas"]["IPAddressBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The discovery that first observed this entity.
+             */
             readonly first_discovery_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The most recent discovery that observed this entity.
+             */
             readonly last_discovery_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When a discovery last observed this entity.
+             */
             readonly last_seen_at?: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Stable identifier shared by every revision of the same entity across its history.
+             */
             readonly lineage_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Start of the interval this revision was current for (SCD2 history).
+             */
             readonly valid_from?: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description End of the interval this revision was current for. `null` while it is the live revision.
+             */
             readonly valid_to?: string | null;
         };
         IPAddressBase: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host this entity belongs to.
+             */
             host_id: string;
+            /**
+             * @description IPv4 or IPv6 address.
+             * @example 192.168.1.10
+             */
             ip_address: string;
-            /** @description MAC address discovered from ARP, SNMP, or Docker - immutable once set */
+            /**
+             * @description MAC address discovered from ARP, SNMP, or Docker - immutable once set
+             * @example a4:bb:6d:12:34:56
+             */
             mac_address?: string | null;
+            /** @description Human-facing name for this IP address. */
             name: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
             /**
              * Format: int32
              * @description Position of this IP address in the host's IP address list (for ordering)
              */
             position?: number;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The subnet this entity belongs to.
+             */
             subnet_id: string;
         };
         /**
@@ -6167,8 +7472,17 @@ export interface components {
              * @description Client-provided UUID for this interface
              */
             id: string;
+            /**
+             * @description IPv4 or IPv6 address.
+             * @example 192.168.1.10
+             */
             ip_address: string;
+            /**
+             * @description MAC address, when known.
+             * @example a4:bb:6d:12:34:56
+             */
             mac_address?: string | null;
+            /** @description Human-facing name for this IP address. */
             name?: string | null;
             /**
              * Format: int32
@@ -6178,41 +7492,58 @@ export interface components {
              *     Must be all specified or all omitted across all ip_addresses in the request.
              */
             position?: number | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The subnet this entity belongs to.
+             */
             subnet_id: string;
         };
         /** @description Generic wrapper that gives any rule type a stable UUID identity. */
         IdentifiedRule_ContainerRule: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             id: string;
             /**
              * @description Rules that change which containers exist and how they nest.
              *     Container titles are data-driven (subnet CIDR, host names), not user-configurable.
              */
             rule: "BySubnet" | "MergeContainerBridges" | {
+                /** @description One container per application tag. */
                 ByApplication: {
+                    /** @description Application tags to draw containers for. Empty means every application tag. */
                     tag_ids?: string[];
                 };
             } | "ByHost";
         };
         /** @description Generic wrapper that gives any rule type a stable UUID identity. */
         IdentifiedRule_ElementRule: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             id: string;
             /** @description Rules that organize nodes within a container into sub-groups. */
             rule: {
+                /** @description One subcontainer per group of service categories. */
                 ByServiceCategory: {
+                    /** @description Service categories to group into this subcontainer. */
                     categories: components["schemas"]["ServiceCategory"][];
                     /**
                      * @description Set by the backend on the default infrastructure rule.
                      *     Frontend uses this to identify the infra container for auto-collapse.
                      */
                     readonly is_infra_rule?: boolean;
+                    /** @description Heading for the subcontainer. Defaults to the category name. */
                     title?: string | null;
                 };
             } | {
+                /** @description One subcontainer per group of tags. */
                 ByTag: {
+                    /** @description Tags to group into this subcontainer. */
                     tag_ids: string[];
+                    /** @description Heading for the subcontainer. Defaults to the tag name. */
                     title?: string | null;
                 };
             } | "ByHypervisor" | "ByContainerRuntime" | "ByStack" | "ByTrunkPort" | "ByVLAN" | "ByPortOpStatus";
@@ -6242,6 +7573,7 @@ export interface components {
              * @description Shared by all members of the visual group.
              */
             group_id: string;
+            /** @description Whether this entity heads the inline group or is a member of it. */
             role: components["schemas"]["InlineGroupRole"];
         };
         /**
@@ -6250,17 +7582,28 @@ export interface components {
          */
         InlineGroupRole: "Header" | "Member";
         /**
+         * @description How soon the enquirer wants to move.
+         * @enum {string}
+         */
+        InquiryTimeline: "immediately" | "1-3 months" | "3-6 months" | "exploring";
+        /**
          * @description Everything the UI needs to install (or reconfigure) a daemon, one field per install method so
          *     each is a first-class peer with its own content — no method is a special case bolted onto a
          *     list. The binary methods are ready-to-paste commands (any api key is the [`API_KEY_PLACEHOLDER`],
          *     filled in client-side); docker and msi carry their own structured content.
          */
         InstallArtifacts: {
+            /** @description Container image reference. */
             docker: components["schemas"]["DockerInstall"];
+            /** @description Download for FreeBSD. */
             freebsd: string;
+            /** @description Download for Linux. */
             linux: string;
+            /** @description Download for macOS. */
             macos: string;
+            /** @description Windows installer package. */
             msi: components["schemas"]["MsiInstall"];
+            /** @description Download for Windows. */
             windows: string;
         };
         /**
@@ -6287,46 +7630,86 @@ export interface components {
          *     sentinel; a local socket is just a credential whose type targets only the daemon host.
          */
         IntegrationTarget: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Credential to use on the daemon host.
+             */
             credential_id: string;
             /** @enum {string} */
             scope: "DaemonHost";
         } | {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Credential to use across the network.
+             */
             credential_id: string;
             /** @enum {string} */
             scope: "Network";
         } | {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Credential to use on the listed addresses.
+             */
             credential_id: string;
+            /** @description The host addresses this credential applies to. */
             ips: string[];
             /** @enum {string} */
             scope: "Hosts";
         };
         Interface: components["schemas"]["InterfaceBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The discovery that first observed this entity.
+             */
             readonly first_discovery_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The most recent discovery that observed this entity.
+             */
             readonly last_discovery_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When a discovery last observed this entity.
+             */
             readonly last_seen_at?: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Stable identifier shared by every revision of the same entity across its history.
+             */
             readonly lineage_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Start of the interval this revision was current for (SCD2 history).
+             */
             readonly valid_from?: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description End of the interval this revision was current for. `null` while it is the live revision.
+             */
             readonly valid_to?: string | null;
         };
         InterfaceBase: {
             /** @description SNMP ifAdminStatus: 1=up, 2=down, 3=testing */
             admin_status: components["schemas"]["IfAdminStatus"];
-            /** @description Remote management IP from CDP (cdpCacheAddress) */
+            /**
+             * @description Remote management IP from CDP (cdpCacheAddress). IPv4 or IPv6.
+             * @example 192.168.1.1
+             */
             cdp_address?: string | null;
             /** @description Remote device ID from CDP (typically hostname, locally unique) */
             cdp_device_id?: string | null;
@@ -6340,7 +7723,10 @@ export interface components {
              *     Multi-MAC ports indicate uplinks where LLDP/CDP is the better source.
              */
             fdb_macs?: string[] | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host this entity belongs to.
+             */
             host_id: string;
             /** @description SNMP ifAlias - user-configured description */
             if_alias?: string | null;
@@ -6365,7 +7751,10 @@ export interface components {
              */
             ip_address_id?: string | null;
             lldp_chassis_id?: null | components["schemas"]["LldpChassisId"];
-            /** @description Remote management IP from LLDP neighbor (lldpRemManAddr) */
+            /**
+             * @description Remote management IP from LLDP neighbor (lldpRemManAddr). IPv4 or IPv6.
+             * @example 192.168.1.1
+             */
             lldp_mgmt_addr?: string | null;
             /** @description Remote port description from LLDP neighbor (lldpRemPortDesc) */
             lldp_port_desc?: string | null;
@@ -6374,7 +7763,10 @@ export interface components {
             lldp_sys_desc?: string | null;
             /** @description Remote system name from LLDP neighbor (lldpRemSysName) */
             lldp_sys_name?: string | null;
-            /** @description MAC address from SNMP ifPhysAddress - immutable once set */
+            /**
+             * @description MAC address from SNMP ifPhysAddress - immutable once set
+             * @example a4:bb:6d:12:34:56
+             */
             mac_address?: string | null;
             /**
              * Format: uuid
@@ -6382,7 +7774,10 @@ export interface components {
              */
             native_vlan_id?: string | null;
             neighbor?: null | components["schemas"]["Neighbor"];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
             /** @description SNMP ifOperStatus: 1=up, 2=down, 3=testing, 4=unknown, 5=dormant, 6=notPresent, 7=lowerLayerDown */
             oper_status: components["schemas"]["IfOperStatus"];
@@ -6445,7 +7840,10 @@ export interface components {
              * @description Optional FK to Interface - links this SNMP port to its IP assignment
              */
             ip_address_id?: string | null;
-            /** @description MAC address from SNMP ifPhysAddress */
+            /**
+             * @description MAC address from SNMP ifPhysAddress
+             * @example a4:bb:6d:12:34:56
+             */
             mac_address?: string | null;
             oper_status?: null | components["schemas"]["IfOperStatus"];
             /**
@@ -6455,28 +7853,51 @@ export interface components {
             speed_bps?: number | null;
         };
         Invite: components["schemas"]["InviteBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         InviteBase: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description User who sent the invite.
+             */
             created_by: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record stops being valid.
+             */
             expires_at: string;
+            /** @description The networks this entity applies to. */
             network_ids: string[];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The organization that owns this record.
+             */
             organization_id: string;
+            /** @description Role the invited user gets on acceptance. */
             permissions: components["schemas"]["UserOrgPermissions"];
             /** @description Optional email address to send the invite to */
             send_to: string | null;
+            /** @description Link the recipient follows to accept the invite. */
             url: string;
         };
         Ixy: {
+            /** @description Horizontal position, which may be negative. */
             x: number;
+            /** @description Vertical position, which may be negative. */
             y: number;
         };
         /**
@@ -6491,8 +7912,14 @@ export interface components {
          *     `Vec<Subnet>` channel instead and leave this empty.
          */
         LegacyCapabilities: {
+            /** @description Subnets the daemon has an interface on, as reported by older daemons. */
             interfaced_subnet_ids: string[];
         };
+        /**
+         * @description Runtime license state as reported by the public config endpoint.
+         * @enum {string}
+         */
+        LicenseStatusDiscriminants: "valid" | "expired" | "invalid";
         /**
          * @description LLDP Chassis ID subtypes per IEEE 802.1AB.
          *
@@ -6578,18 +8005,28 @@ export interface components {
         };
         /** @description Login request from client */
         LoginRequest: {
-            /** Format: email */
+            /**
+             * Format: email
+             * @description Email address of the account to sign in to.
+             */
             email: string;
+            /**
+             * Format: password
+             * @description The account password.
+             */
             password: string;
         };
         /** @enum {string} */
         MatchConfidence: "NotApplicable" | "Low" | "Medium" | "High" | "Certain";
         MatchDetails: {
+            /** @description How strong the match is. */
             confidence: components["schemas"]["MatchConfidence"];
+            /** @description Why the service was matched to this definition. */
             reason: components["schemas"]["MatchReason"];
         };
         /** @description Match reason - either a simple reason string or a container with nested reasons */
         MatchReason: {
+            /** @description Why the service was matched. */
             data: string;
             /** @enum {string} */
             type: "reason";
@@ -6654,7 +8091,10 @@ export interface components {
          *     }
          */
         Network: components["schemas"]["NetworkBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
             /**
              * Format: int64
@@ -6666,16 +8106,26 @@ export interface components {
              *     and a host could read stale in the app but current in the digest email.
              */
             readonly effective_stale_after_hours?: number;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         NetworkBase: {
             /** @description Credential IDs associated with this network (hydrated from junction table). */
             credential_ids: string[];
+            /** @description Human-facing name for this network. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The organization that owns this record.
+             */
             organization_id: string;
             /**
              * Format: int64
@@ -6687,31 +8137,55 @@ export interface components {
              *     cadence, and cadence is a property of a network's discoveries.
              */
             stale_after_hours: number | null;
+            /** @description Tags assigned to this entity. */
             tags: string[];
         };
         /** @description Network configuration for setup */
         NetworkSetup: {
+            /** @description Name for the network created during setup. */
             name: string;
         };
         /** @description Per-network summary of entity counts */
         NetworkSummary: {
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Daemons assigned to this network.
+             */
             daemon_count: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Hosts currently discovered on this network.
+             */
             host_count: number;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             id: string;
+            /** @description Name of the network. */
             name: string;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Services currently discovered on this network.
+             */
             service_count: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Subnets currently known on this network.
+             */
             subnet_count: number;
         };
         Node: components["schemas"]["NodeType"] & {
+            /** @description Heading drawn at the top of a container node. */
             header?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             id: string;
+            /** @description Where the node sits in the layout. */
             position: components["schemas"]["Ixy"];
+            /** @description Width and height of the node. */
             size: components["schemas"]["Uxy"];
         };
         NodeType: {
@@ -6720,8 +8194,8 @@ export interface components {
              *     Used by Hypervisor and Stack subcontainers to show the service's logo.
              */
             associated_service_definition?: string | null;
-            /** @description Display color name (set by graph builder from the source entity, e.g. subnet type) */
-            color?: string | null;
+            color?: null | components["schemas"]["Color"];
+            /** @description What this container groups — a host, a subnet, an application, and so on. */
             container_type?: components["schemas"]["ContainerType"];
             /**
              * Format: uuid
@@ -6738,7 +8212,10 @@ export interface components {
             icon?: string | null;
             /** @enum {string} */
             node_type: "Container";
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Container this one nests inside, for subcontainers.
+             */
             parent_container_id?: string | null;
             /**
              * @description When true, this container accepts edges with `will_target_container`, causing
@@ -6746,9 +8223,15 @@ export interface components {
              */
             will_accept_edges?: boolean;
         } | (components["schemas"]["ElementEntityType"] & {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Container this element is drawn inside.
+             */
             container_id?: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Host the element belongs to.
+             */
             host_id: string;
             /**
              * @description Visual grouping metadata for services inlined on this element.
@@ -6761,8 +8244,11 @@ export interface components {
             node_type: "Element";
         });
         OidcProviderMetadata: {
+            /** @description Logo to show on the login button, when the provider has one configured. */
             logo?: string | null;
+            /** @description Display name of the identity provider, shown on the login button. */
             name: string;
+            /** @description URL-safe identifier used in the provider's login and link endpoints. */
             slug: string;
         };
         /** @description Network data in onboarding state response */
@@ -6793,6 +8279,7 @@ export interface components {
         };
         /** @description Request to save onboarding step */
         OnboardingStepRequest: {
+            /** @description Identifier of the onboarding step the user has reached. */
             step: string;
             use_case?: null | components["schemas"]["UseCase"];
         };
@@ -6802,11 +8289,20 @@ export interface components {
          */
         OrderDirection: "asc" | "desc";
         Organization: components["schemas"]["OrganizationBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         OrganizationBase: {
@@ -6824,6 +8320,7 @@ export interface components {
              *     value without a code change.
              */
             readonly discount_save_offer_percent_off?: number | null;
+            /** @description Whether a payment method is on file. */
             readonly has_payment_method?: boolean;
             /**
              * Format: date-time
@@ -6845,6 +8342,7 @@ export interface components {
              *     rolling pause cooldown.
              */
             readonly last_paused_at?: string | null;
+            /** @description Human-facing name for this organization. */
             name: string;
             /**
              * Format: date-time
@@ -6857,10 +8355,14 @@ export interface components {
              *     stale or meaningless).
              */
             readonly next_renewal_at?: string | null;
+            /** @description Progress through first-run setup. */
             onboarding: components["schemas"]["OnboardingOperationDiscriminants"][];
             plan: null | components["schemas"]["BillingPlan"];
             plan_status: null | components["schemas"]["PlanStatus"];
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the free trial ends, if one is running.
+             */
             readonly trial_end_date?: string | null;
             /** @description Whether the org has used its one-time trial-extend perk. */
             readonly trial_extended_used?: boolean;
@@ -6877,7 +8379,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.7"
+         *       "server_version": "0.17.8"
          *     }
          */
         PaginatedApiMeta: {
@@ -6890,30 +8392,50 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.7
+             * @example 0.17.8
              */
             server_version: string;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_Credential: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: (components["schemas"]["CredentialBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_DaemonResponse: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: (components["schemas"]["DaemonBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 id: string;
                 /**
                  * @description Subnets this daemon has interfaces on, loaded from the
@@ -6921,51 +8443,90 @@ export interface components {
                  *     `capabilities.interfaced_subnet_ids` JSONB field).
                  */
                 interfaced_subnet_ids: string[];
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 updated_at: string;
                 /** @description Computed version status including health and warnings */
                 version_status: components["schemas"]["DaemonVersionStatus"];
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_Dependency: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: (components["schemas"]["DependencyBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_Discovery: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: (components["schemas"]["DiscoveryBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
                 /** @description When true, the next scan will be a full port scan regardless of interval */
                 force_full_scan?: boolean;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
                 /**
-                 * @description Per-daemon integration targeting: which integrations (credentialed or credential-less
-                 *     local) run on this daemon, and on which IPs. Delivered via the init command at
-                 *     registration and editable via the discovery modal. Persistent — re-applied every scan.
-                 *     This is the single home for cred↔IP targeting; it replaces the global
-                 *     `credential.target_ips` (race-prone, consumed once) and the discovery modal's old
-                 *     one-shot `pending_credential_ids`.
+                 * @description Per-daemon integration targeting: which integrations run on this daemon, and on which
+                 *     IPs. Delivered via the init command at registration and editable via the discovery
+                 *     modal. This is the single home for cred↔IP targeting; it replaces the global
+                 *     `credential.target_ips` (race-prone, consumed once).
+                 *
+                 *     One-shot: a target is offered to the daemon until a scan completes successfully, then
+                 *     dropped by [`Discovery::apply_successful_scan`]. Credentials that earned a durable home
+                 *     during the scan keep being retried from there — `host_credentials` for one that probed
+                 *     successfully, `network_credentials` for a broadcast one (see
+                 *     [`Discovery::take_network_scope_credential_ids`]).
                  */
                 integration_targets: components["schemas"]["IntegrationTarget"][];
                 /**
@@ -6973,27 +8534,46 @@ export interface components {
                  * @description Number of completed scans (incremented by server on session completion)
                  */
                 readonly scan_count?: number;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_HostResponse: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: {
+                /** @description LLDP chassis identifier, used to match the host to its neighbours. */
                 chassis_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 created_at: string;
+                /** @description Credentials assigned to scan this host. */
                 credential_assignments?: components["schemas"]["CredentialAssignment"][];
+                /** @description Free-text notes about the host. */
                 description?: string | null;
+                /** @description Whether the host is hidden from topology views. */
                 hidden: boolean;
+                /** @description Hostname as resolved or reported by the host. */
                 hostname?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 id: string;
                 /** @description SNMP ifTable entries */
                 interfaces: components["schemas"]["Interface"][];
+                /** @description IP addresses on this host. */
                 ip_addresses: components["schemas"]["IPAddress"][];
                 /**
                  * Format: date-time
@@ -7002,164 +8582,342 @@ export interface components {
                  *     the rest of the SCD2/audit columns are not.
                  */
                 last_seen_at: string;
+                /** @description Link to the host's own management interface. */
                 management_url?: string | null;
+                /** @description Human-facing name for the host. */
                 name: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The network this entity belongs to.
+                 */
                 network_id: string;
+                /** @description Open ports on this host. */
                 ports: components["schemas"]["Port"][];
+                /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
+                /** @description How this host came to be known — discovered, imported, or created by hand. */
                 source: components["schemas"]["EntitySource"];
+                /** @description SNMP sysContact — administrative contact as configured on the device. */
                 sys_contact?: string | null;
+                /** @description SNMP sysDescr — the device's own description of itself. */
                 sys_descr?: string | null;
+                /** @description SNMP sysLocation — physical location as configured on the device. */
                 sys_location?: string | null;
+                /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
                 sys_object_id?: string | null;
+                /** @description Tags assigned to this entity. */
                 tags: string[];
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 updated_at: string;
-                virtualization?: null | components["schemas"]["HostVirtualization"];
+                virtualization_metadata?: null | components["schemas"]["HostVirtualization"];
+                /**
+                 * Format: uuid
+                 * @description The hypervisor service this VM runs on.
+                 */
+                virtualization_service_id?: string | null;
             }[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_Service: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: (components["schemas"]["ServiceBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery that first observed this entity.
+                 */
                 readonly first_discovery_id?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The most recent discovery that observed this entity.
+                 */
                 readonly last_discovery_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When a discovery last observed this entity.
+                 */
                 readonly last_seen_at?: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_Subnet: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: (components["schemas"]["SubnetBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery that first observed this entity.
+                 */
                 readonly first_discovery_id?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The most recent discovery that observed this entity.
+                 */
                 readonly last_discovery_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When a discovery last observed this entity.
+                 */
                 readonly last_seen_at?: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_Tag: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: (components["schemas"]["TagBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_Topology: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: (components["schemas"]["TopologyBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_User: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: (components["schemas"]["UserBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_UserApiKey: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: (components["schemas"]["UserApiKeyBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /** @description Response type for paginated list endpoints (pagination is always present in meta) */
         PaginatedApiResponse_Vlan: {
+            /** @description The page of results. Empty when nothing matched the query. */
             data: (components["schemas"]["VlanBase"] & {
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was first created.
+                 */
                 readonly created_at: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The discovery that first observed this entity.
+                 */
                 readonly first_discovery_id?: string | null;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Server-assigned unique identifier.
+                 */
                 readonly id: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description The most recent discovery that observed this entity.
+                 */
                 readonly last_discovery_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When a discovery last observed this entity.
+                 */
                 readonly last_seen_at?: string;
-                /** Format: uuid */
+                /**
+                 * Format: uuid
+                 * @description Stable identifier shared by every revision of the same entity across its history.
+                 */
                 readonly lineage_id?: string | null;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description When this record was last modified.
+                 */
                 readonly updated_at: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description Start of the interval this revision was current for (SCD2 history).
+                 */
                 readonly valid_from?: string;
-                /** Format: date-time */
+                /**
+                 * Format: date-time
+                 * @description End of the interval this revision was current for. `null` while it is the live revision.
+                 */
                 readonly valid_to?: string | null;
             })[];
+            /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
+            /** @description API and server version metadata, plus pagination counters. */
             meta: components["schemas"]["PaginatedApiMeta"];
+            /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
         /**
@@ -7226,16 +8984,29 @@ export interface components {
          */
         PauseDuration: "days30" | "days60" | "days90";
         PauseSubscriptionRequest: {
+            /** @description How long to pause billing for, in days. */
             duration_days: components["schemas"]["PauseDuration"];
         };
         PlanConfig: {
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Fixed charge per billing period, in cents.
+             */
             base_cents: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Charge per host beyond `included_hosts`, in cents.
+             */
             host_cents?: number | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Hosts included before per-host charges apply.
+             */
             included_hosts?: number | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Networks included before per-network charges apply.
+             */
             included_networks?: number | null;
             /**
              * Format: int64
@@ -7245,14 +9016,27 @@ export interface components {
              *     existing stored plan JSON deserializes unchanged.
              */
             included_orgs?: number | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Seats included before per-seat charges apply.
+             */
             included_seats?: number | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Charge per network beyond `included_networks`, in cents.
+             */
             network_cents?: number | null;
+            /** @description Billing interval this configuration is priced for. */
             rate: components["schemas"]["BillingRate"];
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Charge per seat beyond `included_seats`, in cents.
+             */
             seat_cents?: number | null;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description Length of the free trial, in days. Zero when the plan has no trial.
+             */
             trial_days: number;
         };
         /**
@@ -7272,33 +9056,44 @@ export interface components {
         PlanStatus: "active" | "trialing" | "past_due" | "paused" | "pending_cancellation" | "cancelled";
         /** @description Plan usage limits and current counts */
         PlanUsage: {
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Hosts currently counted against the plan.
+             */
             host_count: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Hosts included in the current plan. `null` when unlimited.
+             */
             host_limit?: number | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Networks currently counted against the plan.
+             */
             network_count: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Networks included in the current plan. `null` when unlimited.
+             */
             network_limit?: number | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Seats currently in use.
+             */
             seat_count: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Seats included in the current plan. `null` when unlimited.
+             */
             seat_limit?: number | null;
         };
-        PodmanSubnetVirtualization: {
-            /**
-             * Format: uuid
-             * @description The Podman daemon service that owns this bridge network.
-             *     Different Podman daemons on different hosts = distinct bridge subnets.
-             */
-            service_id: string;
-        };
         PodmanVirtualization: {
+            /** @description Compose project the container belongs to, when it was started by Compose. */
             compose_project?: string | null;
+            /** @description Podman container ID. */
             container_id?: string | null;
+            /** @description Container name as reported by Podman. */
             container_name?: string | null;
-            /** Format: uuid */
-            service_id: string;
         };
         /**
          * @description Port entity with custom serialization that flattens PortType fields.
@@ -7320,30 +9115,63 @@ export interface components {
          *     }
          */
         Port: components["schemas"]["PortBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The discovery that first observed this entity.
+             */
             readonly first_discovery_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The most recent discovery that observed this entity.
+             */
             readonly last_discovery_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When a discovery last observed this entity.
+             */
             readonly last_seen_at?: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Stable identifier shared by every revision of the same entity across its history.
+             */
             readonly lineage_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Start of the interval this revision was current for (SCD2 history).
+             */
             readonly valid_from?: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description End of the interval this revision was current for. `null` while it is the live revision.
+             */
             readonly valid_to?: string | null;
         };
         /** @description The base data for a Port entity (everything except id, created_at, updated_at) */
         PortBase: components["schemas"]["PortType"] & {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host this entity belongs to.
+             */
             host_id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
         };
         /**
@@ -7367,15 +9195,24 @@ export interface components {
         };
         /** @description Port type with number, protocol, and optional type identifier */
         PortType: {
+            /** @description TCP or UDP port number */
             number: number;
-            /** @enum {string} */
+            /**
+             * @description Transport protocol the port is open on.
+             * @enum {string}
+             */
             protocol: "Udp" | "Tcp";
-            /** @description Auto-derived from number+protocol; optional on create */
-            type?: string;
+            /**
+             * @description Well-known port identifier. Auto-derived from number+protocol, so it is optional on create.
+             * @enum {string}
+             */
+            type?: "Ssh" | "Telnet" | "DnsUdp" | "DnsTcp" | "Samba" | "Nfs" | "Ftp" | "Ipp" | "LdpTcp" | "LdpUdp" | "Ldap" | "Ldaps" | "Kerberos" | "Snmp" | "SnmpAlt" | "Rdp" | "Ntp" | "Sip" | "SipTls" | "Rtsp" | "Dhcp" | "Http" | "MySql" | "PostgreSQL" | "MongoDB" | "Redis" | "MsSql" | "Docker" | "DockerTls" | "Kubernetes" | "RabbitMqMgmt" | "Cassandra" | "Elasticsearch" | "InfluxDb" | "CouchDb" | "Kafka" | "Http3000" | "Http5000" | "Http8080" | "Http8081" | "Http8082" | "Http8888" | "Http9000" | "Https" | "Https8443" | "Https9443" | "Https10443" | "Mqtt" | "MqttTls" | "AMQP" | "AMQPTls" | "Wireguard" | "OpenVPN" | "BACnet" | "JetDirect" | "Custom";
         };
         /** @description Request to update user profile (deferred marketing fields) */
         ProfileUpdateRequest: {
+            /** @description Company size bracket, collected during onboarding. */
             company_size?: string | null;
+            /** @description The user's job title, collected during onboarding. */
             job_title?: string | null;
         };
         /**
@@ -7437,21 +9274,26 @@ export interface components {
             /** @description The created daemon record (with version status). */
             daemon: components["schemas"]["DaemonResponse"];
             /**
+             * Format: password
              * @description The API key (plaintext) for daemon authentication.
              *     This is shown only once - store it securely.
              */
-            daemon_api_key: string;
+            readonly daemon_api_key: string;
         };
         ProxmoxVirtualization: {
-            /** Format: uuid */
-            service_id: string;
+            /** @description Proxmox VMID of the guest. */
             vm_id?: string | null;
+            /** @description Guest name as configured in Proxmox. */
             vm_name?: string | null;
         };
         PublicConfigResponse: {
+            /** @description Whether this deployment has billing configured. */
             billing_enabled: boolean;
+            /** @description How this instance is run: cloud, commercial self-hosted, or community. */
             deployment_type: components["schemas"]["DeploymentType"];
+            /** @description Whether email/password login is turned off, leaving OIDC as the only method. */
             disable_password_login: boolean;
+            /** @description Whether self-service sign-up is turned off on this deployment. */
             disable_registration: boolean;
             /**
              * @description `STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the
@@ -7459,10 +9301,14 @@ export interface components {
              *     doesn't see an option the deployment can't fulfil.
              */
             discount_save_offer_available: boolean;
+            /** @description Whether the deployment asks users to opt in to product email. */
             has_email_opt_in: boolean;
+            /** @description Whether outbound email is configured. Invites and password resets need it. */
             has_email_service: boolean;
+            /** @description Whether a daemon runs alongside the server, so no separate install is needed to start scanning. */
             has_integrated_daemon: boolean;
             /**
+             * Format: date
              * @description Hard expiry — the drop-dead date after which the server rejects
              *     the key. Referenced by the grace-period banner.
              */
@@ -7473,13 +9319,16 @@ export interface components {
              */
             license_in_grace_period: boolean;
             /**
+             * Format: date
              * @description User-visible expiry — the date displayed to end users under
              *     normal operation. 7 days earlier than `license_expiry` for keys
              *     issued after grace-period support landed.
              */
             license_intended_expiry?: string | null;
-            license_status?: string | null;
+            license_status?: null | components["schemas"]["LicenseStatusDiscriminants"];
+            /** @description Whether the client should show a cookie-consent prompt. */
             needs_cookie_consent: boolean;
+            /** @description Identity providers available on the login screen. */
             oidc_providers: components["schemas"]["OidcProviderMetadata"][];
             /**
              * @description True when this self-hosted instance has reached its licensed
@@ -7487,7 +9336,12 @@ export interface components {
              *     Always false on cloud (multi-tenant) and on unlimited-org plans.
              */
             org_limit_reached: boolean;
+            /** @description Public analytics key, when analytics is enabled. */
             posthog_key?: string | null;
+            /**
+             * Format: uri
+             * @description Base URL this server is reachable at, as configured by the operator.
+             */
             public_url: string;
             /**
              * Format: email
@@ -7495,7 +9349,10 @@ export interface components {
              *     from `SCANOPY_SERVER_ADMIN_CONTACT_EMAIL`.
              */
             server_admin_contact_email: string;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description Port this server listens on.
+             */
             server_port: number;
             /**
              * Format: int32
@@ -7521,34 +9378,60 @@ export interface components {
              *     First element is the default view.
              */
             enabled_views: components["schemas"]["TopologyView"][];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             id: string;
+            /** @description Human-facing name for this share. */
             name: string;
+            /** @description What the viewer can see and do. */
             options: components["schemas"]["ShareOptions"];
+            /** @description Whether a password must be supplied before the topology is returned. */
             requires_password: boolean;
         };
+        /**
+         * @description How a user first heard about Scanopy, as offered by the onboarding prompt.
+         * @enum {string}
+         */
+        ReferralSource: "search_engine" | "ai_assistant" | "youtube" | "tiktok" | "blog_article" | "reddit" | "hacker_news" | "social_media" | "word_of_mouth" | "proxmox_community_scripts" | "self_hosted" | "other" | "prefer_not_to_say";
         /** @description Request to submit referral source */
         ReferralSourceRequest: {
-            referral_source: string;
+            /** @description How the user heard about Scanopy. */
+            referral_source: components["schemas"]["ReferralSource"];
+            /** @description Free-text detail, sent when `referral_source` is `other`. */
             referral_source_other?: string | null;
         };
         /** @description Registration request from client */
         RegisterRequest: {
             /** @description Honeypot field for bot detection */
             company_url?: string | null;
-            /** Format: email */
+            /**
+             * Format: email
+             * @description Email address for the new account. Must be deliverable.
+             */
             email: string;
+            /** @description Whether the user agreed to receive product and marketing email. */
             marketing_opt_in?: boolean;
+            /**
+             * Format: password
+             * @description Password for the new account. Minimum 10 characters.
+             */
             password: string;
+            /** @description Must be `true` — records that the user accepted the terms of service. */
             terms_accepted: boolean;
         };
         RequestEmailChangeRequest: {
             /**
+             * Format: password
              * @description Current password — required if the user already has a password set.
              *     Not required for OIDC-only users.
              */
             current_password?: string | null;
-            /** Format: email */
+            /**
+             * Format: email
+             * @description Address to move the account to. A confirmation link is sent there.
+             */
             new_email: string;
         };
         /**
@@ -7586,28 +9469,45 @@ export interface components {
         };
         /** @description Request to resend verification email */
         ResendVerificationRequest: {
-            /** Format: email */
+            /**
+             * Format: email
+             * @description Address to resend the verification email to.
+             */
             email: string;
         };
         ResetPasswordRequest: {
+            /**
+             * Format: password
+             * @description The new password. Minimum 10 characters.
+             */
             password: string;
+            /** @description Single-use token from the password-reset email. */
             token: string;
         };
         RunType: {
+            /** @description Cron expression deciding when the scan runs. */
             cron_schedule: string;
+            /** @description Whether the schedule is active. */
             enabled: boolean;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the scan last ran.
+             */
             readonly last_run?: string | null;
             /** @description IANA timezone for cron evaluation, e.g. "America/New_York". None = UTC. */
             timezone?: string | null;
             /** @enum {string} */
             type: "Scheduled";
         } | {
+            /** @description The recorded outcome of the run. */
             results: components["schemas"]["DiscoveryUpdatePayload"];
             /** @enum {string} */
             type: "Historical";
         } | {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the scan last ran.
+             */
             readonly last_run?: string | null;
             /** @enum {string} */
             type: "AdHoc";
@@ -7633,12 +9533,22 @@ export interface components {
          *     thinks in terms of "my next renewal on {date}."
          */
         SaveOfferCoupon: {
+            /** @description Billing interval the discount applies to. */
             billing_rate: components["schemas"]["BillingRate"];
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description How many months the discount lasts.
+             */
             duration_in_months: number;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the discounted subscription next renews.
+             */
             next_renewal_at: string;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Discount applied by the retention offer.
+             */
             percent_off: number;
         };
         /**
@@ -7718,23 +9628,33 @@ export interface components {
          *     EntityBuffer with canonical (server-assigned) IDs.
          */
         ScannedEntityIds: {
+            /** @description Service bindings touched by this discovery. */
             binding_ids?: string[];
+            /** @description Hosts touched by this discovery. */
             host_ids?: string[];
+            /** @description Interfaces touched by this discovery. */
             interface_ids?: string[];
+            /** @description IP addresses touched by this discovery. */
             ip_address_ids?: string[];
+            /** @description Ports touched by this discovery. */
             port_ids?: string[];
+            /** @description Services touched by this discovery. */
             service_ids?: string[];
+            /** @description Subnets touched by this discovery. */
             subnet_ids?: string[];
+            /** @description VLANs touched by this discovery. */
             vlan_ids?: string[];
         };
         /** @description Secret value that can be either inline content or a file path on the daemon host. */
         SecretValue: {
             /** @enum {string} */
             mode: "Inline";
+            /** @description The secret itself. Write-only — reads return a redacted placeholder. */
             value: string;
         } | {
             /** @enum {string} */
             mode: "FilePath";
+            /** @description Path to a file on the daemon host holding the secret. */
             path: string;
         };
         /** @description Server capabilities returned on startup/registration */
@@ -7750,19 +9670,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-29T01:29:50.375430Z",
+         *           "created_at": "2026-08-03T19:06:30.671574Z",
          *           "first_discovery_id": null,
-         *           "id": "4ae62916-3ed9-45e3-b466-086b827eaa1b",
+         *           "id": "092afe22-97f8-4bc4-a103-569782d4393f",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-29T01:29:50.375430Z",
+         *           "last_seen_at": "2026-08-03T19:06:30.671574Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-29T01:29:50.375430Z",
-         *           "valid_from": "2026-07-29T01:29:50.375430Z",
+         *           "updated_at": "2026-08-03T19:06:30.671574Z",
+         *           "valid_from": "2026-08-03T19:06:30.671574Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7776,7 +9696,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "MySQL",
+         *       "service_definition": "Tasmota",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7784,46 +9704,90 @@ export interface components {
          *       "updated_at": "2026-01-15T10:30:00Z",
          *       "valid_from": "2026-01-15T10:30:00Z",
          *       "valid_to": null,
-         *       "virtualization": null
+         *       "virtualization_metadata": null,
+         *       "virtualization_service_id": null
          *     }
          */
         Service: components["schemas"]["ServiceBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The discovery that first observed this entity.
+             */
             readonly first_discovery_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The most recent discovery that observed this entity.
+             */
             readonly last_discovery_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When a discovery last observed this entity.
+             */
             readonly last_seen_at?: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Stable identifier shared by every revision of the same entity across its history.
+             */
             readonly lineage_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Start of the interval this revision was current for (SCD2 history).
+             */
             readonly valid_from?: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description End of the interval this revision was current for. `null` while it is the live revision.
+             */
             readonly valid_to?: string | null;
         };
         ServiceBase: {
+            /** @description Ports and IP addresses this service is reachable on. */
             bindings: components["schemas"]["Binding"][];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The host this entity belongs to.
+             */
             host_id: string;
+            /** @description Human-facing name for the service. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
             /**
              * Format: int32
              * @description Position of this service in the host's service list (for ordering)
              */
             position: number;
+            /** @description Which known software this service is, if identified. */
             service_definition: string;
             /** @description Will be automatically set to Manual for creation through API */
             source: components["schemas"]["EntitySource"];
+            /** @description Tags assigned to this entity. */
             tags: string[];
-            virtualization?: null | components["schemas"]["ServiceVirtualization"];
+            virtualization_metadata?: null | components["schemas"]["ServiceVirtualization"];
+            /**
+             * Format: uuid
+             * @description The container runtime service hosting this container — see the note on
+             *     `HostBase::virtualization_service_id`.
+             */
+            virtualization_service_id: string | null;
         };
         /** @enum {string} */
         ServiceCategory: "NetworkCore" | "NetworkAccess" | "NetworkAppliance" | "RemoteAccess" | "Storage" | "Backup" | "Media" | "HomeAutomation" | "Hypervisor" | "ContainerRuntime" | "Container" | "Orchestrator" | "DNS" | "VPN" | "Monitoring" | "AdBlock" | "ReverseProxy" | "Workstation" | "Mobile" | "IoT" | "Printer" | "Database" | "Development" | "Dashboard" | "MessageQueue" | "IdentityAndAccess" | "Integration" | "Office" | "ProjectManagement" | "Messaging" | "Conferencing" | "Telephony" | "Email" | "Publishing" | "Unknown" | "Custom" | "Scanopy" | "OpenPorts";
@@ -7854,7 +9818,12 @@ export interface components {
             service_definition: string;
             /** @description Tags for categorization */
             tags?: string[];
-            virtualization?: null | components["schemas"]["ServiceVirtualization"];
+            virtualization_metadata?: null | components["schemas"]["ServiceVirtualization"];
+            /**
+             * Format: uuid
+             * @description The container runtime service hosting this container, if any.
+             */
+            virtualization_service_id?: string | null;
         };
         /**
          * @description Fields that services can be ordered/grouped by.
@@ -7888,24 +9857,39 @@ export interface components {
          *     Payment Element uses to collect and confirm a card in-app.
          */
         SetupIntentResponse: {
+            /** @description Stripe SetupIntent client secret, used to mount the Payment Element. */
             client_secret: string;
         };
         /** @description Setup request for pre-registration org/network configuration */
         SetupRequest: {
+            /** @description The first network to create alongside the organization. */
             network: components["schemas"]["NetworkSetup"];
+            /** @description Name for the organization created during setup. */
             organization_name: string;
         };
         /** @description Response from setup endpoint */
         SetupResponse: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
         };
         Share: components["schemas"]["ShareBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         /**
@@ -7915,13 +9899,21 @@ export interface components {
          *     the share password implicitly invalidates all outstanding tokens.
          */
         ShareAccessTokenResponse: {
+            /** @description Bearer token granting access to this share for the rest of the session. */
             access_token: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record stops being valid.
+             */
             expires_at: string;
         };
         ShareBase: {
+            /** @description Domains permitted to embed this share. Empty means no restriction. */
             allowed_domains: string[] | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description User who created the share.
+             */
             created_by: string;
             /**
              * @description Which topology views are enabled for this share.
@@ -7929,44 +9921,79 @@ export interface components {
              *     First element is the default view shown on load.
              */
             enabled_views: components["schemas"]["TopologyView"][] | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record stops being valid.
+             */
             expires_at: string | null;
+            /** @description Whether the link still resolves. Disabled shares return 404. */
             is_enabled: boolean;
+            /** @description Human-facing name for this share. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
+            /** @description What the viewer can see and do. */
             options: components["schemas"]["ShareOptions"];
             /**
+             * Format: password
              * @description Plaintext password on ingest; redacted sentinel (`"********"`) or `None` on egress.
              *     Never stored — `password_hash` is the DB column. Wrapped in `SecretString` so
              *     `Debug`/logging shows `[REDACTED]` during the window between request
              *     deserialization and hashing.
              */
             password?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The topology this share exposes.
+             */
             topology_id: string;
         };
         /** @description Share display options */
         ShareOptions: {
+            /** @description Viewer sees the export button. */
             show_export_button: boolean;
+            /** @description Viewer can open the inspector for a selected element. */
             show_inspect_panel: boolean;
+            /** @description Viewer sees the minimap. */
             show_minimap: boolean;
+            /** @description Viewer sees the zoom controls. */
             show_zoom_controls: boolean;
         };
         Snapshot: components["schemas"]["SnapshotBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         SnapshotBase: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description User who took the snapshot.
+             */
             created_by_user_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description The point in time this snapshot captures.
+             */
             taken_at: string;
         };
         /**
@@ -8001,40 +10028,89 @@ export interface components {
          *       "tags": [],
          *       "updated_at": "2026-01-15T10:30:00Z",
          *       "valid_from": "2026-01-15T10:30:00Z",
-         *       "valid_to": null
+         *       "valid_to": null,
+         *       "virtualization_service_id": null
          *     }
          */
         Subnet: components["schemas"]["SubnetBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The discovery that first observed this entity.
+             */
             readonly first_discovery_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The most recent discovery that observed this entity.
+             */
             readonly last_discovery_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When a discovery last observed this entity.
+             */
             readonly last_seen_at?: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Stable identifier shared by every revision of the same entity across its history.
+             */
             readonly lineage_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Start of the interval this revision was current for (SCD2 history).
+             */
             readonly valid_from?: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description End of the interval this revision was current for. `null` while it is the live revision.
+             */
             readonly valid_to?: string | null;
         };
         SubnetBase: {
+            /**
+             * @description Subnet in CIDR notation, IPv4 or IPv6.
+             * @example 192.168.1.0/24
+             */
             cidr: string;
+            /** @description Free-text notes about the subnet. */
             description?: string | null;
+            /** @description Human-facing name for this subnet. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
             /** @description Will be automatically set to Manual for creation through API */
             source: components["schemas"]["EntitySource"];
+            /** @description What kind of subnet this is — physical, virtual, container bridge, and so on. */
             subnet_type: components["schemas"]["SubnetType"];
+            /** @description Tags assigned to this entity. */
             tags: string[];
-            virtualization?: null | components["schemas"]["SubnetVirtualization"];
+            /**
+             * Format: uuid
+             * @description The container runtime service that owns this bridge network.
+             *
+             *     Load-bearing for dedup: the same CIDR on two different Docker daemons is two distinct
+             *     subnets, so bridge rows only merge when this matches as well as the CIDR and network.
+             *     A foreign key rather than a field inside a JSONB blob because a stale value here is
+             *     precisely what made a scan add a duplicate bridge row every time (GH #650) — now it
+             *     cannot be written at all.
+             */
+            virtualization_service_id: string | null;
         };
         /**
          * @description Fields that subnets can be ordered/grouped by.
@@ -8043,18 +10119,6 @@ export interface components {
         SubnetOrderField: "created_at" | "name" | "cidr" | "subnet_type" | "updated_at" | "network_id" | "last_seen_at";
         /** @enum {string} */
         SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "Unknown";
-        /**
-         * @description Virtualization metadata for subnets that belong to a virtual infrastructure.
-         *     Consistent with HostVirtualization and ServiceVirtualization patterns.
-         *     Points to the service that provides the virtualization (e.g., Docker daemon).
-         */
-        SubnetVirtualization: (components["schemas"]["DockerSubnetVirtualization"] & {
-            /** @enum {string} */
-            type: "Docker";
-        }) | (components["schemas"]["PodmanSubnetVirtualization"] & {
-            /** @enum {string} */
-            type: "Podman";
-        });
         /**
          * @example {
          *       "color": "Green",
@@ -8071,25 +10135,50 @@ export interface components {
          *     }
          */
         Tag: components["schemas"]["TagBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Stable identifier shared by every revision of the same entity across its history.
+             */
             readonly lineage_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Start of the interval this revision was current for (SCD2 history).
+             */
             readonly valid_from?: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description End of the interval this revision was current for. `null` while it is the live revision.
+             */
             readonly valid_to?: string | null;
         };
         TagBase: {
+            /** @description Colour the tag is drawn in. */
             color: components["schemas"]["Color"];
+            /** @description Free-text notes about the tag. */
             description?: string | null;
+            /** @description Whether this tag groups an application, so it drives the application view. */
             is_application?: boolean;
+            /** @description Human-facing name for this tag. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The organization that owns this record.
+             */
             organization_id: string;
         };
         /**
@@ -8097,6 +10186,11 @@ export interface components {
          * @enum {string}
          */
         TagOrderField: "created_at" | "name" | "color" | "updated_at" | "is_application";
+        /**
+         * @description Company size bracket offered by the plan-inquiry form.
+         * @enum {string}
+         */
+        TeamSize: "1-10" | "11-25" | "26-50" | "51-100" | "101-250" | "251-500" | "501-1000" | "1001+";
         /** @description Request to test reachability of a daemon URL. */
         TestReachabilityRequest: {
             /** @description If true, also perform an HTTP GET to {url}/health after the TCP check */
@@ -8114,16 +10208,29 @@ export interface components {
             reachable: boolean;
         };
         Topology: components["schemas"]["TopologyBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         TopologyBase: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
+            /** @description Saved layout and view settings for this topology. */
             options: components["schemas"]["TopologyOptions"];
         };
         /**
@@ -8146,13 +10253,19 @@ export interface components {
              *     snapshot — while the live view shows all views with setup prompts.
              */
             available_views?: components["schemas"]["TopologyView"][];
+            /** @description Service bindings included in this topology. */
             bindings: components["schemas"]["Binding"][];
+            /** @description Dependencies included in this topology. */
             dependencies: components["schemas"]["Dependency"][];
+            /** @description Connections between the nodes of the built graph. */
             edges?: {
                 [key: string]: components["schemas"]["Edge"][];
             };
+            /** @description Hosts included in this topology. */
             hosts: components["schemas"]["Host"][];
+            /** @description Interfaces included in this topology. */
             interfaces: components["schemas"]["Interface"][];
+            /** @description IP addresses included in this topology. */
             ip_addresses: components["schemas"]["IPAddress"][];
             /**
              * @description Per-view graph built on request from the entities above + grouping
@@ -8162,24 +10275,39 @@ export interface components {
             nodes?: {
                 [key: string]: components["schemas"]["Node"][];
             };
+            /** @description Ports included in this topology. */
             ports: components["schemas"]["Port"][];
+            /** @description Services included in this topology. */
             services: components["schemas"]["Service"][];
+            /** @description Subnets included in this topology. */
             subnets: components["schemas"]["Subnet"][];
+            /** @description Tags assigned to this entity. */
             tags: components["schemas"]["Tag"][];
+            /** @description VLANs included in this topology. */
             vlans: components["schemas"]["Vlan"][];
         };
         TopologyLocalOptions: {
-            /** @default true */
+            /**
+             * @description Collapse parallel edges between the same pair of nodes into one.
+             * @default true
+             */
             bundle_edges: boolean;
             /**
+             * @description Edge types to leave out of the drawing.
              * @default [
              *       "Hypervisor"
              *     ]
              */
             hide_edge_types: components["schemas"]["EdgeTypeDiscriminants"][];
-            /** @default false */
+            /**
+             * @description Keep unrelated edges at full opacity when something is selected.
+             * @default false
+             */
             no_fade_edges: boolean;
-            /** @default true */
+            /**
+             * @description Show the minimap.
+             * @default true
+             */
             show_minimap: boolean;
             /**
              * @default {
@@ -8191,15 +10319,18 @@ export interface components {
             tag_filter: components["schemas"]["TopologyTagFilter"];
         };
         TopologyOptions: {
+            /** @description Settings applied in the viewer, which do not change what the server returns. */
             local: components["schemas"]["TopologyLocalOptions"];
+            /** @description Settings that change how the server builds the graph. */
             request: components["schemas"]["TopologyRequestOptions"];
         };
         TopologyRequestOptions: {
             /**
+             * @description Rules deciding how nodes are grouped into containers.
              * @default {
              *       "Application": [
              *         {
-             *           "id": "e2d80d2a-921c-4496-9487-42a825ce0bea",
+             *           "id": "a84691d3-74d0-4967-ae76-cf510fb432a7",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -8209,23 +10340,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "2fdfd835-9148-46db-8659-a0175129c885",
+             *           "id": "b49472d1-1cd4-4340-b9d2-19674a0cfedb",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "476d1d97-9824-4f6d-a309-c64255a18717",
+             *           "id": "31d4c8e7-77be-449c-b2f9-0ab5836924f8",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "0165e666-580a-4708-a8fa-ebb9336cca4a",
+             *           "id": "9675598e-a790-4199-a294-66a36ee34c5e",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "2fdfd835-9148-46db-8659-a0175129c885",
+             *           "id": "b49472d1-1cd4-4340-b9d2-19674a0cfedb",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -8235,21 +10366,22 @@ export interface components {
                 [key: string]: components["schemas"]["IdentifiedRule_ContainerRule"][];
             };
             /**
+             * @description Rules deciding how entities are placed and inlined within containers.
              * @default [
              *       {
-             *         "id": "09b47623-2b40-4a9d-b700-4f1e70c89f36",
+             *         "id": "283ff095-7f0c-4c8d-a63e-8be4e9a7bb61",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "b1a31f9d-f3a2-40f6-960c-4606b62bfd35",
+             *         "id": "b4f0758b-ce9a-43ac-802a-e1f385b65079",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "2d027190-f314-45da-9e01-773f5dd12625",
+             *         "id": "3a622453-ccf7-45dd-b4f3-e6b3ffb33e51",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "cdf4b65e-a765-4ab0-992d-4a927aea7f41",
+             *         "id": "9ac43a4b-758c-4052-a760-4cff987bfea3",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -8267,7 +10399,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "7cb2d807-033d-412c-acb3-06c2aa3f8d10",
+             *         "id": "f9f4444e-f370-44c7-9247-548c0dceb468",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -8276,15 +10408,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "7ad49b15-b237-4239-816d-19658f4080a9",
+             *         "id": "c760800f-c45d-4ad1-91ab-ece194327a05",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "15cc6e3c-ded9-4c56-8b9a-016bd94b4705",
+             *         "id": "0471f9e4-1610-4734-9dca-540b2d871dc5",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "359f5798-dfa1-4d43-993c-6661aa7da07b",
+             *         "id": "88ce46ee-7577-47c3-b8f9-e1ec4944f66b",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -8361,6 +10493,8 @@ export interface components {
         TopologyView: "L2Physical" | "L3Logical" | "Workloads" | "Application";
         /** @enum {string} */
         TransportProtocol: "Udp" | "Tcp";
+        /** @description No payload. Present only so the envelope keeps its shape. */
+        TupleUnit: Record<string, never>;
         /**
          * @description Request type for updating a host with its children.
          *     Uses the same input types as CreateHostRequest.
@@ -8372,15 +10506,21 @@ export interface components {
              *     If provided, replaces all existing credential assignments.
              */
             credential_assignments?: components["schemas"]["CredentialAssignment"][] | null;
+            /** @description Free-text notes about the host. */
             description?: string | null;
             /**
              * Format: date-time
              * @description Optional: expected updated_at timestamp for optimistic locking.
              */
             expected_updated_at?: string | null;
+            /** @description Hide the host from topology views without deleting it. */
             hidden: boolean;
+            /** @description Hostname as resolved or reported by the host. */
             hostname?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             id: string;
             /**
              * @description Interfaces to sync with this host.
@@ -8388,6 +10528,7 @@ export interface components {
              *     If None, existing ip_addresses are preserved.
              */
             ip_addresses?: components["schemas"]["IPAddressInput"][] | null;
+            /** @description Human-facing name for the host. */
             name: string;
             /**
              * @description Ports to sync with this host.
@@ -8401,51 +10542,96 @@ export interface components {
              *     If None, existing services are preserved.
              */
             services?: components["schemas"]["ServiceInput"][] | null;
+            /** @description Tags assigned to this entity. */
             tags: string[];
-            virtualization?: null | components["schemas"]["HostVirtualization"];
+            virtualization_metadata?: null | components["schemas"]["HostVirtualization"];
+            /**
+             * Format: uuid
+             * @description The hypervisor service this VM runs on.
+             */
+            virtualization_service_id?: string | null;
         };
         UpdatePasswordRequest: {
             /**
+             * Format: password
              * @description Current password — required if the user already has a password set.
              *     Not required for OIDC-only users adding their first password.
              */
             current_password?: string | null;
-            /** @description New password to set */
+            /**
+             * Format: password
+             * @description New password to set
+             */
             new_password: string;
         };
         /** @enum {string} */
         UseCase: "homelab" | "internal_it" | "msp" | "other";
         User: components["schemas"]["UserBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         UserApiKey: components["schemas"]["UserApiKeyBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
         };
         UserApiKeyBase: {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record stops being valid.
+             */
             expires_at?: string | null;
+            /** @description Whether the key may still be used. Disabled keys are rejected. */
             is_enabled?: boolean;
+            /** @description The stored key. Returned redacted except on creation and rotation. */
             readonly key: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this key was last used to authenticate.
+             */
             readonly last_used: string | null;
+            /** @description Human-facing name for this key. */
             name: string;
             /** @description Network IDs this key has access to (hydrated from junction table) */
             network_ids?: string[];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The organization that owns this record.
+             */
             organization_id: string;
+            /** @description Role the key is limited to, which cannot exceed the user's own. */
             permissions?: components["schemas"]["UserOrgPermissions"];
+            /** @description Tags assigned to this entity. */
             tags: string[];
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description User the key acts on behalf of.
+             */
             user_id: string;
         };
         /**
@@ -8453,11 +10639,19 @@ export interface components {
          *     Contains the full API key record plus the plaintext key (shown only once)
          */
         UserApiKeyResponse: {
+            /** @description The stored key record. */
             api_key: components["schemas"]["UserApiKey"];
-            /** @description The plaintext API key - only returned once during creation or rotation */
-            key: string;
+            /**
+             * Format: password
+             * @description The plaintext API key - only returned once during creation or rotation
+             */
+            readonly key: string;
         };
         UserBase: {
+            /**
+             * Format: email
+             * @description The user's email address, also their login identifier.
+             */
             email: string;
             /** @description Per-user email preferences */
             email_settings?: components["schemas"]["EmailSettings"];
@@ -8465,14 +10659,26 @@ export interface components {
             email_verified?: boolean;
             /** @description Whether the user has a password set — computed from password_hash, never stored in DB */
             readonly has_password?: boolean;
+            /** @description The networks this entity applies to. */
             network_ids: string[];
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the account was linked to the identity provider.
+             */
             oidc_linked_at?: string | null;
+            /** @description Slug of the identity provider this account signs in through, when linked. */
             oidc_provider?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The organization that owns this record.
+             */
             organization_id: string;
+            /** @description The user's role within the organization. */
             permissions: components["schemas"]["UserOrgPermissions"];
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the user accepted the terms of service.
+             */
             readonly terms_accepted_at?: string | null;
         };
         /** @enum {string} */
@@ -8483,17 +10689,20 @@ export interface components {
          *     sets `Uxy::default()` for element nodes.
          */
         Uxy: {
+            /** @description Horizontal position. */
             x: number;
+            /** @description Vertical position. */
             y: number;
         };
         VCenterVirtualization: {
-            /** Format: uuid */
-            service_id: string;
+            /** @description vCenter managed object ID of the guest. */
             vm_id?: string | null;
+            /** @description Guest name as configured in vCenter. */
             vm_name?: string | null;
         };
         /** @description Request to verify email using token */
         VerifyEmailRequest: {
+            /** @description Single-use token from the verification email. */
             token: string;
         };
         /**
@@ -8520,32 +10729,68 @@ export interface components {
             server_version: string;
         };
         Vlan: components["schemas"]["VlanBase"] & {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was first created.
+             */
             readonly created_at: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The discovery that first observed this entity.
+             */
             readonly first_discovery_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             readonly id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The most recent discovery that observed this entity.
+             */
             readonly last_discovery_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When a discovery last observed this entity.
+             */
             readonly last_seen_at?: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Stable identifier shared by every revision of the same entity across its history.
+             */
             readonly lineage_id?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When this record was last modified.
+             */
             readonly updated_at: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Start of the interval this revision was current for (SCD2 history).
+             */
             readonly valid_from?: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description End of the interval this revision was current for. `null` while it is the live revision.
+             */
             readonly valid_to?: string | null;
         };
         VlanBase: {
+            /** @description Free-text notes about the VLAN. */
             description?: string | null;
+            /** @description Human-facing name for this VLAN. */
             name: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The organization that owns this record.
+             */
             organization_id: string;
+            /** @description How this VLAN came to be known — discovered, imported, or created by hand. */
             source?: components["schemas"]["EntitySource"];
             /**
              * @description Subnets associated with this VLAN, derived from discovered interface
@@ -8561,14 +10806,22 @@ export interface components {
             vlan_number: number;
         };
         VlanDiscoveryItem: {
+            /** @description VLAN name as configured on the device. */
             name: string;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description 802.1Q VLAN ID.
+             */
             vlan_number: number;
         };
         /** @description Request body for daemon VLAN discovery upsert */
         VlanDiscoveryRequest: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The network this entity belongs to.
+             */
             network_id: string;
+            /** @description VLANs observed by the daemon. */
             vlans: components["schemas"]["VlanDiscoveryItem"][];
         };
         /** @description Response for discovery upsert */
@@ -8577,9 +10830,15 @@ export interface components {
             vlans: components["schemas"]["VlanDiscoveryResponseItem"][];
         };
         VlanDiscoveryResponseItem: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Server-assigned unique identifier.
+             */
             id: string;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description 802.1Q VLAN ID.
+             */
             vlan_number: number;
         };
         /** @enum {string} */
@@ -9855,9 +12114,13 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description The page of results. Empty when nothing matched the query. */
                         data: components["schemas"]["DaemonApiKey"][];
+                        /** @description Human-readable failure message. Omitted on success. */
                         error?: string | null;
+                        /** @description API and server version metadata, plus pagination counters. */
                         meta: components["schemas"]["PaginatedApiMeta"];
+                        /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
                         success: boolean;
                     };
                 };
@@ -9922,7 +12185,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description Array of daemon_api_key IDs to delete */
+        /** @description Array of Daemon API Key IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -9973,7 +12236,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -10220,7 +12483,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description Array of API key IDs to delete */
+        /** @description Array of User API Key IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -10258,7 +12521,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -10447,9 +12710,13 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description The page of results. Empty when nothing matched the query. */
                         data: components["schemas"]["Binding"][];
+                        /** @description Human-readable failure message. Omitted on success. */
                         error?: string | null;
+                        /** @description API and server version metadata, plus pagination counters. */
                         meta: components["schemas"]["PaginatedApiMeta"];
+                        /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
                         success: boolean;
                     };
                 };
@@ -10556,7 +12823,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -10673,8 +12940,8 @@ export interface operations {
     get_all_credentials: {
         parameters: {
             query?: {
-                /** @description Filter by credential type (e.g. "Snmp", "DockerProxy") */
-                type?: string | null;
+                /** @description Filter by credential type (e.g. `SnmpV2c`, `DockerProxy`). */
+                type?: null | components["schemas"]["CredentialTypeDiscriminants"];
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["CredentialOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
@@ -10776,6 +13043,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description Array of Credential IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -10805,8 +13073,8 @@ export interface operations {
     export_credentials_csv: {
         parameters: {
             query?: {
-                /** @description Filter by credential type (e.g. "Snmp", "DockerProxy") */
-                type?: string | null;
+                /** @description Filter by credential type (e.g. `SnmpV2c`, `DockerProxy`). */
+                type?: null | components["schemas"]["CredentialTypeDiscriminants"];
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["CredentialOrderField"];
                 /** @description Secondary ordering field (sorting within groups or standalone sort). */
@@ -10830,7 +13098,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -10984,7 +13252,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description Array of daemon IDs to delete */
+        /** @description Array of Daemon IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -11072,7 +13340,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -11293,11 +13561,17 @@ export interface operations {
             query: {
                 /** @description `install` (with the api-key placeholder) or `reconfigure` (credential-free). */
                 purpose: components["schemas"]["InstallCommandKind"];
+                /** @description Log verbosity the daemon should run at (e.g. `info`, `debug`). */
                 log_level?: string | null;
+                /** @description Path the daemon should write its log file to. */
                 log_file?: string | null;
+                /** @description How often the daemon reports in, in seconds. */
                 heartbeat_interval?: number | null;
+                /** @description Address and port the daemon should listen on, for server-polled mode. */
                 bind_address?: string | null;
+                /** @description Accept a self-signed certificate when connecting back to the server. */
                 allow_self_signed_certs?: boolean | null;
+                /** @description Continue scanning targets that present an untrusted certificate. */
                 accept_invalid_scan_certs?: boolean | null;
                 /** @description Comma-separated interface names. */
                 interfaces?: string | null;
@@ -11523,7 +13797,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -11742,7 +14016,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description Array of discovery IDs to delete */
+        /** @description Array of Discovery IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -11809,7 +14083,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -12125,7 +14399,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description Array of host IDs to delete */
+        /** @description Array of Host IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -12241,7 +14515,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -12302,7 +14576,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/zip": unknown;
+                    "application/zip": string;
                 };
             };
         };
@@ -12541,9 +14815,13 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description The page of results. Empty when nothing matched the query. */
                         data: components["schemas"]["Interface"][];
+                        /** @description Human-readable failure message. Omitted on success. */
                         error?: string | null;
+                        /** @description API and server version metadata, plus pagination counters. */
                         meta: components["schemas"]["PaginatedApiMeta"];
+                        /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
                         success: boolean;
                     };
                 };
@@ -12639,7 +14917,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -12920,9 +15198,13 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description The page of results. Empty when nothing matched the query. */
                         data: components["schemas"]["IPAddress"][];
+                        /** @description Human-readable failure message. Omitted on success. */
                         error?: string | null;
+                        /** @description API and server version metadata, plus pagination counters. */
                         meta: components["schemas"]["PaginatedApiMeta"];
+                        /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
                         success: boolean;
                     };
                 };
@@ -12969,6 +15251,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description Array of IP Address IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -13026,7 +15309,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -13161,8 +15444,12 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description The page of results. Empty when nothing matched the query. */
                         data: (components["schemas"]["NetworkBase"] & {
-                            /** Format: date-time */
+                            /**
+                             * Format: date-time
+                             * @description When this record was first created.
+                             */
                             readonly created_at: string;
                             /**
                              * Format: int64
@@ -13174,13 +15461,22 @@ export interface operations {
                              *     and a host could read stale in the app but current in the digest email.
                              */
                             readonly effective_stale_after_hours?: number;
-                            /** Format: uuid */
+                            /**
+                             * Format: uuid
+                             * @description Server-assigned unique identifier.
+                             */
                             readonly id: string;
-                            /** Format: date-time */
+                            /**
+                             * Format: date-time
+                             * @description When this record was last modified.
+                             */
                             readonly updated_at: string;
                         })[];
+                        /** @description Human-readable failure message. Omitted on success. */
                         error?: string | null;
+                        /** @description API and server version metadata, plus pagination counters. */
                         meta: components["schemas"]["PaginatedApiMeta"];
+                        /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
                         success: boolean;
                     };
                 };
@@ -13218,7 +15514,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description Array of network IDs to delete */
+        /** @description Array of Network IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -13265,7 +15561,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -13730,9 +16026,13 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description The page of results. Empty when nothing matched the query. */
                         data: components["schemas"]["Port"][];
+                        /** @description Human-readable failure message. Omitted on success. */
                         error?: string | null;
+                        /** @description API and server version metadata, plus pagination counters. */
                         meta: components["schemas"]["PaginatedApiMeta"];
+                        /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
                         success: boolean;
                     };
                 };
@@ -13828,7 +16128,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -13964,10 +16264,8 @@ export interface operations {
                 order_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Direction for order_by field (group_by always uses ASC). */
                 order_direction?: null | components["schemas"]["OrderDirection"];
-                /** @description Only services exposed on one of these port numbers. */
+                /** @description Only services exposed on one of these port numbers, over either protocol. */
                 ports?: number[] | null;
-                /** @description Only services exposed over this transport protocol. */
-                protocol?: null | components["schemas"]["TransportProtocol"];
                 /** @description Exclude services belonging to these categories. */
                 exclude_categories?: components["schemas"]["ServiceCategory"][] | null;
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
@@ -14083,10 +16381,8 @@ export interface operations {
                 order_by?: null | components["schemas"]["ServiceOrderField"];
                 /** @description Direction for order_by field (group_by always uses ASC). */
                 order_direction?: null | components["schemas"]["OrderDirection"];
-                /** @description Only services exposed on one of these port numbers. */
+                /** @description Only services exposed on one of these port numbers, over either protocol. */
                 ports?: number[] | null;
-                /** @description Only services exposed over this transport protocol. */
-                protocol?: null | components["schemas"]["TransportProtocol"];
                 /** @description Exclude services belonging to these categories. */
                 exclude_categories?: components["schemas"]["ServiceCategory"][] | null;
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
@@ -14117,7 +16413,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -14256,9 +16552,13 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description The page of results. Empty when nothing matched the query. */
                         data: components["schemas"]["Share"][];
+                        /** @description Human-readable failure message. Omitted on success. */
                         error?: string | null;
+                        /** @description API and server version metadata, plus pagination counters. */
                         meta: components["schemas"]["PaginatedApiMeta"];
+                        /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
                         success: boolean;
                     };
                 };
@@ -14347,7 +16647,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -14554,9 +16854,13 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description The page of results. Empty when nothing matched the query. */
                         data: components["schemas"]["Snapshot"][];
+                        /** @description Human-readable failure message. Omitted on success. */
                         error?: string | null;
+                        /** @description API and server version metadata, plus pagination counters. */
                         meta: components["schemas"]["PaginatedApiMeta"];
+                        /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
                         success: boolean;
                     };
                 };
@@ -14810,7 +17114,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -15175,7 +17479,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -15386,7 +17690,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -15480,7 +17784,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/plain": unknown;
+                    "text/plain": string;
                 };
             };
             /** @description Access denied */
@@ -15524,7 +17828,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/plain": unknown;
+                    "text/plain": string;
                 };
             };
             /** @description Access denied */
@@ -15579,7 +17883,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description Array of user IDs to delete */
+        /** @description Array of User IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -15626,7 +17930,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };
@@ -15815,10 +18119,15 @@ export interface operations {
     get_all_vlans: {
         parameters: {
             query?: {
+                /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["VlanOrderField"];
+                /** @description Secondary ordering field (sorting within groups or standalone sort). */
                 order_by?: null | components["schemas"]["VlanOrderField"];
+                /** @description Direction for order_by field (group_by always uses ASC). */
                 order_direction?: null | components["schemas"]["OrderDirection"];
+                /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
                 limit?: number | null;
+                /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
                 /** @description Filter by network ID */
                 network_id?: string | null;
@@ -15948,10 +18257,15 @@ export interface operations {
     export_vlans_csv: {
         parameters: {
             query?: {
+                /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
                 group_by?: null | components["schemas"]["VlanOrderField"];
+                /** @description Secondary ordering field (sorting within groups or standalone sort). */
                 order_by?: null | components["schemas"]["VlanOrderField"];
+                /** @description Direction for order_by field (group_by always uses ASC). */
                 order_direction?: null | components["schemas"]["OrderDirection"];
+                /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
                 limit?: number | null;
+                /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
                 /** @description Filter by network ID */
                 network_id?: string | null;
@@ -15973,7 +18287,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/csv": unknown;
+                    "text/csv": string;
                 };
             };
         };

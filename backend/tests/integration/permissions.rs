@@ -128,7 +128,8 @@ async fn test_cannot_create_host_on_other_network(
         hostname: None,
         network_id: other_network_id, // Network user doesn't have access to
         description: None,
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         hidden: false,
         tags: Vec::new(),
         // SNMP fields
@@ -176,7 +177,7 @@ async fn test_cannot_create_subnet_on_other_network(
         subnet_type: SubnetType::Lan,
         source: EntitySource::System,
         tags: Vec::new(),
-        virtualization: None,
+        virtualization_service_id: None,
     });
 
     // Should get 401 Unauthorized

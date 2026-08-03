@@ -26,9 +26,7 @@
 
 	// Derived from the effective host list keyed on this manager — so it updates as
 	// VMs are added/removed and resets when a different manager is selected.
-	let managedVms = $derived(
-		hosts.filter((h) => h.virtualization && h.virtualization.details.service_id === service.id)
-	);
+	let managedVms = $derived(hosts.filter((h) => h.virtualization_service_id === service.id));
 
 	let vmIds = $derived(managedVms.map((h) => h.id));
 	// Filter out the parent host and already managed VMs
@@ -44,14 +42,14 @@
 		if (host && variant) {
 			const updatedHost: Host = {
 				...host,
-				virtualization: {
+				virtualization_metadata: {
 					type: variant,
 					details: {
 						vm_id: null,
-						vm_name: null,
-						service_id: service.id
+						vm_name: null
 					}
-				} as HostVirtualization
+				} as HostVirtualization,
+				virtualization_service_id: service.id
 			};
 
 			// Stage the change; managedVms re-derives from the effective host list.
@@ -65,7 +63,8 @@
 		if (removedVm) {
 			const updatedHost = {
 				...removedVm,
-				virtualization: null
+				virtualization_metadata: null,
+				virtualization_service_id: null
 			};
 
 			onChange(updatedHost);

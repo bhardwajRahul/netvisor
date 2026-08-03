@@ -36,11 +36,7 @@
 
 	let managedVms = $derived(
 		topology
-			? topology.hosts.filter(
-					(h) =>
-						h.virtualization?.type === 'Proxmox' &&
-						h.virtualization.details.service_id === hypervisorServiceId
-				)
+			? topology.hosts.filter((h) => h.virtualization_service_id === hypervisorServiceId)
 			: []
 	);
 </script>

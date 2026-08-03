@@ -91,6 +91,12 @@ async fn reserve_submit_slot(
 
 /// Mutable host state passed to integration execute() methods.
 /// Integrations enrich the host via builder methods.
+///
+/// `Clone` is load-bearing: `execute_with_progress_reporting` hands each integration a scratch
+/// clone and merges it back only on success, so a timeout that drops the future cannot leave a
+/// half-written host (GH #650). Deriving it rather than hand-listing the fields to copy means a
+/// new field is covered without anyone remembering to add it.
+#[derive(Clone)]
 pub struct HostData {
     pub host: Host,
     pub services: Vec<Service>,
@@ -204,8 +210,8 @@ impl HostData {
     }
 
     pub fn with_virtualization(&mut self, v: HostVirtualization) -> &mut Self {
-        if self.host.base.virtualization.is_none() {
-            self.host.base.virtualization = Some(v);
+        if self.host.base.virtualization_metadata.is_none() {
+            self.host.base.virtualization_metadata = Some(v);
         }
         self
     }
@@ -246,32 +252,44 @@ impl HostData {
         self
     }
 
-    /// Replace the whole interface set.
+    /// Replace the whole interface set, saying in the same breath how complete it is.
     ///
     /// SNMP collection persists a bare interface set as soon as the ifTable walk finishes —
     /// before the slower neighbour/FDB/VLAN queries — so that a query that hangs or times out
     /// can't leave the host with zero interfaces. It then swaps in the enriched set once those
     /// queries return. Replacing rather than appending keeps the second pass from doubling the
     /// interface list.
-    pub fn replace_interfaces(&mut self, interfaces: Vec<Interface>) -> &mut Self {
+    ///
+    /// The completeness travels *with* the interfaces because it is the same fact, and splitting
+    /// them was a live data-loss bug: SNMP wrote its early interface set at one point and set
+    /// `interface_data_complete` several hundred lines later, so a timeout in between shipped the
+    /// interfaces with the all-`true` default. Server-side a group marked complete is
+    /// authoritative in both directions, so `preserve_uncollected_data` cleared the LLDP/CDP/FDB/
+    /// VLAN columns — and an interface that loses its chassis id drops out of L2 resolution for
+    /// good. Passing them together means no write can omit the half that protects the other.
+    pub fn replace_interfaces(
+        &mut self,
+        interfaces: Vec<Interface>,
+        interfaces_complete: bool,
+        data_complete: InterfaceDataComplete,
+    ) -> &mut Self {
         self.interfaces = interfaces;
+        self.interfaces_complete = interfaces_complete;
+        self.interface_data_complete = data_complete;
         self
     }
 
-    /// Record whether the collected `interfaces` are a complete ifTable. A partial walk
-    /// (`false`) tells the server not to prune interfaces missing from this scan (#649).
-    pub fn set_interface_data_complete(&mut self, complete: InterfaceDataComplete) -> &mut Self {
-        self.interface_data_complete = complete;
-        self
-    }
-
-    pub fn set_interfaces_complete(&mut self, complete: bool) -> &mut Self {
-        self.interfaces_complete = complete;
-        self
-    }
-
+    /// Offer a subnet, ignoring one already present.
+    ///
+    /// Keyed on `Subnet`'s own equality (CIDR + network), which is the same natural key the
+    /// server deduplicates on, so the two cannot drift apart. This was a bare push, and
+    /// `container::execute` runs several times against one host — once per Docker/Podman
+    /// socket/proxy credential type, and again for the sweep phase after the daemon-host phase —
+    /// so the same bridge network was offered five or six times per scan (GH #650).
     pub fn add_subnet(&mut self, s: Subnet) -> &mut Self {
-        self.subnets.push(s);
+        if !self.subnets.contains(&s) {
+            self.subnets.push(s);
+        }
         self
     }
 
@@ -1079,7 +1097,7 @@ impl DiscoveryOps {
                 // A container (Docker or Podman) was matched as a service this round.
                 if service
                     .base
-                    .virtualization
+                    .virtualization_metadata
                     .as_ref()
                     .and_then(|v| v.container_id())
                     .is_some()
@@ -1136,7 +1154,8 @@ impl DiscoveryOps {
             network_id,
             description: None,
             source: EntitySource::Discovery,
-            virtualization: None,
+            virtualization_metadata: None,
+            virtualization_service_id: None,
             hidden: false,
             sys_descr: None,
             sys_object_id: None,
@@ -1207,6 +1226,38 @@ mod tests {
     use super::*;
     use tokio::sync::Mutex;
     use tokio::time::Instant;
+
+    /// GH #650. `container::execute` runs several times against one host — once per Docker and
+    /// Podman socket/proxy credential type, and again for the network sweep after the
+    /// daemon-host phase — and each run offers the same bridge networks. Offering them was a
+    /// bare push, so one scan submitted the same CIDR five or six times.
+    #[test]
+    fn the_same_bridge_network_is_only_offered_once() {
+        use crate::server::hosts::r#impl::base::{Host, HostBase};
+        use crate::server::shared::storage::traits::Storable;
+        use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
+        use crate::server::subnets::r#impl::types::SubnetType;
+
+        let mut host_data = HostData::new(
+            Host::new(HostBase::default()),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        );
+
+        let base = SubnetBase {
+            subnet_type: SubnetType::DockerBridge,
+            ..Default::default()
+        };
+        // Distinct rows, same CIDR and network — exactly what a second execute() produces, since
+        // every run mints fresh UUIDs for the subnets it reports.
+        host_data.add_subnet(Subnet::new(base.clone()));
+        host_data.add_subnet(Subnet::new(base));
+
+        assert_eq!(host_data.subnets.len(), 1);
+    }
 
     /// A burst of back-to-back reservations must be handed distinct start slots
     /// spaced at least `interval` apart — this is the property that staggers the

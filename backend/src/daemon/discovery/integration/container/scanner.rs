@@ -4,7 +4,6 @@ use bollard::{
     models::{ContainerInspectResponse, ContainerSummary, PortSummaryTypeEnum},
     query_parameters::{InspectContainerOptions, ListContainersOptions},
 };
-use futures::future::try_join_all;
 use futures::stream::{self, StreamExt};
 use mac_address::MacAddress;
 use std::str::FromStr;
@@ -26,12 +25,38 @@ use crate::server::discovery::r#impl::types::HostNamingFallback;
 use crate::server::ip_addresses::r#impl::base::{ALL_IP_ADDRESSES_IP, IPAddress, IPAddressBase};
 use crate::server::ports::r#impl::base::{Port, PortType};
 use crate::server::services::r#impl::base::{Service, ServiceMatchBaselineParams};
-use crate::server::services::r#impl::endpoints::{Endpoint, EndpointResponse};
+use crate::server::services::r#impl::endpoints::{ApplicationProtocol, Endpoint, EndpointResponse};
 use crate::server::subnets::r#impl::base::Subnet;
 
 use super::ContainerRuntime;
 
 type IpPortHashMap = HashMap<IpAddr, Vec<PortType>>;
+
+/// How many containers are inspected or scanned at once.
+///
+/// One socket serves all of them, so this bounds concurrent requests against a single container
+/// daemon rather than expressing any parallelism the host has.
+const CONCURRENT_CONTAINER_SCANS: usize = 15;
+
+/// Bytes kept per probed endpoint. Service patterns match on a page's opening markup and headers,
+/// so this is far more than enough, and it stops one batch dragging megabytes of HTML back
+/// through the container socket.
+const PROBE_BODY_LIMIT: usize = 65536;
+
+/// One `(port, path)` a container answered on, before it is attributed to any address.
+///
+/// The probe runs over loopback inside the container, so its answers are the same whichever of
+/// the container's addresses you ask about. Keeping them address-free until
+/// [`ContainerScanner::attribute_to_address`] is what lets the probe run once per container
+/// rather than once per attached bridge network.
+pub(crate) struct ProbedEndpoint {
+    pub port: u16,
+    pub path: String,
+    pub protocol: ApplicationProtocol,
+    pub status: u16,
+    pub body: String,
+    pub headers: HashMap<String, String>,
+}
 
 /// Result of scanning a single container — services, ports, and ip_addresses
 /// to be merged into the parent host's HostData rather than creating separate host entities.
@@ -39,6 +64,16 @@ pub struct ContainerScanResult {
     pub services: Vec<Service>,
     pub ports: Vec<Port>,
     pub ip_addresses: Vec<IPAddress>,
+}
+
+/// What a container sweep got through, and how far it got.
+///
+/// `reached` is separate from `results.len()` because a container can be reached and yield
+/// nothing (no interfaces, no match), and only the caller comparing `reached` against the total
+/// can tell "scanned everything, found little" from "ran out of time".
+pub struct ContainerScanOutcome {
+    pub results: Vec<ContainerScanResult>,
+    pub reached: usize,
 }
 
 pub struct ProcessContainerParams<'a> {
@@ -103,9 +138,10 @@ impl<'a> ContainerScanner<'a> {
         containers: Vec<(ContainerInspectResponse, ContainerSummary)>,
         containers_interfaces_and_subnets: &HashMap<String, Vec<(IPAddress, Subnet)>>,
         progress: Arc<AtomicU8>,
-    ) -> Result<Vec<ContainerScanResult>> {
-        let concurrent_scans = 15usize;
-        let total = containers.len().max(1);
+        deadline: tokio::time::Instant,
+    ) -> Result<ContainerScanOutcome> {
+        let containers_len = containers.len();
+        let total = containers_len.max(1);
 
         // Process containers concurrently using streams
         let results = stream::iter(containers.into_iter())
@@ -123,7 +159,7 @@ impl<'a> ContainerScanner<'a> {
                     .await
                 }
             })
-            .buffer_unordered(concurrent_scans);
+            .buffer_unordered(CONCURRENT_CONTAINER_SCANS);
 
         let mut stream_pin = Box::pin(results);
         let mut all_container_data = Vec::new();
@@ -152,9 +188,25 @@ impl<'a> ContainerScanner<'a> {
                     );
                 }
             }
+
+            // Stop at a container boundary rather than letting the integration's hard cap fire
+            // mid-container. What we have is a coherent subset; what the cap produces is a
+            // dropped future and nothing at all. The caller turns the shortfall into a warning.
+            if tokio::time::Instant::now() >= deadline {
+                tracing::warn!(
+                    reached = completed,
+                    total = containers_len,
+                    runtime = self.runtime.label(),
+                    "Container scan hit its soft deadline; reporting the containers read so far"
+                );
+                break;
+            }
         }
 
-        Ok(all_container_data)
+        Ok(ContainerScanOutcome {
+            results: all_container_data,
+            reached: completed,
+        })
     }
 
     async fn process_single_container(
@@ -268,17 +320,17 @@ impl<'a> ContainerScanner<'a> {
                 ip_address,
                 all_ports: &open_ports,
                 endpoint_responses: &endpoint_responses,
-                virtualization: &Some(
+                virtualization_metadata: &Some(
                     self.runtime.service_virtualization(
                         container
                             .name
                             .clone()
                             .map(|n| n.trim_start_matches("/").to_string()),
                         container.id.clone(),
-                        **runtime_service_id,
                         Self::extract_compose_project(container),
                     ),
                 ),
+                virtualization_service_id: Some(**runtime_service_id),
                 client_responses: &empty_client_responses,
                 // Container inventory, not a management controller's device inventory.
                 managed_device: &None,
@@ -347,35 +399,48 @@ impl<'a> ContainerScanner<'a> {
             return Ok(None);
         }
 
+        // Probe once for the whole container, above the per-network loop. Every request goes to
+        // 127.0.0.1 inside the container, so a container on three bridges was running three
+        // identical sweeps and discarding two of them.
+        let probed = if let Some(name) = &container.name {
+            self.scan_container_endpoints(
+                name.trim_start_matches("/"),
+                cancel.clone(),
+                exposed_port_filter.as_ref(),
+            )
+            .await?
+        } else {
+            vec![]
+        };
+
         for (ip_address, subnet) in container_interfaces_and_subnets {
             if cancel.is_cancelled() {
                 return Err(Error::msg("Discovery was cancelled"));
             }
 
-            let mut endpoint_responses = if let Some(name) = &container.name {
-                self.scan_container_endpoints(
-                    ip_address,
-                    &host_to_container_port_map,
-                    name.trim_start_matches("/"),
-                    cancel.clone(),
-                    exposed_port_filter.as_ref(),
-                )
-                .await?
-            } else {
-                vec![]
-            };
+            let mut endpoint_responses = Self::attribute_to_address(
+                &probed,
+                ip_address.base.ip_address,
+                &host_to_container_port_map,
+            );
 
-            // Always try external probing when published ports exist. Exec-based results
-            // may contain partial responses (e.g., from bash /dev/tcp raw sockets) that
-            // don't match specific service patterns but would prevent a fallback-only
-            // approach from firing. Merging both sets gives the pattern matcher the best
-            // chance of identifying the specific service.
-            if !host_to_container_port_map.is_empty() {
+            // Fall back to probing published ports from outside for the ports the exec probe
+            // could not answer for — an image with no HTTP client, or one whose service only
+            // binds the published interface. Ports the exec already answered on are skipped:
+            // both sets used to run unconditionally, and the external one is the expensive
+            // half at 800ms per attempt, serially, over every path on the port.
+            let answered_ports: HashSet<u16> = probed.iter().map(|p| p.port).collect();
+            let unanswered: HashMap<(IpAddr, u16), u16> = host_to_container_port_map
+                .iter()
+                .filter(|(_, container_port)| !answered_ports.contains(container_port))
+                .map(|(k, v)| (*k, *v))
+                .collect();
+            if !unanswered.is_empty() {
                 let accept_invalid_certs = self.accept_invalid_certs;
                 let external_responses = self
                     .scan_container_endpoints_external(
                         ip_address,
-                        &host_to_container_port_map,
+                        &unanswered,
                         cancel.clone(),
                         accept_invalid_certs,
                     )
@@ -412,17 +477,17 @@ impl<'a> ContainerScanner<'a> {
                         ip_address,
                         all_ports: container_ports_on_ip_address,
                         endpoint_responses: &endpoint_responses,
-                        virtualization: &Some(
+                        virtualization_metadata: &Some(
                             self.runtime.service_virtualization(
                                 container
                                     .name
                                     .clone()
                                     .map(|n| n.trim_start_matches("/").to_string()),
                                 container.id.clone(),
-                                **runtime_service_id,
                                 Self::extract_compose_project(container),
                             ),
                         ),
+                        virtualization_service_id: Some(**runtime_service_id),
                         client_responses: &empty_client_responses,
                         // Container inventory, not a management controller's device inventory.
                         managed_device: &None,
@@ -674,17 +739,325 @@ impl<'a> ContainerScanner<'a> {
         None
     }
 
+    /// Probe a container's own listening ports, once, from inside its network namespace.
+    ///
+    /// Address-agnostic on purpose: everything here talks to the container over loopback, so the
+    /// answers are the same whichever bridge network you ask about. They used to be collected
+    /// once per attached network, running an identical sweep two or three times for a container
+    /// on several bridges. [`Self::attribute_to_address`] stamps the addresses afterwards.
+    ///
+    /// Two execs total, against the ~150 (endpoint × 2 round-trips × networks) this replaces:
+    /// one to find out what is actually listening, one to ask all of it at once.
     async fn scan_container_endpoints(
         &self,
-        ip_address: &IPAddress,
-        host_to_container_port_map: &HashMap<(IpAddr, u16), u16>,
         container_name: &str,
         cancel: CancellationToken,
         exposed_port_filter: Option<&HashSet<u16>>,
-    ) -> Result<Vec<EndpointResponse>, Error> {
-        use std::collections::HashMap;
+    ) -> Result<Vec<ProbedEndpoint>, Error> {
+        let Some(listening) = self.listening_ports(container_name, cancel.clone()).await else {
+            // No way to tell what is listening — a distroless image with no shell, or /proc not
+            // mounted. Probing all ~150 endpoints blind is what made this slow; the external
+            // probe over published ports is the documented fallback for exactly this case.
+            tracing::debug!(
+                container = container_name,
+                "Could not read listening ports; leaving this container to the external probe"
+            );
+            return Ok(vec![]);
+        };
 
-        // Build inverse map: (container_port) -> Vec<(host_ip, host_port)>
+        // A shared network namespace means /proc/net/tcp shows the whole pod's listeners, which
+        // is precisely the over-attribution `exposed_port_scope` exists to stop. Intersect, so a
+        // pod member is credited only with its own ports and an infra container (empty filter)
+        // is skipped entirely rather than probed on everything.
+        let ports: HashSet<u16> = match exposed_port_filter {
+            Some(allowed) => listening.intersection(allowed).copied().collect(),
+            None => listening,
+        };
+        if ports.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Only endpoints on a port something is actually listening on. This is the whole
+        // performance fix: a container listening on one port was being asked about all ~150
+        // (port, path) pairs, 55 of which are on port 80 alone.
+        let mut targets: Vec<(u16, String, ApplicationProtocol)> = Vec::new();
+        let mut seen: HashSet<(u16, String)> = HashSet::new();
+        for endpoint in Service::all_discovery_endpoints() {
+            let port = endpoint.port_type.number();
+            if !ports.contains(&port) {
+                continue;
+            }
+            // `all_discovery_endpoints` dedups by (protocol, port, path), so the same (port,
+            // path) recurs across protocols; one request answers all of them.
+            if seen.insert((port, endpoint.path.clone())) {
+                targets.push((port, endpoint.path, endpoint.protocol));
+            }
+        }
+        if targets.is_empty() {
+            return Ok(vec![]);
+        }
+
+        tracing::debug!(
+            container = container_name,
+            listening = ports.len(),
+            endpoints = targets.len(),
+            "Probing container endpoints scoped to its listening ports"
+        );
+
+        self.probe_endpoints_batched(container_name, &targets, cancel)
+            .await
+    }
+
+    /// The ports something inside the container is listening on, or `None` if we could not tell.
+    ///
+    /// Reads `/proc/net/tcp` **and** `/proc/net/tcp6`. Both are required: a dual-stack listener —
+    /// anything on the JVM, Node, or Go binding `:::8080` — appears only in the v6 table, so
+    /// reading one file would silently lose a large fraction of real containers. State `0A` is
+    /// `TCP_LISTEN`; the rest are established or closing connections.
+    ///
+    /// `None` is distinct from an empty set: empty means the container is genuinely listening on
+    /// nothing, `None` means the read failed and the caller must not conclude anything.
+    async fn listening_ports(
+        &self,
+        container_name: &str,
+        cancel: CancellationToken,
+    ) -> Option<HashSet<u16>> {
+        let output = self
+            .exec_capture(
+                container_name,
+                "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null",
+                cancel,
+            )
+            .await?;
+
+        let ports = Self::parse_listening_ports(&output);
+        if ports.is_empty() && !output.contains("local_address") {
+            // No header line either — the read produced nothing usable rather than a genuinely
+            // idle container.
+            return None;
+        }
+        Some(ports)
+    }
+
+    /// Pull the listening ports out of `/proc/net/tcp`-format text.
+    pub(crate) fn parse_listening_ports(procfs: &str) -> HashSet<u16> {
+        const TCP_LISTEN: &str = "0A";
+
+        procfs
+            .lines()
+            .filter_map(|line| {
+                let mut fields = line.split_whitespace();
+                // sl, local_address, rem_address, st
+                let _sl = fields.next()?;
+                let local = fields.next()?;
+                let _rem = fields.next()?;
+                if fields.next()? != TCP_LISTEN {
+                    return None;
+                }
+                let (_addr, port) = local.rsplit_once(':')?;
+                u16::from_str_radix(port, 16).ok()
+            })
+            .collect()
+    }
+
+    /// Ask every surviving `(port, path)` in one exec.
+    ///
+    /// One process spawn and one pair of socket round-trips for the whole container, rather than
+    /// per endpoint — and the curl/wget/python availability chain is resolved once at the top
+    /// instead of being re-run from scratch on all ~150.
+    async fn probe_endpoints_batched(
+        &self,
+        container_name: &str,
+        targets: &[(u16, String, ApplicationProtocol)],
+        cancel: CancellationToken,
+    ) -> Result<Vec<ProbedEndpoint>, Error> {
+        // Random per container: the delimiter has to be something no response body can contain,
+        // and a fixed marker is guessable by a page that echoes its own query.
+        let nonce = format!("SCANOPY{}", Uuid::new_v4().simple());
+        let script = Self::build_probe_script(&nonce, targets);
+
+        let Some(output) = self.exec_capture(container_name, &script, cancel).await else {
+            return Ok(vec![]);
+        };
+
+        Ok(Self::parse_batched_probe_output(&nonce, targets, &output))
+    }
+
+    /// The shell program run inside the container.
+    ///
+    /// `exec 2>&1` on the first line is load-bearing. `wget -S` writes its headers to stderr, and
+    /// bollard delivers stdout and stderr as separate frames that can interleave — harmless when
+    /// each exec carried one response, corrupting for everything downstream once one exec carries
+    /// all of them. Folding the streams in the shell means the daemon reads one ordered stream.
+    ///
+    /// `head -c` bounds each body: port 80 alone carries ~55 paths, and an unbounded batch can
+    /// return megabytes of HTML through the socket.
+    pub(crate) fn build_probe_script(
+        nonce: &str,
+        targets: &[(u16, String, ApplicationProtocol)],
+    ) -> String {
+        let mut script = String::from("exec 2>&1\n");
+        script.push_str(
+            "if command -v curl >/dev/null 2>&1; then \
+               fetch() { curl -k -i -s -m 1 -L --max-redirs 2 \"$1\"; }; \
+             elif command -v wget >/dev/null 2>&1; then \
+               fetch() { wget --no-check-certificate -S -q -O- -T 1 \"$1\"; }; \
+             elif command -v python3 >/dev/null 2>&1; then \
+               fetch() { python3 -c \"import sys,urllib.request,ssl;\
+c=ssl._create_unverified_context();\
+r=urllib.request.Request(sys.argv[1]);\
+exec(\\\"try:\\\\n p=urllib.request.urlopen(r,context=c,timeout=1)\\\\nexcept Exception as e:\\\\n p=getattr(e,'file',None) or getattr(e,'fp',None)\\\\n if p is None: raise\\\\nprint('HTTP/1.1', p.status if hasattr(p,'status') else p.code)\\\\nfor h in p.headers: print(h + ':', p.headers[h])\\\\nprint()\\\\nprint(p.read().decode('utf-8','replace'))\\\")\" \"$1\"; }; \
+             else \
+               fetch() { return 1; }; \
+             fi\n",
+        );
+
+        for (port, path, _) in targets {
+            // The marker names the target, so a probe that produces no output at all still has a
+            // segment and cannot shift the rest onto the wrong endpoint.
+            script.push_str(&format!(
+                "printf '\\n%s %s %s\\n' \"{nonce}\" \"{port}\" \"{path}\"\n\
+                 fetch \"http://127.0.0.1:{port}{path}\" 2>/dev/null | head -c {PROBE_BODY_LIMIT}\n"
+            ));
+        }
+        script
+    }
+
+    /// Split one batched exec's output back into per-endpoint responses.
+    pub(crate) fn parse_batched_probe_output(
+        nonce: &str,
+        targets: &[(u16, String, ApplicationProtocol)],
+        output: &str,
+    ) -> Vec<ProbedEndpoint> {
+        let protocol_for: HashMap<(u16, &str), ApplicationProtocol> = targets
+            .iter()
+            .map(|(port, path, protocol)| ((*port, path.as_str()), *protocol))
+            .collect();
+
+        // Split first, interpret second. Flushing inline meant the last segment — which has no
+        // following marker to trigger it — was silently dropped.
+        let mut segments: Vec<((u16, String), String)> = Vec::new();
+        let mut current: Option<(u16, String)> = None;
+        let mut body = String::new();
+
+        for line in output.lines() {
+            if let Some(rest) = line.strip_prefix(nonce) {
+                if let Some(key) = current.take() {
+                    segments.push((key, std::mem::take(&mut body)));
+                }
+                body.clear();
+
+                let mut header = rest.split_whitespace();
+                current = match (header.next(), header.next()) {
+                    (Some(port), Some(path)) => {
+                        port.parse().ok().map(|port| (port, path.to_string()))
+                    }
+                    // A marker with nothing after the port — not a target we sent.
+                    _ => None,
+                };
+                continue;
+            }
+            if current.is_some() {
+                body.push_str(line);
+                body.push('\n');
+            }
+        }
+        if let Some(key) = current.take() {
+            segments.push((key, body));
+        }
+
+        segments
+            .into_iter()
+            .filter_map(|((port, path), raw)| {
+                let (status, body, headers) = Self::parse_http_response(raw.trim())?;
+                let protocol = protocol_for
+                    .get(&(port, path.as_str()))
+                    .copied()
+                    .unwrap_or_default();
+                Some(ProbedEndpoint {
+                    port,
+                    path,
+                    protocol,
+                    status,
+                    body,
+                    headers,
+                })
+            })
+            .collect()
+    }
+
+    /// Run a shell command inside the container and return everything it wrote.
+    ///
+    /// `None` when the container has no shell, the exec could not be created, or the runtime
+    /// refused — all cases where the caller must not read an empty result as "nothing there".
+    async fn exec_capture(
+        &self,
+        container_name: &str,
+        command: &str,
+        cancel: CancellationToken,
+    ) -> Option<String> {
+        if cancel.is_cancelled() {
+            return None;
+        }
+
+        let exec = self
+            .client
+            .create_exec(
+                container_name,
+                bollard::exec::CreateExecOptions {
+                    cmd: Some(vec!["sh", "-c", command]),
+                    attach_stdout: Some(true),
+                    attach_stderr: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .ok()?;
+
+        let bollard::exec::StartExecResults::Attached { mut output, .. } =
+            self.client.start_exec(&exec.id, None).await.ok()?
+        else {
+            return None;
+        };
+
+        use futures::StreamExt;
+        let mut captured = String::new();
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    tracing::debug!(container = container_name, "Container exec cancelled");
+                    break;
+                }
+                msg = output.next() => {
+                    match msg {
+                        Some(Ok(bollard::container::LogOutput::StdOut { message }))
+                        | Some(Ok(bollard::container::LogOutput::StdErr { message })) => {
+                            captured.push_str(&String::from_utf8_lossy(&message));
+                        }
+                        Some(Ok(_)) => {}
+                        Some(Err(e)) => {
+                            tracing::warn!(container = container_name, error = %e, "Error reading container exec output");
+                            break;
+                        }
+                        None => break,
+                    }
+                }
+            }
+        }
+
+        Some(captured)
+    }
+
+    /// Attribute address-agnostic probe results to one of the container's addresses.
+    ///
+    /// Each answer becomes the container-internal endpoint on `container_ip`, plus one per host
+    /// port published to it, which is what the pattern matcher and the binding logic downstream
+    /// each expect to find.
+    fn attribute_to_address(
+        probed: &[ProbedEndpoint],
+        container_ip: IpAddr,
+        host_to_container_port_map: &HashMap<(IpAddr, u16), u16>,
+    ) -> Vec<EndpointResponse> {
         let mut container_to_host_port_map: HashMap<u16, Vec<(IpAddr, u16)>> = HashMap::new();
         for ((host_ip, host_port), container_port) in host_to_container_port_map {
             container_to_host_port_map
@@ -693,183 +1066,37 @@ impl<'a> ContainerScanner<'a> {
                 .push((*host_ip, *host_port));
         }
 
-        let docker = self.client;
-
-        // Scope the loopback exec probe to the container's own ports when required (shared-netns
-        // members), so a member doesn't probe a co-pod service over the shared namespace.
-        let all_endpoints: Vec<_> = Service::all_discovery_endpoints()
-            .into_iter()
-            .filter(|e| {
-                exposed_port_filter.is_none_or(|allowed| allowed.contains(&e.port_type.number()))
-            })
-            .collect();
-
-        let mut endpoint_responses = Vec::new();
-
-        for endpoint in all_endpoints {
-            if cancel.is_cancelled() {
-                tracing::debug!(
-                    "Container endpoint scanning cancelled for {}",
-                    container_name
-                );
-                break;
-            }
-
-            // Build command with multiple fallback options
-            // Test both HTTP and HTTPS
-            let requests = [
-                // curl - HTTP
-                format!(
-                    "curl -i -s -m 1 -L --max-redirs 2 http://127.0.0.1:{}{}",
-                    endpoint.port_type.number(),
-                    endpoint.path
-                ),
-                // curl - HTTPS (with -k for self-signed certs)
-                format!(
-                    "curl -k -i -s -m 1 -L --max-redirs 2 https://127.0.0.1:{}{}",
-                    endpoint.port_type.number(),
-                    endpoint.path
-                ),
-                // wget - HTTP
-                format!(
-                    "wget -S -q -O- -T 1 http://127.0.0.1:{}{}",
-                    endpoint.port_type.number(),
-                    endpoint.path
-                ),
-                // wget - HTTPS (with --no-check-certificate)
-                format!(
-                    "wget --no-check-certificate -S -q -O- -T 1 https://127.0.0.1:{}{}",
-                    endpoint.port_type.number(),
-                    endpoint.path
-                ),
-                // Python - HTTP
-                format!(
-                    "python3 -c \"import urllib.request; req = urllib.request.Request('http://127.0.0.1:{}{}'); \
-                    exec(\\\"try:\\\\n resp = urllib.request.urlopen(req)\\\\n print('HTTP/1.1', resp.status, resp.msg)\\\\n \
-                    for h in resp.headers: print(h + ':', resp.headers[h])\\\\n print()\\\\n \
-                    print(resp.read().decode('utf-8'))\\\\nexcept urllib.error.HTTPError as e:\\\\n \
-                    print('HTTP/1.1', e.code, e.msg)\\\\n for h in e.headers: print(h + ':', e.headers[h])\\\\n \
-                    print()\\\\n print(e.read().decode('utf-8'))\\\")\"",
-                    endpoint.port_type.number(),
-                    endpoint.path
-                ),
-                // Python - HTTPS (with unverified SSL context)
-                format!(
-                    "python3 -c \"import urllib.request, ssl; \
-                    ctx = ssl._create_unverified_context(); \
-                    req = urllib.request.Request('https://127.0.0.1:{}{}'); \
-                    exec(\\\"try:\\\\n resp = urllib.request.urlopen(req, context=ctx)\\\\n print('HTTP/1.1', resp.status, resp.msg)\\\\n \
-                    for h in resp.headers: print(h + ':', resp.headers[h])\\\\n print()\\\\n \
-                    print(resp.read().decode('utf-8'))\\\\nexcept urllib.error.HTTPError as e:\\\\n \
-                    print('HTTP/1.1', e.code, e.msg)\\\\n for h in e.headers: print(h + ':', e.headers[h])\\\\n \
-                    print()\\\\n print(e.read().decode('utf-8'))\\\")\"",
-                    endpoint.port_type.number(),
-                    endpoint.path
-                ),
-                // bash /dev/tcp - only supports HTTP (no TLS)
-                format!(
-                    "bash -c \"exec 3<>/dev/tcp/127.0.0.1/{} && echo -e 'GET {} HTTP/1.0\\r\\nHost: 127.0.0.1\\r\\n\\r\\n' >&3 && cat <&3\"",
-                    endpoint.port_type.number(),
-                    endpoint.path
-                ),
-            ];
-
-            // Join with || to try each in order, fallback to empty string
-            let command = format!("{} || echo ''", requests.join(" 2>/dev/null || "));
-
-            // Execute curl with command that works for environment
-            let exec = docker
-                .create_exec(
-                    container_name,
-                    bollard::exec::CreateExecOptions {
-                        cmd: Some(vec!["sh", "-c", &command]),
-                        attach_stdout: Some(true),
-                        attach_stderr: Some(true),
-                        ..Default::default()
-                    },
-                )
-                .await;
-
-            let Ok(exec_result) = exec else {
-                continue;
-            };
-
-            if let Ok(bollard::exec::StartExecResults::Attached { mut output, .. }) =
-                docker.start_exec(&exec_result.id, None).await
-            {
-                use futures::StreamExt;
-                let mut full_response = String::new();
-
-                loop {
-                    tokio::select! {
-                        _ = cancel.cancelled() => {
-                            tracing::debug!("Endpoint scan cancelled for container {}", container_name);
-                            break;
-                        }
-                        msg = output.next() => {
-                            match msg {
-                                Some(Ok(bollard::container::LogOutput::StdOut { message })) => {
-                                    full_response.push_str(&String::from_utf8_lossy(&message));
-                                }
-                                Some(Ok(bollard::container::LogOutput::StdErr { message })) => {
-                                    // wget outputs headers to stderr with -S flag
-                                    full_response.push_str(&String::from_utf8_lossy(&message));
-                                }
-                                Some(Ok(_)) => {}
-                                Some(Err(e)) => {
-                                    tracing::warn!("Error reading docker exec output: {}", e);
-                                    break;
-                                }
-                                None => break,
-                            }
-                        }
-                    }
-                }
-
-                let full_response = full_response.trim();
-
-                // Parse response to check status code and extract body
-                if let Some((status, body, headers)) = Self::parse_http_response(full_response) {
-                    // Map back to the host-visible endpoint
-                    if let Some(host_mappings) =
-                        container_to_host_port_map.get(&endpoint.port_type.number())
-                    {
-                        for (host_ip, host_port) in host_mappings {
-                            let host_endpoint = Endpoint {
-                                ip: Some(*host_ip),
-                                port_type: PortType::new_tcp(*host_port),
-                                protocol: endpoint.protocol,
-                                path: endpoint.path.clone(),
-                            };
-
-                            endpoint_responses.push(EndpointResponse {
-                                endpoint: host_endpoint,
-                                body: body.clone(),
-                                status,
-                                headers: headers.clone(),
-                            });
-                        }
-                    }
-
-                    // Also add the container-internal endpoint
-                    let container_endpoint = Endpoint {
-                        ip: Some(ip_address.base.ip_address), // Container's IP on the bridge network
-                        port_type: PortType::new_tcp(endpoint.port_type.number()), // Container port, not host port
-                        protocol: endpoint.protocol,
-                        path: endpoint.path.clone(),
-                    };
-
-                    endpoint_responses.push(EndpointResponse {
-                        endpoint: container_endpoint,
-                        body: body.clone(),
-                        status,
-                        headers: headers.clone(),
+        let mut responses = Vec::new();
+        for answer in probed {
+            if let Some(host_mappings) = container_to_host_port_map.get(&answer.port) {
+                for (host_ip, host_port) in host_mappings {
+                    responses.push(EndpointResponse {
+                        endpoint: Endpoint {
+                            ip: Some(*host_ip),
+                            port_type: PortType::new_tcp(*host_port),
+                            protocol: answer.protocol,
+                            path: answer.path.clone(),
+                        },
+                        body: answer.body.clone(),
+                        status: answer.status,
+                        headers: answer.headers.clone(),
                     });
                 }
             }
-        }
 
-        Ok(endpoint_responses)
+            responses.push(EndpointResponse {
+                endpoint: Endpoint {
+                    ip: Some(container_ip),
+                    port_type: PortType::new_tcp(answer.port),
+                    protocol: answer.protocol,
+                    path: answer.path.clone(),
+                },
+                body: answer.body.clone(),
+                status: answer.status,
+                headers: answer.headers.clone(),
+            });
+        }
+        responses
     }
 
     /// Fallback endpoint scanning for bridge-mode containers that lack HTTP tools.
@@ -1289,6 +1516,20 @@ impl<'a> ContainerScanner<'a> {
         interfaces_by_id
     }
 
+    /// List every container and inspect each one, pairing each inspection with the summary it
+    /// came from.
+    ///
+    /// The pairing used to be positional: summaries without an id were filtered out of the
+    /// inspect list, and the results were then zipped against the *unfiltered* summaries. One
+    /// id-less summary therefore shifted every container after it onto the wrong summary, and the
+    /// id-mismatch guard in `process_single_container` silently dropped all of them as an
+    /// "inspection failure". Carrying the summary alongside its own future makes the pairing
+    /// correct by construction.
+    ///
+    /// Bounded concurrency for the same reason the scan loop is bounded: this is one socket, and
+    /// an unbounded `try_join_all` opened a request per container — several hundred at once on a
+    /// large host. `try_join_all` also aborted the whole batch on a single failed inspect, where
+    /// dropping just that container is plainly better.
     pub async fn get_containers_and_summaries(
         &self,
     ) -> Result<Vec<(ContainerInspectResponse, ContainerSummary)>, Error> {
@@ -1298,26 +1539,31 @@ impl<'a> ContainerScanner<'a> {
             .await
             .map_err(|e| anyhow!(e))?;
 
-        let containers_to_inspect: Vec<_> = container_summaries
-            .iter()
-            .filter_map(|c| {
-                if let Some(id) = &c.id {
-                    return Some(
-                        self.client
-                            .inspect_container(id, None::<InspectContainerOptions>),
-                    );
+        let inspections = stream::iter(container_summaries.into_iter().filter_map(|summary| {
+            let id = summary.id.clone()?;
+            Some(async move {
+                match self
+                    .client
+                    .inspect_container(&id, None::<InspectContainerOptions>)
+                    .await
+                {
+                    Ok(inspected) => Some((inspected, summary)),
+                    Err(e) => {
+                        tracing::warn!(
+                            container_id = %id,
+                            error = %e,
+                            "Failed to inspect container; skipping it"
+                        );
+                        None
+                    }
                 }
-                None
             })
-            .collect();
+        }))
+        .buffer_unordered(CONCURRENT_CONTAINER_SCANS)
+        .collect::<Vec<_>>()
+        .await;
 
-        let inspected_containers: Vec<ContainerInspectResponse> =
-            try_join_all(containers_to_inspect).await?;
-
-        Ok(inspected_containers
-            .into_iter()
-            .zip(container_summaries)
-            .collect())
+        Ok(inspections.into_iter().flatten().collect())
     }
 }
 
@@ -1363,6 +1609,106 @@ fn spread_bindings_across_endpoints(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod probe_tests {
+    use super::*;
+
+    /// A dual-stack listener — anything on the JVM, Node, or Go binding `:::8080` — appears only
+    /// in `/proc/net/tcp6`. Reading just the v4 table would drop it, and with it every service
+    /// discovered inside such a container.
+    #[test]
+    fn listening_ports_come_from_both_ip_stacks() {
+        let procfs = "\
+  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 0100007F:0050 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 1 1
+   1: 0100007F:8AE2 0100007F:1F90 01 00000000:00000000 00:00000000 00000000     0        0 2 1
+  sl  local_address                         remote_address                        st
+   0: 00000000000000000000000000000000:1F90 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 3 1
+";
+
+        let ports = ContainerScanner::parse_listening_ports(procfs);
+
+        assert!(ports.contains(&80), "IPv4 listener missing");
+        assert!(
+            ports.contains(&8080),
+            "IPv6 dual-stack listener missing — this is the common case for JVM/Node/Go images"
+        );
+        assert!(
+            !ports.contains(&35554),
+            "an established connection is not something listening"
+        );
+        assert_eq!(ports.len(), 2);
+    }
+
+    /// The batch carries every endpoint's response in one stream, so the framing is the only
+    /// thing keeping them apart. A body that itself contains an HTTP status line must not be
+    /// able to split a segment.
+    #[test]
+    fn a_batched_probe_response_is_split_per_endpoint() {
+        let nonce = "SCANOPYtestnonce";
+        let targets = vec![
+            (80u16, "/".to_string(), ApplicationProtocol::Http),
+            (80u16, "/status".to_string(), ApplicationProtocol::Http),
+            (9000u16, "/api".to_string(), ApplicationProtocol::Http),
+        ];
+
+        // The middle body quotes an HTTP response, which is exactly what a status page or an
+        // error-echoing endpoint returns.
+        let output = format!(
+            "\n{nonce} 80 /\n\
+             HTTP/1.1 200 OK\r\nServer: nginx\r\n\r\n<html>welcome</html>\n\
+             \n{nonce} 80 /status\n\
+             HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nlast upstream said HTTP/1.1 500 Internal Server Error\n\
+             \n{nonce} 9000 /api\n\
+             HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{{\"error\":\"nope\"}}\n"
+        );
+
+        let probed = ContainerScanner::parse_batched_probe_output(nonce, &targets, &output);
+
+        assert_eq!(probed.len(), 3, "every segment must survive the split");
+
+        assert_eq!((probed[0].port, probed[0].path.as_str()), (80, "/"));
+        assert!(probed[0].body.contains("welcome"));
+
+        assert_eq!((probed[1].port, probed[1].path.as_str()), (80, "/status"));
+        assert_eq!(
+            probed[1].status, 200,
+            "the status comes from the segment's own response line, not a status line quoted \
+             inside its body"
+        );
+        assert!(probed[1].body.contains("last upstream said"));
+
+        assert_eq!((probed[2].port, probed[2].path.as_str()), (9000, "/api"));
+        assert_eq!(probed[2].status, 404);
+    }
+
+    /// A probe that returns nothing still gets a marker, so the endpoints after it stay on their
+    /// own segments instead of shifting up onto the wrong one.
+    #[test]
+    fn an_endpoint_that_answered_nothing_does_not_shift_the_others() {
+        let nonce = "SCANOPYtestnonce";
+        let targets = vec![
+            (80u16, "/".to_string(), ApplicationProtocol::Http),
+            (8080u16, "/health".to_string(), ApplicationProtocol::Http),
+        ];
+
+        let output = format!(
+            "\n{nonce} 80 /\n\
+             \n{nonce} 8080 /health\n\
+             HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{{\"ok\":true}}\n"
+        );
+
+        let probed = ContainerScanner::parse_batched_probe_output(nonce, &targets, &output);
+
+        assert_eq!(probed.len(), 1, "the silent endpoint contributes nothing");
+        assert_eq!(
+            (probed[0].port, probed[0].path.as_str()),
+            (8080, "/health"),
+            "the answering endpoint must keep its own identity"
+        );
     }
 }
 

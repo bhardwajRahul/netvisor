@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createForm } from '@tanstack/svelte-form';
+	import type { components } from '$lib/api/schema';
 	import { submitForm } from '$lib/shared/components/forms/form-context';
 	import { required } from '$lib/shared/components/forms/validators';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
@@ -87,12 +88,17 @@
 		{ value: 'exploring', label: billing_inquiryJustExploring() }
 	];
 
+	// `''` is the placeholder option, which the field's `required` validator rejects before
+	// submission — hence the guard at the submit site rather than a cast.
+	type TeamSize = components['schemas']['TeamSize'];
+	type InquiryTimeline = components['schemas']['InquiryTimeline'];
+
 	function getDefaultValues() {
 		return {
 			name: '',
-			teamSize: companySize,
+			teamSize: companySize as TeamSize | '',
 			message: '',
-			urgency: '',
+			urgency: '' as InquiryTimeline | '',
 			networkCount: undefined as number | undefined
 		};
 	}
@@ -100,6 +106,11 @@
 	const form = createForm(() => ({
 		defaultValues: getDefaultValues(),
 		onSubmit: async ({ value }) => {
+			if (!value.teamSize) {
+				return;
+			}
+			const teamSize = value.teamSize;
+
 			loading = true;
 			submitError = '';
 
@@ -109,7 +120,7 @@
 						email: userEmail,
 						name: value.name.trim(),
 						company: orgName,
-						team_size: value.teamSize,
+						team_size: teamSize,
 						message: value.message.trim(),
 						urgency: value.urgency || undefined,
 						network_count: value.networkCount ?? undefined,

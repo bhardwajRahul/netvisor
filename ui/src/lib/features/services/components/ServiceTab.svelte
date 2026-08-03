@@ -398,7 +398,7 @@
 					searchable: true,
 					filterable: true,
 					getValue: (item) =>
-						servicesData.find((s) => s.id == item.virtualization?.details.service_id)?.name ||
+						servicesData.find((s) => s.id == item.virtualization_service_id)?.name ||
 						services_notContainerized()
 				},
 				{

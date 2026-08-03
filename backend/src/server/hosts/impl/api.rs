@@ -360,8 +360,11 @@ pub struct ServiceInput {
     /// Bindings that associate this service with ports/interfaces
     #[serde(default)]
     pub bindings: Vec<BindingInput>,
-    /// Container/VM virtualization info if applicable
-    pub virtualization: Option<ServiceVirtualization>,
+    /// Container identity (name, id, compose project) if this service is a container.
+    pub virtualization_metadata: Option<ServiceVirtualization>,
+    /// The container runtime service hosting this container, if any.
+    #[serde(default)]
+    pub virtualization_service_id: Option<Uuid>,
     /// Tags for categorization
     #[serde(default)]
     pub tags: Vec<Uuid>,
@@ -403,7 +406,8 @@ impl ServiceInput {
                 service_definition: self.service_definition,
                 name: self.name,
                 bindings,
-                virtualization: self.virtualization,
+                virtualization_metadata: self.virtualization_metadata,
+                virtualization_service_id: self.virtualization_service_id,
                 source,
                 tags: self.tags,
                 position: self.position.unwrap_or(0),
@@ -604,7 +608,10 @@ pub struct CreateHostRequest {
     #[validate(length(max = 500, message = "Description must be 500 characters or less"))]
     pub description: Option<String>,
     /// How the host is virtualized, when it is a VM or container guest.
-    pub virtualization: Option<HostVirtualization>,
+    pub virtualization_metadata: Option<HostVirtualization>,
+    /// The hypervisor service this VM runs on.
+    #[serde(default)]
+    pub virtualization_service_id: Option<Uuid>,
     /// Hide the host from topology views without deleting it.
     #[serde(default)]
     pub hidden: bool,
@@ -670,7 +677,10 @@ pub struct UpdateHostRequest {
     #[validate(length(max = 500, message = "Description must be 500 characters or less"))]
     pub description: Option<String>,
     /// How the host is virtualized, when it is a VM or container guest.
-    pub virtualization: Option<HostVirtualization>,
+    pub virtualization_metadata: Option<HostVirtualization>,
+    /// The hypervisor service this VM runs on.
+    #[serde(default)]
+    pub virtualization_service_id: Option<Uuid>,
     /// Hide the host from topology views without deleting it.
     pub hidden: bool,
     /// Tags assigned to this entity.
@@ -742,7 +752,10 @@ pub struct HostResponse {
         default,
         deserialize_with = "crate::server::shared::types::api::deserialize_lenient_option"
     )]
-    pub virtualization: Option<HostVirtualization>,
+    pub virtualization_metadata: Option<HostVirtualization>,
+    /// The hypervisor service this VM runs on.
+    #[serde(default)]
+    pub virtualization_service_id: Option<Uuid>,
     /// Whether the host is hidden from topology views.
     pub hidden: bool,
     /// Tags assigned to this entity.
@@ -797,7 +810,8 @@ impl HostResponse {
             hostname,
             description,
             source,
-            virtualization,
+            virtualization_metadata,
+            virtualization_service_id,
             hidden,
             tags,
             sys_descr,
@@ -833,7 +847,8 @@ impl HostResponse {
                 hostname: hostname.clone(),
                 description: description.clone(),
                 source: source.clone(),
-                virtualization: virtualization.clone(),
+                virtualization_metadata: virtualization_metadata.clone(),
+                virtualization_service_id: *virtualization_service_id,
                 hidden: *hidden,
                 tags: tags.clone(),
                 sys_descr: sys_descr.clone(),
@@ -886,7 +901,8 @@ impl HostResponse {
             hostname,
             description,
             source,
-            virtualization,
+            virtualization_metadata,
+            virtualization_service_id,
             hidden,
             tags,
             sys_descr,
@@ -912,7 +928,8 @@ impl HostResponse {
             hostname,
             description,
             source,
-            virtualization,
+            virtualization_metadata,
+            virtualization_service_id,
             hidden,
             tags,
             sys_descr,

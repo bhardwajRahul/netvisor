@@ -281,7 +281,10 @@ export function useReferralSourceMutation() {
 	const queryClient = useQueryClient();
 
 	return createMutation(() => ({
-		mutationFn: async (request: { referral_source: string; referral_source_other?: string }) => {
+		mutationFn: async (request: {
+			referral_source: components['schemas']['ReferralSource'];
+			referral_source_other?: string;
+		}) => {
 			const { data } = await apiClient.POST('/api/v1/organizations/referral-source', {
 				body: request
 			});

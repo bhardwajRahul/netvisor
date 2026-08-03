@@ -101,7 +101,8 @@ impl Storable for Service {
                     network_id,
                     host_id,
                     service_definition,
-                    virtualization,
+                    virtualization_metadata,
+                    virtualization_service_id,
                     bindings: _, // Bindings stored in separate table, managed by BindingStorage
                     source,
                     tags: _, // Stored in entity_tags junction table
@@ -118,7 +119,8 @@ impl Storable for Service {
                 "network_id",
                 "host_id",
                 "service_definition",
-                "virtualization",
+                "virtualization_metadata",
+                "virtualization_service_id",
                 "source",
                 "position",
                 "valid_from",
@@ -136,7 +138,8 @@ impl Storable for Service {
                 SqlValue::Uuid(network_id),
                 SqlValue::Uuid(host_id),
                 SqlValue::ServiceDefinition(service_definition),
-                SqlValue::OptionalServiceVirtualization(virtualization),
+                SqlValue::OptionalServiceVirtualization(virtualization_metadata),
+                SqlValue::OptionalUuid(virtualization_service_id),
                 SqlValue::EntitySource(source),
                 SqlValue::I32(position),
                 SqlValue::Timestamp(valid_from),
@@ -153,9 +156,16 @@ impl Storable for Service {
         let service_definition: Box<dyn ServiceDefinition> =
             serde_json::from_str(&row.get::<String, _>("service_definition"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize service_definition: {}", e))?;
-        let virtualization: Option<ServiceVirtualization> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("virtualization"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize virtualization: {}", e))?;
+        // Decoded as Option, unlike the previous non-Option get, which only ever worked because
+        // every write path stored a JSONB 'null' — a real SQL NULL in this column would have
+        // failed the decode outright.
+        let virtualization_metadata: Option<ServiceVirtualization> =
+            match row.get::<Option<serde_json::Value>, _>("virtualization_metadata") {
+                Some(v) => serde_json::from_value(v).map_err(|e| {
+                    anyhow::anyhow!("Failed to deserialize virtualization_metadata: {}", e)
+                })?,
+                None => None,
+            };
         let source: EntitySource =
             serde_json::from_value(row.get::<serde_json::Value, _>("source"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize source: {}", e))?;
@@ -175,7 +185,8 @@ impl Storable for Service {
                 network_id: row.get("network_id"),
                 host_id: row.get("host_id"),
                 service_definition,
-                virtualization,
+                virtualization_metadata,
+                virtualization_service_id: row.get("virtualization_service_id"),
                 bindings: Vec::new(), // Bindings loaded separately by ServiceService via BindingStorage
                 tags: Vec::new(),     // Hydrated from entity_tags junction table
                 source,
@@ -331,9 +342,14 @@ impl Entity for Service {
     fn preserve_immutable_fields(&mut self, existing: &Self) {
         // source is set at creation time (Manual or Discovery), cannot be changed
         self.base.source = existing.base.source.clone();
-        // Preserve virtualization if not explicitly set (discovery-managed field)
-        if self.base.virtualization.is_none() {
-            self.base.virtualization = existing.base.virtualization.clone();
+        // Preserve virtualization if not explicitly set (discovery-managed fields). Both halves
+        // are preserved independently: a caller that supplies neither must not lose the
+        // container's identity or its owning runtime.
+        if self.base.virtualization_metadata.is_none() {
+            self.base.virtualization_metadata = existing.base.virtualization_metadata.clone();
+        }
+        if self.base.virtualization_service_id.is_none() {
+            self.base.virtualization_service_id = existing.base.virtualization_service_id;
         }
     }
 }

@@ -244,9 +244,6 @@ impl SqlValue {
             Self::OptionalHostVirtualization(v) => {
                 Bound::Json(PgJson::new(serde_json::to_value(v)?))
             }
-            Self::OptionalSubnetVirtualization(v) => {
-                Bound::Json(PgJson::new(serde_json::to_value(v)?))
-            }
             Self::IPAddresses(v) => Bound::Json(PgJson::new(serde_json::to_value(v)?)),
             Self::Ports(v) => Bound::Json(PgJson::new(serde_json::to_value(v)?)),
             Self::Bindings(v) => Bound::Json(PgJson::new(serde_json::to_value(v)?)),

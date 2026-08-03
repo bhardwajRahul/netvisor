@@ -314,7 +314,8 @@ export function createDefaultService(
 		service_definition: serviceType,
 		name: serviceType,
 		bindings: [],
-		virtualization: null,
+		virtualization_metadata: null,
+		virtualization_service_id: null,
 		position: 0, // Will be set by server based on existing services
 		source: {
 			type: 'Manual'

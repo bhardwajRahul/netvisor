@@ -109,7 +109,11 @@
 				network_id: formData.network_id,
 				number: portType.metadata.number as number,
 				protocol: portType.metadata.protocol,
-				type: portType.id,
+				// `ports.getItem` just matched this id in the port-type registry, which is
+				// generated from the same backend enum as `Port['type']`, so membership is
+				// already proven. The registry helper is generic over `string`, so the union
+				// cannot be carried through it without retyping shared metadata infrastructure.
+				type: portType.id as Port['type'],
 				created_at: new Date().toISOString(),
 				updated_at: new Date().toISOString()
 			};

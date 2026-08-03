@@ -5,7 +5,7 @@
 import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
-import type { paths } from '$lib/api/schema';
+import type { components, paths } from '$lib/api/schema';
 import type { Daemon } from './types/base';
 import type { DiscoveryUpdatePayload } from '../discovery/types/api';
 import type { ProvisionDaemonRequest, ProvisionDaemonResponse } from './types/base';
@@ -234,7 +234,13 @@ export function useTestReachabilityMutation() {
  */
 export function useEmailInstallCommandMutation() {
 	return createMutation(() => ({
-		mutationFn: async ({ installCommand, os }: { installCommand: string; os: string }) => {
+		mutationFn: async ({
+			installCommand,
+			os
+		}: {
+			installCommand: string;
+			os: components['schemas']['DaemonOs'];
+		}) => {
 			const { data } = await apiClient.POST('/api/v1/daemons/email-install-command', {
 				body: { install_command: installCommand, os }
 			});

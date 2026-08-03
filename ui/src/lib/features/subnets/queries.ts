@@ -180,6 +180,7 @@ export function createEmptySubnetFormData(defaultNetworkId?: string): Subnet {
 		cidr: '',
 		description: '',
 		subnet_type: 'Unknown',
+		virtualization_service_id: null,
 		source: {
 			type: 'Manual'
 		}
