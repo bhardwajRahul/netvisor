@@ -407,7 +407,7 @@ impl Pattern<'_> {
             subnet,
             ip_address,
             endpoint_responses,
-            virtualization,
+            virtualization_metadata,
             managed_device,
             ..
         } = baseline_params;
@@ -905,7 +905,7 @@ impl Pattern<'_> {
                 }
             }
 
-            Pattern::ContainerVirtualization => match virtualization {
+            Pattern::ContainerVirtualization => match virtualization_metadata {
                 Some(ServiceVirtualization::Docker(..))
                 | Some(ServiceVirtualization::Podman(..)) => Ok(MatchResult {
                     ports: vec![],
@@ -1125,7 +1125,8 @@ mod tests {
                 ip_address: &self.ip_address,
                 all_ports,
                 endpoint_responses: &self.endpoint_responses,
-                virtualization: &self.virtualization,
+                virtualization_metadata: &self.virtualization,
+                virtualization_service_id: None,
                 client_responses: &self.client_responses,
                 managed_device: &self.managed_device,
             }
@@ -1146,7 +1147,6 @@ mod tests {
         ctx.virtualization = Some(ServiceVirtualization::Podman(PodmanVirtualization {
             container_name: Some("scanopy-test-web".to_string()),
             container_id: Some("73413cba1d1c".to_string()),
-            service_id: Uuid::nil(),
             compose_project: None,
         }));
         let baseline = ctx.create_baseline_params(&ports);
@@ -1174,7 +1174,6 @@ mod tests {
             crate::server::services::r#impl::virtualization::DockerVirtualization {
                 container_name: Some("nginx".to_string()),
                 container_id: Some("abc123".to_string()),
-                service_id: Uuid::nil(),
                 compose_project: None,
             },
         ));
@@ -1324,7 +1323,8 @@ mod tests {
             ip_address: &ctx.ip_address,
             all_ports: &ports,
             endpoint_responses: &endpoint_responses,
-            virtualization: &ctx.virtualization,
+            virtualization_metadata: &ctx.virtualization,
+            virtualization_service_id: None,
             client_responses: &client_responses,
             managed_device: &None,
         };
@@ -1369,7 +1369,8 @@ mod tests {
             ip_address: &ctx.ip_address,
             all_ports: &ports,
             endpoint_responses: &endpoint_responses,
-            virtualization: &ctx.virtualization,
+            virtualization_metadata: &ctx.virtualization,
+            virtualization_service_id: None,
             client_responses: &client_responses,
             managed_device: &None,
         };

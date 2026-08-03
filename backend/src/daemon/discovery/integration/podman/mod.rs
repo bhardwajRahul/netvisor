@@ -17,10 +17,10 @@ use crate::server::credentials::r#impl::mapping::{
 };
 use crate::server::ports::r#impl::base::PortType;
 
-use super::container::{self, ContainerRuntime};
+use super::container::{self, CONTAINER_SCAN_TIMEOUT, ContainerRuntime};
 use super::{
-    DiscoveryIntegration, IntegrationContext, IntegrationFailure, ProbeContext, ProbeFailure,
-    ProbeSuccess,
+    Checkpoint, Completeness, DiscoveryIntegration, IntegrationContext, IntegrationFailure,
+    ProbeContext, ProbeFailure, ProbeSuccess,
 };
 use crate::daemon::discovery::service::ops::HostData;
 
@@ -60,7 +60,7 @@ impl DiscoveryIntegration for PodmanIntegration {
     }
 
     fn timeout(&self) -> Duration {
-        Duration::from_secs(300)
+        CONTAINER_SCAN_TIMEOUT
     }
 
     fn probe_gate_ports(&self, credential: &CredentialQueryPayload) -> Vec<PortType> {
@@ -78,8 +78,9 @@ impl DiscoveryIntegration for PodmanIntegration {
         &self,
         ctx: &IntegrationContext<'_>,
         host_data: &mut HostData,
-    ) -> Result<(), IntegrationFailure> {
-        container::execute(ctx, host_data, ContainerRuntime::Podman).await
+        checkpoint: &Checkpoint<'_>,
+    ) -> Result<Completeness, IntegrationFailure> {
+        container::execute(ctx, host_data, checkpoint, ContainerRuntime::Podman).await
     }
 }
 
@@ -96,7 +97,7 @@ impl DiscoveryIntegration for PodmanSocketIntegration {
     }
 
     fn timeout(&self) -> Duration {
-        Duration::from_secs(300)
+        CONTAINER_SCAN_TIMEOUT
     }
 
     // No probe_gate_ports — Unix socket, no TCP port needed.
@@ -116,7 +117,8 @@ impl DiscoveryIntegration for PodmanSocketIntegration {
         &self,
         ctx: &IntegrationContext<'_>,
         host_data: &mut HostData,
-    ) -> Result<(), IntegrationFailure> {
-        container::execute(ctx, host_data, ContainerRuntime::Podman).await
+        checkpoint: &Checkpoint<'_>,
+    ) -> Result<Completeness, IntegrationFailure> {
+        container::execute(ctx, host_data, checkpoint, ContainerRuntime::Podman).await
     }
 }

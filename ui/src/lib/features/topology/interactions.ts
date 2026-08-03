@@ -220,7 +220,7 @@ export const FILTER_VALUE_EXTRACTORS: Record<string, Record<string, FilterValueE
 	},
 	Host: {
 		Virtualization: (h) =>
-			(h as { virtualization?: unknown | null }).virtualization != null
+			(h as { virtualization_metadata?: unknown | null }).virtualization_metadata != null
 				? 'Virtualized'
 				: 'BareMetal',
 		Staleness: (h, ctx) => entityFreshness(h as FreshnessSubject, ctx.network)

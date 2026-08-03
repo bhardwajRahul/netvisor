@@ -30,14 +30,28 @@ use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
 use crate::server::subnets::r#impl::types::SubnetType;
-use crate::server::subnets::r#impl::virtualization::{
-    DockerSubnetVirtualization, PodmanSubnetVirtualization, SubnetVirtualization,
-};
 
-use super::{ProbeContext, ProbeFailure, ProbeSuccess};
+use super::{
+    Checkpoint, CollectionShortfall, Completeness, ProbeContext, ProbeFailure, ProbeSuccess,
+};
 use crate::daemon::discovery::service::warnings::AttemptOutcome;
 
 const CONTAINER_PROBE_MAX_ATTEMPTS: u32 = 3;
+
+/// Hard cap on a container scan, shared by all four container integrations (Docker and Podman,
+/// socket and proxy).
+///
+/// One constant rather than four inline literals that have to agree. After the probe rework this
+/// leaves roughly a 10x margin for several hundred containers, and the soft deadline derived from
+/// it ([`CONTAINER_SCAN_SOFT_DEADLINE_FRACTION`]) means a slow scan stops itself and says so
+/// rather than letting this fire. Raising it was never the fix — a bigger number only lengthens
+/// the stall before the same loss.
+pub const CONTAINER_SCAN_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// How much of [`CONTAINER_SCAN_TIMEOUT`] the container loop may spend before it stops at a
+/// container boundary and reports what it got. Derived rather than a second literal so the two
+/// cannot drift.
+const CONTAINER_SCAN_SOFT_DEADLINE_FRACTION: f32 = 0.8;
 
 /// Which container runtime an integration targets. Selects every
 /// runtime-specific decision in the otherwise-shared scanning machinery.
@@ -73,14 +87,6 @@ impl ContainerRuntime {
         }
     }
 
-    /// Build the subnet virtualization for a bridge network owned by `service_id`.
-    pub fn subnet_virtualization(&self, service_id: Uuid) -> SubnetVirtualization {
-        match self {
-            Self::Docker => SubnetVirtualization::Docker(DockerSubnetVirtualization { service_id }),
-            Self::Podman => SubnetVirtualization::Podman(PodmanSubnetVirtualization { service_id }),
-        }
-    }
-
     /// Build a subnet from one IPAM entry of a network reported by the runtime's
     /// own API.
     ///
@@ -88,8 +94,8 @@ impl ContainerRuntime {
     /// subnet type. `driver` is the evidence: it comes from the runtime, not from
     /// guessing at an interface name (`SubnetType::from_interface_name`
     /// deliberately cannot return these types — see #663). Bridge networks also
-    /// carry `virtualization`, which scopes an otherwise-ambiguous CIDR like
-    /// `172.17.0.0/16` to the runtime service that owns it.
+    /// carry `virtualization_service_id`, which scopes an otherwise-ambiguous CIDR
+    /// like `172.17.0.0/16` to the runtime service that owns it.
     ///
     /// `None` for drivers that own no routable L3 network (`host`, `none`, `null`).
     pub fn subnet_from_network(
@@ -116,9 +122,9 @@ impl ContainerRuntime {
         };
 
         // MacVLAN/IpVLAN sit on a physical LAN the host shares with everything
-        // else, so they are not host-scoped and take no virtualization.
-        let virtualization = (subnet_type == bridge_subnet_type)
-            .then(|| self.subnet_virtualization(runtime_service_id));
+        // else, so they are not host-scoped and take no owning runtime.
+        let virtualization_service_id =
+            (subnet_type == bridge_subnet_type).then_some(runtime_service_id);
 
         Some(Subnet::new(SubnetBase {
             cidr,
@@ -127,7 +133,7 @@ impl ContainerRuntime {
             network_id,
             name,
             subnet_type,
-            virtualization,
+            virtualization_service_id,
             source: EntitySource::Discovery,
         }))
     }
@@ -160,25 +166,24 @@ impl ContainerRuntime {
             })
     }
 
-    /// Build the service virtualization stamped onto a discovered container.
+    /// Build the container identity stamped onto a discovered container service.
+    ///
+    /// The owning runtime is carried separately, as `Service::virtualization_service_id`.
     pub fn service_virtualization(
         &self,
         container_name: Option<String>,
         container_id: Option<String>,
-        service_id: Uuid,
         compose_project: Option<String>,
     ) -> ServiceVirtualization {
         match self {
             Self::Docker => ServiceVirtualization::Docker(DockerVirtualization {
                 container_name,
                 container_id,
-                service_id,
                 compose_project,
             }),
             Self::Podman => ServiceVirtualization::Podman(PodmanVirtualization {
                 container_name,
                 container_id,
-                service_id,
                 compose_project,
             }),
         }
@@ -363,8 +368,9 @@ pub async fn probe_socket(
 pub async fn execute(
     ctx: &super::IntegrationContext<'_>,
     host_data: &mut crate::daemon::discovery::service::ops::HostData,
+    _checkpoint: &Checkpoint<'_>,
     runtime: ContainerRuntime,
-) -> Result<(), super::IntegrationFailure> {
+) -> Result<Completeness, super::IntegrationFailure> {
     use std::sync::Arc;
     use std::sync::atomic::AtomicU8;
 
@@ -399,18 +405,19 @@ pub async fn execute(
         utils: ctx.utils,
     };
 
-    // Create bridge subnets locally (sent to server via create_host after service dedup)
+    // Bridge subnets are collected here because container→subnet mapping needs them below, but
+    // they are NOT written into host_data until the containers are in hand — see the merge at the
+    // end. Writing them here is what GH #650 actually was: the scan between this point and there
+    // takes minutes, and a timeout in the middle left the host holding every bridge subnet and
+    // none of the containers that give them meaning, reading as a clean success.
     let bridge_subnets = scanner.create_bridge_subnets().await?;
-    for subnet in &bridge_subnets {
-        host_data.add_subnet(subnet.clone());
-    }
     ctx.ops.report_progress(10).await.ok();
 
     let all_subnets: Vec<_> = ctx
         .known_subnets
         .iter()
         .cloned()
-        .chain(bridge_subnets)
+        .chain(bridge_subnets.iter().cloned())
         .collect();
 
     let containers = scanner.get_containers_and_summaries().await?;
@@ -421,23 +428,33 @@ pub async fn execute(
     let containers_interfaces_and_subnets =
         scanner.get_container_interfaces(&containers, &all_subnets, &mut host_interfaces);
 
-    let container_results = scanner
+    let scan = scanner
         .scan_and_process_containers(
             containers,
             &containers_interfaces_and_subnets,
             Arc::new(AtomicU8::new(0)),
+            tokio::time::Instant::now()
+                + CONTAINER_SCAN_TIMEOUT.mul_f32(CONTAINER_SCAN_SOFT_DEADLINE_FRACTION),
         )
         .await?;
     ctx.ops.report_progress(90).await.ok();
 
     tracing::info!(
-        discovered = %container_results.len(),
+        discovered = %scan.results.len(),
         total_containers = container_count,
+        reached = scan.reached,
         runtime = runtime.label(),
         "Container scanning complete"
     );
 
-    for result in container_results {
+    // Everything lands here, in one synchronous block with no await in it, so there is no point
+    // at which a dropped future can catch this half-done. The scratch buffer the caller owns
+    // makes that guarantee structural; keeping the writes together is what makes the code shape
+    // match it.
+    for subnet in bridge_subnets {
+        host_data.add_subnet(subnet);
+    }
+    for result in scan.results {
         for service in result.services {
             host_data.add_service(service);
         }
@@ -449,7 +466,17 @@ pub async fn execute(
         }
     }
 
-    Ok(())
+    // A scan stopped by the soft deadline has a coherent subset — every container it did reach is
+    // whole — so it is worth keeping, but only if the operator is told it is a subset.
+    Ok(if scan.reached < container_count {
+        Completeness::Partial(CollectionShortfall {
+            what: "containers",
+            collected: scan.reached,
+            expected: container_count,
+        })
+    } else {
+        Completeness::Complete
+    })
 }
 
 #[cfg(test)]
@@ -485,26 +512,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn runtime_stamps_matching_subnet_virtualization() {
-        let id = Uuid::new_v4();
-        assert!(matches!(
-            ContainerRuntime::Docker.subnet_virtualization(id),
-            SubnetVirtualization::Docker(d) if d.service_id == id
-        ));
-        assert!(matches!(
-            ContainerRuntime::Podman.subnet_virtualization(id),
-            SubnetVirtualization::Podman(p) if p.service_id == id
-        ));
-    }
-
     fn cidr(s: &str) -> IpCidr {
         s.parse().unwrap()
     }
 
     /// The runtime API is the only evidence that can produce a container subnet
-    /// type, and `driver` is that evidence. Bridges are host-scoped so they carry
-    /// virtualization; MacVLAN/IpVLAN sit on the shared physical LAN and don't.
+    /// type, and `driver` is that evidence. Bridges are host-scoped so they name
+    /// their owning runtime; MacVLAN/IpVLAN sit on the shared physical LAN and don't.
     #[test]
     fn subnet_from_network_types_by_driver() {
         let id = Uuid::new_v4();
@@ -520,21 +534,15 @@ mod tests {
 
         let docker = build(ContainerRuntime::Docker, "bridge").expect("bridge is a network");
         assert_eq!(docker.base.subnet_type, SubnetType::DockerBridge);
-        assert_eq!(
-            docker.base.virtualization.and_then(|v| v.service_id()),
-            Some(id)
-        );
+        assert_eq!(docker.base.virtualization_service_id, Some(id));
 
         let podman = build(ContainerRuntime::Podman, "overlay").expect("overlay is a network");
         assert_eq!(podman.base.subnet_type, SubnetType::PodmanBridge);
-        assert!(matches!(
-            podman.base.virtualization,
-            Some(SubnetVirtualization::Podman(_))
-        ));
+        assert_eq!(podman.base.virtualization_service_id, Some(id));
 
         let macvlan = build(ContainerRuntime::Docker, "macvlan").expect("macvlan is a network");
         assert_eq!(macvlan.base.subnet_type, SubnetType::MacVlan);
-        assert!(macvlan.base.virtualization.is_none());
+        assert!(macvlan.base.virtualization_service_id.is_none());
 
         // Drivers with no routable L3 network of their own.
         assert!(build(ContainerRuntime::Docker, "host").is_none());
@@ -580,24 +588,19 @@ mod tests {
 
     #[test]
     fn runtime_stamps_matching_service_virtualization() {
-        let id = Uuid::new_v4();
         let docker = ContainerRuntime::Docker.service_virtualization(
             Some("web".into()),
             Some("abc".into()),
-            id,
             Some("proj".into()),
         );
         assert!(matches!(docker, ServiceVirtualization::Docker(_)));
-        assert_eq!(docker.service_id(), Some(id));
         assert_eq!(docker.container_name(), Some("web"));
 
         let podman = ContainerRuntime::Podman.service_virtualization(
             Some("web".into()),
             Some("abc".into()),
-            id,
             None,
         );
         assert!(matches!(podman, ServiceVirtualization::Podman(_)));
-        assert_eq!(podman.service_id(), Some(id));
     }
 }

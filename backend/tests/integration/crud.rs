@@ -57,7 +57,7 @@ async fn test_subnet_crud(ctx: &TestContext) -> Result<(), String> {
         subnet_type: SubnetType::Lan,
         source: EntitySource::System,
         tags: Vec::new(),
-        virtualization: None,
+        virtualization_service_id: None,
     });
 
     let created: Subnet = ctx.client.post("/api/v1/subnets", &subnet).await?;
@@ -112,7 +112,8 @@ async fn test_host_crud(ctx: &TestContext) -> Result<(), String> {
         hostname: Some("test.local".to_string()),
         network_id: ctx.network_id,
         description: None,
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         hidden: false,
         tags: Vec::new(),
         // SNMP fields
@@ -146,7 +147,8 @@ async fn test_host_crud(ctx: &TestContext) -> Result<(), String> {
         name: "Updated Host".to_string(),
         hostname: fetched.hostname.clone(),
         description: fetched.description.clone(),
-        virtualization: fetched.virtualization.clone(),
+        virtualization_metadata: fetched.virtualization_metadata.clone(),
+        virtualization_service_id: fetched.virtualization_service_id,
         hidden: fetched.hidden,
         tags: fetched.tags.clone(),
         expected_updated_at: None,    // No optimistic locking for this test
@@ -183,7 +185,8 @@ async fn test_service_crud(ctx: &TestContext) -> Result<(), String> {
         hostname: Some("service-test.local".to_string()),
         network_id: ctx.network_id,
         description: None,
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         hidden: false,
         tags: Vec::new(),
         // SNMP fields
@@ -210,7 +213,8 @@ async fn test_service_crud(ctx: &TestContext) -> Result<(), String> {
         bindings: vec![],
         network_id: ctx.network_id,
         service_definition: service_def,
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         source: EntitySource::System,
         tags: Vec::new(),
         position: 0,
@@ -589,7 +593,7 @@ async fn test_user_api_key_authentication(ctx: &TestContext) -> Result<(), Strin
         subnet_type: SubnetType::Lan,
         source: EntitySource::Manual,
         tags: Vec::new(),
-        virtualization: None,
+        virtualization_service_id: None,
     });
 
     let response = api_key_client
@@ -895,7 +899,7 @@ async fn test_user_api_key_network_access(ctx: &TestContext) -> Result<(), Strin
         subnet_type: SubnetType::Lan,
         source: EntitySource::System,
         tags: Vec::new(),
-        virtualization: None,
+        virtualization_service_id: None,
     });
     let other_subnet = ctx.insert_entity(&other_subnet).await?;
     println!("  Created subnet on other network: {}", other_subnet.id);

@@ -55,6 +55,24 @@ impl InterfaceDataComplete {
     pub fn all(&self) -> bool {
         self.lldp && self.cdp && self.fdb && self.vlan_membership
     }
+
+    /// No group has been read yet, so the server keeps everything it already holds.
+    ///
+    /// The counterpart to [`Default`], which claims every group is authoritative. That default is
+    /// right for the wire (an old daemon that never sends the field behaved that way), and wrong
+    /// for a checkpoint written partway through a collection: SNMP persists its interface set as
+    /// soon as the ifTable walk finishes, long before the neighbour and VLAN walks run, and
+    /// shipping the all-`true` default alongside it told the server those columns were
+    /// authoritatively empty. It cleared them — and an interface with no chassis id drops out of
+    /// L2 resolution for good.
+    pub fn none() -> Self {
+        Self {
+            lldp: false,
+            cdp: false,
+            fdb: false,
+            vlan_membership: false,
+        }
+    }
 }
 
 /// Resolved LLDP/CDP neighbor connection.

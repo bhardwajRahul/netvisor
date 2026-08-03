@@ -12,7 +12,6 @@ use crate::server::shared::events::types::{BillingOperation, OnboardingOperation
 use crate::server::shares::r#impl::base::ShareOptions;
 use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
 use crate::server::subnets::r#impl::base::Subnet;
-use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 use crate::server::tags::r#impl::base::Tag;
 use crate::server::topology::types::views::TopologyView;
 use crate::server::vlans::r#impl::base::Vlan;
@@ -261,7 +260,6 @@ pub enum SqlValue {
     ServiceDefinition(Box<dyn ServiceDefinition>),
     OptionalServiceVirtualization(Option<ServiceVirtualization>),
     OptionalHostVirtualization(Option<HostVirtualization>),
-    OptionalSubnetVirtualization(Option<SubnetVirtualization>),
     Ports(Vec<Port>),
     IPAddresses(Vec<IPAddress>),
     RunType(RunType),
@@ -445,7 +443,6 @@ impl_db_enum_contributor_via_variant_names!(
     EntitySource,
     HostVirtualization,
     ServiceVirtualization,
-    SubnetVirtualization,
     RunType,
     DiscoveryType,
     BillingPlan,
@@ -536,7 +533,6 @@ impl SqlValue {
     ) {
         use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
         use ShareOptions;
-        use SubnetVirtualization;
         use TopologyView;
         use Vlan;
 
@@ -579,9 +575,6 @@ impl SqlValue {
             }
             SqlValueDiscriminants::OptionalHostVirtualization => {
                 HostVirtualization::contribute(out)
-            }
-            SqlValueDiscriminants::OptionalSubnetVirtualization => {
-                SubnetVirtualization::contribute(out)
             }
             SqlValueDiscriminants::Ports => Port::contribute(out),
             SqlValueDiscriminants::IPAddresses => IPAddress::contribute(out),

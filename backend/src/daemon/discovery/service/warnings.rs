@@ -16,6 +16,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
 
+use strum::EnumCount;
+
 use crate::server::ports::r#impl::base::PortType;
 
 /// How many addresses a summary lists before eliding the rest.
@@ -462,7 +464,17 @@ pub fn render_incomplete_interface_walks(records: &[IncompleteInterfaceWalk]) ->
 /// Every variant maps to a different thing for the operator to do, which is the test for whether
 /// one belongs here. "The device refused my password" and "nothing was listening" arrive as the
 /// same empty result and send an operator to opposite ends of the problem.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    strum_macros::EnumCount,
+    strum_macros::EnumIter,
+)]
 pub enum AttemptOutcome {
     /// The endpoint answered and refused the credential. The credential is wrong.
     Rejected,
@@ -481,6 +493,15 @@ pub enum AttemptOutcome {
     /// The credential worked and the collection after it did not. The host's data is missing
     /// rather than merely stale, which is why it is worth its own line.
     CollectionFailed,
+    /// The credential worked, the collection started, and the time limit stopped it before it
+    /// finished.
+    ///
+    /// Distinct from [`Self::TimedOut`], which is the address never answering, and from
+    /// [`Self::CollectionFailed`], which is the collection erroring: here the service answered
+    /// perfectly well and there was simply more to read than there was time to read it. Reporting
+    /// this as [`Self::TimedOut`] told operators to check that the service was listening, on a
+    /// host where it had just enumerated 77 containers (GH #650).
+    CollectionTimedOut,
     /// The scan was cancelled. Never rendered — the user stopped it, so it is not a finding.
     Cancelled,
 }
@@ -627,7 +648,7 @@ pub fn render_credential_issues(issues: &[CredentialIssue]) -> Vec<String> {
         let matching: Vec<&CredentialIssue> = issues
             .iter()
             .filter(|i| {
-                attempt_outcome(&i.reason) == Some(*outcome)
+                attempt_outcome(&i.reason) == Some(outcome)
                     && !already_covered_by_address_line(issues, i)
             })
             .collect();
@@ -656,12 +677,18 @@ pub fn render_credential_issues(issues: &[CredentialIssue]) -> Vec<String> {
 
 /// The order the outcome lines appear in: most actionable first, so the line an operator can do
 /// something about is not buried under the ones describing the network.
-const ATTEMPT_ORDER: &[AttemptOutcome] = &[
+///
+/// Fixed-length rather than a slice, so a new [`AttemptOutcome`] that is not listed here is an
+/// array-length compile error. As a slice this compiled fine with a variant missing and simply
+/// never rendered it — the same failure mode [`AttemptOutcome::advice`] was made a `match` to
+/// avoid, and the one this constant still had.
+const ATTEMPT_ORDER: [AttemptOutcome; AttemptOutcome::COUNT] = [
     AttemptOutcome::Rejected,
     AttemptOutcome::Malformed,
     AttemptOutcome::TlsFailed,
     AttemptOutcome::NotThisService,
     AttemptOutcome::CollectionFailed,
+    AttemptOutcome::CollectionTimedOut,
     AttemptOutcome::Unreachable,
     AttemptOutcome::TimedOut,
     AttemptOutcome::Cancelled,
@@ -691,6 +718,14 @@ impl AttemptOutcome {
             Self::CollectionFailed => Some(
                 "authenticated and then failed while collecting, so this host's data is missing \
                  rather than out of date",
+            ),
+            // Deliberately outside the `already_covered_by_address_line` suppression below: no
+            // address-level line says this, because the address answered fine. Suppressing it
+            // the way `TimedOut` is suppressed is what made a 300s container scan silent.
+            Self::CollectionTimedOut => Some(
+                "authenticated and then ran out of time before it finished collecting, so this \
+                 host's data was not recorded — rescan this host on its own, or narrow what the \
+                 scan covers",
             ),
             // The user stopped the scan. Not a finding.
             Self::Cancelled => None,
@@ -777,6 +812,78 @@ mod tests {
         assert!(render_incomplete_snmp_walks(&[]).is_empty());
         assert!(render_incomplete_interface_walks(&[]).is_empty());
         assert!(render_credential_issues(&[]).is_empty());
+    }
+
+    /// GH #650. A container scan that authenticated, enumerated 77 containers and then ran out of
+    /// time was reported with the `TimedOut` wording — "could not be reached at that address,
+    /// check the service is listening" — and on a sweep was suppressed entirely, because
+    /// `already_covered_by_address_line` treats `TimedOut` as saying the same thing as an
+    /// address-level line. Neither may happen to a collection that ran out of time.
+    #[test]
+    fn a_collection_that_ran_out_of_time_is_not_reported_as_an_unreachable_host() {
+        let addr = ip("10.1.1.99");
+        let issues = vec![
+            CredentialIssue {
+                label: "Podman socket connection",
+                ip: addr,
+                reason: CredentialIssueReason::Attempted {
+                    outcome: AttemptOutcome::CollectionTimedOut,
+                    message: "Integration timed out after 300s".to_string(),
+                },
+            },
+            // An address-level line for the same address, which is what suppresses `TimedOut`.
+            CredentialIssue {
+                label: "SNMP queries",
+                ip: addr,
+                reason: CredentialIssueReason::TargetNotResponding,
+            },
+        ];
+
+        let rendered = render_credential_issues(&issues);
+        let text = joined(&rendered);
+
+        assert!(
+            text.contains("ran out of time"),
+            "a collection that hit its time limit must still be reported: {text}"
+        );
+        assert!(
+            !text.contains("check the address, port and that the service is listening"),
+            "the service answered fine; sending the operator to check it is listening is the \
+             misdiagnosis this outcome exists to prevent: {text}"
+        );
+    }
+
+    /// `ATTEMPT_ORDER`'s length is compiler-checked against the variant count, but an entry that
+    /// is present and unreachable would still render nothing. Pair the compile-time check with a
+    /// behavioural one so both halves of "every outcome the product names gets said out loud"
+    /// hold.
+    #[test]
+    fn every_reportable_outcome_produces_a_line() {
+        use strum::IntoEnumIterator;
+
+        for outcome in AttemptOutcome::iter() {
+            let issues = vec![CredentialIssue {
+                label: "SNMP queries",
+                ip: ip("10.0.0.5"),
+                reason: CredentialIssueReason::Attempted {
+                    outcome,
+                    message: "diagnostic".to_string(),
+                },
+            }];
+            let rendered = render_credential_issues(&issues);
+
+            match outcome.advice() {
+                Some(_) => assert_eq!(
+                    rendered.len(),
+                    1,
+                    "{outcome:?} has advice but rendered {rendered:?}"
+                ),
+                None => assert!(
+                    rendered.is_empty(),
+                    "{outcome:?} has no advice but rendered {rendered:?}"
+                ),
+            }
+        }
     }
 
     /// The reported problem: fifteen hosts produced fifteen paragraphs. One line, always.

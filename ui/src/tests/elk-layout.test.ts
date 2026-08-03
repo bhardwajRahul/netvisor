@@ -101,6 +101,7 @@ function makeSubnet(id: string, subnetType: SubnetType): Subnet {
 		subnet_type: subnetType,
 		network_id: uuid(),
 		cidr: '10.0.0.0/24',
+		virtualization_service_id: null,
 		source: { type: 'Manual' },
 		tags: [],
 		created_at: '2026-01-01T00:00:00Z',

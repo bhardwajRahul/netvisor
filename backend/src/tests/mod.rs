@@ -91,7 +91,8 @@ pub fn host(network_id: &Uuid) -> Host {
         network_id: *network_id,
         description: None,
         source: EntitySource::System,
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         hidden: false,
         tags: Vec::new(),
         ..Default::default()
@@ -125,7 +126,7 @@ pub fn subnet(network_id: &Uuid) -> Subnet {
         network_id: *network_id,
         cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
         subnet_type: SubnetType::Lan,
-        virtualization: None,
+        virtualization_service_id: None,
         source: EntitySource::System,
         tags: Vec::new(),
     })
@@ -141,7 +142,8 @@ pub fn service(network_id: &Uuid, host_id: &Uuid) -> Service {
         bindings: vec![],
         network_id: *network_id,
         service_definition: service_def,
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         source: EntitySource::System,
         tags: Vec::new(),
         position: 0,

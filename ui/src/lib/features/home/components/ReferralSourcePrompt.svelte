@@ -70,7 +70,8 @@
 
 	const form = createForm(() => ({
 		defaultValues: {
-			referral_source: '',
+			// `''` is the unselected state, rejected by the guard below before submission.
+			referral_source: '' as components['schemas']['ReferralSource'] | '',
 			referral_source_other: ''
 		},
 		onSubmit: async ({ value }) => {

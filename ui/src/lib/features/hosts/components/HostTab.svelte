@@ -122,8 +122,8 @@
 	// Extract service IDs from visible hosts for "Virtualized By" field
 	const servicesQuery = useServicesByIds(() => {
 		return (hostsQuery.data?.items ?? [])
-			.filter((h) => h.virtualization?.details.service_id)
-			.map((h) => h.virtualization!.details.service_id)
+			.map((h) => h.virtualization_service_id)
+			.filter((id): id is string => id != null)
 			.filter((id, idx, arr) => arr.indexOf(id) === idx);
 	});
 
@@ -255,11 +255,11 @@
 					// The server groups on the virtualizing service's name,
 					// coalescing hosts without one to an empty string.
 					getGroupValue: (host) =>
-						servicesData.find((s) => s.id === host.virtualization?.details.service_id)?.name ?? '',
+						servicesData.find((s) => s.id === host.virtualization_service_id)?.name ?? '',
 					getValue: (host) => {
-						if (host.virtualization) {
+						if (host.virtualization_service_id) {
 							const virtualizationService = servicesData.find(
-								(s) => s.id === host.virtualization?.details.service_id
+								(s) => s.id === host.virtualization_service_id
 							);
 							if (virtualizationService) {
 								return (

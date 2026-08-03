@@ -180,7 +180,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 				bodyText: service ? null : 'Unknown Service',
 				showServices: !!service,
 				isVirtualized: false,
-				isContainerized: service?.virtualization != null,
+				isContainerized: service?.virtualization_service_id != null,
 				isCategoryHidden: false,
 				ip_address_id: nodeId
 			} as ElementRenderData
@@ -232,7 +232,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 				headerText: hostLabel,
 				bodyText: showServices ? null : hostLabel,
 				showServices,
-				isVirtualized: host.virtualization !== null,
+				isVirtualized: host.virtualization_service_id != null,
 				isContainerized: false,
 				ip_address_id: nodeId
 			} as ElementRenderData
@@ -337,7 +337,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 			isVirtualized:
 				headerText?.startsWith('Docker @') || isContainerSubnet
 					? false
-					: host.virtualization !== null,
+					: host.virtualization_service_id != null,
 			isContainerized: false,
 			ip_address_id: resolved.ipAddressId ?? ''
 		} as ElementRenderData

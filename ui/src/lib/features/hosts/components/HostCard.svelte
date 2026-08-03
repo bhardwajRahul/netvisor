@@ -94,8 +94,8 @@
 			.filter((c): c is NonNullable<typeof c> => c != null)
 	);
 	let virtualizationService = $derived(
-		host.virtualization
-			? servicesData.find((s) => s.id === host.virtualization?.details.service_id)
+		host.virtualization_service_id
+			? servicesData.find((s) => s.id === host.virtualization_service_id)
 			: null
 	);
 
@@ -109,11 +109,12 @@
 			)
 			.map((sv) => sv.id);
 
+		// Any container runtime, not just Docker — the runtime is identified by the service it
+		// points at, so Podman containers count here too.
 		const containers = hostServices.filter(
 			(s) =>
-				s.virtualization &&
-				s.virtualization?.type == 'Docker' &&
-				servicesThatManageContainersIds.includes(s.virtualization.details.service_id)
+				s.virtualization_service_id &&
+				servicesThatManageContainersIds.includes(s.virtualization_service_id)
 		);
 
 		const containerIds = containers.map((c) => c.id);
@@ -131,7 +132,7 @@
 				(networksQuery.data ?? []).find((n) => n.id === host.network_id),
 				{ entityTypeLabel: entities.getName('Host') || undefined }
 			),
-			...(host.virtualization !== null && virtualizationService
+			...(virtualizationService
 				? {
 						subtitle: hosts_vmManagedBy({
 							serviceName:

@@ -38,45 +38,33 @@ trait VirtualizationServiceRef {
     fn set_virtualization_service_id(&mut self, id: Uuid);
 }
 
+// Each of these used to reach into a JSONB payload and could only set an id when a payload was
+// already there. The column is set independently of any metadata, so a clone that carries a
+// reference but no metadata is now remappable too.
 impl VirtualizationServiceRef for Host {
     fn virtualization_service_id(&self) -> Option<Uuid> {
-        self.base
-            .virtualization
-            .as_ref()
-            .and_then(|v| v.service_id())
+        self.base.virtualization_service_id
     }
     fn set_virtualization_service_id(&mut self, id: Uuid) {
-        if let Some(v) = self.base.virtualization.as_mut() {
-            v.set_service_id(id);
-        }
+        self.base.virtualization_service_id = Some(id);
     }
 }
 
 impl VirtualizationServiceRef for Service {
     fn virtualization_service_id(&self) -> Option<Uuid> {
-        self.base
-            .virtualization
-            .as_ref()
-            .and_then(|v| v.service_id())
+        self.base.virtualization_service_id
     }
     fn set_virtualization_service_id(&mut self, id: Uuid) {
-        if let Some(v) = self.base.virtualization.as_mut() {
-            v.set_service_id(id);
-        }
+        self.base.virtualization_service_id = Some(id);
     }
 }
 
 impl VirtualizationServiceRef for Subnet {
     fn virtualization_service_id(&self) -> Option<Uuid> {
-        self.base
-            .virtualization
-            .as_ref()
-            .and_then(|v| v.service_id())
+        self.base.virtualization_service_id
     }
     fn set_virtualization_service_id(&mut self, id: Uuid) {
-        if let Some(v) = self.base.virtualization.as_mut() {
-            v.set_service_id(id);
-        }
+        self.base.virtualization_service_id = Some(id);
     }
 }
 
@@ -536,48 +524,26 @@ where
 mod virtualization_remap_tests {
     use super::*;
     use crate::server::hosts::r#impl::base::HostBase;
-    use crate::server::hosts::r#impl::virtualization::{HostVirtualization, ProxmoxVirtualization};
     use crate::server::services::r#impl::base::ServiceBase;
-    use crate::server::services::r#impl::virtualization::{
-        DockerVirtualization, ServiceVirtualization,
-    };
     use crate::server::subnets::r#impl::base::SubnetBase;
-    use crate::server::subnets::r#impl::virtualization::{
-        DockerSubnetVirtualization, SubnetVirtualization,
-    };
 
     fn host_with(service_id: Option<Uuid>) -> Host {
         Host::new(HostBase {
-            virtualization: service_id.map(|id| {
-                HostVirtualization::Proxmox(ProxmoxVirtualization {
-                    vm_name: None,
-                    vm_id: None,
-                    service_id: id,
-                })
-            }),
+            virtualization_service_id: service_id,
             ..Default::default()
         })
     }
 
     fn service_with(service_id: Option<Uuid>) -> Service {
         <Service as Storable>::new(ServiceBase {
-            virtualization: service_id.map(|id| {
-                ServiceVirtualization::Docker(DockerVirtualization {
-                    container_name: None,
-                    container_id: None,
-                    service_id: id,
-                    compose_project: None,
-                })
-            }),
+            virtualization_service_id: service_id,
             ..Default::default()
         })
     }
 
     fn subnet_with(service_id: Option<Uuid>) -> Subnet {
         <Subnet as Storable>::new(SubnetBase {
-            virtualization: service_id.map(|id| {
-                SubnetVirtualization::Docker(DockerSubnetVirtualization { service_id: id })
-            }),
+            virtualization_service_id: service_id,
             ..Default::default()
         })
     }

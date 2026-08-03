@@ -39,8 +39,8 @@ use crate::server::services::r#impl::base::ServiceMatchBaselineParams;
 use crate::server::services::r#impl::patterns::{ClientProbe, ManagedDevice};
 
 use super::{
-    DiscoveryIntegration, IntegrationContext, IntegrationFailure, ProbeContext, ProbeFailure,
-    ProbeSuccess,
+    Checkpoint, Completeness, DiscoveryIntegration, IntegrationContext, IntegrationFailure,
+    ProbeContext, ProbeFailure, ProbeSuccess,
 };
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::AttemptOutcome;
@@ -113,7 +113,8 @@ impl DiscoveryIntegration for UnifiIntegration {
         &self,
         ctx: &IntegrationContext<'_>,
         host_data: &mut HostData,
-    ) -> Result<(), IntegrationFailure> {
+        _checkpoint: &Checkpoint<'_>,
+    ) -> Result<Completeness, IntegrationFailure> {
         let handle = ctx
             .probe_handle
             .and_then(|h| h.downcast_ref::<UnifiProbeHandle>())
@@ -183,7 +184,14 @@ impl DiscoveryIntegration for UnifiIntegration {
 
         tracing::info!(created, "UniFi device sync complete");
         ctx.ops.report_progress(90).await.ok();
-        Ok(())
+        // No checkpoint: each device is committed server-side by `create_device_host` as it is
+        // reached, so UniFi's progress never depended on `host_data` surviving a drop. The only
+        // thing in the scratch buffer is the controller's own enrichment, which is all-or-nothing
+        // by nature.
+        //
+        // Devices skipped for having no address on a known subnet are reported above as their own
+        // issue — that is a scoping problem the operator fixes, not a collection that ran short.
+        Ok(Completeness::Complete)
     }
 }
 
@@ -247,9 +255,11 @@ fn enrich_scanned_host(host_data: &mut HostData, device: &mapping::MappedDevice)
         );
         return;
     }
-    host_data.replace_interfaces(device.interfaces.clone());
-    host_data.set_interfaces_complete(interfaces_complete());
-    host_data.set_interface_data_complete(interface_data_complete());
+    host_data.replace_interfaces(
+        device.interfaces.clone(),
+        interfaces_complete(),
+        interface_data_complete(),
+    );
 }
 
 /// Create a host for a device the controller manages but we did not scan.
@@ -287,7 +297,8 @@ async fn create_device_host(
             ip_address: &ip_address,
             all_ports: &all_ports,
             endpoint_responses: &endpoint_responses,
-            virtualization: &None,
+            virtualization_metadata: &None,
+            virtualization_service_id: None,
             client_responses: &client_responses,
             managed_device: &managed_device,
         },

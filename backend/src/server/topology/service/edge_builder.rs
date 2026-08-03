@@ -72,11 +72,9 @@ impl EdgeBuilder {
             HashMap::new();
 
         ctx.services.iter().for_each(|s| {
-            // Any container-runtime manager (Docker, Podman, …), keyed off the
-            // generic service_id() accessor rather than a specific variant.
-            if let Some(runtime_service_id) =
-                s.base.virtualization.as_ref().and_then(|v| v.service_id())
-            {
+            // Any container-runtime manager (Docker, Podman, …), read off the column rather
+            // than a variant.
+            if let Some(runtime_service_id) = s.base.virtualization_service_id {
                 let entry = docker_service_to_containerized_service_ids
                     .entry(runtime_service_id)
                     .or_default();
@@ -255,7 +253,7 @@ impl EdgeBuilder {
     pub fn create_same_container_edges(ctx: &TopologyContext) -> Vec<Edge> {
         ctx.services
             .iter()
-            .filter(|s| s.base.virtualization.is_some())
+            .filter(|s| s.base.virtualization_metadata.is_some())
             .flat_map(|containerized| {
                 // Addresses of this container that sit on one of its host's bridge subnets.
                 let mut bridge_addresses: Vec<(IpAddr, Uuid)> = containerized
@@ -315,11 +313,9 @@ impl EdgeBuilder {
         let mut vm_host_id_to_proxmox_service: HashMap<Uuid, Uuid> = HashMap::new();
 
         ctx.hosts.iter().for_each(|h| {
-            // Any host-level virtualization manager (Proxmox, vCenter, ESXi, …).
-            // Keyed off the generic service_id() accessor, not a specific variant.
-            if let Some(vm_manager_service_id) =
-                h.base.virtualization.as_ref().and_then(|v| v.service_id())
-            {
+            // Any host-level virtualization manager (Proxmox, vCenter, ESXi, …), read off the
+            // column rather than a variant.
+            if let Some(vm_manager_service_id) = h.base.virtualization_service_id {
                 // Create mapping between subnet and hypervisor interface(s) on that subnet
                 if let Some(promxox_service) = ctx.get_service_by_id(vm_manager_service_id) {
                     promxox_service
@@ -390,11 +386,7 @@ impl EdgeBuilder {
         ctx.hosts
             .iter()
             .filter_map(|h| {
-                let vm_manager_service_id = h
-                    .base
-                    .virtualization
-                    .as_ref()
-                    .and_then(|v| v.service_id())?;
+                let vm_manager_service_id = h.base.virtualization_service_id?;
                 let proxmox_service = ctx.get_service_by_id(vm_manager_service_id)?;
                 Some(Edge {
                     id: Uuid::new_v4(),
@@ -874,12 +866,14 @@ mod tests {
                 host_id,
                 network_id,
                 name: "multi-attached".to_string(),
-                virtualization: Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_name: Some("multi-attached".to_string()),
-                    container_id: Some("abc123".to_string()),
-                    service_id: runtime.id,
-                    compose_project: None,
-                })),
+                virtualization_metadata: Some(ServiceVirtualization::Docker(
+                    DockerVirtualization {
+                        container_name: Some("multi-attached".to_string()),
+                        container_id: Some("abc123".to_string()),
+                        compose_project: None,
+                    },
+                )),
+                virtualization_service_id: Some(runtime.id),
                 bindings: vec![
                     Binding::new_ip_address_serviceless(db_ip.id),
                     Binding::new_ip_address_serviceless(mgmt_ip.id),
@@ -985,12 +979,14 @@ mod tests {
                 host_id,
                 network_id,
                 name: "multi-attached".to_string(),
-                virtualization: Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_name: Some("multi-attached".to_string()),
-                    container_id: Some("abc123".to_string()),
-                    service_id: runtime_id,
-                    compose_project: None,
-                })),
+                virtualization_metadata: Some(ServiceVirtualization::Docker(
+                    DockerVirtualization {
+                        container_name: Some("multi-attached".to_string()),
+                        container_id: Some("abc123".to_string()),
+                        compose_project: None,
+                    },
+                )),
+                virtualization_service_id: Some(runtime_id),
                 bindings: vec![
                     Binding::new_ip_address_serviceless(db_ip.id),
                     Binding::new_ip_address_serviceless(mgmt_ip.id),
@@ -1071,12 +1067,14 @@ mod tests {
                 host_id,
                 network_id,
                 name: "single".to_string(),
-                virtualization: Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_name: Some("single".to_string()),
-                    container_id: Some("def456".to_string()),
-                    service_id: Uuid::new_v4(),
-                    compose_project: None,
-                })),
+                virtualization_metadata: Some(ServiceVirtualization::Docker(
+                    DockerVirtualization {
+                        container_name: Some("single".to_string()),
+                        container_id: Some("def456".to_string()),
+                        compose_project: None,
+                    },
+                )),
+                virtualization_service_id: Some(Uuid::new_v4()),
                 bindings: vec![Binding::new_ip_address_serviceless(only_ip.id)],
                 ..Default::default()
             },
@@ -1147,12 +1145,14 @@ mod tests {
                 host_id,
                 network_id,
                 name: name.to_string(),
-                virtualization: Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_name: Some(name.to_string()),
-                    container_id: Some(name.to_string()),
-                    service_id: runtime_id,
-                    compose_project: None,
-                })),
+                virtualization_metadata: Some(ServiceVirtualization::Docker(
+                    DockerVirtualization {
+                        container_name: Some(name.to_string()),
+                        container_id: Some(name.to_string()),
+                        compose_project: None,
+                    },
+                )),
+                virtualization_service_id: Some(runtime_id),
                 bindings: vec![Binding::new_ip_address_serviceless(ip_id)],
                 ..Default::default()
             },
@@ -1242,12 +1242,14 @@ mod tests {
                 network_id,
                 host_id,
                 name: name.to_string(),
-                virtualization: Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_id: Some(name.to_string()),
-                    container_name: Some(name.to_string()),
-                    service_id: runtime_id,
-                    compose_project: None,
-                })),
+                virtualization_metadata: Some(ServiceVirtualization::Docker(
+                    DockerVirtualization {
+                        container_id: Some(name.to_string()),
+                        container_name: Some(name.to_string()),
+                        compose_project: None,
+                    },
+                )),
+                virtualization_service_id: Some(runtime_id),
                 bindings: vec![Binding::new_ip_address_serviceless(ip_id)],
                 ..Default::default()
             },
@@ -1345,12 +1347,14 @@ mod tests {
                 host_id,
                 network_id,
                 name: name.to_string(),
-                virtualization: Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_name: Some(name.to_string()),
-                    container_id: Some(name.to_string()),
-                    service_id: runtime_id,
-                    compose_project: None,
-                })),
+                virtualization_metadata: Some(ServiceVirtualization::Docker(
+                    DockerVirtualization {
+                        container_name: Some(name.to_string()),
+                        container_id: Some(name.to_string()),
+                        compose_project: None,
+                    },
+                )),
+                virtualization_service_id: Some(runtime_id),
                 bindings: vec![Binding::new_ip_address_serviceless(ip_id)],
                 ..Default::default()
             },

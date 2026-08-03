@@ -198,7 +198,7 @@ fn compute_virtualizer_placements(rule: &ElementRule, ctx: &PlacementContext) ->
                 && inline_ctx
                     .hosts
                     .get(&virt_svc.base.host_id)
-                    .is_some_and(|h| h.base.virtualization.is_some())
+                    .is_some_and(|h| h.base.virtualization_service_id.is_some())
             {
                 continue;
             }
@@ -251,12 +251,12 @@ fn compute_virtualizer_placements(rule: &ElementRule, ctx: &PlacementContext) ->
         if matches!(rule, ElementRule::ByHypervisor) {
             // Services on VM hosts → InlineOn (no visual group)
             for (host_id, host) in inline_ctx.hosts.iter() {
-                if host.base.virtualization.is_none() {
+                if host.base.virtualization_service_id.is_none() {
                     continue;
                 }
                 for svc in inline_ctx.service_lookup.values() {
                     if svc.base.host_id == *host_id
-                        && svc.base.virtualization.is_none()
+                        && svc.base.virtualization_service_id.is_none()
                         && !result.placements.contains_key(&svc.id)
                     {
                         result.placements.insert(
@@ -278,7 +278,7 @@ fn compute_virtualizer_placements(rule: &ElementRule, ctx: &PlacementContext) ->
                 let Some(host) = inline_ctx.hosts.get(&virt_svc.base.host_id) else {
                     continue;
                 };
-                if host.base.virtualization.is_none() {
+                if host.base.virtualization_service_id.is_none() {
                     continue;
                 }
                 let vm_host_id = virt_svc.base.host_id;
@@ -394,7 +394,7 @@ fn compute_stack_placements(ctx: &PlacementContext) -> RulePlacement {
 pub(crate) fn stack_runtime_logos(services: &[Service]) -> HashMap<String, Option<&'static str>> {
     let mut logos: HashMap<String, Option<&'static str>> = HashMap::new();
     for service in services {
-        let Some(virt) = &service.base.virtualization else {
+        let Some(virt) = &service.base.virtualization_metadata else {
             continue;
         };
         let Some(project) = virt.compose_project() else {
@@ -1027,7 +1027,8 @@ mod tests {
     fn service_with_virt(virt: ServiceVirtualization) -> Service {
         Service {
             base: ServiceBase {
-                virtualization: Some(virt),
+                virtualization_metadata: Some(virt),
+                virtualization_service_id: Some(Uuid::new_v4()),
                 ..Default::default()
             },
             ..Default::default()
@@ -1038,7 +1039,6 @@ mod tests {
         ServiceVirtualization::Docker(DockerVirtualization {
             container_name: None,
             container_id: None,
-            service_id: Uuid::new_v4(),
             compose_project: project.map(String::from),
         })
     }
@@ -1047,7 +1047,6 @@ mod tests {
         ServiceVirtualization::Podman(PodmanVirtualization {
             container_name: None,
             container_id: None,
-            service_id: Uuid::new_v4(),
             compose_project: project.map(String::from),
         })
     }

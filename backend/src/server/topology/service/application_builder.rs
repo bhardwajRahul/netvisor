@@ -196,7 +196,7 @@ impl ViewBuilder for ApplicationBuilder {
                     resolve_element_tag_ids(EntityDiscriminants::Service, service.id, &tag_lookups);
                 let deployment_group = service
                     .base
-                    .virtualization
+                    .virtualization_metadata
                     .as_ref()
                     .and_then(|v| v.compose_project().map(str::to_string));
                 Some(ElementMatchData {
@@ -323,8 +323,7 @@ impl ViewBuilder for ApplicationBuilder {
 
         // Create ContainerRuntime overlay edges (runtime-agnostic: Docker, Podman, …)
         for service in ctx.services {
-            if let Some(virt) = &service.base.virtualization
-                && let Some(runtime_service_id) = virt.service_id()
+            if let Some(runtime_service_id) = service.base.virtualization_service_id
                 && service_node_ids.contains_key(&service.id)
                 && service_node_ids.contains_key(&runtime_service_id)
             {

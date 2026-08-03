@@ -345,7 +345,7 @@ impl SubnetGraphBuilder {
                     for service in services_iter {
                         if let Some(project) = service
                             .base
-                            .virtualization
+                            .virtualization_metadata
                             .as_ref()
                             .and_then(|v| v.compose_project())
                         {

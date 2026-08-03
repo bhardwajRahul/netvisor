@@ -320,7 +320,8 @@ impl DiscoveryRunner {
             ip_address: &ip_address,
             all_ports: &probe_results.additional_ports.to_vec(),
             endpoint_responses: &vec![],
-            virtualization: &None,
+            virtualization_metadata: &None,
+            virtualization_service_id: None,
             client_responses: &probe_results.client_responses,
             // The daemon's own host, probed locally.
             managed_device: &None,
