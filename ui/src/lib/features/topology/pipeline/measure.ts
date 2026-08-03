@@ -2,11 +2,25 @@ import type { Node, Edge } from '@xyflow/svelte';
 import type { LayoutState, PrepareResult, XY } from './types';
 import type { RenderableTopology } from '../types/base';
 import * as perf from '../perf';
+import { noteFullMeasurePass } from '../diagnostics';
+import { containerTypes } from '$lib/shared/stores/metadata';
 import {
 	fillMissingSizesByShapeKey,
 	reportShapeVerification,
 	shapeVerifyEnabled
 } from './shape-verify';
+
+/**
+ * Visible-node count above which the full DOM measurement pass is avoided where possible.
+ *
+ * The pass mounts every node in the graph at once. That is affordable at a few hundred nodes and
+ * is what makes the layout exact; at several thousand it is the dominant memory cost, and at the
+ * scale that produced this ceiling — 17,236 nodes — it exhausts the browser outright.
+ *
+ * Set above the culling threshold so the two do not interact at the boundary: a graph small
+ * enough to render uncalled is also small enough to measure in full.
+ */
+const FULL_MEASURE_NODE_CEILING = 2000;
 
 export interface MeasureCallbacks {
 	setMeasuring: (v: boolean) => void;
@@ -32,7 +46,6 @@ export async function resolveNodeSizes(
 	state: LayoutState,
 	prep: PrepareResult,
 	topology: RenderableTopology,
-	getNodes: () => Node[],
 	containerElement: HTMLDivElement,
 	isStale: () => boolean,
 	callbacks: MeasureCallbacks
@@ -41,6 +54,12 @@ export async function resolveNodeSizes(
 	const viewCacheKey = `${prep.currentView}:${prep.topologyId}`;
 
 	const elementNodeSizes = new Map<string, XY>();
+
+	// Above this many visible nodes, an uncached collapsed container is estimated from its type
+	// metadata instead of forcing the full measurement pass. Below it, behaviour is exactly as
+	// before: the graph is small enough that mounting all of it to measure is cheap and exact.
+	const estimateCollapsedSizes = visibleNodes.length >= FULL_MEASURE_NODE_CEILING;
+	let estimatedCollapsed = 0;
 
 	// Try cached sizes first
 	const cachedSizes = isViewTransition ? state.viewSizeCache.get(viewCacheKey) : undefined;
@@ -76,22 +95,25 @@ export async function resolveNodeSizes(
 	} else if (expandCachedSizes) {
 		if (!fillFromCache(expandCachedSizes)) perf.count('measure.cache-incomplete:expand');
 	} else if (state.containerSizeCache.size > 0) {
-		// Use cached container sizes + SvelteFlow computed element sizes
-		// Read element sizes from SvelteFlow computed state.
+		// Use cached container sizes + previously measured element sizes.
 		// Skip containers — handled below via collapsed size cache.
-		const liveNodes = getNodes();
-		for (const n of liveNodes) {
-			if (state.layoutGraph?.containers.has(n.id)) continue;
-			// `measured` is where @xyflow/svelte v1 puts the rendered size.
-			// This previously read `computed`, which was the v0 name and does not
-			// exist in v1 — so `w`/`h` always fell back to the literal node props
-			// (a hardcoded 250 for elements, undefined for heights), the guard
-			// below was false for essentially every node, and this whole
-			// cached-size fast path silently did nothing.
-			const w = n.measured?.width ?? n.width;
-			const h = n.measured?.height ?? n.height;
-			if (w && h) {
-				elementNodeSizes.set(n.id, { x: w, y: h });
+		//
+		// Element sizes come from `viewSizeCache`, which the pipeline populates from its own DOM
+		// measurement (`execute-layout.ts`), not from SvelteFlow's node array.
+		//
+		// This previously read `n.measured` off `getNodes()`. Two successive bugs kept that dead:
+		// first the field was named `computed` (the v0 name, absent in v1); then, once renamed,
+		// it was still read from the wrong object — SvelteFlow writes `measured` into its internal
+		// `nodeLookup` and never back onto the user nodes `getNodes()` returns. So `w`/`h` always
+		// fell back to the literal props (a hardcoded 250 for elements, undefined for heights),
+		// the guard below was false for essentially every node, and this entire fast path had
+		// never once produced a size — every expand fell through to the full measurement pass,
+		// which mounts every node in the graph. Do not reintroduce either read.
+		const viewCache = state.viewSizeCache.get(viewCacheKey);
+		if (viewCache) {
+			for (const [id, size] of viewCache) {
+				if (state.layoutGraph?.containers.has(id)) continue;
+				if (size.x && size.y) elementNodeSizes.set(id, { ...size });
 			}
 		}
 
@@ -106,17 +128,39 @@ export async function resolveNodeSizes(
 				if (cached) {
 					elementNodeSizes.set(node.id, cached);
 				} else if (collapsed.has(node.id)) {
-					cacheMisses++;
+					if (estimateCollapsedSizes) {
+						// Fall back to the container type's declared collapsed size rather than
+						// counting a miss. A miss clears the whole map below and takes the full
+						// measurement pass, which mounts every node in the graph — at this scale
+						// that pass *is* the out-of-memory failure, so paying it to refine a
+						// collapsed box that is off screen anyway is the wrong trade.
+						//
+						// This became reachable when culling started working: `cacheCollapsedSizes`
+						// reads the DOM, so it only ever sees collapsed containers that are
+						// mounted, and every off-screen one is now a permanent miss. The estimate
+						// is corrected as the user pans — `cacheCollapsedSizes` runs on move-end
+						// and records the real size once the container comes into view.
+						const meta = containerTypes.getMetadata(
+							((node as Record<string, unknown>).container_type as string) ?? 'Subnet'
+						);
+						elementNodeSizes.set(node.id, {
+							x: meta.collapsed_size.width,
+							y: meta.collapsed_size.height
+						});
+						estimatedCollapsed++;
+					} else {
+						cacheMisses++;
+					}
 				}
 				// Expanded containers without cached collapsed size: omit,
 				// ELK uses metadata for minimum
 			}
 		}
+		if (estimatedCollapsed > 0) perf.count('measure.collapsed-estimate');
 
-		// Fill ALL missing visible nodes from viewSizeCache — not just
-		// liveNodes misses. Elements newly visible from collapse changes
-		// aren't in getNodes() yet and weren't counted as misses.
-		const viewCache = state.viewSizeCache.get(viewCacheKey);
+		// Fill any visible node still missing a size — chiefly containers, which the element pass
+		// above skips and which the collapsed-size pass only covers when `containerSizeCache`
+		// holds an entry.
 		if (viewCache) {
 			for (const node of visibleNodes) {
 				if (!elementNodeSizes.has(node.id)) {
@@ -130,8 +174,8 @@ export async function resolveNodeSizes(
 
 		// Elements must have a size too, not just collapsed containers.
 		//
-		// This counted containers only, so an element card missing from both the live nodes and
-		// the view cache left the map *partial* — which is worse than empty, because the
+		// This counted containers only, so an element card missing from both the measured sizes
+		// and the view cache left the map *partial* — which is worse than empty, because the
 		// `size === 0` guard below only takes the full-measurement path when the map is entirely
 		// empty. ELK then fell back to `node.size`, which the server leaves at `Uxy::default()`
 		// — literally 0x0 — so it packed zero-sized children a spacing apart while the DOM
@@ -163,6 +207,10 @@ export async function resolveNodeSizes(
 		// measured. Counted separately from the cached paths so the harness can
 		// tell a cold load from a cache miss.
 		perf.count('full-measure-pass');
+		// Also counted in the always-on diagnostic: `perf` records nothing in a customer's build,
+		// and how often this path runs is the difference between a graph mounted once and a graph
+		// mounted repeatedly.
+		noteFullMeasurePass();
 		callbacks.setMeasuring(true);
 		callbacks.setEdges([]);
 		const buildDone = perf.stage('measure.build-nodes');

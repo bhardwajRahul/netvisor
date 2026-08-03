@@ -24,10 +24,24 @@
 --
 -- Defaults give 8 switches + 400 hosts = 408 host containers, ~1600 interface
 -- elements and 400 PhysicalLink edges.
+--
+-- Override any of them on the command line rather than editing this file, so a
+-- profile can be reproduced from the invocation:
+--
+--   # ~600 devices — the interactive-performance profile
+--   psql ... -v hosts_per_switch=75 < backend/scripts/seed-l2-perf.sql
+--
+--   # ~17k nodes — the shape of the customer's out-of-memory report. Their
+--   # estate averaged ~24.6 nodes per host (one container + ~22 interfaces +
+--   # grouping subcontainers), which is what a Windows/hypervisor SNMP agent
+--   # reports: teaming members and vswitch uplinks all present as if_type 6 and
+--   # survive EXCLUDED_IF_TYPES.
+--   psql ... -v hosts_per_switch=88 -v extra_ifaces_per_host=22 \
+--     < backend/scripts/seed-l2-perf.sql
 
-\set n_switches 8
-\set hosts_per_switch 50
-\set extra_ifaces_per_host 2
+\if :{?n_switches} \else \set n_switches 8 \endif
+\if :{?hosts_per_switch} \else \set hosts_per_switch 50 \endif
+\if :{?extra_ifaces_per_host} \else \set extra_ifaces_per_host 2 \endif
 
 BEGIN;
 

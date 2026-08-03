@@ -224,6 +224,13 @@ export const FILTER_VALUE_EXTRACTORS: Record<string, Record<string, FilterValueE
 				? 'Virtualized'
 				: 'BareMetal',
 		Staleness: (h, ctx) => entityFreshness(h as FreshnessSubject, ctx.network)
+	},
+	Interface: {
+		// Ids match `InterfaceLinkState` on the backend, which is what supplies the filter's
+		// values. A partial resolution (`Neighbor::Host` — the remote device known but not the
+		// port) counts as linked: it still draws an edge, so hiding it would break the diagram.
+		LinkState: (i) =>
+			(i as { neighbor?: unknown | null }).neighbor != null ? 'Linked' : 'Unlinked'
 	}
 };
 

@@ -297,15 +297,36 @@ export function prepareTopologyData(
 
 	// On view switch, apply the current collapse level to the new view's containers
 	if (viewChanged && topologyChanged && state.collapseLevelInferred) {
+		// ...unless the view being entered is large enough to scale-collapse, in which case open
+		// it collapsed instead of carrying the level across.
+		//
+		// Views do not hold comparable numbers of nodes. L3 draws one element per IP address and
+		// inlines ports and services onto the card; L2 draws one per interface, so the same
+		// network can be ~1,200 nodes in one and ~17,000 in the other. Carrying level 4 across
+		// that boundary hands the whole of the larger view to the renderer fully expanded — which
+		// is how a customer reached an out-of-memory failure: level 4 in L3, then switch to L2.
+		//
+		// Level 1 rather than a clamp to 2 or 3, because level 1 *is* the scale-collapsed state by
+		// construction (`computeCollapsedForLevel` case 1 returns exactly
+		// `scaleCollapseCandidates`), so `inferCurrentLevel` reads it back as 1 and the indicator
+		// agrees with the diagram. Levels 2 and 3 leave every host container open, which at this
+		// scale is most of the node count.
+		//
+		// This does not break the promise that a container the user expanded is never re-collapsed
+		// behind them: container ids are per-view, so nothing here has been expanded by the user in
+		// the view being entered.
+		const enteringAtScale = isScaleCollapsed(topology.nodes);
 		const currentLevel = get(collapseLevel);
+		const effectiveLevel = enteringAtScale ? 1 : currentLevel;
 		const levelCollapsed = computeCollapsedForLevel(
-			currentLevel,
+			effectiveLevel,
 			topology.nodes,
 			containerTypes,
 			getInfrastructureRuleId()
 		);
 		collapsedContainers.set(levelCollapsed);
 		collapsed = levelCollapsed;
+		if (effectiveLevel !== currentLevel) collapseLevel.set(effectiveLevel);
 	}
 
 	// When topology identity changes, reset tracking and strip stale collapsed IDs

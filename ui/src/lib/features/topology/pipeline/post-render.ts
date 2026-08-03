@@ -1,6 +1,53 @@
 import type { LayoutGraph } from '../layout/layout-graph';
 import type { XY } from './types';
 
+/** Height difference, in px, below which a card is considered unchanged. */
+const SIZE_DRIFT_TOLERANCE_PX = 2;
+
+/**
+ * Correct cached sizes against what the mounted cards actually measure.
+ *
+ * Nodes are built carrying `measured` and `handles` so SvelteFlow can cull them before they have
+ * ever rendered. The cost of that is `NodeWrapper` treating them as initialised and never
+ * attaching a ResizeObserver — so nothing else notices if a card's real height drifts from the
+ * cached value. A pipeline run re-measures after any topology change, and port expansion
+ * re-measures explicitly, but a change with no pipeline run behind it (a font finally loading, a
+ * theme switch, a container resize) would otherwise leave a wrong height cached indefinitely,
+ * laying the graph out around a card size that no longer exists.
+ *
+ * Bounded by the mounted set — a few hundred nodes with culling on, not the whole graph — and it
+ * converges: the cache is updated to what was measured, so the next build seeds the correct value
+ * and the following pass finds no drift.
+ *
+ * @returns How many cached sizes were corrected.
+ */
+export function reconcileMeasuredSizes(
+	containerElement: HTMLDivElement,
+	viewSizeCache: Map<string, XY>
+): number {
+	let corrected = 0;
+
+	for (const el of containerElement.querySelectorAll('.svelte-flow__node')) {
+		const htmlEl = el as HTMLElement;
+		const id = htmlEl.dataset.id;
+		if (!id) continue;
+
+		const cached = viewSizeCache.get(id);
+		if (!cached) continue;
+
+		const height = htmlEl.offsetHeight;
+		// A zero height is a node mid-mount, not a card that shrank to nothing.
+		if (!height) continue;
+
+		if (Math.abs(height - cached.y) > SIZE_DRIFT_TOLERANCE_PX) {
+			viewSizeCache.set(id, { x: cached.x, y: height });
+			corrected += 1;
+		}
+	}
+
+	return corrected;
+}
+
 /**
  * Cache collapsed container sizes after render.
  * Unconstrain width to read natural content size, then restore.

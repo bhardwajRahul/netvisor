@@ -1,9 +1,14 @@
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
+use crate::server::shared::types::{
+    Color, Icon,
+    metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
+};
 use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
 use chrono::{DateTime, Utc};
 use mac_address::MacAddress;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use strum_macros::{EnumIter, IntoStaticStr};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
@@ -89,6 +94,83 @@ impl Neighbor {
     /// Returns true if this is a partial resolution (only host known)
     pub fn is_partial_resolution(&self) -> bool {
         matches!(self, Neighbor::Host(_))
+    }
+}
+
+/// Whether a port resolved to a neighbour, for the `LinkState` metadata filter on Interface.
+///
+/// The L2 view draws one element per row of a device's SNMP ifTable, so its node count scales with
+/// total port count rather than device count: a network of ~700 devices produced 17,236 nodes
+/// against 857 links, because most of those ports are unused access ports and virtual adapters.
+/// Nearly all of them carry no adjacency and so contribute nothing to the fabric the view exists
+/// to show — but they are not noise either. A down access port is exactly what an operator looks
+/// at when asking why something is unreachable, so this classifies rather than discards: the view
+/// hides unlinked ports by default and the filter panel shows them again on one click.
+///
+/// `Linked` covers partial resolution as well as full. A neighbour known only at device level
+/// still draws an edge (`NeighborLink` rather than `PhysicalLink`), so the port is visibly
+/// connected and hiding it would break the diagram.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    IntoStaticStr,
+    EnumIter,
+    ToSchema,
+)]
+pub enum InterfaceLinkState {
+    Linked,
+    Unlinked,
+}
+
+impl InterfaceLinkState {
+    pub fn from_neighbor(neighbor: Option<&Neighbor>) -> Self {
+        match neighbor {
+            Some(_) => Self::Linked,
+            None => Self::Unlinked,
+        }
+    }
+}
+
+impl HasId for InterfaceLinkState {
+    fn id(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl EntityMetadataProvider for InterfaceLinkState {
+    fn color(&self) -> Color {
+        match self {
+            Self::Linked => Color::Green,
+            Self::Unlinked => Color::Gray,
+        }
+    }
+    fn icon(&self) -> Icon {
+        match self {
+            Self::Linked => Icon::Cable,
+            Self::Unlinked => Icon::Circle,
+        }
+    }
+}
+
+impl TypeMetadataProvider for InterfaceLinkState {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Linked => "Linked",
+            Self::Unlinked => "Unlinked",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        match self {
+            Self::Linked => "Ports with a discovered neighbour",
+            Self::Unlinked => "Ports with no discovered neighbour",
+        }
     }
 }
 

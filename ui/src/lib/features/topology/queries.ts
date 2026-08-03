@@ -104,6 +104,31 @@ export function getInfrastructureRuleIdForTopology(
 
 const ALL_VIEWS: TopologyView[] = viewsJson.map((p) => p.id as TopologyView);
 
+/**
+ * Filter values a view hides before the user has touched anything.
+ *
+ * Read from the generated view fixture rather than restated here. These are product defaults —
+ * "clear all filters" preserves them and the filters-applied badge ignores them — so the list has
+ * to be the same one the backend seeds a new topology's hide-set from, and it used to be written
+ * out separately in both places.
+ */
+export function defaultHiddenValuesFor(view: string): Record<string, Record<string, string[]>> {
+	const meta = viewsJson.find((v) => v.id === view)?.metadata as
+		| { element_config?: { default_hidden_values?: Record<string, Record<string, string[]>> } }
+		| undefined;
+	return meta?.element_config?.default_hidden_values ?? {};
+}
+
+/** Whether a hidden value is a product default rather than something the user chose to hide. */
+export function isDefaultHiddenValue(
+	view: string,
+	entityType: string,
+	filterType: string,
+	valueId: string
+): boolean {
+	return (defaultHiddenValuesFor(view)[entityType]?.[filterType] ?? []).includes(valueId);
+}
+
 /** Default local options for a given view (UI-only, not sent to backend as rules) */
 function getDefaultLocalOptions(view: TopologyView): TopologyLocalOptions {
 	return {
@@ -169,13 +194,9 @@ function defaultRequestOptions(): components['schemas']['TopologyRequestOptions'
 		}
 	}
 
-	// Default: OpenPorts hidden under Service.Category for every view
-	// (use-case-aware filtering is handled by the ByServiceCategory element
-	// rule; this is the chip-level toggle state). Shape matches the nested
-	// hide_metadata_values HashMap serialized by the backend.
 	const hideMetadataValues: Record<string, Record<string, Record<string, string[]>>> = {};
 	for (const p of ALL_VIEWS) {
-		hideMetadataValues[p] = { Service: { Category: ['OpenPorts'] } };
+		hideMetadataValues[p] = structuredClone(defaultHiddenValuesFor(p));
 	}
 
 	return {

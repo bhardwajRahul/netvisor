@@ -1,6 +1,5 @@
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::shared::entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants};
-use crate::server::shared::types::metadata::HasId;
 use crate::server::topology::types::edges::{EdgeHandle, EdgeTypeDiscriminants};
 use crate::server::topology::types::grouping::{
     ContainerRule, ElementRule, GraphRule, IdentifiedRule,
@@ -197,25 +196,42 @@ pub struct TopologyRequestOptions {
     pub element_rules: Vec<IdentifiedRule<ElementRule>>,
 }
 
+/// The hide-set a topology starts with when the user has expressed no preference.
+///
+/// Sourced from each view's own `default_hidden_values` so there is exactly one definition of
+/// what counts as a product default — the frontend reads the same list out of the generated view
+/// fixture.
 fn default_hide_metadata_values()
 -> HashMap<TopologyView, HashMap<EntityDiscriminants, HashMap<MetadataFilterType, Vec<String>>>> {
-    // Hide OpenPorts category on Service in every view — same behaviour as
-    // the legacy `default_hide_service_categories`.
     TopologyView::iter()
-        .map(|view| {
-            let mut by_filter: HashMap<MetadataFilterType, Vec<String>> = HashMap::new();
-            by_filter.insert(
-                MetadataFilterType::Category,
-                vec![ServiceCategory::OpenPorts.id().to_string()],
-            );
-            let mut by_entity: HashMap<
-                EntityDiscriminants,
-                HashMap<MetadataFilterType, Vec<String>>,
-            > = HashMap::new();
-            by_entity.insert(EntityDiscriminants::Service, by_filter);
-            (view, by_entity)
-        })
+        .map(|view| (view, view.element_config().default_hidden_values))
         .collect()
+}
+
+impl TopologyRequestOptions {
+    /// Adopt any default hide-set entry the stored options have no opinion about.
+    ///
+    /// `#[serde(default = ...)]` is a whole-field fallback: options that already carry a
+    /// `hide_metadata_values` map take it verbatim, so a newly added default reaches new installs
+    /// only. Every existing user would keep a map written before the filter existed and never be
+    /// offered it — which for the L2 link-state filter means keeping a view that renders every
+    /// ifTable row, the condition this default exists to fix.
+    ///
+    /// Merging is per `(view, entity, filter)` key and only where the key is **absent**. A user
+    /// who has toggled a filter has an opinion recorded under that key and it is left exactly as
+    /// it stands, including an explicit empty list — that is "show everything", not "unset". Only
+    /// a filter they have never been offered is filled in.
+    pub fn merge_missing_hide_defaults(&mut self) {
+        for (view, by_entity) in default_hide_metadata_values() {
+            let stored_view = self.hide_metadata_values.entry(view).or_default();
+            for (entity, by_filter) in by_entity {
+                let stored_entity = stored_view.entry(entity).or_default();
+                for (filter_type, values) in by_filter {
+                    stored_entity.entry(filter_type).or_insert(values);
+                }
+            }
+        }
+    }
 }
 
 fn default_container_rules() -> HashMap<TopologyView, Vec<IdentifiedRule<ContainerRule>>> {
@@ -327,4 +343,108 @@ pub struct TopologyNodeResizeUpdate {
     pub size: Uxy,
     /// New position for the node
     pub position: Ixy,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A stored map that predates a filter must adopt its default, or every existing topology
+    /// keeps rendering as though the filter were switched off. This is the whole reason the merge
+    /// exists: `#[serde(default)]` is a whole-field fallback and cannot fill a missing key.
+    #[test]
+    fn absent_filter_adopts_its_default() {
+        let mut options = TopologyRequestOptions {
+            hide_metadata_values: HashMap::from([(
+                TopologyView::L2Physical,
+                HashMap::from([(
+                    EntityDiscriminants::Service,
+                    HashMap::from([(MetadataFilterType::Category, vec!["OpenPorts".to_string()])]),
+                )]),
+            )]),
+            ..Default::default()
+        };
+
+        options.merge_missing_hide_defaults();
+
+        let interface = &options.hide_metadata_values[&TopologyView::L2Physical]
+            [&EntityDiscriminants::Interface][&MetadataFilterType::LinkState];
+        assert_eq!(interface, &vec!["Unlinked".to_string()]);
+    }
+
+    /// An empty list is an opinion — "show everything" — recorded when the user clears a filter.
+    /// Treating it as unset would re-hide what they just chose to see, on the next page load.
+    #[test]
+    fn cleared_filter_is_not_refilled() {
+        let mut options = TopologyRequestOptions {
+            hide_metadata_values: HashMap::from([(
+                TopologyView::L2Physical,
+                HashMap::from([(
+                    EntityDiscriminants::Interface,
+                    HashMap::from([(MetadataFilterType::LinkState, vec![])]),
+                )]),
+            )]),
+            ..Default::default()
+        };
+
+        options.merge_missing_hide_defaults();
+
+        assert!(
+            options.hide_metadata_values[&TopologyView::L2Physical]
+                [&EntityDiscriminants::Interface][&MetadataFilterType::LinkState]
+                .is_empty()
+        );
+    }
+
+    /// Merging must not disturb a filter the user has actually set.
+    #[test]
+    fn user_selection_survives_the_merge() {
+        let mut options = TopologyRequestOptions {
+            hide_metadata_values: HashMap::from([(
+                TopologyView::L2Physical,
+                HashMap::from([(
+                    EntityDiscriminants::Interface,
+                    HashMap::from([(MetadataFilterType::LinkState, vec!["Linked".to_string()])]),
+                )]),
+            )]),
+            ..Default::default()
+        };
+
+        options.merge_missing_hide_defaults();
+
+        assert_eq!(
+            options.hide_metadata_values[&TopologyView::L2Physical]
+                [&EntityDiscriminants::Interface][&MetadataFilterType::LinkState],
+            vec!["Linked".to_string()]
+        );
+    }
+
+    /// Every value a view hides by default has to be one the view actually offers, or the chip
+    /// that would turn it back on is never rendered and the hide becomes permanent and invisible.
+    #[test]
+    fn every_default_hidden_value_is_offered_by_its_view() {
+        for view in TopologyView::iter() {
+            let config = view.element_config();
+            for (entity, by_filter) in &config.default_hidden_values {
+                for (filter_type, values) in by_filter {
+                    let declared = config
+                        .metadata_filters
+                        .get(entity)
+                        .and_then(|filters| filters.iter().find(|f| f.filter_type == *filter_type));
+
+                    // Service.Category is declared in every view but only *rendered* where
+                    // Service has an element or inline role, so a view without that role is
+                    // allowed to hide a value it does not offer.
+                    let Some(filter) = declared else { continue };
+
+                    for value in values {
+                        assert!(
+                            filter.values.iter().any(|v| v.id == *value),
+                            "{view:?} hides {entity:?}.{filter_type:?}={value} but does not offer it"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

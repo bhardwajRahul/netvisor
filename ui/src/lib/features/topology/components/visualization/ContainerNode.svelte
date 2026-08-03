@@ -34,6 +34,11 @@
 	import { createIconComponent } from '$lib/shared/utils/styling';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import ContainerHeader, { type SubgroupRow } from './ContainerHeader.svelte';
+	import { CONTAINER_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
+
+	// Sized explicitly rather than left to `base.css`'s 5px minimum, so `synthesizeHandles` has a
+	// value to reproduce for nodes that have never mounted. Same dimensions as before.
+	const handleStyle = `opacity: 0; width: ${CONTAINER_HANDLE_SIZE_PX}px; height: ${CONTAINER_HANDLE_SIZE_PX}px`;
 
 	// Shared, refcounted views over the module-level stores — see
 	// `reactive-stores.svelte.ts`. One subscription serves every node component.
@@ -538,15 +543,15 @@
 	{/if}
 </div>
 
-<Handle type="target" id="Top" position={Position.Top} style="opacity: 0" />
-<Handle type="target" id="Right" position={Position.Right} style="opacity: 0" />
-<Handle type="target" id="Bottom" position={Position.Bottom} style="opacity: 0" />
-<Handle type="target" id="Left" position={Position.Left} style="opacity: 0" />
+<Handle type="target" id="Top" position={Position.Top} style={handleStyle} />
+<Handle type="target" id="Right" position={Position.Right} style={handleStyle} />
+<Handle type="target" id="Bottom" position={Position.Bottom} style={handleStyle} />
+<Handle type="target" id="Left" position={Position.Left} style={handleStyle} />
 
-<Handle type="source" id="Top" position={Position.Top} style="opacity: 0" />
-<Handle type="source" id="Right" position={Position.Right} style="opacity: 0" />
-<Handle type="source" id="Bottom" position={Position.Bottom} style="opacity: 0" />
-<Handle type="source" id="Left" position={Position.Left} style="opacity: 0" />
+<Handle type="source" id="Top" position={Position.Top} style={handleStyle} />
+<Handle type="source" id="Right" position={Position.Right} style={handleStyle} />
+<Handle type="source" id="Bottom" position={Position.Bottom} style={handleStyle} />
+<Handle type="source" id="Left" position={Position.Left} style={handleStyle} />
 
 <style>
 	div {
