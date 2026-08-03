@@ -10,6 +10,15 @@ import type { EntityDiscriminants } from '$lib/api/entities';
 export const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
 export type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number];
 
+/**
+ * How many chips a compact cell shows before collapsing the rest behind "+N".
+ *
+ * A cap is load-bearing for accessibility, not just layout: `EntityTag` is
+ * focusable, so an uncapped tag column would put hundreds of tab stops between
+ * a table's first row and its last.
+ */
+export const MAX_ITEMS_IN_CELL = 3;
+
 export interface TagProps {
 	label: string;
 	textColor?: string;
@@ -83,9 +92,38 @@ export interface CardField {
 // ============================================================================
 
 /**
+ * How a field renders as a table column.
+ *
+ * Omit it and the column renders the stringified `getValue` — the same value
+ * search, filtering and grouping already match against, so a cell can never
+ * disagree with the filter that produced its row.
+ */
+export interface ColumnConfig<T> {
+	/** Filter-only field that never becomes a column (e.g. a port number filter). */
+	hidden?: boolean;
+	/** A real column, but unchecked in the column menu until the user asks for it. */
+	hiddenByDefault?: boolean;
+	/**
+	 * Rich chips, in the vocabulary the card already renders: `EntityTag` when
+	 * an item carries an `entityRef`, `Tag` otherwise. Prefer this over `cell` —
+	 * it is data rather than markup, so the card can reuse the same builder.
+	 */
+	getItems?: (item: T) => CardFieldItem[];
+	/** Escape hatch for genuinely bespoke content: a status tag, a link, an icon. */
+	cell?: Snippet<[T]>;
+	align?: 'left' | 'right';
+	/** Starting width in px. A user's resize persists over this. */
+	width?: number;
+	/** Row identity: pinned left, carries the checkbox, renders as `<th scope="row">`. */
+	primary?: boolean;
+}
+
+/**
  * Base configuration shared by all field types.
  */
 interface BaseFieldConfig<T> {
+	/** How this field renders as a table column. Omit for a plain text column. */
+	column?: ColumnConfig<T>;
 	type: 'string' | 'boolean' | 'date' | 'array';
 	label: string;
 	/**

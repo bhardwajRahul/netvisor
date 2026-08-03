@@ -17,13 +17,11 @@
 	let {
 		vlan,
 		subnets,
-		viewMode,
 		selected,
 		onSelectionChange = () => {}
 	}: {
 		vlan: Vlan;
 		subnets: (vlan: Vlan) => Subnet[];
-		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
@@ -63,4 +61,4 @@
 	});
 </script>
 
-<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />
+<GenericCard {...cardData} {selected} {onSelectionChange} />

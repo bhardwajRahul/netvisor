@@ -65,7 +65,6 @@
 		onHide,
 		onConsolidate,
 		onRescan,
-		viewMode,
 		selected,
 		onSelectionChange = () => {}
 	}: {
@@ -75,7 +74,6 @@
 		onHide?: (host: Host) => void;
 		onConsolidate?: (host: Host) => void;
 		onRescan?: (host: Host) => void;
-		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
@@ -248,4 +246,4 @@
 	</div>
 {/snippet}
 
-<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />
+<GenericCard {...cardData} {selected} {onSelectionChange} />

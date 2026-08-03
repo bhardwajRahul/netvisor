@@ -21,14 +21,12 @@
 		tag,
 		onEdit = () => {},
 		onDelete = () => {},
-		viewMode,
 		selected,
 		onSelectionChange = () => {}
 	}: {
 		tag: Tag;
 		onEdit?: (tag: Tag) => void;
 		onDelete?: (tag: Tag) => void;
-		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
@@ -101,4 +99,4 @@
 	});
 </script>
 
-<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} selectable={canManage} />
+<GenericCard {...cardData} {selected} {onSelectionChange} selectable={canManage} />

@@ -79,9 +79,15 @@
 					searchable: true,
 					groupable: false
 				},
-				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
-				created_at: { label: common_created(), type: 'date' },
-				updated_at: { label: common_updated(), type: 'date' }
+				name: {
+					label: common_name(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					column: { primary: true, width: 220 }
+				},
+				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } }
 			},
 			[
 				{ key: 'description', label: common_description(), type: 'string', searchable: true },
@@ -137,20 +143,14 @@
 			storageKey="scanopy-vlans-table-state"
 			getItemId={(item) => item.id}
 			onCsvExport={handleCsvExport}
+			entityLabel={common_vlans()}
 		>
 			{#snippet children(
 				item: Vlan,
-				viewMode: 'card' | 'list',
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
-				<VlanCard
-					vlan={item}
-					subnets={getSubnets}
-					selected={isSelected}
-					{onSelectionChange}
-					{viewMode}
-				/>
+				<VlanCard vlan={item} subnets={getSubnets} selected={isSelected} {onSelectionChange} />
 			{/snippet}
 		</DataControls>
 	{/if}

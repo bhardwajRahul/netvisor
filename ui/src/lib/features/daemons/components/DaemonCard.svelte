@@ -57,7 +57,6 @@
 		daemon,
 		onDelete,
 		onEdit,
-		viewMode,
 		selected,
 		onSelectionChange = () => {},
 		hosts
@@ -65,7 +64,6 @@
 		daemon: Daemon;
 		onDelete?: (daemon: Daemon) => void;
 		onEdit?: (daemon: Daemon) => void;
-		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 		/**
@@ -236,6 +234,6 @@
 	</div>
 {/snippet}
 
-<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />
+<GenericCard {...cardData} {selected} {onSelectionChange} />
 
 <DaemonUpgradeModal isOpen={upgradeModalOpen} onClose={handleCloseUpgrade} {daemon} />

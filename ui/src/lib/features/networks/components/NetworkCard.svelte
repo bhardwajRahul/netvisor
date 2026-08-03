@@ -31,7 +31,6 @@
 		hosts?: Host[];
 		onDelete?: (network: Network) => void;
 		onEdit?: (network: Network) => void;
-		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	}
@@ -41,7 +40,6 @@
 		hosts = [],
 		onDelete = () => {},
 		onEdit = () => {},
-		viewMode,
 		selected,
 		onSelectionChange = () => {}
 	}: Props = $props();
@@ -151,10 +149,4 @@
 	</div>
 {/snippet}
 
-<GenericCard
-	{...cardData}
-	{viewMode}
-	{selected}
-	{onSelectionChange}
-	selectable={canManageNetworks}
-/>
+<GenericCard {...cardData} {selected} {onSelectionChange} selectable={canManageNetworks} />

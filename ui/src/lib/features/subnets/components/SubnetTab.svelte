@@ -7,8 +7,10 @@
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import type { Subnet } from '../types/base';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
-	import { Plus } from 'lucide-svelte';
+	import TagCell from '$lib/shared/components/data/TagCell.svelte';
+	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
+	import { tagItems, tagNames } from '$lib/features/tags/columns';
+	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import {
@@ -34,6 +36,8 @@
 		common_name,
 		common_network,
 		common_noEntityYet,
+		common_delete,
+		common_edit,
 		common_subnets,
 		common_tags,
 		common_unknownNetwork,
@@ -104,6 +108,21 @@
 		showSubnetEditor = true;
 	}
 
+	/** Row actions for table mode, matching what the card offers. */
+	function subnetActions(subnet: Subnet): CardAction[] {
+		if (isReadOnly) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditSubnet(subnet) },
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteSubnet(subnet)
+			}
+		];
+	}
+
 	function handleEditSubnet(subnet: Subnet) {
 		editingSubnet = subnet;
 		showSubnetEditor = true;
@@ -161,7 +180,13 @@
 		defineFields<Subnet, SubnetOrderField>(
 			{
 				// Identity fields: grouping by one would render a header per subnet.
-				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+				name: {
+					label: common_name(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					column: { primary: true, width: 220 }
+				},
 				cidr: { label: common_cidr(), type: 'string', searchable: true, groupable: false },
 				subnet_type: {
 					label: subnets_subnetType(),
@@ -178,8 +203,8 @@
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
 				},
-				created_at: { label: common_created(), type: 'date' },
-				updated_at: { label: common_updated(), type: 'date' },
+				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } },
 				last_seen_at: { label: common_lastSeen(), type: 'date' }
 			},
 			[
@@ -190,10 +215,8 @@
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: (entity) =>
-						entity.tags
-							.map((id) => tagsData.find((t) => t.id === id)?.name)
-							.filter((name): name is string => !!name)
+					getValue: (entity) => tagNames(entity.tags, tagsData),
+					column: { cell: tagsCell, width: 200 }
 				}
 			]
 		)
@@ -236,10 +259,11 @@
 			getItemId={(item) => item.id}
 			onStaleFilterChange={handleStaleFilterChange}
 			onCsvExport={handleCsvExport}
+			getActions={subnetActions}
+			entityLabel={common_subnets()}
 		>
 			{#snippet children(
 				item: Subnet,
-				viewMode: 'card' | 'list',
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
@@ -247,7 +271,6 @@
 					subnet={item}
 					selected={isSelected}
 					{onSelectionChange}
-					{viewMode}
 					onEdit={isReadOnly ? undefined : handleEditSubnet}
 					onDelete={isReadOnly ? undefined : handleDeleteSubnet}
 				/>
@@ -270,3 +293,13 @@
 			}
 		: null}
 />
+
+{#snippet tagsCell(subnet: Subnet)}
+	<TagCell
+		items={tagItems(subnet.tags, tagsData)}
+		tagIds={subnet.tags}
+		entityId={subnet.id}
+		entityType="Subnet"
+		editable={!isReadOnly}
+	/>
+{/snippet}

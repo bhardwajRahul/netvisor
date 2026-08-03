@@ -14,8 +14,8 @@
 	import type { Credential } from '../types/base';
 	import type { CredentialOrderField } from '../types/base';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
-	import { Plus } from 'lucide-svelte';
+	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
+	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { permissions, credentialTypes, billingPlans } from '$lib/shared/stores/metadata';
@@ -30,6 +30,8 @@
 		common_confirmDeleteName,
 		common_create,
 		common_created,
+		common_delete,
+		common_edit,
 		common_name,
 		common_updated,
 		credentials_bulkDeleteConfirm,
@@ -129,6 +131,21 @@
 		showCredentialEditor = true;
 	}
 
+	/** Row actions for table mode, matching what the card offers. */
+	function credentialActions(credential: Credential): CardAction[] {
+		if (!canManage) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditCredential(credential) },
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteCredential(credential)
+			}
+		];
+	}
+
 	function handleEditCredential(credential: Credential) {
 		editingCredential = credential;
 		showCredentialEditor = true;
@@ -208,9 +225,15 @@
 	const credentialFields = defineFields<Credential, CredentialOrderField>(
 		{
 			// Identity field: grouping by it would render a header per credential.
-			name: { label: common_name(), type: 'string', searchable: true, groupable: false },
-			created_at: { label: common_created(), type: 'date' },
-			updated_at: { label: common_updated(), type: 'date' }
+			name: {
+				label: common_name(),
+				type: 'string',
+				searchable: true,
+				groupable: false,
+				column: { primary: true, width: 220 }
+			},
+			created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
+			updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } }
 		},
 		[
 			{
@@ -276,10 +299,11 @@
 			getItemTags={getCredentialTags}
 			getItemId={(item) => item.id}
 			onCsvExport={handleCsvExport}
+			getActions={credentialActions}
+			entityLabel={common_credentials()}
 		>
 			{#snippet children(
 				item: Credential,
-				viewMode: 'card' | 'list',
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
@@ -289,7 +313,6 @@
 					assignedHosts={hostsForCredential(item)}
 					selected={isSelected}
 					{onSelectionChange}
-					{viewMode}
 					onEdit={handleEditCredential}
 					onDelete={handleDeleteCredential}
 				/>

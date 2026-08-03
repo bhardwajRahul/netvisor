@@ -7,9 +7,11 @@
 	import DaemonCard from './DaemonCard.svelte';
 	import { hasSunsetWarning } from '$lib/features/daemons/utils';
 	import CreateDaemonModal from './CreateDaemonModal/CreateDaemonModal.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
+	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { Plus } from 'lucide-svelte';
+	import TagCell from '$lib/shared/components/data/TagCell.svelte';
+	import { tagItems, tagNames } from '$lib/features/tags/columns';
+	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import {
 		useDaemonsQuery,
@@ -30,6 +32,8 @@
 		common_confirmDeleteName,
 		common_created,
 		common_daemons,
+		common_delete,
+		common_edit,
 		common_name,
 		common_network,
 		common_standby,
@@ -120,6 +124,21 @@
 		}
 	});
 
+	/** Row actions for table mode, matching what the card offers. */
+	function daemonActions(daemon: Daemon): CardAction[] {
+		if (isReadOnly) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditDaemon(daemon) },
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteDaemon(daemon)
+			}
+		];
+	}
+
 	function handleEditDaemon(daemon: Daemon) {
 		editingDaemon = daemon;
 		showDaemonEditor = true;
@@ -170,7 +189,13 @@
 		defineFields<Daemon, DaemonOrderField>(
 			{
 				// Identity field: grouping by it would render a header per daemon.
-				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+				name: {
+					label: common_name(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					column: { primary: true, width: 220 }
+				},
 				network_id: {
 					label: common_network(),
 					type: 'string',
@@ -181,8 +206,8 @@
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
 				},
 				last_seen: { label: daemons_lastSeen(), type: 'date' },
-				created_at: { label: common_created(), type: 'date' },
-				updated_at: { label: common_updated(), type: 'date' }
+				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } }
 			},
 			[
 				{
@@ -218,10 +243,8 @@
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: (entity) =>
-						entity.tags
-							.map((id) => tagsData.find((t) => t.id === id)?.name)
-							.filter((name): name is string => !!name)
+					getValue: (entity) => tagNames(entity.tags, tagsData),
+					column: { cell: tagsCell, width: 200 }
 				}
 			]
 		)
@@ -269,17 +292,17 @@
 			getItemTags={getDaemonTags}
 			getItemId={(item) => item.id}
 			onCsvExport={handleCsvExport}
+			getActions={daemonActions}
+			entityLabel={common_daemons()}
 		>
 			{#snippet children(
 				item: Daemon,
-				viewMode: 'card' | 'list',
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
 				<DaemonCard
 					daemon={item}
 					hosts={daemonHosts}
-					{viewMode}
 					onDelete={isReadOnly ? undefined : handleDeleteDaemon}
 					onEdit={isReadOnly ? undefined : handleEditDaemon}
 					selected={isSelected}
@@ -305,3 +328,13 @@
 	daemon={editingDaemon}
 	onClose={handleCloseDaemonEditor}
 />
+
+{#snippet tagsCell(daemon: Daemon)}
+	<TagCell
+		items={tagItems(daemon.tags, tagsData)}
+		tagIds={daemon.tags}
+		entityId={daemon.id}
+		entityType="Daemon"
+		editable={!isReadOnly}
+	/>
+{/snippet}

@@ -47,20 +47,11 @@
 		host: Host;
 		onDelete?: (service: Service) => void;
 		onEdit?: (service: Service) => void;
-		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	}
 
-	let {
-		service,
-		host,
-		onDelete,
-		onEdit,
-		viewMode,
-		selected,
-		onSelectionChange = () => {}
-	}: Props = $props();
+	let { service, host, onDelete, onEdit, selected, onSelectionChange = () => {} }: Props = $props();
 
 	// Get ports and interfaces from query data for display
 	let groupedPortBindings = $derived(
@@ -191,4 +182,4 @@
 	</div>
 {/snippet}
 
-<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />
+<GenericCard {...cardData} {selected} {onSelectionChange} />

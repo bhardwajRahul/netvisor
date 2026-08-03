@@ -231,13 +231,11 @@
 		>
 			{#snippet children(
 				item: UserApiKey,
-				viewMode: 'card' | 'list',
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
 				<UserApiKeyCard
 					apiKey={item}
-					{viewMode}
 					selected={isSelected}
 					{onSelectionChange}
 					onDelete={isReadOnly ? undefined : handleDelete}

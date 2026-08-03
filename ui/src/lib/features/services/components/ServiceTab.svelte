@@ -4,7 +4,10 @@
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
+	import TagCell from '$lib/shared/components/data/TagCell.svelte';
+	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
+	import { tagItems, tagNames } from '$lib/features/tags/columns';
+	import { Trash2, Edit } from 'lucide-svelte';
 	import type { Service } from '../types/base';
 	import ServiceCard from './ServiceCard.svelte';
 	import { matchConfidenceLabel } from '$lib/shared/types';
@@ -28,13 +31,29 @@
 	import {
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
+		common_containerized,
+		common_created,
+		common_delete,
+		common_edit,
+		common_host,
 		common_lastSeen,
 		common_category,
+		common_name,
+		common_network,
 		common_noEntityYet,
 		common_port,
+		common_position,
 		common_services,
+		common_tags,
 		common_type,
+		common_unknown,
+		common_unknownEntity,
+		common_unknownNetwork,
+		common_updated,
 		daemons_installPromptServices,
+		services_matchConfidence,
+		services_notContainerized,
+		services_notDiscovered,
 		services_subtitle
 	} from '$lib/paraglide/messages';
 	import { serviceDefinitions, ports as ports_metadata } from '$lib/shared/stores/metadata';
@@ -216,6 +235,21 @@
 		}
 	});
 
+	/** Row actions for table mode, matching what the card offers. */
+	function serviceActions(service: Service): CardAction[] {
+		if (isReadOnly) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditService(service) },
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteService(service)
+			}
+		];
+	}
+
 	function handleEditService(service: Service) {
 		editingService = service;
 		showServiceEditor = true;
@@ -291,9 +325,15 @@
 		defineFields<Service, ServiceOrderField>(
 			{
 				// Identity field: grouping by it would render a header per service.
-				name: { label: 'Name', type: 'string', searchable: true, groupable: false },
+				name: {
+					label: common_name(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					column: { primary: true, width: 220 }
+				},
 				host: {
-					label: 'Host',
+					label: common_host(),
 					type: 'string',
 					searchable: true,
 					filterable: true,
@@ -301,10 +341,11 @@
 					// The server groups on the host's name, coalescing services
 					// with no host to an empty string.
 					getGroupValue: (service) => serviceHosts.get(service.id)?.name ?? '',
-					getValue: (service) => serviceHosts.get(service.id)?.name || 'Unknown Host'
+					getValue: (service) =>
+						serviceHosts.get(service.id)?.name || common_unknownEntity({ entity: common_host() })
 				},
 				network_id: {
-					label: 'Network',
+					label: common_network(),
 					type: 'string',
 					searchable: true,
 					filterable: true,
@@ -312,10 +353,15 @@
 					// Displayed as a name, but grouped by id on the server.
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
-						networksData.find((n) => n.id == item.network_id)?.name || 'Unknown Network'
+						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
 				},
 				// Per-service ordinal, so grouping by it is one header per service.
-				position: { label: 'Position', type: 'string', groupable: false },
+				position: {
+					label: common_position(),
+					type: 'string',
+					groupable: false,
+					column: { hiddenByDefault: true, align: 'right' }
+				},
 				service_definition: {
 					label: common_type(),
 					type: 'string',
@@ -327,8 +373,8 @@
 					getGroupValue: (service) => service.service_definition,
 					getValue: (service) => serviceDefinitions.getName(service.service_definition)
 				},
-				created_at: { label: 'Created', type: 'date' },
-				updated_at: { label: 'Updated', type: 'date' },
+				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } },
 				last_seen_at: { label: common_lastSeen(), type: 'date' }
 			},
 			[
@@ -342,28 +388,30 @@
 					filterMode: 'exclude',
 					filterOptions: serviceCategories,
 					filterDefaults: ['OpenPorts'],
-					getValue: (item) => serviceDefinitions.getCategory(item.service_definition) || 'Unknown'
+					getValue: (item) =>
+						serviceDefinitions.getCategory(item.service_definition) || common_unknown()
 				},
 				{
 					key: 'containerized_by',
 					type: 'string',
-					label: 'Containerized',
+					label: common_containerized(),
 					searchable: true,
 					filterable: true,
 					getValue: (item) =>
 						servicesData.find((s) => s.id == item.virtualization?.details.service_id)?.name ||
-						'Not Containerized'
+						services_notContainerized()
 				},
 				{
 					key: 'confidence',
-					label: 'Match Confidence',
+					label: services_matchConfidence(),
 					type: 'string',
 					searchable: true,
 					filterable: true,
+					column: { hiddenByDefault: true },
 					getValue: (item) =>
 						item.source.type == 'DiscoveryWithMatch'
 							? matchConfidenceLabel(item.source.details.confidence)
-							: 'N/A (Not a discovered service)'
+							: services_notDiscovered()
 				},
 				{
 					key: 'port',
@@ -371,18 +419,19 @@
 					type: 'string',
 					filterable: true,
 					serverFiltered: true,
-					filterOptions: wellKnownPortNumbers
+					filterOptions: wellKnownPortNumbers,
+					// Drives the port filter only: it has no `getValue`, so as a column
+					// it would render an empty cell on every row.
+					column: { hidden: true }
 				},
 				{
 					key: 'tags',
-					label: 'Tags',
+					label: common_tags(),
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: (entity) =>
-						entity.tags
-							.map((id) => tagsData.find((t) => t.id === id)?.name)
-							.filter((name): name is string => !!name)
+					getValue: (entity) => tagNames(entity.tags, tagsData),
+					column: { cell: tagsCell, width: 200 }
 				}
 			]
 		)
@@ -418,10 +467,11 @@
 			onStaleFilterChange={handleStaleFilterChange}
 			onSearchChange={handleSearchChange}
 			onCsvExport={handleCsvExport}
+			getActions={serviceActions}
+			entityLabel={common_services()}
 		>
 			{#snippet children(
 				item: Service,
-				viewMode: 'card' | 'list',
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
@@ -432,7 +482,6 @@
 						selected={isSelected}
 						{host}
 						{onSelectionChange}
-						{viewMode}
 						onDelete={isReadOnly ? undefined : handleDeleteService}
 						onEdit={isReadOnly ? undefined : handleEditService}
 					/>
@@ -441,6 +490,16 @@
 		</DataControls>
 	{/if}
 </div>
+
+{#snippet tagsCell(service: Service)}
+	<TagCell
+		items={tagItems(service.tags, tagsData)}
+		tagIds={service.tags}
+		entityId={service.id}
+		entityType="Service"
+		editable={!isReadOnly}
+	/>
+{/snippet}
 
 {#if editingService}
 	{@const editingServiceHost = serviceHosts.get(editingService.id)}

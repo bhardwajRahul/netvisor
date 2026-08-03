@@ -25,13 +25,11 @@
 
 	let {
 		user,
-		viewMode,
 		selected,
 		onSelectionChange,
 		onEdit
 	}: {
 		user: User;
-		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange: (selected: boolean) => void;
 		onEdit?: (user: User) => void;
@@ -143,10 +141,4 @@
 	});
 </script>
 
-<GenericCard
-	{...cardData}
-	{viewMode}
-	{selected}
-	{onSelectionChange}
-	selectable={user.id != currentUser?.id}
-/>
+<GenericCard {...cardData} {selected} {onSelectionChange} selectable={user.id != currentUser?.id} />
