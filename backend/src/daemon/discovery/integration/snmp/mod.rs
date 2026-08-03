@@ -459,8 +459,6 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Query VLAN table for VLAN names and persist as VLAN entities
         let vlan_table =
             query_or_default(ip, "vlan_table", query_vlan_table(&mut session, ip)).await;
-        // Summary status for the per-host diagnostic line below: no VLANs, upserted, or failed.
-        let mut vlan_upsert = "no_vlans";
         let vlan_number_to_uuid: std::collections::HashMap<u16, Uuid> = if !vlan_table.is_empty() {
             tracing::info!(
                 ip = %ip,
@@ -469,12 +467,8 @@ impl DiscoveryIntegration for SnmpIntegration {
                 "VLAN table entries collected"
             );
             match ctx.ops.upsert_vlans(&vlan_table, network_id).await {
-                Ok(mapping) => {
-                    vlan_upsert = "ok";
-                    mapping
-                }
+                Ok(mapping) => mapping,
                 Err(e) => {
-                    vlan_upsert = "failed";
                     tracing::warn!(ip = %ip, error = %e, "Failed to upsert VLANs, VLAN IDs will not be resolved");
                     // The switch answered in full and we could not record it. Silent until now,
                     // and the consequence is not small — every interface on this device loses
@@ -663,25 +657,6 @@ impl DiscoveryIntegration for SnmpIntegration {
             },
         );
         ctx.ops.record_snmp_shortfalls(incomplete).await;
-
-        // GH #649: one consolidated per-host collection record. Ties together the scattered
-        // per-query lines above so a self-hosted operator (and we, from their logs) can see, at a
-        // glance per switch: how many interfaces were collected and whether the walk was complete
-        // (a partial walk is why the server now skips pruning), and the L2 source signals
-        // (ARP/FDB/LLDP/CDP) plus VLAN upsert status that feed neighbor resolution.
-        tracing::debug!(
-            ip = %ip,
-            if_count = snmp_if_entries.len(),
-            if_set_complete = if_table.set_complete,
-            if_attributes_complete = if_table.attributes_complete,
-            arp = arp_count,
-            fdb = fdb_count,
-            lldp = lldp_count,
-            cdp = cdp_count,
-            entity_inventory = has_entity_inventory,
-            vlan_upsert = vlan_upsert,
-            "SNMP host collection summary"
-        );
 
         // --- Discover remote subnets from ipAddrTable ---
         let scanning_subnet = ctx.scanning_subnet;
