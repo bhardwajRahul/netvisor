@@ -324,6 +324,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let lldp_reason = lldp.reason;
         let lldp_authoritative = lldp.complete && !lldp.unsupported;
         let lldp_discarded = lldp.discarded;
+        let lldp_discard_reason = lldp.discard_reason;
         let mut lldp_neighbors = lldp.records;
         tracing::debug!(
             ip = %ip,
@@ -339,6 +340,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let cdp_complete = cdp.complete;
         let cdp_reason = cdp.reason;
         let cdp_discarded = cdp.discarded;
+        let cdp_discard_reason = cdp.discard_reason;
         let cdp_neighbors = cdp.records;
         tracing::debug!(
             ip = %ip,
@@ -352,18 +354,32 @@ impl DiscoveryIntegration for SnmpIntegration {
         // consequence differs — losing every neighbour on a switch takes it off L2 Physical
         // entirely, losing some leaves it there with holes — and because no rescan will change
         // either, which is the part an operator most needs told (GH #668).
-        for (group, discarded, kept) in [
-            (SnmpWalkGroup::Lldp, lldp_discarded, lldp_count),
-            (SnmpWalkGroup::Cdp, cdp_discarded, cdp_count),
+        for (group, discarded, kept, reason) in [
+            (
+                SnmpWalkGroup::Lldp,
+                lldp_discarded,
+                lldp_count,
+                lldp_discard_reason,
+            ),
+            (
+                SnmpWalkGroup::Cdp,
+                cdp_discarded,
+                cdp_count,
+                cdp_discard_reason,
+            ),
         ] {
-            ctx.ops
-                .record_malformed_neighbours(MalformedNeighbours {
-                    ip,
-                    group,
-                    discarded,
-                    kept,
-                })
-                .await;
+            // No reason means nothing was thrown away, and there is nothing to report.
+            if let Some(reason) = reason {
+                ctx.ops
+                    .record_malformed_neighbours(MalformedNeighbours {
+                        ip,
+                        group,
+                        discarded,
+                        kept,
+                        reason,
+                    })
+                    .await;
+            }
         }
 
         // Translate LLDP local-port indices (which are lldpLocPortNum values, a

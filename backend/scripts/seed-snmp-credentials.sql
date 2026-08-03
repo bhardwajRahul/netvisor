@@ -1,6 +1,6 @@
 -- Seed the SNMP credentials needed to scan the SNMP simulation environment.
 --
--- The sim env (tools/snmp/SNMP-TEST-ENV.md) deliberately spreads its 13 devices across five
+-- The sim env (tools/snmp/SNMP-TEST-ENV.md) deliberately spreads its 16 devices across five
 -- different credentials — three v2c communities, one v1-only, one v3 USM user — so that a scan
 -- exercises credential selection, the v1/v2c/v3 negotiation paths, and the "try the next
 -- credential" fallback rather than one community answering everything.
@@ -22,7 +22,8 @@ CREATE TEMPORARY TABLE seed_snmp_credentials (name TEXT PRIMARY KEY, credential_
 
 INSERT INTO seed_snmp_credentials (name, credential_type) VALUES
     -- .230 switch-core-01, .231 switch-access-01, .235 ap-wireless-01, .238 switch-exos-01,
-    -- .239 switch-voss-01, .240 switch-netgear-01, .241 switch-aruba-01
+    -- .239 switch-voss-01, .240 switch-netgear-01, .241 switch-aruba-01, .243 switch-flaky-01,
+    -- .244 switch-dlink-01, .245 switch-tplink-01
     ('SNMP sim — netdefault (v2c)',
      '{"type":"SnmpV2c","community":{"mode":"Inline","value":"netdefault"}}'),
     -- .232 router-gw-01, .233 firewall-01
