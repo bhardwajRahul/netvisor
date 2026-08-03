@@ -1,6 +1,47 @@
 //! LLDP and FDB link resolution.
 use super::*;
 
+/// How many unmatched neighbours the summary names before eliding the rest. Matches the cap the
+/// daemon's scan warnings use, for the same reason: a line long enough to scroll is not read.
+const MAX_LISTED_UNMATCHED: usize = 10;
+
+/// A neighbour advertised by a local interface whose far end no strategy could place.
+///
+/// Holds what identifies both ends — which of our devices saw it, on which port, and the
+/// identifier the far end advertised — because those are the three things needed to decide whether
+/// an unresolved neighbour is a device that should have been scanned or one that never will be.
+struct UnmatchedNeighbour {
+    /// The local device that saw the neighbour, not the far end — the far end is what we failed
+    /// to identify.
+    host_id: Uuid,
+    if_descr: String,
+    /// The chassis ID (LLDP) or device id (CDP) that matched nothing.
+    identifier: String,
+    sys_name: Option<String>,
+}
+
+impl UnmatchedNeighbour {
+    fn new(interface: &Interface, identifier: String, sys_name: Option<String>) -> Self {
+        Self {
+            host_id: interface.base.host_id,
+            if_descr: interface.base.if_descr.clone(),
+            identifier,
+            sys_name,
+        }
+    }
+
+    /// `switch7 ten-gigabitEthernet 1/0/1 -> 00:ad:24:89:cc:f0 (core-sw)`, with the sysName only
+    /// when the device sent one — it is often the only human-readable clue to what the far end is.
+    fn describe(&self, host_name: Option<&String>) -> String {
+        let host = host_name.map(String::as_str).unwrap_or("unknown host");
+        let sys_name = match &self.sys_name {
+            Some(name) if !name.trim().is_empty() => format!(" ({name})"),
+            _ => String::new(),
+        };
+        format!("{host} {} -> {}{sys_name}", self.if_descr, self.identifier)
+    }
+}
+
 impl HostService {
     // =========================================================================
     // LLDP link resolution
@@ -31,6 +72,16 @@ impl HostService {
         let unresolved = self.interface_service.get_all(filter).await?;
 
         let mut stats = LldpResolutionStats::default();
+        // Every far end no strategy could place, kept so the summary below can name them.
+        //
+        // `host_not_found` on its own says only how many there were, and it is the one counter
+        // that does not move between scans: an unresolvable row keeps `neighbor_interface_id`
+        // NULL, so the filter re-selects it every pass and the count is a standing population
+        // rather than a per-run delta. A reporter seeing the same figure twice cannot tell a
+        // stable set of genuinely-unknown neighbours (endpoints, phones, unmanaged gear — the
+        // expected case) from a resolution defect without knowing *which* devices they are
+        // (GH #668).
+        let mut unmatched: Vec<UnmatchedNeighbour> = Vec::new();
 
         for mut interface in unresolved {
             stats.total += 1;
@@ -58,6 +109,13 @@ impl HostService {
                             .await
                     }
                 };
+                if matches!(host, IdentityResolution::NotFound) {
+                    unmatched.push(UnmatchedNeighbour::new(
+                        &interface,
+                        chassis_id.identifier(),
+                        interface.base.lldp_sys_name.clone(),
+                    ));
+                }
                 match stats.record_host(host) {
                     None => None,
                     Some(host_id) => {
@@ -100,6 +158,9 @@ impl HostService {
                         resolver.find_host_by_sys_name(device_id, network_id).await,
                     ),
                 };
+                if matches!(host, IdentityResolution::NotFound) {
+                    unmatched.push(UnmatchedNeighbour::new(&interface, device_id.clone(), None));
+                }
                 match stats.record_host(host) {
                     None => None,
                     Some(host_id) => {
@@ -144,7 +205,60 @@ impl HostService {
             "LLDP/CDP link resolution complete"
         );
 
+        self.log_unmatched_neighbours(network_id, &unmatched).await;
+
         Ok(stats)
+    }
+
+    /// Name the neighbours no strategy could place, so `host_not_found` can be checked rather
+    /// than inferred.
+    ///
+    /// One line for the whole network, capped like the daemon's scan warnings and saying how many
+    /// were elided — a list that simply stops reads as though that was all of them. This is a log
+    /// rather than a scan warning because neighbour resolution runs in a debounced subscriber that
+    /// fires after the historical Discovery row and its warning list are already written.
+    async fn log_unmatched_neighbours(&self, network_id: Uuid, unmatched: &[UnmatchedNeighbour]) {
+        if unmatched.is_empty() {
+            return;
+        }
+
+        // One fetch for the whole batch: this runs after every scan, and the list is dominated by
+        // a handful of local devices reporting many unknown far ends each.
+        let host_ids: Vec<Uuid> = unmatched
+            .iter()
+            .map(|u| u.host_id)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let names: HashMap<Uuid, String> = match self
+            .get_all(StorableFilter::<Host>::new_from_entity_ids(&host_ids))
+            .await
+        {
+            Ok(hosts) => hosts.into_iter().map(|h| (h.id, h.base.name)).collect(),
+            // The identifiers below are the point of the line; losing the local host's name makes
+            // it harder to read, not useless.
+            Err(e) => {
+                tracing::debug!(network_id = %network_id, error = %e, "Could not name the local hosts for unmatched LLDP neighbours");
+                HashMap::new()
+            }
+        };
+
+        let listed: Vec<String> = unmatched
+            .iter()
+            .take(MAX_LISTED_UNMATCHED)
+            .map(|u| u.describe(names.get(&u.host_id)))
+            .collect();
+        let elided = unmatched.len().saturating_sub(listed.len());
+
+        tracing::warn!(
+            network_id = %network_id,
+            unmatched = unmatched.len(),
+            elided,
+            neighbours = %listed.join("; "),
+            "LLDP/CDP neighbours identify devices this network has not discovered, so they draw \
+             no links. Expected where the far end is an endpoint or unmanaged device; a device \
+             that should have been scanned means its identifier is not one we hold."
+        );
     }
 
     /// Resolve FDB (bridge forwarding database) single-MAC ports to neighbor links.

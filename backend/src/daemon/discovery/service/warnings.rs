@@ -162,34 +162,103 @@ pub struct MalformedNeighbours {
     /// Records that survived, so the line can say whether this cost the device some of its
     /// topology or all of it.
     pub kept: usize,
+    /// What accounts for most of the loss on this device.
+    pub reason: MalformedNeighbourReason,
 }
 
-/// One line naming the devices, or empty if there were none.
-pub fn render_malformed_neighbours(records: &[MalformedNeighbours]) -> Vec<String> {
-    let affected: BTreeSet<IpAddr> = records
-        .iter()
-        .filter(|r| r.discarded > 0)
-        .map(|r| r.ip)
-        .collect();
-    if affected.is_empty() {
-        return Vec::new();
+/// Why a device's neighbour records could not be used.
+///
+/// The one thing an operator can act on here is a rescan, and exactly one of these four is worth
+/// spending it on. The single line this replaced told all of them the same thing — that the device
+/// answered in full and a retry would change nothing — which is right for three and wrong for the
+/// fourth, the case where a retry is the whole remedy.
+///
+/// Ordered as declared: renderers group by this, so the ordering fixes the order of the lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MalformedNeighbourReason {
+    /// The column carrying the identifier stopped before the columns that follow it did, so the
+    /// rows arrived describing a neighbour they could not name.
+    ///
+    /// The only cause here a rescan can fix, and it overrides the rest: a row a truncated column
+    /// never reached is indistinguishable from one it never had, so once truncation is in
+    /// evidence the other classifications below cannot be trusted for the same device.
+    WalkCutShort,
+    /// Rows appeared in the descriptive columns at table positions the identifying column never
+    /// listed — there was never an identifier on them to lose.
+    GhostRows,
+    /// The identifying column listed the row and then never supplied a usable value for it. The
+    /// read finished, so the gap is in what the device served.
+    IncompleteRecords,
+    /// The agent answered an identifying column with a value of a type that column cannot hold.
+    UnexpectedType,
+    /// The row's position in the device's table could not be read, so it could not be tied to a
+    /// local port. A firmware serving an index shape the MIB does not describe (GH #668).
+    UnreadableIndex,
+}
+
+impl MalformedNeighbourReason {
+    /// The sentence that follows the count — what happened and, decisively, whether rescanning is
+    /// worth the operator's time.
+    fn explanation(self) -> &'static str {
+        match self {
+            Self::WalkCutShort => {
+                "The read of the column identifying the far end stopped before its end, so these \
+                 records may come back on the next complete scan."
+            }
+            Self::GhostRows => {
+                "The rows appeared only in the columns describing each neighbour, never in the one \
+                 identifying it, so there was no identifier to lose. Rescanning will not change \
+                 this."
+            }
+            Self::IncompleteRecords => {
+                "The devices listed these neighbours and then did not supply the identifier for \
+                 them. The read finished, so rescanning will not change this."
+            }
+            Self::UnexpectedType => {
+                "The devices answered the identifying column with a value of the wrong type. \
+                 Rescanning will not change this."
+            }
+            Self::UnreadableIndex => {
+                "Their position in the devices' neighbour tables could not be read, so they could \
+                 not be tied to a local port. Rescanning will not change this."
+            }
+        }
     }
-    let discarded: usize = records.iter().map(|r| r.discarded).sum();
-    // "None left" and "some left" are different situations for whoever reads this: the first
-    // means the device is absent from L2 Physical, the second that it is there but incomplete.
-    let kept: usize = records.iter().map(|r| r.kept).sum();
-    let consequence = if kept == 0 {
-        "so those devices contribute no physical links at all"
-    } else {
-        "so some of their physical links are missing"
-    };
-    vec![format!(
-        "{} reported {discarded} neighbour record{} without the identifier needed to match the \
-         far end, {consequence}. The devices answered in full — the records themselves are \
-         incomplete, so rescanning will not change this.",
-        list_addresses_prose(&affected),
-        if discarded == 1 { "" } else { "s" }
-    )]
+}
+
+/// One line per cause, naming the devices, or empty if there were none.
+///
+/// Grouped by cause rather than summed into one line: the causes differ on whether a rescan helps,
+/// and a single line covering all of them has to pick one answer and be wrong for the rest.
+pub fn render_malformed_neighbours(records: &[MalformedNeighbours]) -> Vec<String> {
+    let mut by_reason: BTreeMap<MalformedNeighbourReason, (BTreeSet<IpAddr>, usize, usize)> =
+        BTreeMap::new();
+    for record in records.iter().filter(|r| r.discarded > 0) {
+        let entry = by_reason.entry(record.reason).or_default();
+        entry.0.insert(record.ip);
+        entry.1 += record.discarded;
+        entry.2 += record.kept;
+    }
+    by_reason
+        .into_iter()
+        .map(|(reason, (affected, discarded, kept))| {
+            // "None left" and "some left" are different situations for whoever reads this: the
+            // first means the device is absent from L2 Physical, the second that it is there but
+            // incomplete.
+            let consequence = if kept == 0 {
+                "so those devices contribute no physical links at all"
+            } else {
+                "so some of their physical links are missing"
+            };
+            format!(
+                "{} reported {discarded} neighbour record{} without the identifier needed to \
+                 match the far end, {consequence}. {}",
+                list_addresses_prose(&affected),
+                if discarded == 1 { "" } else { "s" },
+                reason.explanation(),
+            )
+        })
+        .collect()
 }
 
 /// A device whose VLAN table was read and could not be recorded.
@@ -1180,12 +1249,60 @@ mod tests {
             group: SnmpWalkGroup::Lldp,
             discarded: 14,
             kept: 0,
+            reason: MalformedNeighbourReason::GhostRows,
         }]));
 
         assert!(msg.contains("192.168.7.244"), "{msg}");
         assert!(msg.contains("14 neighbour records"), "{msg}");
-        assert!(msg.contains("rescanning will not change this"), "{msg}");
+        assert!(msg.contains("Rescanning will not change this"), "{msg}");
         assert!(msg.contains("no physical links at all"), "{msg}");
+    }
+
+    /// The counterpart, and the reason the cause is carried at all: a chassis column that stopped
+    /// early *can* recover, and the line that used to cover every cause told this operator their
+    /// one available remedy was pointless.
+    #[test]
+    fn a_cut_short_read_does_not_tell_the_operator_a_rescan_is_pointless() {
+        let msg = joined(&render_malformed_neighbours(&[MalformedNeighbours {
+            ip: ip("192.168.7.243"),
+            group: SnmpWalkGroup::Lldp,
+            discarded: 6,
+            kept: 0,
+            reason: MalformedNeighbourReason::WalkCutShort,
+        }]));
+
+        assert!(msg.contains("192.168.7.243"), "{msg}");
+        assert!(!msg.contains("will not change this"), "{msg}");
+        assert!(msg.contains("next complete scan"), "{msg}");
+    }
+
+    /// Two devices failing for different reasons need different advice, so they cannot be summed
+    /// into one sentence — whichever cause won would be wrong for the other device.
+    #[test]
+    fn devices_failing_for_different_reasons_are_reported_separately() {
+        let lines = render_malformed_neighbours(&[
+            MalformedNeighbours {
+                ip: ip("10.0.0.1"),
+                group: SnmpWalkGroup::Lldp,
+                discarded: 3,
+                kept: 0,
+                reason: MalformedNeighbourReason::WalkCutShort,
+            },
+            MalformedNeighbours {
+                ip: ip("10.0.0.2"),
+                group: SnmpWalkGroup::Lldp,
+                discarded: 4,
+                kept: 0,
+                reason: MalformedNeighbourReason::UnreadableIndex,
+            },
+        ]);
+
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        let cut_short = lines.iter().find(|l| l.contains("10.0.0.1")).unwrap();
+        let unreadable = lines.iter().find(|l| l.contains("10.0.0.2")).unwrap();
+        assert!(!cut_short.contains("10.0.0.2"), "{cut_short}");
+        assert!(!cut_short.contains("will not change this"), "{cut_short}");
+        assert!(unreadable.contains("will not change this"), "{unreadable}");
     }
 
     /// Losing some neighbours and losing all of them put the device in different places on the
@@ -1197,6 +1314,7 @@ mod tests {
             group: SnmpWalkGroup::Lldp,
             discarded: 2,
             kept: 5,
+            reason: MalformedNeighbourReason::GhostRows,
         }]));
 
         assert!(
@@ -1215,6 +1333,7 @@ mod tests {
                 group: SnmpWalkGroup::Cdp,
                 discarded: 0,
                 kept: 3,
+                reason: MalformedNeighbourReason::GhostRows,
             }])
             .is_empty()
         );
