@@ -193,8 +193,9 @@
 		await downloadCsv('Network', {});
 	}
 
-	// Define field configuration for the DataTableControls
-	const networkFields: FieldConfig<Network>[] = [
+	// Derived, not a plain const: it closes over `tagsData` and references the
+	// `tagsCell` snippet, neither of which exists yet when the script body runs.
+	let networkFields = $derived<FieldConfig<Network>[]>([
 		{
 			key: 'name',
 			label: common_name(),
@@ -218,7 +219,7 @@
 			type: 'date',
 			sortable: true
 		}
-	];
+	]);
 </script>
 
 <div class="space-y-6">
