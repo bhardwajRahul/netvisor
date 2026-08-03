@@ -52,7 +52,13 @@ status=0
 # acknowledged in the migration's own header comment. Add to the relevant
 # array as needed. squawk's `--exclude-path` is path-pattern based; we exclude
 # entire rules per file by partitioning into separate squawk invocations.
-DOWNTIME_FILES=("$MIGRATIONS_DIR/20260502120004_drop_legacy_topology_columns.sql")
+DOWNTIME_FILES=(
+    "$MIGRATIONS_DIR/20260502120004_drop_legacy_topology_columns.sql"
+    # Contract half of the plan_limit_notifications -> notifications rename.
+    # v0.17.6-v0.17.8 containers dual-write the dropped column, so this is NOT a
+    # no-reader drop -- it is only safe because v0.17.9 ships as a downtime deploy.
+    "$MIGRATIONS_DIR/20260803120000_drop_organizations_plan_limit_notifications.sql"
+)
 FK_BACKFILL_FILES=("$MIGRATIONS_DIR/20260502120001_add_snapshot_id_fks.sql")
 # Columns dropped that have NO live code readers at the currently-deployed release,
 # so the drop is safe under a rolling deploy (contract already paid). Header comment
