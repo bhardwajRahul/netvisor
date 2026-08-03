@@ -1639,13 +1639,11 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     // Step 3: Merge in VLAN-aware Q-BRIDGE dot1qTpFdbTable entries. Legacy rows
     // win; Q-BRIDGE fills in MACs the legacy table didn't report (or all of them,
     // on switches that populate only the Q-BRIDGE table).
-    let legacy_count = fdb_entries.len();
     let qbridge = walk_qbridge_fdb(session, ip).await.unwrap_or_default();
     if !qbridge.complete {
         shortfall.complete = false;
     }
     let qbridge = qbridge.records;
-    let qbridge_count = qbridge.len();
     for (key, builder) in qbridge {
         fdb_entries.entry(key).or_insert(builder);
     }
@@ -1668,15 +1666,9 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
         })
         .collect();
 
-    // Debug-level (enable SCANOPY_LOG_LEVEL=debug) with the legacy-vs-Q-BRIDGE split: on a
-    // VLAN-aware switch, legacy=0 with qbridge>0 confirms the daemon has (and is using) the
-    // Q-BRIDGE FDB collection; legacy=0 and qbridge=0 on a switch that snmpwalk shows has FDB data
-    // points at an un-upgraded daemon or a MIB the switch doesn't expose (GH #649).
     tracing::debug!(
         ip = %ip,
         entries = result.len(),
-        legacy_dot1d = legacy_count,
-        qbridge_dot1q = qbridge_count,
         port_mappings = port_to_if_index.len(),
         complete = shortfall.complete,
         "Bridge FDB walk finished"
