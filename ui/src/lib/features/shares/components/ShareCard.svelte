@@ -29,14 +29,12 @@
 		share,
 		onEdit,
 		onDelete,
-		viewMode = 'card',
 		selected = false,
 		onSelectionChange = () => {}
 	}: {
 		share: Share;
 		onEdit?: (share: Share) => void;
 		onDelete?: (share: Share) => void;
-		viewMode?: 'card' | 'list';
 		selected?: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
@@ -150,4 +148,4 @@
 	});
 </script>
 
-<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />
+<GenericCard {...cardData} {selected} {onSelectionChange} />

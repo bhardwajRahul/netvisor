@@ -271,7 +271,6 @@
 		>
 			{#snippet children(
 				item: Discovery,
-				viewMode: 'card' | 'list',
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
@@ -291,7 +290,6 @@
 								onToggleEnabled: isReadOnly ? undefined : handleToggleEnabled
 							}}
 					onCancel={isReadOnly ? undefined : handleCancelDiscovery}
-					{viewMode}
 				/>
 			{/snippet}
 		</DataControls>

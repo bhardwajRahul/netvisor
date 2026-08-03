@@ -21,14 +21,12 @@
 		subnet,
 		onEdit,
 		onDelete,
-		viewMode,
 		selected,
 		onSelectionChange = () => {}
 	}: {
 		subnet: Subnet;
 		onEdit?: (subnet: Subnet) => void;
 		onDelete?: (subnet: Subnet) => void;
-		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
@@ -93,4 +91,4 @@
 	</div>
 {/snippet}
 
-<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />
+<GenericCard {...cardData} {selected} {onSelectionChange} />

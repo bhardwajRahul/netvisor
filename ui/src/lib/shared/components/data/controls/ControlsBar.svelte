@@ -1,0 +1,227 @@
+<script lang="ts" generics="T">
+	import {
+		Search,
+		X,
+		LayoutGrid,
+		List,
+		CheckSquare,
+		Square,
+		Download,
+		Filter,
+		ArrowUpNarrowWide,
+		ArrowDownWideNarrow
+	} from 'lucide-svelte';
+	import type { Snippet } from 'svelte';
+	import { getFieldKey, type FieldConfig } from '../types';
+	import type { SortState } from './sorting';
+	import type { ViewMode } from './dataControlsStorage';
+	import Tag from '../Tag.svelte';
+	import {
+		common_active,
+		common_ascending,
+		common_descending,
+		common_deselectAll,
+		common_export,
+		common_exporting,
+		common_groupByLabel,
+		common_none,
+		common_searchPlaceholder,
+		common_selectAll,
+		common_sortByLabel,
+		common_switchToCardView,
+		common_switchToListView
+	} from '$lib/paraglide/messages';
+
+	let {
+		searchQuery = $bindable(''),
+		selectedGroupField = $bindable(null),
+		sortState = $bindable({ field: null, direction: 'asc' }),
+		viewMode = $bindable('card'),
+		showFilters = $bindable(false),
+		fields,
+		groupableFields,
+		sortableFields,
+		hasActiveFilters,
+		hasActiveSearch,
+		hasActiveGrouping,
+		showSelectAll,
+		allSelected,
+		hasExportHandler,
+		isExporting,
+		onToggleSort,
+		onClearSearch,
+		onClearGrouping,
+		onSelectAll,
+		onSelectNone,
+		onExport,
+		/** Column menu, rendered only in table mode. */
+		columnMenu
+	}: {
+		searchQuery: string;
+		selectedGroupField: string | null;
+		sortState: SortState;
+		viewMode: ViewMode;
+		showFilters: boolean;
+		fields: FieldConfig<T>[];
+		groupableFields: FieldConfig<T>[];
+		sortableFields: FieldConfig<T>[];
+		hasActiveFilters: boolean;
+		hasActiveSearch: boolean;
+		hasActiveGrouping: boolean;
+		showSelectAll: boolean;
+		allSelected: boolean;
+		hasExportHandler: boolean;
+		isExporting: boolean;
+		onToggleSort: (fieldKey: string) => void;
+		onClearSearch: () => void;
+		onClearGrouping: () => void;
+		onSelectAll: () => void;
+		onSelectNone: () => void;
+		onExport: () => void;
+		columnMenu?: Snippet;
+	} = $props();
+</script>
+
+<div class="flex items-end justify-between">
+	<!-- Left: Search + Filter/Group/Sort -->
+	<div class="flex items-end gap-4">
+		<!-- Search Input -->
+		<div class="relative w-96 min-w-48">
+			<Search class="text-tertiary absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+			<input
+				type="text"
+				bind:value={searchQuery}
+				placeholder={common_searchPlaceholder()}
+				class="input-field w-full pl-10 pr-10"
+			/>
+			{#if hasActiveSearch}
+				<button
+					onclick={onClearSearch}
+					class="text-tertiary hover:text-secondary absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
+				>
+					<X class="h-4 w-4" />
+				</button>
+			{/if}
+		</div>
+
+		<!-- Data Controls Group (Filter, Group, Sort) -->
+		<div class="flex items-end gap-3">
+			<!-- Filter Toggle -->
+			{#if fields.some((f) => f.filterable)}
+				<button
+					onclick={() => (showFilters = !showFilters)}
+					class="btn-secondary flex h-[42px] items-center gap-2"
+				>
+					<Filter class="h-4 w-4" />
+					{#if hasActiveFilters}
+						<Tag label={common_active()} color="Blue" />
+					{/if}
+				</button>
+			{/if}
+
+			<!-- Group By Dropdown -->
+			{#if groupableFields.length > 0}
+				<div class="flex flex-col gap-1">
+					<span class="text-tertiary text-xs">{common_groupByLabel()}</span>
+					<div class="relative">
+						<select bind:value={selectedGroupField} class="input-secondary pr-8">
+							<option value={null}>{common_none()}</option>
+							{#each groupableFields as field (getFieldKey(field))}
+								<option value={getFieldKey(field)}>{field.label}</option>
+							{/each}
+						</select>
+						{#if hasActiveGrouping}
+							<button
+								onclick={onClearGrouping}
+								class="text-tertiary hover:text-secondary absolute right-8 top-1/2 -translate-y-1/2 transition-colors"
+							>
+								<X class="h-3 w-3" />
+							</button>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
+			<!-- Sort Dropdown + Direction -->
+			{#if sortableFields.length > 0}
+				<div class="flex flex-col gap-1">
+					<span class="text-tertiary text-xs">{common_sortByLabel()}</span>
+					<div class="flex items-center gap-1">
+						<select
+							bind:value={sortState.field}
+							onchange={() => {
+								if (!sortState.field) sortState = { ...sortState, direction: 'asc' };
+							}}
+							class="input-secondary pr-8"
+						>
+							<option value={null}>{common_none()}</option>
+							{#each sortableFields as field (getFieldKey(field))}
+								<option value={getFieldKey(field)}>{field.label}</option>
+							{/each}
+						</select>
+						{#if sortState.field}
+							<button
+								onclick={() => onToggleSort(sortState.field || '')}
+								class="btn-secondary h-[42px]"
+								title={sortState.direction === 'asc' ? common_ascending() : common_descending()}
+							>
+								{#if sortState.direction === 'asc'}
+									<ArrowUpNarrowWide class="h-5 w-5" />
+								{:else}
+									<ArrowDownWideNarrow class="h-5 w-5" />
+								{/if}
+							</button>
+						{/if}
+					</div>
+				</div>
+			{/if}
+		</div>
+	</div>
+
+	<!-- Right: View & Actions Group -->
+	<div class="flex items-end gap-2">
+		<!-- View Mode Toggle -->
+		<button
+			onclick={() => (viewMode = viewMode === 'card' ? 'table' : 'card')}
+			class="btn-secondary h-[42px]"
+			title={viewMode === 'card' ? common_switchToListView() : common_switchToCardView()}
+		>
+			{#if viewMode === 'card'}
+				<List class="h-5 w-5" />
+			{:else}
+				<LayoutGrid class="h-5 w-5" />
+			{/if}
+		</button>
+
+		{#if viewMode === 'table' && columnMenu}
+			{@render columnMenu()}
+		{/if}
+
+		<!-- Select All/None -->
+		{#if showSelectAll}
+			<button
+				onclick={allSelected ? onSelectNone : onSelectAll}
+				class="btn-secondary h-[42px]"
+				title={allSelected ? common_deselectAll() : common_selectAll()}
+			>
+				{#if allSelected}
+					<Square class="h-5 w-5" />
+				{:else}
+					<CheckSquare class="h-5 w-5" />
+				{/if}
+			</button>
+		{/if}
+
+		<!-- Export Button -->
+		{#if hasExportHandler}
+			<button
+				onclick={onExport}
+				disabled={isExporting}
+				class="btn-secondary h-[42px] disabled:cursor-not-allowed disabled:opacity-50"
+				title={isExporting ? common_exporting() : common_export()}
+			>
+				<Download class="h-5 w-5" />
+			</button>
+		{/if}
+	</div>
+</div>

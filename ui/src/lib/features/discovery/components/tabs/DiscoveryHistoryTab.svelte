@@ -293,7 +293,6 @@
 		>
 			{#snippet children(
 				item: Discovery,
-				viewMode: 'card' | 'list',
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
@@ -301,7 +300,6 @@
 					discovery={item}
 					hosts={hostsData}
 					onView={handleEditDiscovery}
-					{viewMode}
 					selected={isSelected}
 					{onSelectionChange}
 				/>

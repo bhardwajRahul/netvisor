@@ -53,7 +53,6 @@
 	});
 
 	let {
-		viewMode,
 		discovery,
 		hosts = [],
 		activeSession = null,
@@ -65,7 +64,6 @@
 		selected,
 		onSelectionChange = () => {}
 	}: {
-		viewMode: 'card' | 'list';
 		discovery: Discovery;
 		/**
 		 * Hosts the daemons in this list run on. Passed in rather than fetched
@@ -222,10 +220,8 @@
 	<div class="flex items-center justify-between gap-3">
 		<div class="flex-1 space-y-2">
 			<div class="flex items-center gap-3">
-				<span class={`text-secondary ${viewMode == 'list' ? 'text-xs' : 'text-sm'} font-medium`}
-					>Phase:
-				</span>
-				<span class={`text-accent ${viewMode == 'list' ? 'text-xs' : 'text-sm'} font-medium`}
+				<span class="text-secondary text-sm font-medium">Phase: </span>
+				<span class="text-accent text-sm font-medium"
 					>{isCancelling ? 'Cancelling' : activeSession!.phase}</span
 				>
 			</div>
@@ -260,4 +256,4 @@
 	</div>
 {/snippet}
 
-<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />
+<GenericCard {...cardData} {selected} {onSelectionChange} />

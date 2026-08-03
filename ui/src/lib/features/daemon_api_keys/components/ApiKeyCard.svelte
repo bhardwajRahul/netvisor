@@ -27,7 +27,6 @@
 		isInUse = false,
 		onDelete = () => {},
 		onEdit = () => {},
-		viewMode,
 		selected,
 		onSelectionChange = () => {}
 	}: {
@@ -35,7 +34,6 @@
 		isInUse?: boolean;
 		onDelete?: (apiKey: ApiKey) => void;
 		onEdit?: (apiKey: ApiKey) => void;
-		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
@@ -102,4 +100,4 @@
 	</div>
 {/snippet}
 
-<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />
+<GenericCard {...cardData} {selected} {onSelectionChange} />

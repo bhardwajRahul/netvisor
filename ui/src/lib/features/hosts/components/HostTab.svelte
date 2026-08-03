@@ -13,17 +13,24 @@
 	import HostConsolidationModal from './HostConsolidationModal.svelte';
 	import HostExportModal from './HostExportModal.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
-	import { Plus } from 'lucide-svelte';
+	import TagCell from '$lib/shared/components/data/TagCell.svelte';
+	import { defineFields, entityRef, type CardAction } from '$lib/shared/components/data/types';
+	import { tagItems, tagNames } from '$lib/features/tags/columns';
+	import { entities } from '$lib/shared/stores/metadata';
+	import { Plus, Trash2, RefreshCw, Replace, Eye, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 	import type { TabProps } from '$lib/shared/types';
 	import {
 		common_confirmDeleteName,
+		common_consolidate,
 		common_create,
 		common_created,
+		common_delete,
 		common_description,
+		common_edit,
+		common_hide,
 		common_hidden,
 		common_hostname,
 		common_hosts,
@@ -32,6 +39,7 @@
 		common_name,
 		common_network,
 		common_noEntityYet,
+		common_rescan,
 		common_service,
 		common_services,
 		common_tags,
@@ -239,7 +247,13 @@
 		defineFields<Host, HostOrderField>(
 			{
 				// Identity fields: grouping by one would render a header per host.
-				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+				name: {
+					label: common_name(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					column: { primary: true, width: 220 }
+				},
 				hostname: {
 					label: common_hostname(),
 					type: 'string',
@@ -295,8 +309,10 @@
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
 				},
-				created_at: { label: common_created(), type: 'date' },
-				updated_at: { label: common_updated(), type: 'date' },
+				// Audit dates stay available but off by default: 12 columns at once
+				// is unreadable, and these are rarely what someone is scanning for.
+				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } },
 				last_seen_at: { label: common_lastSeen(), type: 'date' }
 			},
 			[
@@ -304,7 +320,8 @@
 					key: 'description',
 					label: common_description(),
 					type: 'string',
-					searchable: true
+					searchable: true,
+					column: { hiddenByDefault: true }
 				},
 				{ key: 'hidden', label: common_hidden(), type: 'boolean', filterable: true },
 				{
@@ -313,10 +330,10 @@
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: (entity) =>
-						entity.tags
-							.map((id) => tagsData.find((t) => t.id === id)?.name)
-							.filter((name): name is string => !!name)
+					// Search and filter match the same names the cell renders, so a row
+					// can never show a tag the filter above it disagrees with.
+					getValue: (entity) => tagNames(entity.tags, tagsData),
+					column: { cell: tagsCell, width: 200 }
 				},
 				{
 					key: 'services',
@@ -325,7 +342,18 @@
 					searchable: true,
 					filterable: true,
 					getValue: (host) =>
-						allServicesData.filter((s) => s.host_id === host.id).map((s) => s.name)
+						allServicesData.filter((s) => s.host_id === host.id).map((s) => s.name),
+					column: {
+						getItems: (host) =>
+							allServicesData
+								.filter((s) => s.host_id === host.id)
+								.map((s) => ({
+									id: s.id,
+									label: s.name,
+									color: entities.getColorHelper('Service').color,
+									entityRef: entityRef('Service', s.id, s)
+								}))
+					}
 				}
 			]
 		)
@@ -334,6 +362,35 @@
 	function handleCreateHost() {
 		setEditingHost(null);
 		showHostEditor = true;
+	}
+
+	/**
+	 * Row actions for table mode, matching what the card offers.
+	 *
+	 * The table never renders a card, so the actions the card builds for itself
+	 * are not reachable from it — the tab already owns every handler, so it is
+	 * the natural place to describe them once for both.
+	 */
+	function hostActions(host: Host): CardAction[] {
+		if (isReadOnly) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditHost(host) },
+			{ label: common_rescan(), icon: RefreshCw, onClick: () => handleRescanHost(host) },
+			{ label: common_consolidate(), icon: Replace, onClick: () => handleStartConsolidate(host) },
+			{
+				label: common_hide(),
+				icon: Eye,
+				class: host.hidden ? 'text-blue-400' : '',
+				onClick: () => handleHostHide(host)
+			},
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteHost(host)
+			}
+		];
 	}
 
 	function handleEditHost(host: Host) {
@@ -481,16 +538,16 @@
 			onExportClick={() => {
 				showExportModal = true;
 			}}
+			getActions={hostActions}
+			entityLabel={common_hosts()}
 		>
 			{#snippet children(
 				item: Host,
-				viewMode: 'card' | 'list',
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
 				<HostCard
 					host={item}
-					{viewMode}
 					selected={isSelected}
 					{onSelectionChange}
 					onEdit={isReadOnly ? undefined : handleEditHost}
@@ -503,6 +560,16 @@
 		</DataControls>
 	{/if}
 </div>
+
+{#snippet tagsCell(host: Host)}
+	<TagCell
+		items={tagItems(host.tags, tagsData)}
+		tagIds={host.tags}
+		entityId={host.id}
+		entityType="Host"
+		editable={!isReadOnly}
+	/>
+{/snippet}
 
 <HostEditor
 	isOpen={showHostEditor}

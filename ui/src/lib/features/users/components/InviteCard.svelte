@@ -20,7 +20,7 @@
 		invites_pendingInvite
 	} from '$lib/paraglide/messages';
 
-	let { invite, viewMode }: { invite: OrganizationInvite; viewMode: 'card' | 'list' } = $props();
+	let { invite }: { invite: OrganizationInvite } = $props();
 
 	// TanStack Query for current user
 	const currentUserQuery = useCurrentUserQuery();
@@ -88,4 +88,4 @@
 	});
 </script>
 
-<GenericCard {...cardData} {viewMode} selectable={false} />
+<GenericCard {...cardData} selectable={false} />

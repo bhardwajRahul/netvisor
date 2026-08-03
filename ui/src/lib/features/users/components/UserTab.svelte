@@ -226,20 +226,18 @@
 		>
 			{#snippet children(
 				item: UserOrInvite,
-				viewMode: 'card' | 'list',
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
 				{#if isUser(item)}
 					<UserCard
 						user={item.data}
-						{viewMode}
 						selected={isSelected}
 						{onSelectionChange}
 						onEdit={handleEditUser}
 					/>
 				{:else}
-					<InviteCard invite={item.data} {viewMode} />
+					<InviteCard invite={item.data} />
 				{/if}
 			{/snippet}
 		</DataControls>

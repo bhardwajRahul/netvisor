@@ -7,7 +7,10 @@
 	import NetworkEditModal from './NetworkEditModal.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import type { FieldConfig } from '$lib/shared/components/data/types';
-	import { Plus } from 'lucide-svelte';
+	import TagCell from '$lib/shared/components/data/TagCell.svelte';
+	import { tagItems, tagNames } from '$lib/features/tags/columns';
+	import type { CardAction } from '$lib/shared/components/data/types';
+	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -18,6 +21,8 @@
 		common_confirmBulkDelete,
 		common_create,
 		common_created,
+		common_delete,
+		common_edit,
 		common_name,
 		common_networks,
 		common_noEntityYet,
@@ -117,6 +122,21 @@
 			permissions.getMetadata(currentUser.permissions).manage_org_entities
 	);
 
+	/** Row actions for table mode, matching what the card offers. */
+	function networkActions(network: Network): CardAction[] {
+		if (!allowBulkDelete) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditNetwork(network) },
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteNetwork(network)
+			}
+		];
+	}
+
 	function handleDeleteNetwork(network: Network) {
 		if (confirm(networks_confirmDelete({ name: network.name }))) {
 			deleteNetworkMutation.mutate(network.id);
@@ -180,7 +200,8 @@
 			label: common_name(),
 			type: 'string',
 			searchable: true,
-			sortable: true
+			sortable: true,
+			column: { primary: true, width: 220 }
 		},
 		{
 			key: 'tags',
@@ -188,12 +209,8 @@
 			type: 'array',
 			searchable: true,
 			filterable: true,
-			getValue: (entity) => {
-				// Return tag names for search/filter display
-				return entity.tags
-					.map((id) => tagsData.find((t) => t.id === id)?.name)
-					.filter((name): name is string => !!name);
-			}
+			getValue: (entity) => tagNames(entity.tags, tagsData),
+			column: { cell: tagsCell, width: 200 }
 		},
 		{
 			key: 'created_at',
@@ -258,17 +275,17 @@
 			storageKey="scanopy-networks-table-state"
 			getItemId={(item) => item.id}
 			onCsvExport={handleCsvExport}
+			getActions={networkActions}
+			entityLabel={common_networks()}
 		>
 			{#snippet children(
 				item: Network,
-				viewMode: 'card' | 'list',
 				isSelected: boolean,
 				onSelectionChange: (selected: boolean) => void
 			)}
 				<NetworkCard
 					network={item}
 					hosts={daemonHosts}
-					{viewMode}
 					selected={isSelected}
 					{onSelectionChange}
 					onDelete={handleDeleteNetwork}
@@ -293,3 +310,13 @@
 			}
 		: null}
 />
+
+{#snippet tagsCell(network: Network)}
+	<TagCell
+		items={tagItems(network.tags, tagsData)}
+		tagIds={network.tags}
+		entityId={network.id}
+		entityType="Network"
+		editable={allowBulkDelete}
+	/>
+{/snippet}

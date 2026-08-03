@@ -27,14 +27,12 @@
 	let credentialsData = $derived(credentialsQuery.data ?? []);
 
 	let {
-		viewMode,
 		discovery,
 		hosts = [],
 		onView = () => {},
 		selected,
 		onSelectionChange = () => {}
 	}: {
-		viewMode: 'card' | 'list';
 		discovery: Discovery;
 		/**
 		 * Hosts the daemons in this list run on. Passed in rather than fetched
@@ -146,4 +144,4 @@
 	});
 </script>
 
-<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />
+<GenericCard {...cardData} {selected} {onSelectionChange} />

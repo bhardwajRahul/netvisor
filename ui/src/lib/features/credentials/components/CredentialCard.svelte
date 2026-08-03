@@ -30,7 +30,6 @@
 		assignedHosts = [],
 		onEdit = () => {},
 		onDelete = () => {},
-		viewMode,
 		selected,
 		onSelectionChange = () => {}
 	}: {
@@ -39,7 +38,6 @@
 		assignedHosts?: Host[];
 		onEdit?: (credential: Credential) => void;
 		onDelete?: (credential: Credential) => void;
-		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
@@ -141,4 +139,4 @@
 	</div>
 {/snippet}
 
-<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} selectable={canManage} />
+<GenericCard {...cardData} {selected} {onSelectionChange} selectable={canManage} />
