@@ -163,7 +163,8 @@ export async function handlePortExpansion(
 	buildMeasureNodes: () => import('@xyflow/svelte').Node[],
 	setNodes: (nodes: import('@xyflow/svelte').Node[]) => void,
 	isStale: () => boolean,
-	needsElk: boolean
+	needsElk: boolean,
+	viewCacheKey: string
 ): Promise<boolean> {
 	const portsChanged =
 		currentExpandedPorts.size !== state.prevExpandedPortIds.size ||
@@ -181,13 +182,20 @@ export async function handlePortExpansion(
 		// Re-measure affected nodes and update graph
 		if (containerElement) {
 			const changedIds = new Set([...currentExpandedPorts, ...state.prevExpandedPortIds]);
+			const viewCache = state.viewSizeCache.get(viewCacheKey);
 			for (const nodeId of changedIds) {
 				const el = containerElement.querySelector(`[data-id="${nodeId}"]`) as HTMLElement;
 				if (el) {
-					state.layoutGraph.updateElementSize(nodeId, {
-						x: el.offsetWidth || 250,
-						y: el.offsetHeight || 100
-					});
+					const size = { x: el.offsetWidth || 250, y: el.offsetHeight || 100 };
+					state.layoutGraph.updateElementSize(nodeId, size);
+					viewCache?.set(nodeId, size);
+				} else {
+					// Not mounted, so not measurable — it is off screen and culled. Drop its cached
+					// size rather than leaving the pre-toggle height in place: without a cached size
+					// the node is built without a size seed, which makes SvelteFlow render it once
+					// and measure it for real the next time it comes into view. Keeping the stale
+					// height would leave a card-sized gap in the layout that nothing corrects.
+					viewCache?.delete(nodeId);
 				}
 			}
 		}

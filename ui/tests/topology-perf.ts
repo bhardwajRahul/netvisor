@@ -1,6 +1,14 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import {
+	enablePerfInstrumentation,
+	readDiagnostics,
+	readPipelinePerf,
+	signIn,
+	waitForStableLayout,
+	type PerfSnapshot
+} from '../tests-support/topology-harness';
 
 /**
  * Topology render-performance measurement.
@@ -23,12 +31,6 @@ import { dirname, resolve } from 'node:path';
 
 const OUTPUT_PATH = resolve('tests/results/topology-perf.json');
 
-interface PerfSnapshot {
-	durations: Record<string, number>;
-	counts: Record<string, number>;
-	runs: number;
-}
-
 interface FrameStats {
 	frames: number;
 	meanMs: number;
@@ -40,7 +42,10 @@ interface FrameStats {
 interface PerfReport {
 	label: string;
 	view: string;
-	nodeCount: number;
+	/** Nodes in the store — the graph's real size, unaffected by culling. */
+	storeNodes: number;
+	/** Nodes actually mounted into the DOM. */
+	mountedNodes: number;
 	edgeCount: number;
 	domNodeCount: number;
 	domEdgePathCount: number;
@@ -48,75 +53,6 @@ interface PerfReport {
 	pipeline: PerfSnapshot;
 	pan: FrameStats;
 	zoom: FrameStats;
-}
-
-/** Read the app's own pipeline instrumentation (see `lib/features/topology/perf.ts`). */
-async function readPipelinePerf(page: Page): Promise<PerfSnapshot> {
-	return page.evaluate(() => {
-		const api = (
-			window as unknown as {
-				__scanopyTopologyPerf?: { snapshot: () => PerfSnapshot };
-			}
-		).__scanopyTopologyPerf;
-		return api ? api.snapshot() : { durations: {}, counts: {}, runs: 0 };
-	});
-}
-
-/**
- * Wait until the render pipeline is genuinely idle.
- *
- * Three conditions, all required — getting this wrong silently invalidates a
- * comparison rather than failing it:
- *
- *  1. **No pipeline run in flight.** The app reports this via `runStartedAt`.
- *     Node positions can be stable *between* stages of a run that is about to
- *     re-layout, and a cold load legitimately runs the pipeline more than once.
- *  2. **Edges are present.** Edges are flushed only once `nodesInitialized`
- *     fires, so a node-only fingerprint can settle while zero edges are drawn —
- *     which measures a strictly cheaper page than the one under test.
- *  3. **Node positions unchanged** across consecutive samples.
- *
- * Deliberately does not key off node *count* alone: with viewport culling the
- * rendered set changes as the graph settles.
- */
-async function waitForStableLayout(page: Page, timeoutMs = 90_000): Promise<void> {
-	const started = Date.now();
-	let previous = '';
-	let stableSamples = 0;
-
-	while (Date.now() - started < timeoutMs) {
-		const sample = await page.evaluate(() => {
-			const api = (
-				window as unknown as {
-					__scanopyTopologyPerf?: { snapshot: () => { runStartedAt: number | null } };
-				}
-			).__scanopyTopologyPerf;
-			return {
-				running: api ? api.snapshot().runStartedAt !== null : false,
-				edges: document.querySelectorAll('.svelte-flow__edge').length,
-				fingerprint: Array.from(document.querySelectorAll('.svelte-flow__node'))
-					.map((el) => `${(el as HTMLElement).dataset.id}:${(el as HTMLElement).style.transform}`)
-					.sort()
-					.join('|')
-			};
-		});
-
-		const settled =
-			!sample.running &&
-			sample.edges > 0 &&
-			sample.fingerprint !== '' &&
-			sample.fingerprint === previous;
-
-		if (settled) {
-			stableSamples += 1;
-			if (stableSamples >= 2) return;
-		} else {
-			stableSamples = 0;
-		}
-		previous = sample.fingerprint;
-		await page.waitForTimeout(250);
-	}
-	throw new Error(`Layout did not settle within ${timeoutMs}ms`);
 }
 
 /**
@@ -198,15 +134,11 @@ async function zoomViewport(page: Page): Promise<void> {
 test('topology render performance', async ({ page, context }) => {
 	test.setTimeout(180_000);
 
-	await context.addCookies([
-		{ name: 'session_id', value: process.env.SESSION_ID ?? '', domain: 'localhost', path: '/' }
-	]);
+	await signIn(context);
 
 	// Turn instrumentation on before any app code runs, so the very first
 	// pipeline run is recorded.
-	await page.addInitScript(() => {
-		(window as unknown as { __topoPerf: boolean }).__topoPerf = true;
-	});
+	await enablePerfInstrumentation(page);
 
 	// Pin the view explicitly. `?view=` is read on load (queries.ts
 	// getTopologyParamsFromUrl), so without it we would measure whichever view
@@ -222,13 +154,19 @@ test('topology render performance', async ({ page, context }) => {
 
 	const pipeline = await readPipelinePerf(page);
 
-	const { nodeCount, edgeCount, domNodeCount, domEdgePathCount } = await page.evaluate(() => ({
-		// Graph size as the app knows it, independent of what is rendered.
-		nodeCount: document.querySelectorAll('.svelte-flow__node').length,
+	const { mountedNodes, edgeCount, domNodeCount, domEdgePathCount } = await page.evaluate(() => ({
+		mountedNodes: document.querySelectorAll('.svelte-flow__node').length,
 		edgeCount: document.querySelectorAll('.svelte-flow__edge').length,
 		domNodeCount: document.querySelectorAll('.svelte-flow__node *').length,
 		domEdgePathCount: document.querySelectorAll('.svelte-flow__edge path').length
 	}));
+
+	// Graph size as the app knows it, which is *not* the DOM count once culling works. This used
+	// to be one number labelled "graph size" and read from the DOM; with culling doing its job
+	// that number falls by an order of magnitude, and every before/after comparison would have
+	// silently flattered the change that made it fall.
+	const diagnostics = await readDiagnostics(page);
+	const storeNodes = diagnostics.samples.at(-1)?.store.nodes ?? 0;
 
 	const pan = await measureFrames(page, () => panViewport(page));
 	const zoom = await measureFrames(page, () => zoomViewport(page));
@@ -236,7 +174,8 @@ test('topology render performance', async ({ page, context }) => {
 	const report: PerfReport = {
 		label: process.env.PERF_LABEL ?? 'unlabelled',
 		view,
-		nodeCount,
+		storeNodes,
+		mountedNodes,
 		edgeCount,
 		domNodeCount,
 		domEdgePathCount,
@@ -251,7 +190,11 @@ test('topology render performance', async ({ page, context }) => {
 
 	const round = (n: number) => Math.round(n * 10) / 10;
 	console.log(`\n=== Topology Render Performance (${report.label}) ===`);
-	console.log(`  Rendered nodes / edges:   ${nodeCount} / ${edgeCount}`);
+	console.log(`  Store nodes:              ${storeNodes}`);
+	console.log(`  Mounted nodes / edges:    ${mountedNodes} / ${edgeCount}`);
+	console.log(
+		`  Mounted fraction:         ${storeNodes > 0 ? Math.round((mountedNodes / storeNodes) * 100) : 0}%`
+	);
 	console.log(`  DOM elements in nodes:    ${domNodeCount}`);
 	console.log(`  Edge <path> elements:     ${domEdgePathCount}`);
 	console.log(`  Time to interactive:      ${timeToInteractiveMs}ms`);
@@ -273,6 +216,8 @@ test('topology render performance', async ({ page, context }) => {
 	// This is a measurement harness, not a gate — the only hard assertion is
 	// that we actually measured something, so a silently-empty graph can't be
 	// reported as a great result.
-	expect(nodeCount, 'no nodes rendered — is the dataset seeded?').toBeGreaterThan(0);
+	// Guards the *store*, not the DOM: with culling on, a small mounted count is the intended
+	// result, so asserting on it would fail a healthy run and pass an empty one.
+	expect(storeNodes, 'no nodes in the graph — is the dataset seeded?').toBeGreaterThan(0);
 	expect(pan.frames, 'no frames sampled during pan').toBeGreaterThan(0);
 });

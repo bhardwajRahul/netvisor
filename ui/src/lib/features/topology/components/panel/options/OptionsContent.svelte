@@ -13,7 +13,7 @@
 	import { useTopology } from '../../../context';
 	import { getTopologyEditState, getOptionDisabledTooltip } from '../../../state';
 	import { edgeTypes, views } from '$lib/shared/stores/metadata';
-	import { activeView } from '../../../queries';
+	import { activeView, defaultHiddenValuesFor, isDefaultHiddenValue } from '../../../queries';
 	import { type Color } from '$lib/shared/utils/styling';
 	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
@@ -256,15 +256,36 @@
 		return [];
 	}
 
-	// OpenPorts under Service.Category is a product-level default, not a
-	// user filter — it shouldn't count toward the "filters applied" badge,
-	// and Clear-all preserves it.
+	// A view's declared defaults (OpenPorts under Service.Category everywhere, Unlinked under
+	// Interface.LinkState in L2) are product-level defaults, not user filters — they shouldn't
+	// count toward the "filters applied" badge, and Clear-all preserves them. Read from the view
+	// fixture so this agrees with the hide-set the backend seeds.
 	function isDefaultMetadataValue(
 		entityType: string,
 		filterType: string,
 		valueId: string
 	): boolean {
-		return entityType === 'Service' && filterType === 'Category' && valueId === 'OpenPorts';
+		return isDefaultHiddenValue($activeView, entityType, filterType, valueId);
+	}
+
+	/**
+	 * What an entity's hide-set should become when its filters are cleared.
+	 *
+	 * Returns the view's defaults for that entity, and — importantly — an explicit empty list for
+	 * every other filter that had values, rather than dropping the key. An absent key means "no
+	 * opinion", which the server fills in from the defaults on the next read; an empty list means
+	 * "show everything", which it leaves alone. Deleting the key would make a cleared filter
+	 * silently re-hide itself.
+	 */
+	function clearedFiltersFor(
+		entityType: string,
+		existing: Record<string, string[]> | undefined
+	): Record<string, string[]> {
+		const cleared: Record<string, string[]> = {};
+		for (const filterType of Object.keys(existing ?? {})) cleared[filterType] = [];
+		const defaults = defaultHiddenValuesFor($activeView)[entityType] ?? {};
+		for (const [filterType, values] of Object.entries(defaults)) cleared[filterType] = [...values];
+		return cleared;
 	}
 
 	function countUserMetadataValues(entityType: EntityType): number {
@@ -307,17 +328,8 @@
 			};
 			if (hideMeta[view]) {
 				const byEntity = { ...hideMeta[view] };
-				if (entityType === 'Service') {
-					const preservedCategory = byEntity.Service?.Category?.includes('OpenPorts')
-						? { Category: ['OpenPorts'] }
-						: undefined;
-					if (preservedCategory) byEntity.Service = preservedCategory;
-					else delete byEntity.Service;
-				} else {
-					delete byEntity[entityType];
-				}
-				if (Object.keys(byEntity).length === 0) delete hideMeta[view];
-				else hideMeta[view] = byEntity;
+				byEntity[entityType] = clearedFiltersFor(entityType, byEntity[entityType]);
+				hideMeta[view] = byEntity;
 			}
 
 			return {
@@ -340,9 +352,14 @@
 					Record<string, Record<string, string[]>>
 				>)
 			};
-			const openPortsHidden = hideMeta[view]?.Service?.Category?.includes('OpenPorts') ?? false;
-			if (openPortsHidden) hideMeta[view] = { Service: { Category: ['OpenPorts'] } };
-			else delete hideMeta[view];
+			const byEntity = { ...(hideMeta[view] ?? {}) };
+			for (const entityType of new Set([
+				...Object.keys(byEntity),
+				...Object.keys(defaultHiddenValuesFor(view))
+			])) {
+				byEntity[entityType] = clearedFiltersFor(entityType, byEntity[entityType]);
+			}
+			hideMeta[view] = byEntity;
 
 			return {
 				...opts,

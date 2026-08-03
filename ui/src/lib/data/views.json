@@ -53,12 +53,46 @@
       },
       "element_config": {
         "container_entity": "Host",
+        "default_hidden_values": {
+          "Interface": {
+            "LinkState": [
+              "Unlinked"
+            ]
+          },
+          "Service": {
+            "Category": [
+              "OpenPorts"
+            ]
+          }
+        },
         "element_entities": [
           {
             "entity_type": "Interface",
             "inline_entities": []
           }
-        ]
+        ],
+        "metadata_filters": {
+          "Interface": [
+            {
+              "filter_type": "LinkState",
+              "label": "By link",
+              "values": [
+                {
+                  "color": "Green",
+                  "icon": "cable",
+                  "id": "Linked",
+                  "label": "Linked"
+                },
+                {
+                  "color": "Gray",
+                  "icon": "circle",
+                  "id": "Unlinked",
+                  "label": "Unlinked"
+                }
+              ]
+            }
+          ]
+        }
       },
       "inspector_config": {
         "container_sections": [
@@ -152,6 +186,13 @@
       },
       "element_config": {
         "container_entity": "Subnet",
+        "default_hidden_values": {
+          "Service": {
+            "Category": [
+              "OpenPorts"
+            ]
+          }
+        },
         "element_entities": [
           {
             "entity_type": "IPAddress",
@@ -496,6 +537,13 @@
       "element_config": {
         "collective_noun": "workload",
         "container_entity": "Host",
+        "default_hidden_values": {
+          "Service": {
+            "Category": [
+              "OpenPorts"
+            ]
+          }
+        },
         "element_entities": [
           {
             "entity_type": "Service",
@@ -874,6 +922,13 @@
       },
       "element_config": {
         "container_entity": null,
+        "default_hidden_values": {
+          "Service": {
+            "Category": [
+              "OpenPorts"
+            ]
+          }
+        },
         "element_entities": [
           {
             "entity_type": "Service",

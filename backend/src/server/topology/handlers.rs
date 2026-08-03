@@ -251,10 +251,22 @@ async fn get_all_topologies(
     let filter = pagination.apply_to_filter(filter);
 
     let service = Topology::get_service(&state);
-    let result = service.get_paginated(filter).await.map_err(|e| {
+    let mut result = service.get_paginated(filter).await.map_err(|e| {
         tracing::error!(error = %e, "Failed to fetch topologies");
         ApiError::internal_error(&e.to_string())
     })?;
+
+    // Fill in any product default the stored options predate.
+    //
+    // The hide-set is applied client-side, so this response is what decides which values are
+    // hidden. `#[serde(default)]` is a whole-field fallback and cannot help here: a row written
+    // before a filter existed carries a complete `hide_metadata_values` map that simply has no
+    // entry for it, so without this every existing topology would keep rendering as though the
+    // filter had been switched off — which for L2's link-state filter means every ifTable row.
+    // Only absent keys are filled; see `merge_missing_hide_defaults`.
+    for topology in &mut result.items {
+        topology.base.options.request.merge_missing_hide_defaults();
+    }
 
     let limit = pagination.effective_limit().unwrap_or(0);
     let offset = pagination.effective_offset();

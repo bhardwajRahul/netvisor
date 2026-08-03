@@ -1,6 +1,7 @@
-import type { Node } from '@xyflow/svelte';
+import type { Node, Position } from '@xyflow/svelte';
 import type { LayoutGraph } from '../layout/layout-graph';
 import type { RenderableTopology, TopologyNode } from '../types/base';
+import type { XY } from './types';
 import { getTopologyIndex } from '../entity-index';
 
 export interface BuildFlowNodesParams {
@@ -13,6 +14,71 @@ export interface BuildFlowNodesParams {
 	liveNodes: Node[];
 	infraRuleId: string | null;
 	editMode: boolean;
+	/**
+	 * DOM-measured sizes for this view, by node id.
+	 *
+	 * The pipeline's own measurement is the only source of truth for how big a card actually
+	 * renders. It used to be read back off the live nodes instead — see the note on `liveNodes`
+	 * below for why that never worked.
+	 */
+	sizeHints?: Map<string, XY> | null;
+}
+
+/**
+ * Handle box size, in CSS px, for each node type.
+ *
+ * Exported because `synthesizeHandles` below and the components that render the handles must agree
+ * exactly: SvelteFlow derives edge endpoints from handle geometry, so a synthesized box that
+ * differs from the rendered one moves every edge endpoint on that node. `ElementNode.svelte` and
+ * `ContainerNode.svelte` set their handle styles from these constants for that reason — the sizes
+ * lived only in component CSS before, which is precisely the sort of drift this file now depends
+ * on not happening.
+ */
+export const ELEMENT_HANDLE_SIZE_PX = 8;
+export const CONTAINER_HANDLE_SIZE_PX = 5;
+
+/** The four sides SvelteFlow positions handles on, as both source and target. */
+const HANDLE_POSITIONS = ['top', 'right', 'bottom', 'left'] as const;
+
+/**
+ * Build the handle geometry SvelteFlow would have measured, without mounting the node.
+ *
+ * `getNodesInside` treats a node as unconditionally visible while `internals.handleBounds` is
+ * undefined (`forceInitialRender`), and `adoptUserNodes` only carries handle bounds forward for a
+ * node that has already mounted once. A node the user has never scrolled to therefore defeats
+ * culling no matter what else is set on it — and expanding a collapsed container produces
+ * thousands of exactly those at once. Supplying `handles` is the one input that makes such a node
+ * cullable on its first build: `parseHandles` synthesizes the bounds from it instead of reaching
+ * for a previous mount that never happened.
+ *
+ * Geometry mirrors `@xyflow/svelte`'s `base.css` (`.svelte-flow__handle-{top,right,bottom,left}`),
+ * which centres each handle on its edge with a 50% translate, and the reading `getHandleBounds`
+ * takes from it — the handle's top-left corner relative to the node's.
+ */
+export function synthesizeHandles(
+	width: number,
+	height: number,
+	handleSize: number
+): NonNullable<Node['handles']> {
+	const half = handleSize / 2;
+	const geometry = {
+		top: { x: width / 2 - half, y: -half },
+		right: { x: width - half, y: height / 2 - half },
+		bottom: { x: width / 2 - half, y: height - half },
+		left: { x: -half, y: height / 2 - half }
+	};
+
+	return HANDLE_POSITIONS.flatMap((position) =>
+		(['source', 'target'] as const).map((type) => ({
+			id: position.charAt(0).toUpperCase() + position.slice(1),
+			type,
+			position: position as Position,
+			x: geometry[position].x,
+			y: geometry[position].y,
+			width: handleSize,
+			height: handleSize
+		}))
+	);
 }
 
 /** Count elements recursively within a container from raw topology nodes. */
@@ -62,22 +128,25 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 		useGraph,
 		liveNodes,
 		infraRuleId,
-		editMode
+		editMode,
+		sizeHints
 	} = params;
 
 	const currentPositions = new Map(liveNodes.map((n) => [n.id, n.position]));
-	const currentSizes = new Map(
-		// `measured`, not `computed` — see the note in measure.ts. The v0 name
-		// silently resolved to undefined, so this map only ever carried the
-		// literal node props rather than rendered sizes.
-		liveNodes.map((n) => [
-			n.id,
-			{
-				width: n.measured?.width ?? n.width,
-				height: n.measured?.height ?? n.height
-			}
-		])
-	);
+
+	// Sizes come from `sizeHints` — the pipeline's own measurement — not from the live nodes.
+	//
+	// This used to read `n.measured` off `liveNodes`, which is `getNodes()`, which is the plain
+	// user array the app itself set. SvelteFlow writes `measured` into its internal `nodeLookup`
+	// and never back onto the user node, so that read resolved to undefined for every node and
+	// this map only ever carried the literal props: a hardcoded 250 for elements, undefined for
+	// their heights. Fixing the earlier `computed` → `measured` rename corrected the field name
+	// but not the object it was read from, so the path stayed dead. Do not reintroduce either
+	// `computed` (the v0 name, which does not exist in v1) or the read-back off `getNodes()`.
+	const sizeOf = (id: string): { width?: number; height?: number } => {
+		const hint = sizeHints?.get(id);
+		return hint ? { width: hint.x, height: hint.y } : {};
+	};
 
 	return visibleNodes.map((node) => {
 		const isNodeCollapsed = collapsed.has(node.id);
@@ -106,7 +175,7 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 					: (containerSize?.height ?? undefined);
 		} else if (!isNewStructure) {
 			const curPos = currentPositions.get(node.id);
-			const curSize = currentSizes.get(node.id);
+			const curSize = sizeOf(node.id);
 			position = curPos ?? { x: node.position.x, y: node.position.y };
 			width = isNodeCollapsed
 				? (containerSize?.width ?? undefined)
@@ -125,12 +194,48 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 			height = undefined;
 		}
 
+		// Sizes SvelteFlow can cull against before the node has ever mounted.
+		//
+		// Culling is defeated twice over on a freshly built node set. `getNodesInside` computes
+		// `area = width * height` and treats `overlappingArea >= area` as visible, so a node with
+		// no known height has `area === 0` and passes unconditionally; and a node whose object
+		// carries no `measured` loses its handle bounds in `adoptUserNodes`, which sets
+		// `forceInitialRender`. Both are true of every node this function used to return, so every
+		// pipeline run mounted the entire graph at least once no matter what the culling gate said.
+		// At a few hundred hosts that full mount survives and culling engages afterwards; at
+		// 17,000 nodes it exhausts memory first, and because measurement never completes the graph
+		// never becomes cullable at all.
+		//
+		// `measured` is the right vehicle and the `height` prop is not: `NodeWrapper` applies a
+		// height style only when the `height` prop is set, so seeding `measured.height` alone
+		// leaves element cards free to size to their content while still giving culling a real
+		// area to test.
+		//
+		// The measurement branch above is deliberately excluded — it exists to let content
+		// determine size, and seeding it would make the measure pass read back its own guess.
+		const hint = isNewStructure ? undefined : sizeHints?.get(node.id);
+		const measuredWidth = width ?? hint?.x;
+		const measuredHeight = height ?? hint?.y;
+		// No hint and no known size: emit neither field. The node force-renders once, gets
+		// measured for real, and is cullable on the next build. Intentional degradation — a
+		// guessed size here would stick, because a node carrying both fields reads as initialised
+		// and `NodeWrapper` never attaches its ResizeObserver to correct it.
+		const cullable = measuredWidth !== undefined && measuredHeight !== undefined;
+
 		return {
 			id: node.id,
 			type: node.node_type,
 			position,
 			...(width !== undefined && { width }),
 			...(height !== undefined && { height }),
+			...(cullable && {
+				measured: { width: measuredWidth, height: measuredHeight },
+				handles: synthesizeHandles(
+					measuredWidth,
+					measuredHeight,
+					isElement ? ELEMENT_HANDLE_SIZE_PX : CONTAINER_HANDLE_SIZE_PX
+				)
+			}),
 			expandParent: true,
 			deletable: false,
 			selectable: node.node_type !== 'Container',
@@ -179,6 +284,23 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 					})()
 				: node
 		};
+	});
+}
+
+/**
+ * Drop the seeded `measured`/`handles` from a built node set.
+ *
+ * For the full measurement pass, which mounts every node to read its real size. A node carrying
+ * both fields reads as initialised to `NodeWrapper`, so it never gets a ResizeObserver and would
+ * be presented at the size the seed guessed — letting the pass confirm its own input. Culling is
+ * suspended for that pass anyway, so nothing is lost by removing them.
+ */
+export function stripSizeSeed(flowNodes: Node[]): Node[] {
+	return flowNodes.map((node) => {
+		const stripped = { ...node };
+		delete stripped.measured;
+		delete stripped.handles;
+		return stripped;
 	});
 }
 

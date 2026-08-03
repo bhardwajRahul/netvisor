@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::server::{
     hosts::r#impl::virtualization::HostVirtualizationState,
+    interfaces::r#impl::base::InterfaceLinkState,
     services::r#impl::categories::ServiceCategory,
     shared::{
         concepts::Concept,
@@ -117,6 +118,18 @@ pub struct ViewElementConfig {
     /// or an inline entity (L3).
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata_filters: HashMap<EntityDiscriminants, Vec<MetadataFilter>>,
+    /// Filter values this view hides out of the box, keyed the same way as the
+    /// hide-set in request options.
+    ///
+    /// These are product defaults rather than user filters: they keep a view
+    /// legible before anyone has touched it, so "clear all filters" preserves
+    /// them and the "filters applied" count ignores them. Declared here so the
+    /// backend's initial hide-set and the frontend's notion of what counts as a
+    /// default are the same list — they were separately hardcoded before, in
+    /// `default_hide_metadata_values` and again in the options panel.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub default_hidden_values:
+        HashMap<EntityDiscriminants, HashMap<MetadataFilterType, Vec<String>>>,
     /// Single noun spanning all element entities. Used in summaries when the
     /// per-entity breakdown would be confusing (e.g. mixed Host+Service in
     /// Workloads, where everything is conceptually a "workload"). Singular;
@@ -217,6 +230,10 @@ pub struct ViewElementEntityConfig {
 pub enum MetadataFilterType {
     Category,
     Virtualization,
+    /// Whether a port resolved to a neighbour. Declared on Interface in L2, where it is the
+    /// difference between the handful of ports that carry the fabric and the ifTable rows that
+    /// merely exist.
+    LinkState,
     /// How recently discovery observed the entity. Unlike the others, this
     /// value is not intrinsic to the entity — it depends on the entity's
     /// network staleness window and the current time — so the frontend
@@ -430,7 +447,45 @@ impl TopologyView {
     pub fn element_config(&self) -> ViewElementConfig {
         let mut config = self.base_element_config();
         config.add_staleness_filters();
+        config.default_hidden_values = self.default_hidden_values();
         config
+    }
+
+    /// Filter values hidden out of the box in this view.
+    ///
+    /// The single definition of what counts as a product default. `TopologyRequestOptions`
+    /// seeds a new topology's hide-set from it, and the frontend reads the same list out of the
+    /// generated view fixture to decide which chips "clear all" preserves and which ones the
+    /// "filters applied" badge ignores.
+    fn default_hidden_values(
+        &self,
+    ) -> HashMap<EntityDiscriminants, HashMap<MetadataFilterType, Vec<String>>> {
+        let mut by_entity: HashMap<EntityDiscriminants, HashMap<MetadataFilterType, Vec<String>>> =
+            HashMap::new();
+
+        // Open ports are the noisiest thing a scan produces and are covered by the
+        // ByServiceCategory element rule; this is the chip-level toggle state.
+        by_entity.insert(
+            EntityDiscriminants::Service,
+            HashMap::from([(
+                MetadataFilterType::Category,
+                vec![ServiceCategory::OpenPorts.id().to_string()],
+            )]),
+        );
+
+        // L2 draws one element per ifTable row, so unlinked ports dominate its node count while
+        // carrying none of its adjacency. Hidden by default, one click from being shown again.
+        if matches!(self, Self::L2Physical) {
+            by_entity.insert(
+                EntityDiscriminants::Interface,
+                HashMap::from([(
+                    MetadataFilterType::LinkState,
+                    vec![InterfaceLinkState::Unlinked.id().to_string()],
+                )]),
+            );
+        }
+
+        by_entity
     }
 
     /// Per-view hierarchy without the filters that are derived from it.
@@ -456,6 +511,8 @@ impl TopologyView {
                 )]
                 .into_iter()
                 .collect(),
+                // Populated by `element_config`, which is the only public constructor.
+                default_hidden_values: HashMap::new(),
                 collective_noun: None,
             },
             Self::L2Physical => ViewElementConfig {
@@ -464,7 +521,18 @@ impl TopologyView {
                     entity_type: EntityDiscriminants::Interface,
                     inline_entities: vec![],
                 }],
-                metadata_filters: HashMap::new(),
+                metadata_filters: [(
+                    EntityDiscriminants::Interface,
+                    vec![MetadataFilter {
+                        filter_type: MetadataFilterType::LinkState,
+                        label: "By link".to_string(),
+                        values: filter_values_from_enum::<InterfaceLinkState>(),
+                    }],
+                )]
+                .into_iter()
+                .collect(),
+                // Populated by `element_config`, which is the only public constructor.
+                default_hidden_values: HashMap::new(),
                 collective_noun: None,
             },
             Self::Workloads => ViewElementConfig {
@@ -499,6 +567,8 @@ impl TopologyView {
                 ]
                 .into_iter()
                 .collect(),
+                // Populated by `element_config`, which is the only public constructor.
+                default_hidden_values: HashMap::new(),
                 collective_noun: Some("workload".to_string()),
             },
             Self::Application => ViewElementConfig {
@@ -517,6 +587,8 @@ impl TopologyView {
                 )]
                 .into_iter()
                 .collect(),
+                // Populated by `element_config`, which is the only public constructor.
+                default_hidden_values: HashMap::new(),
                 collective_noun: None,
             },
         }

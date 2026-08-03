@@ -31,6 +31,7 @@
 	import type { Port } from '$lib/features/hosts/types/base';
 	import type { Node, Edge } from '@xyflow/svelte';
 	import { topology_hideOpenPorts, topology_openPortsSummary } from '$lib/paraglide/messages';
+	import { ELEMENT_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
 
 	let { id, data, width }: NodeProps = $props();
 
@@ -383,7 +384,9 @@
 	let cardClass = $derived(`card ${isNodeSelected ? 'card-selected' : ''}`);
 
 	let handleStyle = $derived.by(() => {
-		const baseSize = 8;
+		// Shared with `synthesizeHandles`, which reproduces this geometry for nodes that have
+		// never mounted. The two must match or edge endpoints move when a node is culled.
+		const baseSize = ELEMENT_HANDLE_SIZE_PX;
 		const baseOpacity = selectedEdge?.source == id || selectedEdge?.target == id ? 1 : 0;
 
 		const fillColor = hostColorHelper.rgb;

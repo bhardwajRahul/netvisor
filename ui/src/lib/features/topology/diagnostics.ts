@@ -32,7 +32,10 @@
 
 import throttle from 'just-throttle';
 import { get } from 'svelte/store';
-import { CULLING_THRESHOLD_ELEMENTS } from './pipeline/render-mode';
+import {
+	CULLING_THRESHOLD_ELEMENTS,
+	cullingDisabledForTooling as cullingSuppressedForTooling
+} from './pipeline/render-mode';
 import { collapseLevel, collapsedContainers } from './collapse';
 import { activeView } from './queries';
 
@@ -43,6 +46,99 @@ const HISTORY_LIMIT = 30;
 const VIEWPORT_SAMPLE_INTERVAL_MS = 500;
 
 export type BlankReason = 'culled' | 'empty' | 'hidden' | null;
+
+/**
+ * How many of the store's nodes SvelteFlow is *able* to cull.
+ *
+ * The quantity missing from the first version of this report, and the one that would have named
+ * the fault immediately. Culling is opt-out until a node can be tested: `getNodesInside` skips the
+ * viewport check entirely while `internals.handleBounds` is undefined (`forceInitialRender`), and
+ * computes `area` from `measured`, treating an unknown height as zero — which passes
+ * `overlappingArea >= area` wherever the viewport is. A node missing either is mounted no matter
+ * where it sits, so a report can show `culling: on` beside `mounted == store.nodes` and nothing in
+ * it explains why. `forceRendered` is that number directly.
+ */
+export interface CullabilitySummary {
+	/** Internal nodes inspected. Less than `store.nodes` when the viewport path stride-samples. */
+	total: number;
+	withMeasured: number;
+	withHandleBounds: number;
+	/** Nodes SvelteFlow will mount regardless of the viewport. */
+	forceRendered: number;
+}
+
+/** The shape `summariseCullability` needs. Structural, so a test needs no SvelteFlow. */
+export interface CullableNode {
+	measured?: { width?: number; height?: number };
+	internals?: { handleBounds?: unknown };
+}
+
+/**
+ * Reduce internal nodes to the counts above. Pure, so it can be unit-tested without a DOM.
+ *
+ * A node counts as measured only with both dimensions: a width alone still yields `area === 0`,
+ * which is the case that made every element card unconditionally visible.
+ */
+export function summariseCullability(nodes: (CullableNode | undefined)[]): CullabilitySummary {
+	let total = 0;
+	let withMeasured = 0;
+	let withHandleBounds = 0;
+	let forceRendered = 0;
+
+	for (const node of nodes) {
+		if (!node) continue;
+		total += 1;
+		const measured = Boolean(node.measured?.width && node.measured?.height);
+		const handleBounds = Boolean(node.internals?.handleBounds);
+		if (measured) withMeasured += 1;
+		if (handleBounds) withHandleBounds += 1;
+		if (!handleBounds || !measured) forceRendered += 1;
+	}
+
+	return { total, withMeasured, withHandleBounds, forceRendered };
+}
+
+/**
+ * Counters that accumulate over the session, rather than describing one moment.
+ *
+ * The customer's console held 247 `out of memory` throws, and the ring buffer could not say
+ * whether that was one graph too large to mount or the same graph mounted over and over. These
+ * separate the two: a handful of node-store writes with a high `peakMounted` is a single
+ * allocation, while hundreds of writes is a remount loop. Deliberately not in `perf.ts`, which
+ * records nothing unless the build is a dev build.
+ *
+ * `usedJSHeapSize` would answer it directly but is Chrome-only, and the report that prompted this
+ * came from Firefox — so these are counters rather than a memory reading, and the heap figure is
+ * included only when the browser happens to offer it.
+ */
+export interface CumulativeCounters {
+	pipelineRuns: number;
+	nodeStoreWrites: number;
+	fullMeasurePasses: number;
+	peakStoreNodes: number;
+	peakMounted: number;
+	/** Chrome-only; absent in Firefox and Safari. */
+	usedJSHeapMb?: number;
+}
+
+const counters: CumulativeCounters = {
+	pipelineRuns: 0,
+	nodeStoreWrites: 0,
+	fullMeasurePasses: 0,
+	peakStoreNodes: 0,
+	peakMounted: 0
+};
+
+/** Called on every write to the node store, so a remount loop is visible as a count. */
+export function noteNodeStoreWrite(nodeCount: number): void {
+	counters.nodeStoreWrites += 1;
+	counters.peakStoreNodes = Math.max(counters.peakStoreNodes, nodeCount);
+}
+
+/** Called when the pipeline takes the full measurement path, which mounts every node. */
+export function noteFullMeasurePass(): void {
+	counters.fullMeasurePasses += 1;
+}
 
 export interface ViewerSample {
 	/** Milliseconds since page load, so a reader can see the spacing between samples. */
@@ -58,11 +154,16 @@ export interface ViewerSample {
 	 *  the measure pass having produced nothing, which starves both layout and fit-view. */
 	withSize: number;
 	culling: {
+		/** The value actually handed to SvelteFlow, not a re-derivation of it. */
 		on: boolean;
 		threshold: number;
 		measuring: boolean;
 		exporting: boolean;
+		/** `window.__topoNoCull` — tooling suppressing culling entirely. */
+		suppressedForTooling: boolean;
 	};
+	/** How much of the store SvelteFlow could cull even in principle. */
+	cullable: CullabilitySummary | null;
 	/** The pane's own size. Zero either dimension and *everything* is off-screen by definition. */
 	pane: { width: number; height: number };
 	/** SvelteFlow's transform, verbatim. */
@@ -79,13 +180,54 @@ const history: ViewerSample[] = [];
 interface SampleInputs {
 	storeNodes: number;
 	storeEdges: number;
+	/** A DOM measurement pass is running, on any load. Suspends culling. */
 	measuring: boolean;
+	/** The cold load is hiding the pane while it measures. Only ever true on the first render. */
+	coldLoadMeasure: boolean;
 	exporting: boolean;
+	/** The value the viewer passed to `onlyRenderVisibleElements`. */
+	culling: boolean;
+	/**
+	 * This viewer's own element. Scopes the DOM reads below.
+	 *
+	 * The counts used to come from `document`, which also finds any other `<SvelteFlow>` mounted
+	 * at the time — the dependency tutorial and the read-only viewer both mount one — so a report
+	 * could attribute another canvas's nodes to this one.
+	 */
+	container: HTMLElement | null;
+	/** SvelteFlow's internal nodes, for the cullability summary. */
+	internalNodes: () => (CullableNode | undefined)[];
 	trigger: ViewerSample['trigger'];
 }
 
-function readPane(): { el: HTMLElement | null; rect: DOMRect | null } {
-	const el = document.querySelector('.svelte-flow') as HTMLElement | null;
+/**
+ * Inspect at most this many internal nodes on the throttled viewport path.
+ *
+ * A pan samples up to twice a second and the walk is O(nodes); at 17,000 nodes doing it in full
+ * would be a cost the diagnostic itself imposes on the case it exists to diagnose. Pipeline and
+ * manual samples count everything, so the exact figure is always available when it matters.
+ */
+const CULLABILITY_SAMPLE_LIMIT = 500;
+
+function sampleCullability(nodes: (CullableNode | undefined)[], full: boolean): CullabilitySummary {
+	if (full || nodes.length <= CULLABILITY_SAMPLE_LIMIT) return summariseCullability(nodes);
+	const stride = Math.ceil(nodes.length / CULLABILITY_SAMPLE_LIMIT);
+	const sampled: (CullableNode | undefined)[] = [];
+	for (let i = 0; i < nodes.length; i += stride) sampled.push(nodes[i]);
+	return summariseCullability(sampled);
+}
+
+/**
+ * The viewer's own pane, or the first one in the document if it hasn't bound yet.
+ *
+ * `container` is a `bind:this`, so it is null for the first sample or two after mount; the
+ * document-wide fallback keeps those samples useful. Everywhere else it matters: another
+ * `<SvelteFlow>` can be mounted at the same time (`DependencyTutorial`, `ReadOnlyTopologyViewer`),
+ * and its pane would otherwise be measured against this viewer's node counts.
+ */
+function readPane(container: HTMLElement | null): { el: HTMLElement | null; rect: DOMRect | null } {
+	const root: ParentNode = container ?? document;
+	const el = root.querySelector('.svelte-flow') as HTMLElement | null;
 	return { el, rect: el?.getBoundingClientRect() ?? null };
 }
 
@@ -96,9 +238,10 @@ function readPane(): { el: HTMLElement | null; rect: DOMRect | null } {
  * looking at, and the store's opinion of that is exactly what is in doubt.
  */
 export function sampleViewerState(inputs: SampleInputs): ViewerSample {
-	const { el: pane, rect: paneRect } = readPane();
-	const viewport = document.querySelector('.svelte-flow__viewport') as HTMLElement | null;
-	const nodeEls = Array.from(document.querySelectorAll('.svelte-flow__node')) as HTMLElement[];
+	const root: ParentNode = inputs.container ?? document;
+	const { el: pane, rect: paneRect } = readPane(inputs.container);
+	const viewport = root.querySelector('.svelte-flow__viewport') as HTMLElement | null;
+	const nodeEls = Array.from(root.querySelectorAll('.svelte-flow__node')) as HTMLElement[];
 
 	let bounds: ViewerSample['bounds'] = null;
 	let withSize = 0;
@@ -128,16 +271,21 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 	let blank: BlankReason = null;
 	if (inputs.storeNodes === 0) {
 		blank = 'empty';
-	} else if (paneHidden && !inputs.measuring) {
-		// Hidden *while measuring* is the measure pass doing its job — it mounts every node at
-		// full size behind `visibility: hidden` to read their heights, and a viewport sample
+	} else if (paneHidden && !inputs.coldLoadMeasure) {
+		// Hidden *while the cold load measures* is that pass doing its job — it mounts every node
+		// at full size behind `visibility: hidden` to read their heights, and a viewport sample
 		// landing in that window sees an intentionally invisible canvas. Only a pane still hidden
-		// with no measure pass running is a fault, and it is the one an operator would describe
+		// with no cold load running is a fault, and it is the one an operator would describe
 		// the same way as the others.
+		//
+		// Gated on `coldLoadMeasure`, not `measuring`: the cold load is the only pass that hides
+		// the pane, so a later measure pass must not excuse a pane that is stuck hidden.
 		blank = 'hidden';
 	} else if (!paneHidden && (nodeEls.length === 0 || !intersectsPane)) {
 		blank = 'culled';
 	}
+
+	counters.peakMounted = Math.max(counters.peakMounted, nodeEls.length);
 
 	const round = (n: number) => Math.round(n);
 	return {
@@ -148,13 +296,21 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 		mounted: nodeEls.length,
 		withSize,
 		culling: {
-			// Recomputed from the same inputs the viewer passes to `shouldCull`, rather than read
-			// back from it, so a sample is meaningful even if the two ever disagree.
-			on: !inputs.measuring && !inputs.exporting && inputs.storeNodes >= CULLING_THRESHOLD_ELEMENTS,
+			// The value the viewer actually handed to SvelteFlow. This used to be re-derived from
+			// the node count instead — on the reasoning that a sample stays meaningful even if the
+			// two disagree — which is backwards for the fault it was built to catch: the report
+			// that mattered said `on: true` beside `mounted == store.nodes`, and the re-derivation
+			// is exactly what could not be trusted. It also silently omitted the `__topoNoCull`
+			// term, so a tooling run would have been reported as culling when it was not.
+			on: inputs.culling,
 			threshold: CULLING_THRESHOLD_ELEMENTS,
 			measuring: inputs.measuring,
-			exporting: inputs.exporting
+			exporting: inputs.exporting,
+			suppressedForTooling: cullingSuppressedForTooling()
 		},
+		// Full count on the two triggers that are taken rarely; stride-sampled on the throttled
+		// viewport path, which fires throughout a pan.
+		cullable: sampleCullability(inputs.internalNodes(), inputs.trigger !== 'viewport'),
 		pane: { width: round(pane?.clientWidth ?? 0), height: round(pane?.clientHeight ?? 0) },
 		transform: viewport?.style.transform ?? null,
 		bounds: bounds
@@ -214,6 +370,7 @@ function record(inputs: SampleInputs): void {
 
 /** Called after each pipeline run, once the viewport has settled. */
 export function recordAfterRun(inputs: Omit<SampleInputs, 'trigger'>): void {
+	counters.pipelineRuns += 1;
 	record({ ...inputs, trigger: 'pipeline' });
 }
 
@@ -242,9 +399,24 @@ export interface DiagnosticsReport {
 	 */
 	firstBlank: ViewerSample[] | null;
 	samples: ViewerSample[];
+	/**
+	 * Totals for the session, which the per-sample ring cannot express.
+	 *
+	 * Read these against `samples`: they are what distinguishes one graph too large to mount from
+	 * the same graph being mounted repeatedly, which the ring buffer alone cannot separate.
+	 */
+	cumulative: CumulativeCounters;
+}
+
+/** Chrome-only. Absent in Firefox and Safari, which is where this report tends to come from. */
+function usedJSHeapMb(): number | undefined {
+	const memory = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory;
+	const bytes = memory?.usedJSHeapSize;
+	return typeof bytes === 'number' ? Math.round(bytes / 1024 / 1024) : undefined;
 }
 
 function buildReport(current: ViewerSample): DiagnosticsReport {
+	const heap = usedJSHeapMb();
 	return {
 		generatedAt: new Date().toISOString(),
 		// The fault is reported as browser-dependent, so the browser is part of the evidence.
@@ -255,7 +427,8 @@ function buildReport(current: ViewerSample): DiagnosticsReport {
 			devicePixelRatio: window.devicePixelRatio
 		},
 		firstBlank: firstBlankCapture,
-		samples: [...history, current]
+		samples: [...history, current],
+		cumulative: { ...counters, ...(heap !== undefined && { usedJSHeapMb: heap }) }
 	};
 }
 
@@ -265,21 +438,33 @@ function buildReport(current: ViewerSample): DiagnosticsReport {
  * One command for a customer to run and one file to send back. It takes a fresh sample first, so
  * it works when called *while* the canvas is blank — which is when someone will reach for it.
  */
+export interface DiagnosticsOptions {
+	/**
+	 * Save the report to a file. On by default — the point of the command is one file to send
+	 * back. Tests pass `false`: they want the object, and a download triggers a browser prompt.
+	 */
+	download?: boolean;
+}
+
 export function installDiagnostics(read: () => Omit<SampleInputs, 'trigger'>): void {
 	if (typeof window === 'undefined') return;
 	(
-		window as unknown as { scanopyTopologyDiagnostics?: () => DiagnosticsReport }
-	).scanopyTopologyDiagnostics = () => {
+		window as unknown as {
+			scanopyTopologyDiagnostics?: (options?: DiagnosticsOptions) => DiagnosticsReport;
+		}
+	).scanopyTopologyDiagnostics = (options?: DiagnosticsOptions) => {
 		const current = sampleViewerState({ ...read(), trigger: 'manual' });
 		const report = buildReport(current);
 
-		const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = `scanopy-topology-diagnostics-${Date.now()}.json`;
-		link.click();
-		URL.revokeObjectURL(url);
+		if (options?.download ?? true) {
+			const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = `scanopy-topology-diagnostics-${Date.now()}.json`;
+			link.click();
+			URL.revokeObjectURL(url);
+		}
 
 		// Returned as well as downloaded: a browser that blocks the download still leaves the
 		// object in the console to copy.
@@ -292,6 +477,11 @@ export function resetDiagnostics(): void {
 	history.length = 0;
 	previousBlank = null;
 	firstBlankCapture = null;
+	counters.pipelineRuns = 0;
+	counters.nodeStoreWrites = 0;
+	counters.fullMeasurePasses = 0;
+	counters.peakStoreNodes = 0;
+	counters.peakMounted = 0;
 }
 
 /** Test seam. */
