@@ -4,9 +4,10 @@
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import TagCell from '$lib/shared/components/data/TagCell.svelte';
-	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
-	import { tagItems, tagNames } from '$lib/features/tags/columns';
+	import { defineFields, entityRef, type CardAction } from '$lib/shared/components/data/types';
+	import { tagNames } from '$lib/features/tags/columns';
+	import { networkItems } from '$lib/features/networks/columns';
+	import { entities } from '$lib/shared/stores/metadata';
 	import { Trash2, Edit } from 'lucide-svelte';
 	import type { Service } from '../types/base';
 	import ServiceCard from './ServiceCard.svelte';
@@ -342,7 +343,21 @@
 					// with no host to an empty string.
 					getGroupValue: (service) => serviceHosts.get(service.id)?.name ?? '',
 					getValue: (service) =>
-						serviceHosts.get(service.id)?.name || common_unknownEntity({ entity: common_host() })
+						serviceHosts.get(service.id)?.name || common_unknownEntity({ entity: common_host() }),
+					column: {
+						getItems: (service) => {
+							const host = serviceHosts.get(service.id);
+							if (!host) return [];
+							return [
+								{
+									id: host.id,
+									label: host.name,
+									color: entities.getColorHelper('Host').color,
+									entityRef: entityRef('Host', host.id, host)
+								}
+							];
+						}
+					}
 				},
 				network_id: {
 					label: common_network(),
@@ -353,7 +368,8 @@
 					// Displayed as a name, but grouped by id on the server.
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
-						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
+						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
+					column: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				// Per-service ordinal, so grouping by it is one header per service.
 				position: {
@@ -371,7 +387,17 @@
 					// The server groups on the raw definition id; the UI renders its
 					// friendly name, so the group key has to be supplied separately.
 					getGroupValue: (service) => service.service_definition,
-					getValue: (service) => serviceDefinitions.getName(service.service_definition)
+					getValue: (service) => serviceDefinitions.getName(service.service_definition),
+					column: {
+						getItems: (service) => [
+							{
+								id: service.service_definition,
+								label: serviceDefinitions.getName(service.service_definition),
+								color: serviceDefinitions.getColorHelper(service.service_definition).color,
+								icon: serviceDefinitions.getIconComponent(service.service_definition)
+							}
+						]
+					}
 				},
 				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
 				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } },
@@ -389,7 +415,14 @@
 					filterOptions: serviceCategories,
 					filterDefaults: ['OpenPorts'],
 					getValue: (item) =>
-						serviceDefinitions.getCategory(item.service_definition) || common_unknown()
+						serviceDefinitions.getCategory(item.service_definition) || common_unknown(),
+					column: {
+						getItems: (item) => {
+							const category = serviceDefinitions.getCategory(item.service_definition);
+							if (!category) return [];
+							return [{ id: category, label: category }];
+						}
+					}
 				},
 				{
 					key: 'containerized_by',
@@ -430,8 +463,7 @@
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: (entity) => tagNames(entity.tags, tagsData),
-					column: { cell: tagsCell, width: 200 }
+					getValue: (entity) => tagNames(entity.tags, tagsData)
 				}
 			]
 		)
@@ -490,16 +522,6 @@
 		</DataControls>
 	{/if}
 </div>
-
-{#snippet tagsCell(service: Service)}
-	<TagCell
-		items={tagItems(service.tags, tagsData)}
-		tagIds={service.tags}
-		entityId={service.id}
-		entityType="Service"
-		editable={!isReadOnly}
-	/>
-{/snippet}
 
 {#if editingService}
 	{@const editingServiceHost = serviceHosts.get(editingService.id)}

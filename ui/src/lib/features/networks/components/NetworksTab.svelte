@@ -7,8 +7,7 @@
 	import NetworkEditModal from './NetworkEditModal.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import type { FieldConfig } from '$lib/shared/components/data/types';
-	import TagCell from '$lib/shared/components/data/TagCell.svelte';
-	import { tagItems, tagNames } from '$lib/features/tags/columns';
+	import { tagNames } from '$lib/features/tags/columns';
 	import type { CardAction } from '$lib/shared/components/data/types';
 	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
@@ -210,8 +209,7 @@
 			type: 'array',
 			searchable: true,
 			filterable: true,
-			getValue: (entity) => tagNames(entity.tags, tagsData),
-			column: { cell: tagsCell, width: 200 }
+			getValue: (entity) => tagNames(entity.tags, tagsData)
 		},
 		{
 			key: 'created_at',
@@ -311,13 +309,3 @@
 			}
 		: null}
 />
-
-{#snippet tagsCell(network: Network)}
-	<TagCell
-		items={tagItems(network.tags, tagsData)}
-		tagIds={network.tags}
-		entityId={network.id}
-		entityType="Network"
-		editable={allowBulkDelete}
-	/>
-{/snippet}

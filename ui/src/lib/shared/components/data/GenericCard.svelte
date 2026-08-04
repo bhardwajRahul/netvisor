@@ -165,54 +165,36 @@
 	<!-- Action Buttons -->
 	{#if actions.length > 0}
 		<div class="card-divider-h mt-4 flex items-center justify-between pt-4">
-			{#each actions as action, index (action.label)}
+			{#each actions as action (action.label)}
 				{@const cls = action.class ? action.class : 'btn-icon'}
-				{@const tooltipText =
+				{@const explicitTooltip =
 					typeof action.tooltip === 'function'
 						? action.tooltip(!!action.disabled)
 						: (action.tooltip ?? null)}
-				{@const isLeftEdge = index === 0}
-				{@const isRightEdge = index === actions.length - 1}
-				<div use:tooltip data-tooltip={tooltipText}>
-					<button
-						onclick={action.onClick}
-						disabled={action.disabled}
-						class="{action.disabled
-							? ''
-							: 'group'} relative overflow-visible transition-all duration-200 ease-in-out {cls}"
-						title={tooltipText ? undefined : action.label}
-					>
-						{#if action.forceLabel}
-							<!-- Always-labelled action: render the label IN FLOW so the button sizes to
-							     its content. An absolutely-positioned label (as used for hover-reveal
-							     below) overflows the icon-width button and overlaps the adjacent action. -->
-							<div class="flex items-center justify-center whitespace-nowrap">
-								<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
-								<span class="ml-2">{action.label}</span>
-							</div>
-						{:else}
-							<div
-								class="flex items-center justify-center transition-opacity duration-200 group-hover:opacity-0"
-							>
-								<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
-							</div>
-
-							<!-- pointer-events-none: the invisible label still spans its neighbours. -->
-							<div
-								class="pointer-events-none absolute top-1/2 flex -translate-y-1/2 items-center justify-center whitespace-nowrap {action.disabled
-									? 'opacity-0'
-									: 'opacity-0 transition-all duration-200 ease-in-out group-hover:opacity-100'} {isLeftEdge
-									? 'left-0'
-									: isRightEdge
-										? 'right-0'
-										: 'left-1/2 -translate-x-1/2'} {cls}"
-							>
-								<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
-								<span class="ml-2">{action.label}</span>
-							</div>
-						{/if}
-					</button>
-				</div>
+				<!--
+					The label floats in a tooltip rather than growing inside the button.
+					An in-flow label has to span its neighbours to fit its text, which
+					made the widest action cover the ones beside it. Matches the table.
+				-->
+				<button
+					onclick={action.onClick}
+					disabled={action.disabled}
+					use:tooltip
+					data-tooltip={explicitTooltip ?? action.label}
+					aria-label={action.label}
+					class="{cls} disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					{#if action.forceLabel}
+						<!-- Always-labelled action: the label is the affordance, not a hover
+						     reveal, so it renders in flow and the button sizes to it. -->
+						<div class="flex items-center justify-center whitespace-nowrap">
+							<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
+							<span class="ml-2">{action.label}</span>
+						</div>
+					{:else}
+						<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
+					{/if}
+				</button>
 			{/each}
 		</div>
 	{/if}

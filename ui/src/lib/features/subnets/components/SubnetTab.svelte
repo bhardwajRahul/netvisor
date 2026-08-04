@@ -7,9 +7,9 @@
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import type { Subnet } from '../types/base';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import TagCell from '$lib/shared/components/data/TagCell.svelte';
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
-	import { tagItems, tagNames } from '$lib/features/tags/columns';
+	import { tagNames } from '$lib/features/tags/columns';
+	import { networkItems } from '$lib/features/networks/columns';
 	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -192,7 +192,17 @@
 					label: subnets_subnetType(),
 					type: 'string',
 					searchable: true,
-					filterable: true
+					filterable: true,
+					column: {
+						getItems: (subnet) => [
+							{
+								id: subnet.subnet_type,
+								label: subnetTypes.getName(subnet.subnet_type),
+								color: subnetTypes.getColorHelper(subnet.subnet_type).color,
+								icon: subnetTypes.getIconComponent(subnet.subnet_type)
+							}
+						]
+					}
 				},
 				network_id: {
 					label: common_network(),
@@ -201,7 +211,8 @@
 					filterable: true,
 					groupable: true,
 					getValue: (item) =>
-						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
+						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
+					column: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
 				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } },
@@ -215,8 +226,7 @@
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: (entity) => tagNames(entity.tags, tagsData),
-					column: { cell: tagsCell, width: 200 }
+					getValue: (entity) => tagNames(entity.tags, tagsData)
 				}
 			]
 		)
@@ -293,13 +303,3 @@
 			}
 		: null}
 />
-
-{#snippet tagsCell(subnet: Subnet)}
-	<TagCell
-		items={tagItems(subnet.tags, tagsData)}
-		tagIds={subnet.tags}
-		entityId={subnet.id}
-		entityType="Subnet"
-		editable={!isReadOnly}
-	/>
-{/snippet}

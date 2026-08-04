@@ -33,6 +33,14 @@ export interface EntityColumn<T> {
 	primary: boolean;
 }
 
+/**
+ * Id of the tags column the list appends itself.
+ *
+ * Reserved so a field declaring the same key is treated as filter-only rather
+ * than rendering a second, non-editable tags column beside the real one.
+ */
+export const TAG_COLUMN_ID = 'tags';
+
 /** Column state the table owns but `DataControls` persists. */
 export interface ColumnState {
 	visibility: Record<string, boolean>;
@@ -46,23 +54,27 @@ export interface ColumnState {
  * filter (a port number, say) and have no value worth a column of its own.
  */
 export function fieldsToColumns<T>(fields: FieldConfig<T>[]): EntityColumn<T>[] {
-	return fields
-		.filter((field) => !field.column?.hidden)
-		.map((field) => {
-			const column = field.column ?? {};
-			return {
-				id: getFieldKey(field),
-				label: field.label,
-				field,
-				column,
-				// Mirrors the sort dropdown's rule, so a header can never offer a sort
-				// the dropdown doesn't and vice versa.
-				sortable: isOrderableField(field) || (isDisplayField(field) && field.sortable === true),
-				align: column.align ?? 'left',
-				width: column.width,
-				primary: column.primary === true
-			};
-		});
+	return (
+		fields
+			// A `tags` field still drives search and the filter panel, but the list
+			// renders tags itself as an editable column pinned after everything else.
+			.filter((field) => !field.column?.hidden && getFieldKey(field) !== TAG_COLUMN_ID)
+			.map((field) => {
+				const column = field.column ?? {};
+				return {
+					id: getFieldKey(field),
+					label: field.label,
+					field,
+					column,
+					// Mirrors the sort dropdown's rule, so a header can never offer a sort
+					// the dropdown doesn't and vice versa.
+					sortable: isOrderableField(field) || (isDisplayField(field) && field.sortable === true),
+					align: column.align ?? 'left',
+					width: column.width,
+					primary: column.primary === true
+				};
+			})
+	);
 }
 
 /** Default visibility: everything except fields that opted out of first paint. */

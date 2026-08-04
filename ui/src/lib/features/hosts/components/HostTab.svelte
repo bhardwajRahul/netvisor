@@ -13,9 +13,9 @@
 	import HostConsolidationModal from './HostConsolidationModal.svelte';
 	import HostExportModal from './HostExportModal.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import TagCell from '$lib/shared/components/data/TagCell.svelte';
 	import { defineFields, entityRef, type CardAction } from '$lib/shared/components/data/types';
-	import { tagItems, tagNames } from '$lib/features/tags/columns';
+	import { tagNames } from '$lib/features/tags/columns';
+	import { networkItems } from '$lib/features/networks/columns';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { Plus, Trash2, RefreshCw, Replace, Eye, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
@@ -34,6 +34,7 @@
 		common_hidden,
 		common_hostname,
 		common_hosts,
+		common_ipAddresses,
 		common_lastSeen,
 		common_confirmBulkDelete,
 		common_name,
@@ -47,7 +48,6 @@
 		common_unknownNetwork,
 		common_updated,
 		daemons_installPromptHosts,
-		hosts_fields_interfaceIp,
 		hosts_fields_virtualizedBy,
 		hosts_notVirtualized
 	} from '$lib/paraglide/messages';
@@ -285,7 +285,8 @@
 					}
 				},
 				interface_ip: {
-					label: hosts_fields_interfaceIp(),
+					// The card calls this "IP Addresses"; it named one thing two ways.
+					label: common_ipAddresses(),
 					type: 'string',
 					searchable: true,
 					// Near-unique per host, so grouping by it is one header per host.
@@ -295,6 +296,20 @@
 							.filter((i) => i.host_id === host.id)
 							.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0];
 						return iface?.ip_address ?? '';
+					},
+					column: {
+						// The server orders on the primary address, but a host usually has
+						// several — showing only the first would misrepresent the row.
+						getItems: (host) =>
+							ipAddressesData
+								.filter((i) => i.host_id === host.id)
+								.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+								.map((i) => ({
+									id: i.id,
+									label: i.ip_address,
+									color: entities.getColorHelper('IPAddress').color,
+									entityRef: entityRef('IPAddress', i.id, i)
+								}))
 					}
 				},
 				network_id: {
@@ -307,7 +322,8 @@
 					// Displayed as a name, but grouped by id on the server.
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
-						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
+						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
+					column: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				// Audit dates stay available but off by default: 12 columns at once
 				// is unreadable, and these are rarely what someone is scanning for.
@@ -332,8 +348,7 @@
 					filterable: true,
 					// Search and filter match the same names the cell renders, so a row
 					// can never show a tag the filter above it disagrees with.
-					getValue: (entity) => tagNames(entity.tags, tagsData),
-					column: { cell: tagsCell, width: 200 }
+					getValue: (entity) => tagNames(entity.tags, tagsData)
 				},
 				{
 					key: 'services',
@@ -560,16 +575,6 @@
 		</DataControls>
 	{/if}
 </div>
-
-{#snippet tagsCell(host: Host)}
-	<TagCell
-		items={tagItems(host.tags, tagsData)}
-		tagIds={host.tags}
-		entityId={host.id}
-		entityType="Host"
-		editable={!isReadOnly}
-	/>
-{/snippet}
 
 <HostEditor
 	isOpen={showHostEditor}

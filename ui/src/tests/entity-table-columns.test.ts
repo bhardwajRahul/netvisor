@@ -5,6 +5,7 @@ import {
 	defaultColumnOrder,
 	reconcileColumnState,
 	visibleColumns,
+	TAG_COLUMN_ID,
 	type ColumnState
 } from '$lib/shared/components/data/table/columns';
 import { defineFields, getFieldKey, type FieldConfig } from '$lib/shared/components/data/types';
@@ -27,7 +28,10 @@ function fields(): FieldConfig<Row, RowOrderField>[] {
 		},
 		[
 			{ key: 'description', label: 'Description', type: 'string' },
-			{ key: 'tags', label: 'Tags', type: 'array', sortable: true },
+			{ key: 'labels', label: 'Labels', type: 'array', sortable: true },
+			// Reserved: the list appends its own editable tags column, so a `tags`
+			// field stays a filter/search input and never becomes a column here.
+			{ key: 'tags', label: 'Tags', type: 'array', filterable: true },
 			// Filter-only: drives a filter, has no value worth a column.
 			{ key: 'port', label: 'Port', type: 'string', filterable: true, column: { hidden: true } }
 		]
@@ -51,7 +55,7 @@ describe('fieldsToColumns', () => {
 
 		expect(byId.get('name')!.sortable).toBe(true);
 		expect(byId.get('created_at')!.sortable).toBe(true);
-		expect(byId.get('tags')!.sortable).toBe(true);
+		expect(byId.get('labels')!.sortable).toBe(true);
 		expect(byId.get('description')!.sortable).toBe(false);
 	});
 
@@ -59,6 +63,14 @@ describe('fieldsToColumns', () => {
 		const ids = fieldsToColumns(fields()).map((c) => c.id);
 
 		expect(ids).not.toContain('port');
+	});
+
+	it('reserves the tags id for the column the list appends itself', () => {
+		// Otherwise a tab declaring a `tags` field would render a second,
+		// read-only tags column beside the editable one.
+		const ids = fieldsToColumns(fields()).map((c) => c.id);
+
+		expect(ids).not.toContain(TAG_COLUMN_ID);
 	});
 
 	it('carries per-column presentation through', () => {
