@@ -1,5 +1,5 @@
 <script lang="ts" generics="T">
-	import { Columns3 } from 'lucide-svelte';
+	import { Columns3Cog } from 'lucide-svelte';
 	import type { EntityColumn } from './columns';
 	import { common_columns, common_resetColumns } from '$lib/paraglide/messages';
 
@@ -40,7 +40,7 @@
 		aria-haspopup="true"
 		title={common_columns()}
 	>
-		<Columns3 class="h-5 w-5" />
+		<Columns3Cog class="h-5 w-5" />
 	</button>
 
 	{#if open}
