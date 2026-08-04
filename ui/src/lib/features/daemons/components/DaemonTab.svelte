@@ -9,8 +9,8 @@
 	import CreateDaemonModal from './CreateDaemonModal/CreateDaemonModal.svelte';
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import TagCell from '$lib/shared/components/data/TagCell.svelte';
-	import { tagItems, tagNames } from '$lib/features/tags/columns';
+	import { tagNames } from '$lib/features/tags/columns';
+	import { networkItems } from '$lib/features/networks/columns';
 	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import {
@@ -203,7 +203,8 @@
 					filterable: true,
 					groupable: true,
 					getValue: (item) =>
-						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
+						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
+					column: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				last_seen: { label: daemons_lastSeen(), type: 'date' },
 				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
@@ -243,8 +244,7 @@
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: (entity) => tagNames(entity.tags, tagsData),
-					column: { cell: tagsCell, width: 200 }
+					getValue: (entity) => tagNames(entity.tags, tagsData)
 				}
 			]
 		)
@@ -328,13 +328,3 @@
 	daemon={editingDaemon}
 	onClose={handleCloseDaemonEditor}
 />
-
-{#snippet tagsCell(daemon: Daemon)}
-	<TagCell
-		items={tagItems(daemon.tags, tagsData)}
-		tagIds={daemon.tags}
-		entityId={daemon.id}
-		entityType="Daemon"
-		editable={!isReadOnly}
-	/>
-{/snippet}

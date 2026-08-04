@@ -155,6 +155,19 @@
 			groupable: true,
 			getValue(item) {
 				return isUser(item) ? item.data.permissions : '';
+			},
+			column: {
+				getItems: (item) => {
+					if (!isUser(item)) return [];
+					const role = item.data.permissions;
+					return [
+						{
+							id: role,
+							label: permissions.getName(role) || role,
+							color: permissions.getColorHelper(role).color
+						}
+					];
+				}
 			}
 		},
 		{

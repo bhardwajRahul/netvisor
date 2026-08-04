@@ -40,13 +40,22 @@
 	import PaginationBar from './controls/PaginationBar.svelte';
 	import EntityTable from './table/EntityTable.svelte';
 	import ColumnVisibilityMenu from './table/ColumnVisibilityMenu.svelte';
-	import { fieldsToColumns, reconcileColumnState, visibleColumns } from './table/columns';
+	import TagCell from './TagCell.svelte';
+	import { tagItems } from '$lib/features/tags/columns';
+	import {
+		fieldsToColumns,
+		reconcileColumnState,
+		visibleColumns,
+		TAG_COLUMN_ID,
+		type EntityColumn
+	} from './table/columns';
 	import { onMount, type Snippet } from 'svelte';
 	import {
 		common_all,
 		common_groupTotalShowing,
 		common_ungrouped,
 		common_tableCaption,
+		common_tags,
 		common_item,
 		common_items
 	} from '$lib/paraglide/messages';
@@ -769,7 +778,39 @@
 	let columnState = $derived(
 		reconcileColumnState(allColumns, { visibility: columnVisibility, order: columnOrder })
 	);
-	let renderedColumns = $derived(visibleColumns(allColumns, columnState));
+
+	/**
+	 * Tags are appended by the list itself rather than declared per tab.
+	 *
+	 * Every taggable entity gets the same editable column in the same place —
+	 * last, next to the actions — instead of each tab remembering to add one, so
+	 * a tab cannot silently end up without it. It is editable only when the
+	 * parent supplied an `entityType`, which is also how it gates permission.
+	 */
+	let tagColumn = $derived.by<EntityColumn<T> | null>(() => {
+		if (!getItemTags) return null;
+		const resolve = getItemTags;
+
+		return {
+			id: TAG_COLUMN_ID,
+			label: common_tags(),
+			field: {
+				key: TAG_COLUMN_ID,
+				label: common_tags(),
+				type: 'array',
+				getValue: (item: T) => resolve(item)
+			},
+			column: { cell: tagsCell },
+			sortable: false,
+			align: 'left',
+			primary: false
+		};
+	});
+
+	let renderedColumns = $derived([
+		...visibleColumns(allColumns, columnState),
+		...(tagColumn ? [tagColumn] : [])
+	]);
 	let showSelection = $derived(Boolean(onBulkDelete) || hasBulkTagging);
 
 	let tableCaptionText = $derived(
@@ -1139,6 +1180,17 @@
 		</div>
 	{/if}
 </div>
+
+{#snippet tagsCell(item: T)}
+	{@const ids = getItemTags ? getItemTags(item) : []}
+	<TagCell
+		items={tagItems(ids, allTags)}
+		tagIds={ids}
+		entityId={getItemId(item)}
+		entityType={entityType ?? undefined}
+		editable={Boolean(entityType)}
+	/>
+{/snippet}
 
 {#snippet cardFor(item: T)}
 	{@const itemId = getItemId(item)}

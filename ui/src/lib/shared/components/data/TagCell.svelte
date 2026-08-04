@@ -31,7 +31,8 @@
 		items: CardFieldItem[];
 		tagIds: string[];
 		entityId: string;
-		entityType: EntityDiscriminants;
+		/** Absent when the viewer cannot edit tags, which also disables the picker. */
+		entityType?: EntityDiscriminants;
 		editable?: boolean;
 		expanded?: boolean;
 	} = $props();
@@ -43,7 +44,7 @@
 	let overflow = $derived(items.length - visible.length);
 </script>
 
-{#if editing}
+{#if editing && entityType}
 	<TagPickerInline selectedTagIds={tagIds} {entityId} {entityType} bind:open={editing} />
 {:else}
 	<div class="flex flex-wrap items-center gap-1">
@@ -67,7 +68,7 @@
 			</button>
 		{/if}
 
-		{#if editable}
+		{#if editable && entityType}
 			<button
 				type="button"
 				onclick={() => (editing = true)}

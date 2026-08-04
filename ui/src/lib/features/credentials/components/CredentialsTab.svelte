@@ -19,7 +19,7 @@
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { permissions, credentialTypes, billingPlans } from '$lib/shared/stores/metadata';
-	import { getCredentialTypeId } from '$lib/features/credentials/types/base';
+	import { getCredentialTypeId, getTargetTagProps } from '$lib/features/credentials/types/base';
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
 	import type { TabProps } from '$lib/shared/types';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
@@ -33,6 +33,7 @@
 		common_delete,
 		common_edit,
 		common_name,
+		common_type,
 		common_updated,
 		credentials_bulkDeleteConfirm,
 		credentials_bulkDeleteImpact,
@@ -238,7 +239,7 @@
 		[
 			{
 				key: 'credential_type',
-				label: 'Type',
+				label: common_type(),
 				type: 'string',
 				searchable: true,
 				filterable: true,
@@ -247,7 +248,20 @@
 				sortable: true,
 				filterMode: 'include',
 				filterOptions: credentialTypes.getItems().map((t) => t.name ?? t.id),
-				getValue: (item: Credential) => credentialTypes.getName(getCredentialTypeId(item))
+				getValue: (item: Credential) => credentialTypes.getName(getCredentialTypeId(item)),
+				column: {
+					getItems: (item: Credential) => {
+						const typeId = getCredentialTypeId(item);
+						return [
+							{
+								id: typeId,
+								label: credentialTypes.getName(typeId),
+								color: credentialTypes.getColorHelper(typeId).color,
+								icon: credentialTypes.getIconComponent(typeId)
+							}
+						];
+					}
+				}
 			},
 			{
 				key: 'target',
@@ -262,6 +276,17 @@
 					const typeId = getCredentialTypeId(item);
 					const meta = credentialTypes.getMetadata(typeId);
 					return meta?.targets ?? [];
+				},
+				column: {
+					// Same chip props the card uses, so a scope reads identically in
+					// both views rather than falling back to undifferentiated grey.
+					getItems: (item: Credential) => {
+						const meta = credentialTypes.getMetadata(getCredentialTypeId(item));
+						return (meta?.targets ?? []).map((target: string) => ({
+							id: target,
+							...getTargetTagProps(target)
+						}));
+					}
 				}
 			}
 		]

@@ -4,7 +4,7 @@
 	import { createSvelteTable } from './createSvelteTable.svelte';
 	import type { EntityColumn } from './columns';
 	import TableCell from './TableCell.svelte';
-	import GrowIconButton from '../GrowIconButton.svelte';
+	import { tooltip } from '$lib/shared/actions/tooltip';
 	import { getFieldValue } from '../controls/fieldValues';
 	import type { SortState } from '../controls/sorting';
 	import type { CardAction } from '../types';
@@ -236,12 +236,28 @@
 						{@const actions = getActions(item)}
 						<td class="px-3 py-2 text-right align-middle">
 							<div class="flex items-center justify-end gap-1">
-								{#each actions as action, index (action.label)}
-									<GrowIconButton
-										{action}
-										isLeftEdge={index === 0}
-										isRightEdge={index === actions.length - 1}
-									/>
+								{#each actions as action (action.label)}
+									{@const tip =
+										typeof action.tooltip === 'function'
+											? action.tooltip(!!action.disabled)
+											: (action.tooltip ?? action.label)}
+									<!--
+										The label floats in a tooltip rather than growing inside the
+										button. An in-flow label has to span its neighbours to fit its
+										text, which is what let one action cover the rest of the row.
+									-->
+									<button
+										type="button"
+										onclick={action.onClick}
+										disabled={action.disabled}
+										use:tooltip
+										data-tooltip={tip}
+										aria-label={action.label}
+										class="{action.class ||
+											'btn-icon'} disabled:cursor-not-allowed disabled:opacity-50"
+									>
+										<action.icon size={16} class={action.animation || ''} />
+									</button>
 								{/each}
 							</div>
 						</td>

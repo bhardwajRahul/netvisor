@@ -1063,7 +1063,6 @@
 	"hosts_exportZipDesc": "Export hosts, interfaces, ports, services, and SNMP entries as separate CSVs in a ZIP file",
 	"hosts_exportZipTitle": "Hosts with Children (ZIP)",
 	"hosts_failedToSave": "Failed to save host",
-	"hosts_fields_interfaceIp": "Interface IP",
 	"hosts_fields_virtualizedBy": "Virtualized By",
 	"hosts_interfaces_adminStatus": "Administrative Status",
 	"hosts_interfaces_aliasDescription": "Alias / Description",
