@@ -5,7 +5,7 @@
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import DaemonCard from './DaemonCard.svelte';
-	import { hasSunsetWarning } from '$lib/features/daemons/utils';
+	import { hasSunsetWarning, getDaemonStatusTag } from '$lib/features/daemons/utils';
 	import CreateDaemonModal from './CreateDaemonModal/CreateDaemonModal.svelte';
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
@@ -31,7 +31,6 @@
 	import type { components } from '$lib/api/schema';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
-		common_active,
 		common_create,
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
@@ -42,13 +41,11 @@
 		common_host,
 		common_name,
 		common_network,
-		common_standby,
 		common_status,
 		common_tags,
 		common_noEntityYet,
 		common_unknownEntity,
 		common_unknownNetwork,
-		common_unreachable,
 		common_updated,
 		common_version,
 		daemons_config_mode,
@@ -261,31 +258,24 @@
 					}
 				},
 				{
-					// Reachability as one value rather than a raw boolean: "which
-					// daemons are down" is the question during an incident, and a
-					// standby daemon is a third answer, not a shade of unreachable.
+					// One mapping for both views. This used to compute its own
+					// active/standby/unreachable strings while the card called
+					// getDaemonStatusTag, so the same daemon read "Active" in the table
+					// and "Healthy" on the card. Both now come from the one helper,
+					// which also carries version lifecycle (deprecated, unsupported).
 					key: 'status',
 					label: common_status(),
 					type: 'string',
 					searchable: true,
 					filterable: true,
 					groupable: true,
-					getValue: (daemon) =>
-						daemon.is_unreachable
-							? common_unreachable()
-							: daemon.standby
-								? common_standby()
-								: common_active(),
+					getValue: (daemon) => getDaemonStatusTag(daemon).label,
 					display: {
-						// Colour carries the meaning here: scanning a column of grey text
-						// for the word "Unreachable" is exactly what a table is bad at.
-						getItems: (daemon) => [
-							daemon.is_unreachable
-								? { id: 'unreachable', label: common_unreachable(), color: 'Red' as const }
-								: daemon.standby
-									? { id: 'standby', label: common_standby(), color: 'Amber' as const }
-									: { id: 'active', label: common_active(), color: 'Green' as const }
-						]
+						statusTag: true,
+						getItems: (daemon) => {
+							const tag = getDaemonStatusTag(daemon);
+							return [{ id: tag.label, label: tag.label, color: tag.color, icon: tag.icon }];
+						}
 					}
 				},
 				{

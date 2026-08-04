@@ -52,6 +52,22 @@
 
 	let sharedColumns = $derived(columns && item !== null ? columns : null);
 
+	/**
+	 * The status field, promoted out of the body into the header tag.
+	 *
+	 * Reading it from the shared definition means the card and the table render
+	 * the same value; a card computing its own is how "Healthy" and "Active"
+	 * ended up describing the same daemon.
+	 */
+	let statusColumn = $derived(sharedColumns?.find((c) => c.display.statusTag) ?? null);
+	let bodyColumns = $derived(sharedColumns?.filter((c) => !c.display.statusTag) ?? null);
+	let sharedStatus = $derived.by<TagProps | null>(() => {
+		if (!statusColumn || item === null) return null;
+		const [first] = statusColumn.display.getItems?.(item) ?? [];
+		return first ? { label: first.label, color: first.color, icon: first.icon } : null;
+	});
+	let headerStatus = $derived(sharedStatus ?? status);
+
 	// Helper to check if value is an array
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	function isArrayValue(value: string | any[]): value is any[] {
@@ -101,9 +117,9 @@
 							</h3>
 						{/if}
 					</div>
-					{#if status}
+					{#if headerStatus}
 						<div class="flex-shrink-0">
-							<Tag {...status} />
+							<Tag {...headerStatus} />
 						</div>
 					{/if}
 				</div>
@@ -119,7 +135,7 @@
 	<!-- Content - grows to fill available space -->
 	<div class="flex-grow space-y-3">
 		{#if sharedColumns}
-			{#each sharedColumns as column (column.id)}
+			{#each bodyColumns ?? [] as column (column.id)}
 				<div class="text-sm">
 					<div class="flex flex-wrap items-center gap-2">
 						<span class="text-secondary">{column.label}:</span>

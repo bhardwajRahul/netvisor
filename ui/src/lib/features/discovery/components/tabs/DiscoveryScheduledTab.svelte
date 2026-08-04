@@ -8,7 +8,7 @@
 	import DiscoveryEditModal from '../DiscoveryModal/DiscoveryEditModal.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import DiscoveryRunCard from '../cards/DiscoveryScheduledCard.svelte';
-	import type { FieldConfig } from '$lib/shared/components/data/types';
+	import { getFieldKey, type FieldConfig } from '$lib/shared/components/data/types';
 	import { Plus, Play, Power, Edit, Trash2 } from 'lucide-svelte';
 	import type { CardAction } from '$lib/shared/components/data/types';
 	import { useTagsQuery } from '$lib/features/tags/queries';
@@ -264,7 +264,13 @@
 	}
 
 	let fields: FieldConfig<Discovery>[] = $derived([
-		...discoveryFields(daemonsData, networksData),
+		...discoveryFields(daemonsData, networksData).map((field) =>
+			// Every scheduled scan is the same discovery type, so the column says the
+			// same thing on every row. It stays a filter and group axis.
+			getFieldKey(field) === 'discovery_type'
+				? { ...field, display: { ...field.display, hidden: true } }
+				: field
+		),
 		{
 			key: 'run_type',
 			label: discovery_runType(),

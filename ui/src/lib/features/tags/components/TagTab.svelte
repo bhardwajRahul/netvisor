@@ -204,11 +204,15 @@
 				// readable value, and a boolean field can't supply one without
 				// `Boolean(getValue())` breaking that filter — so the group axis is
 				// its own display field.
+				//
+				// It is not a column: it would sit next to `is_application` saying the
+				// same thing in prose, so the boolean one is the one that shows.
 				key: 'application_group',
 				label: common_application(),
 				type: 'string',
 				groupable: true,
 				sortable: true,
+				display: { hidden: true },
 				getValue: (tag) => (tag.is_application ? tags_applicationGroup() : tags_standardTag())
 			}
 		]

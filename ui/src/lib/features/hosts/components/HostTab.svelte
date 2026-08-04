@@ -16,7 +16,7 @@
 	import { defineFields, entityRef, type CardAction } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
-	import { entities } from '$lib/shared/stores/metadata';
+	import { entities, concepts } from '$lib/shared/stores/metadata';
 	import { Plus, Trash2, RefreshCw, Replace, Eye, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -282,6 +282,23 @@
 							}
 						}
 						return hosts_notVirtualized();
+					},
+					display: {
+						// No chips when a host isn't virtualized, so the cell renders the
+						// em dash rather than repeating "Not Virtualized" down the column.
+						// `getValue` keeps the phrase, so the filter still offers it.
+						getItems: (host) => {
+							const service = servicesData.find((s) => s.id === host.virtualization_service_id);
+							if (!service) return [];
+							return [
+								{
+									id: service.id,
+									label: service.name,
+									color: entities.getColorHelper('Service').color,
+									entityRef: entityRef('Service', service.id, service)
+								}
+							];
+						}
 					}
 				},
 				interface_ip: {
@@ -339,7 +356,15 @@
 					searchable: true,
 					display: { hiddenByDefault: true }
 				},
-				{ key: 'hidden', label: common_hidden(), type: 'boolean', filterable: true },
+				{
+					key: 'hidden',
+					label: common_hidden(),
+					type: 'boolean',
+					filterable: true,
+					// Useful as a filter, but almost always false — a column of "false"
+					// earns none of the width it takes.
+					display: { hiddenByDefault: true }
+				},
 				{
 					key: 'tags',
 					label: common_tags(),
@@ -359,13 +384,18 @@
 					getValue: (host) =>
 						allServicesData.filter((s) => s.host_id === host.id).map((s) => s.name),
 					display: {
+						// Containers are services too, so they share this column rather
+						// than getting one of their own; the colour carries the
+						// distinction instead of a second header.
 						getItems: (host) =>
 							allServicesData
 								.filter((s) => s.host_id === host.id)
 								.map((s) => ({
 									id: s.id,
 									label: s.name,
-									color: entities.getColorHelper('Service').color,
+									color: s.virtualization_metadata
+										? concepts.getColorHelper('Containerization').color
+										: entities.getColorHelper('Service').color,
 									entityRef: entityRef('Service', s.id, s)
 								}))
 					}
