@@ -723,9 +723,8 @@ impl AttemptOutcome {
             // address-level line says this, because the address answered fine. Suppressing it
             // the way `TimedOut` is suppressed is what made a 300s container scan silent.
             Self::CollectionTimedOut => Some(
-                "authenticated and then ran out of time before it finished collecting, so this \
-                 host's data was not recorded — rescan this host on its own, or narrow what the \
-                 scan covers",
+                "authenticated and then ran out of time before it finished collecting — rescan \
+                 this host on its own, or narrow what the scan covers",
             ),
             // The user stopped the scan. Not a finding.
             Self::Cancelled => None,
