@@ -11,6 +11,11 @@
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
+	import { entityRef } from '$lib/shared/components/data/types';
+	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
+	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
+	import { useSubnetsQuery } from '$lib/features/subnets/queries';
+	import type { Subnet } from '$lib/features/subnets/types/base';
 	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import {
@@ -34,16 +39,20 @@
 		common_daemons,
 		common_delete,
 		common_edit,
+		common_host,
 		common_name,
 		common_network,
 		common_standby,
 		common_status,
 		common_tags,
 		common_noEntityYet,
+		common_unknownEntity,
 		common_unknownNetwork,
 		common_unreachable,
 		common_updated,
+		common_version,
 		daemons_config_mode,
+		daemons_interfacesWith,
 		daemons_lastSeen,
 		daemons_mode_daemonPoll,
 		daemons_mode_serverPoll,
@@ -59,6 +68,8 @@
 	const tagsQuery = useTagsQuery();
 	const daemonsQuery = useDaemonsQuery();
 	const networksQuery = useNetworksQuery();
+	// Shared subnets cache, to resolve each daemon's interfaced subnet ids.
+	const subnetsQuery = useSubnetsQuery();
 
 	// Mutations
 	const deleteDaemonMutation = useDeleteDaemonMutation();
@@ -96,6 +107,7 @@
 		});
 	});
 	let networksData = $derived(networksQuery.data ?? []);
+	let subnetsData = $derived(subnetsQuery.data ?? []);
 	let isLoading = $derived(daemonsQuery.isPending || networksQuery.isPending);
 
 	let showCreateDaemonModal = $state(false);
@@ -178,6 +190,14 @@
 		return daemon.tags;
 	}
 
+	/** Subnets this daemon has an interface on, minus the ones the UI never lists. */
+	function interfacedSubnets(daemon: Daemon): Subnet[] {
+		return daemon.interfaced_subnet_ids
+			.map((id) => subnetsData.find((subnet) => subnet.id === id))
+			.filter((subnet): subnet is Subnet => subnet !== undefined)
+			.filter((subnet) => !subnetTypes.getMetadata(subnet.subnet_type).hide_from_subnet_list);
+	}
+
 	// CSV export handler
 	async function handleCsvExport() {
 		await downloadCsv('Daemon', {});
@@ -211,6 +231,35 @@
 				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 			},
 			[
+				{
+					// Host, version and subnet interfaces were card-only. Declaring
+					// them here is what makes them exist for both views at once.
+					// Display-only: none is a DaemonOrderField, so the server cannot
+					// order on them and defineFields rightly refuses them above.
+					key: 'host_id',
+					label: common_host(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					getValue: (daemon) =>
+						daemonHosts.find((h) => h.id === daemon.host_id)?.name ??
+						common_unknownEntity({ entity: common_host() }),
+					display: {
+						getItems: (daemon) => {
+							const host = daemonHosts.find((h) => h.id === daemon.host_id);
+							if (!host) return [];
+							return [
+								{
+									id: host.id,
+									label: host.name,
+									color: entities.getColorHelper('Host').color,
+									entityRef: entityRef('Host', host.id, host)
+								}
+							];
+						}
+					}
+				},
 				{
 					// Reachability as one value rather than a raw boolean: "which
 					// daemons are down" is the question during an incident, and a
@@ -258,6 +307,30 @@
 										: daemons_mode_daemonPoll()
 							}
 						]
+					}
+				},
+				{
+					key: 'version',
+					label: common_version(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					getValue: (daemon) => daemon.version ?? ''
+				},
+				{
+					key: 'interfaced_subnet_ids',
+					label: daemons_interfacesWith(),
+					type: 'array',
+					searchable: true,
+					getValue: (daemon) => interfacedSubnets(daemon).map((s) => s.name),
+					display: {
+						getItems: (daemon) =>
+							interfacedSubnets(daemon).map((subnet) => ({
+								id: subnet.id,
+								label: subnet.name,
+								color: entities.getColorHelper('Subnet').color,
+								entityRef: entityRef('Subnet', subnet.id, subnet)
+							}))
 					}
 				},
 				{
@@ -320,11 +393,12 @@
 			{#snippet children(
 				item: Daemon,
 				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
+				onSelectionChange: (selected: boolean) => void,
+				columns: EntityColumn<Daemon>[]
 			)}
 				<DaemonCard
 					daemon={item}
-					hosts={daemonHosts}
+					{columns}
 					onDelete={isReadOnly ? undefined : handleDeleteDaemon}
 					onEdit={isReadOnly ? undefined : handleEditDaemon}
 					selected={isSelected}
