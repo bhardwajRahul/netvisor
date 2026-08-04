@@ -197,8 +197,9 @@
 								<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
 							</div>
 
+							<!-- pointer-events-none: the invisible label still spans its neighbours. -->
 							<div
-								class="absolute top-1/2 flex -translate-y-1/2 items-center justify-center whitespace-nowrap {action.disabled
+								class="pointer-events-none absolute top-1/2 flex -translate-y-1/2 items-center justify-center whitespace-nowrap {action.disabled
 									? 'opacity-0'
 									: 'opacity-0 transition-all duration-200 ease-in-out group-hover:opacity-100'} {isLeftEdge
 									? 'left-0'

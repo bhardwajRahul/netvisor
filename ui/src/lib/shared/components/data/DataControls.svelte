@@ -208,13 +208,6 @@
 	let columnOrder = $state<string[]>([]);
 	let columnSizing = $state<Record<string, number>>({});
 
-	/**
-	 * Live height of the controls bar, so the table's sticky header sits directly
-	 * under it. Measured rather than fixed because opening the filter panel
-	 * changes that height.
-	 */
-	let controlsHeight = $state(0);
-
 	// Pagination state
 	let currentPage = $state(1);
 	let pageSize = $state<PageSizeOption>(20);
@@ -1010,7 +1003,6 @@
 
 	<!-- Sticky Controls Bar -->
 	<div
-		bind:clientHeight={controlsHeight}
 		class="sticky top-0 z-20 -mx-8 border-b bg-[var(--color-bg-body)] px-8 pb-4 {isStuck
 			? 'border-gray-700 pt-4 shadow-lg'
 			: 'border-transparent'}"
@@ -1166,7 +1158,6 @@
 		{getItemId}
 		{getActions}
 		{caption}
-		headerOffset={controlsHeight}
 		onToggleSort={toggleSort}
 		onToggleRow={setRowSelected}
 		onToggleAll={() => toggleAllIn(rows)}

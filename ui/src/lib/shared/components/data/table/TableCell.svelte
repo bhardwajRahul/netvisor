@@ -10,17 +10,33 @@
 
 	let showAll = $state(false);
 
-	let items = $derived<CardFieldItem[] | null>(column.column.getItems?.(item) ?? null);
-	let value = $derived(items ? null : getFieldValue(item, column.field));
+	let value = $derived(getFieldValue(item, column.field));
+
+	/**
+	 * Chips to render, if this cell is a list of things.
+	 *
+	 * A field can supply rich chips through `getItems`, but an array-typed field
+	 * that only has a `getValue` is still a list — joining it into "a, b, c"
+	 * would render it as prose in the table while the card shows the same field
+	 * as tags. Falling back to plain chips keeps the two views consistent
+	 * without every field having to opt in.
+	 */
+	let items = $derived<CardFieldItem[] | null>(
+		column.column.getItems?.(item) ??
+			// Index-suffixed: repeated values are legitimate (two hosts can carry the
+			// same label) and a bare value as the key would collide in the {#each}.
+			(Array.isArray(value)
+				? value.map((entry, index) => ({ id: `${index}:${entry}`, label: entry }))
+				: null)
+	);
 
 	let visible = $derived(items === null ? [] : showAll ? items : items.slice(0, MAX_ITEMS_IN_CELL));
 	let overflow = $derived(items === null ? 0 : items.length - visible.length);
 
 	/** Dates arrive as ISO strings; render them in the viewer's locale. */
-	function formatValue(raw: string | boolean | Date | string[] | null): string {
+	function formatValue(raw: Exclude<ReturnType<typeof getFieldValue>, string[]>): string {
 		if (raw === null || raw === undefined || raw === '') return '';
 		if (raw instanceof Date) return raw.toLocaleString();
-		if (Array.isArray(raw)) return raw.join(', ');
 		if (typeof raw === 'boolean') return String(raw);
 		if (column.field.type === 'date') {
 			const parsed = new Date(raw);
@@ -29,7 +45,8 @@
 		return raw;
 	}
 
-	let text = $derived(items === null ? formatValue(value) : '');
+	// `items` is non-null for every array value, so this branch never sees one.
+	let text = $derived(items === null ? formatValue(value as Exclude<typeof value, string[]>) : '');
 </script>
 
 {#if column.column.cell}

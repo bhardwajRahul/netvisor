@@ -24,8 +24,13 @@
 		<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
 	</div>
 
+	<!--
+		pointer-events-none: this label is absolutely positioned and, while
+		invisible, still spans its neighbours — without it the widest label sits on
+		top of the adjacent buttons and swallows their hover and clicks.
+	-->
 	<div
-		class="absolute top-1/2 flex -translate-y-1/2 items-center justify-center whitespace-nowrap {action.disabled
+		class="pointer-events-none absolute top-1/2 flex -translate-y-1/2 items-center justify-center whitespace-nowrap {action.disabled
 			? 'opacity-0'
 			: action.forceLabel
 				? 'opacity-100'
