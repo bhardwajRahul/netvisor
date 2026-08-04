@@ -21,7 +21,52 @@ pub(crate) fn should_prune_interfaces(
     interfaces_complete && persisted_count > 0 && skipped_count == 0
 }
 
+/// Resolve an incoming `virtualization_service_id` to a service that actually exists, or `None`.
+///
+/// The daemon mints a fresh UUID for every service it matches, so an owner reference arrives
+/// naming an id that is either (a) already a live service, (b) one this submission is about to
+/// remap onto an existing row, or (c) nothing at all — a service that was dropped during
+/// conflict resolution, or a stale id from an earlier scan.
+///
+/// Case (c) used to be stored verbatim: harmless-looking, but it silently defeated the
+/// container-bridge dedup, which is how GH #650 accumulated 353 subnet rows for 70 CIDRs. Now
+/// the column carries a foreign key, so writing it would abort the entire host instead. Neither
+/// is acceptable, hence: resolve if we can, otherwise degrade this one reference to `None` and
+/// let the caller log it. One subnet without an owner beats a host that cannot be created.
+pub(crate) fn resolve_owner_service_id(
+    incoming: Option<Uuid>,
+    remap: &std::collections::HashMap<Uuid, Uuid>,
+    live_service_ids: &std::collections::HashSet<Uuid>,
+) -> Option<Uuid> {
+    let id = incoming?;
+    if let Some(&remapped) = remap.get(&id) {
+        return Some(remapped);
+    }
+    live_service_ids.contains(&id).then_some(id)
+}
+
 impl HostService {
+    /// Reject an API-supplied virtualizing service that does not exist.
+    ///
+    /// Only the API sets this — discovery's copy is stripped in `discover_host`, since a
+    /// daemon-minted service id cannot be resolved across submissions. Left unchecked, a bad id
+    /// reaches Postgres and comes back as an opaque foreign-key 500.
+    pub(crate) async fn validate_virtualization_service(
+        &self,
+        virtualization_service_id: Option<Uuid>,
+    ) -> Result<()> {
+        let Some(id) = virtualization_service_id else {
+            return Ok(());
+        };
+        if self.service_service.get_by_id(&id).await?.is_none() {
+            return Err(ValidationError::new(format!(
+                "virtualization_service_id {id} does not match any service"
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
     // =========================================================================
     // Host creation with children
     // =========================================================================
@@ -70,6 +115,12 @@ impl HostService {
         .map_err(|e| ValidationError::new(e.message))?;
         resolve_and_validate_input_positions(&mut service_inputs, &empty_services, "service")
             .map_err(|e| ValidationError::new(e.message))?;
+
+        // The virtualizing service must exist. Without this the insert fails
+        // `hosts_virtualization_service_id_fkey` and surfaces as a 500, when the caller sent a
+        // bad id and deserves to be told so.
+        self.validate_virtualization_service(virtualization_service_id)
+            .await?;
 
         // Auto-set source to Manual for API-created entities
         let source = EntitySource::Manual;
@@ -482,6 +533,85 @@ impl HostService {
             }
         }
 
+        // --- Owner-service row phase -------------------------------------------------------
+        //
+        // Subnets are written before services, but a container-bridge subnet names the runtime
+        // service that owns it, and that id is a UUID the daemon minted in memory. Writing the
+        // subnet first therefore violates `subnets_virtualization_service_id_fkey` (GH #650).
+        //
+        // The `services` row references only `hosts` — it is *bindings*, a separate table, that
+        // reference ports and ip_addresses. So the cycle is broken by materialising the owner's
+        // row here, with no bindings, and letting the main service loop below attach them: it
+        // natural-key matches this row and `upsert_service` merges bindings additively
+        // (`services/service/upsert.rs`), so nothing is lost.
+        //
+        // Only services actually named as an owner are hoisted, and only non-generic ones.
+        // `Service::eq` resolves a generic service by shared port bindings, so a binding-less
+        // generic row would fail to match itself on the next scan and duplicate — the invariant
+        // is asserted registry-wide by `a_virtualizer_definition_is_never_generic`.
+        let owner_ids: std::collections::HashSet<Uuid> = subnets
+            .iter()
+            .filter_map(|s| s.base.virtualization_service_id)
+            .collect();
+
+        let mut live_service_ids: std::collections::HashSet<Uuid> =
+            existing_services_for_match.iter().map(|s| s.id).collect();
+
+        for svc in &services {
+            if !owner_ids.contains(&svc.id)
+                || ServiceDefinitionExt::is_generic(&svc.base.service_definition)
+            {
+                continue;
+            }
+
+            let mut probe = svc.clone();
+            probe.base.host_id = created_host.id;
+            probe.base.network_id = created_host.base.network_id;
+
+            if let Some(existing) = existing_services_for_match.iter().find(|e| **e == probe) {
+                // Already persisted by an earlier scan — nothing to insert, just make the id
+                // resolvable for the subnet loop.
+                if existing.id != svc.id {
+                    service_id_remap.insert(svc.id, existing.id);
+                }
+                live_service_ids.insert(existing.id);
+                continue;
+            }
+
+            // New this scan. Insert the bare row so the FK resolves; the main loop attaches its
+            // bindings. `virtualization_service_id` is stripped because a container runtime can
+            // itself name an owner, and that id may not be resolvable yet — the repoint pass
+            // after the service loop sets it.
+            let mut row = probe;
+            row.base.bindings = Vec::new();
+            row.base.virtualization_service_id = None;
+
+            match self
+                .service_service
+                .create(row, authentication.clone())
+                .await
+            {
+                Ok(created) => {
+                    if created.id != svc.id {
+                        service_id_remap.insert(svc.id, created.id);
+                    }
+                    live_service_ids.insert(created.id);
+                    existing_services_for_match.push(created);
+                }
+                Err(e) => {
+                    // Not fatal: the subnets naming it degrade to an unowned bridge rather than
+                    // the whole host failing.
+                    tracing::warn!(
+                        host_id = %created_host.id,
+                        service = %svc.base.service_definition.name(),
+                        error = %e,
+                        "Failed to pre-create container runtime service; bridge subnets it owns \
+                         will be recorded without an owner"
+                    );
+                }
+            }
+        }
+
         // Create integration-derived subnets (e.g., Docker bridges)
         // Patch virtualization.service_id using the pre-computed remap
         let mut subnet_id_remap: std::collections::HashMap<Uuid, Uuid> =
@@ -499,14 +629,11 @@ impl HostService {
             // network. Mirrors how ports/interfaces force host_id + network_id.
             subnet.base.network_id = created_host.base.network_id;
 
-            // Best-effort remap with what is known so far. Services are created below, so ids
-            // that only move during that loop cannot be reflected here — the pass after it
-            // (`patch_container_bridge_virtualization`) is what catches those.
-            if let Some(old_id) = subnet.base.virtualization_service_id
-                && let Some(&new_id) = service_id_remap.get(&old_id)
-            {
-                subnet.base.virtualization_service_id = Some(new_id);
-            }
+            subnet.base.virtualization_service_id = resolve_owner_service_id(
+                subnet.base.virtualization_service_id,
+                &service_id_remap,
+                &live_service_ids,
+            );
             let original_id = subnet.id;
             let created = self
                 .subnet_service
@@ -966,6 +1093,16 @@ impl HostService {
                 }
             }
 
+            // A container service names the runtime service that hosts it, and that reference
+            // arrives as the daemon's freshly minted id. Resolve it against the remap and the
+            // live set before the insert, or `services_virtualization_service_id_fkey` aborts
+            // the whole host — the same failure the bridge subnets had (GH #650).
+            reassigned.base.virtualization_service_id = resolve_owner_service_id(
+                reassigned.base.virtualization_service_id,
+                &service_id_remap,
+                &live_service_ids,
+            );
+
             let reassigned_id = reassigned.id;
             let created = self
                 .service_service
@@ -979,6 +1116,8 @@ impl HostService {
             if created.id != reassigned_id {
                 service_id_remap.insert(reassigned_id, created.id);
             }
+            // Services later in this loop may name this one as their owner.
+            live_service_ids.insert(created.id);
             // Add to existing_services_for_match so subsequent services in this batch
             // can find it for ID alignment and Docker Container → specific service reconciliation
             existing_services_for_match.push(created.clone());
@@ -1018,39 +1157,30 @@ impl HostService {
             created_services.push(created);
         }
 
-        // Repoint container services at their runtime service when its id was remapped during
-        // dedup. `service_id_remap` is complete by now: pre-computed before subnet creation, and
-        // extended by the in-batch hop recorded in the service loop above.
+        // Net for a service whose owner id only moved *after* it was inserted — a later
+        // iteration reconciling onto an existing row, say. The common case is already handled
+        // before the insert, so this rarely fires.
+        //
+        // Errors propagate rather than being discarded: this writes an FK-bearing column, and a
+        // silent failure here is exactly the drift the column was introduced to make impossible.
         for svc in &created_services {
-            if let Some(old_id) = svc.base.virtualization_service_id
-                && let Some(&new_id) = service_id_remap.get(&old_id)
-            {
+            let resolved = resolve_owner_service_id(
+                svc.base.virtualization_service_id,
+                &service_id_remap,
+                &live_service_ids,
+            );
+            if resolved != svc.base.virtualization_service_id {
                 let mut updated = svc.clone();
-                updated.base.virtualization_service_id = Some(new_id);
-                let _ = self
-                    .service_service
+                updated.base.virtualization_service_id = resolved;
+                self.service_service
                     .update(&mut updated, authentication.clone())
-                    .await;
+                    .await?;
             }
         }
 
-        // The same repair for bridge subnets. They were created before any service existed, so
-        // they carry whatever `service_id_remap` held at that point — which is nothing for a
-        // service whose id only moved during the loop above. Left unpatched, the subnet's owning
-        // id matches no live service, dedup fails on every later scan, and the network gains a
-        // duplicate bridge row each time (GH #650).
-        if let Err(e) = self
-            .subnet_service
-            .patch_container_bridge_virtualization(&created_host.base.network_id, &service_id_remap)
-            .await
-        {
-            tracing::warn!(
-                host_id = %created_host.id,
-                error = %e,
-                "Failed to repoint bridge subnet virtualization; duplicate bridge subnets may \
-                 accumulate on subsequent scans"
-            );
-        }
+        // No after-the-fact repair for bridge subnets: the runtime services they name are
+        // materialised before the subnet loop runs, so a bridge is written with a final owner id
+        // rather than one that has to be chased afterwards.
 
         // Binding fixup: remap provisional daemon interface/port IDs to server-assigned IDs.
         // This handles the case where interface or port UUIDs changed during dedup (upsert).

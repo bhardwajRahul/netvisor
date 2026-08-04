@@ -595,6 +595,38 @@ fn test_service_definition_serialization() {
         );
     }
 }
+/// A virtualizer service is created *before* its bindings, so that the subnets and container
+/// services naming it as their owner can satisfy their `virtualization_service_id` foreign key
+/// (GH #650). That deferral is only safe for non-generic definitions.
+///
+/// `Service::eq` resolves a generic service by shared port bindings — see the
+/// `has_shared_ports` fallback in `services/impl/base.rs`. A generic row persisted with no
+/// bindings yet would therefore fail to match its existing counterpart on the next scan and be
+/// silently duplicated, which is the same class of bug the owner column was introduced to fix.
+/// A non-generic definition resolves on host + definition alone and never reads bindings.
+///
+/// Asserted over the registry rather than at each call site so the conflict is impossible to
+/// introduce, instead of surfacing as duplicate rows in production.
+#[test]
+fn a_virtualizer_definition_is_never_generic() {
+    use crate::server::services::r#impl::definitions::ServiceDefinitionExt;
+
+    let offenders: Vec<&str> = ServiceDefinitionRegistry::all_service_definitions()
+        .iter()
+        .filter(|d| {
+            ServiceDefinitionExt::virtualization_role(*d).is_some()
+                && ServiceDefinitionExt::is_generic(*d)
+        })
+        .map(|d| ServiceDefinition::name(d))
+        .collect();
+
+    assert!(
+        offenders.is_empty(),
+        "these definitions are both a virtualizer and generic, so they cannot be created \
+         ahead of their bindings without duplicating on the next scan: {offenders:?}"
+    );
+}
+
 #[test]
 fn test_service_definition_logo_urls_valid() {
     use crate::server::services::r#impl::definitions::ServiceDefinitionExt;

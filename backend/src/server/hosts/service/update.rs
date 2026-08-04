@@ -51,6 +51,11 @@ impl HostService {
             .into());
         }
 
+        // Same reason as the create path: an unresolvable virtualizing service must come back as
+        // a validation error, not a foreign-key 500.
+        self.validate_virtualization_service(virtualization_service_id)
+            .await?;
+
         let mut updated_host = Host {
             id,
             created_at: existing.created_at,

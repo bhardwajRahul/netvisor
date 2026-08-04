@@ -17,7 +17,6 @@ use crate::server::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -207,58 +206,5 @@ impl SubnetService {
             event_bus,
             entity_tag_service,
         }
-    }
-
-    /// Repoint container-runtime bridge subnets (Docker/Podman) whose `service_id` was remapped
-    /// while the host was being created.
-    ///
-    /// Bridge subnets only deduplicate against each other when CIDR, network *and* owning
-    /// `service_id` match, and that id is a pending UUID the daemon mints fresh every scan. The
-    /// host create path remaps it — but it creates subnets before it creates services, and a
-    /// service create can return an id different from the one it was handed (singleton upsert,
-    /// Docker-Container reconciliation), so the map is still growing after the subnets are
-    /// written. Services get a fixup pass for their own virtualization; this is the counterpart
-    /// for subnets, and without it a bridge row keeps an id that matches nothing, defeats dedup
-    /// on every subsequent scan, and accumulates a new row each time (GH #650: 353 rows for 70
-    /// CIDRs).
-    ///
-    /// Takes the whole remap and makes one pass, rather than a pair per call: the caller only
-    /// has a complete map once every service is created, so per-pair calls would each reload
-    /// every live subnet in the network.
-    ///
-    /// Idempotent — a subnet already carrying the right id matches nothing.
-    pub async fn patch_container_bridge_virtualization(
-        &self,
-        network_id: &Uuid,
-        service_id_remap: &HashMap<Uuid, Uuid>,
-    ) -> Result<()> {
-        if service_id_remap.is_empty() {
-            return Ok(());
-        }
-
-        // SCD2: only patch live subnets; closed historical copies retain
-        // their as-of state.
-        let filter = StorableFilter::<Subnet>::new_from_network_ids(&[*network_id]).live();
-        let subnets = self.storage.get_all(filter).await?;
-
-        for mut subnet in subnets {
-            let Some(new_service_id) = subnet
-                .base
-                .virtualization_service_id
-                .and_then(|old| service_id_remap.get(&old))
-            else {
-                continue;
-            };
-
-            tracing::debug!(
-                subnet_id = %subnet.id,
-                subnet_cidr = %subnet.base.cidr,
-                new_service_id = %new_service_id,
-                "Repointing bridge subnet at its remapped runtime service"
-            );
-            subnet.base.virtualization_service_id = Some(*new_service_id);
-            self.storage.update(&mut subnet).await?;
-        }
-        Ok(())
     }
 }
