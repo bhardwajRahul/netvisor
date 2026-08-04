@@ -126,6 +126,12 @@ export interface DisplayConfig<T> {
 	/** Row identity: pinned left, carries the checkbox, renders as `<th scope="row">`. */
 	primary?: boolean;
 	/**
+	 * This field is the row's secondary line, so the card renders it under the
+	 * title rather than as another labelled row — a subnet's CIDR, a VLAN's
+	 * number, what a host is virtualized by.
+	 */
+	subtitle?: boolean;
+	/**
 	 * This field is the row's status, so the card renders it as the tag beside
 	 * the title instead of as another labelled row.
 	 *

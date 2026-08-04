@@ -3,13 +3,11 @@
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import type { Network } from '../types';
-	import NetworkCard from './NetworkCard.svelte';
 	import NetworkEditModal from './NetworkEditModal.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import type { FieldConfig } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { entityRef, type CardAction } from '$lib/shared/components/data/types';
-	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
 	import { entities, subnetTypes, credentialTypes } from '$lib/shared/stores/metadata';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import { getCredentialTypeId } from '$lib/features/credentials/types/base';
@@ -32,6 +30,7 @@
 		common_delete,
 		common_edit,
 		common_subnets,
+		common_vlans,
 		common_name,
 		common_networks,
 		common_noEntityYet,
@@ -50,6 +49,8 @@
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
+	import { useVlansQuery } from '$lib/features/vlans/queries';
+	import type { Vlan } from '$lib/features/vlans/types/base';
 	import { useDependenciesQuery } from '$lib/features/dependencies/queries';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
@@ -70,6 +71,7 @@
 	// What each network contains, resolved here so card and table share it.
 	const daemonsQuery = useDaemonsQuery();
 	const subnetsQuery = useSubnetsQuery();
+	const vlansQuery = useVlansQuery();
 	const credentialsQuery = useCredentialsQuery();
 	useDependenciesQuery();
 
@@ -93,6 +95,7 @@
 	let networksData = $derived(networksQuery.data ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
+	let vlansData = $derived(vlansQuery.data ?? []);
 	let credentialsData = $derived(credentialsQuery.data ?? []);
 	let isLoading = $derived(networksQuery.isPending);
 	let isAtNetworkLimit = $derived(
@@ -221,6 +224,10 @@
 		);
 	}
 
+	function networkVlans(network: Network): Vlan[] {
+		return vlansData.filter((vlan) => vlan.network_id === network.id);
+	}
+
 	function networkCredentials(network: Network): Credential[] {
 		return (network.credential_ids ?? [])
 			.map((id) => credentialsData.find((c) => c.id === id))
@@ -236,7 +243,24 @@
 			type: 'string',
 			searchable: true,
 			sortable: true,
-			display: { primary: true, width: 220 }
+			display: { primary: true, width: 220, order: 0 }
+		},
+		{
+			key: 'vlans',
+			label: common_vlans(),
+			type: 'array',
+			searchable: true,
+			getValue: (network) => networkVlans(network).map((v) => v.name),
+			display: {
+				order: 1,
+				getItems: (network) =>
+					networkVlans(network).map((vlan) => ({
+						id: vlan.id,
+						label: vlan.name,
+						color: entities.getColorHelper('Vlan').color,
+						entityRef: entityRef('Vlan', vlan.id, vlan)
+					}))
+			}
 		},
 		{
 			key: 'tags',
@@ -253,6 +277,7 @@
 			searchable: true,
 			getValue: (network) => networkDaemons(network).map((d) => d.name),
 			display: {
+				order: 3,
 				getItems: (network) =>
 					networkDaemons(network).map((daemon) => ({
 						id: daemon.id,
@@ -272,6 +297,7 @@
 			searchable: true,
 			getValue: (network) => networkCredentials(network).map((c) => c.name),
 			display: {
+				order: 4,
 				getItems: (network) =>
 					networkCredentials(network).map((credential) => ({
 						id: credential.id,
@@ -288,6 +314,7 @@
 			searchable: true,
 			getValue: (network) => networkSubnets(network).map((s) => s.name),
 			display: {
+				order: 2,
 				getItems: (network) =>
 					networkSubnets(network).map((subnet) => ({
 						id: subnet.id,
@@ -301,7 +328,8 @@
 			key: 'created_at',
 			label: common_created(),
 			type: 'date',
-			sortable: true
+			sortable: true,
+			display: { hiddenByDefault: true }
 		}
 	]);
 </script>
@@ -359,26 +387,14 @@
 			{allowBulkDelete}
 			storageKey="scanopy-networks-table-state"
 			getItemId={(item) => item.id}
+			getIcon={() => ({
+				icon: entities.getIconComponent('Network'),
+				color: entities.getColorHelper('Network').icon
+			})}
 			onCsvExport={handleCsvExport}
 			getActions={networkActions}
 			entityLabel={common_networks()}
-		>
-			{#snippet children(
-				item: Network,
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void,
-				columns: EntityColumn<Network>[]
-			)}
-				<NetworkCard
-					network={item}
-					{columns}
-					selected={isSelected}
-					{onSelectionChange}
-					onDelete={handleDeleteNetwork}
-					onEdit={handleEditNetwork}
-				/>
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 

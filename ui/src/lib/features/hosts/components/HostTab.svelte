@@ -1,5 +1,4 @@
 <script lang="ts">
-	import HostCard from './HostCard.svelte';
 	import type {
 		Host,
 		CreateHostWithServicesRequest,
@@ -16,8 +15,12 @@
 	import { defineFields, entityRef, type CardAction } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
-	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
-	import { entities, concepts, credentialTypes } from '$lib/shared/stores/metadata';
+	import {
+		entities,
+		concepts,
+		credentialTypes,
+		serviceDefinitions
+	} from '$lib/shared/stores/metadata';
 	import { Plus, Trash2, RefreshCw, Replace, Eye, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -359,7 +362,7 @@
 						return iface?.ip_address ?? '';
 					},
 					display: {
-						order: 6,
+						order: 5,
 						// The server orders on the primary address, but a host usually has
 						// several — showing only the first would misrepresent the row.
 						getItems: (host) =>
@@ -426,7 +429,7 @@
 					searchable: true,
 					getValue: (host) => hostCredentials(host).map((c) => c.name),
 					display: {
-						order: 4,
+						order: 3,
 						getItems: (host) =>
 							hostCredentials(host).map((credential) => ({
 								id: credential.id,
@@ -444,7 +447,7 @@
 					getValue: (host) =>
 						hostInterfaces(host).map((i) => i.if_descr || hosts_unnamedInterface()),
 					display: {
-						order: 5,
+						order: 4,
 						getItems: (host) =>
 							hostInterfaces(host).map((iface) => ({
 								id: iface.id,
@@ -463,7 +466,7 @@
 					getValue: (host) =>
 						allServicesData.filter((s) => s.host_id === host.id).map((s) => s.name),
 					display: {
-						order: 7,
+						order: 6,
 						// Containers are services too, so they share this column rather
 						// than getting one of their own; the colour carries the
 						// distinction instead of a second header.
@@ -654,6 +657,18 @@
 			entityType={isReadOnly ? undefined : 'Host'}
 			getItemTags={getHostTags}
 			getItemId={(item) => item.id}
+			getIcon={(host) => {
+				const first = allServicesData.find(
+					(s) => s.host_id === host.id && s.service_definition !== 'Unclaimed Open Ports'
+				);
+				return {
+					icon: first
+						? serviceDefinitions.getIconComponent(first.service_definition)
+						: entities.getIconComponent('Host'),
+					color: entities.getColorHelper('Host').icon
+				};
+			}}
+			getLink={(host) => (host.hostname ? `http://${host.hostname}` : undefined)}
 			serverPagination={hostsPagination}
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
@@ -665,26 +680,7 @@
 			}}
 			getActions={hostActions}
 			entityLabel={common_hosts()}
-		>
-			{#snippet children(
-				item: Host,
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void,
-				columns: EntityColumn<Host>[]
-			)}
-				<HostCard
-					host={item}
-					{columns}
-					selected={isSelected}
-					{onSelectionChange}
-					onEdit={isReadOnly ? undefined : handleEditHost}
-					onDelete={isReadOnly ? undefined : handleDeleteHost}
-					onRescan={isReadOnly ? undefined : handleRescanHost}
-					onConsolidate={isReadOnly ? undefined : handleStartConsolidate}
-					onHide={isReadOnly ? undefined : handleHostHide}
-				/>
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 

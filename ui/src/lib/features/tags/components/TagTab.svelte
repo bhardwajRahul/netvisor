@@ -6,7 +6,6 @@
 		useDeleteTagMutation,
 		useBulkDeleteTagsMutation
 	} from '../queries';
-	import TagCard from './TagCard.svelte';
 	import TagEditModal from './TagEditModal.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
@@ -14,11 +13,11 @@
 	import type { Tag } from '../types/base';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
-	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
-	import { Plus, Trash2, Edit } from 'lucide-svelte';
+	import { Plus, Trash2, Edit, Tag as TagIcon } from 'lucide-svelte';
+	import { createColorHelper } from '$lib/shared/utils/styling';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { permissions, billingPlans } from '$lib/shared/stores/metadata';
+	import { permissions, billingPlans, concepts } from '$lib/shared/stores/metadata';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
@@ -247,26 +246,16 @@
 			storageKey="scanopy-tags-table-state"
 			onBulkDelete={handleBulkDelete}
 			getItemId={(item) => item.id}
+			getIcon={(tag) => ({
+				icon: tag.is_application ? concepts.getIconComponent('Application') : TagIcon,
+				color: tag.is_application
+					? concepts.getColorHelper('Application')?.icon
+					: createColorHelper(tag.color).icon
+			})}
 			onCsvExport={handleCsvExport}
 			getActions={tagActions}
 			entityLabel={common_tags()}
-		>
-			{#snippet children(
-				item: Tag,
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void,
-				columns: EntityColumn<Tag>[]
-			)}
-				<TagCard
-					tag={item}
-					{columns}
-					selected={isSelected}
-					{onSelectionChange}
-					onEdit={handleEditTag}
-					onDelete={handleDeleteTag}
-				/>
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 

@@ -4,7 +4,6 @@
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import type { Daemon } from '$lib/features/daemons/types/base';
-	import DaemonCard from './DaemonCard.svelte';
 	import { hasSunsetWarning, getDaemonStatusTag } from '$lib/features/daemons/utils';
 	import CreateDaemonModal from './CreateDaemonModal/CreateDaemonModal.svelte';
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
@@ -12,20 +11,26 @@
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
 	import { entityRef } from '$lib/shared/components/data/types';
-	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
 	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import type { Subnet } from '$lib/features/subnets/types/base';
-	import { Plus, Trash2, Edit } from 'lucide-svelte';
+	import { Plus, Trash2, Edit, ArrowBigUp, RefreshCw } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import {
 		useDaemonsQuery,
 		useDeleteDaemonMutation,
-		useBulkDeleteDaemonsMutation
+		useBulkDeleteDaemonsMutation,
+		useRetryDaemonConnectionMutation
 	} from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
-	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
+	import {
+		modalState,
+		openModal,
+		closeModal,
+		resolveModalDeepLink
+	} from '$lib/shared/stores/modal-registry';
+	import DaemonUpgradeModal from './DaemonUpgradeModal.svelte';
 	import DaemonEditModal from './DaemonEditModal.svelte';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
@@ -46,7 +51,9 @@
 		common_noEntityYet,
 		common_unknownEntity,
 		common_unknownNetwork,
+		common_update,
 		common_updated,
+		daemons_retryConnection,
 		common_version,
 		daemons_config_mode,
 		daemons_interfacesWith,
@@ -133,12 +140,56 @@
 		}
 	});
 
-	/** Row actions for table mode, matching what the card offers. */
+	let upgradingDaemon = $state<Daemon | null>(null);
+
+	// Deep link: ?modal=upgrade-daemon&id=<daemon-id>
+	$effect(() => {
+		if ($modalState.name === 'upgrade-daemon' && $modalState.id && !upgradingDaemon) {
+			upgradingDaemon = daemonsData.find((d) => d.id === $modalState.id) ?? null;
+		}
+	});
+
+	const retryConnectionMutation = useRetryDaemonConnectionMutation();
+
+	/**
+	 * Escalate the upgrade affordance by lifecycle stage: a scheduled or active
+	 * sunset is a warning/danger action, a plain newer release is neutral-info.
+	 */
+	function upgradeButtonClass(daemon: Daemon): string {
+		switch (daemon.version_status.status) {
+			case 'Unsupported':
+				return 'btn-icon-danger';
+			case 'Deprecated':
+				return 'btn-icon-warning';
+			case 'Outdated':
+				return 'btn-icon-info';
+			default:
+				return 'btn-icon';
+		}
+	}
+
+	function handleOpenUpgrade(daemon: Daemon) {
+		upgradingDaemon = daemon;
+		openModal('upgrade-daemon', { id: daemon.id });
+	}
+
+	function handleCloseUpgrade() {
+		upgradingDaemon = null;
+		closeModal();
+	}
+
+	/** Row actions. Upgrade and retry appear only when the daemon's state calls for them. */
 	function daemonActions(daemon: Daemon): CardAction[] {
 		if (isReadOnly) return [];
 
-		return [
-			{ label: common_edit(), icon: Edit, onClick: () => handleEditDaemon(daemon) },
+		const hasUpdateAvailable =
+			daemon.version_status.status === 'Outdated' ||
+			daemon.version_status.status === 'Deprecated' ||
+			daemon.version_status.status === 'Unsupported';
+		// The scheduled sunset date is server-published — the UI never computes it.
+		const sunsetDate = daemon.version_status.sunset_date ?? null;
+
+		const actions: CardAction[] = [
 			{
 				label: common_delete(),
 				icon: Trash2,
@@ -146,6 +197,36 @@
 				onClick: () => handleDeleteDaemon(daemon)
 			}
 		];
+
+		if (hasUpdateAvailable && (daemon.is_unreachable !== true || sunsetDate !== null)) {
+			actions.push({
+				label: common_update(),
+				icon: ArrowBigUp,
+				class: upgradeButtonClass(daemon),
+				onClick: () => handleOpenUpgrade(daemon),
+				forceLabel: true
+			});
+		}
+
+		// An unreachable ServerPoll daemon is the one case the server can be asked
+		// to try again on demand.
+		if (daemon.is_unreachable === true && daemon.mode === 'server_poll') {
+			actions.push({
+				label: daemons_retryConnection(),
+				icon: RefreshCw,
+				class: 'btn-icon-info',
+				onClick: () => retryConnectionMutation.mutate(daemon.id),
+				disabled: retryConnectionMutation.isPending,
+				forceLabel: true
+			});
+		}
+
+		// Edit sits last (rightmost) per the convention shared by every other entity.
+		// It opens the daemon management modal, which is also where the daemon's 1:1
+		// key is managed — and where a legacy daemon can be given one.
+		actions.push({ label: common_edit(), icon: Edit, onClick: () => handleEditDaemon(daemon) });
+
+		return actions;
 	}
 
 	function handleEditDaemon(daemon: Daemon) {
@@ -211,7 +292,7 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					display: { primary: true, width: 220 }
+					display: { order: 0, primary: true, width: 220 }
 				},
 				network_id: {
 					label: common_network(),
@@ -221,9 +302,9 @@
 					groupable: true,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
-					display: { getItems: (item) => networkItems(item.network_id, networksData) }
+					display: { order: 3, getItems: (item) => networkItems(item.network_id, networksData) }
 				},
-				last_seen: { label: daemons_lastSeen(), type: 'date' },
+				last_seen: { label: daemons_lastSeen(), type: 'date', display: { order: 2 } },
 				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
 				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 			},
@@ -243,6 +324,7 @@
 						daemonHosts.find((h) => h.id === daemon.host_id)?.name ??
 						common_unknownEntity({ entity: common_host() }),
 					display: {
+						hiddenByDefault: true,
 						getItems: (daemon) => {
 							const host = daemonHosts.find((h) => h.id === daemon.host_id);
 							if (!host) return [];
@@ -271,6 +353,7 @@
 					groupable: true,
 					getValue: (daemon) => getDaemonStatusTag(daemon).label,
 					display: {
+						order: 1,
 						statusTag: true,
 						getItems: (daemon) => {
 							const tag = getDaemonStatusTag(daemon);
@@ -288,6 +371,7 @@
 					getValue: (daemon) =>
 						daemon.mode === 'server_poll' ? daemons_mode_serverPoll() : daemons_mode_daemonPoll(),
 					display: {
+						order: 5,
 						getItems: (daemon) => [
 							{
 								id: daemon.mode,
@@ -305,7 +389,8 @@
 					type: 'string',
 					searchable: true,
 					filterable: true,
-					getValue: (daemon) => daemon.version ?? ''
+					getValue: (daemon) => daemon.version ?? '',
+					display: { order: 4 }
 				},
 				{
 					key: 'interfaced_subnet_ids',
@@ -314,6 +399,7 @@
 					searchable: true,
 					getValue: (daemon) => interfacedSubnets(daemon).map((s) => s.name),
 					display: {
+						order: 6,
 						getItems: (daemon) =>
 							interfacedSubnets(daemon).map((subnet) => ({
 								id: subnet.id,
@@ -376,26 +462,14 @@
 			entityType={isReadOnly ? undefined : 'Daemon'}
 			getItemTags={getDaemonTags}
 			getItemId={(item) => item.id}
+			getIcon={() => ({
+				icon: entities.getIconComponent('Daemon'),
+				color: entities.getColorHelper('Daemon').icon
+			})}
 			onCsvExport={handleCsvExport}
 			getActions={daemonActions}
 			entityLabel={common_daemons()}
-		>
-			{#snippet children(
-				item: Daemon,
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void,
-				columns: EntityColumn<Daemon>[]
-			)}
-				<DaemonCard
-					daemon={item}
-					{columns}
-					onDelete={isReadOnly ? undefined : handleDeleteDaemon}
-					onEdit={isReadOnly ? undefined : handleEditDaemon}
-					selected={isSelected}
-					{onSelectionChange}
-				/>
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 
@@ -414,3 +488,7 @@
 	daemon={editingDaemon}
 	onClose={handleCloseDaemonEditor}
 />
+
+{#if upgradingDaemon}
+	<DaemonUpgradeModal isOpen={true} onClose={handleCloseUpgrade} daemon={upgradingDaemon} />
+{/if}

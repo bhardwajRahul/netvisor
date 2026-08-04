@@ -1,7 +1,7 @@
 <script lang="ts" generics="T">
 	import { Columns3Cog } from 'lucide-svelte';
 	import type { EntityColumn } from './columns';
-	import { common_columns, common_resetColumns } from '$lib/paraglide/messages';
+	import { common_fields, common_resetFields } from '$lib/paraglide/messages';
 
 	let {
 		columns,
@@ -38,7 +38,7 @@
 		class="btn-secondary h-[42px]"
 		aria-expanded={open}
 		aria-haspopup="true"
-		title={common_columns()}
+		title={common_fields()}
 	>
 		<Columns3Cog class="h-5 w-5" />
 	</button>
@@ -48,13 +48,13 @@
 			class="card absolute right-0 z-30 mt-1 max-h-72 w-56 overflow-y-auto !rounded-lg !p-3 shadow-lg"
 		>
 			<div class="mb-2 flex items-center justify-between">
-				<span class="text-primary text-sm font-semibold">{common_columns()}</span>
+				<span class="text-primary text-sm font-semibold">{common_fields()}</span>
 				<button
 					type="button"
 					onclick={onReset}
 					class="text-tertiary hover:text-secondary text-xs transition-colors"
 				>
-					{common_resetColumns()}
+					{common_resetFields()}
 				</button>
 			</div>
 			<div class="space-y-1.5">

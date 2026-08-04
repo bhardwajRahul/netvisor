@@ -1,5 +1,4 @@
 <script lang="ts">
-	import VlanCard from './VlanCard.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
@@ -7,7 +6,6 @@
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import { defineFields, entityRef } from '$lib/shared/components/data/types';
 	import { networkItems } from '$lib/features/networks/columns';
-	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
@@ -155,17 +153,12 @@
 			fields={vlanFields}
 			storageKey="scanopy-vlans-table-state"
 			getItemId={(item) => item.id}
+			getIcon={() => ({
+				icon: entities.getIconComponent('Vlan'),
+				color: entities.getColorHelper('Vlan').icon
+			})}
 			onCsvExport={handleCsvExport}
 			entityLabel={common_vlans()}
-		>
-			{#snippet children(
-				item: Vlan,
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void,
-				columns: EntityColumn<Vlan>[]
-			)}
-				<VlanCard vlan={item} {columns} selected={isSelected} {onSelectionChange} />
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
