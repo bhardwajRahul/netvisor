@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
 	import { Edit, Trash2 } from 'lucide-svelte';
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import type { Tag } from '../types/base';
@@ -7,24 +8,19 @@
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { permissions, concepts, billingPlans } from '$lib/shared/stores/metadata';
-	import {
-		common_color,
-		common_delete,
-		common_description,
-		common_edit,
-		common_no,
-		common_yes,
-		common_application
-	} from '$lib/paraglide/messages';
+	import { common_delete, common_edit } from '$lib/paraglide/messages';
 
 	let {
 		tag,
+		columns,
 		onEdit = () => {},
 		onDelete = () => {},
 		selected,
 		onSelectionChange = () => {}
 	}: {
 		tag: Tag;
+		/** The shared field definition, from the tab — the same list the table renders. */
+		columns: EntityColumn<Tag>[];
 		onEdit?: (tag: Tag) => void;
 		onDelete?: (tag: Tag) => void;
 		selected: boolean;
@@ -59,26 +55,6 @@
 		title: tag.name,
 		iconColor: appColor ?? colorHelper.icon,
 		Icon: appIcon ?? TagIcon,
-		fields: [
-			{
-				label: common_description(),
-				value: tag.description
-			},
-			{
-				label: common_color(),
-				value: [
-					{
-						id: 'color',
-						label: tag.color.charAt(0).toUpperCase() + tag.color.slice(1),
-						color: tag.color
-					}
-				]
-			},
-			{
-				label: common_application(),
-				value: tag.is_application ? common_yes() : common_no()
-			}
-		],
 		actions: [
 			...(canManage
 				? [
@@ -99,4 +75,11 @@
 	});
 </script>
 
-<GenericCard {...cardData} {selected} {onSelectionChange} selectable={canManage} />
+<GenericCard
+	{...cardData}
+	{columns}
+	item={tag}
+	{selected}
+	{onSelectionChange}
+	selectable={canManage}
+/>

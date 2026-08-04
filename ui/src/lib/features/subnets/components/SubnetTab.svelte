@@ -10,6 +10,7 @@
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
+	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
 	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -275,10 +276,12 @@
 			{#snippet children(
 				item: Subnet,
 				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
+				onSelectionChange: (selected: boolean) => void,
+				columns: EntityColumn<Subnet>[]
 			)}
 				<SubnetCard
 					subnet={item}
+					{columns}
 					selected={isSelected}
 					{onSelectionChange}
 					onEdit={isReadOnly ? undefined : handleEditSubnet}

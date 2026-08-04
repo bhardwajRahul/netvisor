@@ -4,27 +4,20 @@
 	import { subnetTypes } from '$lib/shared/stores/metadata';
 	import { isContainerSubnet } from '../queries';
 	import type { Subnet } from '../types/base';
-	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
-	import { formatRelativeTime } from '$lib/shared/utils/formatting';
-	import {
-		common_delete,
-		common_description,
-		common_edit,
-		common_lastSeen,
-		common_never,
-		common_noTypeSpecified,
-		common_tags,
-		subnets_subnetType
-	} from '$lib/paraglide/messages';
+	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
+	import { common_delete, common_edit } from '$lib/paraglide/messages';
 
 	let {
 		subnet,
+		columns,
 		onEdit,
 		onDelete,
 		selected,
 		onSelectionChange = () => {}
 	}: {
 		subnet: Subnet;
+		/** The shared field definition, from the tab — the same list the table renders. */
+		columns: EntityColumn<Subnet>[];
 		onEdit?: (subnet: Subnet) => void;
 		onDelete?: (subnet: Subnet) => void;
 		selected: boolean;
@@ -37,29 +30,6 @@
 		subtitle: isContainerSubnet(subnet) ? '' : subnet.cidr,
 		iconColor: subnetTypes.getColorHelper(subnet.subnet_type).icon,
 		Icon: subnetTypes.getIconComponent(subnet.subnet_type),
-		fields: [
-			{
-				label: common_description(),
-				value: subnet.description
-			},
-			{
-				label: subnets_subnetType(),
-				value: [
-					{
-						id: 'type',
-						label: subnetTypes.getName(subnet.subnet_type),
-						color: subnetTypes.getColorString(subnet.subnet_type)
-					}
-				],
-				emptyText: common_noTypeSpecified()
-			},
-			{
-				label: common_lastSeen(),
-				value: subnet.last_seen_at ? formatRelativeTime(subnet.last_seen_at) : common_never()
-			},
-			{ label: common_tags(), snippet: tagsSnippet }
-		],
-
 		actions: [
 			...(onDelete
 				? [
@@ -84,11 +54,4 @@
 	});
 </script>
 
-{#snippet tagsSnippet()}
-	<div class="flex items-center gap-2">
-		<span class="text-secondary text-sm">{common_tags()}:</span>
-		<TagPickerInline selectedTagIds={subnet.tags} entityId={subnet.id} entityType="Subnet" />
-	</div>
-{/snippet}
-
-<GenericCard {...cardData} {selected} {onSelectionChange} />
+<GenericCard {...cardData} {columns} item={subnet} {selected} {onSelectionChange} />

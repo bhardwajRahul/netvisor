@@ -7,6 +7,7 @@
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import { defineFields, entityRef } from '$lib/shared/components/data/types';
 	import { networkItems } from '$lib/features/networks/columns';
+	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
@@ -160,9 +161,10 @@
 			{#snippet children(
 				item: Vlan,
 				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
+				onSelectionChange: (selected: boolean) => void,
+				columns: EntityColumn<Vlan>[]
 			)}
-				<VlanCard vlan={item} subnets={getSubnets} selected={isSelected} {onSelectionChange} />
+				<VlanCard vlan={item} {columns} selected={isSelected} {onSelectionChange} />
 			{/snippet}
 		</DataControls>
 	{/if}
