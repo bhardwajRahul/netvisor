@@ -469,7 +469,7 @@ fn surviving_collection(
             host_data: committed,
             shortfall: None,
             result: Err(IntegrationFailure::collection_timed_out(format!(
-                "Integration timed out after {after:?}"
+                "timed out after {after:?} with nothing recorded"
             ))),
         },
     }
@@ -481,6 +481,12 @@ fn surviving_collection(
 /// the human-readable warning cannot disagree — they used to be populated independently by hand,
 /// and an integration could mark data incomplete while telling the operator nothing, or the
 /// reverse.
+///
+/// Says **recorded**, not "read": a shortfall means the collection stopped at a coherent boundary
+/// and what it got was kept. The hard-cap message is the one that reports nothing landing. Both
+/// share [`AttemptOutcome::CollectionTimedOut`]'s advice, so the advice stays silent on what was
+/// persisted and each message states its own outcome — otherwise a partial scan reads
+/// "this host's data was not recorded (read 27 of 32 containers)", which contradicts itself.
 async fn report_shortfall(ctx: &IntegrationContext<'_>, shortfall: &CollectionShortfall) {
     ctx.ops
         .record_attempt_failure(
@@ -488,7 +494,7 @@ async fn report_shortfall(ctx: &IntegrationContext<'_>, shortfall: &CollectionSh
             ctx.ip,
             AttemptOutcome::CollectionTimedOut,
             format!(
-                "read {} of {} {} before the time limit",
+                "recorded {} of {} {} before the time limit; the rest were not read",
                 shortfall.collected, shortfall.expected, shortfall.what
             ),
             true,
