@@ -22,9 +22,9 @@ type RowOrderField = 'name' | 'network_id' | 'created_at';
 function fields(): FieldConfig<Row, RowOrderField>[] {
 	return defineFields<Row, RowOrderField>(
 		{
-			name: { label: 'Name', type: 'string', column: { primary: true, width: 240 } },
+			name: { label: 'Name', type: 'string', display: { primary: true, width: 240 } },
 			network_id: { label: 'Network', type: 'string' },
-			created_at: { label: 'Created', type: 'date', column: { hiddenByDefault: true } }
+			created_at: { label: 'Created', type: 'date', display: { hiddenByDefault: true } }
 		},
 		[
 			{ key: 'description', label: 'Description', type: 'string' },
@@ -33,7 +33,7 @@ function fields(): FieldConfig<Row, RowOrderField>[] {
 			// field stays a filter/search input and never becomes a column here.
 			{ key: 'tags', label: 'Tags', type: 'array', filterable: true },
 			// Filter-only: drives a filter, has no value worth a column.
-			{ key: 'port', label: 'Port', type: 'string', filterable: true, column: { hidden: true } }
+			{ key: 'port', label: 'Port', type: 'string', filterable: true, display: { hidden: true } }
 		]
 	);
 }

@@ -1,41 +1,24 @@
 <script lang="ts">
 	import { Edit, Trash2 } from 'lucide-svelte';
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
-	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 	import type { Credential } from '../types/base';
-	import { getCredentialTypeId, getTargetTagProps } from '../types/base';
-	import { entities } from '$lib/shared/stores/metadata';
-	import { credentialTypes } from '$lib/shared/stores/metadata';
+	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
+	import { getCredentialTypeId } from '../types/base';
+	import { credentialTypes, permissions } from '$lib/shared/stores/metadata';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
-	import { entityRef } from '$lib/shared/components/data/types';
-	import type { Color } from '$lib/shared/utils/styling';
-	import type { CardFieldItem } from '$lib/shared/components/data/types';
-	import { permissions } from '$lib/shared/stores/metadata';
-	import type { Network } from '$lib/features/networks/types';
-	import type { Host } from '$lib/features/hosts/types/base';
-	import {
-		common_delete,
-		common_edit,
-		common_hosts,
-		common_networks,
-		common_notAssigned,
-		common_scope,
-		common_tags,
-		common_notApplicable
-	} from '$lib/paraglide/messages';
+	import { common_delete, common_edit } from '$lib/paraglide/messages';
 
 	let {
 		credential,
-		assignedNetworks = [],
-		assignedHosts = [],
+		columns,
 		onEdit = () => {},
 		onDelete = () => {},
 		selected,
 		onSelectionChange = () => {}
 	}: {
 		credential: Credential;
-		assignedNetworks?: Network[];
-		assignedHosts?: Host[];
+		/** The shared field definition, from the tab — the same list the table renders. */
+		columns: EntityColumn<Credential>[];
 		onEdit?: (credential: Credential) => void;
 		onDelete?: (credential: Credential) => void;
 		selected: boolean;
@@ -46,7 +29,6 @@
 	let currentUser = $derived(currentUserQuery.data);
 
 	let typeId = $derived(getCredentialTypeId(credential));
-	let targets = $derived(credentialTypes.getMetadata(typeId)?.targets ?? []);
 
 	let canManage = $derived(
 		(currentUser && permissions.getMetadata(currentUser.permissions).manage_org_entities) || false
@@ -56,58 +38,6 @@
 		title: credential.name,
 		iconColor: credentialTypes.getColorHelper(typeId).icon,
 		Icon: credentialTypes.getIconComponent(typeId),
-		fields: [
-			{
-				label: 'Type',
-				value: [
-					{
-						id: 'type',
-						label: credentialTypes.getName(typeId),
-						color: credentialTypes.getColorHelper(typeId).color
-					}
-				]
-			},
-			{
-				label: common_scope(),
-				value: targets.map((t) => {
-					const props = getTargetTagProps(t);
-					return { id: t, ...props } as CardFieldItem;
-				})
-			},
-			{
-				label: common_networks(),
-				value: targets.includes('Network')
-					? assignedNetworks.length > 0
-						? assignedNetworks.map((n) => ({
-								id: n.id,
-								label: n.name,
-								color: entities.getColorHelper('Network').color as Color,
-								entityRef: entityRef('Network', n.id, n)
-							}))
-						: common_notAssigned()
-					: common_notApplicable()
-			},
-			{
-				label: common_hosts(),
-				// DaemonHost-only creds (e.g. Docker/Podman sockets) are assigned to their daemon
-				// host via the same junction, so surface those assignments here too.
-				value:
-					targets.includes('Hosts') || targets.includes('DaemonHost')
-						? assignedHosts.length > 0
-							? assignedHosts.map((h) => ({
-									id: h.id,
-									label: h.name ?? h.id,
-									color: entities.getColorHelper('Host').color as Color,
-									entityRef: entityRef('Host', h.id, h)
-								}))
-							: common_notAssigned()
-						: common_notApplicable()
-			},
-			{
-				label: common_tags(),
-				snippet: tagsSnippet
-			}
-		],
 		actions: [
 			...(canManage
 				? [
@@ -128,15 +58,11 @@
 	});
 </script>
 
-{#snippet tagsSnippet()}
-	<div class="flex items-center gap-2">
-		<span class="text-secondary text-sm">{common_tags()}:</span>
-		<TagPickerInline
-			selectedTagIds={credential.tags}
-			entityId={credential.id}
-			entityType="Credential"
-		/>
-	</div>
-{/snippet}
-
-<GenericCard {...cardData} {selected} {onSelectionChange} selectable={canManage} />
+<GenericCard
+	{...cardData}
+	{columns}
+	item={credential}
+	{selected}
+	{onSelectionChange}
+	selectable={canManage}
+/>

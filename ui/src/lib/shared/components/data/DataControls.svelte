@@ -130,10 +130,13 @@
 		entityType?: EntityDiscriminants | null;
 		getItemTags?: ((item: T) => string[]) | null;
 		/**
-		 * Renders one row as a card. Only invoked in card mode — table mode builds
-		 * its cells from `fields`, so the snippet no longer receives a view mode.
+		 * Renders one row as a card. Only invoked in card mode.
+		 *
+		 * Receives the same visible columns the table renders, so a card that
+		 * forwards them shows exactly the fields the table does, honouring the
+		 * same visibility choices. Cards not yet migrated can ignore the argument.
 		 */
-		children: Snippet<[T, boolean, (selected: boolean) => void]>;
+		children: Snippet<[T, boolean, (selected: boolean) => void, EntityColumn<T>[]]>;
 		getItemId: (item: T) => string;
 		// Server-side pagination: when provided, pagination is server-controlled
 		// Callback receives both page and pageSize so parent can use in query
@@ -800,7 +803,7 @@
 				type: 'array',
 				getValue: (item: T) => resolve(item)
 			},
-			column: { cell: tagsCell },
+			display: { cell: tagsCell },
 			sortable: false,
 			align: 'left',
 			primary: false
@@ -1195,7 +1198,12 @@
 {#snippet cardFor(item: T)}
 	{@const itemId = getItemId(item)}
 	{@const isSelected = selectedIds.has(itemId)}
-	{@render children(item, isSelected, (selected) => setRowSelected(itemId, selected))}
+	{@render children(
+		item,
+		isSelected,
+		(selected) => setRowSelected(itemId, selected),
+		renderedColumns
+	)}
 {/snippet}
 
 {#snippet tableFor(rows: T[], caption: string)}

@@ -3,22 +3,27 @@ import { entities } from '$lib/shared/stores/metadata';
 import type { Network } from './types';
 
 /**
- * A network as a single navigable chip.
+ * Networks as navigable chips.
  *
- * Entities store a `network_id`, and four tabs surface it as a column. Building
- * the chip here keeps the colour and the entity link identical across all of
- * them, and matches what the cards already render.
+ * Takes one id or many, because entities reference a network either way
+ * (`network_id` on most, `network_ids` on user API keys). Building the chip
+ * here keeps the colour and the entity link identical wherever a network
+ * appears, and matches what the cards already render.
  */
-export function networkItems(networkId: string, networks: Network[]): CardFieldItem[] {
-	const network = networks.find((n) => n.id === networkId);
-	if (!network) return [];
+export function networkItems(
+	networkIds: string | string[] | null | undefined,
+	networks: Network[]
+): CardFieldItem[] {
+	if (!networkIds) return [];
+	const ids = Array.isArray(networkIds) ? networkIds : [networkIds];
 
-	return [
-		{
+	return ids
+		.map((id) => networks.find((n) => n.id === id))
+		.filter((network): network is Network => Boolean(network))
+		.map((network) => ({
 			id: network.id,
 			label: network.name,
 			color: entities.getColorHelper('Network').color,
 			entityRef: entityRef('Network', network.id, network)
-		}
-	];
+		}));
 }

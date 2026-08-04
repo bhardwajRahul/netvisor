@@ -14,11 +14,23 @@
 	import type { Credential } from '../types/base';
 	import type { CredentialOrderField } from '../types/base';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
+	import {
+		defineFields,
+		entityRef,
+		type CardAction,
+		type CardFieldItem
+	} from '$lib/shared/components/data/types';
+	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
+	import type { Network } from '$lib/features/networks/types';
 	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { permissions, credentialTypes, billingPlans } from '$lib/shared/stores/metadata';
+	import {
+		permissions,
+		credentialTypes,
+		billingPlans,
+		entities
+	} from '$lib/shared/stores/metadata';
 	import { getCredentialTypeId, getTargetTagProps } from '$lib/features/credentials/types/base';
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
 	import type { TabProps } from '$lib/shared/types';
@@ -41,6 +53,9 @@
 		credentials_emptySubtitle,
 		credentials_subtitle,
 		common_credentials,
+		common_hosts,
+		common_networks,
+		common_notApplicable,
 		common_noEntityYet,
 		common_scope
 	} from '$lib/paraglide/messages';
@@ -105,6 +120,34 @@
 	function hostsForCredential(credential: Credential): Host[] {
 		const ids = new Set((credential.host_assignments ?? []).map((a) => a.host_id));
 		return assignedHostsData.filter((h) => ids.has(h.id));
+	}
+
+	function networksForCredential(credential: Credential): Network[] {
+		return networksData.filter((n) => (n.credential_ids ?? []).includes(credential.id));
+	}
+
+	/** The scopes a credential's type can target at all. */
+	function targetsFor(credential: Credential): string[] {
+		return credentialTypes.getMetadata(getCredentialTypeId(credential))?.targets ?? [];
+	}
+
+	/** Reaches a host only as some daemon's host, never hosts in general. */
+	function daemonHostOnly(credential: Credential): boolean {
+		const targets = targetsFor(credential);
+		return targets.includes('DaemonHost') && !targets.includes('Hosts');
+	}
+
+	/**
+	 * "Not applicable" is not the same as "none assigned".
+	 *
+	 * A Docker socket credential cannot target networks at all, which is a
+	 * different statement from a SNMP credential that targets networks and
+	 * happens to have none. The card drew that distinction and the table should
+	 * too, so an out-of-scope assignment column says so rather than sitting empty.
+	 */
+	function assignmentItems(applicable: boolean, items: CardFieldItem[]): CardFieldItem[] {
+		if (applicable) return items;
+		return [{ id: 'not-applicable', label: common_notApplicable(), color: 'Gray' }];
 	}
 	let isLoading = $derived(credentialsQuery.isLoading);
 
@@ -231,10 +274,10 @@
 				type: 'string',
 				searchable: true,
 				groupable: false,
-				column: { primary: true, width: 220 }
+				display: { primary: true, width: 220 }
 			},
-			created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
-			updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } }
+			created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+			updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 		},
 		[
 			{
@@ -249,7 +292,7 @@
 				filterMode: 'include',
 				filterOptions: credentialTypes.getItems().map((t) => t.name ?? t.id),
 				getValue: (item: Credential) => credentialTypes.getName(getCredentialTypeId(item)),
-				column: {
+				display: {
 					getItems: (item: Credential) => {
 						const typeId = getCredentialTypeId(item);
 						return [
@@ -261,6 +304,52 @@
 							}
 						];
 					}
+				}
+			},
+			{
+				// Assignments were card-only, so the credentials table could not show
+				// what a credential actually applies to.
+				key: 'assigned_networks',
+				label: common_networks(),
+				type: 'array',
+				searchable: true,
+				getValue: (item: Credential) => networksForCredential(item).map((n) => n.name),
+				display: {
+					getItems: (item: Credential) =>
+						assignmentItems(
+							targetsFor(item).includes('Network'),
+							networksForCredential(item).map((network) => ({
+								id: network.id,
+								label: network.name,
+								color: entities.getColorHelper('Network').color,
+								entityRef: entityRef('Network', network.id, network)
+							}))
+						)
+				}
+			},
+			{
+				key: 'assigned_hosts',
+				label: common_hosts(),
+				type: 'array',
+				searchable: true,
+				getValue: (item: Credential) => hostsForCredential(item).map((h) => h.name ?? h.id),
+				display: {
+					getItems: (item: Credential) =>
+						assignmentItems(
+							// DaemonHost-only credentials (Docker/Podman sockets) are
+							// assigned to their daemon's host through the same junction.
+							targetsFor(item).some((t) => t === 'Hosts' || t === 'DaemonHost'),
+							hostsForCredential(item).map((host) => ({
+								id: host.id,
+								label: host.name ?? host.id,
+								// A daemon-host credential reaches that host *through* its
+								// daemon, so it reads as a daemon relationship rather than a
+								// host one. Only credentials that target hosts generally get
+								// the host colour.
+								color: entities.getColorHelper(daemonHostOnly(item) ? 'Daemon' : 'Host').color,
+								entityRef: entityRef('Host', host.id, host)
+							}))
+						)
 				}
 			},
 			{
@@ -277,7 +366,7 @@
 					const meta = credentialTypes.getMetadata(typeId);
 					return meta?.targets ?? [];
 				},
-				column: {
+				display: {
 					// Same chip props the card uses, so a scope reads identically in
 					// both views rather than falling back to undifferentiated grey.
 					getItems: (item: Credential) => {
@@ -330,12 +419,12 @@
 			{#snippet children(
 				item: Credential,
 				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
+				onSelectionChange: (selected: boolean) => void,
+				columns: EntityColumn<Credential>[]
 			)}
 				<CredentialCard
 					credential={item}
-					assignedNetworks={networksData.filter((n) => (n.credential_ids ?? []).includes(item.id))}
-					assignedHosts={hostsForCredential(item)}
+					{columns}
 					selected={isSelected}
 					{onSelectionChange}
 					onEdit={handleEditCredential}

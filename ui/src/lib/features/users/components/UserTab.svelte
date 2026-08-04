@@ -156,7 +156,7 @@
 			getValue(item) {
 				return isUser(item) ? item.data.permissions : '';
 			},
-			column: {
+			display: {
 				getItems: (item) => {
 					if (!isUser(item)) return [];
 					const role = item.data.permissions;

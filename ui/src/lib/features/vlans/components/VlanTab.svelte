@@ -5,7 +5,10 @@
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
+	import { defineFields, entityRef } from '$lib/shared/components/data/types';
+	import { networkItems } from '$lib/features/networks/columns';
+	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
+	import { entities } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
@@ -84,10 +87,10 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					column: { primary: true, width: 220 }
+					display: { primary: true, width: 220 }
 				},
-				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
-				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } }
+				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 			},
 			[
 				{ key: 'description', label: common_description(), type: 'string', searchable: true },
@@ -99,7 +102,8 @@
 					filterable: true,
 					groupable: true,
 					getValue: (item) =>
-						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
+						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
+					display: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				{
 					key: 'subnet_ids',
@@ -107,7 +111,16 @@
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: getSubnetNames
+					getValue: getSubnetNames,
+					display: {
+						getItems: (vlan) =>
+							getSubnets(vlan).map((subnet) => ({
+								id: subnet.id,
+								label: subnet.name,
+								color: entities.getColorHelper('Subnet').color,
+								entityRef: entityRef('Subnet', subnet.id, subnet)
+							}))
+					}
 				},
 				{
 					// Not in VlanOrderField, so display-only with client-side sorting.
@@ -148,9 +161,10 @@
 			{#snippet children(
 				item: Vlan,
 				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
+				onSelectionChange: (selected: boolean) => void,
+				columns: EntityColumn<Vlan>[]
 			)}
-				<VlanCard vlan={item} subnets={getSubnets} selected={isSelected} {onSelectionChange} />
+				<VlanCard vlan={item} {columns} selected={isSelected} {onSelectionChange} />
 			{/snippet}
 		</DataControls>
 	{/if}

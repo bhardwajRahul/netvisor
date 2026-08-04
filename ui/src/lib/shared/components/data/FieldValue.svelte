@@ -1,9 +1,9 @@
 <script lang="ts" generics="T">
-	import Tag from '../Tag.svelte';
-	import EntityTag from '../EntityTag.svelte';
-	import { MAX_ITEMS_IN_CELL, type CardFieldItem } from '../types';
-	import { getFieldValue } from '../controls/fieldValues';
-	import type { EntityColumn } from './columns';
+	import Tag from './Tag.svelte';
+	import EntityTag from './EntityTag.svelte';
+	import { MAX_ITEMS_IN_CELL, type CardFieldItem } from './types';
+	import { getFieldValue } from './controls/fieldValues';
+	import type { EntityColumn } from './table/columns';
 	import { common_moreItems, common_none } from '$lib/paraglide/messages';
 
 	let { item, column }: { item: T; column: EntityColumn<T> } = $props();
@@ -22,7 +22,7 @@
 	 * without every field having to opt in.
 	 */
 	let items = $derived<CardFieldItem[] | null>(
-		column.column.getItems?.(item) ??
+		column.display.getItems?.(item) ??
 			// Index-suffixed: repeated values are legitimate (two hosts can carry the
 			// same label) and a bare value as the key would collide in the {#each}.
 			(Array.isArray(value)
@@ -49,8 +49,8 @@
 	let text = $derived(items === null ? formatValue(value as Exclude<typeof value, string[]>) : '');
 </script>
 
-{#if column.column.cell}
-	{@render column.column.cell(item)}
+{#if column.display.cell}
+	{@render column.display.cell(item)}
 {:else if items !== null}
 	{#if items.length === 0}
 		<!-- An em dash on its own is read as "dash", or skipped entirely. -->

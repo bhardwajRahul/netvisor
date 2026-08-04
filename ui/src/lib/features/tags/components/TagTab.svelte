@@ -14,6 +14,7 @@
 	import type { Tag } from '../types/base';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
+	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
 	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -169,16 +170,31 @@
 				type: 'string',
 				searchable: true,
 				groupable: false,
-				column: { primary: true, width: 220 }
+				display: { primary: true, width: 220 }
 			},
-			color: { label: common_color(), type: 'string', searchable: true, filterable: true },
+			color: {
+				label: common_color(),
+				type: 'string',
+				searchable: true,
+				filterable: true,
+				// A colour name is worth showing in its own colour.
+				display: {
+					getItems: (tag) => [
+						{
+							id: tag.color,
+							label: tag.color.charAt(0).toUpperCase() + tag.color.slice(1),
+							color: tag.color
+						}
+					]
+				}
+			},
 			is_application: {
 				label: common_application(),
 				type: 'boolean',
 				filterable: true
 			},
-			created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
-			updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } }
+			created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+			updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 		},
 		[
 			{ key: 'description', label: common_description(), type: 'string', searchable: true },
@@ -234,10 +250,12 @@
 			{#snippet children(
 				item: Tag,
 				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
+				onSelectionChange: (selected: boolean) => void,
+				columns: EntityColumn<Tag>[]
 			)}
 				<TagCard
 					tag={item}
+					{columns}
 					selected={isSelected}
 					{onSelectionChange}
 					onEdit={handleEditTag}

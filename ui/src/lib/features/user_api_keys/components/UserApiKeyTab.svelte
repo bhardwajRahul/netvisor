@@ -3,6 +3,8 @@
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
+	import { networkItems } from '$lib/features/networks/columns';
+	import { permissions } from '$lib/shared/stores/metadata';
 	import type { FieldConfig } from '$lib/shared/components/data/types';
 	import { Plus } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
@@ -148,7 +150,20 @@
 			label: common_permissions(),
 			searchable: true,
 			filterable: true,
-			groupable: true
+			groupable: true,
+			display: {
+				getItems: (item) => {
+					const role = item.permissions;
+					if (!role) return [];
+					return [
+						{
+							id: role,
+							label: permissions.getName(role) || role,
+							color: permissions.getColorHelper(role).color
+						}
+					];
+				}
+			}
 		},
 		{
 			key: 'network_ids',
@@ -160,7 +175,8 @@
 				return ids
 					.map((id) => networksData.find((n) => n.id === id)?.name)
 					.filter((name): name is string => !!name);
-			}
+			},
+			display: { getItems: (item) => networkItems(item.network_ids, networksData) }
 		},
 		{
 			key: 'tags',

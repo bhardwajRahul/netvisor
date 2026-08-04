@@ -3,7 +3,7 @@
 	import { getCoreRowModel, type ColumnDef } from '@tanstack/table-core';
 	import { createSvelteTable } from './createSvelteTable.svelte';
 	import type { EntityColumn } from './columns';
-	import TableCell from './TableCell.svelte';
+	import FieldValue from '../FieldValue.svelte';
 	import { tooltip } from '$lib/shared/actions/tooltip';
 	import { getFieldValue } from '../controls/fieldValues';
 	import type { SortState } from '../controls/sorting';
@@ -218,7 +218,7 @@
 									scope="row"
 									class="text-primary max-w-xs px-3 py-2 text-left align-middle font-medium"
 								>
-									<TableCell {item} {column} />
+									<FieldValue {item} {column} />
 								</th>
 							{:else}
 								<td
@@ -226,7 +226,7 @@
 										? 'text-right'
 										: ''}"
 								>
-									<TableCell {item} {column} />
+									<FieldValue {item} {column} />
 								</td>
 							{/if}
 						{/if}

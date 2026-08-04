@@ -10,6 +10,7 @@
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
+	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
 	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -185,7 +186,7 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					column: { primary: true, width: 220 }
+					display: { primary: true, width: 220 }
 				},
 				cidr: { label: common_cidr(), type: 'string', searchable: true, groupable: false },
 				subnet_type: {
@@ -193,7 +194,7 @@
 					type: 'string',
 					searchable: true,
 					filterable: true,
-					column: {
+					display: {
 						getItems: (subnet) => [
 							{
 								id: subnet.subnet_type,
@@ -212,10 +213,10 @@
 					groupable: true,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
-					column: { getItems: (item) => networkItems(item.network_id, networksData) }
+					display: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
-				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
-				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } },
+				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } },
 				last_seen_at: { label: common_lastSeen(), type: 'date' }
 			},
 			[
@@ -275,10 +276,12 @@
 			{#snippet children(
 				item: Subnet,
 				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
+				onSelectionChange: (selected: boolean) => void,
+				columns: EntityColumn<Subnet>[]
 			)}
 				<SubnetCard
 					subnet={item}
+					{columns}
 					selected={isSelected}
 					{onSelectionChange}
 					onEdit={isReadOnly ? undefined : handleEditSubnet}
