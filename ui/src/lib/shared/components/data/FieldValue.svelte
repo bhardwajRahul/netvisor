@@ -3,6 +3,7 @@
 	import EntityTag from './EntityTag.svelte';
 	import { MAX_ITEMS_IN_CELL, type CardFieldItem } from './types';
 	import { getFieldValue } from './controls/fieldValues';
+	import { formatDateNumeric } from '$lib/shared/utils/formatting';
 	import type { EntityColumn } from './table/columns';
 	import { common_moreItems, common_none } from '$lib/paraglide/messages';
 
@@ -33,15 +34,12 @@
 	let visible = $derived(items === null ? [] : showAll ? items : items.slice(0, MAX_ITEMS_IN_CELL));
 	let overflow = $derived(items === null ? 0 : items.length - visible.length);
 
-	/** Dates arrive as ISO strings; render them in the viewer's locale. */
+	/** Dates arrive as ISO strings; render them compactly in the viewer's locale. */
 	function formatValue(raw: Exclude<ReturnType<typeof getFieldValue>, string[]>): string {
 		if (raw === null || raw === undefined || raw === '') return '';
-		if (raw instanceof Date) return raw.toLocaleString();
+		if (raw instanceof Date) return formatDateNumeric(raw);
 		if (typeof raw === 'boolean') return String(raw);
-		if (column.field.type === 'date') {
-			const parsed = new Date(raw);
-			return Number.isNaN(parsed.getTime()) ? raw : parsed.toLocaleString();
-		}
+		if (column.field.type === 'date') return formatDateNumeric(raw);
 		return raw;
 	}
 

@@ -57,7 +57,12 @@
 		services_notDiscovered,
 		services_subtitle
 	} from '$lib/paraglide/messages';
-	import { serviceDefinitions, ports as ports_metadata } from '$lib/shared/stores/metadata';
+	import {
+		serviceDefinitions,
+		serviceCategories as serviceCategoryMeta,
+		concepts,
+		ports as ports_metadata
+	} from '$lib/shared/stores/metadata';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
 
 	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
@@ -420,7 +425,16 @@
 						getItems: (item) => {
 							const category = serviceDefinitions.getCategory(item.service_definition);
 							if (!category) return [];
-							return [{ id: category, label: category }];
+							// Categories carry their own colour in the metadata fixture, so
+							// use it rather than rendering every category identically grey.
+							return [
+								{
+									id: category,
+									label: serviceCategoryMeta.getName(category) || category,
+									color: serviceCategoryMeta.getColorHelper(category).color,
+									icon: serviceCategoryMeta.getIconComponent(category)
+								}
+							];
 						}
 					}
 				},
@@ -432,7 +446,26 @@
 					filterable: true,
 					getValue: (item) =>
 						servicesData.find((s) => s.id == item.virtualization?.details.service_id)?.name ||
-						services_notContainerized()
+						services_notContainerized(),
+					display: {
+						// No chip when a service isn't containerized, so the cell shows an
+						// em dash rather than repeating the phrase down the column. The
+						// phrase stays in `getValue`, so the filter still offers it.
+						getItems: (item) => {
+							const runtime = servicesData.find(
+								(s) => s.id == item.virtualization?.details.service_id
+							);
+							if (!runtime) return [];
+							return [
+								{
+									id: runtime.id,
+									label: runtime.name,
+									color: concepts.getColorHelper('Containerization').color,
+									entityRef: entityRef('Service', runtime.id, runtime)
+								}
+							];
+						}
+					}
 				},
 				{
 					key: 'confidence',

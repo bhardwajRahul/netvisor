@@ -10,8 +10,6 @@
 		common_update,
 		daemons_retryConnection
 	} from '$lib/paraglide/messages';
-	import { getDaemonStatusTag } from '$lib/features/daemons/utils';
-	import type { TagProps } from '$lib/shared/components/data/types';
 	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
 	import DaemonUpgradeModal from './DaemonUpgradeModal.svelte';
 	import { modalState, openModal, closeModal } from '$lib/shared/stores/modal-registry';
@@ -63,8 +61,6 @@
 		onSelectionChange?: (selected: boolean) => void;
 	} = $props();
 
-	let status: TagProps = $derived(getDaemonStatusTag(daemon));
-
 	let hasUpdateAvailable = $derived(
 		daemon.version_status.status === 'Outdated' ||
 			daemon.version_status.status === 'Deprecated' ||
@@ -97,7 +93,6 @@
 		title: daemon.name,
 		iconColor: entities.getColorHelper('Daemon').icon,
 		Icon: entities.getIconComponent('Daemon'),
-		status,
 		actions: [
 			...(onDelete
 				? [

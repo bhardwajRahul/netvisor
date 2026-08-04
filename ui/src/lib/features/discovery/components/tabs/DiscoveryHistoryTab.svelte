@@ -26,13 +26,20 @@
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import { modalState, openModal, closeModal } from '$lib/shared/stores/modal-registry';
 	import { Info } from 'lucide-svelte';
+	import { daemonItems } from '$lib/features/daemons/columns';
+	import { networkItems } from '$lib/features/networks/columns';
+	import { toColor, type Color } from '$lib/shared/utils/styling';
 	import type { CardAction } from '$lib/shared/components/data/types';
 	import {
 		common_created,
 		common_daemon,
 		common_details,
 		common_duration,
+		common_cancelled,
+		common_failed,
 		common_name,
+		common_status,
+		common_warnings,
 		common_network,
 		common_type,
 		common_unknown,
@@ -187,6 +194,33 @@
 		await downloadCsv('Discovery', {});
 	}
 
+	/**
+	 * How a run ended, as a tag.
+	 *
+	 * A clean completion has nothing to say, so it returns null and the column
+	 * renders empty — the point is that failures, cancellations and warnings
+	 * stand out. Same rule the card's header tag uses.
+	 */
+	function outcomeTag(discovery: Discovery): { label: string; color: Color } | null {
+		const results = discovery.run_type.type === 'Historical' ? discovery.run_type.results : null;
+		const phase = results?.phase ?? null;
+		if (!phase) return null;
+
+		switch (phase) {
+			case 'Complete':
+				return results?.warnings && results.warnings.length > 0
+					? { label: common_warnings(), color: toColor('yellow') }
+					: null;
+			case 'Failed':
+				return { label: common_failed(), color: toColor('red') };
+			case 'Cancelled':
+				return { label: common_cancelled(), color: toColor('yellow') };
+			default:
+				// Still running, so worth showing — the phase names its stage.
+				return { label: phase, color: toColor('blue') };
+		}
+	}
+
 	/** Row actions for table mode, matching what the card offers. */
 	function discoveryActions(discovery: Discovery): CardAction[] {
 		return [{ label: common_details(), icon: Info, onClick: () => handleEditDiscovery(discovery) }];
@@ -207,7 +241,8 @@
 					getGroupValue: (item) => item.daemon_id,
 					getValue: (item) =>
 						daemonsData.find((d) => d.id === item.daemon_id)?.name ??
-						common_unknownEntity({ entity: common_daemon() })
+						common_unknownEntity({ entity: common_daemon() }),
+					display: { getItems: (item) => daemonItems(item.daemon_id, daemonsData) }
 				},
 				network_id: {
 					label: common_network(),
@@ -217,7 +252,8 @@
 					groupable: true,
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
-						networksData.find((n) => n.id === item.network_id)?.name ?? common_unknownNetwork()
+						networksData.find((n) => n.id === item.network_id)?.name ?? common_unknownNetwork(),
+					display: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				discovery_type: {
 					label: common_type(),
@@ -231,6 +267,25 @@
 				updated_at: { label: common_updated(), type: 'date' }
 			},
 			[
+				{
+					// The run's outcome, which the card shows as its header tag. It was
+					// card-only, so a failed or cancelled run looked identical to a
+					// clean one in the table.
+					key: 'outcome',
+					label: common_status(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					getValue: (item) => outcomeTag(item)?.label ?? '',
+					display: {
+						statusTag: true,
+						getItems: (item) => {
+							const tag = outcomeTag(item);
+							return tag ? [{ id: tag.label, label: tag.label, color: tag.color }] : [];
+						}
+					}
+				},
 				// Derived from the run's JSONB results, so these are display-only:
 				// there is no column to sort or group on.
 				{

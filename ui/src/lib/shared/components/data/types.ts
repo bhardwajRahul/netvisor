@@ -116,6 +116,15 @@ export interface DisplayConfig<T> {
 	width?: number;
 	/** Row identity: pinned left, carries the checkbox, renders as `<th scope="row">`. */
 	primary?: boolean;
+	/**
+	 * This field is the row's status, so the card renders it as the tag beside
+	 * the title instead of as another labelled row.
+	 *
+	 * Marking it rather than letting the card compute its own is what stops the
+	 * two views disagreeing: a card that derived its own status tag showed
+	 * "Healthy" where the table's separate computation said "Active".
+	 */
+	statusTag?: boolean;
 }
 
 /**

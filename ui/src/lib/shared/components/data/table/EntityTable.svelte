@@ -124,7 +124,7 @@
 		<thead>
 			<tr>
 				{#if selectable}
-					<th scope="col" class="sticky left-0 z-10 w-10 bg-[var(--color-bg-body)] px-3 py-2">
+					<th scope="col" class="w-10 px-3 py-2">
 						<input
 							type="checkbox"
 							checked={allSelected}
@@ -176,10 +176,15 @@
 				{/each}
 
 				{#if getActions}
-					<th
-						scope="col"
-						class="text-secondary sticky right-0 z-10 bg-[var(--color-bg-body)] px-3 py-2 text-right text-xs font-medium"
-					>
+					<!--
+						Not sticky. Only the header was pinned while its cells were not, so
+						on a wide table the last column's header scrolled underneath this
+						one's opaque background and read as a missing header, while its
+						cells stayed visible. Pinning the whole column is a bigger change
+						than it looks — every cell needs the same background or content
+						shows through — so both scroll together instead.
+					-->
+					<th scope="col" class="text-secondary px-3 py-2 text-right text-xs font-medium">
 						{common_actions()}
 					</th>
 				{/if}
