@@ -151,7 +151,7 @@
 			searchable: true,
 			filterable: true,
 			groupable: true,
-			column: {
+			display: {
 				getItems: (item) => {
 					const role = item.permissions;
 					if (!role) return [];
@@ -176,7 +176,7 @@
 					.map((id) => networksData.find((n) => n.id === id)?.name)
 					.filter((name): name is string => !!name);
 			},
-			column: { getItems: (item) => networkItems(item.network_ids, networksData) }
+			display: { getItems: (item) => networkItems(item.network_ids, networksData) }
 		},
 		{
 			key: 'tags',

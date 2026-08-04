@@ -231,10 +231,10 @@
 				type: 'string',
 				searchable: true,
 				groupable: false,
-				column: { primary: true, width: 220 }
+				display: { primary: true, width: 220 }
 			},
-			created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
-			updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } }
+			created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+			updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 		},
 		[
 			{
@@ -249,7 +249,7 @@
 				filterMode: 'include',
 				filterOptions: credentialTypes.getItems().map((t) => t.name ?? t.id),
 				getValue: (item: Credential) => credentialTypes.getName(getCredentialTypeId(item)),
-				column: {
+				display: {
 					getItems: (item: Credential) => {
 						const typeId = getCredentialTypeId(item);
 						return [
@@ -277,7 +277,7 @@
 					const meta = credentialTypes.getMetadata(typeId);
 					return meta?.targets ?? [];
 				},
-				column: {
+				display: {
 					// Same chip props the card uses, so a scope reads identically in
 					// both views rather than falling back to undifferentiated grey.
 					getItems: (item: Credential) => {

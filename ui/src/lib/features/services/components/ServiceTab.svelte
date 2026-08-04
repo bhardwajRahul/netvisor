@@ -331,7 +331,7 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					column: { primary: true, width: 220 }
+					display: { primary: true, width: 220 }
 				},
 				host: {
 					label: common_host(),
@@ -344,7 +344,7 @@
 					getGroupValue: (service) => serviceHosts.get(service.id)?.name ?? '',
 					getValue: (service) =>
 						serviceHosts.get(service.id)?.name || common_unknownEntity({ entity: common_host() }),
-					column: {
+					display: {
 						getItems: (service) => {
 							const host = serviceHosts.get(service.id);
 							if (!host) return [];
@@ -369,14 +369,14 @@
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
-					column: { getItems: (item) => networkItems(item.network_id, networksData) }
+					display: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				// Per-service ordinal, so grouping by it is one header per service.
 				position: {
 					label: common_position(),
 					type: 'string',
 					groupable: false,
-					column: { hiddenByDefault: true, align: 'right' }
+					display: { hiddenByDefault: true, align: 'right' }
 				},
 				service_definition: {
 					label: common_type(),
@@ -388,7 +388,7 @@
 					// friendly name, so the group key has to be supplied separately.
 					getGroupValue: (service) => service.service_definition,
 					getValue: (service) => serviceDefinitions.getName(service.service_definition),
-					column: {
+					display: {
 						getItems: (service) => [
 							{
 								id: service.service_definition,
@@ -399,8 +399,8 @@
 						]
 					}
 				},
-				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
-				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } },
+				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } },
 				last_seen_at: { label: common_lastSeen(), type: 'date' }
 			},
 			[
@@ -416,7 +416,7 @@
 					filterDefaults: ['OpenPorts'],
 					getValue: (item) =>
 						serviceDefinitions.getCategory(item.service_definition) || common_unknown(),
-					column: {
+					display: {
 						getItems: (item) => {
 							const category = serviceDefinitions.getCategory(item.service_definition);
 							if (!category) return [];
@@ -440,7 +440,7 @@
 					type: 'string',
 					searchable: true,
 					filterable: true,
-					column: { hiddenByDefault: true },
+					display: { hiddenByDefault: true },
 					getValue: (item) =>
 						item.source.type == 'DiscoveryWithMatch'
 							? matchConfidenceLabel(item.source.details.confidence)
@@ -455,7 +455,7 @@
 					filterOptions: wellKnownPortNumbers,
 					// Drives the port filter only: it has no `getValue`, so as a column
 					// it would render an empty cell on every row.
-					column: { hidden: true }
+					display: { hidden: true }
 				},
 				{
 					key: 'tags',

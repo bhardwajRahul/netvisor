@@ -169,7 +169,7 @@
 				type: 'string',
 				searchable: true,
 				groupable: false,
-				column: { primary: true, width: 220 }
+				display: { primary: true, width: 220 }
 			},
 			color: { label: common_color(), type: 'string', searchable: true, filterable: true },
 			is_application: {
@@ -177,8 +177,8 @@
 				type: 'boolean',
 				filterable: true
 			},
-			created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
-			updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } }
+			created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+			updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 		},
 		[
 			{ key: 'description', label: common_description(), type: 'string', searchable: true },

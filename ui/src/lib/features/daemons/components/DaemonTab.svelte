@@ -194,7 +194,7 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					column: { primary: true, width: 220 }
+					display: { primary: true, width: 220 }
 				},
 				network_id: {
 					label: common_network(),
@@ -204,11 +204,11 @@
 					groupable: true,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
-					column: { getItems: (item) => networkItems(item.network_id, networksData) }
+					display: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				last_seen: { label: daemons_lastSeen(), type: 'date' },
-				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
-				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } }
+				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 			},
 			[
 				{
@@ -227,7 +227,7 @@
 							: daemon.standby
 								? common_standby()
 								: common_active(),
-					column: {
+					display: {
 						// Colour carries the meaning here: scanning a column of grey text
 						// for the word "Unreachable" is exactly what a table is bad at.
 						getItems: (daemon) => [
@@ -248,7 +248,7 @@
 					groupable: true,
 					getValue: (daemon) =>
 						daemon.mode === 'server_poll' ? daemons_mode_serverPoll() : daemons_mode_daemonPoll(),
-					column: {
+					display: {
 						getItems: (daemon) => [
 							{
 								id: daemon.mode,

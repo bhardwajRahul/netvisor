@@ -86,10 +86,10 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					column: { primary: true, width: 220 }
+					display: { primary: true, width: 220 }
 				},
-				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
-				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } }
+				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 			},
 			[
 				{ key: 'description', label: common_description(), type: 'string', searchable: true },
@@ -102,7 +102,7 @@
 					groupable: true,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
-					column: { getItems: (item) => networkItems(item.network_id, networksData) }
+					display: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				{
 					key: 'subnet_ids',
@@ -111,7 +111,7 @@
 					searchable: true,
 					filterable: true,
 					getValue: getSubnetNames,
-					column: {
+					display: {
 						getItems: (vlan) =>
 							getSubnets(vlan).map((subnet) => ({
 								id: subnet.id,

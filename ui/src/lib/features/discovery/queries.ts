@@ -422,7 +422,7 @@ export const discoveryFields = (
 		getValue: (item: Discovery) =>
 			daemons.find((d) => d.id == item.daemon_id)?.name ??
 			m.common_unknownEntity({ entity: m.common_daemon() }),
-		column: { getItems: (item: Discovery) => daemonItems(item.daemon_id, daemons) }
+		display: { getItems: (item: Discovery) => daemonItems(item.daemon_id, daemons) }
 	},
 	{
 		key: 'network_id',
@@ -433,7 +433,7 @@ export const discoveryFields = (
 		groupable: true,
 		getValue: (item: Discovery) =>
 			networks.find((n) => n.id === item.network_id)?.name ?? m.common_unknownNetwork(),
-		column: { getItems: (item: Discovery) => networkItems(item.network_id, networks) }
+		display: { getItems: (item: Discovery) => networkItems(item.network_id, networks) }
 	},
 	{
 		key: 'discovery_type',

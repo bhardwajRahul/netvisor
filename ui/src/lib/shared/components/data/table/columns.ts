@@ -2,7 +2,7 @@ import {
 	getFieldKey,
 	isDisplayField,
 	isOrderableField,
-	type ColumnConfig,
+	type DisplayConfig,
 	type FieldConfig
 } from '../types';
 
@@ -25,7 +25,7 @@ export interface EntityColumn<T> {
 	id: string;
 	label: string;
 	field: FieldConfig<T>;
-	column: ColumnConfig<T>;
+	display: DisplayConfig<T>;
 	/** Whether a header click can sort this column. */
 	sortable: boolean;
 	align: 'left' | 'right';
@@ -50,7 +50,7 @@ export interface ColumnState {
 /**
  * Turn field configs into columns.
  *
- * Fields marked `column.hidden` produce nothing — they exist only to drive a
+ * Fields marked `display.hidden` produce nothing — they exist only to drive a
  * filter (a port number, say) and have no value worth a column of its own.
  */
 export function fieldsToColumns<T>(fields: FieldConfig<T>[]): EntityColumn<T>[] {
@@ -58,20 +58,20 @@ export function fieldsToColumns<T>(fields: FieldConfig<T>[]): EntityColumn<T>[] 
 		fields
 			// A `tags` field still drives search and the filter panel, but the list
 			// renders tags itself as an editable column pinned after everything else.
-			.filter((field) => !field.column?.hidden && getFieldKey(field) !== TAG_COLUMN_ID)
+			.filter((field) => !field.display?.hidden && getFieldKey(field) !== TAG_COLUMN_ID)
 			.map((field) => {
-				const column = field.column ?? {};
+				const display = field.display ?? {};
 				return {
 					id: getFieldKey(field),
 					label: field.label,
 					field,
-					column,
+					display,
 					// Mirrors the sort dropdown's rule, so a header can never offer a sort
 					// the dropdown doesn't and vice versa.
 					sortable: isOrderableField(field) || (isDisplayField(field) && field.sortable === true),
-					align: column.align ?? 'left',
-					width: column.width,
-					primary: column.primary === true
+					align: display.align ?? 'left',
+					width: display.width,
+					primary: display.primary === true
 				};
 			})
 	);
@@ -81,7 +81,7 @@ export function fieldsToColumns<T>(fields: FieldConfig<T>[]): EntityColumn<T>[] 
 export function defaultColumnVisibility<T>(columns: EntityColumn<T>[]): Record<string, boolean> {
 	const visibility: Record<string, boolean> = {};
 	for (const column of columns) {
-		visibility[column.id] = column.column.hiddenByDefault !== true;
+		visibility[column.id] = column.display.hiddenByDefault !== true;
 	}
 	return visibility;
 }

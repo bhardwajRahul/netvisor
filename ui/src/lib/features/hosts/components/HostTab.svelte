@@ -252,7 +252,7 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					column: { primary: true, width: 220 }
+					display: { primary: true, width: 220 }
 				},
 				hostname: {
 					label: common_hostname(),
@@ -297,7 +297,7 @@
 							.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0];
 						return iface?.ip_address ?? '';
 					},
-					column: {
+					display: {
 						// The server orders on the primary address, but a host usually has
 						// several — showing only the first would misrepresent the row.
 						getItems: (host) =>
@@ -323,12 +323,12 @@
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
-					column: { getItems: (item) => networkItems(item.network_id, networksData) }
+					display: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				// Audit dates stay available but off by default: 12 columns at once
 				// is unreadable, and these are rarely what someone is scanning for.
-				created_at: { label: common_created(), type: 'date', column: { hiddenByDefault: true } },
-				updated_at: { label: common_updated(), type: 'date', column: { hiddenByDefault: true } },
+				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } },
 				last_seen_at: { label: common_lastSeen(), type: 'date' }
 			},
 			[
@@ -337,7 +337,7 @@
 					label: common_description(),
 					type: 'string',
 					searchable: true,
-					column: { hiddenByDefault: true }
+					display: { hiddenByDefault: true }
 				},
 				{ key: 'hidden', label: common_hidden(), type: 'boolean', filterable: true },
 				{
@@ -358,7 +358,7 @@
 					filterable: true,
 					getValue: (host) =>
 						allServicesData.filter((s) => s.host_id === host.id).map((s) => s.name),
-					column: {
+					display: {
 						getItems: (host) =>
 							allServicesData
 								.filter((s) => s.host_id === host.id)

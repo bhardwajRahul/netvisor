@@ -1,7 +1,9 @@
-<script lang="ts">
+<script lang="ts" generics="T">
 	import type { CardAction, CardField, TagProps } from './types';
+	import type { EntityColumn } from './table/columns';
 	import Tag from './Tag.svelte';
 	import EntityTag from './EntityTag.svelte';
+	import FieldValue from './FieldValue.svelte';
 	import type { Snippet } from 'svelte';
 	import { type IconComponent } from '$lib/shared/utils/types';
 	import { tooltip } from '$lib/shared/actions/tooltip';
@@ -14,7 +16,17 @@
 		Icon?: IconComponent | null;
 		iconColor?: string;
 		actions?: CardAction[];
+		/** Legacy per-card field list, for cards not yet on the shared definition. */
 		fields?: CardField[];
+		/**
+		 * The shared field definition, rendered exactly as the table renders it.
+		 *
+		 * Supplying this (with `item`) is what puts card and table on one list:
+		 * the same fields, the same chips, and the same visibility choices. It
+		 * takes precedence over `fields`.
+		 */
+		columns?: EntityColumn<T>[] | null;
+		item?: T | null;
 		children?: Snippet;
 		selected?: boolean;
 		onSelectionChange?: (selected: boolean) => void;
@@ -30,11 +42,15 @@
 		iconColor = 'text-blue-400',
 		actions = [],
 		fields = [],
+		columns = null,
+		item = null,
 		children,
 		selected = false,
 		selectable = true,
 		onSelectionChange = () => {}
 	}: Props = $props();
+
+	let sharedColumns = $derived(columns && item !== null ? columns : null);
 
 	// Helper to check if value is an array
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -102,57 +118,68 @@
 
 	<!-- Content - grows to fill available space -->
 	<div class="flex-grow space-y-3">
-		{#each fields as field, i (field.label + i)}
-			{#if field.snippet}
-				<div>
-					{@render field.snippet()}
-				</div>
-			{:else}
+		{#if sharedColumns}
+			{#each sharedColumns as column (column.id)}
 				<div class="text-sm">
-					{#if field.value}
-						{#if isArrayValue(field.value)}
-							<div class="flex flex-wrap items-center gap-2">
-								<span class="text-secondary">{field.label}:</span>
-								{#if field.value.length > 0}
-									{#each field.value as item (item.id)}
-										{#if item.entityRef}
-											<EntityTag
-												entityRef={item.entityRef}
-												icon={item.icon}
-												disabled={item.disabled}
-												color={field.color || item.color}
-												badge={item.badge}
-												label={item.label}
-											/>
-										{:else}
-											<Tag
-												icon={item.icon}
-												disabled={item.disabled}
-												color={field.color || item.color}
-												badge={item.badge}
-												label={item.label}
-												title={item.title}
-											/>
-										{/if}
-									{/each}
-								{:else}
-									<span class="text-muted"
-										>{field.emptyText || `No ${field.label.toLowerCase()}`}</span
-									>
-								{/if}
-							</div>
-						{:else}
-							<div class="text-sm">
-								<span class="text-secondary">{field.label}: </span><span
-									class="text-tertiary ml-2"
-									style="word-wrap: break-word; word-break: break-word;">{field.value}</span
-								>
-							</div>
-						{/if}
-					{/if}
+					<div class="flex flex-wrap items-center gap-2">
+						<span class="text-secondary">{column.label}:</span>
+						<FieldValue item={item as T} {column} />
+					</div>
 				</div>
-			{/if}
-		{/each}
+			{/each}
+		{:else}
+			{#each fields as field, i (field.label + i)}
+				{#if field.snippet}
+					<div>
+						{@render field.snippet()}
+					</div>
+				{:else}
+					<div class="text-sm">
+						{#if field.value}
+							{#if isArrayValue(field.value)}
+								<div class="flex flex-wrap items-center gap-2">
+									<span class="text-secondary">{field.label}:</span>
+									{#if field.value.length > 0}
+										{#each field.value as entry (entry.id)}
+											{#if entry.entityRef}
+												<EntityTag
+													entityRef={entry.entityRef}
+													icon={entry.icon}
+													disabled={entry.disabled}
+													color={field.color || entry.color}
+													badge={entry.badge}
+													label={entry.label}
+												/>
+											{:else}
+												<Tag
+													icon={entry.icon}
+													disabled={entry.disabled}
+													color={field.color || entry.color}
+													badge={entry.badge}
+													label={entry.label}
+													title={entry.title}
+												/>
+											{/if}
+										{/each}
+									{:else}
+										<span class="text-muted"
+											>{field.emptyText || `No ${field.label.toLowerCase()}`}</span
+										>
+									{/if}
+								</div>
+							{:else}
+								<div class="text-sm">
+									<span class="text-secondary">{field.label}: </span><span
+										class="text-tertiary ml-2"
+										style="word-wrap: break-word; word-break: break-word;">{field.value}</span
+									>
+								</div>
+							{/if}
+						{/if}
+					</div>
+				{/if}
+			{/each}
+		{/if}
 	</div>
 
 	<!-- Optional additional content -->

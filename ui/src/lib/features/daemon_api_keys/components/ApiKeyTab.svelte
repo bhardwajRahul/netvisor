@@ -136,7 +136,7 @@
 			getValue(item) {
 				return networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork();
 			},
-			column: { getItems: (item) => networkItems(item.network_id, networksData) }
+			display: { getItems: (item) => networkItems(item.network_id, networksData) }
 		},
 		{
 			key: 'tags',

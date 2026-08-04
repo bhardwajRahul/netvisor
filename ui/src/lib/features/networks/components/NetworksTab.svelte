@@ -201,7 +201,7 @@
 			type: 'string',
 			searchable: true,
 			sortable: true,
-			column: { primary: true, width: 220 }
+			display: { primary: true, width: 220 }
 		},
 		{
 			key: 'tags',

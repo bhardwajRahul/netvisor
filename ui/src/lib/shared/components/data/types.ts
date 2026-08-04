@@ -92,13 +92,13 @@ export interface CardField {
 // ============================================================================
 
 /**
- * How a field renders as a table column.
+ * How a field renders, in the card and the table alike.
  *
- * Omit it and the column renders the stringified `getValue` — the same value
- * search, filtering and grouping already match against, so a cell can never
- * disagree with the filter that produced its row.
+ * Omit it and the value renders as the stringified `getValue` — the same value
+ * search, filtering and grouping already match against, so what is shown can
+ * never disagree with the filter that produced the row.
  */
-export interface ColumnConfig<T> {
+export interface DisplayConfig<T> {
 	/** Filter-only field that never becomes a column (e.g. a port number filter). */
 	hidden?: boolean;
 	/** A real column, but unchecked in the column menu until the user asks for it. */
@@ -122,8 +122,8 @@ export interface ColumnConfig<T> {
  * Base configuration shared by all field types.
  */
 interface BaseFieldConfig<T> {
-	/** How this field renders as a table column. Omit for a plain text column. */
-	column?: ColumnConfig<T>;
+	/** How this field renders, in both the card and the table. Omit for plain text. */
+	display?: DisplayConfig<T>;
 	type: 'string' | 'boolean' | 'date' | 'array';
 	label: string;
 	/**
