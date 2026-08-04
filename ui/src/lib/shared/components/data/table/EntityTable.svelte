@@ -1,23 +1,26 @@
 <script lang="ts" generics="T">
-	import { ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-svelte';
-	import { getCoreRowModel, type ColumnDef } from '@tanstack/table-core';
+	import { ArrowUpNarrowWide, ArrowDownWideNarrow, ChevronDown, ChevronRight } from 'lucide-svelte';
+	import { getCoreRowModel, type ColumnDef, type Row } from '@tanstack/table-core';
 	import { createSvelteTable } from './createSvelteTable.svelte';
 	import type { EntityColumn } from './columns';
 	import FieldValue from '../FieldValue.svelte';
 	import { tooltip } from '$lib/shared/actions/tooltip';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { getFieldValue } from '../controls/fieldValues';
 	import type { SortState } from '../controls/sorting';
-	import type { CardAction } from '../types';
+	import type { CardAction, GroupSlice } from '../types';
 	import {
 		common_actions,
 		common_selectRow,
 		common_sortByColumn,
 		common_deselectAll,
-		common_selectAllOnPage
+		common_selectAllOnPage,
+		common_groupTotalShowing
 	} from '$lib/paraglide/messages';
 
 	let {
 		items,
+		groups = null,
 		columns,
 		sortState,
 		selectable,
@@ -31,7 +34,14 @@
 		onToggleRow,
 		onToggleAll
 	}: {
-		items: T[];
+		/** Ungrouped rows. Null when the list is grouped. */
+		items: T[] | null;
+		/**
+		 * Grouped rows, rendered as collapsible sections of one table rather than
+		 * a table each — so every group shares the one header and the one set of
+		 * column widths, which is what makes groups comparable.
+		 */
+		groups: { name: string; items: T[]; range: GroupSlice | null }[] | null;
 		columns: EntityColumn<T>[];
 		sortState: SortState;
 		selectable: boolean;
@@ -64,9 +74,19 @@
 		}));
 	});
 
+	/** Every row on the page, grouped or not — table-core sees one flat list. */
+	let allRows = $derived(items ?? (groups ?? []).flatMap((group) => group.items));
+
+	const collapsed = new SvelteSet<string>();
+
+	function toggleGroup(name: string) {
+		if (collapsed.has(name)) collapsed.delete(name);
+		else collapsed.add(name);
+	}
+
 	const view = createSvelteTable<T>(() => ({
 		get data() {
-			return items;
+			return allRows;
 		},
 		get columns() {
 			return columnDefs;
@@ -87,6 +107,23 @@
 			}
 		}
 	}));
+
+	/**
+	 * Rows keyed by group, so the body can emit a group header row followed by
+	 * that group's rows while table-core still owns one row model for all of them.
+	 */
+	let rowsByGroup = $derived.by(() => {
+		const rowById = new Map(view.rows.map((row) => [row.id, row]));
+		return (groups ?? []).map((group) => ({
+			...group,
+			rows: group.items
+				.map((item) => rowById.get(getItemId(item)))
+				.filter((row) => row !== undefined)
+		}));
+	});
+
+	/** Header checkbox, plus every data column, plus the actions column. */
+	let spannedColumns = $derived(columns.length + (selectable ? 1 : 0) + (getActions ? 1 : 0));
 
 	let byId = $derived(new Map(columns.map((c) => [c.id, c])));
 	let primaryColumn = $derived(columns.find((c) => c.primary) ?? columns[0]);
@@ -192,83 +229,132 @@
 		</thead>
 
 		<tbody>
-			{#each view.rows as row (row.id)}
-				{@const item = row.original}
-				{@const itemId = getItemId(item)}
-				{@const isSelected = selectedIds.has(itemId)}
-				<tr
-					class="border-t transition-colors {isSelected
-						? 'bg-black/5 dark:bg-white/5'
-						: 'hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'}"
-					style="border-color: var(--color-border)"
-				>
-					{#if selectable}
-						<td class="w-10 px-3 py-2 align-middle">
-							<input
-								type="checkbox"
-								checked={isSelected}
-								onchange={(e) => onToggleRow(itemId, e.currentTarget.checked)}
-								aria-label={common_selectRow({ name: rowLabel(item) })}
-								class="checkbox-card h-4 w-4"
-							/>
-						</td>
-					{/if}
+			{#if groups}
+				{#each rowsByGroup as group (group.name)}
+					{@const isCollapsed = collapsed.has(group.name)}
+					<tr class="border-t" style="border-color: var(--color-border)">
+						<!--
+							scope="colgroup": this heading names the rows beneath it rather
+							than a column, so it is announced as the section it is.
+						-->
+						<th
+							scope="colgroup"
+							colspan={spannedColumns}
+							class="bg-black/[0.03] px-3 py-2 text-left dark:bg-white/[0.03]"
+						>
+							<button
+								type="button"
+								onclick={() => toggleGroup(group.name)}
+								aria-expanded={!isCollapsed}
+								class="text-primary flex items-center gap-2 text-sm font-semibold"
+							>
+								{#if isCollapsed}
+									<ChevronRight class="h-4 w-4" aria-hidden="true" />
+								{:else}
+									<ChevronDown class="h-4 w-4" aria-hidden="true" />
+								{/if}
+								<span>{group.name}</span>
+								<span class="text-tertiary text-xs font-normal">
+									{#if group.range}
+										{common_groupTotalShowing({
+											total: group.range.total,
+											start: group.range.start,
+											end: group.range.end
+										})}
+									{:else}
+										({group.items.length})
+									{/if}
+								</span>
+							</button>
+						</th>
+					</tr>
 
-					{#each view.headers as header (header.id)}
-						{@const column = byId.get(header.column.id)}
-						{#if column}
-							{#if column.primary}
-								<!-- Announces the row's identity before each cell when navigating across. -->
-								<th
-									scope="row"
-									class="text-primary max-w-xs px-3 py-2 text-left align-middle font-medium"
-								>
-									<FieldValue {item} {column} />
-								</th>
-							{:else}
-								<td
-									class="max-w-xs px-3 py-2 align-middle {column.align === 'right'
-										? 'text-right'
-										: ''}"
-								>
-									<FieldValue {item} {column} />
-								</td>
-							{/if}
-						{/if}
-					{/each}
-
-					{#if getActions}
-						{@const actions = getActions(item)}
-						<td class="px-3 py-2 text-right align-middle">
-							<div class="flex items-center justify-end gap-1">
-								{#each actions as action (action.label)}
-									{@const tip =
-										typeof action.tooltip === 'function'
-											? action.tooltip(!!action.disabled)
-											: (action.tooltip ?? action.label)}
-									<!--
-										The label floats in a tooltip rather than growing inside the
-										button. An in-flow label has to span its neighbours to fit its
-										text, which is what let one action cover the rest of the row.
-									-->
-									<button
-										type="button"
-										onclick={action.onClick}
-										disabled={action.disabled}
-										use:tooltip
-										data-tooltip={tip}
-										aria-label={action.label}
-										class="{action.class ||
-											'btn-icon'} disabled:cursor-not-allowed disabled:opacity-50"
-									>
-										<action.icon size={16} class={action.animation || ''} />
-									</button>
-								{/each}
-							</div>
-						</td>
+					{#if !isCollapsed}
+						{#each group.rows as row (row.id)}
+							{@render bodyRow(row)}
+						{/each}
 					{/if}
-				</tr>
-			{/each}
+				{/each}
+			{:else}
+				{#each view.rows as row (row.id)}
+					{@render bodyRow(row)}
+				{/each}
+			{/if}
 		</tbody>
 	</table>
 </div>
+
+{#snippet bodyRow(row: Row<T>)}
+	{@const item = row.original}
+	{@const itemId = getItemId(item)}
+	{@const isSelected = selectedIds.has(itemId)}
+	<tr
+		class="border-t transition-colors {isSelected
+			? 'bg-black/5 dark:bg-white/5'
+			: 'hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'}"
+		style="border-color: var(--color-border)"
+	>
+		{#if selectable}
+			<td class="w-10 px-3 py-2 align-middle">
+				<input
+					type="checkbox"
+					checked={isSelected}
+					onchange={(e) => onToggleRow(itemId, e.currentTarget.checked)}
+					aria-label={common_selectRow({ name: rowLabel(item) })}
+					class="checkbox-card h-4 w-4"
+				/>
+			</td>
+		{/if}
+
+		{#each view.headers as header (header.id)}
+			{@const column = byId.get(header.column.id)}
+			{#if column}
+				{#if column.primary}
+					<!-- Announces the row's identity before each cell when navigating across. -->
+					<th
+						scope="row"
+						class="text-primary max-w-xs px-3 py-2 text-left align-middle font-medium"
+					>
+						<FieldValue {item} {column} />
+					</th>
+				{:else}
+					<td
+						class="max-w-xs px-3 py-2 align-middle {column.align === 'right' ? 'text-right' : ''}"
+					>
+						<FieldValue {item} {column} />
+					</td>
+				{/if}
+			{/if}
+		{/each}
+
+		{#if getActions}
+			{@const actions = getActions(item)}
+			<td class="px-3 py-2 text-right align-middle">
+				<div class="flex items-center justify-end gap-1">
+					{#each actions as action (action.label)}
+						{@const tip =
+							typeof action.tooltip === 'function'
+								? action.tooltip(!!action.disabled)
+								: (action.tooltip ?? action.label)}
+						<!--
+									The label floats in a tooltip rather than growing inside the
+									button. An in-flow label has to span its neighbours to fit its
+									text, which is what let one action cover the rest of the row.
+								-->
+						<button
+							type="button"
+							onclick={action.onClick}
+							disabled={action.disabled}
+							use:tooltip
+							data-tooltip={tip}
+							aria-label={action.label}
+							class="{action.class || 'btn-icon'} disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							<action.icon size={16} class={action.animation || ''} />
+						</button>
+					{/each}
+				</div>
+			</td>
+		{/if}
+	</tr>
+{/snippet}

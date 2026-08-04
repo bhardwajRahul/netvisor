@@ -112,6 +112,15 @@ export interface DisplayConfig<T> {
 	/** Escape hatch for genuinely bespoke content: a status tag, a link, an icon. */
 	cell?: Snippet<[T]>;
 	align?: 'left' | 'right';
+	/**
+	 * Where this field sits among the columns, low to high.
+	 *
+	 * Needed because `defineFields` groups server-orderable fields ahead of
+	 * display-only ones, which is the right shape for exhaustiveness checking but
+	 * has nothing to do with the order a reader wants to scan. Fields without one
+	 * keep their declared order, after those that have one.
+	 */
+	order?: number;
 	/** Starting width in px. A user's resize persists over this. */
 	width?: number;
 	/** Row identity: pinned left, carries the checkbox, renders as `<th scope="row">`. */

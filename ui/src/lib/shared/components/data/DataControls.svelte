@@ -1137,8 +1137,19 @@
 	/>
 
 	<!-- Content -->
-	{#if hasActiveGrouping}
-		<!-- Grouped view -->
+	{#if viewMode === 'table'}
+		<!--
+			Grouped or not, one table with one header row. Splitting a grouped list
+			into a table per group gave each group its own header and its own column
+			widths, so columns stopped lining up across the very groups you were
+			comparing — which is the whole reason to use a table.
+		-->
+		{@render tableFor(
+			hasActiveGrouping ? null : paginatedItems,
+			hasActiveGrouping ? null : tableCaptionText
+		)}
+	{:else if hasActiveGrouping}
+		<!-- Grouped cards -->
 		<div class="space-y-6">
 			{#each [...groupedItems.entries()] as [groupName, groupItems] (groupName)}
 				{@const range = groupRange(groupItems)}
@@ -1159,21 +1170,14 @@
 						</span>
 					</div>
 
-					<!-- Group Items -->
-					{#if viewMode === 'table'}
-						{@render tableFor(groupItems, groupName)}
-					{:else}
-						<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-							{#each groupItems as item (getItemId(item))}
-								{@render cardFor(item)}
-							{/each}
-						</div>
-					{/if}
+					<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+						{#each groupItems as item (getItemId(item))}
+							{@render cardFor(item)}
+						{/each}
+					</div>
 				</div>
 			{/each}
 		</div>
-	{:else if viewMode === 'table'}
-		{@render tableFor(paginatedItems, tableCaptionText)}
 	{:else}
 		<!-- Ungrouped view (paginated) -->
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -1206,20 +1210,28 @@
 	)}
 {/snippet}
 
-{#snippet tableFor(rows: T[], caption: string)}
+{#snippet tableFor(rows: T[] | null, caption: string | null)}
+	{@const flat = rows ?? [...groupedItems.values()].flat()}
 	<EntityTable
 		items={rows}
+		groups={rows
+			? null
+			: [...groupedItems.entries()].map(([name, groupItems]) => ({
+					name,
+					items: groupItems,
+					range: groupRange(groupItems)
+				}))}
 		columns={renderedColumns}
 		{sortState}
 		selectable={showSelection}
 		{selectedIds}
-		allSelected={isAllSelected(rows, selectedIds, getItemId)}
-		someSelected={isPartiallySelected(rows, selectedIds, getItemId)}
+		allSelected={isAllSelected(flat, selectedIds, getItemId)}
+		someSelected={isPartiallySelected(flat, selectedIds, getItemId)}
 		{getItemId}
 		{getActions}
-		{caption}
+		caption={caption ?? tableCaptionText}
 		onToggleSort={toggleSort}
 		onToggleRow={setRowSelected}
-		onToggleAll={() => toggleAllIn(rows)}
+		onToggleAll={() => toggleAllIn(flat)}
 	/>
 {/snippet}
