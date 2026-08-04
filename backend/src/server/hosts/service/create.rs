@@ -46,6 +46,27 @@ pub(crate) fn resolve_owner_service_id(
 }
 
 impl HostService {
+    /// Reject an API-supplied virtualizing service that does not exist.
+    ///
+    /// Only the API sets this — discovery's copy is stripped in `discover_host`, since a
+    /// daemon-minted service id cannot be resolved across submissions. Left unchecked, a bad id
+    /// reaches Postgres and comes back as an opaque foreign-key 500.
+    pub(crate) async fn validate_virtualization_service(
+        &self,
+        virtualization_service_id: Option<Uuid>,
+    ) -> Result<()> {
+        let Some(id) = virtualization_service_id else {
+            return Ok(());
+        };
+        if self.service_service.get_by_id(&id).await?.is_none() {
+            return Err(ValidationError::new(format!(
+                "virtualization_service_id {id} does not match any service"
+            ))
+            .into());
+        }
+        Ok(())
+    }
+
     // =========================================================================
     // Host creation with children
     // =========================================================================
@@ -94,6 +115,12 @@ impl HostService {
         .map_err(|e| ValidationError::new(e.message))?;
         resolve_and_validate_input_positions(&mut service_inputs, &empty_services, "service")
             .map_err(|e| ValidationError::new(e.message))?;
+
+        // The virtualizing service must exist. Without this the insert fails
+        // `hosts_virtualization_service_id_fkey` and surfaces as a 500, when the caller sent a
+        // bad id and deserves to be told so.
+        self.validate_virtualization_service(virtualization_service_id)
+            .await?;
 
         // Auto-set source to Manual for API-created entities
         let source = EntitySource::Manual;
@@ -1130,39 +1157,30 @@ impl HostService {
             created_services.push(created);
         }
 
-        // Repoint container services at their runtime service when its id was remapped during
-        // dedup. `service_id_remap` is complete by now: pre-computed before subnet creation, and
-        // extended by the in-batch hop recorded in the service loop above.
+        // Net for a service whose owner id only moved *after* it was inserted — a later
+        // iteration reconciling onto an existing row, say. The common case is already handled
+        // before the insert, so this rarely fires.
+        //
+        // Errors propagate rather than being discarded: this writes an FK-bearing column, and a
+        // silent failure here is exactly the drift the column was introduced to make impossible.
         for svc in &created_services {
-            if let Some(old_id) = svc.base.virtualization_service_id
-                && let Some(&new_id) = service_id_remap.get(&old_id)
-            {
+            let resolved = resolve_owner_service_id(
+                svc.base.virtualization_service_id,
+                &service_id_remap,
+                &live_service_ids,
+            );
+            if resolved != svc.base.virtualization_service_id {
                 let mut updated = svc.clone();
-                updated.base.virtualization_service_id = Some(new_id);
-                let _ = self
-                    .service_service
+                updated.base.virtualization_service_id = resolved;
+                self.service_service
                     .update(&mut updated, authentication.clone())
-                    .await;
+                    .await?;
             }
         }
 
-        // The same repair for bridge subnets. They were created before any service existed, so
-        // they carry whatever `service_id_remap` held at that point — which is nothing for a
-        // service whose id only moved during the loop above. Left unpatched, the subnet's owning
-        // id matches no live service, dedup fails on every later scan, and the network gains a
-        // duplicate bridge row each time (GH #650).
-        if let Err(e) = self
-            .subnet_service
-            .patch_container_bridge_virtualization(&created_host.base.network_id, &service_id_remap)
-            .await
-        {
-            tracing::warn!(
-                host_id = %created_host.id,
-                error = %e,
-                "Failed to repoint bridge subnet virtualization; duplicate bridge subnets may \
-                 accumulate on subsequent scans"
-            );
-        }
+        // No after-the-fact repair for bridge subnets: the runtime services they name are
+        // materialised before the subnet loop runs, so a bridge is written with a final owner id
+        // rather than one that has to be chased afterwards.
 
         // Binding fixup: remap provisional daemon interface/port IDs to server-assigned IDs.
         // This handles the case where interface or port UUIDs changed during dedup (upsert).

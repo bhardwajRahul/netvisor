@@ -94,6 +94,35 @@ impl HostService {
         // they only fire when a row is actually being inserted for the
         // first time. Each site reads scan_time off the entity's
         // already-refreshed `last_seen_at`.
+        // `hosts.virtualization_service_id` — the hypervisor a VM runs on — is
+        // server-authoritative. The daemon does not own it and must not send one.
+        //
+        // Unlike a container service or a bridge subnet, which name a service on the *same*
+        // host in the *same* submission, a VM guest names a hypervisor service on a *different*
+        // host submitted in a *different* call (one host per `discover_host`). Nothing in this
+        // function could resolve such a reference, and `CreatedEntitiesPayload` returns
+        // pending→real mappings for hosts and subnets only — never services — so a daemon can
+        // never learn the real id to send in the first place.
+        //
+        // Today the field is only ever set through the UI, where the id is already a real one
+        // (`HostData::with_virtualization` has no callers). Stripping it here keeps the FK
+        // satisfiable and makes a future integration that wires a raw UUID loud in development
+        // rather than a foreign-key failure in production. When the Proxmox integration lands it
+        // should send a resolvable reference — hypervisor address plus service definition — and
+        // have the server resolve it, or carry the pending→real service mapping across the
+        // session; see the plan in TASK.md.
+        //
+        // Note this only clears what the *payload* carried: `upsert_host` never touches this
+        // column, so a value set through the UI survives every rescan.
+        if host.base.virtualization_service_id.take().is_some() {
+            tracing::warn!(
+                host_name = %host.base.name,
+                "Discovery payload carried a host virtualization_service_id; ignoring it — the \
+                 column is server-authoritative and a daemon-minted service id cannot be resolved \
+                 across submissions"
+            );
+        }
+
         if let Some(ctx) = scan_ctx {
             use crate::server::shared::storage::snapshot::DiscoveryTracked;
             host.refresh_scan_timestamps(ctx.scan_time);

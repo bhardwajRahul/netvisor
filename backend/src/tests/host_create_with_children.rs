@@ -455,3 +455,53 @@ async fn container_service_owner_survives_a_rescan() {
         "the runtime service must not duplicate on rescan"
     );
 }
+
+/// `hosts.virtualization_service_id` is server-authoritative.
+///
+/// A VM guest names a hypervisor service on a different host, submitted in a different call, so
+/// no ordering inside a submission could resolve it — and `CreatedEntitiesPayload` never returns
+/// service mappings, so a daemon cannot learn the real id to send. Anything the payload carries
+/// is therefore dropped rather than written, which is what keeps the FK satisfiable when the
+/// Proxmox integration starts populating this field.
+#[tokio::test]
+async fn daemon_supplied_host_owner_is_ignored() {
+    harness!(services, network_id, _container);
+
+    let mut submission = Submission::container_host(network_id);
+    submission.host.base.virtualization_service_id = Some(Uuid::new_v4());
+
+    let response = submit(&services, submission)
+        .await
+        .expect("a daemon-supplied host owner must not fail the host");
+
+    assert_eq!(
+        response.virtualization_service_id, None,
+        "discovery must not write a host virtualizer it cannot resolve"
+    );
+}
+
+/// The API *does* own this field — the UI sets it when a user assigns a VM to a hypervisor — so
+/// a bad id there is a caller error and should say so, rather than surfacing as a foreign-key
+/// 500 from Postgres.
+#[tokio::test]
+async fn api_rejects_an_unresolvable_host_virtualizer() {
+    harness!(services, network_id, _container);
+
+    let result = services
+        .host_service
+        .validate_virtualization_service(Some(Uuid::new_v4()))
+        .await;
+
+    assert!(
+        result.is_err(),
+        "an unresolvable virtualization_service_id must be rejected as a validation error"
+    );
+
+    services
+        .host_service
+        .validate_virtualization_service(None)
+        .await
+        .expect("a bare-metal host has no virtualizer and must be accepted");
+
+    let _ = network_id;
+}
