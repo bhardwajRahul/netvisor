@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { credentialItems } from '$lib/features/credentials/columns';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
@@ -8,9 +9,8 @@
 	import type { FieldConfig } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { entityRef, type CardAction } from '$lib/shared/components/data/types';
-	import { entities, subnetTypes, credentialTypes } from '$lib/shared/stores/metadata';
+	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
-	import { getCredentialTypeId } from '$lib/features/credentials/types/base';
 	import type { Credential } from '$lib/features/credentials/types/base';
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import type { Subnet } from '$lib/features/subnets/types/base';
@@ -298,13 +298,7 @@
 			getValue: (network) => networkCredentials(network).map((c) => c.name),
 			display: {
 				order: 4,
-				getItems: (network) =>
-					networkCredentials(network).map((credential) => ({
-						id: credential.id,
-						label: credential.name,
-						color: credentialTypes.getColorHelper(getCredentialTypeId(credential)).color,
-						entityRef: entityRef('Credential', credential.id, credential)
-					}))
+				getItems: (network) => credentialItems(networkCredentials(network))
 			}
 		},
 		{

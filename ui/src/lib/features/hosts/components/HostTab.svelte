@@ -16,12 +16,8 @@
 	import { defineFields, entityRef, type CardAction } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
-	import {
-		entities,
-		concepts,
-		credentialTypes,
-		serviceDefinitions
-	} from '$lib/shared/stores/metadata';
+	import { credentialItems } from '$lib/features/credentials/columns';
+	import { entities, concepts, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import { Plus, Trash2, RefreshCw, Replace, Eye, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -77,7 +73,6 @@
 	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import { useSubnetsQuery, isContainerSubnet } from '$lib/features/subnets/queries';
-	import { getCredentialTypeId } from '$lib/features/credentials/types/base';
 	import type { Credential } from '$lib/features/credentials/types/base';
 	import type { Interface } from '$lib/features/credentials/types/base';
 	import { formatIPAddress } from '../queries';
@@ -435,13 +430,7 @@
 					getValue: (host) => hostCredentials(host).map((c) => c.name),
 					display: {
 						order: 3,
-						getItems: (host) =>
-							hostCredentials(host).map((credential) => ({
-								id: credential.id,
-								label: credential.name,
-								color: credentialTypes.getColorHelper(getCredentialTypeId(credential)).color,
-								entityRef: entityRef('Credential', credential.id, credential)
-							}))
+						getItems: (host) => credentialItems(hostCredentials(host))
 					}
 				},
 				{
