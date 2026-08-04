@@ -8,7 +8,14 @@
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import type { FieldConfig } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
-	import type { CardAction } from '$lib/shared/components/data/types';
+	import { entityRef, type CardAction } from '$lib/shared/components/data/types';
+	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
+	import { entities, subnetTypes, credentialTypes } from '$lib/shared/stores/metadata';
+	import { useCredentialsQuery } from '$lib/features/credentials/queries';
+	import { getCredentialTypeId } from '$lib/features/credentials/types/base';
+	import type { Credential } from '$lib/features/credentials/types/base';
+	import type { Daemon } from '$lib/features/daemons/types/base';
+	import type { Subnet } from '$lib/features/subnets/types/base';
 	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
@@ -20,8 +27,11 @@
 		common_confirmBulkDelete,
 		common_create,
 		common_created,
+		common_credentials,
+		common_daemons,
 		common_delete,
 		common_edit,
+		common_subnets,
 		common_name,
 		common_networks,
 		common_noEntityYet,
@@ -57,9 +67,10 @@
 
 	const tagsQuery = useTagsQuery();
 	const networksQuery = useNetworksQuery();
-	// Load related data for network cards
+	// What each network contains, resolved here so card and table share it.
 	const daemonsQuery = useDaemonsQuery();
-	useSubnetsQuery();
+	const subnetsQuery = useSubnetsQuery();
+	const credentialsQuery = useCredentialsQuery();
 	useDependenciesQuery();
 
 	// Only the hosts the daemons run on. Each card needs one host name per daemon
@@ -80,6 +91,9 @@
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
+	let daemonsData = $derived(daemonsQuery.data ?? []);
+	let subnetsData = $derived(subnetsQuery.data ?? []);
+	let credentialsData = $derived(credentialsQuery.data ?? []);
 	let isLoading = $derived(networksQuery.isPending);
 	let isAtNetworkLimit = $derived(
 		networkLimit !== null && networksData.length >= networkLimit && !canBuyMore
@@ -192,6 +206,27 @@
 		await downloadCsv('Network', {});
 	}
 
+	// What a network contains. These were computed inside the card, so the table
+	// had no way to show them; resolving here is what gives both views the same
+	// columns.
+	function networkDaemons(network: Network): Daemon[] {
+		return daemonsData.filter((daemon) => daemon.network_id === network.id);
+	}
+
+	function networkSubnets(network: Network): Subnet[] {
+		return subnetsData.filter(
+			(subnet) =>
+				subnet.network_id === network.id &&
+				!subnetTypes.getMetadata(subnet.subnet_type).hide_from_subnet_list
+		);
+	}
+
+	function networkCredentials(network: Network): Credential[] {
+		return (network.credential_ids ?? [])
+			.map((id) => credentialsData.find((c) => c.id === id))
+			.filter((c): c is Credential => Boolean(c));
+	}
+
 	// Derived, not a plain const: it closes over `tagsData` and references the
 	// `tagsCell` snippet, neither of which exists yet when the script body runs.
 	let networkFields = $derived<FieldConfig<Network>[]>([
@@ -210,6 +245,57 @@
 			searchable: true,
 			filterable: true,
 			getValue: (entity) => tagNames(entity.tags, tagsData)
+		},
+		{
+			key: 'daemons',
+			label: common_daemons(),
+			type: 'array',
+			searchable: true,
+			getValue: (network) => networkDaemons(network).map((d) => d.name),
+			display: {
+				getItems: (network) =>
+					networkDaemons(network).map((daemon) => ({
+						id: daemon.id,
+						label: daemon.name,
+						color: entities.getColorHelper('Daemon').color,
+						entityRef: entityRef('Daemon', daemon.id, daemon, {
+							hosts: daemonHosts,
+							subnets: subnetsData
+						})
+					}))
+			}
+		},
+		{
+			key: 'credentials',
+			label: common_credentials(),
+			type: 'array',
+			searchable: true,
+			getValue: (network) => networkCredentials(network).map((c) => c.name),
+			display: {
+				getItems: (network) =>
+					networkCredentials(network).map((credential) => ({
+						id: credential.id,
+						label: credential.name,
+						color: credentialTypes.getColorHelper(getCredentialTypeId(credential)).color,
+						entityRef: entityRef('Credential', credential.id, credential)
+					}))
+			}
+		},
+		{
+			key: 'subnets',
+			label: common_subnets(),
+			type: 'array',
+			searchable: true,
+			getValue: (network) => networkSubnets(network).map((s) => s.name),
+			display: {
+				getItems: (network) =>
+					networkSubnets(network).map((subnet) => ({
+						id: subnet.id,
+						label: subnet.name,
+						color: entities.getColorHelper('Subnet').color,
+						entityRef: entityRef('Subnet', subnet.id, subnet)
+					}))
+			}
 		},
 		{
 			key: 'created_at',
@@ -280,11 +366,12 @@
 			{#snippet children(
 				item: Network,
 				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
+				onSelectionChange: (selected: boolean) => void,
+				columns: EntityColumn<Network>[]
 			)}
 				<NetworkCard
 					network={item}
-					hosts={daemonHosts}
+					{columns}
 					selected={isSelected}
 					{onSelectionChange}
 					onDelete={handleDeleteNetwork}
