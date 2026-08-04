@@ -107,8 +107,13 @@ export interface DisplayConfig<T> {
 	 * Rich chips, in the vocabulary the card already renders: `EntityTag` when
 	 * an item carries an `entityRef`, `Tag` otherwise. Prefer this over `cell` —
 	 * it is data rather than markup, so the card can reuse the same builder.
+	 *
+	 * Returning `undefined` — as opposed to `[]` — means "no chips for this row",
+	 * and the cell falls back to the field's plain value. That is what lets a
+	 * date column carry a Stale tag on the rows that are stale and the date
+	 * everywhere else, rather than needing a second, mostly-empty column.
 	 */
-	getItems?: (item: T) => CardFieldItem[];
+	getItems?: (item: T) => CardFieldItem[] | undefined;
 	/** Escape hatch for genuinely bespoke content: a status tag, a link, an icon. */
 	cell?: Snippet<[T]>;
 	align?: 'left' | 'right';
@@ -131,6 +136,12 @@ export interface DisplayConfig<T> {
 	 * number, what a host is virtualized by.
 	 */
 	subtitle?: boolean;
+	/**
+	 * This field sits after the tag column, immediately before the row actions —
+	 * the far end of the row. For content that reads as the row's live state
+	 * rather than one of its attributes, like a running scan's progress.
+	 */
+	trailing?: boolean;
 	/**
 	 * This field is the row's status, so the card renders it as the tag beside
 	 * the title instead of as another labelled row.

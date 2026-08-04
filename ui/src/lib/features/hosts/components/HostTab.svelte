@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { lastSeenItems } from '$lib/shared/utils/freshness';
 	import type {
 		Host,
 		CreateHostWithServicesRequest,
@@ -393,7 +394,11 @@
 				// is unreadable, and these are rarely what someone is scanning for.
 				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
 				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } },
-				last_seen_at: { label: common_lastSeen(), type: 'date', display: { order: 1 } }
+				last_seen_at: {
+					label: common_lastSeen(),
+					type: 'date',
+					display: { order: 1, getItems: lastSeenItems(() => networksData, 'Host') }
+				}
 			},
 			[
 				{

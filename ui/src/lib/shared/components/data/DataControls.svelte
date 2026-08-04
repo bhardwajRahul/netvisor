@@ -809,10 +809,16 @@
 		};
 	});
 
-	let renderedColumns = $derived([
-		...visibleColumns(allColumns, columnState),
-		...(tagColumn ? [tagColumn] : [])
-	]);
+	// Tags sit at the far end of the row, so they are appended rather than
+	// ordered — except for `display.trailing` fields, which sit beyond them.
+	let renderedColumns = $derived.by(() => {
+		const visible = visibleColumns(allColumns, columnState);
+		return [
+			...visible.filter((column) => !column.display.trailing),
+			...(tagColumn ? [tagColumn] : []),
+			...visible.filter((column) => column.display.trailing)
+		];
+	});
 	let showSelection = $derived(Boolean(onBulkDelete) || hasBulkTagging);
 
 	let tableCaptionText = $derived(

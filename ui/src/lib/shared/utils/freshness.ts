@@ -21,7 +21,9 @@
 import { Clock } from 'lucide-svelte';
 import type { components } from '$lib/api/schema';
 import type { Network } from '$lib/features/networks/types';
-import type { TagProps } from '$lib/shared/components/data/types';
+import type { CardFieldItem, TagProps } from '$lib/shared/components/data/types';
+import type { EntityDiscriminants } from '$lib/api/entities';
+import { entities } from '$lib/shared/stores/metadata';
 import { toColor } from '$lib/shared/utils/styling';
 import { formatRelativeTime } from '$lib/shared/utils/formatting';
 import {
@@ -118,4 +120,35 @@ export function lastSeenLabel(entity: FreshnessSubject, entityTypeLabel?: string
 	return entityTypeLabel
 		? common_entityLastSeenAgo({ entity: entityTypeLabel, time })
 		: common_lastSeenAgo({ time });
+}
+
+/**
+ * Staleness chips for a "Last seen" field, on any entity discovery observes.
+ *
+ * Staleness is a qualifier on when something was last seen, not a status of its
+ * own — a host, subnet, VLAN or service has no status. Given a Status column of
+ * its own, `getFreshnessTag` returns a tag only for rows past their network's
+ * window, so the column sat empty on every healthy row while the date beside it
+ * said the same thing less precisely.
+ *
+ * So one column carries both: the date normally, an amber Stale tag with the
+ * elapsed time once a row has aged out. Returning `undefined` (not `[]`) is
+ * what makes the cell fall back to rendering the date.
+ *
+ * `entityType` names the thing the verdict is about in the tag's tooltip, since
+ * these lists sit side by side.
+ */
+export function lastSeenItems<T extends FreshnessSubject & { network_id?: string | null }>(
+	networks: () => Network[],
+	entityType: EntityDiscriminants
+): (entity: T) => CardFieldItem[] | undefined {
+	return (entity) => {
+		const network = networks().find((n) => n.id === entity.network_id);
+		const tag = getFreshnessTag(entity, network, {
+			entityTypeLabel: entities.getName(entityType) || undefined
+		});
+		return tag
+			? [{ id: 'stale', label: tag.label, color: tag.color, icon: tag.icon, title: tag.title }]
+			: undefined;
+	};
 }
