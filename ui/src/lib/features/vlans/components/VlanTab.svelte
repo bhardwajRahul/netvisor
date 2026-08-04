@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { lastSeenItems } from '$lib/shared/utils/freshness';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
@@ -125,7 +126,8 @@
 					key: 'last_seen_at',
 					label: common_lastSeen(),
 					type: 'date',
-					sortable: true
+					sortable: true,
+					display: { getItems: lastSeenItems(() => networksData, 'Vlan') }
 				}
 			]
 		)

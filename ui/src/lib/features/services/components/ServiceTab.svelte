@@ -15,7 +15,7 @@
 	import { useSubnetsQuery, isContainerSubnet } from '$lib/features/subnets/queries';
 	import { formatIPAddress } from '$lib/features/hosts/queries';
 	import { formatPort } from '$lib/shared/utils/formatting';
-	import { getFreshnessTag } from '$lib/shared/utils/freshness';
+	import { lastSeenItems } from '$lib/shared/utils/freshness';
 	import type { IPAddress, Port } from '$lib/features/hosts/types/base';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
@@ -57,7 +57,6 @@
 		common_position,
 		common_services,
 		common_tags,
-		common_status,
 		common_type,
 		common_unbound,
 		common_portBindings,
@@ -189,15 +188,6 @@
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 	// Only show full loading on initial load (no data yet)
 	let isInitialLoading = $derived(servicesQuery.isPending && !servicesQuery.data);
-
-	/** Freshness, judged against the service's own network's window. */
-	function freshnessTag(service: Service) {
-		return getFreshnessTag(
-			service,
-			networksData.find((n) => n.id === service.network_id),
-			{ entityTypeLabel: entities.getName('Service') || undefined }
-		);
-	}
 
 	function isContainerSubnetFn(subnetId: string): boolean {
 		const subnet = subnetsData.find((s) => s.id === subnetId);
@@ -438,7 +428,7 @@
 					getValue: (service) =>
 						serviceHosts.get(service.id)?.name || common_unknownEntity({ entity: common_host() }),
 					display: {
-						order: 4,
+						order: 3,
 						getItems: (service) => {
 							const host = serviceHosts.get(service.id);
 							if (!host) return [];
@@ -463,7 +453,7 @@
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
-					display: { order: 3, getItems: (item) => networkItems(item.network_id, networksData) }
+					display: { order: 2, getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				// Per-service ordinal, so grouping by it is one header per service.
 				position: {
@@ -483,7 +473,7 @@
 					getGroupValue: (service) => service.service_definition,
 					getValue: (service) => serviceDefinitions.getName(service.service_definition),
 					display: {
-						order: 5,
+						order: 4,
 						getItems: (service) => [
 							{
 								id: service.service_definition,
@@ -496,26 +486,18 @@
 				},
 				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
 				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } },
-				last_seen_at: { label: common_lastSeen(), type: 'date', display: { order: 2 } }
+				// Staleness rides on the date rather than a Status column of its own: a
+				// service has no status, and `getFreshnessTag` returns a tag only when
+				// the row is past its network's window — so the column was empty on
+				// every healthy service. `getItems` returning undefined falls back to
+				// the date.
+				last_seen_at: {
+					label: common_lastSeen(),
+					type: 'date',
+					display: { order: 1, getItems: lastSeenItems(() => networksData, 'Service') }
+				}
 			},
 			[
-				{
-					// The freshness tag the card showed in its header. Declaring it here
-					// puts it in both views and gives the table a status column.
-					key: 'status',
-					label: common_status(),
-					type: 'string',
-					searchable: true,
-					getValue: (service) => freshnessTag(service)?.label ?? '',
-					display: {
-						statusTag: true,
-						order: 1,
-						getItems: (service) => {
-							const tag = freshnessTag(service);
-							return tag ? [{ id: tag.label, label: tag.label, color: tag.color }] : [];
-						}
-					}
-				},
 				{
 					key: 'port_bindings',
 					label: common_portBindings(),
@@ -545,7 +527,7 @@
 					getValue: (item) =>
 						serviceDefinitions.getCategory(item.service_definition) || common_unknown(),
 					display: {
-						order: 6,
+						order: 5,
 						getItems: (item) => {
 							const category = serviceDefinitions.getCategory(item.service_definition);
 							if (!category) return [];

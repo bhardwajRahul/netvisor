@@ -344,7 +344,7 @@
 			filterable: true,
 			groupable: true,
 			getValue: (item) => item.run_type.type,
-			display: { order: 0 }
+			display: { order: 1 }
 		},
 		{
 			key: 'schedule',
@@ -377,7 +377,9 @@
 			// shows its tracker in the table as well as on the card.
 			type: 'string',
 			getValue: (item) => getActiveSession(item)?.phase ?? '',
-			display: { order: 1, cell: progressCell }
+			// After the tags column, immediately before the row actions: it is the
+			// row's live state rather than one of its attributes.
+			display: { trailing: true, cell: progressCell }
 		},
 		{
 			key: 'tags',

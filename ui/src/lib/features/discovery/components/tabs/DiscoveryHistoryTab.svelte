@@ -230,7 +230,13 @@
 		defineFields<Discovery, DiscoveryOrderField>(
 			{
 				// Identity field: grouping by it would render a header per run.
-				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+				name: {
+					label: common_name(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					display: { order: 0 }
+				},
 				daemon_id: {
 					label: common_daemon(),
 					type: 'string',
@@ -242,7 +248,7 @@
 					getValue: (item) =>
 						daemonsData.find((d) => d.id === item.daemon_id)?.name ??
 						common_unknownEntity({ entity: common_daemon() }),
-					display: { getItems: (item) => daemonItems(item.daemon_id, daemonsData) }
+					display: { order: 6, getItems: (item) => daemonItems(item.daemon_id, daemonsData) }
 				},
 				network_id: {
 					label: common_network(),
@@ -253,7 +259,7 @@
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
 						networksData.find((n) => n.id === item.network_id)?.name ?? common_unknownNetwork(),
-					display: { getItems: (item) => networkItems(item.network_id, networksData) }
+					display: { order: 5, getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				discovery_type: {
 					label: common_type(),
@@ -261,10 +267,11 @@
 					searchable: true,
 					filterable: true,
 					groupable: true,
-					getValue: (item) => item.discovery_type.type
+					getValue: (item) => item.discovery_type.type,
+					display: { hiddenByDefault: true }
 				},
-				created_at: { label: common_created(), type: 'date' },
-				updated_at: { label: common_updated(), type: 'date' }
+				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 			},
 			[
 				{
@@ -279,6 +286,7 @@
 					groupable: true,
 					getValue: (item) => outcomeTag(item)?.label ?? '',
 					display: {
+						order: 1,
 						statusTag: true,
 						getItems: (item) => {
 							const tag = outcomeTag(item);
@@ -297,7 +305,8 @@
 						return results && results.started_at
 							? formatTimestamp(results.started_at)
 							: common_unknown();
-					}
+					},
+					display: { order: 2 }
 				},
 				{
 					key: 'finished_at',
@@ -308,7 +317,8 @@
 						return results && results.finished_at
 							? formatTimestamp(results.finished_at)
 							: common_unknown();
-					}
+					},
+					display: { order: 3 }
 				},
 				{
 					key: 'duration',
@@ -320,7 +330,8 @@
 							return formatDuration(results.started_at, results.finished_at);
 						}
 						return common_unknown();
-					}
+					},
+					display: { order: 4 }
 				}
 			]
 		)
