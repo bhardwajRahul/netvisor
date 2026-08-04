@@ -4,13 +4,24 @@
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields, entityRef, type CardAction } from '$lib/shared/components/data/types';
+	import {
+		defineFields,
+		entityRef,
+		type CardAction,
+		type CardFieldItem
+	} from '$lib/shared/components/data/types';
+	import { usePortsQuery } from '$lib/features/ports/queries';
+	import { useIPAddressesQuery } from '$lib/features/ip-addresses/queries';
+	import { useSubnetsQuery, isContainerSubnet } from '$lib/features/subnets/queries';
+	import { formatIPAddress } from '$lib/features/hosts/queries';
+	import { formatPort } from '$lib/shared/utils/formatting';
+	import { getFreshnessTag } from '$lib/shared/utils/freshness';
+	import type { IPAddress, Port } from '$lib/features/hosts/types/base';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { Trash2, Edit } from 'lucide-svelte';
 	import type { Service } from '../types/base';
-	import ServiceCard from './ServiceCard.svelte';
 	import { matchConfidenceLabel } from '$lib/shared/types';
 	import ServiceEditModal from './ServiceEditModal.svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
@@ -46,7 +57,11 @@
 		common_position,
 		common_services,
 		common_tags,
+		common_status,
 		common_type,
+		common_unbound,
+		common_portBindings,
+		common_ipAddressBindings,
 		common_unknown,
 		common_unknownEntity,
 		common_unknownNetwork,
@@ -138,6 +153,9 @@
 		})
 	);
 	const networksQuery = useNetworksQuery();
+	const portsQuery = usePortsQuery();
+	const ipAddressesQuery = useIPAddressesQuery();
+	const subnetsQuery = useSubnetsQuery();
 
 	// Selective host lookup - only fetches hosts needed for service display
 	// Extract host IDs from visible services for host name display
@@ -166,8 +184,78 @@
 	let servicesPagination = $derived(servicesQuery.data?.pagination ?? null);
 	let hostsData = $derived(hostsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
+	let portsData = $derived(portsQuery.data ?? []);
+	let ipAddressesData = $derived(ipAddressesQuery.data ?? []);
+	let subnetsData = $derived(subnetsQuery.data ?? []);
 	// Only show full loading on initial load (no data yet)
 	let isInitialLoading = $derived(servicesQuery.isPending && !servicesQuery.data);
+
+	/** Freshness, judged against the service's own network's window. */
+	function freshnessTag(service: Service) {
+		return getFreshnessTag(
+			service,
+			networksData.find((n) => n.id === service.network_id),
+			{ entityTypeLabel: entities.getName('Service') || undefined }
+		);
+	}
+
+	function isContainerSubnetFn(subnetId: string): boolean {
+		const subnet = subnetsData.find((s) => s.id === subnetId);
+		return subnet ? isContainerSubnet(subnet) : false;
+	}
+
+	/**
+	 * A service's port bindings, grouped by the interface they are bound to.
+	 *
+	 * Keyed on the binding's `ip_address_id` rather than the resolved interface:
+	 * if the lookup fails (an SCD2-closed address the live query no longer
+	 * returns) two distinct bindings would otherwise collapse to the same
+	 * 'unbound' literal and trip Svelte's each_key_duplicate.
+	 */
+	function portBindingItems(service: Service): CardFieldItem[] {
+		const grouped = new SvelteMap<string | null, { iface: IPAddress | null; ports: Port[] }>();
+
+		for (const binding of service.bindings.filter((b) => b.type === 'Port')) {
+			const port = portsData.find((p) => p.id === binding.port_id);
+			if (!port) continue;
+
+			const interfaceId = binding.ip_address_id ?? null;
+			if (!grouped.has(interfaceId)) {
+				const iface = interfaceId
+					? (ipAddressesData.find((i) => i.id === interfaceId) ?? null)
+					: null;
+				grouped.set(interfaceId, { iface, ports: [] });
+			}
+			grouped.get(interfaceId)!.ports.push(port);
+		}
+
+		return [...grouped.entries()].map(([interfaceId, { iface, ports: bound }]) => {
+			const portList = bound.map((p) => formatPort(p)).join(', ');
+			return {
+				id: interfaceId ?? 'unbound',
+				label: iface
+					? `${iface.name ? iface.name + ': ' : ''} ${iface.ip_address} (${portList})`
+					: `${common_unbound()} (${portList})`,
+				color: entities.getColorHelper('Port').color
+			};
+		});
+	}
+
+	/** Interfaces a service is bound to directly, rather than through a port. */
+	function ipBindingItems(service: Service): CardFieldItem[] {
+		return service.bindings
+			.filter((b) => b.type === 'IPAddress')
+			.map((b) => b.ip_address_id)
+			.filter((id): id is string => id !== null)
+			.map((id) => ipAddressesData.find((i) => i.id === id))
+			.filter((iface): iface is IPAddress => iface !== undefined)
+			.map((iface) => ({
+				id: iface.id,
+				label: formatIPAddress(iface, isContainerSubnetFn),
+				color: entities.getColorHelper('IPAddress').color,
+				entityRef: entityRef('IPAddress', iface.id, iface, { subnets: subnetsData })
+			}));
+	}
 
 	// Page change handler for server-side pagination
 	function handlePageChange(page: number, newPageSize: number) {
@@ -336,7 +424,7 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					display: { primary: true, width: 220 }
+					display: { order: 0, primary: true, width: 220 }
 				},
 				host: {
 					label: common_host(),
@@ -350,6 +438,7 @@
 					getValue: (service) =>
 						serviceHosts.get(service.id)?.name || common_unknownEntity({ entity: common_host() }),
 					display: {
+						order: 4,
 						getItems: (service) => {
 							const host = serviceHosts.get(service.id);
 							if (!host) return [];
@@ -374,7 +463,7 @@
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
-					display: { getItems: (item) => networkItems(item.network_id, networksData) }
+					display: { order: 3, getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				// Per-service ordinal, so grouping by it is one header per service.
 				position: {
@@ -394,6 +483,7 @@
 					getGroupValue: (service) => service.service_definition,
 					getValue: (service) => serviceDefinitions.getName(service.service_definition),
 					display: {
+						order: 5,
 						getItems: (service) => [
 							{
 								id: service.service_definition,
@@ -406,9 +496,42 @@
 				},
 				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
 				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } },
-				last_seen_at: { label: common_lastSeen(), type: 'date' }
+				last_seen_at: { label: common_lastSeen(), type: 'date', display: { order: 2 } }
 			},
 			[
+				{
+					// The freshness tag the card showed in its header. Declaring it here
+					// puts it in both views and gives the table a status column.
+					key: 'status',
+					label: common_status(),
+					type: 'string',
+					searchable: true,
+					getValue: (service) => freshnessTag(service)?.label ?? '',
+					display: {
+						statusTag: true,
+						order: 1,
+						getItems: (service) => {
+							const tag = freshnessTag(service);
+							return tag ? [{ id: tag.label, label: tag.label, color: tag.color }] : [];
+						}
+					}
+				},
+				{
+					key: 'port_bindings',
+					label: common_portBindings(),
+					type: 'array',
+					searchable: true,
+					getValue: (service) => portBindingItems(service).map((b) => b.label),
+					display: { hiddenByDefault: true, getItems: portBindingItems }
+				},
+				{
+					key: 'ip_bindings',
+					label: common_ipAddressBindings(),
+					type: 'array',
+					searchable: true,
+					getValue: (service) => ipBindingItems(service).map((b) => b.label),
+					display: { hiddenByDefault: true, getItems: ipBindingItems }
+				},
 				{
 					key: 'category',
 					label: common_category(),
@@ -422,6 +545,7 @@
 					getValue: (item) =>
 						serviceDefinitions.getCategory(item.service_definition) || common_unknown(),
 					display: {
+						order: 6,
 						getItems: (item) => {
 							const category = serviceDefinitions.getCategory(item.service_definition);
 							if (!category) return [];
@@ -448,6 +572,7 @@
 						servicesData.find((s) => s.id == item.virtualization_service_id)?.name ||
 						services_notContainerized(),
 					display: {
+						hiddenByDefault: true,
 						// No chip when a service isn't containerized, so the cell shows an
 						// em dash rather than repeating the phrase down the column. The
 						// phrase stays in `getValue`, so the filter still offers it.
@@ -522,6 +647,10 @@
 			entityType={isReadOnly ? undefined : 'Service'}
 			getItemTags={getServiceTags}
 			getItemId={(item) => item.id}
+			getIcon={(service) => ({
+				icon: serviceDefinitions.getIconComponent(service.service_definition),
+				color: serviceDefinitions.getColorHelper(service.service_definition).icon
+			})}
 			serverPagination={servicesPagination}
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
@@ -532,25 +661,7 @@
 			onCsvExport={handleCsvExport}
 			getActions={serviceActions}
 			entityLabel={common_services()}
-		>
-			{#snippet children(
-				item: Service,
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				{@const host = serviceHosts.get(item.id)}
-				{#if host}
-					<ServiceCard
-						service={item}
-						selected={isSelected}
-						{host}
-						{onSelectionChange}
-						onDelete={isReadOnly ? undefined : handleDeleteService}
-						onEdit={isReadOnly ? undefined : handleEditService}
-					/>
-				{/if}
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 

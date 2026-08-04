@@ -193,7 +193,12 @@
 			{/if}
 		</button>
 
-		{#if viewMode === 'table' && columnMenu}
+		<!--
+			Shown in both views. It edits the one field set both views render, so
+			gating it on the table made the card's fields look fixed when they are
+			the same list.
+		-->
+		{#if columnMenu}
 			{@render columnMenu()}
 		{/if}
 

@@ -1,5 +1,4 @@
 <script lang="ts">
-	import SubnetCard from './SubnetCard.svelte';
 	import SubnetEditModal from './SubnetEditModal/SubnetEditModal.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
@@ -10,7 +9,6 @@
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
-	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
 	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -186,15 +184,22 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					display: { primary: true, width: 220 }
+					display: { order: 0, primary: true, width: 220 }
 				},
-				cidr: { label: common_cidr(), type: 'string', searchable: true, groupable: false },
+				cidr: {
+					label: common_cidr(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					display: { order: 3 }
+				},
 				subnet_type: {
 					label: subnets_subnetType(),
 					type: 'string',
 					searchable: true,
 					filterable: true,
 					display: {
+						order: 4,
 						getItems: (subnet) => [
 							{
 								id: subnet.subnet_type,
@@ -213,14 +218,20 @@
 					groupable: true,
 					getValue: (item) =>
 						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
-					display: { getItems: (item) => networkItems(item.network_id, networksData) }
+					display: { order: 2, getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
 				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } },
-				last_seen_at: { label: common_lastSeen(), type: 'date' }
+				last_seen_at: { label: common_lastSeen(), type: 'date', display: { order: 1 } }
 			},
 			[
-				{ key: 'description', label: common_description(), type: 'string', searchable: true },
+				{
+					key: 'description',
+					label: common_description(),
+					type: 'string',
+					searchable: true,
+					display: { hiddenByDefault: true }
+				},
 				{
 					key: 'tags',
 					label: common_tags(),
@@ -268,27 +279,15 @@
 			entityType={isReadOnly ? undefined : 'Subnet'}
 			getItemTags={getSubnetTags}
 			getItemId={(item) => item.id}
+			getIcon={(subnet) => ({
+				icon: subnetTypes.getIconComponent(subnet.subnet_type),
+				color: subnetTypes.getColorHelper(subnet.subnet_type).icon
+			})}
 			onStaleFilterChange={handleStaleFilterChange}
 			onCsvExport={handleCsvExport}
 			getActions={subnetActions}
 			entityLabel={common_subnets()}
-		>
-			{#snippet children(
-				item: Subnet,
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void,
-				columns: EntityColumn<Subnet>[]
-			)}
-				<SubnetCard
-					subnet={item}
-					{columns}
-					selected={isSelected}
-					{onSelectionChange}
-					onEdit={isReadOnly ? undefined : handleEditSubnet}
-					onDelete={isReadOnly ? undefined : handleDeleteSubnet}
-				/>
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 

@@ -6,7 +6,6 @@
 		useDeleteCredentialMutation,
 		useBulkDeleteCredentialsMutation
 	} from '../queries';
-	import CredentialCard from './CredentialCard.svelte';
 	import CredentialEditModal from './CredentialEditModal.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
@@ -20,7 +19,6 @@
 		type CardAction,
 		type CardFieldItem
 	} from '$lib/shared/components/data/types';
-	import type { EntityColumn } from '$lib/shared/components/data/table/columns';
 	import type { Network } from '$lib/features/networks/types';
 	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
@@ -412,26 +410,14 @@
 			entityType={allowBulkDelete ? 'Credential' : undefined}
 			getItemTags={getCredentialTags}
 			getItemId={(item) => item.id}
+			getIcon={(credential) => ({
+				icon: credentialTypes.getIconComponent(getCredentialTypeId(credential)),
+				color: credentialTypes.getColorHelper(getCredentialTypeId(credential)).icon
+			})}
 			onCsvExport={handleCsvExport}
 			getActions={credentialActions}
 			entityLabel={common_credentials()}
-		>
-			{#snippet children(
-				item: Credential,
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void,
-				columns: EntityColumn<Credential>[]
-			)}
-				<CredentialCard
-					credential={item}
-					{columns}
-					selected={isSelected}
-					{onSelectionChange}
-					onEdit={handleEditCredential}
-					onDelete={handleDeleteCredential}
-				/>
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 

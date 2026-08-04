@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { entities } from '$lib/shared/stores/metadata';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
@@ -6,7 +7,6 @@
 	import type { Discovery } from '../../types/base';
 	import DiscoveryEditModal from '../DiscoveryModal/DiscoveryEditModal.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
-	import DiscoveryHistoryCard from '../cards/DiscoveryHistoryCard.svelte';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
 	import { defineFields } from '$lib/shared/components/data/types';
 	import {
@@ -348,6 +348,10 @@
 			onBulkDelete={isReadOnly ? undefined : handleBulkDelete}
 			storageKey="scanopy-discovery-historical-table-state"
 			getItemId={(item) => item.id}
+			getIcon={() => ({
+				icon: entities.getIconComponent('Discovery'),
+				color: entities.getColorHelper('Discovery').icon
+			})}
 			serverPagination={discoveriesPagination}
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
@@ -355,21 +359,7 @@
 			onCsvExport={handleCsvExport}
 			getActions={discoveryActions}
 			entityLabel={discovery_historyTitle()}
-		>
-			{#snippet children(
-				item: Discovery,
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				<DiscoveryHistoryCard
-					discovery={item}
-					hosts={hostsData}
-					onView={handleEditDiscovery}
-					selected={isSelected}
-					{onSelectionChange}
-				/>
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 

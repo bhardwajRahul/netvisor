@@ -112,10 +112,25 @@ export interface DisplayConfig<T> {
 	/** Escape hatch for genuinely bespoke content: a status tag, a link, an icon. */
 	cell?: Snippet<[T]>;
 	align?: 'left' | 'right';
+	/**
+	 * Where this field sits among the columns, low to high.
+	 *
+	 * Needed because `defineFields` groups server-orderable fields ahead of
+	 * display-only ones, which is the right shape for exhaustiveness checking but
+	 * has nothing to do with the order a reader wants to scan. Fields without one
+	 * keep their declared order, after those that have one.
+	 */
+	order?: number;
 	/** Starting width in px. A user's resize persists over this. */
 	width?: number;
 	/** Row identity: pinned left, carries the checkbox, renders as `<th scope="row">`. */
 	primary?: boolean;
+	/**
+	 * This field is the row's secondary line, so the card renders it under the
+	 * title rather than as another labelled row — a subnet's CIDR, a VLAN's
+	 * number, what a host is virtualized by.
+	 */
+	subtitle?: boolean;
 	/**
 	 * This field is the row's status, so the card renders it as the tag beside
 	 * the title instead of as another labelled row.

@@ -1,17 +1,19 @@
 <script lang="ts">
+	import { formatDateNumeric } from '$lib/shared/utils/formatting';
+	import { Edit, Trash2 } from 'lucide-svelte';
+	import type { CardAction } from '$lib/shared/components/data/types';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import { networkItems } from '$lib/features/networks/columns';
-	import { permissions } from '$lib/shared/stores/metadata';
+	import { permissions, entities } from '$lib/shared/stores/metadata';
 	import type { FieldConfig } from '$lib/shared/components/data/types';
 	import { Plus } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { tooltip } from '$lib/shared/actions/tooltip';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import UserApiKeyCard from './UserApiKeyCard.svelte';
 	import UserApiKeyModal from './UserApiKeyModal.svelte';
 	import {
 		useUserApiKeysQuery,
@@ -24,6 +26,13 @@
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 
 	import {
+		common_enabled,
+		common_expired,
+		common_expires,
+		common_lastUsed,
+		common_never,
+		common_edit,
+		common_delete,
 		common_apiKeys,
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
@@ -136,6 +145,19 @@
 		await downloadCsv('UserApiKey', {});
 	}
 
+	/** Row actions, matching what the card offered. */
+	function userApiKeyActions(apiKey: UserApiKey): CardAction[] {
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEdit(apiKey) },
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDelete(apiKey)
+			}
+		];
+	}
+
 	const apiKeyFields: FieldConfig<UserApiKey>[] = [
 		{
 			key: 'name',
@@ -177,6 +199,34 @@
 					.filter((name): name is string => !!name);
 			},
 			display: { getItems: (item) => networkItems(item.network_ids, networksData) }
+		},
+		{
+			key: 'is_enabled',
+			label: common_enabled(),
+			type: 'boolean',
+			filterable: true,
+			getValue: (key) => key.is_enabled ?? false
+		},
+		{
+			key: 'last_used',
+			label: common_lastUsed(),
+			type: 'date',
+			sortable: true,
+			getValue: (key) => key.last_used ?? null
+		},
+		{
+			key: 'expires_at',
+			label: common_expires(),
+			type: 'string',
+			sortable: true,
+			// Expired reads as a state, not a date — the date has stopped being
+			// the useful part once it has passed. Same rule the card used.
+			getValue: (key) =>
+				key.expires_at
+					? new Date(key.expires_at) < new Date()
+						? common_expired()
+						: formatDateNumeric(key.expires_at)
+					: common_never()
 		},
 		{
 			key: 'tags',
@@ -243,22 +293,13 @@
 			getItemTags={getUserApiKeyTags}
 			storageKey="scanopy-user-api-keys-table-state"
 			getItemId={(item) => item.id}
+			getActions={userApiKeyActions}
+			getIcon={() => ({
+				icon: entities.getIconComponent('UserApiKey'),
+				color: entities.getColorHelper('UserApiKey').icon
+			})}
 			onCsvExport={handleCsvExport}
-		>
-			{#snippet children(
-				item: UserApiKey,
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				<UserApiKeyCard
-					apiKey={item}
-					selected={isSelected}
-					{onSelectionChange}
-					onDelete={isReadOnly ? undefined : handleDelete}
-					onEdit={isReadOnly ? undefined : handleEdit}
-				/>
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 

@@ -5,7 +5,7 @@
 	import { getFieldValue } from './controls/fieldValues';
 	import { formatDateNumeric } from '$lib/shared/utils/formatting';
 	import type { EntityColumn } from './table/columns';
-	import { common_moreItems, common_none } from '$lib/paraglide/messages';
+	import { common_moreItems, common_no, common_none, common_yes } from '$lib/paraglide/messages';
 
 	let { item, column }: { item: T; column: EntityColumn<T> } = $props();
 
@@ -38,7 +38,7 @@
 	function formatValue(raw: Exclude<ReturnType<typeof getFieldValue>, string[]>): string {
 		if (raw === null || raw === undefined || raw === '') return '';
 		if (raw instanceof Date) return formatDateNumeric(raw);
-		if (typeof raw === 'boolean') return String(raw);
+		if (typeof raw === 'boolean') return raw ? common_yes() : common_no();
 		if (column.field.type === 'date') return formatDateNumeric(raw);
 		return raw;
 	}

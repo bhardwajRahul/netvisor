@@ -1,15 +1,19 @@
 <script lang="ts">
+	import { entities, billingPlans, discoveryTypes } from '$lib/shared/stores/metadata';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import type { Discovery } from '../../types/base';
-	import { discoveryFields } from '../../queries';
+	import { discoveryFields, formatScheduleDisplay, cancellingSessions } from '../../queries';
+	import { formatTimestamp } from '$lib/shared/utils/formatting';
+	import ProgressTrack from '$lib/shared/components/data/ProgressTrack.svelte';
+	import AnimatedProgressBar from '../cards/AnimatedProgressBar.svelte';
+	import DiscoveryEstimation from '../DiscoveryEstimation.svelte';
 	import DiscoveryEditModal from '../DiscoveryModal/DiscoveryEditModal.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
-	import DiscoveryRunCard from '../cards/DiscoveryScheduledCard.svelte';
 	import { getFieldKey, type FieldConfig } from '$lib/shared/components/data/types';
-	import { Plus, Play, Power, Edit, Trash2 } from 'lucide-svelte';
+	import { Plus, Play, Power, Edit, Trash2, Ban } from 'lucide-svelte';
 	import type { CardAction } from '$lib/shared/components/data/types';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import {
@@ -37,8 +41,20 @@
 	import {
 		common_confirmDeleteName,
 		common_create,
+		common_cancel,
 		common_delete,
 		common_disable,
+		common_cancelling,
+		common_lastRun,
+		common_legacy,
+		common_manual,
+		common_never,
+		common_none,
+		common_phase,
+		common_progress,
+		common_schedule,
+		common_status,
+		discovery_schedulePausedFreePlan,
 		common_edit,
 		common_enable,
 		common_run,
@@ -251,6 +267,16 @@
 			}
 		}
 
+		const session = getActiveSession(discovery);
+		if (session?.session_id) {
+			actions.push({
+				label: common_cancel(),
+				icon: Ban,
+				class: 'btn-icon-warning',
+				onClick: () => handleCancelDiscovery(session.session_id!)
+			});
+		}
+
 		actions.push({
 			label: common_delete(),
 			icon: Trash2,
@@ -263,14 +289,53 @@
 		return actions;
 	}
 
+	/**
+	 * Whether the org's plan runs schedules at all. A free plan keeps the cron on
+	 * the record but never fires it, so the schedule reads as paused rather than
+	 * as a time that will not happen.
+	 */
+	let schedulePaused = $derived.by(() => {
+		const planType = organizationQuery.data?.plan?.type;
+		if (!planType) return false;
+		return !billingPlans.getMetadata(planType).features.scheduled_discovery;
+	});
+
+	/**
+	 * How the shared discovery fields sit on this tab. `discovery_type` is the same
+	 * on every scheduled scan, so it says nothing as a column — it stays a filter
+	 * and group axis. `created_at` remains available from the field menu.
+	 */
+	const SHARED_FIELD_DISPLAY: Record<string, Record<string, unknown>> = {
+		name: { order: 0 },
+		network_id: { order: 2 },
+		daemon_id: { order: 3 },
+		discovery_type: { hidden: true },
+		created_at: { hiddenByDefault: true }
+	};
+
 	let fields: FieldConfig<Discovery>[] = $derived([
-		...discoveryFields(daemonsData, networksData).map((field) =>
-			// Every scheduled scan is the same discovery type, so the column says the
-			// same thing on every row. It stays a filter and group axis.
-			getFieldKey(field) === 'discovery_type'
-				? { ...field, display: { ...field.display, hidden: true } }
-				: field
-		),
+		...discoveryFields(daemonsData, networksData).map((field) => {
+			const overrides = SHARED_FIELD_DISPLAY[getFieldKey(field)];
+			return overrides ? { ...field, display: { ...field.display, ...overrides } } : field;
+		}),
+		{
+			key: 'legacy',
+			label: common_status(),
+			type: 'string',
+			filterable: true,
+			groupable: true,
+			// Legacy-ness comes from the backend's own `is_legacy`, not a local list —
+			// a `!== 'Unified'` check flagged Rescan, which is new rather than frozen.
+			getValue: (item) =>
+				discoveryTypes.getMetadata(item.discovery_type.type).is_legacy ? common_legacy() : '',
+			display: {
+				statusTag: true,
+				getItems: (item) =>
+					discoveryTypes.getMetadata(item.discovery_type.type).is_legacy
+						? [{ id: 'legacy', label: common_legacy(), color: 'Yellow' }]
+						: []
+			}
+		},
 		{
 			key: 'run_type',
 			label: discovery_runType(),
@@ -278,7 +343,41 @@
 			searchable: true,
 			filterable: true,
 			groupable: true,
-			getValue: (item) => item.run_type.type
+			getValue: (item) => item.run_type.type,
+			display: { order: 0 }
+		},
+		{
+			key: 'schedule',
+			label: common_schedule(),
+			type: 'string',
+			searchable: true,
+			getValue: (item) =>
+				item.run_type.type !== 'Scheduled'
+					? common_manual()
+					: schedulePaused
+						? discovery_schedulePausedFreePlan()
+						: formatScheduleDisplay(item.run_type.cron_schedule, item.run_type.timezone),
+			display: { hiddenByDefault: true }
+		},
+		{
+			key: 'last_run',
+			label: common_lastRun(),
+			type: 'string',
+			getValue: (item) =>
+				item.run_type.type !== 'Historical' && item.run_type.last_run
+					? formatTimestamp(item.run_type.last_run)
+					: common_never(),
+			display: { hiddenByDefault: true }
+		},
+		{
+			key: 'progress',
+			label: common_progress(),
+			// Progress belongs to the run, not the record, so there is nothing to
+			// sort, filter or group by — but it is still a field, so a running scan
+			// shows its tracker in the table as well as on the card.
+			type: 'string',
+			getValue: (item) => getActiveSession(item)?.phase ?? '',
+			display: { order: 1, cell: progressCell }
 		},
 		{
 			key: 'tags',
@@ -296,6 +395,36 @@
 		// `created_at` (sortable) comes from the shared `discoveryFields()` spread above.
 	]);
 </script>
+
+{#snippet progressCell(discovery: Discovery)}
+	{@const session = getActiveSession(discovery)}
+	{#if session}
+		{@const isCancelling = $cancellingSessions.get(session.session_id) === true}
+		{@const phase = isCancelling ? common_cancelling() : session.phase}
+		<div class="min-w-[16rem] space-y-2">
+			<div class="flex items-center gap-2">
+				<span class="text-secondary text-sm font-medium">{common_phase()}:</span>
+				<span class="text-accent text-sm font-medium">{phase}</span>
+			</div>
+
+			<DiscoveryEstimation
+				{phase}
+				hosts_discovered={session.hosts_discovered}
+				estimated_remaining_secs={session.estimated_remaining_secs}
+			/>
+
+			<div class="flex items-center gap-2">
+				<ProgressTrack class="flex-1">
+					<AnimatedProgressBar progress={session.progress} />
+				</ProgressTrack>
+				<span class="text-secondary text-xs">{session.progress}%</span>
+			</div>
+		</div>
+	{:else}
+		<span class="text-muted" aria-hidden="true">—</span>
+		<span class="sr-only">{common_none()}</span>
+	{/if}
+{/snippet}
 
 <div class="space-y-6">
 	<!-- Header -->
@@ -338,36 +467,16 @@
 			onBulkDelete={isReadOnly ? undefined : handleBulkDelete}
 			storageKey="scanopy-discovery-scans-table-state"
 			getItemId={(item) => item.id}
+			getIcon={() => ({
+				icon: entities.getIconComponent('Discovery'),
+				color: entities.getColorHelper('Discovery').icon
+			})}
 			entityType={isReadOnly ? undefined : 'Discovery'}
 			getItemTags={(item) => item.tags}
 			onCsvExport={handleCsvExport}
 			getActions={discoveryActions}
 			entityLabel={common_scans()}
-		>
-			{#snippet children(
-				item: Discovery,
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				{@const isRescan = item.discovery_type.type === 'Rescan'}
-				<DiscoveryRunCard
-					discovery={item}
-					hosts={hostsData}
-					activeSession={getActiveSession(item)}
-					selected={isSelected}
-					{onSelectionChange}
-					onDelete={isReadOnly ? undefined : handleDeleteDiscovery}
-					{...isRescan
-						? {}
-						: {
-								onEdit: isReadOnly ? undefined : handleEditDiscovery,
-								onRun: isReadOnly ? undefined : handleDiscoveryRun,
-								onToggleEnabled: isReadOnly ? undefined : handleToggleEnabled
-							}}
-					onCancel={isReadOnly ? undefined : handleCancelDiscovery}
-				/>
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 

@@ -86,9 +86,23 @@ export function defaultColumnVisibility<T>(columns: EntityColumn<T>[]): Record<s
 	return visibility;
 }
 
-/** Default order: declaration order, which is the order the tab authored. */
+/**
+ * Default order: an explicit `display.order` first, then declaration order.
+ *
+ * Declaration order alone cannot express what a reader wants, because
+ * `defineFields` groups every server-orderable field ahead of the display-only
+ * ones — so a status field that belongs second ends up wherever its
+ * sortability put it.
+ */
 export function defaultColumnOrder<T>(columns: EntityColumn<T>[]): string[] {
-	return columns.map((c) => c.id);
+	return columns
+		.map((column, index) => ({ column, index }))
+		.sort((a, b) => {
+			const orderA = a.column.display.order ?? Number.POSITIVE_INFINITY;
+			const orderB = b.column.display.order ?? Number.POSITIVE_INFINITY;
+			return orderA === orderB ? a.index - b.index : orderA - orderB;
+		})
+		.map(({ column }) => column.id);
 }
 
 /**
@@ -110,16 +124,18 @@ export function reconcileColumnState<T>(
 		visibility[column.id] = typeof persisted === 'boolean' ? persisted : defaults[column.id];
 	}
 
-	const known = new Set(columns.map((c) => c.id));
+	const defaultOrder = defaultColumnOrder(columns);
+	const known = new Set(defaultOrder);
 	const storedOrder = (stored?.order ?? []).filter((id) => known.has(id));
-	const ordered = new Set(storedOrder);
+	const alreadyOrdered = new Set(storedOrder);
 
-	// Splice unknown-to-the-stored-order columns back in at their declared index,
-	// so inserting a field mid-list doesn't push it to the end for existing users.
+	// Splice columns the stored order never knew about back in at the position
+	// they would occupy by default, so adding a field mid-list doesn't push it to
+	// the end for everyone who already has a saved order.
 	const order: string[] = [...storedOrder];
-	columns.forEach((column, index) => {
-		if (ordered.has(column.id)) return;
-		order.splice(Math.min(index, order.length), 0, column.id);
+	defaultOrder.forEach((id, index) => {
+		if (alreadyOrdered.has(id)) return;
+		order.splice(Math.min(index, order.length), 0, id);
 	});
 
 	return { visibility, order };

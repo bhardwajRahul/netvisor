@@ -39,6 +39,8 @@
 	import BulkActionBar from './controls/BulkActionBar.svelte';
 	import PaginationBar from './controls/PaginationBar.svelte';
 	import EntityTable from './table/EntityTable.svelte';
+	import EntityCard from './EntityCard.svelte';
+	import type { IconComponent } from '$lib/shared/utils/types';
 	import ColumnVisibilityMenu from './table/ColumnVisibilityMenu.svelte';
 	import TagCell from './TagCell.svelte';
 	import { tagItems } from '$lib/features/tags/columns';
@@ -49,7 +51,7 @@
 		TAG_COLUMN_ID,
 		type EntityColumn
 	} from './table/columns';
-	import { onMount, type Snippet } from 'svelte';
+	import { onMount } from 'svelte';
 	import {
 		common_all,
 		common_groupTotalShowing,
@@ -90,7 +92,6 @@
 		allowBulkDelete = true,
 		entityType = null,
 		getItemTags = null,
-		children,
 		getItemId,
 		// Server-side pagination (optional)
 		serverPagination = null,
@@ -116,11 +117,15 @@
 		// Export button click override (optional)
 		// If provided, replaces onCsvExport entirely - use for custom export UI (e.g., modal with options)
 		onExportClick = null,
-		// Row actions for table mode. Cards build their own action list internally;
-		// the table never renders a card, so it needs the same actions supplied here.
+		// Row actions, used by both views. The card and the table render the same
+		// list, so an action cannot exist in one and be missing from the other.
 		getActions = null,
 		// Names the table for screen readers, e.g. "Hosts".
-		entityLabel = null
+		entityLabel = null,
+		// Card chrome. Per row, because a host's icon comes from its first service
+		// and a service's from its type.
+		getIcon = null,
+		getLink = null
 	}: {
 		items: T[];
 		fields: FieldConfig<T>[];
@@ -129,14 +134,6 @@
 		allowBulkDelete?: boolean;
 		entityType?: EntityDiscriminants | null;
 		getItemTags?: ((item: T) => string[]) | null;
-		/**
-		 * Renders one row as a card. Only invoked in card mode.
-		 *
-		 * Receives the same visible columns the table renders, so a card that
-		 * forwards them shows exactly the fields the table does, honouring the
-		 * same visibility choices. Cards not yet migrated can ignore the argument.
-		 */
-		children: Snippet<[T, boolean, (selected: boolean) => void, EntityColumn<T>[]]>;
 		getItemId: (item: T) => string;
 		// Server-side pagination: when provided, pagination is server-controlled
 		// Callback receives both page and pageSize so parent can use in query
@@ -169,10 +166,12 @@
 		onCsvExport?: (() => void | Promise<void>) | null;
 		// Export button click override: if provided, replaces onCsvExport entirely
 		onExportClick?: (() => void | Promise<void>) | null;
-		// Row actions for table mode, matching what the card builds for itself.
+		// Row actions, rendered by both views.
 		getActions?: ((item: T) => CardAction[]) | null;
 		// Accessible name for the table, e.g. "Hosts".
 		entityLabel?: string | null;
+		getIcon?: ((item: T) => { icon: IconComponent | null; color?: string }) | null;
+		getLink?: ((item: T) => string | undefined) | null;
 	} = $props();
 
 	// Tags query for filter display
@@ -1137,8 +1136,19 @@
 	/>
 
 	<!-- Content -->
-	{#if hasActiveGrouping}
-		<!-- Grouped view -->
+	{#if viewMode === 'table'}
+		<!--
+			Grouped or not, one table with one header row. Splitting a grouped list
+			into a table per group gave each group its own header and its own column
+			widths, so columns stopped lining up across the very groups you were
+			comparing — which is the whole reason to use a table.
+		-->
+		{@render tableFor(
+			hasActiveGrouping ? null : paginatedItems,
+			hasActiveGrouping ? null : tableCaptionText
+		)}
+	{:else if hasActiveGrouping}
+		<!-- Grouped cards -->
 		<div class="space-y-6">
 			{#each [...groupedItems.entries()] as [groupName, groupItems] (groupName)}
 				{@const range = groupRange(groupItems)}
@@ -1159,21 +1169,14 @@
 						</span>
 					</div>
 
-					<!-- Group Items -->
-					{#if viewMode === 'table'}
-						{@render tableFor(groupItems, groupName)}
-					{:else}
-						<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-							{#each groupItems as item (getItemId(item))}
-								{@render cardFor(item)}
-							{/each}
-						</div>
-					{/if}
+					<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+						{#each groupItems as item (getItemId(item))}
+							{@render cardFor(item)}
+						{/each}
+					</div>
 				</div>
 			{/each}
 		</div>
-	{:else if viewMode === 'table'}
-		{@render tableFor(paginatedItems, tableCaptionText)}
 	{:else}
 		<!-- Ungrouped view (paginated) -->
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -1197,29 +1200,40 @@
 
 {#snippet cardFor(item: T)}
 	{@const itemId = getItemId(item)}
-	{@const isSelected = selectedIds.has(itemId)}
-	{@render children(
-		item,
-		isSelected,
-		(selected) => setRowSelected(itemId, selected),
-		renderedColumns
-	)}
+	<EntityCard
+		{item}
+		columns={renderedColumns}
+		actions={getActions ? getActions(item) : []}
+		{getIcon}
+		{getLink}
+		selected={selectedIds.has(itemId)}
+		selectable={showSelection}
+		onSelectionChange={(selected) => setRowSelected(itemId, selected)}
+	/>
 {/snippet}
 
-{#snippet tableFor(rows: T[], caption: string)}
+{#snippet tableFor(rows: T[] | null, caption: string | null)}
+	{@const flat = rows ?? [...groupedItems.values()].flat()}
 	<EntityTable
 		items={rows}
+		groups={rows
+			? null
+			: [...groupedItems.entries()].map(([name, groupItems]) => ({
+					name,
+					items: groupItems,
+					range: groupRange(groupItems)
+				}))}
 		columns={renderedColumns}
 		{sortState}
 		selectable={showSelection}
 		{selectedIds}
-		allSelected={isAllSelected(rows, selectedIds, getItemId)}
-		someSelected={isPartiallySelected(rows, selectedIds, getItemId)}
+		allSelected={isAllSelected(flat, selectedIds, getItemId)}
+		someSelected={isPartiallySelected(flat, selectedIds, getItemId)}
 		{getItemId}
 		{getActions}
-		{caption}
+		caption={caption ?? tableCaptionText}
 		onToggleSort={toggleSort}
 		onToggleRow={setRowSelected}
-		onToggleAll={() => toggleAllIn(rows)}
+		onToggleAll={() => toggleAllIn(flat)}
 	/>
 {/snippet}
