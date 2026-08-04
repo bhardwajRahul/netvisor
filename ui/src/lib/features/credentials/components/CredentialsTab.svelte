@@ -131,6 +131,12 @@
 		return credentialTypes.getMetadata(getCredentialTypeId(credential))?.targets ?? [];
 	}
 
+	/** Reaches a host only as some daemon's host, never hosts in general. */
+	function daemonHostOnly(credential: Credential): boolean {
+		const targets = targetsFor(credential);
+		return targets.includes('DaemonHost') && !targets.includes('Hosts');
+	}
+
 	/**
 	 * "Not applicable" is not the same as "none assigned".
 	 *
@@ -336,7 +342,11 @@
 							hostsForCredential(item).map((host) => ({
 								id: host.id,
 								label: host.name ?? host.id,
-								color: entities.getColorHelper('Host').color,
+								// A daemon-host credential reaches that host *through* its
+								// daemon, so it reads as a daemon relationship rather than a
+								// host one. Only credentials that target hosts generally get
+								// the host colour.
+								color: entities.getColorHelper(daemonHostOnly(item) ? 'Daemon' : 'Host').color,
 								entityRef: entityRef('Host', host.id, host)
 							}))
 						)
