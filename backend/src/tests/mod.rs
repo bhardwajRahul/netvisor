@@ -38,6 +38,7 @@ use testcontainers::{ContainerAsync, GenericImage, ImageExt, core::WaitFor, runn
 use uuid::Uuid;
 
 pub mod dependencies;
+pub mod host_create_with_children;
 
 pub const DAEMON_CONFIG_FIXTURE: &str = "src/tests/daemon_config.json";
 pub const SERVER_DB_FIXTURE: &str = "src/tests/scanopy.sql";
