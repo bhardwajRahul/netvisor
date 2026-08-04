@@ -9,7 +9,8 @@
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import DiscoveryRunCard from '../cards/DiscoveryScheduledCard.svelte';
 	import type { FieldConfig } from '$lib/shared/components/data/types';
-	import { Plus } from 'lucide-svelte';
+	import { Plus, Play, Power, Edit, Trash2 } from 'lucide-svelte';
+	import type { CardAction } from '$lib/shared/components/data/types';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import {
 		useDiscoveriesQuery,
@@ -36,9 +37,19 @@
 	import {
 		common_confirmDeleteName,
 		common_create,
+		common_delete,
+		common_disable,
+		common_edit,
+		common_enable,
+		common_run,
 		common_tags,
 		daemons_installPromptDiscoveries,
+		discovery_alreadyRunning,
+		discovery_cannotDeleteWhileRunning,
+		discovery_cannotToggleWhileRunning,
 		discovery_confirmDeleteScheduled,
+		discovery_disableScheduleTooltip,
+		discovery_enableScheduleTooltip,
 		common_scans,
 		discovery_legacyDaemonsWarning,
 		discovery_noScheduledSessions,
@@ -196,6 +207,62 @@
 		await downloadCsv('Discovery', {});
 	}
 
+	/**
+	 * Row actions for table mode, matching what the card offers.
+	 *
+	 * A run in flight blocks the destructive and scheduling actions, and the
+	 * tooltip carries the reason — same gating the card applies.
+	 */
+	function discoveryActions(discovery: Discovery): CardAction[] {
+		if (isReadOnly) return [];
+
+		const running = getActiveSession(discovery) !== null;
+		const isRescan = discovery.discovery_type.type === 'Rescan';
+		const isEnabled = discovery.run_type.type === 'Scheduled' && discovery.run_type.enabled;
+		const actions: CardAction[] = [];
+
+		if (!isRescan) {
+			actions.push({
+				label: common_edit(),
+				icon: Edit,
+				onClick: () => handleEditDiscovery(discovery)
+			});
+			actions.push({
+				label: common_run(),
+				icon: Play,
+				onClick: () => handleDiscoveryRun(discovery),
+				disabled: running,
+				tooltip: running ? discovery_alreadyRunning() : undefined
+			});
+
+			if (discovery.run_type.type === 'Scheduled') {
+				actions.push({
+					label: isEnabled ? common_disable() : common_enable(),
+					icon: Power,
+					class: isEnabled ? 'btn-icon-success' : 'btn-icon',
+					onClick: () => handleToggleEnabled(discovery),
+					disabled: running,
+					tooltip: running
+						? discovery_cannotToggleWhileRunning()
+						: isEnabled
+							? discovery_disableScheduleTooltip()
+							: discovery_enableScheduleTooltip()
+				});
+			}
+		}
+
+		actions.push({
+			label: common_delete(),
+			icon: Trash2,
+			class: 'btn-icon-danger',
+			onClick: () => handleDeleteDiscovery(discovery),
+			disabled: running,
+			tooltip: running ? discovery_cannotDeleteWhileRunning() : undefined
+		});
+
+		return actions;
+	}
+
 	let fields: FieldConfig<Discovery>[] = $derived([
 		...discoveryFields(daemonsData, networksData),
 		{
@@ -268,6 +335,8 @@
 			entityType={isReadOnly ? undefined : 'Discovery'}
 			getItemTags={(item) => item.tags}
 			onCsvExport={handleCsvExport}
+			getActions={discoveryActions}
+			entityLabel={common_scans()}
 		>
 			{#snippet children(
 				item: Discovery,

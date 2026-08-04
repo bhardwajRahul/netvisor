@@ -5,7 +5,9 @@
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
+	import { defineFields, entityRef } from '$lib/shared/components/data/types';
+	import { networkItems } from '$lib/features/networks/columns';
+	import { entities } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
@@ -99,7 +101,8 @@
 					filterable: true,
 					groupable: true,
 					getValue: (item) =>
-						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
+						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
+					column: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				{
 					key: 'subnet_ids',
@@ -107,7 +110,16 @@
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: getSubnetNames
+					getValue: getSubnetNames,
+					column: {
+						getItems: (vlan) =>
+							getSubnets(vlan).map((subnet) => ({
+								id: subnet.id,
+								label: subnet.name,
+								color: entities.getColorHelper('Subnet').color,
+								entityRef: entityRef('Subnet', subnet.id, subnet)
+							}))
+					}
 				},
 				{
 					// Not in VlanOrderField, so display-only with client-side sorting.

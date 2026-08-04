@@ -25,9 +25,12 @@
 	import type { TabProps } from '$lib/shared/types';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import { modalState, openModal, closeModal } from '$lib/shared/stores/modal-registry';
+	import { Info } from 'lucide-svelte';
+	import type { CardAction } from '$lib/shared/components/data/types';
 	import {
 		common_created,
 		common_daemon,
+		common_details,
 		common_duration,
 		common_name,
 		common_network,
@@ -184,6 +187,11 @@
 		await downloadCsv('Discovery', {});
 	}
 
+	/** Row actions for table mode, matching what the card offers. */
+	function discoveryActions(discovery: Discovery): CardAction[] {
+		return [{ label: common_details(), icon: Info, onClick: () => handleEditDiscovery(discovery) }];
+	}
+
 	let fields = $derived(
 		defineFields<Discovery, DiscoveryOrderField>(
 			{
@@ -290,6 +298,8 @@
 			onOrderChange={handleOrderChange}
 			onSearchChange={handleSearchChange}
 			onCsvExport={handleCsvExport}
+			getActions={discoveryActions}
+			entityLabel={discovery_historyTitle()}
 		>
 			{#snippet children(
 				item: Discovery,

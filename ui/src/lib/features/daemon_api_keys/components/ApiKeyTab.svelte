@@ -4,6 +4,7 @@
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import type { FieldConfig } from '$lib/shared/components/data/types';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
+	import { networkItems } from '$lib/features/networks/columns';
 	import CreateApiKeyModal from './ApiKeyModal.svelte';
 	import type { ApiKey } from '../types/base';
 	import ApiKeyCard from './ApiKeyCard.svelte';
@@ -134,7 +135,8 @@
 			groupable: true,
 			getValue(item) {
 				return networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork();
-			}
+			},
+			column: { getItems: (item) => networkItems(item.network_id, networksData) }
 		},
 		{
 			key: 'tags',

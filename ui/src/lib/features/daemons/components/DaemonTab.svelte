@@ -226,7 +226,18 @@
 							? common_unreachable()
 							: daemon.standby
 								? common_standby()
-								: common_active()
+								: common_active(),
+					column: {
+						// Colour carries the meaning here: scanning a column of grey text
+						// for the word "Unreachable" is exactly what a table is bad at.
+						getItems: (daemon) => [
+							daemon.is_unreachable
+								? { id: 'unreachable', label: common_unreachable(), color: 'Red' as const }
+								: daemon.standby
+									? { id: 'standby', label: common_standby(), color: 'Amber' as const }
+									: { id: 'active', label: common_active(), color: 'Green' as const }
+						]
+					}
 				},
 				{
 					key: 'mode',
@@ -236,7 +247,18 @@
 					filterable: true,
 					groupable: true,
 					getValue: (daemon) =>
-						daemon.mode === 'server_poll' ? daemons_mode_serverPoll() : daemons_mode_daemonPoll()
+						daemon.mode === 'server_poll' ? daemons_mode_serverPoll() : daemons_mode_daemonPoll(),
+					column: {
+						getItems: (daemon) => [
+							{
+								id: daemon.mode,
+								label:
+									daemon.mode === 'server_poll'
+										? daemons_mode_serverPoll()
+										: daemons_mode_daemonPoll()
+							}
+						]
+					}
 				},
 				{
 					key: 'tags',
