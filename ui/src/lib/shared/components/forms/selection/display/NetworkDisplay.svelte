@@ -1,8 +1,7 @@
 <script lang="ts" context="module">
-	import { entities, credentialTypes } from '$lib/shared/stores/metadata';
+	import { entities } from '$lib/shared/stores/metadata';
 	import { entityRef } from '$lib/shared/components/data/types';
 	import type { Credential } from '$lib/features/credentials/types/base';
-	import { getCredentialTypeId } from '$lib/features/credentials/types/base';
 
 	export interface NetworkDisplayContext {
 		credentials?: Credential[];
@@ -30,7 +29,7 @@
 				.filter(Boolean)
 				.map((cred) => ({
 					label: cred!.name,
-					color: credentialTypes.getColorHelper(getCredentialTypeId(cred!)).color,
+					color: entities.getColorHelper('Credential').color,
 					entityRef: entityRef('Credential', cred!.id, cred!)
 				}));
 		},

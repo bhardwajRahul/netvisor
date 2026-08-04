@@ -455,6 +455,7 @@
 	"common_spokes": "Spokes",
 	"common_stale": "Stale",
 	"common_staleOnly": "Stale only",
+	"common_staleWithDate": "{date} (Stale)",
 	"common_standby": "Standby",
 	"common_started": "Started",
 	"common_status": "Status",
