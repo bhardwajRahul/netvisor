@@ -37,6 +37,7 @@ use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
 use uuid::Uuid;
 
+pub mod demo_data_seeding;
 pub mod dependencies;
 pub mod host_create_with_children;
 
