@@ -206,6 +206,39 @@ function hideContainersAndDescendants(
  */
 export interface FilterValueContext {
 	network?: Network;
+	/** The graph being filtered, for values that depend on other entities rather than just this one. */
+	topology?: RenderableTopology;
+}
+
+/**
+ * Interfaces that some other interface names as its neighbour, per topology.
+ *
+ * A link is recorded on one side. In the seeded reproduction 728 interfaces carry a neighbour and
+ * 721 are the *target* of one, but only 12 have it set both ways — so judging "linked" from an
+ * interface's own `neighbor` alone marks the far end of nearly every link as unlinked. With the
+ * link-state filter hiding unlinked ports that silently deleted one endpoint of almost every
+ * physical link, and `buildFlowEdges` drops an edge whose endpoint is not in the node set: 11 edges
+ * drew where there were ~704, which is exactly the count of the 12 bidirectional pairs.
+ *
+ * Cached per topology object so the reverse pass runs once rather than per interface.
+ */
+const linkTargetsByTopology = new WeakMap<RenderableTopology, Set<string>>();
+
+/** Shared empty set for the no-topology-in-context case, so the extractor allocates nothing. */
+const EMPTY_ID_SET: ReadonlySet<string> = new Set<string>();
+
+function interfacesReferencedAsNeighbours(topology: RenderableTopology): Set<string> {
+	const cached = linkTargetsByTopology.get(topology);
+	if (cached) return cached;
+
+	const targets = new Set<string>();
+	for (const iface of topology.interfaces ?? []) {
+		const neighbor = (iface as { neighbor?: { type?: string; id?: string } | null }).neighbor;
+		// Only a port-level resolution makes a specific port linked; `Host` names a device, not a port.
+		if (neighbor?.type === 'Interface' && neighbor.id) targets.add(neighbor.id);
+	}
+	linkTargetsByTopology.set(topology, targets);
+	return targets;
 }
 
 export type FilterValueExtractor = (entity: unknown, ctx: FilterValueContext) => string | null;
@@ -229,8 +262,16 @@ export const FILTER_VALUE_EXTRACTORS: Record<string, Record<string, FilterValueE
 		// Ids match `InterfaceLinkState` on the backend, which is what supplies the filter's
 		// values. A partial resolution (`Neighbor::Host` — the remote device known but not the
 		// port) counts as linked: it still draws an edge, so hiding it would break the diagram.
-		LinkState: (i) =>
-			(i as { neighbor?: unknown | null }).neighbor != null ? 'Linked' : 'Unlinked'
+		//
+		// Linked in *either* direction. A link is recorded on one side, so an interface with no
+		// neighbour of its own is still linked if another interface names it — see
+		// `interfacesReferencedAsNeighbours`.
+		LinkState: (i, ctx) => {
+			const iface = i as { id: string; neighbor?: unknown | null };
+			if (iface.neighbor != null) return 'Linked';
+			const targets = ctx.topology ? interfacesReferencedAsNeighbours(ctx.topology) : EMPTY_ID_SET;
+			return targets.has(iface.id) ? 'Linked' : 'Unlinked';
+		}
 	}
 };
 
@@ -256,7 +297,7 @@ function computePresentFilterValues(
 		for (const [filterType, extract] of Object.entries(extractors)) {
 			const seen = new Set<string>();
 			for (const entity of collection) {
-				const value = extract(entity, { network });
+				const value = extract(entity, { network, topology });
 				if (value) seen.add(value);
 			}
 			(out[entityType] ??= {})[filterType] = [...seen];
@@ -406,7 +447,7 @@ export function updateTagFilter(
 					if (!hiddenValues.length) continue;
 					const extract = extractors[filterType];
 					if (!extract) continue;
-					const value = extract(entity, { network });
+					const value = extract(entity, { network, topology });
 					if (value && hiddenValues.includes(value)) {
 						noteHidden(entityType, entity.id);
 					}
