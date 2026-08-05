@@ -167,6 +167,16 @@
 		selectedNodes: selNodesStore
 	};
 
+	/**
+	 * Node count at or above which the collapse fade is skipped in favour of a single store write.
+	 *
+	 * Set well above the graphs where the animation reads as polish and well below the scale where a
+	 * second full node adoption costs hundreds of megabytes. The culling threshold (150) is a
+	 * different question — that one is about what is mounted, this one about how many times the set
+	 * is handed over — so it is deliberately not reused.
+	 */
+	const ANIMATE_COLLAPSE_MAX_NODES = 600;
+
 	// Track viewport panning state
 	let viewportMoved = false;
 	let viewportMoveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -889,8 +899,23 @@
 		handlesDone();
 
 		// Render
+		//
+		// The phased fade is skipped on a large graph, where it is the single most expensive thing a
+		// collapse press does. Each node-store write costs 130-230MB *downstream* of `nodes.set()` —
+		// SvelteFlow adopts the whole node set and Svelte flushes the reactive graph after the
+		// synchronous call returns, which is why the write itself times at 1ms and shows no growth
+		// while the heap climbs between stages. The phased path performs two or three writes for one
+		// press; the direct path performs one. Measured on a 2,890-node graph, that difference was
+		// ~350MB of a 392MB run, against an ELK layout costing 40MB.
+		//
+		// Below the threshold the animation is worth its cost and stays: it is what makes a collapse
+		// legible rather than a jump, and on a small graph a second adoption is cheap.
 		const shouldAnimate =
-			needsElk && !coldLoadMeasure && layoutState.lastRenderedTopoKey !== '' && !prep.viewChanged;
+			needsElk &&
+			!coldLoadMeasure &&
+			layoutState.lastRenderedTopoKey !== '' &&
+			!prep.viewChanged &&
+			allNodes.length < ANIMATE_COLLAPSE_MAX_NODES;
 
 		if (shouldAnimate) {
 			animatingCollapse = true;
