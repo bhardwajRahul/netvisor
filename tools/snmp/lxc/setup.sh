@@ -1252,38 +1252,68 @@ EOF
 # The device's own local identity uses the conformant index (lldpLocPortNum only), which is
 # what makes the remote table's missing time mark the single variable this profile changes.
 #
-# Note the local port numbers here are 1..5 and equal ifIndex, so the local-port remap resolves
-# to the identity mapping and cannot mask the index parse under test.
+# Note the local port numbers here equal ifIndex, so the local-port remap resolves to the identity
+# mapping and cannot mask the index parse under test.
+#
+# Every far end below is a real device in this lab, matched on a value that device actually
+# reports — checked against the scanned data, not invented. An earlier revision of this file used
+# a made-up chassis MAC for switch-netgear-01 and a port (Gi0/4) that switch-core-01 does not
+# have; both still "resolved", one by falling through to the sysName tier and one by stopping at
+# a device-level edge, so the profile passed without exercising what it claims to. Each row now
+# resolves through exactly one intended path:
+#
+#   port 1 → switch-core-01   chassis 00:1a:2b:00:10:00 is that switch's own lldpLocChassisId;
+#                             port id "Gi0/3" is its ifName. Host and port both by name.
+#   port 2 → nothing          a desk phone: no device in this lab bears this MAC or sysName, so
+#                             every host tier fails. Deliberate — it is the only source of a
+#                             non-zero `host_not_found`, which is what the server-side summary
+#                             naming unmatched far ends needs in order to fire at all. Endpoints
+#                             like this are what that counter legitimately consists of.
+#   port 3 → switch-dlink-01  port id "Slot0/3" is its ifName, ifDescr is the long D-Link form.
+#   port 5 → switch-netgear-01 chassis 00:1a:2b:3c:4d:63 is on no port and no IP (the #664
+#                             shape), so only the host's own recorded chassis_id can match it;
+#                             port id "3" matches no name and falls through to ifIndex 3 (g3).
+#                             Its lldpRemPortDesc deliberately matches nothing, so the ifIndex
+#                             fallback is what is actually under test.
 cat > "$DATA_DIR/switch-tplink-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.1.0 integer 4
 .1.0.8802.1.1.2.1.3.2.0 string 18:66:da:5d:aa:8e
 .1.0.8802.1.1.2.1.3.3.0 string switch-tplink-01
 .1.0.8802.1.1.2.1.3.4.0 string TL-SX3016F 1.0 - TP-Link Switch
 .1.0.8802.1.1.2.1.3.7.1.2.1 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.2 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.3 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.5 integer 5
 .1.0.8802.1.1.2.1.3.7.1.3.1 string ten-gigabitEthernet 1/0/1
+.1.0.8802.1.1.2.1.3.7.1.3.2 string ten-gigabitEthernet 1/0/2
 .1.0.8802.1.1.2.1.3.7.1.3.3 string ten-gigabitEthernet 1/0/3
 .1.0.8802.1.1.2.1.3.7.1.3.5 string ten-gigabitEthernet 1/0/5
 .1.0.8802.1.1.2.1.4.1.1.4.1.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.2.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.3.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.5.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.5.1.1 string 00:1A:2B:00:10:00
+.1.0.8802.1.1.2.1.4.1.1.5.2.1 string 9C:AD:97:1F:22:40
 .1.0.8802.1.1.2.1.4.1.1.5.3.1 string 00:AD:24:AF:4E:00
-.1.0.8802.1.1.2.1.4.1.1.5.5.1 string 00:1A:2B:00:20:00
+.1.0.8802.1.1.2.1.4.1.1.5.5.1 string 00:1A:2B:3C:4D:63
 .1.0.8802.1.1.2.1.4.1.1.6.1.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.2.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.3.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.5.1 integer 5
-.1.0.8802.1.1.2.1.4.1.1.7.1.1 string Gi0/4
+.1.0.8802.1.1.2.1.4.1.1.7.1.1 string Gi0/3
+.1.0.8802.1.1.2.1.4.1.1.7.2.1 string 1
 .1.0.8802.1.1.2.1.4.1.1.7.3.1 string Slot0/3
 .1.0.8802.1.1.2.1.4.1.1.7.5.1 string 3
-.1.0.8802.1.1.2.1.4.1.1.8.1.1 string GigabitEthernet0/4
+.1.0.8802.1.1.2.1.4.1.1.8.1.1 string GigabitEthernet0/3
+.1.0.8802.1.1.2.1.4.1.1.8.2.1 string Port 1
 .1.0.8802.1.1.2.1.4.1.1.8.3.1 string D-Link DGS-1210-48 Rev.GX/7.20.003 Port 3
 .1.0.8802.1.1.2.1.4.1.1.8.5.1 string Slot: 0 Port: 3 Gigabit - Level
 .1.0.8802.1.1.2.1.4.1.1.9.1.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.9.2.1 string desk-phone-4021
 .1.0.8802.1.1.2.1.4.1.1.9.3.1 string switch-dlink-01
 .1.0.8802.1.1.2.1.4.1.1.9.5.1 string switch-netgear-01
 .1.0.8802.1.1.2.1.4.1.1.10.1.1 string Cisco IOS Software, C2960
+.1.0.8802.1.1.2.1.4.1.1.10.2.1 string Polycom VVX 411
 .1.0.8802.1.1.2.1.4.1.1.10.3.1 string D-Link DGS-1210-48 Rev.GX/7.20.003
 .1.0.8802.1.1.2.1.4.1.1.10.5.1 string GS724Tv3 ProSafe 24-port Gigabit Smart Switch
 EOF
