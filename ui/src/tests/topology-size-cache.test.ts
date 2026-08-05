@@ -1,33 +1,49 @@
 import { describe, it, expect } from 'vitest';
 
 /**
- * `getStructureKey` composes `nodes|inline|hide`, and `prepare` decides whether to discard measured
- * sizes by comparing the last two segments. The composition is what makes that decision possible,
- * so a change to the separator or the ordering would silently turn every data refresh back into a
- * full re-measure of the graph — ~665MB and 5.5s at 19,095 nodes — with nothing failing.
+ * `getStructureKey` composes `nodes|inline|resizingHide|structuralHide`, and `prepare` decides
+ * whether to discard every measured size by comparing only the middle two. Getting that wrong is
+ * silent in both directions: compare too much and a filter toggle throws away 19,095 sizes and
+ * re-measures the graph (~665MB, 5.5s); compare too little and ELK lays out against sizes the cards
+ * no longer have, and they overlap.
  */
 describe('structure key segmentation', () => {
-	const split = (key: string) => {
-		const [, inline = '', hide = ''] = key.split('|');
-		return { inline, hide };
+	/** What `prepare` reads to decide whether cards may have resized. */
+	const resizeSignal = (key: string) => {
+		const [, inline = '', resizingHide = ''] = key.split('|');
+		return { inline, resizingHide };
 	};
 
-	it('separates a node-set change from an inline or hide change', () => {
-		const base = '10:5:a@,b@|inlineSig|hideSig';
-		const moreNodes = '11:5:a@,b@,c@|inlineSig|hideSig';
-		const inlineChanged = '10:5:a@,b@|OTHER|hideSig';
-		const hideChanged = '10:5:a@,b@|inlineSig|OTHER';
+	const base = '10:5:a@,b@|inlineSig|e:svc-1|n:node-9';
 
-		// Node set moved, card contents did not — sizes stay valid.
-		expect(split(moreNodes)).toEqual(split(base));
-		// Either of these resizes cards, so the sizes must be discarded.
-		expect(split(inlineChanged)).not.toEqual(split(base));
-		expect(split(hideChanged)).not.toEqual(split(base));
+	it('ignores a node-set change', () => {
+		// More nodes, same card contents — the survivors' sizes are still correct.
+		expect(resizeSignal('11:5:a@,b@,c@|inlineSig|e:svc-1|n:node-9')).toEqual(resizeSignal(base));
+	});
+
+	it('ignores a hide that only removes nodes', () => {
+		// Hiding unlinked ports in L2 removes Interface element nodes. Nothing that survives is
+		// drawn differently, so the sizes must be kept — this is the case that produced seven full
+		// measurement passes across nine runs.
+		expect(resizeSignal('10:5:a@,b@|inlineSig|e:svc-1|m:Interface.LinkState=Unlinked')).toEqual(
+			resizeSignal(base)
+		);
+	});
+
+	it('reacts to a hide that resizes cards', () => {
+		// Hiding an entity drawn inside another node's card changes that card's height.
+		expect(resizeSignal('10:5:a@,b@|inlineSig|m:Service.Category=OpenPorts|n:node-9')).not.toEqual(
+			resizeSignal(base)
+		);
+	});
+
+	it('reacts to an inline content change', () => {
+		expect(resizeSignal('10:5:a@,b@|OTHER|e:svc-1|n:node-9')).not.toEqual(resizeSignal(base));
 	});
 
 	it('treats a missing segment as empty rather than undefined', () => {
-		// A view with no inline entities and no filters emits empty segments; they must compare
-		// equal to each other rather than producing a spurious clear on every run.
-		expect(split('3:1:a@||')).toEqual(split('4:1:a@,b@||'));
+		// A view with no inline entities and no filters emits empty segments; they must compare equal
+		// rather than producing a spurious clear on every run.
+		expect(resizeSignal('3:1:a@|||')).toEqual(resizeSignal('4:1:a@,b@|||'));
 	});
 });

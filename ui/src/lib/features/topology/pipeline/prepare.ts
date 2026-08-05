@@ -78,19 +78,62 @@ let defaultsAppliedThisSession = false;
  * `viewSizeCache`/`containerSizeCache`, and without that ELK re-runs against the sizes the
  * cards used to have and the new ones overlap.
  */
-function getHideStateKey(view: string): string {
-	const parts: string[] = [];
+function getHideStateKey(view: string): { resizing: string; structural: string } {
+	const resizing: string[] = [];
+	const structural: string[] = [];
 
+	// Hiding a node removes it. Nothing that survives renders differently, so measured sizes stay
+	// valid — this belongs on the structural side.
 	const hiddenNodes = get(tagHiddenNodeIds);
-	if (hiddenNodes.size > 0) parts.push(`n:${[...hiddenNodes].sort().join(',')}`);
+	if (hiddenNodes.size > 0) structural.push(`n:${[...hiddenNodes].sort().join(',')}`);
 
+	// Hiding an entity drawn *inside* another node's card changes that card's height while every
+	// node id stays the same. This is the case the caches must be cleared for.
 	const hiddenEntities = get(hiddenEntityIds);
-	if (hiddenEntities.size > 0) parts.push(`e:${[...hiddenEntities].sort().join(',')}`);
+	if (hiddenEntities.size > 0) resizing.push(`e:${[...hiddenEntities].sort().join(',')}`);
 
-	const metadata = hiddenMetadataKey(view);
-	if (metadata) parts.push(`m:${metadata}`);
+	// A metadata filter is whichever of the two its entity is in this view. Hiding unlinked ports in
+	// L2 removes Interface *element nodes* — no card resizes — while hiding a service category in L3
+	// removes services drawn inside host cards and every one of them shrinks. Splitting them is what
+	// stops a filter toggle from discarding 19,095 measured sizes it did not invalidate.
+	const inlineTypes = inlineEntityTypes(view);
+	for (const [entityType, key] of hiddenMetadataKeysByEntity(view)) {
+		(inlineTypes.has(entityType) ? resizing : structural).push(`m:${key}`);
+	}
 
-	return parts.join('|');
+	return { resizing: resizing.join('|'), structural: structural.join('|') };
+}
+
+/** Entity types this view draws inside other nodes' cards. */
+function inlineEntityTypes(view: string): Set<string> {
+	const meta = views.getMetadata(view) as {
+		element_config?: { element_entities?: Array<{ inline_entities: string[] }> };
+	} | null;
+	const out = new Set<string>();
+	for (const ee of meta?.element_config?.element_entities ?? []) {
+		for (const t of ee.inline_entities) out.add(t);
+	}
+	return out;
+}
+
+/** The active view's metadata hide-set, serialized per entity type so each can be classified. */
+function hiddenMetadataKeysByEntity(view: string): [string, string][] {
+	const byView = (get(topologyOptions).request.hide_metadata_values ?? {}) as Record<
+		string,
+		Record<string, Record<string, string[]>>
+	>;
+	const forView = byView[view];
+	if (!forView) return [];
+	return Object.entries(forView)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([entityType, fields]) => [
+			entityType,
+			`${entityType}.` +
+				Object.entries(fields ?? {})
+					.sort(([a], [b]) => a.localeCompare(b))
+					.map(([field, values]) => `${field}=${[...(values ?? [])].sort().join('+')}`)
+					.join(',')
+		]);
 }
 
 /**
@@ -256,8 +299,10 @@ function getStructureKey(topo: RenderableTopology, view: string): string {
 		.sort()
 		.join(',');
 	const inlineKey = getInlineContentKey(topo, view);
-	const hideKey = getHideStateKey(view);
-	return `${topo.nodes.length}:${topo.edges.length}:${nodeKeys}|${inlineKey}|${hideKey}`;
+	const hide = getHideStateKey(view);
+	// Segments: nodes | inline | resizing-hide | structural-hide. `prepare` compares the middle two
+	// to decide whether measured sizes survive — see the cache handling in `prepareTopologyData`.
+	return `${topo.nodes.length}:${topo.edges.length}:${nodeKeys}|${inlineKey}|${hide.resizing}|${hide.structural}`;
 }
 
 /**
@@ -291,6 +336,8 @@ export function prepareTopologyData(
 		// them following a topology refetch.
 		const [, prevInline = '', prevHide = ''] = state.lastRenderedTopoKey.split('|');
 		const [, nextInline = '', nextHide = ''] = topoKey.split('|');
+		// Segment 2 is the resizing hide-state only; the structural one (segment 3) removes nodes
+		// without changing how anything that remains is drawn.
 		const cardsMayHaveResized =
 			state.lastRenderedTopoKey === '' || prevInline !== nextInline || prevHide !== nextHide;
 
