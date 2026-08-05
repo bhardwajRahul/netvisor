@@ -1,12 +1,14 @@
 <script lang="ts">
-	import {
-		Handle,
-		NodeResizeControl,
-		Position,
-		type NodeProps,
-		type ResizeDragEvent,
-		type ResizeParams
-	} from '@xyflow/svelte';
+	import { type NodeProps } from '@xyflow/svelte';
+	// Handle, NodeResizeControl, Position, ResizeDragEvent, ResizeParams — unused while the
+	// handle DOM and resize controls are commented out below.
+	// import {
+	// 	Handle,
+	// 	NodeResizeControl,
+	// 	Position,
+	// 	type ResizeDragEvent,
+	// 	type ResizeParams
+	// } from '@xyflow/svelte';
 	import { createColorHelper } from '$lib/shared/utils/styling';
 	import type { Color, ColorStyle } from '$lib/shared/utils/styling';
 	import { serviceDefinitions, containerTypes } from '$lib/shared/stores/metadata';
@@ -34,11 +36,12 @@
 	import { createIconComponent } from '$lib/shared/utils/styling';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import ContainerHeader, { type SubgroupRow } from './ContainerHeader.svelte';
-	import { CONTAINER_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
+	// CONTAINER_HANDLE_SIZE_PX — unused while the handle DOM is commented out below.
+	// import { CONTAINER_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
 
-	// Sized explicitly rather than left to `base.css`'s 5px minimum, so `synthesizeHandles` has a
-	// value to reproduce for nodes that have never mounted. Same dimensions as before.
-	const handleStyle = `opacity: 0; width: ${CONTAINER_HANDLE_SIZE_PX}px; height: ${CONTAINER_HANDLE_SIZE_PX}px`;
+	// Handle styling — unused while the handle DOM is commented out below. Sized explicitly rather
+	// than left to `base.css`'s 5px minimum, so `synthesizeHandles` reproduces what it would render.
+	// const handleStyle = `opacity: 0; width: ${CONTAINER_HANDLE_SIZE_PX}px; height: ${CONTAINER_HANDLE_SIZE_PX}px`;
 
 	// Shared, refcounted views over the module-level stores — see
 	// `reactive-stores.svelte.ts`. One subscription serves every node component.
@@ -49,7 +52,8 @@
 	let currentHoveredTag = $derived(sharedStores.currentHoveredTag.current);
 	let collapsedNodes = $derived(sharedStores.collapsedNodes.current);
 
-	let { id, data, selected, width, height }: NodeProps = $props();
+	// `selected` is read only by the commented-out resize controls.
+	let { id, data, width, height }: NodeProps = $props();
 
 	const topo = useTopology();
 	const topoStore = topo.fromContext ? topo.store : null;
@@ -296,7 +300,8 @@
 		return [];
 	});
 
-	const grayColorHelper = createColorHelper('Gray');
+	// Only the commented-out resize controls used this.
+	// const grayColorHelper = createColorHelper('Gray');
 
 	// Track pointer position to distinguish clicks from drags
 	let pointerDownPos: { x: number; y: number } | null = null;
@@ -307,31 +312,32 @@
 		toggleCollapse(id, topology?.nodes);
 	}
 
-	async function onResize(event: ResizeDragEvent, params: ResizeParams) {
-		if (!topology) return;
-		let node = topology.nodes.find((n) => n.id == id);
-		if (node && params.width && params.height) {
-			let roundedWidth = Math.round(params.width / 25) * 25;
-			let roundedHeight = Math.round(params.height / 25) * 25;
-			let roundedX = Math.round(params.x / 25) * 25;
-			let roundedY = Math.round(params.y / 25) * 25;
-
-			node.size.x = roundedWidth;
-			node.size.y = roundedHeight;
-			node.position.x = roundedX;
-			node.position.y = roundedY;
-
-			// DISABLED: no mechanism to persist container resize.
-			// await updateNodeResizeMutation.mutateAsync({
-			// 	topologyId: topology.id,
-			// 	networkId: topology.network_id,
-			// 	view: $activeView,
-			// 	nodeId: node.id,
-			// 	size: { x: roundedWidth, y: roundedHeight },
-			// 	position: { x: roundedX, y: roundedY }
-			// });
-		}
-	}
+	// Resize persistence — only the commented-out resize controls called this.
+	// async function onResize(event: ResizeDragEvent, params: ResizeParams) {
+	// if (!topology) return;
+	// let node = topology.nodes.find((n) => n.id == id);
+	// if (node && params.width && params.height) {
+	// let roundedWidth = Math.round(params.width / 25) * 25;
+	// let roundedHeight = Math.round(params.height / 25) * 25;
+	// let roundedX = Math.round(params.x / 25) * 25;
+	// let roundedY = Math.round(params.y / 25) * 25;
+	//
+	// node.size.x = roundedWidth;
+	// node.size.y = roundedHeight;
+	// node.position.x = roundedX;
+	// node.position.y = roundedY;
+	//
+	// // DISABLED: no mechanism to persist container resize.
+	// // await updateNodeResizeMutation.mutateAsync({
+	// // 	topologyId: topology.id,
+	// // 	networkId: topology.network_id,
+	// // 	view: $activeView,
+	// // 	nodeId: node.id,
+	// // 	size: { x: roundedWidth, y: roundedHeight },
+	// // 	position: { x: roundedX, y: roundedY }
+	// // });
+	// }
+	// }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -453,105 +459,126 @@
 			     `viewport.zoom > 0.5`, but reading the viewport here subscribed every
 			     container node to every pan/zoom frame — a per-frame invalidation of
 			     the whole graph to hide controls that are already hidden. -->
+			<!--
+			Container resize controls removed for memory, not deleted.
+
+			They were already unreachable — `editModeEnabled` is only ever set to false, so this
+			branch never rendered — and topology editing is disabled. Kept here with the handle
+			removal in this file so the two come back together if editing is revived; re-measure the
+			topology tab's footprint when they do.
 			{#if $editModeEnabled}
-				<NodeResizeControl
-					position="bottom-right"
-					onResizeEnd={onResize}
-					style="z-index: 100; border: none; width: 20px; height: 20px;"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="20"
-						height="20"
-						viewBox="0 0 20 20"
-						style="position: absolute; right: 10px; bottom: 10px;"
-					>
-						<path
-							d="M20 7.5 L20 20 L7.5 20 Z"
-							fill={selected ? colorHelper.rgb : grayColorHelper.rgb}
-							style="transition: fill 200ms ease-in-out;"
-						/>
-						<line x1="11.667" y1="20" x2="20" y2="11.667" stroke="#374151" stroke-width="1" />
-						<line x1="16.333" y1="20" x2="20" y2="16.333" stroke="#374151" stroke-width="1" />
-					</svg>
-				</NodeResizeControl>
-				<NodeResizeControl
-					position="top-left"
-					onResizeEnd={onResize}
-					style="z-index: 100; border: none; width: 20px; height: 20px;"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="20"
-						height="20"
-						viewBox="0 0 20 20"
-						style="position: absolute; left: 10px; top: 10px;"
-					>
-						<path
-							d="M0 12.5 L0 0 L12.5 0 Z"
-							fill={selected ? colorHelper.rgb : grayColorHelper.rgb}
-							style="transition: fill 200ms ease-in-out;"
-						/>
-						<line x1="8.333" y1="0" x2="0" y2="8.333" stroke="#374151" stroke-width="1" />
-						<line x1="3.667" y1="0" x2="0" y2="3.667" stroke="#374151" stroke-width="1" />
-					</svg>
-				</NodeResizeControl>
-				<NodeResizeControl
-					position="top-right"
-					onResizeEnd={onResize}
-					style="z-index: 100; border: none; width: 20px; height: 20px;"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="20"
-						height="20"
-						viewBox="0 0 20 20"
-						style="position: absolute; right: 10px; top: 10px;"
-					>
-						<path
-							d="M7.5 0 L20 0 L20 12.5 Z"
-							fill={selected ? colorHelper.rgb : grayColorHelper.rgb}
-							style="transition: fill 200ms ease-in-out;"
-						/>
-						<line x1="11.667" y1="0" x2="20" y2="8.333" stroke="#374151" stroke-width="1" />
-						<line x1="16.333" y1="0" x2="20" y2="3.667" stroke="#374151" stroke-width="1" />
-					</svg>
-				</NodeResizeControl>
-				<NodeResizeControl
-					position="bottom-left"
-					onResizeEnd={onResize}
-					style="z-index: 100; border: none; width: 20px; height: 20px;"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="20"
-						height="20"
-						viewBox="0 0 20 20"
-						style="position: absolute; left: 10px; bottom: 10px;"
-					>
-						<path
-							d="M0 7.5 L12.5 20 L0 20 Z"
-							fill={selected ? colorHelper.rgb : grayColorHelper.rgb}
-							style="transition: fill 200ms ease-in-out;"
-						/>
-						<line x1="0" y1="11.667" x2="8.333" y2="20" stroke="#374151" stroke-width="1" />
-						<line x1="0" y1="16.333" x2="3.667" y2="20" stroke="#374151" stroke-width="1" />
-					</svg>
-				</NodeResizeControl>
+			<NodeResizeControl
+			position="bottom-right"
+			onResizeEnd={onResize}
+			style="z-index: 100; border: none; width: 20px; height: 20px;"
+			>
+			<svg
+			xmlns="http://www.w3.org/2000/svg"
+			width="20"
+			height="20"
+			viewBox="0 0 20 20"
+			style="position: absolute; right: 10px; bottom: 10px;"
+			>
+			<path
+			d="M20 7.5 L20 20 L7.5 20 Z"
+			fill={selected ? colorHelper.rgb : grayColorHelper.rgb}
+			style="transition: fill 200ms ease-in-out;"
+			/>
+			<line x1="11.667" y1="20" x2="20" y2="11.667" stroke="#374151" stroke-width="1" />
+			<line x1="16.333" y1="20" x2="20" y2="16.333" stroke="#374151" stroke-width="1" />
+			</svg>
+			</NodeResizeControl>
+			<NodeResizeControl
+			position="top-left"
+			onResizeEnd={onResize}
+			style="z-index: 100; border: none; width: 20px; height: 20px;"
+			>
+			<svg
+			xmlns="http://www.w3.org/2000/svg"
+			width="20"
+			height="20"
+			viewBox="0 0 20 20"
+			style="position: absolute; left: 10px; top: 10px;"
+			>
+			<path
+			d="M0 12.5 L0 0 L12.5 0 Z"
+			fill={selected ? colorHelper.rgb : grayColorHelper.rgb}
+			style="transition: fill 200ms ease-in-out;"
+			/>
+			<line x1="8.333" y1="0" x2="0" y2="8.333" stroke="#374151" stroke-width="1" />
+			<line x1="3.667" y1="0" x2="0" y2="3.667" stroke="#374151" stroke-width="1" />
+			</svg>
+			</NodeResizeControl>
+			<NodeResizeControl
+			position="top-right"
+			onResizeEnd={onResize}
+			style="z-index: 100; border: none; width: 20px; height: 20px;"
+			>
+			<svg
+			xmlns="http://www.w3.org/2000/svg"
+			width="20"
+			height="20"
+			viewBox="0 0 20 20"
+			style="position: absolute; right: 10px; top: 10px;"
+			>
+			<path
+			d="M7.5 0 L20 0 L20 12.5 Z"
+			fill={selected ? colorHelper.rgb : grayColorHelper.rgb}
+			style="transition: fill 200ms ease-in-out;"
+			/>
+			<line x1="11.667" y1="0" x2="20" y2="8.333" stroke="#374151" stroke-width="1" />
+			<line x1="16.333" y1="0" x2="20" y2="3.667" stroke="#374151" stroke-width="1" />
+			</svg>
+			</NodeResizeControl>
+			<NodeResizeControl
+			position="bottom-left"
+			onResizeEnd={onResize}
+			style="z-index: 100; border: none; width: 20px; height: 20px;"
+			>
+			<svg
+			xmlns="http://www.w3.org/2000/svg"
+			width="20"
+			height="20"
+			viewBox="0 0 20 20"
+			style="position: absolute; left: 10px; bottom: 10px;"
+			>
+			<path
+			d="M0 7.5 L12.5 20 L0 20 Z"
+			fill={selected ? colorHelper.rgb : grayColorHelper.rgb}
+			style="transition: fill 200ms ease-in-out;"
+			/>
+			<line x1="0" y1="11.667" x2="8.333" y2="20" stroke="#374151" stroke-width="1" />
+			<line x1="0" y1="16.333" x2="3.667" y2="20" stroke="#374151" stroke-width="1" />
+			</svg>
+			</NodeResizeControl>
 			{/if}
+			-->
 		{/if}
 	{/if}
 </div>
 
-<Handle type="target" id="Top" position={Position.Top} style={handleStyle} />
-<Handle type="target" id="Right" position={Position.Right} style={handleStyle} />
-<Handle type="target" id="Bottom" position={Position.Bottom} style={handleStyle} />
-<Handle type="target" id="Left" position={Position.Left} style={handleStyle} />
+<!--
+	Handle DOM removed for memory, not deleted — see the note in `pipeline/build-flow-nodes.ts`.
 
-<Handle type="source" id="Top" position={Position.Top} style={handleStyle} />
-<Handle type="source" id="Right" position={Position.Right} style={handleStyle} />
-<Handle type="source" id="Bottom" position={Position.Bottom} style={handleStyle} />
-<Handle type="source" id="Left" position={Position.Left} style={handleStyle} />
+	Eight `<Handle>` elements per node was half of all in-node DOM (12,544 of 25,216 elements at
+	this customer's scale) and most of its event listeners, on a view where nothing could interact
+	with them: topology editing is disabled (`editModeEnabled` is only ever set false) and edge
+	anchors are not editable. SvelteFlow takes handle geometry from the `handles` field the
+	pipeline now supplies on every node, so edges still anchor on the card edges without this.
+
+	Restore all eight together if edge reconnection is ever re-enabled, and re-measure — this was
+	the single largest contributor to the topology tab's memory footprint.
+
+	<Handle type="target" id="Top" position={Position.Top} style={handleStyle} />
+	<Handle type="target" id="Right" position={Position.Right} style={handleStyle} />
+	<Handle type="target" id="Bottom" position={Position.Bottom} style={handleStyle} />
+	<Handle type="target" id="Left" position={Position.Left} style={handleStyle} />
+
+	<Handle type="source" id="Top" position={Position.Top} style={handleStyle} />
+	<Handle type="source" id="Right" position={Position.Right} style={handleStyle} />
+	<Handle type="source" id="Bottom" position={Position.Bottom} style={handleStyle} />
+	<Handle type="source" id="Left" position={Position.Left} style={handleStyle} />
+-->
 
 <style>
 	div {
