@@ -397,9 +397,21 @@
 	 * allocation from a remount loop — the question the customer's 247 out-of-memory throws left
 	 * open, and one the per-sample ring buffer could not answer.
 	 */
+	/**
+	 * Every write to the node store, timed and heap-measured.
+	 *
+	 * The per-run heap ledger placed 88% of a run's growth — 357MB of 407MB — between `build-edges`
+	 * finishing and `post-render` starting, with the whole ELK layout accounting for only 50MB. The
+	 * writes in that span are the candidates: each hands the full node set to SvelteFlow, which
+	 * builds an internal representation of all 2,890 nodes per write, and the collapse animation
+	 * performs up to three of them for one press. Instrumented here rather than at each call site so
+	 * every branch is covered; repeated entries appear in the ledger in order.
+	 */
 	function setStoreNodes(next: Node[]): void {
+		const writeDone = perf.stage('render.store-write');
 		noteNodeStoreWrite(next.length);
 		nodes.set(next);
+		writeDone();
 	}
 
 	// --- Reactive triggers ---
@@ -847,7 +859,9 @@
 		// buildFlowEdges against final post-layout positions (from layoutGraph)
 		// rather than being precomputed by the layout engines.
 		const needsLayout = needsElk || portsChanged || prep.collapseChanged;
+		const makeNodesDone = perf.stage('render.make-nodes');
 		const allNodes = makeNodes(needsLayout);
+		makeNodesDone();
 
 		const buildEdgesDone = perf.stage('build-edges');
 		const { flowEdges, originalsMap } = buildFlowEdges({
@@ -870,7 +884,9 @@
 		// components render only these; SvelteFlow reads handle boxes out of the DOM, and only for
 		// a handle an edge names, so a node whose handles arrive a frame after its edge has that
 		// edge dropped.
+		const handlesDone = perf.stage('render.publish-handles');
 		edgeHandlesByNode.set(collectEdgeHandles(flowEdges));
+		handlesDone();
 
 		// Render
 		const shouldAnimate =
@@ -897,11 +913,15 @@
 						fullNodes.filter((n) => !previousNodeIds.has(n.id)).map((n) => n.id)
 					);
 					if (newNodeIds.size > 0) {
+						// Copies the whole node set to restyle the new arrivals — one full duplicate of
+						// every node object, on top of the store write that follows it.
+						const fadeCopyDone = perf.stage('render.animate-fade-copy');
 						const fadingNodes = fullNodes.map((n) =>
 							newNodeIds.has(n.id)
 								? { ...n, style: 'opacity: 0; transition: opacity 0.3s ease-in-out;' }
 								: n
 						);
+						fadeCopyDone();
 						setStoreNodes(fadingNodes);
 						baseFlowEdges.set(fullEdges);
 						requestAnimationFrame(() => {
