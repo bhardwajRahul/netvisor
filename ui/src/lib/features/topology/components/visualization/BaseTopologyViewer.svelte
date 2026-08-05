@@ -63,6 +63,7 @@
 		clearEdgeHoverState,
 		expandedBundles,
 		collapseAllBundles,
+		edgeEndpointIds,
 		searchHiddenNodeIds,
 		tagHiddenNodeIds,
 		hiddenEntityIds
@@ -839,6 +840,13 @@
 		});
 		buildEdgesDone();
 		aggregatedEdgeOriginals.set(originalsMap);
+
+		// Publish edge endpoints before the nodes that reference them. Node components render handle
+		// geometry only for nodes an edge attaches to, and SvelteFlow reads those boxes out of the
+		// DOM — so a node whose handles arrive a frame after its edge has the edge dropped.
+		edgeEndpointIds.set(
+			new Set(flowEdges.flatMap((e) => [e.source, e.target]).filter(Boolean) as string[])
+		);
 
 		// Render
 		const shouldAnimate =

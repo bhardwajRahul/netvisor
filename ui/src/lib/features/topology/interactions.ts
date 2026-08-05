@@ -95,6 +95,21 @@ export interface HoveredEdgeType {
 }
 export const hoveredEdgeType = writable<HoveredEdgeType | null>(null);
 
+/**
+ * Ids of nodes that are an endpoint of at least one edge currently being drawn.
+ *
+ * Node components render handle geometry only for these. SvelteFlow reads handle boxes out of the
+ * DOM whenever a node's rendered size differs from its `measured`, so the geometry has to exist for
+ * any node an edge attaches to — but a node with no edges is never asked for it, and eight handle
+ * divs on every one of those is pure cost. At this customer's scale the containers alone account
+ * for thousands of them.
+ *
+ * Written by the pipeline immediately *before* the node store, so the flag is never later than the
+ * nodes it describes; a node that gained an edge but not yet its handles would have its edge
+ * dropped with "Couldn't create edge for source handle id".
+ */
+export const edgeEndpointIds = writable<Set<string>>(new Set());
+
 // Edge bundle expand/collapse state (transient, not persisted)
 export const expandedBundles = writable<Set<string>>(new Set());
 

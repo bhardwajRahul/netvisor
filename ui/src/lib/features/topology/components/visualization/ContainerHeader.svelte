@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ChevronDown, ChevronRight, Search } from 'lucide-svelte';
+	import { Search } from 'lucide-svelte';
+	// ChevronDown / ChevronRight replaced by the CSS `.caret` below — see the note on that rule.
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import type { ColorStyle, Color } from '$lib/shared/utils/styling';
 	import type { IconComponent } from '$lib/shared/utils/types';
@@ -175,11 +176,7 @@
 		onpointerdown={(e) => e.stopPropagation()}
 	>
 		{#if isCollapsible}
-			{#if isCollapsed}
-				<ChevronRight class="text-secondary h-4 w-4 flex-shrink-0" />
-			{:else}
-				<ChevronDown class="text-secondary h-4 w-4 flex-shrink-0" />
-			{/if}
+			<span class="caret text-secondary" class:caret-collapsed={isCollapsed}></span>
 		{/if}
 
 		{#if iconComponent}
@@ -198,7 +195,7 @@
 		class="nopan nodrag text-secondary absolute left-2 right-2 top-2 flex items-center gap-1 overflow-hidden rounded-t px-2 py-0.5"
 	>
 		{#if isCollapsible}
-			<span data-fixed><ChevronDown class="text-secondary h-3.5 w-3.5 flex-shrink-0" /></span>
+			<span data-fixed><span class="caret text-secondary"></span></span>
 		{/if}
 		{#if logoComponent}
 			{@const LogoComp = logoComponent}
@@ -234,7 +231,7 @@
 		}}
 	>
 		{#if isCollapsible}
-			<span data-fixed><ChevronRight class="text-secondary h-3.5 w-3.5 flex-shrink-0" /></span>
+			<span data-fixed><span class="caret caret-collapsed text-secondary"></span></span>
 		{/if}
 		{#if iconComponent}
 			{@const IconComp = iconComponent}
@@ -346,3 +343,27 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	/*
+	 * Collapse caret drawn in CSS rather than as an icon component.
+	 *
+	 * `ChevronDown`/`ChevronRight` each render an `<svg>` plus a `<path>` — two elements on every
+	 * container header, 1,152 of them on the seeded graph, for a shape that is two borders. Blink
+	 * accounts for a DOM node and its style and layout objects whether or not anything reads them,
+	 * and at this node count that is the cheapest whole category to remove.
+	 */
+	.caret {
+		display: inline-block;
+		flex-shrink: 0;
+		width: 0.35rem;
+		height: 0.35rem;
+		border-right: 1.5px solid currentColor;
+		border-bottom: 1.5px solid currentColor;
+		transform: rotate(45deg);
+		transition: transform 150ms ease-in-out;
+	}
+	.caret-collapsed {
+		transform: rotate(-45deg);
+	}
+</style>

@@ -46,6 +46,7 @@
 	let hiddenEntities = $derived(sharedStores.hiddenEntities.current);
 	let searchHiddenNodes = $derived(sharedStores.searchHiddenNodes.current);
 	let connectedNodes = $derived(sharedStores.connectedNodes.current);
+	let edgeEndpoints = $derived(sharedStores.edgeEndpoints.current);
 	let highlightedNewNodes = $derived(sharedStores.highlightedNewNodes.current);
 	let multiSelectedNodes = $derived(sharedStores.multiSelectedNodes.current);
 	let currentHoveredTag = $derived(sharedStores.currentHoveredTag.current);
@@ -415,13 +416,13 @@
 		<!-- Rest of component stays the same -->
 		<!-- Header section with gradient transition to body -->
 		{#if nodeRenderData.headerText}
-			<div class="relative flex-shrink-0 px-2 pt-2 text-center">
-				<div
-					data-entity-header
-					class={`truncate text-xs font-medium leading-none ${nodeRenderData.isVirtualized ? virtualizationColorHelper.text : nodeRenderData.isContainerized ? containerizationColorHelper.text : 'text-tertiary'}`}
-				>
-					{nodeRenderData.headerText}
-				</div>
+			<!-- Padding and centring live on the text element itself; the wrapper that used to hold
+			     them contributed one element per card and nothing else. -->
+			<div
+				data-entity-header
+				class={`relative flex-shrink-0 truncate px-2 pt-2 text-center text-xs font-medium leading-none ${nodeRenderData.isVirtualized ? virtualizationColorHelper.text : nodeRenderData.isContainerized ? containerizationColorHelper.text : 'text-tertiary'}`}
+			>
+				{nodeRenderData.headerText}
 			</div>
 		{/if}
 
@@ -635,8 +636,10 @@
 						{/if}
 					{/if}
 				</div>
-			{:else}
-				<!-- Show host name as body text -->
+			{:else if nodeRenderData.bodyText}
+				<!-- Show host name as body text. Guarded like the footer below: `bodyText` is empty
+				     for whole element types (every Interface, for one), and rendering it anyway put a
+				     0x0 div on each of those cards — 992 of them on the seeded graph. -->
 				<div
 					class="text-secondary truncate text-center text-xs leading-none"
 					title={nodeRenderData.bodyText}
@@ -645,26 +648,34 @@
 				</div>
 			{/if}
 			{#if nodeRenderData.portStatus}
-				<div class="flex flex-col items-center gap-0.5">
+				{#snippet statusRow()}
 					<div class="flex items-center gap-1.5">
 						<span
 							class="text-xs font-medium"
-							style="color: {nodeRenderData.portStatus.operStatus === 'Up'
+							style="color: {nodeRenderData.portStatus?.operStatus === 'Up'
 								? '#22c55e'
-								: nodeRenderData.portStatus.operStatus === 'Down'
+								: nodeRenderData.portStatus?.operStatus === 'Down'
 									? '#ef4444'
 									: '#9ca3af'}">●</span
 						>
-						{#if nodeRenderData.portStatus.speed}
+						{#if nodeRenderData.portStatus?.speed}
 							<span class="text-tertiary text-xs">{nodeRenderData.portStatus.speed}</span>
 						{/if}
 					</div>
-					{#if nodeRenderData.portStatus.macAddress}
+				{/snippet}
+
+				<!-- The stacking wrapper only earns its place when there is a second row to stack. On a
+				     port card without a MAC it was a sole-child wrapper, one per card. -->
+				{#if nodeRenderData.portStatus.macAddress}
+					<div class="flex flex-col items-center gap-0.5">
+						{@render statusRow()}
 						<span class="text-tertiary truncate font-mono" style="font-size: 0.55rem; opacity: 0.7"
 							>{nodeRenderData.portStatus.macAddress}</span
 						>
-					{/if}
-				</div>
+					</div>
+				{:else}
+					{@render statusRow()}
+				{/if}
 			{/if}
 		</div>
 
@@ -679,4 +690,7 @@
 	</div>
 {/if}
 
-<NodeHandles size={ELEMENT_HANDLE_SIZE_PX} />
+<!-- Only nodes an edge attaches to need handle geometry; see `edgeEndpointIds`. -->
+{#if edgeEndpoints.has(id)}
+	<NodeHandles size={ELEMENT_HANDLE_SIZE_PX} />
+{/if}
