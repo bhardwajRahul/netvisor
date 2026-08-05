@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { LayoutGraph } from '$lib/features/topology/layout/layout-graph';
 import {
 	computeElkLayout,
 	computeOptimalHandles,
@@ -975,5 +976,39 @@ describe('computeOptimalHandles', () => {
 
 		const result = computeOptimalHandles(srcPos, srcSize, tgtPos, tgtSize, [farAway]);
 		expect(result).toEqual({ sourceHandle: 'Bottom', targetHandle: 'Top' });
+	});
+});
+
+describe('LayoutGraph.restoreExpandedSizes', () => {
+	// A rebuild recreates every container with `expandedSize` at {0, 0}. Restoring only collapsed
+	// ones made that destructive at collapse level 4, where nothing is collapsed: containers came
+	// back zero-sized and rendered as slivers with their contents outside until something forced a
+	// fresh ELK run.
+	const graphWith = (collapsed: boolean) => {
+		const nodes = [
+			{ id: 'host', node_type: 'Container', container_type: 'Host' },
+			{ id: 'port', node_type: 'Element', container_id: 'host', host_id: 'h' }
+		] as unknown as Parameters<typeof LayoutGraph.fromTopology>[0];
+		const graph = LayoutGraph.fromTopology(nodes);
+		graph.syncCollapseState(collapsed ? new Set(['host']) : new Set());
+		return graph;
+	};
+
+	it('restores an expanded container, not just a collapsed one', () => {
+		const graph = graphWith(false);
+		expect(graph.getContainerSize('host')).toEqual({ width: 0, height: 0 });
+
+		graph.restoreExpandedSizes(new Map([['host', { width: 350, height: 179 }]]));
+
+		expect(graph.getContainerSize('host')).toEqual({ width: 350, height: 179 });
+	});
+
+	it('still restores a collapsed container', () => {
+		const graph = graphWith(true);
+		graph.restoreExpandedSizes(new Map([['host', { width: 350, height: 179 }]]));
+
+		// Collapsed reports its collapsed size, but the expanded size must be carried so expanding
+		// it does not fall back to zero.
+		expect(graph.getExpandedSize('host')).toEqual({ width: 350, height: 179 });
 	});
 });
