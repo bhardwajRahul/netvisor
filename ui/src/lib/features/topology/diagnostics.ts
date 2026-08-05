@@ -42,6 +42,14 @@ import { activeView } from './queries';
 /** How many samples to keep. Enough to cover the runs leading into a blank, small enough to mail. */
 const HISTORY_LIMIT = 30;
 
+/**
+ * Height at or below which a mounted node counts as degenerate.
+ *
+ * A container rendered with `height: 0` still occupies its 1px borders, so the floor is a couple
+ * of pixels rather than zero.
+ */
+const DEGENERATE_HEIGHT_PX = 4;
+
 /** Minimum gap between viewport-driven samples. Panning fires continuously. */
 const VIEWPORT_SAMPLE_INTERVAL_MS = 500;
 
@@ -153,6 +161,21 @@ export interface ViewerSample {
 	/** How many mounted nodes report a non-zero size. Zero here with a non-zero mount count is
 	 *  the measure pass having produced nothing, which starves both layout and fit-view. */
 	withSize: number;
+	/**
+	 * Mounted nodes rendering at essentially no height, split by node type.
+	 *
+	 * `withSize` cannot see this fault and never could: it asks whether a node's bounding box is
+	 * non-zero, and a container collapsed to its own borders is 250x2 — non-zero, and counted as
+	 * healthy. But a container at 2px has its contents drawn outside it, which is what an operator
+	 * reports as "the nodes didn't finish resizing".
+	 *
+	 * Split by type because the two causes are different. Containers go degenerate when ELK never
+	 * sized them — `LayoutContainer.expandedSize` starts at `{0, 0}` and `getContainerSize` returns
+	 * that rather than `undefined`, so a container it never laid out is built with `height: 0`.
+	 * Elements go degenerate when a measurement pass is mid-flight, since it deliberately builds
+	 * them unsized.
+	 */
+	degenerate: { containers: number; elements: number };
 	culling: {
 		/** The value actually handed to SvelteFlow, not a re-derivation of it. */
 		on: boolean;
@@ -245,9 +268,16 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 
 	let bounds: ViewerSample['bounds'] = null;
 	let withSize = 0;
+	const degenerate = { containers: 0, elements: 0 };
 	for (const el of nodeEls) {
 		const r = el.getBoundingClientRect();
 		if (r.width > 0 && r.height > 0) withSize += 1;
+		// `offsetHeight`, not the bounding rect: the rect is scaled by the viewport transform, so
+		// at low zoom every node looks tiny. `offsetHeight` is the node's own layout height.
+		if (el.offsetHeight <= DEGENERATE_HEIGHT_PX) {
+			if (el.classList.contains('svelte-flow__node-Container')) degenerate.containers += 1;
+			else degenerate.elements += 1;
+		}
 		bounds = bounds
 			? {
 					left: Math.min(bounds.left, r.left),
@@ -295,6 +325,7 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 		store: { nodes: inputs.storeNodes, edges: inputs.storeEdges },
 		mounted: nodeEls.length,
 		withSize,
+		degenerate,
 		culling: {
 			// The value the viewer actually handed to SvelteFlow. This used to be re-derived from
 			// the node count instead — on the reasoning that a sample stays meaningful even if the

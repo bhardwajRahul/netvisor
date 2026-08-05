@@ -334,12 +334,17 @@
 	let measurePassActive = $state(false);
 
 	/**
-	 * The cold load is hiding the pane while it measures.
+	 * The cold load is measuring, which additionally suppresses the expand animation.
 	 *
 	 * Split from `measurePassActive` because one flag used to do both jobs, and only ever on the
-	 * first render (`lastRenderedTopoKey === ''`). Later measure passes leave nodes at their
-	 * current positions so hiding is unnecessary — but they still have to suspend culling, and
-	 * with a single flag they did not. That was harmless only while culling was inert.
+	 * first render (`lastRenderedTopoKey === ''`). Later measure passes still have to suspend
+	 * culling, and with a single flag they did not — harmless only while culling was inert.
+	 *
+	 * Both flags now hide the pane. A measure pass mounts every node with no container sizes, so
+	 * containers render as 2px slivers with their contents outside for as long as it runs; at a
+	 * few thousand nodes that is a frame or more, and it was plainly visible because only the cold
+	 * load hid anything. This flag still exists on its own because `shouldAnimate` means "not a
+	 * cold load", which is a different question from "is something being measured".
 	 */
 	let coldLoadMeasure = $state(false);
 	let animatingCollapse = $state(false);
