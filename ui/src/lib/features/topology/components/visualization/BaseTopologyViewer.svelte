@@ -177,6 +177,9 @@
 	 */
 	const ANIMATE_COLLAPSE_MAX_NODES = 600;
 
+	/** Empty handle map for measurement builds, whose handles `stripSizeSeed` removes anyway. */
+	const NO_HANDLES: Map<string, Set<string>> = new Map();
+
 	// Track viewport panning state
 	let viewportMoved = false;
 	let viewportMoveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -706,8 +709,17 @@
 		const viewCacheKey = `${prep.currentView}:${prep.topologyId}`;
 		let runSizes: Map<string, XY> | null = null;
 
+		// Handles the run's edges name, filled in before nodes are built. Null until then, which
+		// makes `buildFlowNodes` declare all eight per node — the measurement pass builds nodes
+		// before any edges exist and must not be narrowed against a stale set.
+		let runUsedHandles: Map<string, Set<string>> | null = null;
+
 		// Helper: build positioned flow nodes (called multiple times with different useGraph)
-		const makeNodes = (useGraph: boolean) =>
+		//
+		// `forMeasurement` suppresses handle synthesis entirely: `buildMeasureNodes` pipes the result
+		// through `stripSizeSeed`, which deletes `handles` again, so synthesizing eight per node
+		// first was building 23,120 objects to throw all of them away.
+		const makeNodes = (useGraph: boolean, forMeasurement = false) =>
 			sortFlowNodes(
 				buildFlowNodes({
 					visibleNodes,
@@ -719,7 +731,8 @@
 					liveNodes: getNodes(),
 					infraRuleId: getInfrastructureRuleId(),
 					editMode: editMode ?? false,
-					sizeHints: runSizes ?? layoutState.viewSizeCache.get(viewCacheKey) ?? null
+					sizeHints: runSizes ?? layoutState.viewSizeCache.get(viewCacheKey) ?? null,
+					usedHandles: forMeasurement ? NO_HANDLES : runUsedHandles
 				})
 			);
 
@@ -754,7 +767,7 @@
 						// initialised — so it would be presented at the size we guessed and could
 						// only ever confirm that guess. Dropping both also re-attaches
 						// `NodeWrapper`'s ResizeObserver, which is otherwise never reattached.
-						let measureNodes = stripSizeSeed(makeNodes(false));
+						let measureNodes = stripSizeSeed(makeNodes(false, true));
 						if (onlyIds) {
 							// Ancestors come too, whether or not they need measuring: SvelteFlow
 							// resolves a child's position against its parent and drops a node whose
@@ -890,10 +903,13 @@
 		// buildFlowEdges against final post-layout positions (from layoutGraph)
 		// rather than being precomputed by the layout engines.
 		const needsLayout = needsElk || portsChanged || prep.collapseChanged;
-		const makeNodesDone = perf.stage('render.make-nodes');
-		const allNodes = makeNodes(needsLayout);
-		makeNodesDone();
 
+		// Edges first, then nodes.
+		//
+		// `buildFlowEdges` takes none of the flow nodes — only the layout graph and the topology —
+		// so the order is free, and reversing it lets the nodes be built already knowing which
+		// handles their edges name. Emitting all eight per node cost a `handleBounds` object each in
+		// `parseHandles`, on every node, on every adoption.
 		const buildEdgesDone = perf.stage('build-edges');
 		const { flowEdges, originalsMap } = buildFlowEdges({
 			elevatedEdges: prep.elevatedEdges,
@@ -911,12 +927,17 @@
 		buildEdgesDone();
 		aggregatedEdgeOriginals.set(originalsMap);
 
+		const makeNodesDone = perf.stage('render.make-nodes');
+		runUsedHandles = collectEdgeHandles(flowEdges);
+		const allNodes = makeNodes(needsLayout);
+		makeNodesDone();
+
 		// Publish the handles each node's edges name, before the nodes that reference them. Node
 		// components render only these; SvelteFlow reads handle boxes out of the DOM, and only for
 		// a handle an edge names, so a node whose handles arrive a frame after its edge has that
 		// edge dropped.
 		const handlesDone = perf.stage('render.publish-handles');
-		edgeHandlesByNode.set(collectEdgeHandles(flowEdges));
+		edgeHandlesByNode.set(runUsedHandles);
 		handlesDone();
 
 		// Render

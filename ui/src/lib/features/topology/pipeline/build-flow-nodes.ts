@@ -22,6 +22,11 @@ export interface BuildFlowNodesParams {
 	 * below for why that never worked.
 	 */
 	sizeHints?: Map<string, XY> | null;
+	/**
+	 * Handles each node's edges actually name, from `collectEdgeHandles`. Omitted, every node
+	 * declares all eight as before.
+	 */
+	usedHandles?: Map<string, Set<string>> | null;
 }
 
 /**
@@ -35,6 +40,9 @@ export interface BuildFlowNodesParams {
  * on not happening.
  */
 export const ELEMENT_HANDLE_SIZE_PX = 8;
+
+/** Shared empty set for nodes no edge names, so each such node does not allocate its own. */
+const EMPTY_HANDLE_SET: ReadonlySet<string> = new Set<string>();
 
 /** Literal width every element card is built at, and the fallback for handle geometry. */
 const ELEMENT_WIDTH_PX = 250;
@@ -69,7 +77,8 @@ const HANDLE_POSITIONS = ['top', 'right', 'bottom', 'left'] as const;
 export function synthesizeHandles(
 	width: number,
 	height: number,
-	handleSize: number
+	handleSize: number,
+	used?: ReadonlySet<string>
 ): NonNullable<Node['handles']> {
 	const half = handleSize / 2;
 	const geometry = {
@@ -79,17 +88,35 @@ export function synthesizeHandles(
 		left: { x: -half, y: height / 2 - half }
 	};
 
-	return HANDLE_POSITIONS.flatMap((position) =>
-		(['source', 'target'] as const).map((type) => ({
-			id: position.charAt(0).toUpperCase() + position.slice(1),
-			type,
-			position: position as Position,
-			x: geometry[position].x,
-			y: geometry[position].y,
-			width: handleSize,
-			height: handleSize
-		}))
-	);
+	const handles: NonNullable<Node['handles']> = [];
+	for (const position of HANDLE_POSITIONS) {
+		const id = position.charAt(0).toUpperCase() + position.slice(1);
+		for (const type of ['source', 'target'] as const) {
+			// Only the handles an edge on this node actually names, when that is known.
+			//
+			// All eight were emitted unconditionally, and each costs twice: once here, and again in
+			// `parseHandles`, which builds a `handleBounds` object per handle on every adoption of
+			// every node. Most nodes carry one or two edges, so most of that was allocated and never
+			// touched — measured at ~104,000 handle objects across a session against ~3,700 after.
+			// `NodeHandles.svelte` already narrows the *DOM* this way from the same source; this
+			// closes the gap between what is rendered and what is declared.
+			//
+			// An empty set is still a set: `parseHandles` yields `{source: [], target: []}`, which is
+			// a defined `handleBounds`, so an edgeless node stays cullable rather than falling back
+			// to `forceInitialRender`.
+			if (used && !used.has(`${type}:${id}`)) continue;
+			handles.push({
+				id,
+				type,
+				position: position as Position,
+				x: geometry[position].x,
+				y: geometry[position].y,
+				width: handleSize,
+				height: handleSize
+			});
+		}
+	}
+	return handles;
 }
 
 /** Count elements recursively within a container from raw topology nodes. */
@@ -140,7 +167,8 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 		liveNodes,
 		infraRuleId,
 		editMode,
-		sizeHints
+		sizeHints,
+		usedHandles
 	} = params;
 
 	const currentPositions = new Map(liveNodes.map((n) => [n.id, n.position]));
@@ -276,7 +304,8 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 			handles: synthesizeHandles(
 				handleWidth,
 				handleHeight,
-				isElement ? ELEMENT_HANDLE_SIZE_PX : CONTAINER_HANDLE_SIZE_PX
+				isElement ? ELEMENT_HANDLE_SIZE_PX : CONTAINER_HANDLE_SIZE_PX,
+				usedHandles?.get(node.id) ?? (usedHandles ? EMPTY_HANDLE_SET : undefined)
 			),
 			...(cullable && {
 				measured: { width: measuredWidth, height: measuredHeight }
