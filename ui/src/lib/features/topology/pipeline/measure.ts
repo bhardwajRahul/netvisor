@@ -218,10 +218,11 @@ export async function resolveNodeSizes(
 		// card in the graph to learn sizes most of them already have — which at a few hundred
 		// hosts is the cold-load cost the sampling exists to avoid. Only a key with no measured
 		// representative at all forces the full path.
-		const unresolved = fillMissingSizesByShapeKey(visibleNodes, topology, elementNodeSizes);
-		if (unresolved > 0) {
+		const unresolvedElementIds = new Set<string>();
+		if (
+			fillMissingSizesByShapeKey(visibleNodes, topology, elementNodeSizes, unresolvedElementIds) > 0
+		) {
 			perf.count('measure.cache-incomplete:collapse');
-			elementNodeSizes.clear();
 		}
 
 		// Containers missing a collapsed size are measured on their own, not by re-measuring
@@ -238,17 +239,23 @@ export async function resolveNodeSizes(
 		// placeholder ELK sizes parents against, and containers came back with no real expanded size
 		// and rendered as 2px slivers. What changes here is the scope of the measurement, not
 		// whether one happens.
-		if (missingContainerIds.size > 0) {
-			perf.count('measure.cache-incomplete:container');
-			if (elementNodeSizes.size === 0) {
-				// Nothing worth preserving — the full pass below is already the cheapest option.
-			} else {
-				const scoped = await runMeasurePass(
-					callbacks,
-					containerElement,
-					isStale,
-					missingContainerIds
-				);
+		// Everything still missing a size gets measured together, once.
+		//
+		// Both gaps used to end in `elementNodeSizes.clear()`, which forces the full pass below:
+		// every node in the graph mounted to learn a handful of sizes. At 19,095 nodes that pass
+		// costs ~665MB and 5.5s, and a capture showed three of them where one was warranted — the
+		// cold load — with the other two triggered by unresolved element shape keys.
+		//
+		// Measuring the gap instead of the whole graph is the same trade already made for
+		// containers, now applied to both. Merged into one pass rather than two: each pass swaps
+		// the node store and waits a frame, so two scoped passes cost twice the churn for no
+		// additional information.
+		const needsMeasuring = new Set([...unresolvedElementIds, ...missingContainerIds]);
+		if (needsMeasuring.size > 0) {
+			if (missingContainerIds.size > 0) perf.count('measure.cache-incomplete:container');
+			// With nothing worth preserving the full pass below is already the cheapest option.
+			if (elementNodeSizes.size > 0) {
+				const scoped = await runMeasurePass(callbacks, containerElement, isStale, needsMeasuring);
 				if (scoped === null) return null;
 				if (scoped.size === 0) {
 					// Nothing came back measurable, so fall through rather than lay out against a gap.
@@ -257,14 +264,15 @@ export async function resolveNodeSizes(
 				} else {
 					for (const [id, size] of scoped) {
 						elementNodeSizes.set(id, size);
-						// Record it as the *collapsed* size, which is what it is: this set was built
-						// from containers that are collapsed and had no cached collapsed entry.
-						// Without this the same miss recurs on every press and the scoped pass runs
-						// forever, which is the trap the full pass avoided only by measuring
-						// everything.
-						const entry = state.containerSizeCache.get(id) ?? {};
-						entry.collapsed = { ...size };
-						state.containerSizeCache.set(id, entry);
+						// A container in this set is one that is collapsed and had no cached collapsed
+						// entry, so record the measurement as its collapsed size. Without this the
+						// same miss recurs on every press and the scoped pass runs forever — the trap
+						// the full pass avoided only by measuring everything.
+						if (missingContainerIds.has(id)) {
+							const entry = state.containerSizeCache.get(id) ?? {};
+							entry.collapsed = { ...size };
+							state.containerSizeCache.set(id, entry);
+						}
 					}
 				}
 			}

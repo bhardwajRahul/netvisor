@@ -51,7 +51,14 @@ const HEIGHT_TOLERANCE_PX = 0;
 export function fillMissingSizesByShapeKey(
 	visibleNodes: TopologyNode[],
 	topology: RenderableTopology,
-	measured: Map<string, XY>
+	measured: Map<string, XY>,
+	/**
+	 * Ids of elements no shape key could resolve, collected when supplied.
+	 *
+	 * The count alone only supports "give up and re-measure everything", which at 19,095 nodes is a
+	 * ~665MB full pass to learn a handful of sizes. The ids let the caller measure just those.
+	 */
+	unresolvedIds?: Set<string>
 ): number {
 	const context = currentElementRenderContext();
 	const keyOf = (node: TopologyNode): string | null => {
@@ -77,8 +84,12 @@ export function fillMissingSizesByShapeKey(
 		if (measured.has(node.id)) continue;
 		const key = keyOf(node);
 		const known = key ? sizeByKey.get(key) : undefined;
-		if (known) measured.set(node.id, known);
-		else stillMissing++;
+		if (known) {
+			measured.set(node.id, known);
+		} else {
+			stillMissing++;
+			unresolvedIds?.add(node.id);
+		}
 	}
 	return stillMissing;
 }
