@@ -63,6 +63,8 @@
 		clearEdgeHoverState,
 		expandedBundles,
 		collapseAllBundles,
+		collectEdgeHandles,
+		edgeHandlesByNode,
 		searchHiddenNodeIds,
 		tagHiddenNodeIds,
 		hiddenEntityIds
@@ -95,6 +97,9 @@
 	import {
 		installDiagnostics,
 		noteNodeStoreWrite,
+		noteRunDetail,
+		noteRunEnd,
+		noteRunStart,
 		recordAfterRun,
 		recordAfterViewportMove
 	} from '../../diagnostics';
@@ -334,12 +339,17 @@
 	let measurePassActive = $state(false);
 
 	/**
-	 * The cold load is hiding the pane while it measures.
+	 * The cold load is measuring, which additionally suppresses the expand animation.
 	 *
 	 * Split from `measurePassActive` because one flag used to do both jobs, and only ever on the
-	 * first render (`lastRenderedTopoKey === ''`). Later measure passes leave nodes at their
-	 * current positions so hiding is unnecessary — but they still have to suspend culling, and
-	 * with a single flag they did not. That was harmless only while culling was inert.
+	 * first render (`lastRenderedTopoKey === ''`). Later measure passes still have to suspend
+	 * culling, and with a single flag they did not — harmless only while culling was inert.
+	 *
+	 * Both flags now hide the pane. A measure pass mounts every node with no container sizes, so
+	 * containers render as 2px slivers with their contents outside for as long as it runs; at a
+	 * few thousand nodes that is a frame or more, and it was plainly visible because only the cold
+	 * load hid anything. This flag still exists on its own because `shouldAnimate` means "not a
+	 * cold load", which is a different question from "is something being measured".
 	 */
 	let coldLoadMeasure = $state(false);
 	let animatingCollapse = $state(false);
@@ -469,6 +479,9 @@
 		// so each full pipeline execution — two elk.layout() calls — is attributable
 		// to what started it.
 		perf.count(`run-start:${source}`);
+		// Always-on twin of the counter above: `perf` records nothing in a customer's build, and
+		// which trigger started a run is the missing half of the zero-sized-container reports.
+		noteRunStart(source);
 		loadInProgress = true;
 		pendingReload = false;
 		void loadTopologyData()
@@ -477,6 +490,7 @@
 				pushError(topology_parseFailed({ error: String(err) }));
 			})
 			.finally(() => {
+				noteRunEnd();
 				loadInProgress = false;
 				if (pendingReload) {
 					pendingReload = false;
@@ -643,6 +657,7 @@
 		// to the watched stores as part of its own work. Snapshot here so those
 		// self-writes don't read as external change at the end of the run.
 		inFlightInputs = snapshotReloadInputs(currentReloadInputs());
+		noteRunDetail({ isNewStructure: prep?.isNewStructure, needsElk: prep?.needsElk });
 		if (!prep) return;
 		const { needsElk, collapsed, visibleNodes: initialVisibleNodes } = prep;
 		let visibleNodes = initialVisibleNodes;
@@ -835,6 +850,12 @@
 		buildEdgesDone();
 		aggregatedEdgeOriginals.set(originalsMap);
 
+		// Publish the handles each node's edges name, before the nodes that reference them. Node
+		// components render only these; SvelteFlow reads handle boxes out of the DOM, and only for
+		// a handle an edge names, so a node whose handles arrive a frame after its edge has that
+		// edge dropped.
+		edgeHandlesByNode.set(collectEdgeHandles(flowEdges));
+
 		// Render
 		const shouldAnimate =
 			needsElk && !coldLoadMeasure && layoutState.lastRenderedTopoKey !== '' && !prep.viewChanged;
@@ -938,6 +959,16 @@
 			if (drifted > 0) perf.count('post-render.size-drift');
 
 			cacheSizesDone();
+			// Read the layout *model*, not the DOM: this separates "the graph lost its sizes" from
+			// "the render has not caught up", which the per-sample degenerate count cannot.
+			noteRunDetail({
+				// Expanded containers only. A collapsed one has never been laid out expanded, so a
+				// zero there is normal and would drown the signal — it is the *expanded* container
+				// with no size that renders as its borders with its contents outside.
+				containersZeroSizedAfter: [...layoutState.layoutGraph.containers.values()].filter(
+					(c) => !c.collapsed && c.expandedSize.width === 0
+				).length
+			});
 			if ((newEntries > 0 || drifted > 0) && !isStale()) {
 				// Counted because on a cold load with many collapsed containers this
 				// self-heal fires every time, and each recursion is a full pipeline
@@ -1187,8 +1218,10 @@
 	function handleStepCollapse() {
 		if (editMode) return;
 		clearSelection(selectionStores);
-		stepCollapse(topology.nodes, containerTypes, getInfrastructureRuleId());
-		layoutState.fitViewPending = true;
+		stepCollapse(topology.nodes, containerTypes, getInfrastructureRuleId(), (idsLeftExpanded) => {
+			for (const id of idsLeftExpanded) layoutState.seenAutoCollapseIds.add(id);
+			layoutState.fitViewPending = true;
+		});
 	}
 
 	function handleStepExpand() {
@@ -1197,8 +1230,8 @@
 		// Marked seen before the collapse stores are written, not after: the write runs the
 		// pipeline synchronously, so anything done afterwards is too late to affect the run it
 		// caused. See `stepExpand`.
-		stepExpand(topology.nodes, containerTypes, getInfrastructureRuleId(), (autoCollapseIds) => {
-			for (const id of autoCollapseIds) layoutState.seenAutoCollapseIds.add(id);
+		stepExpand(topology.nodes, containerTypes, getInfrastructureRuleId(), (idsLeftExpanded) => {
+			for (const id of idsLeftExpanded) layoutState.seenAutoCollapseIds.add(id);
 			layoutState.fitViewPending = true;
 		});
 	}

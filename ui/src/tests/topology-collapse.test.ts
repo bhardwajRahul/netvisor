@@ -238,3 +238,31 @@ describe('stepExpand ordering', () => {
 		).toEqual(new Set(['auto']));
 	});
 });
+
+describe('stepping the ladder protects what the level leaves open', () => {
+	// Auto-collapse is one-shot per container via `seenAutoCollapseIds`, which lives in memory
+	// while `collapsedContainers` is persisted. After a reload the graph is collapsed and that
+	// record is empty, so without this the next pipeline run re-collapsed everything the ladder
+	// had just expanded — the ladder then took two presses per rung, one moving the number and
+	// the next moving the graph.
+	it('reports the collapsible containers the new level leaves expanded', () => {
+		const nodes = [
+			container('root', 'Subnet'),
+			container('sub', 'NestedTag', 'root'),
+			element('e1', 'sub')
+		];
+
+		collapseLevel.set(1);
+		collapsedContainers.set(new Set(['root', 'sub']));
+
+		let handed: string[] = [];
+		stepExpand(nodes, containerTypes, null, (ids) => {
+			handed = ids;
+		});
+
+		// Level 2 opens root containers and keeps subcontainers closed, so `root` must be
+		// exempted from auto-collapse and `sub` must not.
+		expect(handed).toContain('root');
+		expect(handed).not.toContain('sub');
+	});
+});

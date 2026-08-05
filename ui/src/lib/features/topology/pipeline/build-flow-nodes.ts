@@ -35,6 +35,17 @@ export interface BuildFlowNodesParams {
  * on not happening.
  */
 export const ELEMENT_HANDLE_SIZE_PX = 8;
+
+/** Literal width every element card is built at, and the fallback for handle geometry. */
+const ELEMENT_WIDTH_PX = 250;
+
+/**
+ * Stand-in height for handle geometry on a node with no measurement yet.
+ *
+ * Only ever wrong for the frame before a real size arrives, and only by however far the card
+ * differs from it — the same placeholder `measure.ts` uses when it has nothing better.
+ */
+const ELEMENT_FALLBACK_HEIGHT_PX = 100;
 export const CONTAINER_HANDLE_SIZE_PX = 5;
 
 /** The four sides SvelteFlow positions handles on, as both source and target. */
@@ -166,7 +177,7 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 			width = isNodeCollapsed
 				? (containerSize?.width ?? undefined)
 				: isElement
-					? 250
+					? ELEMENT_WIDTH_PX
 					: (containerSize?.width ?? undefined);
 			height = isNodeCollapsed
 				? (containerSize?.height ?? undefined)
@@ -177,20 +188,22 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 			const curPos = currentPositions.get(node.id);
 			const curSize = sizeOf(node.id);
 			position = curPos ?? { x: node.position.x, y: node.position.y };
-			width = isNodeCollapsed
-				? (containerSize?.width ?? undefined)
-				: isElement
-					? 250
-					: (curSize?.width ?? undefined);
-			height = isNodeCollapsed
-				? (containerSize?.height ?? undefined)
-				: isElement
-					? undefined
-					: (curSize?.height ?? undefined);
+			// A container's size comes from the layout graph, collapsed or not, with the measured
+			// hint only as a fallback.
+			//
+			// An expanded container used to read the hint *first*, and the hint lives in
+			// `viewSizeCache`, which `prepare` clears whenever the topology changes. So a run
+			// triggered by a data refetch — no new structure, no ELK, nothing to repopulate the
+			// cache — built every expanded container with no width or height at all and it
+			// rendered as its borders with its contents outside. The graph knew the size the whole
+			// time: the capture that found this shows `containersZeroSizedAfter: 0` on the very run
+			// that produced fourteen zero-sized containers in the DOM.
+			width = isElement ? ELEMENT_WIDTH_PX : (containerSize?.width ?? curSize?.width ?? undefined);
+			height = isElement ? undefined : (containerSize?.height ?? curSize?.height ?? undefined);
 		} else {
 			// Measurement pass: place at origin, let content determine size
 			position = { x: 0, y: 0 };
-			width = isElement ? 250 : undefined;
+			width = isElement ? ELEMENT_WIDTH_PX : undefined;
 			height = undefined;
 		}
 
@@ -226,19 +239,31 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 		// measured and hand it synthesized handles at 0x0.
 		const cullable = !!measuredWidth && !!measuredHeight;
 
+		// Handles are supplied for *every* node, sized or not.
+		//
+		// The node components no longer render handle DOM — eight `<Handle>` elements per node was
+		// half of all in-node DOM and most of its event listeners, and nothing could interact with
+		// them because topology editing is disabled. That makes this the only source of handle
+		// geometry, and an edge whose endpoint has none anchors at the node's origin instead of its
+		// edge. So unlike `measured`, which is withheld until a real size is known, these fall back
+		// to the node's own literal size: a guessed anchor on a node that has not been measured yet
+		// is corrected on the next build, while a missing one is a visibly wrong edge.
+		const handleWidth = measuredWidth ?? width ?? ELEMENT_WIDTH_PX;
+		const handleHeight = measuredHeight ?? height ?? ELEMENT_FALLBACK_HEIGHT_PX;
+
 		return {
 			id: node.id,
 			type: node.node_type,
 			position,
 			...(width !== undefined && { width }),
 			...(height !== undefined && { height }),
+			handles: synthesizeHandles(
+				handleWidth,
+				handleHeight,
+				isElement ? ELEMENT_HANDLE_SIZE_PX : CONTAINER_HANDLE_SIZE_PX
+			),
 			...(cullable && {
-				measured: { width: measuredWidth, height: measuredHeight },
-				handles: synthesizeHandles(
-					measuredWidth,
-					measuredHeight,
-					isElement ? ELEMENT_HANDLE_SIZE_PX : CONTAINER_HANDLE_SIZE_PX
-				)
+				measured: { width: measuredWidth, height: measuredHeight }
 			}),
 			expandParent: true,
 			deletable: false,

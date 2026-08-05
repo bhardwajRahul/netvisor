@@ -5,6 +5,7 @@ import { ElkLayoutEngine } from '../layout/engine';
 import { computeForceLayout, type ForceNode, type ForceLink } from '../layout/force-layout';
 import { containerTypes } from '$lib/shared/stores/metadata';
 import * as perf from '../perf';
+import { noteRunDetail } from '../diagnostics';
 
 const layoutEngine = new ElkLayoutEngine();
 
@@ -68,7 +69,8 @@ export async function executeLayout(
 			layoutNodes,
 			collapsed,
 			structureKey,
-			baseKey
+			baseKey,
+			prevExpandedSizes
 		);
 	} else {
 		// ELK layout path
@@ -113,6 +115,7 @@ export async function executeLayout(
 			elkResult.elementNodeSizes
 		);
 		applyDone();
+		noteRunDetail({ elkSizedContainers: elkResult.containerSizes.size });
 
 		// When collapse was deferred, apply it AFTER ELK result
 		if (deferCollapse) {
@@ -216,7 +219,8 @@ function executeForceLayout(
 	layoutNodes: TopologyNode[],
 	collapsed: Set<string>,
 	structureKey: string,
-	baseKey: string
+	baseKey: string,
+	prevExpandedSizes: Map<string, { width: number; height: number }> | undefined
 ): TopologyNode[] {
 	const forceNodes: ForceNode[] = rootContainerNodes.map((n) => {
 		const measured = elementNodeSizes.get(n.id);
@@ -252,6 +256,14 @@ function executeForceLayout(
 	state.sessionBaseKey = baseKey;
 	state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
 	state.layoutGraph.syncCollapseState(collapsed);
+	// Same restore as the ELK path above, and for the same reason: rebuilding recreates every
+	// container with `expandedSize` at {0, 0}, and the force layout only sizes the root containers
+	// it was given. Without this, anything it does not touch is left at zero, `getContainerSize`
+	// returns that rather than undefined, and the container renders as its borders with its
+	// contents outside — persistently, until something forces a fresh ELK run.
+	if (prevExpandedSizes) {
+		state.layoutGraph.restoreExpandedSizes(prevExpandedSizes);
+	}
 	state.layoutGraph.applyForceResult(forceResult.nodePositions, elementNodeSizes);
 
 	// Recompute visible nodes after force layout rebuilds the graph

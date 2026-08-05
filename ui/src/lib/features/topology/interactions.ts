@@ -95,6 +95,54 @@ export interface HoveredEdgeType {
 }
 export const hoveredEdgeType = writable<HoveredEdgeType | null>(null);
 
+/**
+ * Per node, the handles an edge actually connects to, as `"<type>:<handleId>"`.
+ *
+ * Node components render only these. Every node declares all eight handles in its `handles` data —
+ * that costs nothing and keeps `parseHandles` able to synthesize bounds for a node that has never
+ * mounted — but the *DOM* only has to carry the ones SvelteFlow will look up. It reads handle boxes
+ * out of the DOM whenever a node's rendered size drifts from its `measured`, and only ever for a
+ * handle some edge names, so anything else is eight divs of pure cost. In practice a node uses one
+ * or two: the layout is columnar, so edges leave one side and arrive on the other.
+ *
+ * Written by the pipeline immediately *before* the node store, so a node can never gain an edge
+ * ahead of the handle it needs — that ordering is what stops "Couldn't create edge for source
+ * handle id", which is how SvelteFlow reports a handle it cannot find.
+ */
+export const edgeHandlesByNode = writable<Map<string, Set<string>>>(new Map());
+
+/**
+ * Build that map from the edges about to be drawn.
+ *
+ * A null handle means SvelteFlow falls back to the node's first handle of that type, so one still
+ * has to exist in the DOM — hence the `Top` default rather than skipping the node.
+ */
+export function collectEdgeHandles(
+	edges: {
+		source?: string;
+		target?: string;
+		sourceHandle?: string | null;
+		targetHandle?: string | null;
+	}[]
+): Map<string, Set<string>> {
+	const byNode = new Map<string, Set<string>>();
+	const note = (
+		nodeId: string | undefined,
+		type: 'source' | 'target',
+		handle: string | null | undefined
+	) => {
+		if (!nodeId) return;
+		let set = byNode.get(nodeId);
+		if (!set) byNode.set(nodeId, (set = new Set()));
+		set.add(`${type}:${handle || 'Top'}`);
+	};
+	for (const e of edges) {
+		note(e.source, 'source', e.sourceHandle);
+		note(e.target, 'target', e.targetHandle);
+	}
+	return byNode;
+}
+
 // Edge bundle expand/collapse state (transient, not persisted)
 export const expandedBundles = writable<Set<string>>(new Set());
 
