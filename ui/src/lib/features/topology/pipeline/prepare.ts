@@ -495,9 +495,17 @@ export function prepareTopologyData(
 		? undefined
 		: state.layoutGraph?.getContainerChildPositions();
 
-	// Build/rebuild layout graph when structure changes
+	// Build/rebuild layout graph when structure changes.
+	//
+	// Restore straight away rather than leaving it to `executeLayout`. A rebuild recreates every
+	// container with `expandedSize` at {0, 0}, and this run may never reach the layout stage — it
+	// can go stale, or return early — which would leave the graph zeroed for whatever runs next.
+	// If that run does no layout of its own, `getContainerSize` returns zero and the containers
+	// render as their borders with their contents outside, persistently.
 	if (!state.layoutGraph || isNewStructure) {
+		const carriedSizes = state.layoutGraph?.getExpandedContainerSizes();
 		state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
+		if (carriedSizes) state.layoutGraph.restoreExpandedSizes(carriedSizes);
 	}
 
 	// Defer collapse so ELK runs with everything expanded — only if
