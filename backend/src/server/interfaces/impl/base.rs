@@ -4,9 +4,13 @@ use crate::server::shared::types::{
     metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
 };
 use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+use crate::server::topology::types::views::{
+    FilterValueContext, HasFilterValues, MetadataFilterType,
+};
 use chrono::{DateTime, Utc};
 use mac_address::MacAddress;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt::Display;
 use strum_macros::{EnumIter, IntoStaticStr};
 use utoipa::ToSchema;
@@ -147,11 +151,31 @@ pub enum InterfaceLinkState {
 }
 
 impl InterfaceLinkState {
-    pub fn from_neighbor(neighbor: Option<&Neighbor>) -> Self {
-        match neighbor {
-            Some(_) => Self::Linked,
-            None => Self::Unlinked,
+    /// Classify a port from evidence in **both** directions.
+    ///
+    /// A link is recorded on one side only, so an interface reporting no neighbour of its own is
+    /// still linked when something points at it. There is no outbound-only constructor on purpose:
+    /// the previous one existed, was never called, and encoded exactly the mistake the frontend
+    /// shipped — judging the local `neighbor` alone drew 11 edges where it should have drawn 720.
+    ///
+    /// A partial resolution (`Neighbor::Host` — remote device known but not the port) counts as
+    /// linked: it still draws an edge, so hiding it would break the diagram.
+    pub fn classify(neighbor: Option<&Neighbor>, referenced_as_neighbour: bool) -> Self {
+        if neighbor.is_some() || referenced_as_neighbour {
+            Self::Linked
+        } else {
+            Self::Unlinked
         }
+    }
+}
+
+impl HasFilterValues for Interface {
+    fn filter_values(&self, ctx: &FilterValueContext) -> BTreeMap<MetadataFilterType, String> {
+        let state = InterfaceLinkState::classify(
+            self.base.neighbor.as_ref(),
+            ctx.interfaces_referenced_as_neighbours.contains(&self.id),
+        );
+        BTreeMap::from([(MetadataFilterType::LinkState, state.id().to_string())])
     }
 }
 

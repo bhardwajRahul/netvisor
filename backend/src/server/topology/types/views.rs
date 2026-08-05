@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::server::{
     hosts::r#impl::virtualization::HostVirtualizationState,
@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, IntoStaticStr, VariantNames};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use super::edges::{
     EdgeDefaultVisibility, EdgeHighlightBehavior, EdgeStroke, EdgeTypeDiscriminants, EdgeViewConfig,
@@ -186,6 +187,7 @@ impl ViewElementConfig {
                                 .into()
                         })
                         .collect(),
+                    applies: FilterApplication::Client,
                 });
         }
     }
@@ -247,6 +249,43 @@ impl HasId for MetadataFilterType {
     }
 }
 
+/// Where a filter is applied — and therefore what toggling it costs.
+///
+/// Filtering on the client makes a toggle instant, because the entities are already there. Filtering
+/// on the server makes it a round trip, but keeps the hidden entities out of the response entirely.
+/// That is a good trade only when the hidden set is large: L2 ships 19,095 interfaces to render
+/// 2,872, and a customer's browser runs out of memory holding the difference.
+///
+/// **A filter may only be `Server` if its value is computable from the topology the backend is
+/// already building.** `Staleness` fails that test — it depends on the current time, so an identical
+/// request would return different results as time passes, and a cached response would be wrong. It
+/// stays `Client` permanently; this is a property of the filter, not a migration left half-done.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    ToSchema,
+    EnumIter,
+    IntoStaticStr,
+)]
+pub enum FilterApplication {
+    /// Applied in the browser against entities the response already contains.
+    Client,
+    /// Applied while building the topology; hidden entities never reach the client.
+    Server,
+}
+
+impl HasId for FilterApplication {
+    fn id(&self) -> &'static str {
+        self.into()
+    }
+}
+
 /// A declared metadata filter on an element entity inside a view.
 ///
 /// `FilterValue::id` is the **stable identifier** — it's what each entity
@@ -262,6 +301,10 @@ pub struct MetadataFilter {
     pub label: String,
     /// The choices offered for this filter.
     pub values: Vec<FilterValue>,
+    /// Where this filter runs. Deliberately not defaulted: a new filter has to state which side it
+    /// belongs on, and the compiler is a better place to force that decision than a review comment.
+    /// See `FilterApplication` for when `Server` is permissible.
+    pub applies: FilterApplication,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -302,12 +345,27 @@ where
         .collect()
 }
 
+/// Cross-entity state a filter value may depend on.
+///
+/// Deliberately carries topology-build state only — no network and no clock. A filter that needs
+/// either is a filter that cannot run on the server (see `FilterApplication`), so admitting them
+/// here would only make it easy to build something that returns different answers over time.
+#[derive(Debug, Default)]
+pub struct FilterValueContext {
+    /// Interfaces named as another interface's neighbour.
+    ///
+    /// A link is recorded on one side only, so an interface with no `neighbor` of its own is still
+    /// linked if something points at it. Judging the outbound direction alone is a real bug and not
+    /// a theoretical one: the frontend shipped it and drew 11 edges where it should have drawn 720.
+    pub interfaces_referenced_as_neighbours: HashSet<Uuid>,
+}
+
 /// Entities that can surface metadata filter values. Returns the stable
 /// `FilterValue::id` (per `MetadataFilterType`) for each filter the entity
 /// participates in. Serialized alongside the entity so the frontend
 /// doesn't need any extractor logic.
 pub trait HasFilterValues {
-    fn filter_values(&self) -> BTreeMap<MetadataFilterType, String>;
+    fn filter_values(&self, ctx: &FilterValueContext) -> BTreeMap<MetadataFilterType, String>;
 }
 
 // ---------------------------------------------------------------------------
@@ -507,6 +565,7 @@ impl TopologyView {
                         filter_type: MetadataFilterType::Category,
                         label: "By category".to_string(),
                         values: filter_values_from_enum::<ServiceCategory>(),
+                        applies: FilterApplication::Client,
                     }],
                 )]
                 .into_iter()
@@ -527,6 +586,11 @@ impl TopologyView {
                         filter_type: MetadataFilterType::LinkState,
                         label: "By link".to_string(),
                         values: filter_values_from_enum::<InterfaceLinkState>(),
+                        // The only server-side filter. It hides ~16,000 of L2's 19,095 interfaces —
+                        // ifTable rows with no neighbour — which is the difference between a view that
+                        // loads and one that exhausts browser memory. Link state is derivable from the
+                        // topology being built, so it qualifies.
+                        applies: FilterApplication::Server,
                     }],
                 )]
                 .into_iter()
@@ -554,6 +618,7 @@ impl TopologyView {
                             filter_type: MetadataFilterType::Category,
                             label: "By category".to_string(),
                             values: filter_values_from_enum::<ServiceCategory>(),
+                            applies: FilterApplication::Client,
                         }],
                     ),
                     (
@@ -562,6 +627,7 @@ impl TopologyView {
                             filter_type: MetadataFilterType::Virtualization,
                             label: "By virtualization".to_string(),
                             values: filter_values_from_enum::<HostVirtualizationState>(),
+                            applies: FilterApplication::Client,
                         }],
                     ),
                 ]
@@ -583,6 +649,7 @@ impl TopologyView {
                         filter_type: MetadataFilterType::Category,
                         label: "By category".to_string(),
                         values: filter_values_from_enum::<ServiceCategory>(),
+                        applies: FilterApplication::Client,
                     }],
                 )]
                 .into_iter()
@@ -626,7 +693,7 @@ impl TopologyView {
                 RequestPath => active(false, Visible, Dashed, WhenVisible, false, true),
                 HubAndSpoke => active(false, Visible, Dashed, WhenVisible, false, true),
                 Hypervisor => active(false, Hidden, Dashed, WhenVisible, true, false),
-                PhysicalLink => active(false, Hidden, Dashed, WhenVisible, false, false),
+                PhysicalLink => EdgeViewConfig::Disabled,
                 // Connects two hosts, and this view has no host node to land on — its
                 // elements are IP addresses.
                 NeighborLink => EdgeViewConfig::Disabled,

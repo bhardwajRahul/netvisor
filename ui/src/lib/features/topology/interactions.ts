@@ -354,6 +354,30 @@ function computePresentFilterValues(
 	return out;
 }
 
+/**
+ * Union the currently-hidden values into the represented set.
+ *
+ * Applied to every filter rather than only server-side ones: a value the user has hidden is one they
+ * can evidently choose, so offering the toggle is right either way, and keying this on
+ * `FilterApplication` would make the panel's behaviour depend on where a filter happens to run.
+ */
+function withHiddenValues(
+	present: Record<string, Record<string, string[]>>,
+	hidden: Record<string, Record<string, string[]>> | undefined
+): Record<string, Record<string, string[]>> {
+	if (!hidden) return present;
+	for (const [entityType, byFilter] of Object.entries(hidden)) {
+		for (const [filterType, values] of Object.entries(byFilter)) {
+			if (!values?.length) continue;
+			const existing = (present[entityType] ??= {})[filterType] ?? [];
+			(present[entityType] as Record<string, string[]>)[filterType] = [
+				...new Set([...existing, ...values])
+			];
+		}
+	}
+	return present;
+}
+
 /** Collections on Topology indexed by the entity-type key used in filters. */
 export function updateTagFilter(
 	topology: RenderableTopology | undefined,
@@ -375,7 +399,14 @@ export function updateTagFilter(
 	// Computed before the early-return below: the panel needs this even when no
 	// filter is currently applied, to decide which filter groups are worth
 	// offering at all.
-	presentFilterValues.set(computePresentFilterValues(topology, network));
+	//
+	// The hidden values are folded back in because a server-side filter removes its entities from
+	// the response entirely. Without this, hiding `Unlinked` leaves only `Linked` represented, the
+	// group is judged to offer no choice, the panel drops it — and the user has no way to bring
+	// 16,000 ports back. They are hidden *because* they exist.
+	presentFilterValues.set(
+		withHiddenValues(computePresentFilterValues(topology, network), hiddenMetadataValues)
+	);
 
 	const hasTagFilter = tagFilter && !isTagFilterEmpty(tagFilter);
 	const hasMetadataFilter = hasAnyMetadataFilter(hiddenMetadataValues);

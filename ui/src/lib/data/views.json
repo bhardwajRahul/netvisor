@@ -74,6 +74,7 @@
         "metadata_filters": {
           "Interface": [
             {
+              "applies": "Server",
               "filter_type": "LinkState",
               "label": "By link",
               "values": [
@@ -148,13 +149,7 @@
           "type": "disabled"
         },
         "PhysicalLink": {
-          "affects_layout": false,
-          "default_visibility": "hidden",
-          "highlight_behavior": "when_visible",
-          "show_directionality": false,
-          "stroke": "dashed",
-          "type": "active",
-          "will_target_container": false
+          "type": "disabled"
         },
         "RequestPath": {
           "affects_layout": false,
@@ -205,6 +200,7 @@
         "metadata_filters": {
           "Service": [
             {
+              "applies": "Client",
               "filter_type": "Category",
               "label": "By category",
               "values": [
@@ -439,6 +435,7 @@
               ]
             },
             {
+              "applies": "Client",
               "filter_type": "Staleness",
               "label": "By staleness",
               "values": [
@@ -559,6 +556,7 @@
         "metadata_filters": {
           "Host": [
             {
+              "applies": "Client",
               "filter_type": "Virtualization",
               "label": "By virtualization",
               "values": [
@@ -577,6 +575,7 @@
               ]
             },
             {
+              "applies": "Client",
               "filter_type": "Staleness",
               "label": "By staleness",
               "values": [
@@ -597,6 +596,7 @@
           ],
           "Service": [
             {
+              "applies": "Client",
               "filter_type": "Category",
               "label": "By category",
               "values": [
@@ -831,6 +831,7 @@
               ]
             },
             {
+              "applies": "Client",
               "filter_type": "Staleness",
               "label": "By staleness",
               "values": [
@@ -938,6 +939,7 @@
         "metadata_filters": {
           "Service": [
             {
+              "applies": "Client",
               "filter_type": "Category",
               "label": "By category",
               "values": [
@@ -1172,6 +1174,7 @@
               ]
             },
             {
+              "applies": "Client",
               "filter_type": "Staleness",
               "label": "By staleness",
               "values": [

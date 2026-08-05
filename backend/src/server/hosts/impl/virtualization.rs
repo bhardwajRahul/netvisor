@@ -14,7 +14,7 @@ use crate::server::{
             metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
         },
     },
-    topology::types::views::{HasFilterValues, MetadataFilterType},
+    topology::types::views::{FilterValueContext, HasFilterValues, MetadataFilterType},
 };
 
 #[derive(
@@ -174,7 +174,7 @@ impl TypeMetadataProvider for HostVirtualizationState {
 }
 
 impl HasFilterValues for Host {
-    fn filter_values(&self) -> BTreeMap<MetadataFilterType, String> {
+    fn filter_values(&self, _ctx: &FilterValueContext) -> BTreeMap<MetadataFilterType, String> {
         let mut values = BTreeMap::new();
         let state = HostVirtualizationState::from_host_virtualization(
             self.base.virtualization_metadata.as_ref(),

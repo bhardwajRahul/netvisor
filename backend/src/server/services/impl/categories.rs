@@ -15,7 +15,7 @@ use crate::server::{
             metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
         },
     },
-    topology::types::views::{HasFilterValues, MetadataFilterType},
+    topology::types::views::{FilterValueContext, HasFilterValues, MetadataFilterType},
 };
 
 #[derive(
@@ -346,7 +346,7 @@ impl ServiceCategory {
 }
 
 impl HasFilterValues for Service {
-    fn filter_values(&self) -> BTreeMap<MetadataFilterType, String> {
+    fn filter_values(&self, _ctx: &FilterValueContext) -> BTreeMap<MetadataFilterType, String> {
         use crate::server::services::r#impl::definitions::ServiceDefinition;
         let mut values = BTreeMap::new();
         // Disambiguate: Box<dyn ServiceDefinition> also impls TypeMetadataProvider

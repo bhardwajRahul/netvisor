@@ -10,8 +10,10 @@ use strum::IntoEnumIterator;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
-use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
+use super::metadata_filter;
+use crate::server::shared::entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants};
 use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
+use crate::server::topology::types::views::FilterValueContext;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     bindings::{r#impl::base::Binding, service::BindingService},
@@ -446,10 +448,50 @@ impl TopologyService {
         // reference a tag applied to nothing (e.g. ByTag on an unused tag); the
         // frontend needs its name/color to label the group, so ship it too.
         self.augment_grouping_rule_tags(&mut data, &options).await?;
+        Self::apply_server_metadata_filters(&mut data, &options);
         let (nodes, edges) = self.build_all_view_graphs(&data, &options);
         data.nodes = nodes;
         data.edges = edges;
         Ok(data)
+    }
+
+    /// Drop entities the user has hidden through a `Server`-side metadata filter.
+    ///
+    /// Runs before any view is built, so the builders never see them and nodes, edges and the
+    /// entity bundle all shrink together. The bundle is what makes this worth doing: a `Node` is an
+    /// id and a position, while the entity records are the payload — L2 ships 19,095 interfaces to
+    /// render 2,872, and the difference is what exhausts a customer's browser.
+    ///
+    /// Silent when nothing is hidden server-side, which is the common case.
+    fn apply_server_metadata_filters(data: &mut TopologyData, options: &TopologyOptions) {
+        let hide_sets = metadata_filter::server_hide_sets(options);
+        if hide_sets.is_empty() {
+            return;
+        }
+
+        let ctx = FilterValueContext {
+            interfaces_referenced_as_neighbours: metadata_filter::referenced_neighbour_interfaces(
+                data.interfaces.iter(),
+            ),
+        };
+
+        let dropped = metadata_filter::retain_visible(
+            &mut data.interfaces,
+            hide_sets.get(&EntityDiscriminants::Interface),
+            &ctx,
+        ) + metadata_filter::retain_visible(
+            &mut data.hosts,
+            hide_sets.get(&EntityDiscriminants::Host),
+            &ctx,
+        ) + metadata_filter::retain_visible(
+            &mut data.services,
+            hide_sets.get(&EntityDiscriminants::Service),
+            &ctx,
+        );
+
+        if dropped > 0 {
+            tracing::debug!(dropped, "server-side metadata filters removed entities");
+        }
     }
 
     /// Add tags referenced by grouping rules (ByTag element rules, ByApplication
