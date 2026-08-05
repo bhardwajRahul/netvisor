@@ -47,3 +47,30 @@ describe('structure key segmentation', () => {
 		expect(resizeSignal('3:1:a@|||')).toEqual(resizeSignal('4:1:a@,b@|||'));
 	});
 });
+
+/**
+ * The hide-state segments are built from a *typed* view of what is hidden. A flat set of entity ids
+ * cannot say whether an entity is drawn inside another node's card or is a node of its own, and
+ * reading the flat one classified a link-state toggle as card-resizing — re-measuring all 19,095
+ * nodes on every press. Four full passes in one capture, matching its four filter toggles exactly.
+ */
+describe('hidden entities are classified by type', () => {
+	const resizeSignal = (key: string) => {
+		const [, inline = '', resizingHide = ''] = key.split('|');
+		return { inline, resizingHide };
+	};
+
+	it('puts an element-entity hide on the structural side', () => {
+		// Interface is an element node in L2, so hiding some changes only the node set.
+		const before = '10:5:a@,b@|inline||';
+		const after = '8:4:a@|inline||e:Interface:if-1,if-2';
+		expect(resizeSignal(after)).toEqual(resizeSignal(before));
+	});
+
+	it('puts an inline-entity hide on the resizing side', () => {
+		// Service is inlined on host cards in L3, so hiding some shrinks those cards.
+		const before = '10:5:a@,b@|inline||';
+		const after = '10:5:a@,b@|inline|e:Service:svc-1|';
+		expect(resizeSignal(after)).not.toEqual(resizeSignal(before));
+	});
+});

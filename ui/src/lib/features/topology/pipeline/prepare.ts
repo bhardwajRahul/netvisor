@@ -16,7 +16,7 @@ import {
 import { elevateEdgesToContainers } from '../layout/edge-elevation';
 import { containerTypes, views } from '$lib/shared/stores/metadata';
 import { activeView, topologyOptions } from '../queries';
-import { tagHiddenNodeIds, hiddenEntityIds } from '../interactions';
+import { tagHiddenNodeIds, hiddenEntityIdsByType } from '../interactions';
 import { buildTopologyParentIndex } from '../topology-parent-index';
 import { ENTITY_COLLECTIONS } from '../resolvers';
 import { noteRunDetail } from '../diagnostics';
@@ -87,16 +87,22 @@ function getHideStateKey(view: string): { resizing: string; structural: string }
 	const hiddenNodes = get(tagHiddenNodeIds);
 	if (hiddenNodes.size > 0) structural.push(`n:${[...hiddenNodes].sort().join(',')}`);
 
-	// Hiding an entity drawn *inside* another node's card changes that card's height while every
-	// node id stays the same. This is the case the caches must be cleared for.
-	const hiddenEntities = get(hiddenEntityIds);
-	if (hiddenEntities.size > 0) resizing.push(`e:${[...hiddenEntities].sort().join(',')}`);
+	// A hidden entity belongs on whichever side its type does. Drawn inside another node's card, it
+	// changes that card's height; drawn as a node of its own, it just disappears and every survivor
+	// renders identically. The flat `hiddenEntityIds` cannot tell them apart, which is why the typed
+	// store exists — reading the flat one here put a link-state toggle on the resizing side and
+	// re-measured all 19,095 nodes on every press.
+	const inlineTypes = inlineEntityTypes(view);
+	for (const [entityType, ids] of get(hiddenEntityIdsByType)) {
+		if (ids.size === 0) continue;
+		const part = `e:${entityType}:${[...ids].sort().join(',')}`;
+		(inlineTypes.has(entityType) ? resizing : structural).push(part);
+	}
 
 	// A metadata filter is whichever of the two its entity is in this view. Hiding unlinked ports in
 	// L2 removes Interface *element nodes* — no card resizes — while hiding a service category in L3
 	// removes services drawn inside host cards and every one of them shrinks. Splitting them is what
 	// stops a filter toggle from discarding 19,095 measured sizes it did not invalidate.
-	const inlineTypes = inlineEntityTypes(view);
 	for (const [entityType, key] of hiddenMetadataKeysByEntity(view)) {
 		(inlineTypes.has(entityType) ? resizing : structural).push(`m:${key}`);
 	}

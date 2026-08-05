@@ -332,6 +332,17 @@ export const FILTER_VALUE_EXTRACTORS: Record<string, Record<string, FilterValueE
  * rather than presenting a control that cannot discriminate. Kept generic
  * across all metadata filters rather than special-cased to staleness.
  */
+/**
+ * The same hidden entities as `hiddenEntityIds`, but keyed by entity type.
+ *
+ * The flat set cannot say whether what was hidden is drawn *inside* another node's card or is a
+ * node in its own right, and those invalidate completely different things: hiding an inline entity
+ * resizes the card containing it, while hiding an element entity removes a node and leaves every
+ * surviving card exactly as it was. `prepare` needs the distinction to decide whether measured
+ * sizes survive a filter change — conflating them re-measured 19,095 nodes on every toggle.
+ */
+export const hiddenEntityIdsByType = writable<Map<string, Set<string>>>(new Map());
+
 export const presentFilterValues = writable<Record<string, Record<string, string[]>>>({});
 
 function computePresentFilterValues(
@@ -392,6 +403,7 @@ export function updateTagFilter(
 	if (!topology) {
 		tagHiddenNodeIds.set(new Set());
 		hiddenEntityIds.set(new Set());
+		hiddenEntityIdsByType.set(new Map());
 		presentFilterValues.set({});
 		return;
 	}
@@ -415,6 +427,7 @@ export function updateTagFilter(
 	if (!hasTagFilter && !hasMetadataFilter && !hasEntityFilter) {
 		tagHiddenNodeIds.set(new Set());
 		hiddenEntityIds.set(new Set());
+		hiddenEntityIdsByType.set(new Map());
 		return;
 	}
 
@@ -574,6 +587,7 @@ export function updateTagFilter(
 
 	tagHiddenNodeIds.set(hiddenNodeIds);
 	hiddenEntityIds.set(hiddenEntities);
+	hiddenEntityIdsByType.set(hiddenByType);
 }
 
 function isTagFilterEmpty(filter: {
