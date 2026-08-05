@@ -1542,11 +1542,24 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 
 	// Pass 1: compute layout with FIXED_SIDE ports (no position info).
 	// This gives us actual element positions within box-packed containers.
+	//
+	// `graph1` and `result1` are deliberately `let`, and dropped the moment each is finished with.
+	// This function is `async`, so its scope is a heap-allocated context that survives every `await`
+	// and V8 does not clear bindings it can no longer reach — holding both passes' graphs live at
+	// once. Pass 2 builds a second complete graph of the same size, so the peak was twice a single
+	// pass even though only one pass's worth is ever retained afterwards. Nulling lets the first be
+	// collected while the second is being built.
 	const build1Done = perf.stage('elk.build-graph');
-	const { graph: graph1, containerIds } = buildElkGraph(input);
+	let graph1: ElkNode | null;
+	let containerIds: Set<string>;
+	({ graph: graph1, containerIds } = buildElkGraph(input));
 	build1Done();
 	const elkPass1Done = perf.stage('elk.layout');
-	const result1 = await elk.layout(graph1);
+	// Only the children array is bound, never the root: the root is unreferenced the moment this
+	// expression completes, and clearing this one binding after extraction drops the entire pass-1
+	// tree. Binding the result itself would keep the tree alive through `.children` anyway.
+	let pass1Children: ElkNode[] | null = (await elk.layout(graph1)).children ?? null;
+	graph1 = null;
 	elkPass1Done();
 
 	// Extract actual element AND subcontainer positions from pass 1
@@ -1578,7 +1591,14 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 			}
 		}
 	}
-	if (result1.children) extractPositions(result1.children);
+	if (pass1Children) {
+		const children = pass1Children;
+		extractPositions(children);
+	}
+	// Everything pass 2 needs from pass 1 now lives in the two position maps above, which hold plain
+	// numbers rather than ELK nodes. Released here so the collector can reclaim the whole first
+	// graph before the second one is allocated.
+	pass1Children = null;
 
 	// Pass 2: rebuild graph with FIXED_POS ports at actual element positions
 	const build2Done = perf.stage('elk.build-graph');
