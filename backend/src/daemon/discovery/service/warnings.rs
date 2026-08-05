@@ -210,6 +210,10 @@ pub enum MalformedNeighbourReason {
 impl MalformedNeighbourReason {
     /// The sentence that follows the count — what happened and, decisively, whether rescanning is
     /// worth the operator's time.
+    ///
+    /// Written without a subject noun for the devices. One line can cover one address or ten, and
+    /// naming them again here forces a number the sentence cannot know — "The devices answered…"
+    /// reads wrong for the single-device case, which is the common one.
     fn explanation(self) -> &'static str {
         match self {
             Self::WalkCutShort => {
@@ -222,16 +226,16 @@ impl MalformedNeighbourReason {
                  this."
             }
             Self::IncompleteRecords => {
-                "The devices listed these neighbours and then did not supply the identifier for \
-                 them. The read finished, so rescanning will not change this."
+                "These neighbours were listed and then no identifier was supplied for them. The \
+                 read finished, so rescanning will not change this."
             }
             Self::UnexpectedType => {
-                "The devices answered the identifying column with a value of the wrong type. \
+                "The identifying column came back with a value of a type it cannot hold. \
                  Rescanning will not change this."
             }
             Self::UnreadableIndex => {
-                "Their position in the devices' neighbour tables could not be read, so they could \
-                 not be tied to a local port. Rescanning will not change this."
+                "Their position in the neighbour table could not be read, so they could not be \
+                 tied to a local port. Rescanning will not change this."
             }
         }
     }
