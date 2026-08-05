@@ -126,6 +126,10 @@ export interface CumulativeCounters {
 	fullMeasurePasses: number;
 	peakStoreNodes: number;
 	peakMounted: number;
+	/** Highest element count inside mounted nodes — the peak the renderer had to hold. */
+	peakDomInNodes: number;
+	/** Heap V8 has reserved, which exceeds what is live and is what the OS sees. Chrome-only. */
+	totalJSHeapMb?: number;
 	/** Chrome-only; absent in Firefox and Safari. */
 	usedJSHeapMb?: number;
 }
@@ -135,7 +139,8 @@ const counters: CumulativeCounters = {
 	nodeStoreWrites: 0,
 	fullMeasurePasses: 0,
 	peakStoreNodes: 0,
-	peakMounted: 0
+	peakMounted: 0,
+	peakDomInNodes: 0
 };
 
 /** Called on every write to the node store, so a remount loop is visible as a count. */
@@ -168,6 +173,9 @@ export interface RunRecord {
 	graphRebuilt?: boolean;
 	/** Containers ELK returned a size for, when it ran. */
 	elkSizedContainers?: number;
+	/** Wall-clock milliseconds for the whole run. `perf.ts` times the stages, but it records
+	 *  nothing in a customer's build, so the total is kept here where it is always on. */
+	durationMs?: number;
 	/**
 	 * Expanded containers whose `expandedSize` is still zero once the run finished.
 	 *
@@ -186,6 +194,14 @@ const runs: RunRecord[] = [];
 export function noteRunStart(source: string): void {
 	runs.push({ at: Math.round(performance.now()), source });
 	if (runs.length > RUN_HISTORY_LIMIT) runs.shift();
+}
+
+/** Close the run currently in flight, recording how long it took. */
+export function noteRunEnd(): void {
+	const current = runs.at(-1);
+	if (current && current.durationMs === undefined) {
+		current.durationMs = Math.round(performance.now() - current.at);
+	}
 }
 
 /** Fill in detail on the run currently in flight. */
@@ -239,6 +255,27 @@ export interface ViewerSample {
 	};
 	/** How much of the store SvelteFlow could cull even in principle. */
 	cullable: CullabilitySummary | null;
+	/**
+	 * What the renderer is actually holding.
+	 *
+	 * The JS heap is a small fraction of a topology tab's memory — the dominant cost is the DOM
+	 * itself, since Blink accounts for every node's style and layout objects whether or not
+	 * anything reads them. Measured on the seeded reproduction that came to roughly 6 KB per
+	 * element, so these counts track the tab's footprint far better than `usedJSHeapMb` does, and
+	 * unlike it they are available in every browser.
+	 *
+	 * `inNodes` is the one to watch: it is `mounted` multiplied by however many elements a card
+	 * renders, so it moves with both culling and card complexity.
+	 */
+	dom: {
+		/** Every element in the document, so the topology's share of the page is visible. */
+		total: number;
+		/** Elements inside mounted nodes. */
+		inNodes: number;
+		/** Handle divs — geometry SvelteFlow reads, one or two per node with an edge. */
+		handles: number;
+		edgePaths: number;
+	};
 	/** The pane's own size. Zero either dimension and *everything* is off-screen by definition. */
 	pane: { width: number; height: number };
 	/** SvelteFlow's transform, verbatim. */
@@ -371,6 +408,14 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 
 	counters.peakMounted = Math.max(counters.peakMounted, nodeEls.length);
 
+	const dom = {
+		total: document.querySelectorAll('*').length,
+		inNodes: root.querySelectorAll('.svelte-flow__node *').length,
+		handles: root.querySelectorAll('.svelte-flow__handle').length,
+		edgePaths: root.querySelectorAll('.svelte-flow__edge path').length
+	};
+	counters.peakDomInNodes = Math.max(counters.peakDomInNodes, dom.inNodes);
+
 	const round = (n: number) => Math.round(n);
 	return {
 		at: round(performance.now()),
@@ -396,6 +441,7 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 		// Full count on the two triggers that are taken rarely; stride-sampled on the throttled
 		// viewport path, which fires throughout a pan.
 		cullable: sampleCullability(inputs.internalNodes(), inputs.trigger !== 'viewport'),
+		dom,
 		pane: { width: round(pane?.clientWidth ?? 0), height: round(pane?.clientHeight ?? 0) },
 		transform: viewport?.style.transform ?? null,
 		bounds: bounds
@@ -486,6 +532,8 @@ export interface DiagnosticsReport {
 	samples: ViewerSample[];
 	/** What each recent pipeline run did — see `RunRecord`. */
 	runs: RunRecord[];
+	/** Stage timings and counts, when `perf.ts` is recording. */
+	perf: { durations: Record<string, number>; counts: Record<string, number>; runs: number } | null;
 	/**
 	 * Totals for the session, which the per-sample ring cannot express.
 	 *
@@ -495,6 +543,25 @@ export interface DiagnosticsReport {
 	cumulative: CumulativeCounters;
 }
 
+function readPerfSnapshot() {
+	const api = (
+		window as unknown as {
+			__scanopyTopologyPerf?: {
+				snapshot: () => {
+					durations: Record<string, number>;
+					counts: Record<string, number>;
+					runs: number;
+				};
+			};
+		}
+	).__scanopyTopologyPerf;
+	if (!api) return null;
+	const snap = api.snapshot();
+	// Nothing recorded means the build is not instrumented, which is worth distinguishing from
+	// "instrumented and fast".
+	return Object.keys(snap.counts).length === 0 ? null : snap;
+}
+
 /** Chrome-only. Absent in Firefox and Safari, which is where this report tends to come from. */
 function usedJSHeapMb(): number | undefined {
 	const memory = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory;
@@ -502,8 +569,16 @@ function usedJSHeapMb(): number | undefined {
 	return typeof bytes === 'number' ? Math.round(bytes / 1024 / 1024) : undefined;
 }
 
+/** Chrome-only, like `usedJSHeapMb`. */
+function totalJSHeapMb(): number | undefined {
+	const memory = (performance as unknown as { memory?: { totalJSHeapSize?: number } }).memory;
+	const bytes = memory?.totalJSHeapSize;
+	return typeof bytes === 'number' ? Math.round(bytes / 1024 / 1024) : undefined;
+}
+
 function buildReport(current: ViewerSample): DiagnosticsReport {
 	const heap = usedJSHeapMb();
+	const heapTotal = totalJSHeapMb();
 	return {
 		generatedAt: new Date().toISOString(),
 		// The fault is reported as browser-dependent, so the browser is part of the evidence.
@@ -516,7 +591,19 @@ function buildReport(current: ViewerSample): DiagnosticsReport {
 		firstBlank: firstBlankCapture,
 		runs: [...runs],
 		samples: [...history, current],
-		cumulative: { ...counters, ...(heap !== undefined && { usedJSHeapMb: heap }) }
+		cumulative: {
+			...counters,
+			...(heap !== undefined && { usedJSHeapMb: heap }),
+			...(heapTotal !== undefined && { totalJSHeapMb: heapTotal })
+		},
+		/**
+		 * Stage timings, when the build records them.
+		 *
+		 * `perf.ts` is gated on a dev build or `window.__topoPerf`, so this is usually absent in a
+		 * customer capture — but when someone can set the flag and reproduce, it is the difference
+		 * between "the view is slow" and knowing which stage is slow.
+		 */
+		perf: readPerfSnapshot()
 	};
 }
 
@@ -570,6 +657,7 @@ export function resetDiagnostics(): void {
 	counters.fullMeasurePasses = 0;
 	counters.peakStoreNodes = 0;
 	counters.peakMounted = 0;
+	counters.peakDomInNodes = 0;
 	runs.length = 0;
 }
 

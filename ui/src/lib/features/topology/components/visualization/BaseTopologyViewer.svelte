@@ -98,6 +98,7 @@
 		installDiagnostics,
 		noteNodeStoreWrite,
 		noteRunDetail,
+		noteRunEnd,
 		noteRunStart,
 		recordAfterRun,
 		recordAfterViewportMove
@@ -489,6 +490,7 @@
 				pushError(topology_parseFailed({ error: String(err) }));
 			})
 			.finally(() => {
+				noteRunEnd();
 				loadInProgress = false;
 				if (pendingReload) {
 					pendingReload = false;
