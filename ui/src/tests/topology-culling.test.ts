@@ -98,13 +98,19 @@ const layoutGraph = {
 
 const topology = { nodes: visibleNodes, edges: [] } as unknown as RenderableTopology;
 
-function build(overrides: { sizeHints?: Map<string, XY> | null; isNewStructure?: boolean } = {}) {
+function build(
+	overrides: {
+		sizeHints?: Map<string, XY> | null;
+		isNewStructure?: boolean;
+		useGraph?: boolean;
+	} = {}
+) {
 	return sortFlowNodes(
 		buildFlowNodes({
 			visibleNodes,
 			collapsed: new Set<string>(),
 			topology,
-			useGraph: true,
+			useGraph: overrides.useGraph ?? true,
 			layoutGraph,
 			isNewStructure: overrides.isNewStructure ?? false,
 			liveNodes: [],
@@ -186,12 +192,30 @@ describe('the measurement pass is never culled', () => {
 	it('mounts every node when building for measurement', () => {
 		// `resolveNodeSizes` mounts the graph and reads heights out of the DOM. A culled node
 		// never mounts, so it would measure as absent and ELK would lay out against a fallback.
-		// Both the new-structure branch and `stripSizeSeed` exist to guarantee this; if a future
-		// change seeds sizes into either, this fails rather than quietly degrading layout.
-		const newStructure = visibleCount(build({ isNewStructure: true }), VIEWPORT);
-		expect(newStructure).toBe(ELEMENT_COUNT + 1);
+		// Both the measurement placement branch and `stripSizeSeed` exist to guarantee this; if a
+		// future change seeds sizes into either, this fails rather than quietly degrading layout.
+		//
+		// The measurement branch is reached by `!useGraph && isNewStructure`. This previously passed
+		// `isNewStructure` alone against a layout graph, which never reaches that branch — it was
+		// passing on the old gate, which dropped the size hint for *any* new structure rather than
+		// for a measurement, and so asserted a proxy rather than the behaviour it names.
+		const measurementPass = visibleCount(
+			build({ useGraph: false, isNewStructure: true }),
+			VIEWPORT
+		);
+		expect(measurementPass).toBe(ELEMENT_COUNT + 1);
 
 		const stripped = visibleCount(stripSizeSeed(build()), VIEWPORT);
 		expect(stripped).toBe(ELEMENT_COUNT + 1);
+	});
+
+	it('keeps culling a collapse change, which is not a measurement', () => {
+		// The counterpart to the above, and the regression that mattered: a collapse press sets
+		// `isNewStructure` while placing from the layout graph. Dropping the size hint there left
+		// every element without `measured`, which means `forceInitialRender` — so each press
+		// rebuilt the whole graph unculled and mounted all of it.
+		const mounted = visibleCount(build({ isNewStructure: true }), VIEWPORT);
+
+		expect(mounted).toBeLessThan(ELEMENT_COUNT / 4);
 	});
 });

@@ -164,6 +164,11 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 		let position: { x: number; y: number };
 		let width: number | undefined;
 		let height: number | undefined;
+		// Whether this node took the measurement placement below, which is the only branch the size
+		// hint must not be applied to. Tracked rather than inferred from `isNewStructure`: that flag
+		// is true for any collapse change, so using it as the proxy dropped the hint on every press
+		// — see the gate further down.
+		let measurementPlacement = false;
 
 		const isElement = node.node_type === 'Element';
 
@@ -202,6 +207,7 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 			height = isElement ? undefined : (containerSize?.height ?? curSize?.height ?? undefined);
 		} else {
 			// Measurement pass: place at origin, let content determine size
+			measurementPlacement = true;
 			position = { x: 0, y: 0 };
 			width = isElement ? ELEMENT_WIDTH_PX : undefined;
 			height = undefined;
@@ -226,7 +232,17 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 		//
 		// The measurement branch above is deliberately excluded — it exists to let content
 		// determine size, and seeding it would make the measure pass read back its own guess.
-		const hint = isNewStructure ? undefined : sizeHints?.get(node.id);
+		//
+		// Gated on that branch specifically, not on `isNewStructure`. `isNewStructure` includes the
+		// collapsed set, so it is true on every collapse press, and using it here dropped the hint
+		// for nodes that had been placed from the layout graph and were not being measured at all.
+		// An element's `height` is deliberately `undefined` on that path, so with no hint
+		// `measuredHeight` was undefined, `cullable` was false, and the node was emitted with no
+		// `measured` field — which per the note above means `forceInitialRender`. Every collapse
+		// press therefore rebuilt the whole graph as unculled and mounted all of it, recovering only
+		// on the following run. It also churned the size of ~99.6% of nodes between runs, which is
+		// what blocks reusing node objects at all.
+		const hint = measurementPlacement ? undefined : sizeHints?.get(node.id);
 		const measuredWidth = width ?? hint?.x;
 		const measuredHeight = height ?? hint?.y;
 		// No hint and no known size: emit neither field. The node force-renders once, gets
