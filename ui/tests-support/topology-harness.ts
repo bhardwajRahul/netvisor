@@ -46,6 +46,13 @@ export interface DiagnosticsReport {
 		peakStoreNodes: number;
 		peakMounted: number;
 		usedJSHeapMb?: number;
+		/** ELK layouts performed — the allocation driver. See `topology-layout-cost.ts`. */
+		elkRuns?: number;
+		/** Runs abandoned before ELK because a later press superseded them. */
+		runsSuperseded?: number;
+		/** Session peak, as distinct from the reading at capture time. Chrome-only. */
+		peakUsedJSHeapMb?: number;
+		peakTotalJSHeapMb?: number;
 	};
 }
 
