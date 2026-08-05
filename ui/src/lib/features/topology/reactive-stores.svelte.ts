@@ -29,7 +29,7 @@
 import { fromStore } from 'svelte/store';
 import {
 	connectedNodeIds,
-	edgeEndpointIds,
+	edgeHandlesByNode,
 	hoveredMetadata,
 	hoveredTag,
 	isExporting,
@@ -42,7 +42,7 @@ import { selectedNodes } from './queries';
 import { collapsedContainers } from './collapse';
 
 export const connectedNodes = fromStore(connectedNodeIds);
-export const edgeEndpoints = fromStore(edgeEndpointIds);
+export const edgeHandles = fromStore(edgeHandlesByNode);
 export const exporting = fromStore(isExporting);
 export const searchHiddenNodes = fromStore(searchHiddenNodeIds);
 export const searchContainerMatches = fromStore(searchMatchContainerMap);

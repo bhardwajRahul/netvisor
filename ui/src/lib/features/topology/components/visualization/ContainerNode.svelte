@@ -35,7 +35,7 @@
 	// Shared, refcounted views over the module-level stores — see
 	// `reactive-stores.svelte.ts`. One subscription serves every node component.
 	let connectedNodes = $derived(sharedStores.connectedNodes.current);
-	let edgeEndpoints = $derived(sharedStores.edgeEndpoints.current);
+	let edgeHandles = $derived(sharedStores.edgeHandles.current);
 	let isExportingValue = $derived(sharedStores.exporting.current);
 	let searchHiddenNodes = $derived(sharedStores.searchHiddenNodes.current);
 	let searchContainerMap = $derived(sharedStores.searchContainerMatches.current);
@@ -547,9 +547,9 @@
 	{/if}
 </div>
 
-<!-- Only nodes an edge attaches to need handle geometry; see `edgeEndpointIds`. -->
-{#if edgeEndpoints.has(id)}
-	<NodeHandles size={CONTAINER_HANDLE_SIZE_PX} />
+<!-- Only the handles an edge on this node actually names; see `edgeHandlesByNode`. -->
+{#if edgeHandles.get(id)}
+	<NodeHandles size={CONTAINER_HANDLE_SIZE_PX} used={edgeHandles.get(id)!} />
 {/if}
 
 <style>

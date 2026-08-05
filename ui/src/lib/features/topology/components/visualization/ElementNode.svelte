@@ -46,7 +46,7 @@
 	let hiddenEntities = $derived(sharedStores.hiddenEntities.current);
 	let searchHiddenNodes = $derived(sharedStores.searchHiddenNodes.current);
 	let connectedNodes = $derived(sharedStores.connectedNodes.current);
-	let edgeEndpoints = $derived(sharedStores.edgeEndpoints.current);
+	let edgeHandles = $derived(sharedStores.edgeHandles.current);
 	let highlightedNewNodes = $derived(sharedStores.highlightedNewNodes.current);
 	let multiSelectedNodes = $derived(sharedStores.multiSelectedNodes.current);
 	let currentHoveredTag = $derived(sharedStores.currentHoveredTag.current);
@@ -690,7 +690,7 @@
 	</div>
 {/if}
 
-<!-- Only nodes an edge attaches to need handle geometry; see `edgeEndpointIds`. -->
-{#if edgeEndpoints.has(id)}
-	<NodeHandles size={ELEMENT_HANDLE_SIZE_PX} />
+<!-- Only the handles an edge on this node actually names; see `edgeHandlesByNode`. -->
+{#if edgeHandles.get(id)}
+	<NodeHandles size={ELEMENT_HANDLE_SIZE_PX} used={edgeHandles.get(id)!} />
 {/if}

@@ -21,8 +21,12 @@
 	 * never mounted.
 	 *
 	 * Restore `<Handle>` in both node components together if edge reconnection is ever revived.
+	 *
+	 * `used` narrows it further, to the handles an edge on this node actually names — see
+	 * `edgeHandlesByNode`. A node's `handles` *data* still declares all eight, so bounds can be
+	 * synthesized for a node that has never mounted; only the DOM is trimmed.
 	 */
-	let { size }: { size: number } = $props();
+	let { size, used }: { size: number; used: Set<string> } = $props();
 
 	const POSITIONS = [
 		{ position: 'top', id: 'Top' },
@@ -36,11 +40,13 @@
 
 {#each POSITIONS as { position, id } (id)}
 	{#each TYPES as type (type)}
-		<div
-			class="svelte-flow__handle svelte-flow__handle-{position} {position} {type}"
-			data-handleid={id}
-			data-handlepos={position}
-			style="opacity: 0; width: {size}px; height: {size}px;"
-		></div>
+		{#if used.has(`${type}:${id}`)}
+			<div
+				class="svelte-flow__handle svelte-flow__handle-{position} {position} {type}"
+				data-handleid={id}
+				data-handlepos={position}
+				style="opacity: 0; width: {size}px; height: {size}px;"
+			></div>
+		{/if}
 	{/each}
 {/each}
