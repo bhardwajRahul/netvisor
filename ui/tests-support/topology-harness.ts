@@ -82,9 +82,13 @@ export async function signIn(context: BrowserContext): Promise<void> {
  *  1. **No pipeline run in flight.** The app reports this via `runStartedAt`. Node positions can
  *     be stable *between* stages of a run that is about to re-layout, and a cold load
  *     legitimately runs the pipeline more than once.
- *  2. **Edges are present.** Edges are flushed only once `nodesInitialized` fires, so a node-only
- *     fingerprint can settle while zero edges are drawn — which measures a strictly cheaper page
- *     than the one under test.
+ *  2. **At least one run has completed.** Edges are flushed only once `nodesInitialized` fires, so
+ *     a node-only fingerprint can settle on a page whose edges have not been built yet — a
+ *     strictly cheaper page than the one under test. This used to be checked as "some
+ *     `.svelte-flow__edge` exists in the DOM", which viewport culling invalidated: an edge is
+ *     drawn only when both its endpoints are, so a correctly culled graph can legitimately show
+ *     none, and the wait would time out on a perfectly healthy view. The run counter is what that
+ *     check was really proxying for.
  *  3. **Node positions unchanged** across consecutive samples.
  *
  * Deliberately does not key off node *count* alone: with viewport culling the rendered set
@@ -99,12 +103,13 @@ export async function waitForStableLayout(page: Page, timeoutMs = 90_000): Promi
 		const sample = await page.evaluate(() => {
 			const api = (
 				window as unknown as {
-					__scanopyTopologyPerf?: { snapshot: () => { runStartedAt: number | null } };
+					__scanopyTopologyPerf?: { snapshot: () => { runStartedAt: number | null; runs: number } };
 				}
 			).__scanopyTopologyPerf;
+			const snapshot = api?.snapshot();
 			return {
-				running: api ? api.snapshot().runStartedAt !== null : false,
-				edges: document.querySelectorAll('.svelte-flow__edge').length,
+				running: snapshot ? snapshot.runStartedAt !== null : false,
+				runs: snapshot?.runs ?? 0,
 				fingerprint: Array.from(document.querySelectorAll('.svelte-flow__node'))
 					.map((el) => `${(el as HTMLElement).dataset.id}:${(el as HTMLElement).style.transform}`)
 					.sort()
@@ -114,7 +119,7 @@ export async function waitForStableLayout(page: Page, timeoutMs = 90_000): Promi
 
 		const settled =
 			!sample.running &&
-			sample.edges > 0 &&
+			sample.runs > 0 &&
 			sample.fingerprint !== '' &&
 			sample.fingerprint === previous;
 

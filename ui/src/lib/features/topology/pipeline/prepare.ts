@@ -116,6 +116,59 @@ export function hiddenMetadataKey(view: string): string {
 		.join(',');
 }
 
+/** The slice of the container-type metadata store this module needs. Keeps the helper testable. */
+interface ContainerTypesAccessor {
+	getMetadata: (containerType: string) => { is_subcontainer?: boolean };
+}
+
+/**
+ * Drop subcontainers left with no element children once filters have removed nodes.
+ *
+ * A filter removes elements, not the boxes that grouped them, so without this a hidden set leaves
+ * empty labelled containers behind.
+ *
+ * **Collapsed subcontainers are pruned too.** They were exempted for a while — the exemption
+ * arrived with the commit that split this file out of the viewer, described as a pure refactor
+ * with no behaviour changes — and it inverted the rule for precisely the containers it matters
+ * most for: `PortOpStatus` is the only type marked `collapsed_by_default`, so it was always
+ * exempt. Hiding unlinked ports then left a collapsed "Down" box on every host with nothing in it
+ * — 716 of them on the seeded reproduction, a third of the rendered nodes at full expansion. The
+ * exemption was never needed: collapse is applied later, by `getVisibleNodes`, so a collapsed
+ * container's children are still present here and still counted.
+ *
+ * Counting only `Element` children is safe because subcontainers never nest: `apply_element_rules`
+ * computes `elements_by_container` once, before running any rule, so every subcontainer a rule
+ * creates is parented to a root container rather than to another rule's subcontainer.
+ */
+export function pruneEmptySubcontainers(
+	layoutNodes: RenderableTopology['nodes'],
+	containerTypes: ContainerTypesAccessor
+): RenderableTopology['nodes'] {
+	const subcontainerIds = new Set(
+		layoutNodes
+			.filter(
+				(n) =>
+					n.node_type === 'Container' &&
+					containerTypes.getMetadata(
+						((n as Record<string, unknown>).container_type as string) ?? 'Subnet'
+					).is_subcontainer
+			)
+			.map((n) => n.id)
+	);
+	if (subcontainerIds.size === 0) return layoutNodes;
+
+	const occupied = new Set<string>();
+	for (const n of layoutNodes) {
+		if (n.node_type !== 'Element') continue;
+		const cid = (n as Record<string, unknown>).container_id as string;
+		if (subcontainerIds.has(cid)) occupied.add(cid);
+	}
+
+	return layoutNodes.filter(
+		(n) => !(n.node_type === 'Container' && subcontainerIds.has(n.id) && !occupied.has(n.id))
+	);
+}
+
 /**
  * Collapse containers marked `collapsed_by_default`, plus the infrastructure
  * subcontainer, and return the resulting collapsed set.
@@ -394,38 +447,7 @@ export function prepareTopologyData(
 			? topology.nodes.filter((n) => !hiddenByFilter.has(n.id))
 			: topology.nodes;
 
-	// Remove subcontainers with no remaining element children
-	const subcontainerIds = new Set(
-		layoutNodes
-			.filter(
-				(n) =>
-					n.node_type === 'Container' &&
-					containerTypes.getMetadata(
-						((n as Record<string, unknown>).container_type as string) ?? 'Subnet'
-					).is_subcontainer
-			)
-			.map((n) => n.id)
-	);
-	if (subcontainerIds.size > 0) {
-		const childCounts = new Map<string, number>();
-		for (const n of layoutNodes) {
-			if (n.node_type === 'Element') {
-				const cid = (n as Record<string, unknown>).container_id as string;
-				if (subcontainerIds.has(cid)) {
-					childCounts.set(cid, (childCounts.get(cid) ?? 0) + 1);
-				}
-			}
-		}
-		layoutNodes = layoutNodes.filter(
-			(n) =>
-				!(
-					n.node_type === 'Container' &&
-					subcontainerIds.has(n.id) &&
-					!childCounts.has(n.id) &&
-					!collapsed.has(n.id)
-				)
-		);
-	}
+	layoutNodes = pruneEmptySubcontainers(layoutNodes, containerTypes);
 
 	const elementToContainer = buildElementToContainer(layoutNodes);
 	const parentIndex = buildTopologyParentIndex(topology.nodes);
