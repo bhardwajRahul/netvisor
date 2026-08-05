@@ -902,7 +902,14 @@
 			// `reconcileMeasuredSizes`. Bounded by the mounted set, and it converges, so a drift
 			// costs one extra layout rather than repeating.
 			const viewCache = layoutState.viewSizeCache.get(viewCacheKey);
-			const drifted = viewCache ? reconcileMeasuredSizes(containerElement, viewCache) : 0;
+			const drifted = viewCache
+				? reconcileMeasuredSizes(
+						containerElement,
+						viewCache,
+						layoutState.layoutGraph,
+						layoutState.driftCorrectedIds
+					)
+				: 0;
 			if (drifted > 0) perf.count('post-render.size-drift');
 
 			cacheSizesDone();

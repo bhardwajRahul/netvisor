@@ -82,13 +82,17 @@ test('L2 culling keeps the mounted set off the graph size', async ({ page, conte
 	expect(expanded.collapse.level, 'never reached the fully expanded level').toBe(4);
 	await waitForStableLayout(page, 120_000);
 
-	// Zoom in so the viewport genuinely covers a small part of the graph. Without this the graph
-	// is fitted to the pane and nearly every node is legitimately on screen, so the mounted count
-	// says nothing about whether culling works.
-	const pane = await page.locator('.svelte-flow').boundingBox();
-	if (!pane) throw new Error('no .svelte-flow pane');
-	await page.mouse.move(pane.x + pane.width / 2, pane.y + pane.height / 2);
-	for (let i = 0; i < 12; i++) await page.mouse.wheel(0, -120);
+	// Zoom in so the viewport genuinely covers a small part of the graph. Without this the graph is
+	// fitted to the pane and nearly every node is legitimately on screen, so the mounted count says
+	// nothing about whether culling works.
+	//
+	// Anchored on a node rather than the middle of the pane: the layout is sparse columns, so the
+	// centre is often empty space, and zooming there mounts nothing — which satisfies a "few nodes
+	// are mounted" assertion for entirely the wrong reason.
+	const anchor = await page.locator('.svelte-flow__node').first().boundingBox();
+	if (!anchor) throw new Error('no mounted node to zoom towards');
+	await page.mouse.move(anchor.x + anchor.width / 2, anchor.y + anchor.height / 2);
+	for (let i = 0; i < 5; i++) await page.mouse.wheel(0, -120);
 	await page.waitForTimeout(1500);
 
 	const afterZoom = await readDiagnostics(page);
@@ -123,6 +127,13 @@ test('L2 culling keeps the mounted set off the graph size', async ({ page, conte
 		zoomed.cullable?.forceRendered ?? 0,
 		'nodes are force-rendered — they are being built without measured sizes or handles'
 	).toBeLessThan(zoomed.store.nodes * 0.05);
+
+	// Looking at something, so the ratio below means what it says. Zero mounted would satisfy any
+	// upper bound while proving nothing.
+	expect(
+		zoomed.mounted,
+		'zoomed onto empty canvas — the ratio below would be meaningless'
+	).toBeGreaterThan(0);
 
 	// The assertion the original bug would have failed: `mounted` tracking `store.nodes`.
 	expect(

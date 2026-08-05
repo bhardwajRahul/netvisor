@@ -14,6 +14,13 @@ export interface LayoutState {
 	layoutGraph: LayoutGraph | null;
 	containerSizeCache: Map<string, { collapsed?: XY; expanded?: XY }>;
 	viewSizeCache: Map<string, Map<string, XY>>;
+	/**
+	 * Elements whose cached height has already been corrected against the DOM under the current
+	 * structure. Bounds the post-render size self-heal to one corrective re-layout per node, so a
+	 * card whose rendered height never matches what was measured for it cannot drive an endless
+	 * measure/re-layout cycle. Cleared whenever the structure changes.
+	 */
+	driftCorrectedIds: Set<string>;
 	sessionStructureKey: string;
 	sessionBaseKey: string;
 	seenAutoCollapseIds: Set<string>;
@@ -71,6 +78,7 @@ export function createInitialState(): LayoutState {
 		layoutGraph: null,
 		containerSizeCache: new Map(),
 		viewSizeCache: new Map(),
+		driftCorrectedIds: new Set(),
 		sessionStructureKey: '',
 		sessionBaseKey: '',
 		seenAutoCollapseIds: new Set(),
