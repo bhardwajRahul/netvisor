@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { type NodeProps } from '@xyflow/svelte';
-	// Handle, Position — unused while the handle DOM is commented out below.
-	// import { Handle, Position } from '@xyflow/svelte';
+	import NodeHandles from './NodeHandles.svelte';
 	import { concepts, entities, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import {
 		selectedEdge as globalSelectedEdge,
@@ -33,8 +32,7 @@
 	import type { Port } from '$lib/features/hosts/types/base';
 	import type { Node, Edge } from '@xyflow/svelte';
 	import { topology_hideOpenPorts, topology_openPortsSummary } from '$lib/paraglide/messages';
-	// ELEMENT_HANDLE_SIZE_PX — unused while the handle DOM is commented out below.
-	// import { ELEMENT_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
+	import { ELEMENT_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
 
 	let { id, data, width }: NodeProps = $props();
 
@@ -212,7 +210,7 @@
 
 	let nodeOpacity = $derived(shouldFadeOut ? 0.3 : 1);
 
-	// Only the commented-out handle styling used this.
+	// Only the handle styling used this, and `NodeHandles` renders the geometry statically now.
 	// const hostColorHelper = entities.getColorHelper('Host');
 	const virtualizationColorHelper = concepts.getColorHelper('Virtualization');
 	const containerizationColorHelper = concepts.getColorHelper('Containerization');
@@ -387,25 +385,7 @@
 
 	let cardClass = $derived(`card ${isNodeSelected ? 'card-selected' : ''}`);
 
-	// Handle styling — unused while the handle DOM is commented out below. Kept because
-	// `synthesizeHandles` must reproduce whatever this renders if handles are restored.
-	// let handleStyle = $derived.by(() => {
-	// // Shared with `synthesizeHandles`, which reproduces this geometry for nodes that have
-	// // never mounted. The two must match or edge endpoints move when a node is culled.
-	// const baseSize = ELEMENT_HANDLE_SIZE_PX;
-	// const baseOpacity = selectedEdge?.source == id || selectedEdge?.target == id ? 1 : 0;
-	//
-	// const fillColor = hostColorHelper.rgb;
-	//
-	// return `
-	// width: ${baseSize}px;
-	// height: ${baseSize}px;
-	// border: 2px solid #374151;
-	// background-color: ${fillColor};
-	// opacity: ${baseOpacity};
-	// transition: opacity 0.2s ease-in-out;
-	// `;
-	// });
+	// Handle styling lived here; `NodeHandles` now renders the geometry statically.
 </script>
 
 {#if nodeRenderData}
@@ -699,25 +679,4 @@
 	</div>
 {/if}
 
-<!--
-	Handle DOM removed for memory, not deleted — see the note in `pipeline/build-flow-nodes.ts`.
-
-	Eight `<Handle>` elements per node was half of all in-node DOM (12,544 of 25,216 elements at
-	this customer's scale) and most of its event listeners, on a view where nothing could interact
-	with them: topology editing is disabled (`editModeEnabled` is only ever set false) and edge
-	anchors are not editable. SvelteFlow takes handle geometry from the `handles` field the
-	pipeline now supplies on every node, so edges still anchor on the card edges without this.
-
-	Restore all eight together if edge reconnection is ever re-enabled, and re-measure — this was
-	the single largest contributor to the topology tab's memory footprint.
-
-	<Handle type="target" id="Top" position={Position.Top} style={handleStyle} />
-	<Handle type="target" id="Right" position={Position.Right} style={handleStyle} />
-	<Handle type="target" id="Bottom" position={Position.Bottom} style={handleStyle} />
-	<Handle type="target" id="Left" position={Position.Left} style={handleStyle} />
-
-	<Handle type="source" id="Top" position={Position.Top} style={handleStyle} />
-	<Handle type="source" id="Right" position={Position.Right} style={handleStyle} />
-	<Handle type="source" id="Bottom" position={Position.Bottom} style={handleStyle} />
-	<Handle type="source" id="Left" position={Position.Left} style={handleStyle} />
--->
+<NodeHandles size={ELEMENT_HANDLE_SIZE_PX} />

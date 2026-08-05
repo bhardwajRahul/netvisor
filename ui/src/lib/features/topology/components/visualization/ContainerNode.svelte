@@ -1,14 +1,8 @@
 <script lang="ts">
-	import { type NodeProps } from '@xyflow/svelte';
-	// Handle, NodeResizeControl, Position, ResizeDragEvent, ResizeParams — unused while the
-	// handle DOM and resize controls are commented out below.
-	// import {
-	// 	Handle,
-	// 	NodeResizeControl,
-	// 	Position,
-	// 	type ResizeDragEvent,
-	// 	type ResizeParams
-	// } from '@xyflow/svelte';
+	import { type NodeProps, type ResizeDragEvent, type ResizeParams } from '@xyflow/svelte';
+	import NodeHandles from './NodeHandles.svelte';
+	// NodeResizeControl — unused while the resize controls below are commented out.
+	// import { NodeResizeControl } from '@xyflow/svelte';
 	import { createColorHelper } from '$lib/shared/utils/styling';
 	import type { Color, ColorStyle } from '$lib/shared/utils/styling';
 	import { serviceDefinitions, containerTypes } from '$lib/shared/stores/metadata';
@@ -36,12 +30,7 @@
 	import { createIconComponent } from '$lib/shared/utils/styling';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import ContainerHeader, { type SubgroupRow } from './ContainerHeader.svelte';
-	// CONTAINER_HANDLE_SIZE_PX — unused while the handle DOM is commented out below.
-	// import { CONTAINER_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
-
-	// Handle styling — unused while the handle DOM is commented out below. Sized explicitly rather
-	// than left to `base.css`'s 5px minimum, so `synthesizeHandles` reproduces what it would render.
-	// const handleStyle = `opacity: 0; width: ${CONTAINER_HANDLE_SIZE_PX}px; height: ${CONTAINER_HANDLE_SIZE_PX}px`;
+	import { CONTAINER_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
 
 	// Shared, refcounted views over the module-level stores — see
 	// `reactive-stores.svelte.ts`. One subscription serves every node component.
@@ -312,32 +301,33 @@
 		toggleCollapse(id, topology?.nodes);
 	}
 
-	// Resize persistence — only the commented-out resize controls called this.
-	// async function onResize(event: ResizeDragEvent, params: ResizeParams) {
-	// if (!topology) return;
-	// let node = topology.nodes.find((n) => n.id == id);
-	// if (node && params.width && params.height) {
-	// let roundedWidth = Math.round(params.width / 25) * 25;
-	// let roundedHeight = Math.round(params.height / 25) * 25;
-	// let roundedX = Math.round(params.x / 25) * 25;
-	// let roundedY = Math.round(params.y / 25) * 25;
-	//
-	// node.size.x = roundedWidth;
-	// node.size.y = roundedHeight;
-	// node.position.x = roundedX;
-	// node.position.y = roundedY;
-	//
-	// // DISABLED: no mechanism to persist container resize.
-	// // await updateNodeResizeMutation.mutateAsync({
-	// // 	topologyId: topology.id,
-	// // 	networkId: topology.network_id,
-	// // 	view: $activeView,
-	// // 	nodeId: node.id,
-	// // 	size: { x: roundedWidth, y: roundedHeight },
-	// // 	position: { x: roundedX, y: roundedY }
-	// // });
-	// }
-	// }
+	// Only the commented-out resize controls call this.
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	async function onResize(event: ResizeDragEvent, params: ResizeParams) {
+		if (!topology) return;
+		let node = topology.nodes.find((n) => n.id == id);
+		if (node && params.width && params.height) {
+			let roundedWidth = Math.round(params.width / 25) * 25;
+			let roundedHeight = Math.round(params.height / 25) * 25;
+			let roundedX = Math.round(params.x / 25) * 25;
+			let roundedY = Math.round(params.y / 25) * 25;
+
+			node.size.x = roundedWidth;
+			node.size.y = roundedHeight;
+			node.position.x = roundedX;
+			node.position.y = roundedY;
+
+			// DISABLED: no mechanism to persist container resize.
+			// await updateNodeResizeMutation.mutateAsync({
+			// 	topologyId: topology.id,
+			// 	networkId: topology.network_id,
+			// 	view: $activeView,
+			// 	nodeId: node.id,
+			// 	size: { x: roundedWidth, y: roundedHeight },
+			// 	position: { x: roundedX, y: roundedY }
+			// });
+		}
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -460,12 +450,11 @@
 			     container node to every pan/zoom frame — a per-frame invalidation of
 			     the whole graph to hide controls that are already hidden. -->
 			<!--
-			Container resize controls removed for memory, not deleted.
+			Container resize controls, commented out rather than deleted.
 
-			They were already unreachable — `editModeEnabled` is only ever set to false, so this
-			branch never rendered — and topology editing is disabled. Kept here with the handle
-			removal in this file so the two come back together if editing is revived; re-measure the
-			topology tab's footprint when they do.
+			Already unreachable — `editModeEnabled` is only ever set to false — and each one is DOM
+			and listeners on every mounted container. Topology editing is disabled; restore these
+			with `onResize` below if it is revived, and re-measure the tab's memory when you do.
 			{#if $editModeEnabled}
 			<NodeResizeControl
 			position="bottom-right"
@@ -557,28 +546,7 @@
 	{/if}
 </div>
 
-<!--
-	Handle DOM removed for memory, not deleted — see the note in `pipeline/build-flow-nodes.ts`.
-
-	Eight `<Handle>` elements per node was half of all in-node DOM (12,544 of 25,216 elements at
-	this customer's scale) and most of its event listeners, on a view where nothing could interact
-	with them: topology editing is disabled (`editModeEnabled` is only ever set false) and edge
-	anchors are not editable. SvelteFlow takes handle geometry from the `handles` field the
-	pipeline now supplies on every node, so edges still anchor on the card edges without this.
-
-	Restore all eight together if edge reconnection is ever re-enabled, and re-measure — this was
-	the single largest contributor to the topology tab's memory footprint.
-
-	<Handle type="target" id="Top" position={Position.Top} style={handleStyle} />
-	<Handle type="target" id="Right" position={Position.Right} style={handleStyle} />
-	<Handle type="target" id="Bottom" position={Position.Bottom} style={handleStyle} />
-	<Handle type="target" id="Left" position={Position.Left} style={handleStyle} />
-
-	<Handle type="source" id="Top" position={Position.Top} style={handleStyle} />
-	<Handle type="source" id="Right" position={Position.Right} style={handleStyle} />
-	<Handle type="source" id="Bottom" position={Position.Bottom} style={handleStyle} />
-	<Handle type="source" id="Left" position={Position.Left} style={handleStyle} />
--->
+<NodeHandles size={CONTAINER_HANDLE_SIZE_PX} />
 
 <style>
 	div {
