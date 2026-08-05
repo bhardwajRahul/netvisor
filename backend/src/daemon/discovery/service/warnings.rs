@@ -107,6 +107,17 @@ impl SnmpWalkGroup {
     fn absence_means_unsupported(self) -> bool {
         matches!(self, Self::BridgePortNumbering)
     }
+
+    /// Whether a record in this group can be thrown away *after* a successful read.
+    ///
+    /// True only for the neighbour groups, whose records carry a mandatory identifier — the LLDP
+    /// chassis ID, the CDP device id — that a device can omit while answering everything asked of
+    /// it. Discarding one leaves the group incomplete without the walk having stopped early, which
+    /// is the one case where "incomplete" must not be read as "cut short". Nothing else here
+    /// discards, so for every other group an incomplete result is always a short read.
+    fn discards_malformed_records(self) -> bool {
+        matches!(self, Self::Lldp | Self::Cdp)
+    }
 }
 
 /// LLDP neighbours whose local port could not be matched to an interface on the device.
@@ -313,6 +324,29 @@ pub struct SnmpGroupOutcome {
     pub reason: Option<ShortfallReason>,
 }
 
+impl SnmpGroupOutcome {
+    /// The *read* fell short — as opposed to the read finishing and some of its rows being
+    /// discarded as unusable.
+    ///
+    /// `complete` answers one question: may this result overwrite what the server holds? For the
+    /// neighbour groups, two very different things clear it. A truncated walk clears it and
+    /// records why, in `reason`. Discarding a malformed record also clears it — the rows that
+    /// survived are not the whole picture — but the walk itself ran to its end, so there is no
+    /// `reason` to record.
+    ///
+    /// Reporting the second as a short read put two lines on one device giving opposite advice:
+    /// one promising the values would "refresh on the next complete scan", the other saying no
+    /// rescan would ever change them (GH #668). The malformed-record warning already covers that
+    /// case and states the true one.
+    ///
+    /// Scoped to the groups that discard. Elsewhere an absent `reason` carries its own meaning —
+    /// a device with no bridge MIB answers nothing and has nothing to say about why — and must
+    /// still be reported.
+    fn walk_fell_short(&self, group: SnmpWalkGroup) -> bool {
+        !self.complete && !(group.discards_malformed_records() && self.reason.is_none())
+    }
+}
+
 /// Per-group outcomes for one host, as [`snmp_walk_shortfalls`] consumes them.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SnmpCollectionOutcome {
@@ -352,7 +386,7 @@ pub fn snmp_walk_shortfalls(ip: IpAddr, outcome: SnmpCollectionOutcome) -> Vec<I
         ),
     ]
     .into_iter()
-    .filter(|(_, group, report)| *report && !group.complete)
+    .filter(|(group, outcome, report)| *report && outcome.walk_fell_short(*group))
     .map(|(group, outcome, _)| IncompleteSnmpWalk {
         ip,
         group,
@@ -959,6 +993,94 @@ mod tests {
 
         let groups: Vec<SnmpWalkGroup> = shortfalls.iter().map(|s| s.group).collect();
         assert_eq!(groups, vec![SnmpWalkGroup::BridgePortNumbering]);
+    }
+
+    /// A device that answered in full and had a malformed record thrown away is not a short read.
+    ///
+    /// Discarding clears the same `complete` flag a truncated walk does — it gates whether the
+    /// result may overwrite the server's copy, and a thinned result may not. Reporting it here as
+    /// well put two lines on one device telling the operator opposite things: that the values
+    /// would "refresh on the next complete scan", and that no rescan would ever change them. The
+    /// malformed-record warning covers this case on its own and states the true one.
+    #[test]
+    fn a_discarded_record_is_not_also_reported_as_a_short_walk() {
+        let shortfalls = snmp_walk_shortfalls(
+            ip("192.168.7.243"),
+            SnmpCollectionOutcome {
+                // What `query_lldp_neighbors` produces after discarding a ghost row: incomplete,
+                // rows returned, and no walk-level reason because no walk stopped early.
+                lldp: SnmpGroupOutcome {
+                    complete: false,
+                    returned_any: true,
+                    reason: None,
+                },
+                cdp: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: false,
+                    reason: None,
+                },
+                bridge_port_numbering: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+                bridge_forwarding: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+                vlan_membership: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+            },
+        );
+
+        assert!(
+            shortfalls.is_empty(),
+            "the walk finished; only the malformed-record warning should speak for this device, \
+             and it says a rescan will not help — {shortfalls:?}"
+        );
+    }
+
+    /// The converse, so the rule above cannot silence a real one: a walk that genuinely stopped
+    /// early records why, and that is still the device's own finding.
+    #[test]
+    fn a_walk_that_stopped_early_is_still_reported() {
+        let shortfalls = snmp_walk_shortfalls(
+            ip("192.168.7.243"),
+            SnmpCollectionOutcome {
+                lldp: SnmpGroupOutcome {
+                    complete: false,
+                    returned_any: true,
+                    reason: Some(ShortfallReason::NoAnswer),
+                },
+                cdp: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: false,
+                    reason: None,
+                },
+                bridge_port_numbering: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+                bridge_forwarding: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+                vlan_membership: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+            },
+        );
+
+        let groups: Vec<SnmpWalkGroup> = shortfalls.iter().map(|s| s.group).collect();
+        assert_eq!(groups, vec![SnmpWalkGroup::Lldp]);
     }
 
     /// The suppression is scoped to the root failing. When the bridge-port walk succeeds, a
