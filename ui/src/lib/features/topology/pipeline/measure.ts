@@ -3,24 +3,11 @@ import type { LayoutState, PrepareResult, XY } from './types';
 import type { RenderableTopology } from '../types/base';
 import * as perf from '../perf';
 import { noteFullMeasurePass } from '../diagnostics';
-import { containerTypes } from '$lib/shared/stores/metadata';
 import {
 	fillMissingSizesByShapeKey,
 	reportShapeVerification,
 	shapeVerifyEnabled
 } from './shape-verify';
-
-/**
- * Visible-node count above which the full DOM measurement pass is avoided where possible.
- *
- * The pass mounts every node in the graph at once. That is affordable at a few hundred nodes and
- * is what makes the layout exact; at several thousand it is the dominant memory cost, and at the
- * scale that produced this ceiling — 17,236 nodes — it exhausts the browser outright.
- *
- * Set above the culling threshold so the two do not interact at the boundary: a graph small
- * enough to render uncalled is also small enough to measure in full.
- */
-const FULL_MEASURE_NODE_CEILING = 2000;
 
 export interface MeasureCallbacks {
 	setMeasuring: (v: boolean) => void;
@@ -54,12 +41,6 @@ export async function resolveNodeSizes(
 	const viewCacheKey = `${prep.currentView}:${prep.topologyId}`;
 
 	const elementNodeSizes = new Map<string, XY>();
-
-	// Above this many visible nodes, an uncached collapsed container is estimated from its type
-	// metadata instead of forcing the full measurement pass. Below it, behaviour is exactly as
-	// before: the graph is small enough that mounting all of it to measure is cheap and exact.
-	const estimateCollapsedSizes = visibleNodes.length >= FULL_MEASURE_NODE_CEILING;
-	let estimatedCollapsed = 0;
 
 	// Try cached sizes first
 	const cachedSizes = isViewTransition ? state.viewSizeCache.get(viewCacheKey) : undefined;
@@ -128,35 +109,23 @@ export async function resolveNodeSizes(
 				if (cached) {
 					elementNodeSizes.set(node.id, cached);
 				} else if (collapsed.has(node.id)) {
-					if (estimateCollapsedSizes) {
-						// Fall back to the container type's declared collapsed size rather than
-						// counting a miss. A miss clears the whole map below and takes the full
-						// measurement pass, which mounts every node in the graph — at this scale
-						// that pass *is* the out-of-memory failure, so paying it to refine a
-						// collapsed box that is off screen anyway is the wrong trade.
-						//
-						// This became reachable when culling started working: `cacheCollapsedSizes`
-						// reads the DOM, so it only ever sees collapsed containers that are
-						// mounted, and every off-screen one is now a permanent miss. The estimate
-						// is corrected as the user pans — `cacheCollapsedSizes` runs on move-end
-						// and records the real size once the container comes into view.
-						const meta = containerTypes.getMetadata(
-							((node as Record<string, unknown>).container_type as string) ?? 'Subnet'
-						);
-						elementNodeSizes.set(node.id, {
-							x: meta.collapsed_size.width,
-							y: meta.collapsed_size.height
-						});
-						estimatedCollapsed++;
-					} else {
-						cacheMisses++;
-					}
+					// A miss clears the whole map below and takes the full measurement pass.
+					//
+					// That is expensive — it mounts every node in the graph — and an earlier
+					// attempt on this branch substituted the container type's declared
+					// `collapsed_size` above a node-count ceiling to avoid it. That was wrong:
+					// the declared size is a placeholder, ELK laid the parents out around it, and
+					// containers came back with no real expanded size at all. They then rendered
+					// at `{0, 0}` plus borders — a 2px sliver with its contents spilling outside
+					// — and 47 of 72 mounted nodes sat outside their parent. Guessing a size for
+					// something ELK will size other things against is not a safe trade; take the
+					// measurement.
+					cacheMisses++;
 				}
 				// Expanded containers without cached collapsed size: omit,
 				// ELK uses metadata for minimum
 			}
 		}
-		if (estimatedCollapsed > 0) perf.count('measure.collapsed-estimate');
 
 		// Fill any visible node still missing a size — chiefly containers, which the element pass
 		// above skips and which the collapsed-size pass only covers when `containerSizeCache`
