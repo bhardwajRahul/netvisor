@@ -102,6 +102,14 @@ export async function resolveNodeSizes(
 
 	const elementNodeSizes = new Map<string, XY>();
 
+	// Why the full pass ran, when it does.
+	//
+	// The full pass is the expensive thing in this file — 19,095 nodes mounted, ~665MB and 5.5s —
+	// and until now it took its branch silently. Three separate diagnoses of "why is it still
+	// running" have been wrong because the answer had to be inferred from surrounding counters
+	// instead of read off. Every path that leaves the size map empty names itself here.
+	let emptyReason = 'no-cache-branch-taken';
+
 	// Try cached sizes first
 	const cachedSizes = isViewTransition ? state.viewSizeCache.get(viewCacheKey) : undefined;
 	const expandCachedSizes =
@@ -132,9 +140,15 @@ export async function resolveNodeSizes(
 	};
 
 	if (isViewTransition && cachedSizes) {
-		if (!fillFromCache(cachedSizes)) perf.count('measure.cache-incomplete:view');
+		if (!fillFromCache(cachedSizes)) {
+			perf.count('measure.cache-incomplete:view');
+			emptyReason = 'view-transition-cache-incomplete';
+		}
 	} else if (expandCachedSizes) {
-		if (!fillFromCache(expandCachedSizes)) perf.count('measure.cache-incomplete:expand');
+		if (!fillFromCache(expandCachedSizes)) {
+			perf.count('measure.cache-incomplete:expand');
+			emptyReason = 'expand-cache-incomplete';
+		}
 	} else if (state.containerSizeCache.size > 0) {
 		// Use cached container sizes + previously measured element sizes.
 		// Skip containers — handled below via collapsed size cache.
@@ -263,12 +277,15 @@ export async function resolveNodeSizes(
 			perf.count(`measure.scoped-size:${needsMeasuring.size}`);
 			if (missingContainerIds.size > 0) perf.count('measure.cache-incomplete:container');
 			// With nothing worth preserving the full pass below is already the cheapest option.
-			if (elementNodeSizes.size > 0) {
+			if (elementNodeSizes.size === 0) {
+				emptyReason = 'nothing-cached-to-preserve';
+			} else {
 				const scoped = await runMeasurePass(callbacks, containerElement, isStale, needsMeasuring);
 				if (scoped === null) return null;
 				if (scoped.size === 0) {
 					// Nothing came back measurable, so fall through rather than lay out against a gap.
 					perf.count('measure.scoped-empty');
+					emptyReason = 'scoped-pass-measured-nothing';
 					elementNodeSizes.clear();
 				} else {
 					for (const [id, size] of scoped) {
@@ -298,6 +315,7 @@ export async function resolveNodeSizes(
 		// measured. Counted separately from the cached paths so the harness can
 		// tell a cold load from a cache miss.
 		perf.count('full-measure-pass');
+		perf.count(`measure.full-reason:${emptyReason}`);
 		// Also counted in the always-on diagnostic: `perf` records nothing in a customer's build,
 		// and how often this path runs is the difference between a graph mounted once and a graph
 		// mounted repeatedly.
