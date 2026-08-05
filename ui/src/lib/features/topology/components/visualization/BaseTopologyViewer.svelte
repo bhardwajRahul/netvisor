@@ -748,13 +748,34 @@
 					},
 					setNodes: (n) => setStoreNodes(n),
 					setEdges: (e) => baseFlowEdges.set(e),
-					buildMeasureNodes: () => {
+					buildMeasureNodes: (onlyIds?: Set<string>) => {
 						// Strip the seeded sizes. The pass exists to learn what a card actually
 						// renders as, and a node carrying `measured` + `handles` reads as already
 						// initialised — so it would be presented at the size we guessed and could
 						// only ever confirm that guess. Dropping both also re-attaches
 						// `NodeWrapper`'s ResizeObserver, which is otherwise never reattached.
-						const measureNodes = stripSizeSeed(makeNodes(false));
+						let measureNodes = stripSizeSeed(makeNodes(false));
+						if (onlyIds) {
+							// Ancestors come too, whether or not they need measuring: SvelteFlow
+							// resolves a child's position against its parent and drops a node whose
+							// `parentId` is absent from the set it was given.
+							// Not `SvelteSet`: this is a local computed inside a callback and never read
+							// reactively — the lint rule targets reactive state, and a reactive Set here
+							// would add tracking overhead for a value that is discarded on return.
+							// eslint-disable-next-line svelte/prefer-svelte-reactivity
+							const keep = new Set(onlyIds);
+							const parentOf = new Map(
+								measureNodes.map((n) => [n.id, n.parentId as string | undefined])
+							);
+							for (const id of onlyIds) {
+								let parent = parentOf.get(id);
+								while (parent && !keep.has(parent)) {
+									keep.add(parent);
+									parent = parentOf.get(parent);
+								}
+							}
+							measureNodes = measureNodes.filter((n) => keep.has(n.id));
+						}
 						// Preserve current positions during measurement — DOM
 						// measurement only needs element presence, not positions.
 						// This prevents nodes from jumping to (0,0) while visible.

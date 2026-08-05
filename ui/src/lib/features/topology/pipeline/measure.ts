@@ -13,7 +13,14 @@ export interface MeasureCallbacks {
 	setMeasuring: (v: boolean) => void;
 	setNodes: (n: Node[]) => void;
 	setEdges: (e: Edge[]) => void;
-	buildMeasureNodes: () => Node[];
+	/**
+	 * Build the node set for a measurement pass.
+	 *
+	 * `onlyIds` restricts it to those nodes plus whatever ancestors SvelteFlow needs to place
+	 * them, so learning one container's collapsed size does not require handing the whole graph
+	 * over again. Omitted, it returns everything.
+	 */
+	buildMeasureNodes: (onlyIds?: Set<string>) => Node[];
 	/**
 	 * Wait for SvelteFlow to render the given set of node IDs into the DOM.
 	 * When `expectedIds` is provided, the callback should poll until every
@@ -21,6 +28,59 @@ export interface MeasureCallbacks {
 	 * omitted it falls back to "any node present."
 	 */
 	waitForNodesRendered: (expectedIds?: Set<string>) => Promise<void>;
+}
+
+/**
+ * Mount a set of nodes, wait for them, and read their rendered sizes back out of the DOM.
+ *
+ * Shared by the full pass and the scoped one so there is a single description of what measuring
+ * means. `onlyIds` narrows what gets handed to SvelteFlow — the cost being avoided is the
+ * *adoption*, not the mounting: a headless comparison showed mounting 2,890 nodes rather than 320
+ * moved peak heap by 8MB, while each full `setNodes` costs 130-230MB downstream of the call as
+ * SvelteFlow builds internal state for every node handed to it.
+ *
+ * @returns Measured sizes, or null if the pipeline went stale mid-measurement.
+ */
+async function runMeasurePass(
+	callbacks: MeasureCallbacks,
+	containerElement: HTMLElement | null | undefined,
+	isStale: () => boolean,
+	onlyIds?: Set<string>
+): Promise<Map<string, XY> | null> {
+	const sizes = new Map<string, XY>();
+	callbacks.setMeasuring(true);
+	callbacks.setEdges([]);
+	const buildDone = perf.stage(onlyIds ? 'measure.build-nodes.scoped' : 'measure.build-nodes');
+	const measureNodes = callbacks.buildMeasureNodes(onlyIds);
+	callbacks.setNodes(measureNodes);
+	buildDone();
+
+	// Wait for every node in this pass, not just "any node present": waiting on the latter returns
+	// stale matches from the previous render and lets newly-added nodes miss measurement, after
+	// which ELK falls back to metadata defaults and packs their siblings too close.
+	const expectedIds = new Set(measureNodes.map((n) => n.id));
+	const renderWaitDone = perf.stage(onlyIds ? 'measure.render-wait.scoped' : 'measure.render-wait');
+	await callbacks.waitForNodesRendered(expectedIds);
+	renderWaitDone();
+	if (isStale()) {
+		callbacks.setMeasuring(false);
+		return null;
+	}
+
+	const readDone = perf.stage(onlyIds ? 'measure.dom-read.scoped' : 'measure.dom-read');
+	if (containerElement) {
+		for (const el of containerElement.querySelectorAll('.svelte-flow__node')) {
+			const htmlEl = el as HTMLElement;
+			const id = htmlEl.dataset.id;
+			// A scoped pass leaves the rest of the graph mounted, so restrict what is recorded to
+			// what this pass asked for — otherwise it would overwrite good cached sizes with
+			// whatever happens to be on screen.
+			if (!id || (onlyIds && !onlyIds.has(id))) continue;
+			sizes.set(id, { x: htmlEl.offsetWidth || 250, y: htmlEl.offsetHeight || 100 });
+		}
+	}
+	readDone();
+	return sizes;
 }
 
 /**
@@ -102,7 +162,7 @@ export async function resolveNodeSizes(
 		// ELK uses it as the fixed size. For expanded containers, ELK uses
 		// it as elk.nodeSize.minimum (= smallest the container can be).
 		// ELK computes the actual expanded size from children (>= minimum).
-		let cacheMisses = 0;
+		const missingContainerIds = new Set<string>();
 		for (const node of visibleNodes) {
 			if (node.node_type === 'Container') {
 				const cached = state.containerSizeCache.get(node.id)?.collapsed;
@@ -120,7 +180,7 @@ export async function resolveNodeSizes(
 					// — and 47 of 72 mounted nodes sat outside their parent. Guessing a size for
 					// something ELK will size other things against is not a safe trade; take the
 					// measurement.
-					cacheMisses++;
+					missingContainerIds.add(node.id);
 				}
 				// Expanded containers without cached collapsed size: omit,
 				// ELK uses metadata for minimum
@@ -164,16 +224,50 @@ export async function resolveNodeSizes(
 			elementNodeSizes.clear();
 		}
 
-		// If any containers are missing from cache, fall through to full measurement.
+		// Containers missing a collapsed size are measured on their own, not by re-measuring
+		// everything.
 		//
-		// The dominant reason the full pass runs, and until now the only branch here that took it
-		// without saying so: five full passes in one capture, of which just one was attributable.
-		// Collapsing a single container reaches this every time — its *collapsed* size has never
-		// been needed before, so it cannot be cached — and the cost is a re-measure of every node
-		// in the graph, ~136MB at 2,890 nodes, to learn one size.
-		if (cacheMisses > 0) {
+		// This was the dominant reason the full pass ran — five passes in one capture, only one of
+		// them otherwise attributable. Collapsing a single container reaches it every time, because
+		// that container's *collapsed* size has never been needed and so cannot be cached, and the
+		// old behaviour discarded every element size to learn it: a full re-measure of 2,890 nodes,
+		// ~136MB, for one number.
+		//
+		// The size still has to be *measured*. Substituting the container type's declared
+		// `collapsed_size` was tried on this branch and reverted — see the note above; it is a
+		// placeholder ELK sizes parents against, and containers came back with no real expanded size
+		// and rendered as 2px slivers. What changes here is the scope of the measurement, not
+		// whether one happens.
+		if (missingContainerIds.size > 0) {
 			perf.count('measure.cache-incomplete:container');
-			elementNodeSizes.clear();
+			if (elementNodeSizes.size === 0) {
+				// Nothing worth preserving — the full pass below is already the cheapest option.
+			} else {
+				const scoped = await runMeasurePass(
+					callbacks,
+					containerElement,
+					isStale,
+					missingContainerIds
+				);
+				if (scoped === null) return null;
+				if (scoped.size === 0) {
+					// Nothing came back measurable, so fall through rather than lay out against a gap.
+					perf.count('measure.scoped-empty');
+					elementNodeSizes.clear();
+				} else {
+					for (const [id, size] of scoped) {
+						elementNodeSizes.set(id, size);
+						// Record it as the *collapsed* size, which is what it is: this set was built
+						// from containers that are collapsed and had no cached collapsed entry.
+						// Without this the same miss recurs on every press and the scoped pass runs
+						// forever, which is the trap the full pass avoided only by measuring
+						// everything.
+						const entry = state.containerSizeCache.get(id) ?? {};
+						entry.collapsed = { ...size };
+						state.containerSizeCache.set(id, entry);
+					}
+				}
+			}
 		}
 	}
 
@@ -187,42 +281,9 @@ export async function resolveNodeSizes(
 		// and how often this path runs is the difference between a graph mounted once and a graph
 		// mounted repeatedly.
 		noteFullMeasurePass();
-		callbacks.setMeasuring(true);
-		callbacks.setEdges([]);
-		const buildDone = perf.stage('measure.build-nodes');
-		const measureNodes = callbacks.buildMeasureNodes();
-		callbacks.setNodes(measureNodes);
-		buildDone();
-		// Wait for SvelteFlow to render every measure-pass node in the DOM.
-		// Waiting only for "any node present" returns stale matches from the
-		// previous render and lets newly-added nodes (fresh SSE hosts during
-		// discovery) miss measurement — ELK then falls back to metadata
-		// defaults and positions the new container's siblings too close.
-		const expectedIds = new Set(measureNodes.map((n) => n.id));
-		const renderWaitDone = perf.stage('measure.render-wait');
-		await callbacks.waitForNodesRendered(expectedIds);
-		renderWaitDone();
-		if (isStale()) {
-			callbacks.setMeasuring(false);
-			return null;
-		}
-
-		const readDone = perf.stage('measure.dom-read');
-		if (containerElement) {
-			const nodeEls = containerElement.querySelectorAll('.svelte-flow__node');
-			for (const el of nodeEls) {
-				const id = (el as HTMLElement).dataset.id;
-				if (id) {
-					const htmlEl = el as HTMLElement;
-					elementNodeSizes.set(id, {
-						x: htmlEl.offsetWidth || 250,
-						y: htmlEl.offsetHeight || 100
-					});
-				}
-			}
-		}
-
-		readDone();
+		const measured = await runMeasurePass(callbacks, containerElement, isStale);
+		if (measured === null) return null;
+		for (const [id, size] of measured) elementNodeSizes.set(id, size);
 
 		// Validate the shape key against this full measurement — every element
 		// sharing a key must have measured to the same height. Runs here, on the
