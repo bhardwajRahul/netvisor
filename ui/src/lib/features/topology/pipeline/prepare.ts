@@ -278,6 +278,8 @@ export function prepareTopologyData(
 	if (topologyChanged) {
 		state.viewSizeCache.clear();
 		state.containerSizeCache.clear();
+		// Sizes are being re-learned from scratch, so the one-correction-per-node budget resets.
+		state.driftCorrectedIds.clear();
 		// Remove seenAutoCollapseIds entries that don't exist in the new topology
 		const newContainerIds = new Set(
 			topology.nodes.filter((n) => n.node_type === 'Container').map((n) => n.id)
