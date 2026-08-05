@@ -188,16 +188,18 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 			const curPos = currentPositions.get(node.id);
 			const curSize = sizeOf(node.id);
 			position = curPos ?? { x: node.position.x, y: node.position.y };
-			width = isNodeCollapsed
-				? (containerSize?.width ?? undefined)
-				: isElement
-					? ELEMENT_WIDTH_PX
-					: (curSize?.width ?? undefined);
-			height = isNodeCollapsed
-				? (containerSize?.height ?? undefined)
-				: isElement
-					? undefined
-					: (curSize?.height ?? undefined);
+			// A container's size comes from the layout graph, collapsed or not, with the measured
+			// hint only as a fallback.
+			//
+			// An expanded container used to read the hint *first*, and the hint lives in
+			// `viewSizeCache`, which `prepare` clears whenever the topology changes. So a run
+			// triggered by a data refetch — no new structure, no ELK, nothing to repopulate the
+			// cache — built every expanded container with no width or height at all and it
+			// rendered as its borders with its contents outside. The graph knew the size the whole
+			// time: the capture that found this shows `containersZeroSizedAfter: 0` on the very run
+			// that produced fourteen zero-sized containers in the DOM.
+			width = isElement ? ELEMENT_WIDTH_PX : (containerSize?.width ?? curSize?.width ?? undefined);
+			height = isElement ? undefined : (containerSize?.height ?? curSize?.height ?? undefined);
 		} else {
 			// Measurement pass: place at origin, let content determine size
 			position = { x: 0, y: 0 };
