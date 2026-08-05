@@ -199,7 +199,9 @@ test('topology render performance', async ({ page, context }) => {
 	console.log(`  Edge <path> elements:     ${domEdgePathCount}`);
 	console.log(`  Time to interactive:      ${timeToInteractiveMs}ms`);
 	console.log(`  Pipeline runs:            ${pipeline.runs}`);
-	console.log(`  elk.layout() calls:       ${pipeline.counts['elk.layout'] ?? 0}`);
+	console.log(
+		`  elk.layout() calls:       ${(pipeline.counts['elk.layout.pass1'] ?? 0) + (pipeline.counts['elk.layout.pass2'] ?? 0)}`
+	);
 	console.log(`  Full measure passes:      ${pipeline.counts['full-measure-pass'] ?? 0}`);
 	console.log(`  Post-render re-layouts:   ${pipeline.counts['post-render-relayout'] ?? 0}`);
 	for (const [name, ms] of Object.entries(pipeline.durations)) {

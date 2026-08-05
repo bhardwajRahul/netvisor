@@ -41,6 +41,36 @@ export interface TopologyPerfSnapshot {
 	 * fault, and averaging it against a dozen cheap runs hides exactly that.
 	 */
 	heapAfterMb: Record<string, number>;
+	/**
+	 * Ordered heap ledger for the run that grew the heap most, and for the last run.
+	 *
+	 * `heapAfterMb` above is a session maximum per stage name, which cannot attribute a single
+	 * run's growth: its entries come from different runs, so a sub-stage can read *lower* than the
+	 * stage containing it — `measure.build-nodes` at 525MB inside a `measure` at 764MB, in one
+	 * capture. Answering "where inside this run did 400MB go" needs before/after readings in order,
+	 * from one run.
+	 *
+	 * Kept for the worst run and not only the last, because the expensive run is rarely the one
+	 * someone stops on, and once it leaves the last-run slot the evidence is gone.
+	 */
+	worstRun: RunHeapLedger | null;
+	lastRun: RunHeapLedger | null;
+}
+
+/** One stage's heap footprint within a single run. */
+export interface StageHeapEntry {
+	name: string;
+	/** Live heap entering and leaving the stage, in MB. Chrome-only, so absent elsewhere. */
+	heapBeforeMb?: number;
+	heapAfterMb?: number;
+	ms: number;
+}
+
+export interface RunHeapLedger {
+	/** Heap growth across the run, in MB. Negative when GC ran partway through. */
+	growthMb: number;
+	/** In the order stages *started*, so nesting reads as containment. */
+	stages: StageHeapEntry[];
 }
 
 /** Chrome-only, and non-standard, hence the cast rather than a global type. */
@@ -87,6 +117,9 @@ const counts: Record<string, number> = {};
 const heapAfterMb: Record<string, number> = {};
 let runStartedAt: number | null = null;
 let runs = 0;
+let currentRunStages: StageHeapEntry[] = [];
+let worstRun: RunHeapLedger | null = null;
+let lastRun: RunHeapLedger | null = null;
 
 function perfGlobal(): PerfGlobal | null {
 	return browser ? (window as unknown as PerfGlobal) : null;
@@ -114,6 +147,10 @@ function record(name: string, elapsedMs: number): void {
 export function stage(name: string): () => void {
 	if (!enabled()) return () => {};
 	const startedAt = performance.now();
+	// Pushed on entry rather than on completion, so the ledger reads in start order and a stage
+	// that contains others brackets them instead of trailing behind.
+	const entry: StageHeapEntry = { name, heapBeforeMb: usedJSHeapMb(), ms: 0 };
+	currentRunStages.push(entry);
 	let finished = false;
 	return () => {
 		if (finished) return;
@@ -126,6 +163,8 @@ export function stage(name: string): () => void {
 		if (used !== undefined) {
 			heapAfterMb[name] = Math.max(heapAfterMb[name] ?? 0, used);
 		}
+		entry.heapAfterMb = used;
+		entry.ms = Math.round(elapsed);
 		performance.measure(`topology:${name}`, { start: startedAt, duration: elapsed });
 	};
 }
@@ -139,6 +178,7 @@ export function count(name: string): void {
 export function beginRun(): void {
 	if (!enabled()) return;
 	runStartedAt = performance.now();
+	currentRunStages = [];
 }
 
 export function endRun(): void {
@@ -148,6 +188,19 @@ export function endRun(): void {
 		runStartedAt = null;
 	}
 	runs += 1;
+
+	if (currentRunStages.length > 0) {
+		// Growth across the run: the first stage's entry reading against the last stage's exit.
+		// Both come from the same run, which is the whole point of keeping this separately from the
+		// per-name maxima.
+		const first = currentRunStages[0].heapBeforeMb;
+		const last = currentRunStages[currentRunStages.length - 1].heapAfterMb;
+		const growthMb = first !== undefined && last !== undefined ? last - first : 0;
+		const ledger: RunHeapLedger = { growthMb, stages: currentRunStages };
+		lastRun = ledger;
+		if (!worstRun || growthMb > worstRun.growthMb) worstRun = ledger;
+		currentRunStages = [];
+	}
 }
 
 export function snapshot(): TopologyPerfSnapshot {
@@ -155,6 +208,8 @@ export function snapshot(): TopologyPerfSnapshot {
 		durations: { ...durations },
 		counts: { ...counts },
 		heapAfterMb: { ...heapAfterMb },
+		worstRun,
+		lastRun,
 		runStartedAt,
 		runs
 	};
@@ -164,6 +219,9 @@ export function reset(): void {
 	for (const key of Object.keys(durations)) delete durations[key];
 	for (const key of Object.keys(counts)) delete counts[key];
 	for (const key of Object.keys(heapAfterMb)) delete heapAfterMb[key];
+	currentRunStages = [];
+	worstRun = null;
+	lastRun = null;
 	runStartedAt = null;
 	runs = 0;
 }

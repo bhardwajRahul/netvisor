@@ -108,6 +108,12 @@ export function summariseCullability(nodes: (CullableNode | undefined)[]): Culla
 	return { total, withMeasured, withHandleBounds, forceRendered };
 }
 
+/** Mirrors `RunHeapLedger` in `perf.ts`, which this file reads through `window` rather than importing. */
+export interface PerfRunLedger {
+	growthMb: number;
+	stages: { name: string; heapBeforeMb?: number; heapAfterMb?: number; ms: number }[];
+}
+
 /**
  * Counters that accumulate over the session, rather than describing one moment.
  *
@@ -621,8 +627,16 @@ export interface DiagnosticsReport {
 	perf: {
 		durations: Record<string, number>;
 		counts: Record<string, number>;
-		/** Highest heap seen at each stage's end — attributes a spike to a stage. See `perf.ts`. */
+		/** Highest heap seen at each stage's end — a session maximum per stage name. See `perf.ts`. */
 		heapAfterMb: Record<string, number>;
+		/**
+		 * Ordered before/after heap readings for the run that grew the heap most, and the last run.
+		 *
+		 * Read this to attribute a single run's growth. `heapAfterMb` mixes runs, so it cannot say
+		 * where inside one run the memory went.
+		 */
+		worstRun: PerfRunLedger | null;
+		lastRun: PerfRunLedger | null;
 		runs: number;
 	} | null;
 	/**
@@ -642,6 +656,8 @@ function readPerfSnapshot() {
 					durations: Record<string, number>;
 					counts: Record<string, number>;
 					heapAfterMb: Record<string, number>;
+					worstRun: PerfRunLedger | null;
+					lastRun: PerfRunLedger | null;
 					runs: number;
 				};
 			};

@@ -1543,22 +1543,27 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 	// Pass 1: compute layout with FIXED_SIDE ports (no position info).
 	// This gives us actual element positions within box-packed containers.
 	//
-	// `graph1` and `result1` are deliberately `let`, and dropped the moment each is finished with.
-	// This function is `async`, so its scope is a heap-allocated context that survives every `await`
-	// and V8 does not clear bindings it can no longer reach — holding both passes' graphs live at
-	// once. Pass 2 builds a second complete graph of the same size, so the peak was twice a single
-	// pass even though only one pass's worth is ever retained afterwards. Nulling lets the first be
-	// collected while the second is being built.
-	const build1Done = perf.stage('elk.build-graph');
+	// `graph1` and `pass1Children` are deliberately `let`, and dropped the moment each is finished
+	// with. This function is `async`, so its scope is a heap-allocated context that survives every
+	// `await` and V8 does not clear bindings it can no longer reach — holding both passes' graphs
+	// live at once. Pass 2 builds a second complete graph of the same size, so the peak was twice a
+	// single pass even though only one pass's worth is ever retained afterwards. Nulling lets the
+	// first be collected while the second is being built.
+	//
+	// `no-useless-assignment` fires on both clears, and is wrong here in the way it is wrong for any
+	// deliberate release: the assignment has no *dataflow* consumer, which is exactly the point —
+	// its effect is on reachability, not on any later read.
+	const build1Done = perf.stage('elk.build-graph.pass1');
 	let graph1: ElkNode | null;
-	let containerIds: Set<string>;
-	({ graph: graph1, containerIds } = buildElkGraph(input));
+	const { graph: builtGraph1, containerIds } = buildElkGraph(input);
+	graph1 = builtGraph1;
 	build1Done();
-	const elkPass1Done = perf.stage('elk.layout');
+	const elkPass1Done = perf.stage('elk.layout.pass1');
 	// Only the children array is bound, never the root: the root is unreferenced the moment this
 	// expression completes, and clearing this one binding after extraction drops the entire pass-1
 	// tree. Binding the result itself would keep the tree alive through `.children` anyway.
 	let pass1Children: ElkNode[] | null = (await elk.layout(graph1)).children ?? null;
+	// eslint-disable-next-line no-useless-assignment -- releases the pass-1 graph for collection
 	graph1 = null;
 	elkPass1Done();
 
@@ -1598,17 +1603,18 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 	// Everything pass 2 needs from pass 1 now lives in the two position maps above, which hold plain
 	// numbers rather than ELK nodes. Released here so the collector can reclaim the whole first
 	// graph before the second one is allocated.
+	// eslint-disable-next-line no-useless-assignment -- releases the pass-1 tree for collection
 	pass1Children = null;
 
 	// Pass 2: rebuild graph with FIXED_POS ports at actual element positions
-	const build2Done = perf.stage('elk.build-graph');
+	const build2Done = perf.stage('elk.build-graph.pass2');
 	const { graph: graph2, containerIds: cids2 } = buildElkGraph(
 		input,
 		elementPositions,
 		subcontainerPositions
 	);
 	build2Done();
-	const elkPass2Done = perf.stage('elk.layout');
+	const elkPass2Done = perf.stage('elk.layout.pass2');
 	const result2 = await elk.layout(graph2);
 	elkPass2Done();
 
