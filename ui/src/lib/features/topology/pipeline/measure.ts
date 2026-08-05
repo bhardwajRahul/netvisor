@@ -164,8 +164,15 @@ export async function resolveNodeSizes(
 			elementNodeSizes.clear();
 		}
 
-		// If any containers are missing from cache, fall through to full measurement
+		// If any containers are missing from cache, fall through to full measurement.
+		//
+		// The dominant reason the full pass runs, and until now the only branch here that took it
+		// without saying so: five full passes in one capture, of which just one was attributable.
+		// Collapsing a single container reaches this every time — its *collapsed* size has never
+		// been needed before, so it cannot be cached — and the cost is a re-measure of every node
+		// in the graph, ~136MB at 2,890 nodes, to learn one size.
 		if (cacheMisses > 0) {
+			perf.count('measure.cache-incomplete:container');
 			elementNodeSizes.clear();
 		}
 	}
