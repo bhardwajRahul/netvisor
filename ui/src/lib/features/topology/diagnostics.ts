@@ -38,6 +38,7 @@ import {
 } from './pipeline/render-mode';
 import { collapseLevel, collapsedContainers } from './collapse';
 import { activeView } from './queries';
+import { usedJSHeapMb, totalJSHeapMb } from './perf';
 
 /** How many samples to keep. Enough to cover the runs leading into a blank, small enough to mail. */
 const HISTORY_LIMIT = 30;
@@ -132,6 +133,39 @@ export interface CumulativeCounters {
 	totalJSHeapMb?: number;
 	/** Chrome-only; absent in Firefox and Safari. */
 	usedJSHeapMb?: number;
+	/**
+	 * Highest live heap seen at any moment this session, not just when the report was taken.
+	 *
+	 * The figures above describe the instant someone ran the command, and that instant is reliably
+	 * the wrong one: the renderer was measured swinging 881 MB to 2,050 MB and back inside 90
+	 * seconds, while captures taken right afterwards read ~267 MB live against a 1.2 GB process.
+	 * The spike is allocated and released within a run, so it is only ever visible to something
+	 * watching continuously. That transient peak — not the resting footprint — is what a tab runs
+	 * out of memory on, so it is the number to read first.
+	 */
+	peakUsedJSHeapMb?: number;
+	/** Peak reserved heap, tracked alongside `peakUsedJSHeapMb` and for the same reason. */
+	peakTotalJSHeapMb?: number;
+}
+
+/**
+ * Fold the current heap reading into the session peaks.
+ *
+ * Called at every point the pipeline passes through rather than on a timer, because the expensive
+ * stage is synchronous: `elk.bundled.js` is the main-thread build, so during a layout no interval
+ * or animation frame can fire and a sampler would step straight over the peak it exists to catch.
+ * Unconditional, unlike `perf.ts` — a customer's build records nothing there, and the customer is
+ * the one whose tab is dying.
+ */
+export function noteHeapSample(): void {
+	const used = usedJSHeapMb();
+	if (used !== undefined) {
+		counters.peakUsedJSHeapMb = Math.max(counters.peakUsedJSHeapMb ?? 0, used);
+	}
+	const total = totalJSHeapMb();
+	if (total !== undefined) {
+		counters.peakTotalJSHeapMb = Math.max(counters.peakTotalJSHeapMb ?? 0, total);
+	}
 }
 
 const counters: CumulativeCounters = {
@@ -177,6 +211,17 @@ export interface RunRecord {
 	 *  nothing in a customer's build, so the total is kept here where it is always on. */
 	durationMs?: number;
 	/**
+	 * Live heap in MB entering and leaving the run, and the reserved heap on the way out.
+	 *
+	 * The pair is what identifies an expensive run. A run that enters at 300 and leaves at 300 cost
+	 * nothing lasting even if it briefly allocated a great deal; one that leaves far above where it
+	 * started is accumulating. `heapTotalEndMb` is the more sensitive of the three to a spike that
+	 * has already been collected, since V8 gives reserved pages back slowly.
+	 */
+	heapStartMb?: number;
+	heapEndMb?: number;
+	heapTotalEndMb?: number;
+	/**
 	 * Expanded containers whose `expandedSize` is still zero once the run finished.
 	 *
 	 * The number to read first. Anything above zero here means the layout model itself lost the
@@ -192,20 +237,31 @@ const RUN_HISTORY_LIMIT = 12;
 const runs: RunRecord[] = [];
 
 export function noteRunStart(source: string): void {
-	runs.push({ at: Math.round(performance.now()), source });
+	noteHeapSample();
+	runs.push({
+		at: Math.round(performance.now()),
+		source,
+		...(usedJSHeapMb() !== undefined && { heapStartMb: usedJSHeapMb() })
+	});
 	if (runs.length > RUN_HISTORY_LIMIT) runs.shift();
 }
 
-/** Close the run currently in flight, recording how long it took. */
+/** Close the run currently in flight, recording how long it took and what it cost. */
 export function noteRunEnd(): void {
+	noteHeapSample();
 	const current = runs.at(-1);
 	if (current && current.durationMs === undefined) {
 		current.durationMs = Math.round(performance.now() - current.at);
+		const used = usedJSHeapMb();
+		if (used !== undefined) current.heapEndMb = used;
+		const total = totalJSHeapMb();
+		if (total !== undefined) current.heapTotalEndMb = total;
 	}
 }
 
 /** Fill in detail on the run currently in flight. */
 export function noteRunDetail(patch: Partial<RunRecord>): void {
+	noteHeapSample();
 	const current = runs.at(-1);
 	if (current) Object.assign(current, patch);
 }
@@ -350,6 +406,7 @@ function readPane(container: HTMLElement | null): { el: HTMLElement | null; rect
  * looking at, and the store's opinion of that is exactly what is in doubt.
  */
 export function sampleViewerState(inputs: SampleInputs): ViewerSample {
+	noteHeapSample();
 	const root: ParentNode = inputs.container ?? document;
 	const { el: pane, rect: paneRect } = readPane(inputs.container);
 	const viewport = root.querySelector('.svelte-flow__viewport') as HTMLElement | null;
@@ -532,8 +589,14 @@ export interface DiagnosticsReport {
 	samples: ViewerSample[];
 	/** What each recent pipeline run did — see `RunRecord`. */
 	runs: RunRecord[];
-	/** Stage timings and counts, when `perf.ts` is recording. */
-	perf: { durations: Record<string, number>; counts: Record<string, number>; runs: number } | null;
+	/** Stage timings, counts, and per-stage peak heap, when `perf.ts` is recording. */
+	perf: {
+		durations: Record<string, number>;
+		counts: Record<string, number>;
+		/** Highest heap seen at each stage's end — attributes a spike to a stage. See `perf.ts`. */
+		heapAfterMb: Record<string, number>;
+		runs: number;
+	} | null;
 	/**
 	 * Totals for the session, which the per-sample ring cannot express.
 	 *
@@ -550,6 +613,7 @@ function readPerfSnapshot() {
 				snapshot: () => {
 					durations: Record<string, number>;
 					counts: Record<string, number>;
+					heapAfterMb: Record<string, number>;
 					runs: number;
 				};
 			};
@@ -560,20 +624,6 @@ function readPerfSnapshot() {
 	// Nothing recorded means the build is not instrumented, which is worth distinguishing from
 	// "instrumented and fast".
 	return Object.keys(snap.counts).length === 0 ? null : snap;
-}
-
-/** Chrome-only. Absent in Firefox and Safari, which is where this report tends to come from. */
-function usedJSHeapMb(): number | undefined {
-	const memory = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory;
-	const bytes = memory?.usedJSHeapSize;
-	return typeof bytes === 'number' ? Math.round(bytes / 1024 / 1024) : undefined;
-}
-
-/** Chrome-only, like `usedJSHeapMb`. */
-function totalJSHeapMb(): number | undefined {
-	const memory = (performance as unknown as { memory?: { totalJSHeapSize?: number } }).memory;
-	const bytes = memory?.totalJSHeapSize;
-	return typeof bytes === 'number' ? Math.round(bytes / 1024 / 1024) : undefined;
 }
 
 function buildReport(current: ViewerSample): DiagnosticsReport {
