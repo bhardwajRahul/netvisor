@@ -1187,8 +1187,10 @@
 	function handleStepCollapse() {
 		if (editMode) return;
 		clearSelection(selectionStores);
-		stepCollapse(topology.nodes, containerTypes, getInfrastructureRuleId());
-		layoutState.fitViewPending = true;
+		stepCollapse(topology.nodes, containerTypes, getInfrastructureRuleId(), (idsLeftExpanded) => {
+			for (const id of idsLeftExpanded) layoutState.seenAutoCollapseIds.add(id);
+			layoutState.fitViewPending = true;
+		});
 	}
 
 	function handleStepExpand() {
@@ -1197,8 +1199,8 @@
 		// Marked seen before the collapse stores are written, not after: the write runs the
 		// pipeline synchronously, so anything done afterwards is too late to affect the run it
 		// caused. See `stepExpand`.
-		stepExpand(topology.nodes, containerTypes, getInfrastructureRuleId(), (autoCollapseIds) => {
-			for (const id of autoCollapseIds) layoutState.seenAutoCollapseIds.add(id);
+		stepExpand(topology.nodes, containerTypes, getInfrastructureRuleId(), (idsLeftExpanded) => {
+			for (const id of idsLeftExpanded) layoutState.seenAutoCollapseIds.add(id);
 			layoutState.fitViewPending = true;
 		});
 	}
