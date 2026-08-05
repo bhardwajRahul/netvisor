@@ -43,12 +43,13 @@ import { activeView } from './queries';
 const HISTORY_LIMIT = 30;
 
 /**
- * Height at or below which a mounted node counts as degenerate.
+ * Size at or below which a mounted node counts as degenerate, in either dimension.
  *
- * A container rendered with `height: 0` still occupies its 1px borders, so the floor is a couple
- * of pixels rather than zero.
+ * A node rendered with `width: 0` or `height: 0` still occupies its 1px borders, so the floor is a
+ * couple of pixels rather than zero. Nothing legitimate comes close: element cards are a fixed 250
+ * wide, and a container is at least its type's declared collapsed size.
  */
-const DEGENERATE_HEIGHT_PX = 4;
+const DEGENERATE_SIZE_PX = 4;
 
 /** Minimum gap between viewport-driven samples. Panning fires continuously. */
 const VIEWPORT_SAMPLE_INTERVAL_MS = 500;
@@ -162,12 +163,13 @@ export interface ViewerSample {
 	 *  the measure pass having produced nothing, which starves both layout and fit-view. */
 	withSize: number;
 	/**
-	 * Mounted nodes rendering at essentially no height, split by node type.
+	 * Mounted nodes rendering at essentially no size in either dimension, split by node type.
 	 *
 	 * `withSize` cannot see this fault and never could: it asks whether a node's bounding box is
 	 * non-zero, and a container collapsed to its own borders is 250x2 — non-zero, and counted as
 	 * healthy. But a container at 2px has its contents drawn outside it, which is what an operator
-	 * reports as "the nodes didn't finish resizing".
+	 * reports as "the nodes didn't finish resizing". Width and height are both tested because they
+	 * collapse independently — the same fault produced 250x2 and 2x2 nodes in the same graph.
 	 *
 	 * Split by type because the two causes are different. Containers go degenerate when ELK never
 	 * sized them — `LayoutContainer.expandedSize` starts at `{0, 0}` and `getContainerSize` returns
@@ -272,9 +274,11 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 	for (const el of nodeEls) {
 		const r = el.getBoundingClientRect();
 		if (r.width > 0 && r.height > 0) withSize += 1;
-		// `offsetHeight`, not the bounding rect: the rect is scaled by the viewport transform, so
-		// at low zoom every node looks tiny. `offsetHeight` is the node's own layout height.
-		if (el.offsetHeight <= DEGENERATE_HEIGHT_PX) {
+		// Both dimensions, because they fail independently: a container ELK never sized was
+		// measured here at 250x2 in one case and 2x2 in another, the first keeping a width from
+		// CSS while the second lost both. Layout size, not the bounding rect — the rect is scaled
+		// by the viewport transform, so at low zoom every node looks tiny.
+		if (el.offsetWidth <= DEGENERATE_SIZE_PX || el.offsetHeight <= DEGENERATE_SIZE_PX) {
 			if (el.classList.contains('svelte-flow__node-Container')) degenerate.containers += 1;
 			else degenerate.elements += 1;
 		}
