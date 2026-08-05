@@ -502,8 +502,33 @@
 	}
 
 	let storesInitialized = false;
+
+	/**
+	 * Start a run *after* the caller that wrote the store has finished.
+	 *
+	 * Svelte notifies subscribers synchronously from `set`, and `loadTopologyData` runs as far as
+	 * `prepare` before its first `await` — so the whole first half of a pipeline run executes
+	 * inside the `.set()` call, before the writing function's next statement. Anything a caller
+	 * does after writing collapse state therefore lands too late to affect the run it just caused.
+	 *
+	 * `stepExpand` was one such caller: it marked the auto-collapse containers seen after writing,
+	 * so `applyAutoCollapse` re-collapsed the very containers it was about to be told to leave
+	 * alone. The level advanced, the collapsed set did not, `collapseChanged` came out false, no
+	 * layout ran, and the diagram stayed on the previous level with anything new to it unsized.
+	 * That call site is now ordered correctly, but the hazard belongs to every writer of these
+	 * stores — a container chevron, the level buttons, a filter — and each would have to remember.
+	 *
+	 * Deferring by a microtask makes the ordering safe by construction: the caller always
+	 * completes first, and the run still starts in the same frame.
+	 */
+	const deferTriggerLoad = (source: string) => {
+		queueMicrotask(() => {
+			if (storesInitialized) triggerLoad(source);
+		});
+	};
+
 	collapsedContainers.subscribe(() => {
-		if (storesInitialized) triggerLoad('collapsed');
+		if (storesInitialized) deferTriggerLoad('collapsed');
 	});
 	expandedBundles.subscribe(() => {
 		if (storesInitialized) triggerLoad('bundles');
@@ -1169,13 +1194,13 @@
 	function handleStepExpand() {
 		if (editMode) return;
 		clearSelection(selectionStores);
-		const { autoCollapseIds } = stepExpand(
-			topology.nodes,
-			containerTypes,
-			getInfrastructureRuleId()
-		);
-		for (const id of autoCollapseIds) layoutState.seenAutoCollapseIds.add(id);
-		layoutState.fitViewPending = true;
+		// Marked seen before the collapse stores are written, not after: the write runs the
+		// pipeline synchronously, so anything done afterwards is too late to affect the run it
+		// caused. See `stepExpand`.
+		stepExpand(topology.nodes, containerTypes, getInfrastructureRuleId(), (autoCollapseIds) => {
+			for (const id of autoCollapseIds) layoutState.seenAutoCollapseIds.add(id);
+			layoutState.fitViewPending = true;
+		});
 	}
 
 	export function triggerStepExpand() {

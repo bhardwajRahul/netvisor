@@ -220,7 +220,11 @@ export function buildFlowNodes(params: BuildFlowNodesParams): Node[] {
 		// measured for real, and is cullable on the next build. Intentional degradation — a
 		// guessed size here would stick, because a node carrying both fields reads as initialised
 		// and `NodeWrapper` never attaches its ResizeObserver to correct it.
-		const cullable = measuredWidth !== undefined && measuredHeight !== undefined;
+		// A zero is not a measurement. `LayoutContainer.expandedSize` starts at `{0, 0}` and
+		// `getContainerSize` returns that rather than `undefined`, so a container ELK has not sized
+		// yet arrives here as a real-looking `0`. Seeding that would publish a zero-area node as
+		// measured and hand it synthesized handles at 0x0.
+		const cullable = !!measuredWidth && !!measuredHeight;
 
 		return {
 			id: node.id,
