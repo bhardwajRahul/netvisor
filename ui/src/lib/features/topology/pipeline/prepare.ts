@@ -496,14 +496,21 @@ export function prepareTopologyData(
 		? undefined
 		: state.layoutGraph?.getContainerChildPositions();
 
-	// Build/rebuild layout graph when structure changes.
+	// Build/rebuild layout graph when the *node set* changes — not when collapse does.
 	//
-	// Restore straight away rather than leaving it to `executeLayout`. A rebuild recreates every
-	// container with `expandedSize` at {0, 0}, and this run may never reach the layout stage — it
-	// can go stale, or return early — which would leave the graph zeroed for whatever runs next.
-	// If that run does no layout of its own, `getContainerSize` returns zero and the containers
-	// render as their borders with their contents outside, persistently.
-	if (!state.layoutGraph || isNewStructure) {
+	// `baseKey` covers everything the graph is built from: node ids, their parent links, inline
+	// content, and hide state. `structureKey` is that plus the collapsed set, so keying the rebuild
+	// on it threw the graph away every time a container was collapsed, even though collapse is
+	// visibility applied on top of an unchanged node set via `syncCollapseState`. That cost a full
+	// rebuild per press, and each rebuild recreates every container with `expandedSize` at {0, 0} —
+	// the same reset behind the 0x0 containers, so this narrows that exposure rather than widening
+	// it.
+	//
+	// Restore straight away rather than leaving it to `executeLayout`. This run may never reach the
+	// layout stage — it can go stale, or return early — which would leave the graph zeroed for
+	// whatever runs next. If that run does no layout of its own, `getContainerSize` returns zero and
+	// the containers render as their borders with their contents outside, persistently.
+	if (!state.layoutGraph || isNewBaseStructure) {
 		const carriedSizes = state.layoutGraph?.getExpandedContainerSizes();
 		state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
 		if (carriedSizes) state.layoutGraph.restoreExpandedSizes(carriedSizes);

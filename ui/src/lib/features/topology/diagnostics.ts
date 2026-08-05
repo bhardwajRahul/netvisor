@@ -146,6 +146,20 @@ export interface CumulativeCounters {
 	peakUsedJSHeapMb?: number;
 	/** Peak reserved heap, tracked alongside `peakUsedJSHeapMb` and for the same reason. */
 	peakTotalJSHeapMb?: number;
+	/**
+	 * Runs abandoned because a later input superseded them before they reached ELK.
+	 *
+	 * The saving, stated directly. Presses arrive faster than a run completes — 1.8-3.7s per run
+	 * against a press every ~2s — so before cancellation each press paid for a full layout that the
+	 * next press discarded, and a capture showed 8 runs for roughly 4 presses with every one of them
+	 * running ELK.
+	 *
+	 * Read against `elkRuns`, which is the number that should track presses rather than double them.
+	 * Together they say how many layouts a session actually needed versus how many it performed.
+	 */
+	runsSuperseded: number;
+	/** ELK layouts actually performed. The allocation driver: ~250-340MB and 1.8-3.7s apiece. */
+	elkRuns: number;
 }
 
 /**
@@ -174,8 +188,20 @@ const counters: CumulativeCounters = {
 	fullMeasurePasses: 0,
 	peakStoreNodes: 0,
 	peakMounted: 0,
-	peakDomInNodes: 0
+	peakDomInNodes: 0,
+	runsSuperseded: 0,
+	elkRuns: 0
 };
+
+/** A run was abandoned because a later input made its result obsolete before it laid out. */
+export function noteRunSuperseded(): void {
+	counters.runsSuperseded += 1;
+}
+
+/** An ELK layout is about to run — the expensive thing this work exists to do less of. */
+export function noteElkRun(): void {
+	counters.elkRuns += 1;
+}
 
 /** Called on every write to the node store, so a remount loop is visible as a count. */
 export function noteNodeStoreWrite(nodeCount: number): void {
@@ -221,6 +247,8 @@ export interface RunRecord {
 	heapStartMb?: number;
 	heapEndMb?: number;
 	heapTotalEndMb?: number;
+	/** This run was abandoned before ELK because a later input superseded it. No layout was paid for. */
+	supersededBeforeElk?: boolean;
 	/**
 	 * Expanded containers whose `expandedSize` is still zero once the run finished.
 	 *

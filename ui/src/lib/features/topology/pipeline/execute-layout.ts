@@ -5,7 +5,7 @@ import { ElkLayoutEngine } from '../layout/engine';
 import { computeForceLayout, type ForceNode, type ForceLink } from '../layout/force-layout';
 import { containerTypes } from '$lib/shared/stores/metadata';
 import * as perf from '../perf';
-import { noteRunDetail } from '../diagnostics';
+import { noteRunDetail, noteElkRun } from '../diagnostics';
 
 const layoutEngine = new ElkLayoutEngine();
 
@@ -77,6 +77,20 @@ export async function executeLayout(
 		const elkCollapsed = deferCollapse ? new Set<string>() : collapsed;
 		const elkNodes = deferCollapse ? layoutNodes : visibleNodes;
 
+		// Last chance to abandon a superseded run before the expensive part.
+		//
+		// ELK is ~96% of pipeline time and the bulk of the allocation — runs measured at 1.8-3.7s
+		// costing 250-340MB each. Collapse presses arrive faster than that, so the run in flight is
+		// routinely known-stale before it even starts laying out, and the check after `compute()`
+		// below paid for the layout in full before discarding it. Checking here turns a superseded
+		// press into no ELK run at all.
+		if (isStale()) {
+			perf.count('elk-skipped-stale');
+			noteRunDetail({ supersededBeforeElk: true });
+			return null;
+		}
+
+		noteElkRun();
 		const elkComputeDone = perf.stage('layout.elk-compute');
 		const elkResult = await layoutEngine.compute({
 			nodes: elkNodes,
@@ -95,9 +109,18 @@ export async function executeLayout(
 		state.sessionStructureKey = structureKey;
 		state.sessionBaseKey = baseKey;
 
-		// Rebuild graph and apply ELK result
+		// Rebuild the graph only when the node set changed; otherwise reuse and re-sync.
+		//
+		// Rebuilding on every layout discarded a graph that was structurally identical whenever only
+		// collapse had moved, and each rebuild zeroes every `expandedSize` — recovered immediately
+		// below, but only for containers `prevExpandedSizes` knows about. Reusing keeps the sizes
+		// that are already correct and drops one full graph construction per press. `prepare` uses
+		// the same `isNewBaseStructure` test, so the two stay in agreement about when a graph is
+		// still valid.
 		const graphBuildDone = perf.stage('layout.graph-build');
-		state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
+		if (!state.layoutGraph || prep.isNewBaseStructure) {
+			state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
+		}
 		if (!deferCollapse) {
 			state.layoutGraph.syncCollapseState(collapsed);
 			if (prevExpandedSizes) {

@@ -100,6 +100,7 @@
 		noteRunDetail,
 		noteRunEnd,
 		noteRunStart,
+		noteRunSuperseded,
 		recordAfterRun,
 		recordAfterViewportMove
 	} from '../../diagnostics';
@@ -472,6 +473,21 @@
 				// full re-layout (two elk.layout() calls).
 				perf.count(`pending-reload:${source}`);
 				pendingReload = true;
+				// Abandon the run in flight the moment we can prove its result is already obsolete.
+				//
+				// A press arrives roughly every 2s and a run takes 1.8-3.7s, so the first run
+				// reliably finished a full layout that the queued run replaced on arrival — two ELK
+				// passes and ~600MB of garbage for one visible result. Bumping the generation makes
+				// `isStale()` true for the in-flight run, which bails at the check before ELK.
+				//
+				// Only when the inputs demonstrably differ: `inFlightInputs` is snapshotted once
+				// `prepare` returns, so a null here means the run has not yet fixed its inputs and
+				// cancelling would be guesswork.
+				if (inFlightInputs && reloadInputsDiff(inFlightInputs, currentReloadInputs()).length > 0) {
+					layoutState.layoutGeneration += 1;
+					perf.count(`superseded:${source}`);
+					noteRunSuperseded();
+				}
 			}
 			return;
 		}
