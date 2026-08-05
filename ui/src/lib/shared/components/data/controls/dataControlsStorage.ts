@@ -3,7 +3,7 @@ import type { SortState } from './sorting';
 
 export type ViewMode = 'card' | 'table';
 
-export const DEFAULT_VIEW_MODE: ViewMode = 'card';
+export const DEFAULT_VIEW_MODE: ViewMode = 'table';
 
 /** Filter selections as they sit in localStorage — sets marshalled to arrays. */
 export interface StoredFieldFilter {
@@ -32,11 +32,18 @@ export interface StoredState {
  *
  * List view was folded into the table, so a stored `'list'` means the user chose
  * the dense view and maps to `'table'` rather than resetting them to cards.
+ *
+ * `'card'` is matched explicitly rather than left to fall through. It used to
+ * reach the same answer by accident, because the default was `'card'` — but the
+ * default is now `'table'`, and a stored value is a choice the user made. Falling
+ * through would silently flip every existing card user to the table.
+ *
  * Everything else — a future mode, a hand-edited value, `undefined` — falls back
  * to the default, so no stored string can produce an out-of-union view mode.
  */
 export function migrateViewMode(raw: unknown): ViewMode {
 	if (raw === 'list' || raw === 'table') return 'table';
+	if (raw === 'card') return 'card';
 	return DEFAULT_VIEW_MODE;
 }
 

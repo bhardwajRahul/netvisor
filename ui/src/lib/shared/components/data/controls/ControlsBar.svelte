@@ -3,7 +3,7 @@
 		Search,
 		X,
 		LayoutGrid,
-		List,
+		Table,
 		CheckSquare,
 		Square,
 		Download,
@@ -14,7 +14,7 @@
 	import type { Snippet } from 'svelte';
 	import { getFieldKey, type FieldConfig } from '../types';
 	import type { SortState } from './sorting';
-	import type { ViewMode } from './dataControlsStorage';
+	import { DEFAULT_VIEW_MODE, type ViewMode } from './dataControlsStorage';
 	import Tag from '../Tag.svelte';
 	import {
 		common_active,
@@ -29,14 +29,14 @@
 		common_selectAll,
 		common_sortByLabel,
 		common_switchToCardView,
-		common_switchToListView
+		common_switchToTableView
 	} from '$lib/paraglide/messages';
 
 	let {
 		searchQuery = $bindable(''),
 		selectedGroupField = $bindable(null),
 		sortState = $bindable({ field: null, direction: 'asc' }),
-		viewMode = $bindable('card'),
+		viewMode = $bindable(DEFAULT_VIEW_MODE),
 		showFilters = $bindable(false),
 		fields,
 		groupableFields,
@@ -184,10 +184,10 @@
 		<button
 			onclick={() => (viewMode = viewMode === 'card' ? 'table' : 'card')}
 			class="btn-secondary h-[42px]"
-			title={viewMode === 'card' ? common_switchToListView() : common_switchToCardView()}
+			title={viewMode === 'card' ? common_switchToTableView() : common_switchToCardView()}
 		>
 			{#if viewMode === 'card'}
-				<List class="h-5 w-5" />
+				<Table class="h-5 w-5" />
 			{:else}
 				<LayoutGrid class="h-5 w-5" />
 			{/if}

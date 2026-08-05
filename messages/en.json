@@ -466,7 +466,7 @@
 	"common_subnets": "Subnets",
 	"common_sun": "Sun",
 	"common_switchToCardView": "Switch to card view",
-	"common_switchToListView": "Switch to list view",
+	"common_switchToTableView": "Switch to table view",
 	"common_system": "System",
 	"common_tableCaption": "{entity}, {count} {itemLabel}",
 	"common_tags": "Tags",
