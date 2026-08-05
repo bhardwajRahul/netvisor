@@ -252,6 +252,15 @@ export async function resolveNodeSizes(
 		// additional information.
 		const needsMeasuring = new Set([...unresolvedElementIds, ...missingContainerIds]);
 		if (needsMeasuring.size > 0) {
+			// How big the "scoped" pass actually is, which decides whether it deserves the name.
+			//
+			// One capture showed a scoped pass costing 746MB and 5.5s — a full pass wearing a
+			// different label, because on a cold cache no element has a measured peer to copy from
+			// and every one comes back unresolved. `fillMissingSizesByShapeKey` now reports one
+			// representative per key rather than every node, so this number should be small; if a
+			// capture shows it near the element count, the shape keys are not collapsing the set and
+			// that is the thing to fix rather than the measuring.
+			perf.count(`measure.scoped-size:${needsMeasuring.size}`);
 			if (missingContainerIds.size > 0) perf.count('measure.cache-incomplete:container');
 			// With nothing worth preserving the full pass below is already the cheapest option.
 			if (elementNodeSizes.size > 0) {
@@ -274,6 +283,10 @@ export async function resolveNodeSizes(
 							state.containerSizeCache.set(id, entry);
 						}
 					}
+					// Spread the representatives across the keys they stand for. Only the first node
+					// of each unresolved shape key was measured, so without this every other card
+					// sharing that key is still missing a size and the full pass below runs anyway.
+					fillMissingSizesByShapeKey(visibleNodes, topology, elementNodeSizes);
 				}
 			}
 		}
