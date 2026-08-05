@@ -5,6 +5,7 @@ import { ElkLayoutEngine } from '../layout/engine';
 import { computeForceLayout, type ForceNode, type ForceLink } from '../layout/force-layout';
 import { containerTypes } from '$lib/shared/stores/metadata';
 import * as perf from '../perf';
+import { noteRunDetail } from '../diagnostics';
 
 const layoutEngine = new ElkLayoutEngine();
 
@@ -114,6 +115,7 @@ export async function executeLayout(
 			elkResult.elementNodeSizes
 		);
 		applyDone();
+		noteRunDetail({ elkSizedContainers: elkResult.containerSizes.size });
 
 		// When collapse was deferred, apply it AFTER ELK result
 		if (deferCollapse) {

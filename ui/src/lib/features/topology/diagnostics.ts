@@ -144,6 +144,56 @@ export function noteNodeStoreWrite(nodeCount: number): void {
 	counters.peakStoreNodes = Math.max(counters.peakStoreNodes, nodeCount);
 }
 
+/**
+ * What one pipeline run did, recorded as it happens.
+ *
+ * The per-sample ring says *that* containers went zero-sized; it cannot say which run did it or
+ * why. Every capture so far shows the same shape — a `pipeline` sample with degenerate containers
+ * after a clean one — and the last one placed the onset 66 seconds after the user stopped
+ * interacting, so the run was data-driven rather than a click. These fields separate the remaining
+ * candidates: what started the run, whether it rebuilt the layout graph (which resets every
+ * container's `expandedSize` to zero), whether ELK ran to put sizes back, and how many containers
+ * the graph still believed were zero-sized when it finished.
+ *
+ * `containersZeroSizedAfter` is the one that matters: it reads the layout *model*, not the DOM, so
+ * it distinguishes "the graph lost the sizes" from "the render is behind".
+ */
+export interface RunRecord {
+	at: number;
+	/** What triggered it — `collapsed`, `topology`, `pending`, and so on. */
+	source: string;
+	isNewStructure?: boolean;
+	needsElk?: boolean;
+	/** The layout graph was rebuilt, resetting every `expandedSize` to `{0, 0}`. */
+	graphRebuilt?: boolean;
+	/** Containers ELK returned a size for, when it ran. */
+	elkSizedContainers?: number;
+	/**
+	 * Expanded containers whose `expandedSize` is still zero once the run finished.
+	 *
+	 * The number to read first. Anything above zero here means the layout model itself lost the
+	 * sizes, and every one of those containers will draw as its borders with its contents outside.
+	 * Collapsed containers are excluded — they have never been laid out expanded, so a zero is
+	 * expected and would swamp the signal.
+	 */
+	containersZeroSizedAfter?: number;
+}
+
+/** Last few runs, so the transition into a bad state is visible rather than just its aftermath. */
+const RUN_HISTORY_LIMIT = 12;
+const runs: RunRecord[] = [];
+
+export function noteRunStart(source: string): void {
+	runs.push({ at: Math.round(performance.now()), source });
+	if (runs.length > RUN_HISTORY_LIMIT) runs.shift();
+}
+
+/** Fill in detail on the run currently in flight. */
+export function noteRunDetail(patch: Partial<RunRecord>): void {
+	const current = runs.at(-1);
+	if (current) Object.assign(current, patch);
+}
+
 /** Called when the pipeline takes the full measurement path, which mounts every node. */
 export function noteFullMeasurePass(): void {
 	counters.fullMeasurePasses += 1;
@@ -434,6 +484,8 @@ export interface DiagnosticsReport {
 	 */
 	firstBlank: ViewerSample[] | null;
 	samples: ViewerSample[];
+	/** What each recent pipeline run did — see `RunRecord`. */
+	runs: RunRecord[];
 	/**
 	 * Totals for the session, which the per-sample ring cannot express.
 	 *
@@ -462,6 +514,7 @@ function buildReport(current: ViewerSample): DiagnosticsReport {
 			devicePixelRatio: window.devicePixelRatio
 		},
 		firstBlank: firstBlankCapture,
+		runs: [...runs],
 		samples: [...history, current],
 		cumulative: { ...counters, ...(heap !== undefined && { usedJSHeapMb: heap }) }
 	};
@@ -517,6 +570,7 @@ export function resetDiagnostics(): void {
 	counters.fullMeasurePasses = 0;
 	counters.peakStoreNodes = 0;
 	counters.peakMounted = 0;
+	runs.length = 0;
 }
 
 /** Test seam. */

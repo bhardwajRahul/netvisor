@@ -97,6 +97,8 @@
 	import {
 		installDiagnostics,
 		noteNodeStoreWrite,
+		noteRunDetail,
+		noteRunStart,
 		recordAfterRun,
 		recordAfterViewportMove
 	} from '../../diagnostics';
@@ -476,6 +478,9 @@
 		// so each full pipeline execution — two elk.layout() calls — is attributable
 		// to what started it.
 		perf.count(`run-start:${source}`);
+		// Always-on twin of the counter above: `perf` records nothing in a customer's build, and
+		// which trigger started a run is the missing half of the zero-sized-container reports.
+		noteRunStart(source);
 		loadInProgress = true;
 		pendingReload = false;
 		void loadTopologyData()
@@ -650,6 +655,7 @@
 		// to the watched stores as part of its own work. Snapshot here so those
 		// self-writes don't read as external change at the end of the run.
 		inFlightInputs = snapshotReloadInputs(currentReloadInputs());
+		noteRunDetail({ isNewStructure: prep?.isNewStructure, needsElk: prep?.needsElk });
 		if (!prep) return;
 		const { needsElk, collapsed, visibleNodes: initialVisibleNodes } = prep;
 		let visibleNodes = initialVisibleNodes;
@@ -951,6 +957,16 @@
 			if (drifted > 0) perf.count('post-render.size-drift');
 
 			cacheSizesDone();
+			// Read the layout *model*, not the DOM: this separates "the graph lost its sizes" from
+			// "the render has not caught up", which the per-sample degenerate count cannot.
+			noteRunDetail({
+				// Expanded containers only. A collapsed one has never been laid out expanded, so a
+				// zero there is normal and would drown the signal — it is the *expanded* container
+				// with no size that renders as its borders with its contents outside.
+				containersZeroSizedAfter: [...layoutState.layoutGraph.containers.values()].filter(
+					(c) => !c.collapsed && c.expandedSize.width === 0
+				).length
+			});
 			if ((newEntries > 0 || drifted > 0) && !isStale()) {
 				// Counted because on a cold load with many collapsed containers this
 				// self-heal fires every time, and each recursion is a full pipeline

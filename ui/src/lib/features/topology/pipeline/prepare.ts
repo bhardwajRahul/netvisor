@@ -19,6 +19,7 @@ import { activeView, topologyOptions } from '../queries';
 import { tagHiddenNodeIds, hiddenEntityIds } from '../interactions';
 import { buildTopologyParentIndex } from '../topology-parent-index';
 import { ENTITY_COLLECTIONS } from '../resolvers';
+import { noteRunDetail } from '../diagnostics';
 
 /**
  * Build a stable signature of everything the active view inlines on its
@@ -506,6 +507,7 @@ export function prepareTopologyData(
 		const carriedSizes = state.layoutGraph?.getExpandedContainerSizes();
 		state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
 		if (carriedSizes) state.layoutGraph.restoreExpandedSizes(carriedSizes);
+		noteRunDetail({ graphRebuilt: true });
 	}
 
 	// Defer collapse so ELK runs with everything expanded — only if
