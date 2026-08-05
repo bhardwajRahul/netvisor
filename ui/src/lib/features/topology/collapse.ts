@@ -392,18 +392,34 @@ function isStrictSuperset(a: Set<string>, b: Set<string>): boolean {
 export function stepExpand(
 	allNodes: TopologyNode[],
 	containerTypesStore: ContainerTypesAccessor,
-	infraRuleId: string | null
+	infraRuleId: string | null,
+	/**
+	 * Called with the auto-collapse ids *before* the stores are written.
+	 *
+	 * Writing `collapsedContainers` notifies its subscribers synchronously, and the viewer's
+	 * subscriber runs the pipeline far enough to reach `prepare` before `set` returns — so by the
+	 * time this function returned its ids, `applyAutoCollapse` had already re-collapsed every
+	 * `collapsed_by_default` container it was about to be told to leave alone. The level advanced
+	 * to 4, the collapsed set did not, `collapseChanged` came out false, no layout ran, and the
+	 * diagram stayed on the previous level with anything new to it unsized at 0x0. Pressing expand
+	 * again worked because the ids had been marked seen by then, which is what made this look like
+	 * a sizing bug rather than an ordering one.
+	 */
+	onBeforeApply?: (autoCollapseIds: string[]) => void
 ): { newLevel: CollapseLevel; autoCollapseIds: string[] } {
 	const newLevel = nextEffectiveLevel('expand', allNodes, containerTypesStore, infraRuleId);
 	if (newLevel === null) return { newLevel: get(collapseLevel), autoCollapseIds: [] };
+
+	// At level 4 the auto-collapse containers must be exempted, so resolve them first and hand
+	// them over before anything can trigger a run.
+	const autoCollapseIds =
+		newLevel === 4 ? getAutoCollapseIds(allNodes, containerTypesStore, infraRuleId) : [];
+	onBeforeApply?.(autoCollapseIds);
 
 	const collapsed = computeCollapsedForLevel(newLevel, allNodes, containerTypesStore, infraRuleId);
 	collapsedContainers.set(collapsed);
 	collapseLevel.set(newLevel);
 
-	// At level 4, return auto-collapse IDs so caller can mark them as seen
-	const autoCollapseIds =
-		newLevel === 4 ? getAutoCollapseIds(allNodes, containerTypesStore, infraRuleId) : [];
 	return { newLevel, autoCollapseIds };
 }
 
