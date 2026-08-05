@@ -387,6 +387,15 @@
 	let cardClass = $derived(`card ${isNodeSelected ? 'card-selected' : ''}`);
 
 	// Handle styling lived here; `NodeHandles` now renders the geometry statically.
+
+	// A port card whose body is just the status line: no services, no body text, no MAC row. The
+	// wrapper that would centre a column of things has nothing to centre.
+	let onlyStatusLine = $derived(
+		Boolean(nodeRenderData?.portStatus) &&
+			!nodeRenderData?.showServices &&
+			!nodeRenderData?.bodyText &&
+			!nodeRenderData?.portStatus?.macAddress
+	);
 </script>
 
 {#if nodeRenderData}
@@ -439,7 +448,14 @@
 		{/if}
 
 		<!-- Body section -->
-		<div class="flex flex-1 flex-col items-center justify-center px-3 py-2">
+		<!-- The body region. `contents` when it holds a single status line, so the line itself takes
+		     the region's box instead of sitting inside another flex container — one element per port
+		     card. Anything richer (services, body text, a MAC line) still needs the real column. -->
+		<div
+			class={onlyStatusLine
+				? 'contents'
+				: 'flex flex-1 flex-col items-center justify-center px-3 py-2'}
+		>
 			{#if nodeRenderData.showServices}
 				{#snippet serviceCard(service: (typeof nodeRenderData.services)[number])}
 					{@const ServiceIcon = serviceDefinitions.getIconComponent(service.service_definition)}
@@ -649,19 +665,16 @@
 			{/if}
 			{#if nodeRenderData.portStatus}
 				{#snippet statusRow()}
-					<div class="flex items-center gap-1.5">
-						<span
-							class="text-xs font-medium"
-							style="color: {nodeRenderData.portStatus?.operStatus === 'Up'
-								? '#22c55e'
-								: nodeRenderData.portStatus?.operStatus === 'Down'
-									? '#ef4444'
-									: '#9ca3af'}">●</span
-						>
-						{#if nodeRenderData.portStatus?.speed}
-							<span class="text-tertiary text-xs">{nodeRenderData.portStatus.speed}</span>
-						{/if}
-					</div>
+					<!-- One span, not a row div wrapping a dot span and a speed span: the dot is a
+					     `::before` on the speed text. Three elements per port card became one. -->
+					<span
+						class="status-line text-tertiary text-xs"
+						style="--status-dot-color: {nodeRenderData.portStatus?.operStatus === 'Up'
+							? '#22c55e'
+							: nodeRenderData.portStatus?.operStatus === 'Down'
+								? '#ef4444'
+								: '#9ca3af'}">{nodeRenderData.portStatus?.speed ?? ''}</span
+					>
 				{/snippet}
 
 				<!-- The stacking wrapper only earns its place when there is a second row to stack. On a
@@ -694,3 +707,26 @@
 {#if edgeHandles.get(id)}
 	<NodeHandles size={ELEMENT_HANDLE_SIZE_PX} used={edgeHandles.get(id)!} />
 {/if}
+
+<style>
+	/*
+	 * Port status is a coloured dot before the speed, drawn with `::before`, rather than a span for
+	 * the dot and a span for the speed inside a flex row. Blink accounts for every element's style
+	 * and layout objects whether or not anything reads them, and at a few thousand cards that row
+	 * was three of them.
+	 */
+	.status-line {
+		/* Fills the body region when that region is `contents`; harmless otherwise. */
+		flex: 1;
+		justify-content: center;
+		padding: 0.5rem 0.75rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-weight: 500;
+	}
+	.status-line::before {
+		content: '●';
+		color: var(--status-dot-color);
+	}
+</style>
