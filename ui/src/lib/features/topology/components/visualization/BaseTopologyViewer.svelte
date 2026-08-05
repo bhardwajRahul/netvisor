@@ -732,6 +732,16 @@
 				}
 			);
 			measureDone();
+			// The measurement pass is over the moment `resolveNodeSizes` returns — it has already
+			// read every height it needed out of the DOM — so culling resumes here rather than at
+			// the end of the render.
+			//
+			// It must be cleared on this path, not only in the branches below. `resolveNodeSizes`
+			// calls `setMeasuring(false)` only when it goes stale, and of the render branches only
+			// the cold-load one ends with `endMeasurePass()`. A measure pass on an already-rendered
+			// graph — every expand at scale — therefore left the flag set for the rest of the
+			// session, suspending culling permanently and mounting the whole graph on every run.
+			measurePassActive = false;
 			if (!elementNodeSizes) {
 				endMeasurePass();
 				return;
