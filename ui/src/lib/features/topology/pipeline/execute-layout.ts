@@ -164,17 +164,6 @@ export async function executeLayout(
 		cacheDone();
 	}
 
-	// Cache measured sizes for this view
-	const viewCacheKey = `${currentView}:${topology.id}`;
-	const existingViewCache = state.viewSizeCache.get(viewCacheKey);
-	if (existingViewCache) {
-		for (const [id, size] of elementNodeSizes) {
-			existingViewCache.set(id, size);
-		}
-	} else {
-		state.viewSizeCache.set(viewCacheKey, new Map(elementNodeSizes));
-	}
-
 	return { visibleNodes };
 }
 

@@ -319,5 +319,25 @@ export async function resolveNodeSizes(
 		}
 	}
 
+	// Persist the measurement here, not after the layout.
+	//
+	// This used to live at the end of `executeLayout`, which meant a run that went stale on the way
+	// there threw its measurement away — and since the staleness check now bails *before* ELK, that
+	// became the common case rather than a rare one. At 19,095 nodes a full pass costs ~665MB and
+	// 5.5s, and one capture showed eight of them for eight runs: five superseded runs each measured
+	// the entire graph and discarded the result, so the next run found an empty cache and measured
+	// it again.
+	//
+	// A measurement is valid whether or not the layout that prompted it completes. Nothing below
+	// this point can invalidate it.
+	const existingViewCache = state.viewSizeCache.get(viewCacheKey);
+	if (existingViewCache) {
+		for (const [id, size] of elementNodeSizes) {
+			existingViewCache.set(id, size);
+		}
+	} else {
+		state.viewSizeCache.set(viewCacheKey, new Map(elementNodeSizes));
+	}
+
 	return elementNodeSizes;
 }
