@@ -43,6 +43,23 @@ import {
 const RAPID_PRESSES = 4;
 
 /**
+ * Expand, never collapse.
+ *
+ * A large dataset opens fully collapsed — level 1, every container shut — so `[` is a no-op there
+ * and a test driving it measures nothing while still passing. Expanding is also the direction the
+ * fault was reported in, and the one that grows the graph the layout has to place.
+ */
+const EXPAND = ']';
+
+/**
+ * Below this the graph is too small for a layout to cost anything worth asserting.
+ *
+ * The seeded L2 dataset reaches ~2,890 nodes fully expanded. A run against a handful of nodes would
+ * pass regardless of whether either fault were present.
+ */
+const MIN_NODES_TO_ASSERT = 1_000;
+
+/**
  * Layouts allowed on top of one per press.
  *
  * A cold load legitimately lays out more than once — the initial render, and a corrective pass once
@@ -68,11 +85,12 @@ test('rapid collapse presses cost one ELK layout each', async ({ page, context }
 
 	const settled = await readDiagnostics(page);
 	const baselineElk = settled.cumulative.elkRuns ?? 0;
+	const baselineNodes = settled.samples.at(-1)?.store.nodes ?? 0;
 
 	// Fire without waiting: the point is that presses overtake the run in flight. Waiting for each
 	// layout would test the case that never failed.
 	for (let i = 0; i < RAPID_PRESSES; i++) {
-		await page.keyboard.press('[');
+		await page.keyboard.press(EXPAND);
 		await page.waitForTimeout(250);
 	}
 	await waitForStableLayout(page);
@@ -80,9 +98,21 @@ test('rapid collapse presses cost one ELK layout each', async ({ page, context }
 	const after = await readDiagnostics(page);
 	const layouts = (after.cumulative.elkRuns ?? 0) - baselineElk;
 	const superseded = after.cumulative.runsSuperseded ?? 0;
+	const nodes = after.samples.at(-1)?.store.nodes ?? 0;
+
+	// Without this the test passes on a graph that never expanded — which is exactly what a run
+	// driving the collapse direction did, silently measuring nothing.
+	expect(
+		nodes,
+		`the graph did not grow (${baselineNodes} -> ${nodes} nodes), so the presses laid nothing out`
+	).toBeGreaterThan(baselineNodes);
+	expect(
+		nodes,
+		`graph reached only ${nodes} nodes — too small to exercise layout cost; reseed larger`
+	).toBeGreaterThanOrEqual(MIN_NODES_TO_ASSERT);
 
 	console.log(
-		`presses=${RAPID_PRESSES} elkRuns=${layouts} superseded=${superseded} ` +
+		`presses=${RAPID_PRESSES} nodes=${baselineNodes}->${nodes} elkRuns=${layouts} superseded=${superseded} ` +
 			`peakUsedHeap=${after.cumulative.peakUsedJSHeapMb}MB ` +
 			`peakTotalHeap=${after.cumulative.peakTotalJSHeapMb}MB ` +
 			`retainedHeap=${after.cumulative.usedJSHeapMb}MB`
@@ -113,8 +143,20 @@ test('a single collapse press does not hold both ELK graphs at once', async ({ p
 	await waitForStableLayout(page);
 	await page.locator('.svelte-flow').click({ position: { x: 5, y: 5 } });
 
+	// Walk out to the fully expanded end first: the interesting layout is the largest one, and a
+	// dataset this size opens fully collapsed where a press places almost nothing.
+	for (let i = 0; i < RAPID_PRESSES; i++) {
+		await page.keyboard.press(EXPAND);
+		await waitForStableLayout(page);
+	}
+
 	const before = await readDiagnostics(page);
 	const baselineElk = before.cumulative.elkRuns ?? 0;
+	const baselineNodes = before.samples.at(-1)?.store.nodes ?? 0;
+	expect(
+		baselineNodes,
+		`graph reached only ${baselineNodes} nodes when fully expanded; reseed larger`
+	).toBeGreaterThanOrEqual(MIN_NODES_TO_ASSERT);
 
 	// One press, allowed to finish: isolates a single layout's cost from any queueing effect.
 	await page.keyboard.press('[');
