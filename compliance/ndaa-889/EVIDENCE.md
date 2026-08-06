@@ -8,19 +8,19 @@
 | Field | Value |
 |-------|-------|
 | Standard | NDAA FY2019 Section 889 (covered-entity components) |
-| Generated (UTC) | 2026-08-02T15:39:35Z |
+| Generated (UTC) | 2026-08-02T16:03:54Z |
 | Repository | `scanopy/scanopy` |
-| Assessed commit | `bdf58f13e4823279bdf013d0f582ab8ff0ebf89a` (bdf58f1-dirty) |
+| Assessed commit | `9e948465128c7f65caa5ba54712c00c9b2e71c57` (9e94846-dirty) |
 | Components assessed | 8034 |
 | Prohibited-entity hits | 0 |
 | Reviewed exceptions | 2 |
 | SBOM generator | syft 1.45.1 |
-| Matcher | `tools/889/check-889.sh` @ bdf58f1 |
-| Vendor list | `tools/889/889-vendors.txt` @ bdf58f1 (sha256 `7f018a32dda6755f02f07a70cd76bc3e0a07c180a4dcf1bf7b23a118a663d611`) |
+| Matcher | `tools/889/check-889.sh` @ 9e94846 |
+| Vendor list | `tools/889/889-vendors.txt` @ 9e94846 (sha256 `7f018a32dda6755f02f07a70cd76bc3e0a07c180a4dcf1bf7b23a118a663d611`) |
 
 ## Scope assessed
 
-- Source tree at commit `bdf58f13e4823279bdf013d0f582ab8ff0ebf89a`
+- Source tree at commit `9e948465128c7f65caa5ba54712c00c9b2e71c57`
 - Image: `server` (`latest`)
 - Image: `daemon` (`latest`)
 
