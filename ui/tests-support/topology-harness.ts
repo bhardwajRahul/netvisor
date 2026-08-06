@@ -38,6 +38,8 @@ export interface DiagnosticsReport {
 			forceRendered: number;
 		} | null;
 		collapse: { level: number | null; collapsedContainers: number };
+		/** Mounted nodes at or below a few pixels in either dimension — a stale or missing size. */
+		degenerate?: { containers: number; elements: number };
 	}[];
 	cumulative: {
 		pipelineRuns: number;
