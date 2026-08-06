@@ -1,13 +1,20 @@
 <script lang="ts">
+	import { credentialItems } from '$lib/features/credentials/columns';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import type { Network } from '../types';
-	import NetworkCard from './NetworkCard.svelte';
 	import NetworkEditModal from './NetworkEditModal.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import type { FieldConfig } from '$lib/shared/components/data/types';
-	import { Plus } from 'lucide-svelte';
+	import { tagNames } from '$lib/features/tags/columns';
+	import { entityRef, type CardAction } from '$lib/shared/components/data/types';
+	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
+	import { useCredentialsQuery } from '$lib/features/credentials/queries';
+	import type { Credential } from '$lib/features/credentials/types/base';
+	import type { Daemon } from '$lib/features/daemons/types/base';
+	import type { Subnet } from '$lib/features/subnets/types/base';
+	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -18,6 +25,12 @@
 		common_confirmBulkDelete,
 		common_create,
 		common_created,
+		common_credentials,
+		common_daemons,
+		common_delete,
+		common_edit,
+		common_subnets,
+		common_vlans,
 		common_name,
 		common_networks,
 		common_noEntityYet,
@@ -36,6 +49,8 @@
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
+	import { useVlansQuery } from '$lib/features/vlans/queries';
+	import type { Vlan } from '$lib/features/vlans/types/base';
 	import { useDependenciesQuery } from '$lib/features/dependencies/queries';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
@@ -53,9 +68,11 @@
 
 	const tagsQuery = useTagsQuery();
 	const networksQuery = useNetworksQuery();
-	// Load related data for network cards
+	// What each network contains, resolved here so card and table share it.
 	const daemonsQuery = useDaemonsQuery();
-	useSubnetsQuery();
+	const subnetsQuery = useSubnetsQuery();
+	const vlansQuery = useVlansQuery();
+	const credentialsQuery = useCredentialsQuery();
 	useDependenciesQuery();
 
 	// Only the hosts the daemons run on. Each card needs one host name per daemon
@@ -76,6 +93,10 @@
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
+	let daemonsData = $derived(daemonsQuery.data ?? []);
+	let subnetsData = $derived(subnetsQuery.data ?? []);
+	let vlansData = $derived(vlansQuery.data ?? []);
+	let credentialsData = $derived(credentialsQuery.data ?? []);
 	let isLoading = $derived(networksQuery.isPending);
 	let isAtNetworkLimit = $derived(
 		networkLimit !== null && networksData.length >= networkLimit && !canBuyMore
@@ -116,6 +137,21 @@
 			currentUser &&
 			permissions.getMetadata(currentUser.permissions).manage_org_entities
 	);
+
+	/** Row actions for table mode, matching what the card offers. */
+	function networkActions(network: Network): CardAction[] {
+		if (!allowBulkDelete) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditNetwork(network) },
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteNetwork(network)
+			}
+		];
+	}
 
 	function handleDeleteNetwork(network: Network) {
 		if (confirm(networks_confirmDelete({ name: network.name }))) {
@@ -173,14 +209,58 @@
 		await downloadCsv('Network', {});
 	}
 
-	// Define field configuration for the DataTableControls
-	const networkFields: FieldConfig<Network>[] = [
+	// What a network contains. These were computed inside the card, so the table
+	// had no way to show them; resolving here is what gives both views the same
+	// columns.
+	function networkDaemons(network: Network): Daemon[] {
+		return daemonsData.filter((daemon) => daemon.network_id === network.id);
+	}
+
+	function networkSubnets(network: Network): Subnet[] {
+		return subnetsData.filter(
+			(subnet) =>
+				subnet.network_id === network.id &&
+				!subnetTypes.getMetadata(subnet.subnet_type).hide_from_subnet_list
+		);
+	}
+
+	function networkVlans(network: Network): Vlan[] {
+		return vlansData.filter((vlan) => vlan.network_id === network.id);
+	}
+
+	function networkCredentials(network: Network): Credential[] {
+		return (network.credential_ids ?? [])
+			.map((id) => credentialsData.find((c) => c.id === id))
+			.filter((c): c is Credential => Boolean(c));
+	}
+
+	// Derived, not a plain const: it closes over `tagsData` and references the
+	// `tagsCell` snippet, neither of which exists yet when the script body runs.
+	let networkFields = $derived<FieldConfig<Network>[]>([
 		{
 			key: 'name',
 			label: common_name(),
 			type: 'string',
 			searchable: true,
-			sortable: true
+			sortable: true,
+			display: { primary: true, width: 220, order: 0 }
+		},
+		{
+			key: 'vlans',
+			label: common_vlans(),
+			type: 'array',
+			searchable: true,
+			getValue: (network) => networkVlans(network).map((v) => v.name),
+			display: {
+				order: 1,
+				getItems: (network) =>
+					networkVlans(network).map((vlan) => ({
+						id: vlan.id,
+						label: vlan.name,
+						color: entities.getColorHelper('Vlan').color,
+						entityRef: entityRef('Vlan', vlan.id, vlan)
+					}))
+			}
 		},
 		{
 			key: 'tags',
@@ -188,20 +268,64 @@
 			type: 'array',
 			searchable: true,
 			filterable: true,
-			getValue: (entity) => {
-				// Return tag names for search/filter display
-				return entity.tags
-					.map((id) => tagsData.find((t) => t.id === id)?.name)
-					.filter((name): name is string => !!name);
+			getValue: (entity) => tagNames(entity.tags, tagsData)
+		},
+		{
+			key: 'daemons',
+			label: common_daemons(),
+			type: 'array',
+			searchable: true,
+			getValue: (network) => networkDaemons(network).map((d) => d.name),
+			display: {
+				order: 3,
+				getItems: (network) =>
+					networkDaemons(network).map((daemon) => ({
+						id: daemon.id,
+						label: daemon.name,
+						color: entities.getColorHelper('Daemon').color,
+						entityRef: entityRef('Daemon', daemon.id, daemon, {
+							hosts: daemonHosts,
+							subnets: subnetsData
+						})
+					}))
+			}
+		},
+		{
+			key: 'credentials',
+			label: common_credentials(),
+			type: 'array',
+			searchable: true,
+			getValue: (network) => networkCredentials(network).map((c) => c.name),
+			display: {
+				order: 4,
+				getItems: (network) => credentialItems(networkCredentials(network))
+			}
+		},
+		{
+			key: 'subnets',
+			label: common_subnets(),
+			type: 'array',
+			searchable: true,
+			getValue: (network) => networkSubnets(network).map((s) => s.name),
+			display: {
+				order: 2,
+				getItems: (network) =>
+					networkSubnets(network).map((subnet) => ({
+						id: subnet.id,
+						label: subnet.name,
+						color: entities.getColorHelper('Subnet').color,
+						entityRef: entityRef('Subnet', subnet.id, subnet)
+					}))
 			}
 		},
 		{
 			key: 'created_at',
 			label: common_created(),
 			type: 'date',
-			sortable: true
+			sortable: true,
+			display: { hiddenByDefault: true }
 		}
-	];
+	]);
 </script>
 
 <div class="space-y-6">
@@ -257,25 +381,14 @@
 			{allowBulkDelete}
 			storageKey="scanopy-networks-table-state"
 			getItemId={(item) => item.id}
+			getIcon={() => ({
+				icon: entities.getIconComponent('Network'),
+				color: entities.getColorHelper('Network').icon
+			})}
 			onCsvExport={handleCsvExport}
-		>
-			{#snippet children(
-				item: Network,
-				viewMode: 'card' | 'list',
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				<NetworkCard
-					network={item}
-					hosts={daemonHosts}
-					{viewMode}
-					selected={isSelected}
-					{onSelectionChange}
-					onDelete={handleDeleteNetwork}
-					onEdit={handleEditNetwork}
-				/>
-			{/snippet}
-		</DataControls>
+			getActions={networkActions}
+			entityLabel={common_networks()}
+		></DataControls>
 	{/if}
 </div>
 

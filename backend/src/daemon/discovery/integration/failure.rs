@@ -131,6 +131,19 @@ impl IntegrationFailure {
         }
     }
 
+    /// The collection ran out of time rather than failing.
+    ///
+    /// The integration's own cap fired, so the credential and the service are both fine and the
+    /// only thing missing is time. Kept separate from [`Self::collection_failed`] because the
+    /// operator's fix is different — narrow the scan or rescan the host alone, rather than go
+    /// looking for a broken endpoint.
+    pub fn collection_timed_out(message: impl Into<String>) -> Self {
+        Self {
+            outcome: AttemptOutcome::CollectionTimedOut,
+            message: message.into(),
+        }
+    }
+
     /// For the cases where the collection phase can establish something more specific — SNMP
     /// re-opening its session, for instance, which can time out on its own.
     pub fn with_outcome(outcome: AttemptOutcome, message: impl Into<String>) -> Self {

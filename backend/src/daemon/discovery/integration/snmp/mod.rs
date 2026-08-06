@@ -58,8 +58,8 @@ use crate::{
 };
 
 use super::{
-    DiscoveryIntegration, IntegrationContext, IntegrationFailure, ProbeContext, ProbeFailure,
-    ProbeSuccess,
+    Checkpoint, Completeness, DiscoveryIntegration, IntegrationContext, IntegrationFailure,
+    ProbeContext, ProbeFailure, ProbeSuccess,
 };
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::{
@@ -209,7 +209,8 @@ impl DiscoveryIntegration for SnmpIntegration {
         &self,
         ctx: &IntegrationContext<'_>,
         host_data: &mut HostData,
-    ) -> Result<(), IntegrationFailure> {
+        checkpoint: &Checkpoint<'_>,
+    ) -> Result<Completeness, IntegrationFailure> {
         // Downcast probe handle to get the working credential and port
         let handle = ctx
             .probe_handle
@@ -232,7 +233,7 @@ impl DiscoveryIntegration for SnmpIntegration {
                     error = %e,
                     "Failed to open SNMP session; skipping SNMP collection"
                 );
-                return Ok(());
+                return Ok(Completeness::Complete);
             }
         };
 
@@ -271,11 +272,15 @@ impl DiscoveryIntegration for SnmpIntegration {
             "SNMP ifTable walked"
         );
 
-        // Persist the interface set before the slower enrichment queries below. `host_data` is
-        // `&mut`, and mutations made before a timeout-abort of `execute()` survive in the caller
-        // (the integration-timeout wrapper swallows the error but keeps `host_data`), so a hang
-        // in any later query can no longer strand the host with zero interfaces. Enrichment data
-        // isn't collected yet, so these are bare; the enriched set replaces them at the end.
+        // Persist the interface set before the slower enrichment queries below, so a hang in any
+        // later query cannot strand the host with zero interfaces. This is the one deliberate
+        // mid-flight commit in the codebase; everything else is atomic.
+        //
+        // `InterfaceDataComplete::none()` rather than the default is load-bearing. None of the
+        // neighbour/FDB/VLAN walks has run at this point, so no group is authoritative, and
+        // claiming otherwise makes the server clear the very columns this checkpoint exists to
+        // protect. Pruning acts on the interface *set*, so `set_complete` is what gates it — not
+        // whether every attribute column also finished (#649).
         let network_id = host_data.host.base.network_id;
         let no_vlan_uuids = std::collections::HashMap::new();
         host_data.replace_interfaces(
@@ -285,10 +290,10 @@ impl DiscoveryIntegration for SnmpIntegration {
                     convert_snmp_if_entry(entry, network_id, &[], &[], &[], &[], &no_vlan_uuids)
                 })
                 .collect(),
+            if_table.set_complete,
+            InterfaceDataComplete::none(),
         );
-        // Pruning acts on the interface *set*, so that is what gates it — not whether every
-        // attribute column also finished (#649).
-        host_data.set_interfaces_complete(if_table.set_complete);
+        checkpoint.commit(host_data);
 
         // Record an incomplete walk on the session rather than leaving it to debug logs, keeping
         // which kind it was: a short interface list means interfaces are genuinely missing, while
@@ -324,6 +329,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let lldp_reason = lldp.reason;
         let lldp_authoritative = lldp.complete && !lldp.unsupported;
         let lldp_discarded = lldp.discarded;
+        let lldp_discard_reason = lldp.discard_reason;
         let mut lldp_neighbors = lldp.records;
         tracing::debug!(
             ip = %ip,
@@ -339,6 +345,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let cdp_complete = cdp.complete;
         let cdp_reason = cdp.reason;
         let cdp_discarded = cdp.discarded;
+        let cdp_discard_reason = cdp.discard_reason;
         let cdp_neighbors = cdp.records;
         tracing::debug!(
             ip = %ip,
@@ -352,18 +359,32 @@ impl DiscoveryIntegration for SnmpIntegration {
         // consequence differs — losing every neighbour on a switch takes it off L2 Physical
         // entirely, losing some leaves it there with holes — and because no rescan will change
         // either, which is the part an operator most needs told (GH #668).
-        for (group, discarded, kept) in [
-            (SnmpWalkGroup::Lldp, lldp_discarded, lldp_count),
-            (SnmpWalkGroup::Cdp, cdp_discarded, cdp_count),
+        for (group, discarded, kept, reason) in [
+            (
+                SnmpWalkGroup::Lldp,
+                lldp_discarded,
+                lldp_count,
+                lldp_discard_reason,
+            ),
+            (
+                SnmpWalkGroup::Cdp,
+                cdp_discarded,
+                cdp_count,
+                cdp_discard_reason,
+            ),
         ] {
-            ctx.ops
-                .record_malformed_neighbours(MalformedNeighbours {
-                    ip,
-                    group,
-                    discarded,
-                    kept,
-                })
-                .await;
+            // No reason means nothing was thrown away, and there is nothing to report.
+            if let Some(reason) = reason {
+                ctx.ops
+                    .record_malformed_neighbours(MalformedNeighbours {
+                        ip,
+                        group,
+                        discarded,
+                        kept,
+                        reason,
+                    })
+                    .await;
+            }
         }
 
         // Translate LLDP local-port indices (which are lldpLocPortNum values, a
@@ -459,8 +480,6 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Query VLAN table for VLAN names and persist as VLAN entities
         let vlan_table =
             query_or_default(ip, "vlan_table", query_vlan_table(&mut session, ip)).await;
-        // Summary status for the per-host diagnostic line below: no VLANs, upserted, or failed.
-        let mut vlan_upsert = "no_vlans";
         let vlan_number_to_uuid: std::collections::HashMap<u16, Uuid> = if !vlan_table.is_empty() {
             tracing::info!(
                 ip = %ip,
@@ -469,12 +488,8 @@ impl DiscoveryIntegration for SnmpIntegration {
                 "VLAN table entries collected"
             );
             match ctx.ops.upsert_vlans(&vlan_table, network_id).await {
-                Ok(mapping) => {
-                    vlan_upsert = "ok";
-                    mapping
-                }
+                Ok(mapping) => mapping,
                 Err(e) => {
-                    vlan_upsert = "failed";
                     tracing::warn!(ip = %ip, error = %e, "Failed to upsert VLANs, VLAN IDs will not be resolved");
                     // The switch answered in full and we could not record it. Silent until now,
                     // and the consequence is not small — every interface on this device loses
@@ -604,21 +619,21 @@ impl DiscoveryIntegration for SnmpIntegration {
                     )
                 })
                 .collect(),
+            // Whether this is a complete, authoritative ifTable. The server only prunes
+            // interfaces no longer reported when this is true, so a partial walk cannot tear
+            // down the host's L2 topology (GH #649).
+            if_table.set_complete,
+            // Which groups the server may treat as authoritative. A group we only read partially
+            // must not overwrite what is already stored — an empty result from a cut-short walk
+            // is indistinguishable from a device reporting nothing, and for the neighbour fields
+            // losing them drops the row out of L2 resolution for good.
+            InterfaceDataComplete {
+                lldp: lldp_authoritative,
+                cdp: cdp_complete,
+                fdb: fdb_complete,
+                vlan_membership: vlan_membership_complete,
+            },
         );
-        // Mark whether this SNMP interface set is a complete, authoritative ifTable. The server
-        // only prunes interfaces no longer reported when this is true, so a partial walk cannot
-        // tear down the host's L2 topology (GH #649).
-        host_data.set_interfaces_complete(if_table.set_complete);
-        // Tell the server which of these groups it may treat as authoritative. A group we only
-        // read partially must not overwrite what is already stored — an empty result from a
-        // cut-short walk is indistinguishable from a device reporting nothing, and for the
-        // neighbour fields losing them drops the row out of L2 resolution for good.
-        host_data.set_interface_data_complete(InterfaceDataComplete {
-            lldp: lldp_authoritative,
-            cdp: cdp_complete,
-            fdb: fdb_complete,
-            vlan_membership: vlan_membership_complete,
-        });
 
         // A cut-short neighbour walk used to be entirely silent — it took a database query to
         // discover that a switch had lost its chassis ids. Record it so the run can say so once,
@@ -663,25 +678,6 @@ impl DiscoveryIntegration for SnmpIntegration {
             },
         );
         ctx.ops.record_snmp_shortfalls(incomplete).await;
-
-        // GH #649: one consolidated per-host collection record. Ties together the scattered
-        // per-query lines above so a self-hosted operator (and we, from their logs) can see, at a
-        // glance per switch: how many interfaces were collected and whether the walk was complete
-        // (a partial walk is why the server now skips pruning), and the L2 source signals
-        // (ARP/FDB/LLDP/CDP) plus VLAN upsert status that feed neighbor resolution.
-        tracing::debug!(
-            ip = %ip,
-            if_count = snmp_if_entries.len(),
-            if_set_complete = if_table.set_complete,
-            if_attributes_complete = if_table.attributes_complete,
-            arp = arp_count,
-            fdb = fdb_count,
-            lldp = lldp_count,
-            cdp = cdp_count,
-            entity_inventory = has_entity_inventory,
-            vlan_upsert = vlan_upsert,
-            "SNMP host collection summary"
-        );
 
         // --- Discover remote subnets from ipAddrTable ---
         let scanning_subnet = ctx.scanning_subnet;
@@ -873,7 +869,10 @@ impl DiscoveryIntegration for SnmpIntegration {
             }
         }
 
-        Ok(())
+        // Shortfalls within SNMP are per-walk rather than per-collection — an incomplete ifTable
+        // or neighbour walk is recorded above with the group it came from, which says far more
+        // than a single count could. Reaching here means the collection itself ran to the end.
+        Ok(Completeness::Complete)
     }
 }
 

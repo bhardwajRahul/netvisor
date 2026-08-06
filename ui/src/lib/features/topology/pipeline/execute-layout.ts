@@ -5,6 +5,7 @@ import { ElkLayoutEngine } from '../layout/engine';
 import { computeForceLayout, type ForceNode, type ForceLink } from '../layout/force-layout';
 import { containerTypes } from '$lib/shared/stores/metadata';
 import * as perf from '../perf';
+import { noteRunDetail, noteElkRun } from '../diagnostics';
 
 const layoutEngine = new ElkLayoutEngine();
 
@@ -68,13 +69,28 @@ export async function executeLayout(
 			layoutNodes,
 			collapsed,
 			structureKey,
-			baseKey
+			baseKey,
+			prevExpandedSizes
 		);
 	} else {
 		// ELK layout path
 		const elkCollapsed = deferCollapse ? new Set<string>() : collapsed;
 		const elkNodes = deferCollapse ? layoutNodes : visibleNodes;
 
+		// Last chance to abandon a superseded run before the expensive part.
+		//
+		// ELK is ~96% of pipeline time and the bulk of the allocation — runs measured at 1.8-3.7s
+		// costing 250-340MB each. Collapse presses arrive faster than that, so the run in flight is
+		// routinely known-stale before it even starts laying out, and the check after `compute()`
+		// below paid for the layout in full before discarding it. Checking here turns a superseded
+		// press into no ELK run at all.
+		if (isStale()) {
+			perf.count('elk-skipped-stale');
+			noteRunDetail({ supersededBeforeElk: true });
+			return null;
+		}
+
+		noteElkRun();
 		const elkComputeDone = perf.stage('layout.elk-compute');
 		const elkResult = await layoutEngine.compute({
 			nodes: elkNodes,
@@ -93,9 +109,18 @@ export async function executeLayout(
 		state.sessionStructureKey = structureKey;
 		state.sessionBaseKey = baseKey;
 
-		// Rebuild graph and apply ELK result
+		// Rebuild the graph only when the node set changed; otherwise reuse and re-sync.
+		//
+		// Rebuilding on every layout discarded a graph that was structurally identical whenever only
+		// collapse had moved, and each rebuild zeroes every `expandedSize` — recovered immediately
+		// below, but only for containers `prevExpandedSizes` knows about. Reusing keeps the sizes
+		// that are already correct and drops one full graph construction per press. `prepare` uses
+		// the same `isNewBaseStructure` test, so the two stay in agreement about when a graph is
+		// still valid.
 		const graphBuildDone = perf.stage('layout.graph-build');
-		state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
+		if (!state.layoutGraph || prep.isNewBaseStructure) {
+			state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
+		}
 		if (!deferCollapse) {
 			state.layoutGraph.syncCollapseState(collapsed);
 			if (prevExpandedSizes) {
@@ -113,6 +138,7 @@ export async function executeLayout(
 			elkResult.elementNodeSizes
 		);
 		applyDone();
+		noteRunDetail({ elkSizedContainers: elkResult.containerSizes.size });
 
 		// When collapse was deferred, apply it AFTER ELK result
 		if (deferCollapse) {
@@ -138,17 +164,6 @@ export async function executeLayout(
 		cacheDone();
 	}
 
-	// Cache measured sizes for this view
-	const viewCacheKey = `${currentView}:${topology.id}`;
-	const existingViewCache = state.viewSizeCache.get(viewCacheKey);
-	if (existingViewCache) {
-		for (const [id, size] of elementNodeSizes) {
-			existingViewCache.set(id, size);
-		}
-	} else {
-		state.viewSizeCache.set(viewCacheKey, new Map(elementNodeSizes));
-	}
-
 	return { visibleNodes };
 }
 
@@ -163,7 +178,8 @@ export async function handlePortExpansion(
 	buildMeasureNodes: () => import('@xyflow/svelte').Node[],
 	setNodes: (nodes: import('@xyflow/svelte').Node[]) => void,
 	isStale: () => boolean,
-	needsElk: boolean
+	needsElk: boolean,
+	viewCacheKey: string
 ): Promise<boolean> {
 	const portsChanged =
 		currentExpandedPorts.size !== state.prevExpandedPortIds.size ||
@@ -181,13 +197,20 @@ export async function handlePortExpansion(
 		// Re-measure affected nodes and update graph
 		if (containerElement) {
 			const changedIds = new Set([...currentExpandedPorts, ...state.prevExpandedPortIds]);
+			const viewCache = state.viewSizeCache.get(viewCacheKey);
 			for (const nodeId of changedIds) {
 				const el = containerElement.querySelector(`[data-id="${nodeId}"]`) as HTMLElement;
 				if (el) {
-					state.layoutGraph.updateElementSize(nodeId, {
-						x: el.offsetWidth || 250,
-						y: el.offsetHeight || 100
-					});
+					const size = { x: el.offsetWidth || 250, y: el.offsetHeight || 100 };
+					state.layoutGraph.updateElementSize(nodeId, size);
+					viewCache?.set(nodeId, size);
+				} else {
+					// Not mounted, so not measurable — it is off screen and culled. Drop its cached
+					// size rather than leaving the pre-toggle height in place: without a cached size
+					// the node is built without a size seed, which makes SvelteFlow render it once
+					// and measure it for real the next time it comes into view. Keeping the stale
+					// height would leave a card-sized gap in the layout that nothing corrects.
+					viewCache?.delete(nodeId);
 				}
 			}
 		}
@@ -208,7 +231,8 @@ function executeForceLayout(
 	layoutNodes: TopologyNode[],
 	collapsed: Set<string>,
 	structureKey: string,
-	baseKey: string
+	baseKey: string,
+	prevExpandedSizes: Map<string, { width: number; height: number }> | undefined
 ): TopologyNode[] {
 	const forceNodes: ForceNode[] = rootContainerNodes.map((n) => {
 		const measured = elementNodeSizes.get(n.id);
@@ -244,6 +268,14 @@ function executeForceLayout(
 	state.sessionBaseKey = baseKey;
 	state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
 	state.layoutGraph.syncCollapseState(collapsed);
+	// Same restore as the ELK path above, and for the same reason: rebuilding recreates every
+	// container with `expandedSize` at {0, 0}, and the force layout only sizes the root containers
+	// it was given. Without this, anything it does not touch is left at zero, `getContainerSize`
+	// returns that rather than undefined, and the container renders as its borders with its
+	// contents outside — persistently, until something forces a fresh ELK run.
+	if (prevExpandedSizes) {
+		state.layoutGraph.restoreExpandedSizes(prevExpandedSizes);
+	}
 	state.layoutGraph.applyForceResult(forceResult.nodePositions, elementNodeSizes);
 
 	// Recompute visible nodes after force layout rebuilds the graph

@@ -1,9 +1,11 @@
+import { get } from 'svelte/store';
 import { describe, it, expect } from 'vitest';
 import {
 	computeCollapsedForLevel,
 	inferCurrentLevel,
 	scaleCollapseCandidates,
 	nextEffectiveLevel,
+	stepExpand,
 	collapseLevel,
 	collapsedContainers
 } from '$lib/features/topology/collapse';
@@ -204,5 +206,63 @@ describe('nextEffectiveLevel — skipping rungs that change nothing', () => {
 		collapseLevel.set(1);
 		collapsedContainers.set(computeCollapsedForLevel(1, layered, containerTypes, null));
 		expect(nextEffectiveLevel('collapse', layered, containerTypes, null)).toBe(null);
+	});
+});
+
+describe('stepExpand ordering', () => {
+	// Writing `collapsedContainers` notifies subscribers synchronously, and the viewer's
+	// subscriber runs the pipeline as far as `prepare` before returning. So anything the caller
+	// does *after* stepExpand returns is too late to affect the run that stepExpand caused —
+	// which is how the auto-collapse containers got re-collapsed by the very run that was meant
+	// to expand them, leaving the level advanced and the diagram unchanged.
+	it('hands over auto-collapse ids before writing the collapse stores', () => {
+		const nodes = [
+			container('root', 'Subnet'),
+			container('auto', 'ApplicationUngrouped', 'root'),
+			element('e1', 'auto')
+		];
+
+		collapseLevel.set(3);
+		collapsedContainers.set(new Set(['auto']));
+
+		let storeWhenCalled: Set<string> | null = null;
+		stepExpand(nodes, containerTypes, null, () => {
+			// Snapshot what the store still holds at the moment the caller is handed the ids.
+			storeWhenCalled = new Set(get(collapsedContainers));
+		});
+
+		expect(storeWhenCalled, 'callback never ran').not.toBeNull();
+		expect(
+			storeWhenCalled,
+			'the collapse stores were written before the caller could mark ids seen'
+		).toEqual(new Set(['auto']));
+	});
+});
+
+describe('stepping the ladder protects what the level leaves open', () => {
+	// Auto-collapse is one-shot per container via `seenAutoCollapseIds`, which lives in memory
+	// while `collapsedContainers` is persisted. After a reload the graph is collapsed and that
+	// record is empty, so without this the next pipeline run re-collapsed everything the ladder
+	// had just expanded — the ladder then took two presses per rung, one moving the number and
+	// the next moving the graph.
+	it('reports the collapsible containers the new level leaves expanded', () => {
+		const nodes = [
+			container('root', 'Subnet'),
+			container('sub', 'NestedTag', 'root'),
+			element('e1', 'sub')
+		];
+
+		collapseLevel.set(1);
+		collapsedContainers.set(new Set(['root', 'sub']));
+
+		let handed: string[] = [];
+		stepExpand(nodes, containerTypes, null, (ids) => {
+			handed = ids;
+		});
+
+		// Level 2 opens root containers and keeps subcontainers closed, so `root` must be
+		// exempted from auto-collapse and `sub` must not.
+		expect(handed).toContain('root');
+		expect(handed).not.toContain('sub');
 	});
 });

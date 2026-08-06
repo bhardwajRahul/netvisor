@@ -51,7 +51,14 @@ const HEIGHT_TOLERANCE_PX = 0;
 export function fillMissingSizesByShapeKey(
 	visibleNodes: TopologyNode[],
 	topology: RenderableTopology,
-	measured: Map<string, XY>
+	measured: Map<string, XY>,
+	/**
+	 * Ids of elements no shape key could resolve, collected when supplied.
+	 *
+	 * The count alone only supports "give up and re-measure everything", which at 19,095 nodes is a
+	 * ~665MB full pass to learn a handful of sizes. The ids let the caller measure just those.
+	 */
+	unresolvedIds?: Set<string>
 ): number {
 	const context = currentElementRenderContext();
 	const keyOf = (node: TopologyNode): string | null => {
@@ -73,12 +80,29 @@ export function fillMissingSizesByShapeKey(
 	}
 
 	let stillMissing = 0;
+	// One id per unresolved key, not every unresolved node.
+	//
+	// The caller measures what this reports, and cards sharing a shape key measure identically —
+	// that is the whole premise of the key. Reporting all of them made a cold cache ask for the
+	// entire graph, which is a full measurement pass by another name: 746MB and 5.5s at 19,095
+	// nodes, where a handful of representatives would do. The caller re-runs this fill afterwards to
+	// spread each measured size across its key.
+	const representativeFor = new Set<string>();
 	for (const node of elements) {
 		if (measured.has(node.id)) continue;
 		const key = keyOf(node);
 		const known = key ? sizeByKey.get(key) : undefined;
-		if (known) measured.set(node.id, known);
-		else stillMissing++;
+		if (known) {
+			measured.set(node.id, known);
+		} else {
+			stillMissing++;
+			// A node with no shape key at all cannot be spoken for by anything else, so it is always
+			// its own representative.
+			if (key === null || !representativeFor.has(key)) {
+				if (key !== null) representativeFor.add(key);
+				unresolvedIds?.add(node.id);
+			}
+		}
 	}
 	return stillMissing;
 }

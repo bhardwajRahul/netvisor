@@ -39,7 +39,8 @@ async fn test_service_network_validation(ctx: &TestContext) -> Result<(), String
         hostname: Some("validation.local".to_string()),
         network_id: ctx.network_id,
         description: None,
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         hidden: false,
         tags: Vec::new(),
         // SNMP fields
@@ -65,7 +66,8 @@ async fn test_service_network_validation(ctx: &TestContext) -> Result<(), String
         bindings: vec![],
         network_id: second_network.id, // Different network than host!
         service_definition: service_def,
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         source: EntitySource::System,
         tags: Vec::new(),
         position: 0,

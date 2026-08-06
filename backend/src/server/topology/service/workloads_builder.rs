@@ -50,23 +50,17 @@ impl ViewBuilder for WorkloadsBuilder {
         // --- Phase 1: Build lookup maps (provider-agnostic) ---
 
         // virtualizer_service_id → managed VM host_ids
-        // (from hosts with virtualization, using the generic service_id() accessor)
         let mut virt_to_vm_hosts: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
         for host in ctx.hosts {
-            if let Some(ref virt) = host.base.virtualization
-                && let Some(svc_id) = virt.service_id()
-            {
+            if let Some(svc_id) = host.base.virtualization_service_id {
                 virt_to_vm_hosts.entry(svc_id).or_default().push(host.id);
             }
         }
 
         // virtualizer_service_id → managed container service_ids
-        // (from services with virtualization, using the generic service_id() accessor)
         let mut virt_to_container_svcs: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
         for service in ctx.services {
-            if let Some(ref virt) = service.base.virtualization
-                && let Some(svc_id) = virt.service_id()
-            {
+            if let Some(svc_id) = service.base.virtualization_service_id {
                 virt_to_container_svcs
                     .entry(svc_id)
                     .or_default()
@@ -109,7 +103,7 @@ impl ViewBuilder for WorkloadsBuilder {
 
         for host in ctx.hosts {
             // VMs are elements only, never containers
-            if host.base.virtualization.is_some() {
+            if host.base.virtualization_service_id.is_some() {
                 continue;
             }
 
@@ -167,7 +161,7 @@ impl ViewBuilder for WorkloadsBuilder {
             let host_id = virt_svc.base.host_id;
             let is_on_vm = host_lookup
                 .get(&host_id)
-                .is_some_and(|h| h.base.virtualization.is_some());
+                .is_some_and(|h| h.base.virtualization_service_id.is_some());
 
             let container_id = if is_on_vm {
                 // VM host → find hypervisor host container
@@ -224,7 +218,7 @@ impl ViewBuilder for WorkloadsBuilder {
             // have their own containers). apply_element_rules will InlineOn these.
             let container_id = if host_lookup
                 .get(&service.base.host_id)
-                .is_some_and(|h| h.base.virtualization.is_some())
+                .is_some_and(|h| h.base.virtualization_service_id.is_some())
             {
                 // Find the hypervisor host container via virt_to_vm_hosts reverse lookup
                 let hypervisor_host_id = virt_to_vm_hosts
@@ -270,11 +264,7 @@ impl ViewBuilder for WorkloadsBuilder {
                     ..
                 } => {
                     let host = host_lookup.get(&node.id)?;
-                    let virtualizer_service_id = host
-                        .base
-                        .virtualization
-                        .as_ref()
-                        .and_then(|v| v.service_id());
+                    let virtualizer_service_id = host.base.virtualization_service_id;
                     let tag_ids =
                         resolve_element_tag_ids(EntityDiscriminants::Host, node.id, &tag_lookups);
                     Some(ElementMatchData {
@@ -295,11 +285,7 @@ impl ViewBuilder for WorkloadsBuilder {
                     ..
                 } => {
                     let svc = service_lookup.get(&node.id)?;
-                    let virtualizer_service_id = svc
-                        .base
-                        .virtualization
-                        .as_ref()
-                        .and_then(|v| v.service_id());
+                    let virtualizer_service_id = svc.base.virtualization_service_id;
                     let tag_ids = resolve_element_tag_ids(
                         EntityDiscriminants::Service,
                         node.id,
@@ -758,11 +744,11 @@ mod tests {
             updated_at: Utc::now(),
             base: HostBase {
                 name: name.to_string(),
-                virtualization: Some(HostVirtualization::Proxmox(ProxmoxVirtualization {
+                virtualization_metadata: Some(HostVirtualization::Proxmox(ProxmoxVirtualization {
                     vm_name: Some(name.to_string()),
                     vm_id: None,
-                    service_id: proxmox_service_id,
                 })),
+                virtualization_service_id: Some(proxmox_service_id),
                 ..Default::default()
             },
             ..Default::default()
@@ -808,12 +794,14 @@ mod tests {
                 host_id,
                 service_definition: Box::new(RegularDef),
                 name: name.to_string(),
-                virtualization: Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_name: Some(name.to_string()),
-                    container_id: None,
-                    service_id: docker_service_id,
-                    compose_project: None,
-                })),
+                virtualization_metadata: Some(ServiceVirtualization::Docker(
+                    DockerVirtualization {
+                        container_name: Some(name.to_string()),
+                        container_id: None,
+                        compose_project: None,
+                    },
+                )),
+                virtualization_service_id: Some(docker_service_id),
                 ..Default::default()
             },
             ..Default::default()

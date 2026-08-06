@@ -11,11 +11,10 @@
 			if (!context?.topology || !('service_id' in edge)) return 'Container Runtime';
 			// Find containerized services (services whose virtualization points to this containerizer)
 			const containerizingId = edge.service_id;
+			// Any container runtime, not just Docker — the runtime is whichever service this
+			// points at, so Podman containers are counted here too.
 			const containerized = context.topology.services.filter(
-				(s) =>
-					s.virtualization &&
-					s.virtualization.type === 'Docker' &&
-					s.virtualization.details.service_id === containerizingId
+				(s) => s.virtualization_service_id === containerizingId
 			);
 			if (containerized.length === 0) return 'Container Runtime';
 			if (containerized.length === 1) return containerized[0].name;

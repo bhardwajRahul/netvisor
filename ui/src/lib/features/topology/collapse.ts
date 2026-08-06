@@ -392,30 +392,86 @@ function isStrictSuperset(a: Set<string>, b: Set<string>): boolean {
 export function stepExpand(
 	allNodes: TopologyNode[],
 	containerTypesStore: ContainerTypesAccessor,
-	infraRuleId: string | null
+	infraRuleId: string | null,
+	/**
+	 * Called with the auto-collapse ids *before* the stores are written.
+	 *
+	 * Writing `collapsedContainers` notifies its subscribers synchronously, and the viewer's
+	 * subscriber runs the pipeline far enough to reach `prepare` before `set` returns — so by the
+	 * time this function returned its ids, `applyAutoCollapse` had already re-collapsed every
+	 * `collapsed_by_default` container it was about to be told to leave alone. The level advanced
+	 * to 4, the collapsed set did not, `collapseChanged` came out false, no layout ran, and the
+	 * diagram stayed on the previous level with anything new to it unsized at 0x0. Pressing expand
+	 * again worked because the ids had been marked seen by then, which is what made this look like
+	 * a sizing bug rather than an ordering one.
+	 */
+	onBeforeApply?: (idsLeftExpanded: string[]) => void
 ): { newLevel: CollapseLevel; autoCollapseIds: string[] } {
 	const newLevel = nextEffectiveLevel('expand', allNodes, containerTypesStore, infraRuleId);
 	if (newLevel === null) return { newLevel: get(collapseLevel), autoCollapseIds: [] };
 
 	const collapsed = computeCollapsedForLevel(newLevel, allNodes, containerTypesStore, infraRuleId);
+	const idsLeftExpanded = autoCollapseCandidatesLeftExpanded(
+		allNodes,
+		containerTypesStore,
+		infraRuleId,
+		collapsed
+	);
+	onBeforeApply?.(idsLeftExpanded);
+
 	collapsedContainers.set(collapsed);
 	collapseLevel.set(newLevel);
 
-	// At level 4, return auto-collapse IDs so caller can mark them as seen
-	const autoCollapseIds =
-		newLevel === 4 ? getAutoCollapseIds(allNodes, containerTypesStore, infraRuleId) : [];
-	return { newLevel, autoCollapseIds };
+	return { newLevel, autoCollapseIds: idsLeftExpanded };
+}
+
+/**
+ * Candidates the chosen level deliberately leaves open.
+ *
+ * Auto-collapse — both `collapsed_by_default` and scale collapse — is one-shot per container,
+ * gated on `seenAutoCollapseIds`. That set lives in memory while `collapsedContainers` is
+ * persisted to `localStorage`, so after a reload the stored graph is collapsed and the "already
+ * had its shot" record is empty. Stepping the ladder then wrote the new level's collapsed set and
+ * the very next pipeline run put every scale-collapse candidate straight back.
+ *
+ * The visible result was a ladder that took two presses per rung: the first moved the number while
+ * the graph stayed put, and the second moved the graph while the number stayed put — because
+ * `nextEffectiveLevel` re-derives the current level from the collapsed set, which had not moved.
+ *
+ * Choosing a level is an explicit instruction about every container that level covers, so
+ * everything it leaves open is marked seen and auto-collapse leaves it alone. That is the same
+ * promise `applyAutoCollapse` already makes for a container the user expands by hand.
+ */
+function autoCollapseCandidatesLeftExpanded(
+	allNodes: TopologyNode[],
+	containerTypesStore: ContainerTypesAccessor,
+	infraRuleId: string | null,
+	collapsed: Set<string>
+): string[] {
+	const candidates = new Set<string>([
+		// `ignoreThreshold` so the set is the same whether or not this graph is large enough to
+		// scale-collapse — below the threshold there is simply nothing to protect against.
+		...scaleCollapseCandidates(allNodes, containerTypesStore, true),
+		...getAutoCollapseIds(allNodes, containerTypesStore, infraRuleId)
+	]);
+	return [...candidates].filter((id) => !collapsed.has(id));
 }
 
 export function stepCollapse(
 	allNodes: TopologyNode[],
 	containerTypesStore: ContainerTypesAccessor,
-	infraRuleId: string | null
+	infraRuleId: string | null,
+	/** See `stepExpand` — same ordering and same one-shot bookkeeping. */
+	onBeforeApply?: (idsLeftExpanded: string[]) => void
 ): { newLevel: CollapseLevel } {
 	const newLevel = nextEffectiveLevel('collapse', allNodes, containerTypesStore, infraRuleId);
 	if (newLevel === null) return { newLevel: get(collapseLevel) };
 
 	const collapsed = computeCollapsedForLevel(newLevel, allNodes, containerTypesStore, infraRuleId);
+	onBeforeApply?.(
+		autoCollapseCandidatesLeftExpanded(allNodes, containerTypesStore, infraRuleId, collapsed)
+	);
+
 	collapsedContainers.set(collapsed);
 	collapseLevel.set(newLevel);
 	return { newLevel };

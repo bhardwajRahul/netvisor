@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use std::hash::Hash;
 use strum_macros::{EnumDiscriminants, EnumIter, IntoStaticStr, VariantNames};
 use utoipa::ToSchema;
-use uuid::Uuid;
 use validator::Validate;
 
 use crate::server::{
@@ -15,7 +14,7 @@ use crate::server::{
             metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
         },
     },
-    topology::types::views::{HasFilterValues, MetadataFilterType},
+    topology::types::views::{FilterValueContext, HasFilterValues, MetadataFilterType},
 };
 
 #[derive(
@@ -49,8 +48,6 @@ pub struct ProxmoxVirtualization {
     pub vm_name: Option<String>,
     /// Proxmox VMID of the guest.
     pub vm_id: Option<String>,
-    /// The service this entity refers to.
-    pub service_id: Uuid,
 }
 
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
@@ -59,8 +56,6 @@ pub struct VCenterVirtualization {
     pub vm_name: Option<String>,
     /// vCenter managed object ID of the guest.
     pub vm_id: Option<String>,
-    /// The service this entity refers to.
-    pub service_id: Uuid,
 }
 
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
@@ -69,27 +64,12 @@ pub struct EsxiVirtualization {
     pub vm_name: Option<String>,
     /// ESXi identifier of the guest.
     pub vm_id: Option<String>,
-    /// The service this entity refers to.
-    pub service_id: Uuid,
 }
 
-impl HostVirtualization {
-    pub fn service_id(&self) -> Option<Uuid> {
-        match self {
-            Self::Proxmox(p) => Some(p.service_id),
-            Self::VCenter(v) => Some(v.service_id),
-            Self::ESXi(e) => Some(e.service_id),
-        }
-    }
-
-    pub fn set_service_id(&mut self, id: Uuid) {
-        match self {
-            Self::Proxmox(p) => p.service_id = id,
-            Self::VCenter(v) => v.service_id = id,
-            Self::ESXi(e) => e.service_id = id,
-        }
-    }
-}
+// The virtualizing service is `Host::virtualization_service_id`, a real foreign key, rather than
+// a field inside each of these payloads. Readers used to `match` a single variant to reach it —
+// `get_host_is_virtualized_by` handled only Proxmox — so vCenter and ESXi guests silently had no
+// hypervisor. A column has no variants to miss.
 
 impl HasId for HostVirtualization {
     fn id(&self) -> &'static str {
@@ -194,10 +174,11 @@ impl TypeMetadataProvider for HostVirtualizationState {
 }
 
 impl HasFilterValues for Host {
-    fn filter_values(&self) -> BTreeMap<MetadataFilterType, String> {
+    fn filter_values(&self, _ctx: &FilterValueContext) -> BTreeMap<MetadataFilterType, String> {
         let mut values = BTreeMap::new();
-        let state =
-            HostVirtualizationState::from_host_virtualization(self.base.virtualization.as_ref());
+        let state = HostVirtualizationState::from_host_virtualization(
+            self.base.virtualization_metadata.as_ref(),
+        );
         values.insert(MetadataFilterType::Virtualization, state.id().to_string());
         values
     }
@@ -213,13 +194,10 @@ mod tests {
         // from ServiceDefinition::virtualization_variant). Confirm each tag
         // deserializes and round-trips, and that the tag == HasId::id().
         for tag in ["Proxmox", "VCenter", "ESXi"] {
-            let json = format!(
-                r#"{{"type":"{tag}","details":{{"vm_name":null,"vm_id":null,"service_id":"00000000-0000-0000-0000-000000000000"}}}}"#
-            );
+            let json = format!(r#"{{"type":"{tag}","details":{{"vm_name":null,"vm_id":null}}}}"#);
             let v: HostVirtualization =
                 serde_json::from_str(&json).unwrap_or_else(|e| panic!("{tag}: {e}"));
             assert_eq!(v.id(), tag, "id() must equal serde tag for {tag}");
-            assert_eq!(v.service_id(), Some(Uuid::nil()));
             let reserialized = serde_json::to_value(&v).unwrap();
             assert_eq!(reserialized["type"], tag);
         }

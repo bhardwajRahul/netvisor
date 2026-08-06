@@ -27,7 +27,7 @@ impl ServiceDefinition for DockerContainer {
             Pattern::Custom(
                 |p: &DiscoverySessionServiceMatchParams| {
                     // If there's a matched service with the id of the container, the container was already detected as a non-generic service
-                    let c_id = match p.baseline_params.virtualization {
+                    let c_id = match p.baseline_params.virtualization_metadata {
                         Some(ServiceVirtualization::Docker(DockerVirtualization {
                             container_id: Some(id),
                             ..
@@ -35,16 +35,15 @@ impl ServiceDefinition for DockerContainer {
                         _ => return false, // No docker container_id -> not a docker container
                     };
 
-                    p.service_params
-                        .matched_services
-                        .iter()
-                        .all(|s| match &s.base.virtualization {
+                    p.service_params.matched_services.iter().all(|s| {
+                        match &s.base.virtualization_metadata {
                             Some(ServiceVirtualization::Docker(DockerVirtualization {
                                 container_id,
                                 ..
                             })) if container_id.is_some() => *container_id != Some(c_id.clone()),
                             _ => true,
-                        })
+                        }
+                    })
                 },
                 // The generic container owns all of its own ports, so bind them here. Otherwise
                 // they stay in unbound_ports and "Unclaimed Open Ports" re-claims them.

@@ -337,11 +337,26 @@ export class LayoutGraph {
 		return sizes;
 	}
 
-	/** Restore expanded sizes from a previous layout (for collapsed containers across rebuilds) */
+	/**
+	 * Restore expanded sizes from a previous layout, so a rebuild does not lose them.
+	 *
+	 * Applies to expanded containers as well as collapsed ones. It used to skip anything not
+	 * collapsed, which quietly made a rebuild destructive at exactly the moment it hurts most: a
+	 * rebuild recreates every `LayoutContainer` with `expandedSize` back at `{0, 0}`, and at
+	 * collapse level 4 nothing is collapsed, so nothing was restored. Any run that rebuilt the
+	 * graph without also re-running ELK then left `getContainerSize` returning zero, the nodes
+	 * built with `width: 0, height: 0`, and the containers rendering as 2px slivers with their
+	 * contents outside — persistently, until something forced a fresh layout. A customer's report
+	 * caught 258 such containers appearing on a single mid-session pipeline run, 33 seconds after
+	 * the same graph had rendered correctly.
+	 *
+	 * A restored size can be stale if the container's children changed, but ELK overwrites it the
+	 * moment it runs; the value only has to be better than zero, and zero is never right.
+	 */
 	restoreExpandedSizes(sizes: Map<string, { width: number; height: number }>): void {
 		for (const [id, size] of sizes) {
 			const container = this.containers.get(id);
-			if (container && container.collapsed) {
+			if (container) {
 				container.expandedSize = { ...size };
 			}
 		}

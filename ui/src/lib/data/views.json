@@ -53,12 +53,47 @@
       },
       "element_config": {
         "container_entity": "Host",
+        "default_hidden_values": {
+          "Interface": {
+            "LinkState": [
+              "Unlinked"
+            ]
+          },
+          "Service": {
+            "Category": [
+              "OpenPorts"
+            ]
+          }
+        },
         "element_entities": [
           {
             "entity_type": "Interface",
             "inline_entities": []
           }
-        ]
+        ],
+        "metadata_filters": {
+          "Interface": [
+            {
+              "applies": "Server",
+              "filter_type": "LinkState",
+              "label": "By link",
+              "values": [
+                {
+                  "color": "Green",
+                  "icon": "cable",
+                  "id": "Linked",
+                  "label": "Linked"
+                },
+                {
+                  "color": "Gray",
+                  "icon": "circle",
+                  "id": "Unlinked",
+                  "label": "Unlinked"
+                }
+              ]
+            }
+          ]
+        }
       },
       "inspector_config": {
         "container_sections": [
@@ -114,13 +149,7 @@
           "type": "disabled"
         },
         "PhysicalLink": {
-          "affects_layout": false,
-          "default_visibility": "hidden",
-          "highlight_behavior": "when_visible",
-          "show_directionality": false,
-          "stroke": "dashed",
-          "type": "active",
-          "will_target_container": false
+          "type": "disabled"
         },
         "RequestPath": {
           "affects_layout": false,
@@ -152,6 +181,13 @@
       },
       "element_config": {
         "container_entity": "Subnet",
+        "default_hidden_values": {
+          "Service": {
+            "Category": [
+              "OpenPorts"
+            ]
+          }
+        },
         "element_entities": [
           {
             "entity_type": "IPAddress",
@@ -164,6 +200,7 @@
         "metadata_filters": {
           "Service": [
             {
+              "applies": "Client",
               "filter_type": "Category",
               "label": "By category",
               "values": [
@@ -398,6 +435,7 @@
               ]
             },
             {
+              "applies": "Client",
               "filter_type": "Staleness",
               "label": "By staleness",
               "values": [
@@ -496,6 +534,13 @@
       "element_config": {
         "collective_noun": "workload",
         "container_entity": "Host",
+        "default_hidden_values": {
+          "Service": {
+            "Category": [
+              "OpenPorts"
+            ]
+          }
+        },
         "element_entities": [
           {
             "entity_type": "Service",
@@ -511,6 +556,7 @@
         "metadata_filters": {
           "Host": [
             {
+              "applies": "Client",
               "filter_type": "Virtualization",
               "label": "By virtualization",
               "values": [
@@ -529,6 +575,7 @@
               ]
             },
             {
+              "applies": "Client",
               "filter_type": "Staleness",
               "label": "By staleness",
               "values": [
@@ -549,6 +596,7 @@
           ],
           "Service": [
             {
+              "applies": "Client",
               "filter_type": "Category",
               "label": "By category",
               "values": [
@@ -783,6 +831,7 @@
               ]
             },
             {
+              "applies": "Client",
               "filter_type": "Staleness",
               "label": "By staleness",
               "values": [
@@ -874,6 +923,13 @@
       },
       "element_config": {
         "container_entity": null,
+        "default_hidden_values": {
+          "Service": {
+            "Category": [
+              "OpenPorts"
+            ]
+          }
+        },
         "element_entities": [
           {
             "entity_type": "Service",
@@ -883,6 +939,7 @@
         "metadata_filters": {
           "Service": [
             {
+              "applies": "Client",
               "filter_type": "Category",
               "label": "By category",
               "values": [
@@ -1117,6 +1174,7 @@
               ]
             },
             {
+              "applies": "Client",
               "filter_type": "Staleness",
               "label": "By staleness",
               "values": [

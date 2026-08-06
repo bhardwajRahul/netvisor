@@ -87,6 +87,23 @@ export function formatDate(timestamp: string): string {
 	}
 }
 
+/**
+ * Compact numeric date, e.g. `8/3/26`.
+ *
+ * For dense lists where a date is one column among many and "Aug 3, 2026" or a
+ * full timestamp costs more width than the extra precision is worth.
+ */
+export function formatDateNumeric(timestamp: string | Date): string {
+	const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+	if (Number.isNaN(date.getTime())) return String(timestamp);
+
+	return date.toLocaleDateString(undefined, {
+		year: '2-digit',
+		month: 'numeric',
+		day: 'numeric'
+	});
+}
+
 // Truncate ID for display (show first 8 characters + ellipsis if longer than 12)
 export function formatId(id: string): string {
 	if (id.length <= 12) {

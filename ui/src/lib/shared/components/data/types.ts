@@ -10,6 +10,15 @@ import type { EntityDiscriminants } from '$lib/api/entities';
 export const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
 export type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number];
 
+/**
+ * How many chips a compact cell shows before collapsing the rest behind "+N".
+ *
+ * A cap is load-bearing for accessibility, not just layout: `EntityTag` is
+ * focusable, so an uncapped tag column would put hundreds of tab stops between
+ * a table's first row and its last.
+ */
+export const MAX_ITEMS_IN_CELL = 3;
+
 export interface TagProps {
 	label: string;
 	textColor?: string;
@@ -83,9 +92,73 @@ export interface CardField {
 // ============================================================================
 
 /**
+ * How a field renders, in the card and the table alike.
+ *
+ * Omit it and the value renders as the stringified `getValue` — the same value
+ * search, filtering and grouping already match against, so what is shown can
+ * never disagree with the filter that produced the row.
+ */
+export interface DisplayConfig<T> {
+	/** Filter-only field that never becomes a column (e.g. a port number filter). */
+	hidden?: boolean;
+	/** A real column, but unchecked in the column menu until the user asks for it. */
+	hiddenByDefault?: boolean;
+	/**
+	 * Rich chips, in the vocabulary the card already renders: `EntityTag` when
+	 * an item carries an `entityRef`, `Tag` otherwise. Prefer this over `cell` —
+	 * it is data rather than markup, so the card can reuse the same builder.
+	 *
+	 * Returning `undefined` — as opposed to `[]` — means "no chips for this row",
+	 * and the cell falls back to the field's plain value. That is what lets a
+	 * date column carry a Stale tag on the rows that are stale and the date
+	 * everywhere else, rather than needing a second, mostly-empty column.
+	 */
+	getItems?: (item: T) => CardFieldItem[] | undefined;
+	/** Escape hatch for genuinely bespoke content: a status tag, a link, an icon. */
+	cell?: Snippet<[T]>;
+	align?: 'left' | 'right';
+	/**
+	 * Where this field sits among the columns, low to high.
+	 *
+	 * Needed because `defineFields` groups server-orderable fields ahead of
+	 * display-only ones, which is the right shape for exhaustiveness checking but
+	 * has nothing to do with the order a reader wants to scan. Fields without one
+	 * keep their declared order, after those that have one.
+	 */
+	order?: number;
+	/** Starting width in px. A user's resize persists over this. */
+	width?: number;
+	/** Row identity: pinned left, carries the checkbox, renders as `<th scope="row">`. */
+	primary?: boolean;
+	/**
+	 * This field is the row's secondary line, so the card renders it under the
+	 * title rather than as another labelled row — a subnet's CIDR, a VLAN's
+	 * number, what a host is virtualized by.
+	 */
+	subtitle?: boolean;
+	/**
+	 * This field sits after the tag column, immediately before the row actions —
+	 * the far end of the row. For content that reads as the row's live state
+	 * rather than one of its attributes, like a running scan's progress.
+	 */
+	trailing?: boolean;
+	/**
+	 * This field is the row's status, so the card renders it as the tag beside
+	 * the title instead of as another labelled row.
+	 *
+	 * Marking it rather than letting the card compute its own is what stops the
+	 * two views disagreeing: a card that derived its own status tag showed
+	 * "Healthy" where the table's separate computation said "Active".
+	 */
+	statusTag?: boolean;
+}
+
+/**
  * Base configuration shared by all field types.
  */
 interface BaseFieldConfig<T> {
+	/** How this field renders, in both the card and the table. Omit for plain text. */
+	display?: DisplayConfig<T>;
 	type: 'string' | 'boolean' | 'date' | 'array';
 	label: string;
 	/**

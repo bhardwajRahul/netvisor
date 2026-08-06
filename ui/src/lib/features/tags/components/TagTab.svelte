@@ -6,18 +6,18 @@
 		useDeleteTagMutation,
 		useBulkDeleteTagsMutation
 	} from '../queries';
-	import TagCard from './TagCard.svelte';
 	import TagEditModal from './TagEditModal.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import type { Tag } from '../types/base';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
-	import { Plus } from 'lucide-svelte';
+	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
+	import { Plus, Trash2, Edit, Tag as TagIcon } from 'lucide-svelte';
+	import { createColorHelper } from '$lib/shared/utils/styling';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { permissions, billingPlans } from '$lib/shared/stores/metadata';
+	import { permissions, billingPlans, concepts } from '$lib/shared/stores/metadata';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
@@ -29,6 +29,8 @@
 		common_confirmDeleteName,
 		common_create,
 		common_created,
+		common_delete,
+		common_edit,
 		common_description,
 		common_name,
 		common_noEntityYet,
@@ -103,6 +105,21 @@
 		showTagEditor = true;
 	}
 
+	/** Row actions for table mode, matching what the card offers. */
+	function tagActions(tag: Tag): CardAction[] {
+		if (!canManage) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditTag(tag) },
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteTag(tag)
+			}
+		];
+	}
+
 	function handleEditTag(tag: Tag) {
 		editingTag = tag;
 		showTagEditor = true;
@@ -147,15 +164,36 @@
 	const tagFields = defineFields<Tag, TagOrderField>(
 		{
 			// Identity field: grouping by it would render a header per tag.
-			name: { label: common_name(), type: 'string', searchable: true, groupable: false },
-			color: { label: common_color(), type: 'string', searchable: true, filterable: true },
+			name: {
+				label: common_name(),
+				type: 'string',
+				searchable: true,
+				groupable: false,
+				display: { primary: true, width: 220 }
+			},
+			color: {
+				label: common_color(),
+				type: 'string',
+				searchable: true,
+				filterable: true,
+				// A colour name is worth showing in its own colour.
+				display: {
+					getItems: (tag) => [
+						{
+							id: tag.color,
+							label: tag.color.charAt(0).toUpperCase() + tag.color.slice(1),
+							color: tag.color
+						}
+					]
+				}
+			},
 			is_application: {
 				label: common_application(),
 				type: 'boolean',
 				filterable: true
 			},
-			created_at: { label: common_created(), type: 'date' },
-			updated_at: { label: common_updated(), type: 'date' }
+			created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+			updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 		},
 		[
 			{ key: 'description', label: common_description(), type: 'string', searchable: true },
@@ -165,11 +203,15 @@
 				// readable value, and a boolean field can't supply one without
 				// `Boolean(getValue())` breaking that filter — so the group axis is
 				// its own display field.
+				//
+				// It is not a column: it would sit next to `is_application` saying the
+				// same thing in prose, so the boolean one is the one that shows.
 				key: 'application_group',
 				label: common_application(),
 				type: 'string',
 				groupable: true,
 				sortable: true,
+				display: { hidden: true },
 				getValue: (tag) => (tag.is_application ? tags_applicationGroup() : tags_standardTag())
 			}
 		]
@@ -204,24 +246,16 @@
 			storageKey="scanopy-tags-table-state"
 			onBulkDelete={handleBulkDelete}
 			getItemId={(item) => item.id}
+			getIcon={(tag) => ({
+				icon: tag.is_application ? concepts.getIconComponent('Application') : TagIcon,
+				color: tag.is_application
+					? concepts.getColorHelper('Application')?.icon
+					: createColorHelper(tag.color).icon
+			})}
 			onCsvExport={handleCsvExport}
-		>
-			{#snippet children(
-				item: Tag,
-				viewMode: 'card' | 'list',
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				<TagCard
-					tag={item}
-					selected={isSelected}
-					{onSelectionChange}
-					{viewMode}
-					onEdit={handleEditTag}
-					onDelete={handleDeleteTag}
-				/>
-			{/snippet}
-		</DataControls>
+			getActions={tagActions}
+			entityLabel={common_tags()}
+		></DataControls>
 	{/if}
 </div>
 

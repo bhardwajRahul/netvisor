@@ -54,7 +54,8 @@ export function toHostPrimitive(response: HostResponse): Host {
 		...hostFields,
 		description: hostFields.description ?? null,
 		hostname: hostFields.hostname ?? null,
-		virtualization: hostFields.virtualization ?? null,
+		virtualization_metadata: hostFields.virtualization_metadata ?? null,
+		virtualization_service_id: hostFields.virtualization_service_id ?? null,
 		credential_assignments: hostFields.credential_assignments ?? []
 	};
 }
@@ -99,7 +100,8 @@ function toCreateHostRequest(formData: HostFormData): CreateHostRequest {
 		network_id: formData.network_id,
 		hostname: formData.hostname,
 		description: formData.description,
-		virtualization: formData.virtualization,
+		virtualization_metadata: formData.virtualization_metadata,
+		virtualization_service_id: formData.virtualization_service_id,
 		hidden: formData.hidden,
 		tags: formData.tags,
 		ip_addresses: formData.ip_addresses.map(
@@ -125,7 +127,8 @@ function toCreateHostRequest(formData: HostFormData): CreateHostRequest {
 				service_definition: service.service_definition,
 				name: service.name,
 				bindings: service.bindings.map(toBindingInput),
-				virtualization: service.virtualization,
+				virtualization_metadata: service.virtualization_metadata,
+				virtualization_service_id: service.virtualization_service_id,
 				tags: service.tags,
 				position: index
 			})
@@ -439,7 +442,8 @@ export function useUpdateHostMutation() {
 				name: data.host.name,
 				hostname: data.host.hostname,
 				description: data.host.description,
-				virtualization: data.host.virtualization,
+				virtualization_metadata: data.host.virtualization_metadata,
+				virtualization_service_id: data.host.virtualization_service_id,
 				hidden: data.host.hidden,
 				tags: data.host.tags,
 				credential_assignments: data.host.credential_assignments ?? undefined,
@@ -473,7 +477,8 @@ export function useUpdateHostMutation() {
 								service_definition: service.service_definition,
 								name: service.name,
 								bindings: service.bindings.map(toBindingInput),
-								virtualization: service.virtualization,
+								virtualization_metadata: service.virtualization_metadata,
+								virtualization_service_id: service.virtualization_service_id,
 								tags: service.tags,
 								position: index
 							})
@@ -542,7 +547,8 @@ export function useUpdateHostDescriptionMutation() {
 					name: data.host.name,
 					hostname: data.host.hostname,
 					description: data.description,
-					virtualization: data.host.virtualization,
+					virtualization_metadata: data.host.virtualization_metadata,
+					virtualization_service_id: data.host.virtualization_service_id,
 					hidden: data.host.hidden,
 					expected_updated_at: data.host.updated_at,
 					tags: data.host.tags ?? []
@@ -820,7 +826,8 @@ export function createEmptyHostFormData(defaultNetworkId?: string): HostFormData
 		source: {
 			type: 'Manual'
 		},
-		virtualization: null,
+		virtualization_metadata: null,
+		virtualization_service_id: null,
 		network_id: defaultNetworkId ?? '',
 		hidden: false,
 		// SNMP fields (populated by discovery)

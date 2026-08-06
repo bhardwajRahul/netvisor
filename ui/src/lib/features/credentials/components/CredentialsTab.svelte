@@ -6,7 +6,6 @@
 		useDeleteCredentialMutation,
 		useBulkDeleteCredentialsMutation
 	} from '../queries';
-	import CredentialCard from './CredentialCard.svelte';
 	import CredentialEditModal from './CredentialEditModal.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
@@ -14,12 +13,23 @@
 	import type { Credential } from '../types/base';
 	import type { CredentialOrderField } from '../types/base';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
-	import { Plus } from 'lucide-svelte';
+	import {
+		defineFields,
+		entityRef,
+		type CardAction,
+		type CardFieldItem
+	} from '$lib/shared/components/data/types';
+	import type { Network } from '$lib/features/networks/types';
+	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { permissions, credentialTypes, billingPlans } from '$lib/shared/stores/metadata';
-	import { getCredentialTypeId } from '$lib/features/credentials/types/base';
+	import {
+		permissions,
+		credentialTypes,
+		billingPlans,
+		entities
+	} from '$lib/shared/stores/metadata';
+	import { getCredentialTypeId, getTargetTagProps } from '$lib/features/credentials/types/base';
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
 	import type { TabProps } from '$lib/shared/types';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
@@ -30,7 +40,10 @@
 		common_confirmDeleteName,
 		common_create,
 		common_created,
+		common_delete,
+		common_edit,
 		common_name,
+		common_type,
 		common_updated,
 		credentials_bulkDeleteConfirm,
 		credentials_bulkDeleteImpact,
@@ -38,6 +51,9 @@
 		credentials_emptySubtitle,
 		credentials_subtitle,
 		common_credentials,
+		common_hosts,
+		common_networks,
+		common_notApplicable,
 		common_noEntityYet,
 		common_scope
 	} from '$lib/paraglide/messages';
@@ -103,6 +119,34 @@
 		const ids = new Set((credential.host_assignments ?? []).map((a) => a.host_id));
 		return assignedHostsData.filter((h) => ids.has(h.id));
 	}
+
+	function networksForCredential(credential: Credential): Network[] {
+		return networksData.filter((n) => (n.credential_ids ?? []).includes(credential.id));
+	}
+
+	/** The scopes a credential's type can target at all. */
+	function targetsFor(credential: Credential): string[] {
+		return credentialTypes.getMetadata(getCredentialTypeId(credential))?.targets ?? [];
+	}
+
+	/** Reaches a host only as some daemon's host, never hosts in general. */
+	function daemonHostOnly(credential: Credential): boolean {
+		const targets = targetsFor(credential);
+		return targets.includes('DaemonHost') && !targets.includes('Hosts');
+	}
+
+	/**
+	 * "Not applicable" is not the same as "none assigned".
+	 *
+	 * A Docker socket credential cannot target networks at all, which is a
+	 * different statement from a SNMP credential that targets networks and
+	 * happens to have none. The card drew that distinction and the table should
+	 * too, so an out-of-scope assignment column says so rather than sitting empty.
+	 */
+	function assignmentItems(applicable: boolean, items: CardFieldItem[]): CardFieldItem[] {
+		if (applicable) return items;
+		return [{ id: 'not-applicable', label: common_notApplicable(), color: 'Gray' }];
+	}
 	let isLoading = $derived(credentialsQuery.isLoading);
 
 	// Demo mode check
@@ -127,6 +171,21 @@
 	function handleCreateCredential() {
 		editingCredential = null;
 		showCredentialEditor = true;
+	}
+
+	/** Row actions for table mode, matching what the card offers. */
+	function credentialActions(credential: Credential): CardAction[] {
+		if (!canManage) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditCredential(credential) },
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteCredential(credential)
+			}
+		];
 	}
 
 	function handleEditCredential(credential: Credential) {
@@ -208,14 +267,20 @@
 	const credentialFields = defineFields<Credential, CredentialOrderField>(
 		{
 			// Identity field: grouping by it would render a header per credential.
-			name: { label: common_name(), type: 'string', searchable: true, groupable: false },
-			created_at: { label: common_created(), type: 'date' },
-			updated_at: { label: common_updated(), type: 'date' }
+			name: {
+				label: common_name(),
+				type: 'string',
+				searchable: true,
+				groupable: false,
+				display: { primary: true, width: 220 }
+			},
+			created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+			updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 		},
 		[
 			{
 				key: 'credential_type',
-				label: 'Type',
+				label: common_type(),
 				type: 'string',
 				searchable: true,
 				filterable: true,
@@ -224,7 +289,66 @@
 				sortable: true,
 				filterMode: 'include',
 				filterOptions: credentialTypes.getItems().map((t) => t.name ?? t.id),
-				getValue: (item: Credential) => credentialTypes.getName(getCredentialTypeId(item))
+				getValue: (item: Credential) => credentialTypes.getName(getCredentialTypeId(item)),
+				display: {
+					getItems: (item: Credential) => {
+						const typeId = getCredentialTypeId(item);
+						return [
+							{
+								id: typeId,
+								label: credentialTypes.getName(typeId),
+								color: credentialTypes.getColorHelper(typeId).color,
+								icon: credentialTypes.getIconComponent(typeId)
+							}
+						];
+					}
+				}
+			},
+			{
+				// Assignments were card-only, so the credentials table could not show
+				// what a credential actually applies to.
+				key: 'assigned_networks',
+				label: common_networks(),
+				type: 'array',
+				searchable: true,
+				getValue: (item: Credential) => networksForCredential(item).map((n) => n.name),
+				display: {
+					getItems: (item: Credential) =>
+						assignmentItems(
+							targetsFor(item).includes('Network'),
+							networksForCredential(item).map((network) => ({
+								id: network.id,
+								label: network.name,
+								color: entities.getColorHelper('Network').color,
+								entityRef: entityRef('Network', network.id, network)
+							}))
+						)
+				}
+			},
+			{
+				key: 'assigned_hosts',
+				label: common_hosts(),
+				type: 'array',
+				searchable: true,
+				getValue: (item: Credential) => hostsForCredential(item).map((h) => h.name ?? h.id),
+				display: {
+					getItems: (item: Credential) =>
+						assignmentItems(
+							// DaemonHost-only credentials (Docker/Podman sockets) are
+							// assigned to their daemon's host through the same junction.
+							targetsFor(item).some((t) => t === 'Hosts' || t === 'DaemonHost'),
+							hostsForCredential(item).map((host) => ({
+								id: host.id,
+								label: host.name ?? host.id,
+								// A daemon-host credential reaches that host *through* its
+								// daemon, so it reads as a daemon relationship rather than a
+								// host one. Only credentials that target hosts generally get
+								// the host colour.
+								color: entities.getColorHelper(daemonHostOnly(item) ? 'Daemon' : 'Host').color,
+								entityRef: entityRef('Host', host.id, host)
+							}))
+						)
+				}
 			},
 			{
 				key: 'target',
@@ -239,6 +363,17 @@
 					const typeId = getCredentialTypeId(item);
 					const meta = credentialTypes.getMetadata(typeId);
 					return meta?.targets ?? [];
+				},
+				display: {
+					// Same chip props the card uses, so a scope reads identically in
+					// both views rather than falling back to undifferentiated grey.
+					getItems: (item: Credential) => {
+						const meta = credentialTypes.getMetadata(getCredentialTypeId(item));
+						return (meta?.targets ?? []).map((target: string) => ({
+							id: target,
+							...getTargetTagProps(target)
+						}));
+					}
 				}
 			}
 		]
@@ -275,26 +410,14 @@
 			entityType={allowBulkDelete ? 'Credential' : undefined}
 			getItemTags={getCredentialTags}
 			getItemId={(item) => item.id}
+			getIcon={(credential) => ({
+				icon: credentialTypes.getIconComponent(getCredentialTypeId(credential)),
+				color: credentialTypes.getColorHelper(getCredentialTypeId(credential)).icon
+			})}
 			onCsvExport={handleCsvExport}
-		>
-			{#snippet children(
-				item: Credential,
-				viewMode: 'card' | 'list',
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				<CredentialCard
-					credential={item}
-					assignedNetworks={networksData.filter((n) => (n.credential_ids ?? []).includes(item.id))}
-					assignedHosts={hostsForCredential(item)}
-					selected={isSelected}
-					{onSelectionChange}
-					{viewMode}
-					onEdit={handleEditCredential}
-					onDelete={handleDeleteCredential}
-				/>
-			{/snippet}
-		</DataControls>
+			getActions={credentialActions}
+			entityLabel={common_credentials()}
+		></DataControls>
 	{/if}
 </div>
 

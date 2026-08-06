@@ -43,7 +43,7 @@ be found by scanning. Create ip_addresses on this subnet to include them in your
                 .to_string(),
         ),
         subnet_type: SubnetType::Internet,
-        virtualization: None,
+        virtualization_service_id: None,
         source: EntitySource::System,
     };
 
@@ -65,7 +65,7 @@ subnet to include them in your topology."
                 .to_string(),
         ),
         subnet_type: SubnetType::Remote,
-        virtualization: None,
+        virtualization_service_id: None,
         source: EntitySource::System,
     };
 
@@ -90,7 +90,8 @@ pub fn create_remote_host(
         tags: Vec::new(),
         description: Some("A mobile device connecting from a remote network".to_string()),
         source: EntitySource::System,
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         hidden: false,
         ..Default::default()
     };
@@ -104,7 +105,8 @@ pub fn create_remote_host(
         name: "Mobile Device".to_string(),
         service_definition: Box::new(Client),
         bindings: vec![binding],
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         source: EntitySource::System,
         position: 0,
     });
@@ -130,7 +132,8 @@ pub fn create_internet_connectivity_host(
         hostname: None,
         description: None,
         source: EntitySource::System,
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         hidden: false,
         ..Default::default()
     };
@@ -144,7 +147,8 @@ pub fn create_internet_connectivity_host(
         tags: Vec::new(),
         service_definition: Box::new(WebService),
         bindings: vec![binding],
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         source: EntitySource::System,
         position: 0,
     });
@@ -171,7 +175,8 @@ pub fn create_public_dns_host(
         description: None,
         tags: Vec::new(),
         source: EntitySource::System,
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         hidden: false,
         ..Default::default()
     };
@@ -185,7 +190,8 @@ pub fn create_public_dns_host(
         name: "Cloudflare DNS".to_string(),
         service_definition: Box::new(DnsServer),
         bindings: vec![binding],
-        virtualization: None,
+        virtualization_metadata: None,
+        virtualization_service_id: None,
         source: EntitySource::System,
         position: 0,
     });

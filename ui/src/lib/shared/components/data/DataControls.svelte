@@ -1,79 +1,72 @@
 <script lang="ts" generics="T">
 	import {
-		Search,
-		X,
-		ChevronLeft,
-		ChevronRight,
-		LayoutGrid,
-		List,
-		Trash2,
-		CheckSquare,
-		Square,
-		Download,
-		Filter,
-		ArrowUpNarrowWide,
-		ArrowDownWideNarrow
-	} from 'lucide-svelte';
-	import {
 		type FieldConfig,
-		isOrderableField,
-		isDisplayField,
 		getFieldKey,
 		groupPageSlice,
-		PAGE_SIZE_OPTIONS,
 		type GroupPosition,
 		type GroupSlice,
-		type PageSizeOption
+		type PageSizeOption,
+		type CardAction
 	} from './types';
-	import { onMount, type Snippet } from 'svelte';
-	import Tag from './Tag.svelte';
+	import { getFieldValue, getUniqueValues as uniqueValuesOf } from './controls/fieldValues';
 	import {
-		common_active,
+		sortItems,
+		nextSortState,
+		sortableFields as sortableFieldsOf,
+		groupableFields as groupableFieldsOf,
+		type SortState
+	} from './controls/sorting';
+	import {
+		matchesSearch,
+		matchesFilters,
+		hasActiveFilters as hasActiveFiltersOf
+	} from './controls/filtering';
+	import {
+		visibleItems,
+		isAllSelected,
+		isPartiallySelected,
+		visibleIds
+	} from './controls/selection';
+	import {
+		parseStoredState,
+		serializeState,
+		DEFAULT_VIEW_MODE,
+		type ViewMode,
+		type StoredState
+	} from './controls/dataControlsStorage';
+	import ControlsBar from './controls/ControlsBar.svelte';
+	import FilterPanel from './controls/FilterPanel.svelte';
+	import BulkActionBar from './controls/BulkActionBar.svelte';
+	import PaginationBar from './controls/PaginationBar.svelte';
+	import EntityTable from './table/EntityTable.svelte';
+	import EntityCard from './EntityCard.svelte';
+	import type { IconComponent } from '$lib/shared/utils/types';
+	import ColumnVisibilityMenu from './table/ColumnVisibilityMenu.svelte';
+	import TagCell from './TagCell.svelte';
+	import { tagItems } from '$lib/features/tags/columns';
+	import {
+		fieldsToColumns,
+		reconcileColumnState,
+		visibleColumns,
+		TAG_COLUMN_ID,
+		type EntityColumn
+	} from './table/columns';
+	import { onMount } from 'svelte';
+	import {
 		common_all,
-		common_clearAll,
-		common_clearSelection,
-		common_deleteSelected,
-		common_deselectAll,
-		common_filters,
-		common_lastSeen,
-		common_staleOnly,
-		common_group,
-		common_groupByLabel,
 		common_groupTotalShowing,
-		common_groups,
-		common_item,
-		common_items,
-		common_itemsSelected,
-		common_nextPage,
-		common_noCommonTags,
-		common_noItems,
-		common_noTagsAvailable,
-		common_noValuesAvailable,
-		common_none,
-		common_pageOf,
-		common_previousPage,
-		common_searchPlaceholder,
-		common_selectAll,
-		common_show,
-		common_showFalse,
-		common_showTrue,
-		common_showingRange,
-		common_showingTotal,
-		common_sortByLabel,
-		common_switchToCardView,
-		common_switchToListView,
+		common_ungrouped,
+		common_tableCaption,
 		common_tags,
-		common_ungrouped
+		common_item,
+		common_items
 	} from '$lib/paraglide/messages';
-	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 	import {
 		useTagsQuery,
 		useBulkAddTagMutation,
 		useBulkRemoveTagMutation,
 		type EntityDiscriminants
 	} from '$lib/features/tags/queries';
-	import type { Color } from '$lib/shared/utils/styling';
-	import { scrollFade } from '$lib/shared/utils/scrollFade';
 	import { computeCommonTags } from '$lib/shared/utils/tags';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import throttle from 'just-throttle';
@@ -99,7 +92,6 @@
 		allowBulkDelete = true,
 		entityType = null,
 		getItemTags = null,
-		children,
 		getItemId,
 		// Server-side pagination (optional)
 		serverPagination = null,
@@ -124,7 +116,16 @@
 		onCsvExport = null,
 		// Export button click override (optional)
 		// If provided, replaces onCsvExport entirely - use for custom export UI (e.g., modal with options)
-		onExportClick = null
+		onExportClick = null,
+		// Row actions, used by both views. The card and the table render the same
+		// list, so an action cannot exist in one and be missing from the other.
+		getActions = null,
+		// Names the table for screen readers, e.g. "Hosts".
+		entityLabel = null,
+		// Card chrome. Per row, because a host's icon comes from its first service
+		// and a service's from its type.
+		getIcon = null,
+		getLink = null
 	}: {
 		items: T[];
 		fields: FieldConfig<T>[];
@@ -133,7 +134,6 @@
 		allowBulkDelete?: boolean;
 		entityType?: EntityDiscriminants | null;
 		getItemTags?: ((item: T) => string[]) | null;
-		children: Snippet<[T, 'card' | 'list', boolean, (selected: boolean) => void]>;
 		getItemId: (item: T) => string;
 		// Server-side pagination: when provided, pagination is server-controlled
 		// Callback receives both page and pageSize so parent can use in query
@@ -166,6 +166,12 @@
 		onCsvExport?: (() => void | Promise<void>) | null;
 		// Export button click override: if provided, replaces onCsvExport entirely
 		onExportClick?: (() => void | Promise<void>) | null;
+		// Row actions, rendered by both views.
+		getActions?: ((item: T) => CardAction[]) | null;
+		// Accessible name for the table, e.g. "Hosts".
+		entityLabel?: string | null;
+		getIcon?: ((item: T) => { icon: IconComponent | null; color?: string }) | null;
+		getLink?: ((item: T) => string | undefined) | null;
 	} = $props();
 
 	// Tags query for filter display
@@ -196,11 +202,6 @@
 	let staleOnly = $state(false);
 
 	// Sort state
-	interface SortState {
-		field: string | null;
-		direction: 'asc' | 'desc';
-	}
-
 	let sortState = $state<SortState>({
 		field: null,
 		direction: 'asc'
@@ -210,7 +211,13 @@
 	let selectedGroupField = $state<string | null>(null);
 
 	// View mode state
-	let viewMode = $state<'card' | 'list'>('card');
+	let viewMode = $state<ViewMode>(DEFAULT_VIEW_MODE);
+
+	// Column state — owned here so it persists alongside every other control,
+	// and handed to table-core as controlled state rather than kept in parallel.
+	let columnVisibility = $state<Record<string, boolean>>({});
+	let columnOrder = $state<string[]>([]);
+	let columnSizing = $state<Record<string, number>>({});
 
 	// Pagination state
 	let currentPage = $state(1);
@@ -219,88 +226,40 @@
 	// Bulk selection state (always enabled when onBulkDelete is provided)
 	let selectedIds = new SvelteSet<string>();
 
-	// Serializable version of state for localStorage
-	interface SerializableState {
-		searchQuery: string;
-		filterState: {
-			[key: string]: {
-				type: 'string' | 'boolean' | 'array';
-				values: string[];
-				showTrue?: boolean;
-				showFalse?: boolean;
-			};
-		};
-		sortState: SortState;
-		selectedGroupField: string | null;
-		showFilters: boolean;
-		viewMode: 'card' | 'list';
-		currentPage: number;
-		pageSize?: PageSizeOption;
-	}
-
 	// Load state from localStorage
 	// Returns the restored pageSize if one was found, otherwise null
 	function loadState(): PageSizeOption | null {
 		if (!storageKey || typeof localStorage === 'undefined') return null;
 
-		try {
-			const saved = localStorage.getItem(storageKey);
-			if (!saved) return null;
+		const state = parseStoredState(localStorage.getItem(storageKey));
+		if (!state) return null;
 
-			const state: SerializableState = JSON.parse(saved);
+		searchQuery = state.searchQuery;
 
-			// Restore search
-			searchQuery = state.searchQuery || '';
+		const restoredFilterState: FilterState = {};
+		Object.entries(state.filterState).forEach(([key, saved]) => {
+			restoredFilterState[key] = { ...saved, values: new SvelteSet(saved.values) };
+		});
+		filterState = restoredFilterState;
 
-			// Restore filters
-			if (state.filterState) {
-				const restoredFilterState: FilterState = {};
-				Object.keys(state.filterState).forEach((key) => {
-					const saved = state.filterState[key];
-					restoredFilterState[key] = {
-						...saved,
-						values: new SvelteSet(saved.values)
-					};
-				});
-				filterState = restoredFilterState;
-			}
+		sortState = state.sortState;
+		if (state.selectedGroupField) selectedGroupField = state.selectedGroupField;
+		showFilters = state.showFilters;
+		// Already normalised, so a pre-table `list` lands on the table rather than
+		// on a mode that matches neither branch.
+		viewMode = state.viewMode;
+		currentPage = state.currentPage;
 
-			// Restore sort
-			if (state.sortState) {
-				sortState = state.sortState;
-			}
+		if (state.columnVisibility) columnVisibility = state.columnVisibility;
+		if (state.columnOrder) columnOrder = state.columnOrder;
+		if (state.columnSizing) columnSizing = state.columnSizing;
 
-			// Restore grouping
-			if (state.selectedGroupField) {
-				selectedGroupField = state.selectedGroupField;
-			}
-
-			// Restore filter panel state
-			if (state.showFilters !== undefined) {
-				showFilters = state.showFilters;
-			}
-
-			// Restore view mode
-			if (state.viewMode) {
-				viewMode = state.viewMode;
-			}
-
-			// Restore current page
-			if (state.currentPage) {
-				currentPage = state.currentPage;
-			}
-
-			// Restore page size
-			if (state.pageSize && PAGE_SIZE_OPTIONS.includes(state.pageSize)) {
-				pageSize = state.pageSize;
-				return state.pageSize;
-			}
-
-			return null;
-		} catch (e) {
-			console.warn('Failed to load DataControls state from localStorage:', e);
-			return null;
+		if (state.pageSize) {
+			pageSize = state.pageSize;
+			return state.pageSize;
 		}
+
+		return null;
 	}
 
 	// Save state to localStorage
@@ -308,27 +267,27 @@
 		if (!storageKey || typeof localStorage === 'undefined') return;
 
 		try {
-			const serializableFilterState: SerializableState['filterState'] = {};
-			Object.keys(filterState).forEach((key) => {
-				const filter = filterState[key];
-				serializableFilterState[key] = {
-					...filter,
-					values: Array.from(filter.values)
-				};
+			const storedFilterState: StoredState['filterState'] = {};
+			Object.entries(filterState).forEach(([key, filter]) => {
+				storedFilterState[key] = { ...filter, values: Array.from(filter.values) };
 			});
 
-			const state: SerializableState = {
-				searchQuery,
-				filterState: serializableFilterState,
-				sortState,
-				selectedGroupField,
-				showFilters,
-				viewMode,
-				currentPage,
-				pageSize
-			};
-
-			localStorage.setItem(storageKey, JSON.stringify(state));
+			localStorage.setItem(
+				storageKey,
+				serializeState({
+					searchQuery,
+					filterState: storedFilterState,
+					sortState,
+					selectedGroupField,
+					showFilters,
+					viewMode,
+					currentPage,
+					pageSize,
+					columnVisibility,
+					columnOrder,
+					columnSizing
+				})
+			);
 		} catch (e) {
 			console.warn('Failed to save DataControls state to localStorage:', e);
 		}
@@ -430,169 +389,29 @@
 		};
 	});
 
-	// Get value from item using field config
-	function getFieldValue(
-		item: T,
-		field: FieldConfig<T>
-	): string | boolean | Date | string[] | null {
-		if (field.getValue) {
-			return field.getValue(item);
-		}
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		return (item as any)[getFieldKey(field)] ?? null;
-	}
-
 	// Get unique string values for a field (handles arrays by flattening)
 	function getUniqueValues(field: FieldConfig<T>): string[] {
-		const values = new SvelteSet<string>();
-		items.forEach((item) => {
-			const value = getFieldValue(item, field);
-			if (value === null || value === undefined) return;
-
-			if (field.type === 'array' && Array.isArray(value)) {
-				value.forEach((v) => {
-					if (v !== null && v !== undefined && v !== '') {
-						values.add(String(v));
-					}
-				});
-			} else if (value !== '') {
-				values.add(String(value));
-			}
-		});
-		return Array.from(values).sort();
+		return uniqueValuesOf(items, field);
 	}
 
-	// Get groupable fields (orderable string fields with groupable !== false, or display fields with groupable === true)
-	let groupableFields = $derived(
-		fields.filter(
-			(f) =>
-				(f.type === 'string' && isOrderableField(f) && f.groupable !== false) ||
-				(isDisplayField(f) && f.groupable === true)
-		)
-	);
-
-	// Get sortable fields (orderable fields, or display fields with sortable === true)
-	let sortableFields = $derived(
-		fields.filter((f) => isOrderableField(f) || (isDisplayField(f) && f.sortable === true))
-	);
+	let groupableFields = $derived(groupableFieldsOf(fields));
+	let sortableFields = $derived(sortableFieldsOf(fields));
 
 	// Apply all filters, sorting, and grouping
 	let processedItems = $derived.by(() => {
-		let result = items.filter((item) => {
-			// Search filter — skipped when the parent searches server-side
-			// (the rows that arrived are already the matches).
-			if (!onSearchChange && searchQuery.trim()) {
-				const q = searchQuery.toLowerCase();
-				// Opt-in: an unmarked field is not searched. Matching everything by
-				// default meant a date field turned "2026" into a match on every row.
-				const searchableFields = fields.filter((f) => f.searchable === true);
-				const matchesQ = searchableFields.some((field) => {
-					const value = getFieldValue(item, field);
-					if (value === null || value === undefined) return false;
+		const serverMode = {
+			tags: onTagFilterChange !== null,
+			fields: onFilterChange !== null
+		};
 
-					// Handle array values in search
-					if (field.type === 'array' && Array.isArray(value)) {
-						return value.some((v) => String(v).toLowerCase().includes(q));
-					}
-
-					return String(value).toLowerCase().includes(q);
-				});
-				if (!matchesQ) return false;
-			}
-
-			// Field filters
-			const matchesF = fields.every((field) => {
-				if (!field.filterable) return true;
-
-				const fieldKey = getFieldKey(field);
-				const filterConfig = filterState[fieldKey];
-				if (!filterConfig) return true;
-
-				// Skip client-side tag filtering when server-side filtering is enabled
-				// (the parent handles filtering via onTagFilterChange callback)
-				if (fieldKey === 'tags' && onTagFilterChange) {
-					return true;
-				}
-
-				// Skip client-side filtering for fields the parent filters server-side
-				if (field.serverFiltered && onFilterChange) {
-					return true;
-				}
-
-				const value = getFieldValue(item, field);
-
-				if (field.type === 'boolean') {
-					if (value === null || value === undefined) return true;
-					const boolValue = Boolean(value);
-					if (boolValue && !filterConfig.showTrue) return false;
-					if (!boolValue && !filterConfig.showFalse) return false;
-					return true;
-				} else if (field.type === 'array') {
-					// Array filter: item matches if ANY of its values are in the filter set
-					if (filterConfig.values.size === 0) return true;
-					if (!Array.isArray(value) || value.length === 0) return false;
-					return value.some((v) => filterConfig.values.has(String(v)));
-				} else if (field.type === 'string') {
-					if (filterConfig.values.size === 0) return true;
-					if (field.filterMode === 'exclude') {
-						// Exclude mode: checked values are hidden
-						return value == null || !filterConfig.values.has(String(value));
-					}
-					if (value === null || value === undefined) return false;
-					return filterConfig.values.has(String(value));
-				}
-
-				return true;
-			});
-
-			return matchesF;
+		const result = items.filter((item) => {
+			// Search is skipped when the parent searches server-side — the rows that
+			// arrived are already the matches.
+			if (!onSearchChange && !matchesSearch(item, fields, searchQuery)) return false;
+			return matchesFilters(item, fields, filterState, serverMode);
 		});
 
-		// Sort
-		if (sortState.field) {
-			const field = fields.find((f) => getFieldKey(f) === sortState.field);
-			if (field) {
-				result = [...result].sort((a, b) => {
-					const aVal = getFieldValue(a, field);
-					const bVal = getFieldValue(b, field);
-
-					// Handle nulls
-					if (aVal === null || aVal === undefined) return 1;
-					if (bVal === null || bVal === undefined) return -1;
-
-					let comparison: number;
-
-					if (field.type === 'date') {
-						const aDate = aVal instanceof Date ? aVal : new Date(String(aVal));
-						const bDate = bVal instanceof Date ? bVal : new Date(String(bVal));
-						comparison = aDate.getTime() - bDate.getTime();
-					} else if (field.type === 'boolean') {
-						comparison = (aVal ? 1 : 0) - (bVal ? 1 : 0);
-					} else if (field.type === 'array') {
-						// Sort arrays by length, then by first element
-						const aArr = aVal as string[];
-						const bArr = bVal as string[];
-						comparison = aArr.length - bArr.length;
-						if (comparison === 0 && aArr.length > 0 && bArr.length > 0) {
-							comparison = aArr[0].localeCompare(bArr[0], undefined, {
-								sensitivity: 'base',
-								numeric: true
-							});
-						}
-					} else {
-						// String comparison
-						comparison = String(aVal).localeCompare(String(bVal), undefined, {
-							sensitivity: 'base',
-							numeric: true
-						});
-					}
-
-					return sortState.direction === 'asc' ? comparison : -comparison;
-				});
-			}
-		}
-
-		return result;
+		return sortItems(result, fields, sortState);
 	});
 
 	// Per-group totals across every page, when the server supplied them.
@@ -673,17 +492,7 @@
 
 	// Toggle sort
 	function toggleSort(fieldKey: string) {
-		if (sortState.field === fieldKey) {
-			sortState = {
-				...sortState,
-				direction: sortState.direction === 'asc' ? 'desc' : 'asc'
-			};
-		} else {
-			sortState = {
-				field: fieldKey,
-				direction: 'asc'
-			};
-		}
+		sortState = nextSortState(sortState, fieldKey);
 	}
 
 	// Toggle string/array filter value
@@ -818,12 +627,9 @@
 		selectedGroupField = null;
 	}
 
-	// Select all visible items
+	// Select every rendered row — the same set `allSelected` reports on.
 	function selectAll() {
-		processedItems.forEach((item) => {
-			const itemId = getItemId(item);
-			if (itemId) selectedIds.add(itemId);
-		});
+		visibleIds(selectableItems, getItemId).forEach((id) => selectedIds.add(id));
 	}
 
 	// Deselect all items
@@ -887,26 +693,8 @@
 	// Check if bulk tagging is enabled
 	let hasBulkTagging = $derived(entityType !== null && getItemTags !== null);
 
-	// Derived states
-	let allSelected = $derived(
-		processedItems.length > 0 && selectedIds.size === processedItems.length
-	);
-
 	// Check if any filters are active
-	let hasActiveFilters = $derived(
-		staleOnly ||
-			fields.some((field) => {
-				if (!field.filterable) return false;
-				const filter = filterState[getFieldKey(field)];
-				if (!filter) return false;
-
-				if (field.type === 'boolean') {
-					return !filter.showTrue || !filter.showFalse;
-				} else {
-					return filter.values.size > 0;
-				}
-			})
-	);
+	let hasActiveFilters = $derived(hasActiveFiltersOf(fields, filterState, staleOnly));
 
 	let hasActiveSearch = $derived(searchQuery.trim().length > 0);
 	let hasActiveGrouping = $derived(selectedGroupField !== null);
@@ -957,6 +745,98 @@
 			? processedItems
 			: processedItems.slice((effectiveCurrentPage - 1) * pageSize, effectiveCurrentPage * pageSize)
 	);
+
+	/**
+	 * The rows select-all acts on: exactly what is rendered.
+	 *
+	 * Grouped mode renders every processed item; ungrouped renders the page
+	 * slice. Deriving the action and its label from one set is what keeps the
+	 * button's promise and a bulk operation's effect in agreement — comparing
+	 * counts instead let any N carried-over selections read as "all".
+	 */
+	let selectableItems = $derived(visibleItems(hasActiveGrouping, processedItems, paginatedItems));
+	let allSelected = $derived(isAllSelected(selectableItems, selectedIds, getItemId));
+
+	function setRowSelected(itemId: string, selected: boolean) {
+		if (selected) {
+			selectedIds.add(itemId);
+		} else {
+			selectedIds.delete(itemId);
+		}
+	}
+
+	/** Select-all scoped to one rendered block — a group's rows, or the page. */
+	function toggleAllIn(rows: T[]) {
+		if (isAllSelected(rows, selectedIds, getItemId)) {
+			visibleIds(rows, getItemId).forEach((id) => selectedIds.delete(id));
+		} else {
+			visibleIds(rows, getItemId).forEach((id) => selectedIds.add(id));
+		}
+	}
+
+	// ---- Table columns -------------------------------------------------------
+
+	let allColumns = $derived(fieldsToColumns(fields));
+	let columnState = $derived(
+		reconcileColumnState(allColumns, { visibility: columnVisibility, order: columnOrder })
+	);
+
+	/**
+	 * Tags are appended by the list itself rather than declared per tab.
+	 *
+	 * Every taggable entity gets the same editable column in the same place —
+	 * last, next to the actions — instead of each tab remembering to add one, so
+	 * a tab cannot silently end up without it. It is editable only when the
+	 * parent supplied an `entityType`, which is also how it gates permission.
+	 */
+	let tagColumn = $derived.by<EntityColumn<T> | null>(() => {
+		if (!getItemTags) return null;
+		const resolve = getItemTags;
+
+		return {
+			id: TAG_COLUMN_ID,
+			label: common_tags(),
+			field: {
+				key: TAG_COLUMN_ID,
+				label: common_tags(),
+				type: 'array',
+				getValue: (item: T) => resolve(item)
+			},
+			display: { cell: tagsCell },
+			sortable: false,
+			align: 'left',
+			primary: false
+		};
+	});
+
+	// Tags sit at the far end of the row, so they are appended rather than
+	// ordered — except for `display.trailing` fields, which sit beyond them.
+	let renderedColumns = $derived.by(() => {
+		const visible = visibleColumns(allColumns, columnState);
+		return [
+			...visible.filter((column) => !column.display.trailing),
+			...(tagColumn ? [tagColumn] : []),
+			...visible.filter((column) => column.display.trailing)
+		];
+	});
+	let showSelection = $derived(Boolean(onBulkDelete) || hasBulkTagging);
+
+	let tableCaptionText = $derived(
+		common_tableCaption({
+			entity: entityLabel ?? '',
+			count: totalCount,
+			itemLabel: totalCount === 1 ? common_item() : common_items()
+		})
+	);
+
+	function toggleColumn(id: string) {
+		columnVisibility = { ...columnState.visibility, [id]: columnState.visibility[id] === false };
+	}
+
+	function resetColumns() {
+		columnVisibility = {};
+		columnOrder = [];
+	}
 
 	// Reset to page 1 when filters/search change and current page would be out of bounds
 	$effect(() => {
@@ -1176,382 +1056,105 @@
 			? 'border-gray-700 pt-4 shadow-lg'
 			: 'border-transparent'}"
 	>
-		<div class="flex items-end justify-between">
-			<!-- Left: Search + Filter/Group/Sort -->
-			<div class="flex items-end gap-4">
-				<!-- Search Input -->
-				<div class="relative w-96 min-w-48">
-					<Search class="text-tertiary absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
-					<input
-						type="text"
-						bind:value={searchQuery}
-						placeholder={common_searchPlaceholder()}
-						class="input-field w-full pl-10 pr-10"
-					/>
-					{#if hasActiveSearch}
-						<button
-							onclick={clearSearch}
-							class="text-tertiary hover:text-secondary absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
-						>
-							<X class="h-4 w-4" />
-						</button>
-					{/if}
-				</div>
-
-				<!-- Data Controls Group (Filter, Group, Sort) -->
-				<div class="flex items-end gap-3">
-					<!-- Filter Toggle -->
-					{#if fields.some((f) => f.filterable)}
-						<button
-							onclick={() => (showFilters = !showFilters)}
-							class="btn-secondary flex h-[42px] items-center gap-2"
-						>
-							<Filter class="h-4 w-4" />
-							{#if hasActiveFilters}
-								<Tag label={common_active()} color="Blue" />
-							{/if}
-						</button>
-					{/if}
-
-					<!-- Group By Dropdown -->
-					{#if groupableFields.length > 0}
-						<div class="flex flex-col gap-1">
-							<span class="text-tertiary text-xs">{common_groupByLabel()}</span>
-							<div class="relative">
-								<select bind:value={selectedGroupField} class="input-secondary pr-8">
-									<option value={null}>{common_none()}</option>
-									{#each groupableFields as field (getFieldKey(field))}
-										<option value={getFieldKey(field)}>{field.label}</option>
-									{/each}
-								</select>
-								{#if hasActiveGrouping}
-									<button
-										onclick={clearGrouping}
-										class="text-tertiary hover:text-secondary absolute right-8 top-1/2 -translate-y-1/2 transition-colors"
-									>
-										<X class="h-3 w-3" />
-									</button>
-								{/if}
-							</div>
-						</div>
-					{/if}
-
-					<!-- Sort Dropdown + Direction -->
-					{#if sortableFields.length > 0}
-						<div class="flex flex-col gap-1">
-							<span class="text-tertiary text-xs">{common_sortByLabel()}</span>
-							<div class="flex items-center gap-1">
-								<select
-									bind:value={sortState.field}
-									onchange={() => {
-										if (!sortState.field) sortState = { ...sortState, direction: 'asc' };
-									}}
-									class="input-secondary pr-8"
-								>
-									<option value={null}>{common_none()}</option>
-									{#each sortableFields as field (getFieldKey(field))}
-										<option value={getFieldKey(field)}>{field.label}</option>
-									{/each}
-								</select>
-								{#if sortState.field}
-									<button
-										onclick={() => toggleSort(sortState.field || '')}
-										class="btn-secondary h-[42px]"
-										title={sortState.direction === 'asc' ? 'Ascending' : 'Descending'}
-									>
-										{#if sortState.direction === 'asc'}
-											<ArrowUpNarrowWide class="h-5 w-5" />
-										{:else}
-											<ArrowDownWideNarrow class="h-5 w-5" />
-										{/if}
-									</button>
-								{/if}
-							</div>
-						</div>
-					{/if}
-				</div>
-			</div>
-
-			<!-- Right: View & Actions Group -->
-			<div class="flex items-end gap-2">
-				<!-- View Mode Toggle -->
-				<button
-					onclick={() => (viewMode = viewMode === 'card' ? 'list' : 'card')}
-					class="btn-secondary h-[42px]"
-					title={viewMode === 'card' ? common_switchToListView() : common_switchToCardView()}
-				>
-					{#if viewMode === 'card'}
-						<List class="h-5 w-5" />
-					{:else}
-						<LayoutGrid class="h-5 w-5" />
-					{/if}
-				</button>
-
-				<!-- Select All/None -->
-				{#if onBulkDelete || hasBulkTagging}
-					<button
-						onclick={allSelected ? selectNone : selectAll}
-						class="btn-secondary h-[42px]"
-						title={allSelected ? common_deselectAll() : common_selectAll()}
-					>
-						{#if allSelected}
-							<Square class="h-5 w-5" />
-						{:else}
-							<CheckSquare class="h-5 w-5" />
-						{/if}
-					</button>
-				{/if}
-
-				<!-- Export Button -->
-				{#if hasExportHandler}
-					<button
-						onclick={handleExportClick}
-						disabled={isExporting}
-						class="btn-secondary h-[42px] disabled:cursor-not-allowed disabled:opacity-50"
-						title={isExporting ? 'Exporting...' : 'Export'}
-					>
-						<Download class="h-5 w-5" />
-					</button>
-				{/if}
-			</div>
-		</div>
+		<ControlsBar
+			bind:searchQuery
+			bind:selectedGroupField
+			bind:sortState
+			bind:viewMode
+			bind:showFilters
+			{fields}
+			{groupableFields}
+			{sortableFields}
+			{hasActiveFilters}
+			{hasActiveSearch}
+			{hasActiveGrouping}
+			showSelectAll={Boolean(onBulkDelete) || hasBulkTagging}
+			{allSelected}
+			{hasExportHandler}
+			{isExporting}
+			onToggleSort={toggleSort}
+			onClearSearch={clearSearch}
+			onClearGrouping={clearGrouping}
+			onSelectAll={selectAll}
+			onSelectNone={selectNone}
+			onExport={handleExportClick}
+		>
+			{#snippet columnMenu()}
+				<ColumnVisibilityMenu
+					columns={allColumns}
+					visibility={columnState.visibility}
+					onToggle={toggleColumn}
+					onReset={resetColumns}
+				/>
+			{/snippet}
+		</ControlsBar>
 
 		<!-- Filter Panel (inside sticky wrapper) -->
 		{#if showFilters}
-			<div class="card mt-4 !rounded-lg !p-5">
-				<div class="flex items-center justify-between">
-					<h3 class="text-primary text-sm font-semibold">{common_filters()}</h3>
-					{#if hasActiveFilters}
-						<button
-							onclick={clearFilters}
-							class="text-tertiary hover:text-secondary text-xs transition-colors"
-						>
-							{common_clearAll()}
-						</button>
-					{/if}
-				</div>
-
-				<div class="mt-4 grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-2 lg:grid-cols-3">
-					{#if onStaleFilterChange}
-						<!-- Server-side: the list is server-paginated, so filtering
-						     client-side would only filter the loaded page. -->
-						<div class="space-y-2">
-							<div class="text-secondary text-sm font-medium">{common_lastSeen()}</div>
-							<div class="space-y-1.5">
-								<label class="flex cursor-pointer items-center gap-2">
-									<input
-										type="checkbox"
-										checked={staleOnly}
-										onchange={toggleStaleFilter}
-										class="checkbox-card h-4 w-4 rounded"
-									/>
-									<span class="text-secondary text-sm">{common_staleOnly()}</span>
-								</label>
-							</div>
-						</div>
-					{/if}
-					{#each fields.filter((f) => f.filterable) as field (getFieldKey(field))}
-						{@const fieldKey = getFieldKey(field)}
-						<div class="space-y-2">
-							<div class="text-secondary text-sm font-medium">{field.label}</div>
-
-							{#if field.type === 'boolean'}
-								{@const filter = filterState[fieldKey]}
-								<div class="space-y-1.5">
-									<label class="flex cursor-pointer items-center gap-2">
-										<input
-											type="checkbox"
-											checked={filter?.showTrue}
-											onchange={() => toggleBooleanFilter(fieldKey, 'showTrue')}
-											class="checkbox-card h-4 w-4 rounded"
-										/>
-										<span class="text-secondary text-sm">{common_showTrue()}</span>
-									</label>
-									<label class="flex cursor-pointer items-center gap-2">
-										<input
-											type="checkbox"
-											checked={filter?.showFalse}
-											onchange={() => toggleBooleanFilter(fieldKey, 'showFalse')}
-											class="checkbox-card h-4 w-4 rounded"
-										/>
-										<span class="text-secondary text-sm">{common_showFalse()}</span>
-									</label>
-								</div>
-							{:else if fieldKey === 'tags'}
-								<!-- Special tag filter with colored tags (stores tag IDs for server-side filtering) -->
-								{@const filter = filterState[fieldKey]}
-								<div
-									use:scrollFade
-									class="flex max-h-32 flex-wrap gap-1.5 overflow-y-scroll rounded-md bg-black/5 p-2 dark:bg-white/5"
-								>
-									{#if allTags.length === 0}
-										<p class="text-tertiary text-xs">{common_noTagsAvailable()}</p>
-									{:else}
-										{#each allTags as tag (tag.id)}
-											{@const isSelected = filter?.values.has(tag.id)}
-											<button
-												onclick={() => toggleTagFilter(tag.id)}
-												class="transition-opacity {isSelected
-													? 'opacity-100'
-													: 'opacity-50 hover:opacity-75'}"
-											>
-												<Tag label={tag.name} color={tag.color as Color} />
-											</button>
-										{/each}
-									{/if}
-								</div>
-							{:else}
-								{@const uniqueValues = field.filterOptions ?? getUniqueValues(field)}
-								{@const filter = filterState[fieldKey]}
-								<div
-									use:scrollFade
-									class="max-h-32 space-y-1.5 overflow-y-scroll rounded-md bg-black/5 p-2 dark:bg-white/5"
-								>
-									{#if uniqueValues.length === 0}
-										<p class="text-tertiary text-xs">{common_noValuesAvailable()}</p>
-									{:else}
-										{#each uniqueValues as value (value)}
-											<label class="flex cursor-pointer items-center gap-2">
-												<input
-													type="checkbox"
-													checked={filter?.values.has(value)}
-													onchange={() => toggleStringFilter(fieldKey, value)}
-													class="checkbox-card h-4 w-4 rounded"
-												/>
-												<span class="text-secondary truncate text-sm" title={value}>{value}</span>
-											</label>
-										{/each}
-									{/if}
-								</div>
-							{/if}
-						</div>
-					{/each}
-				</div>
-			</div>
+			<FilterPanel
+				{fields}
+				{filterState}
+				{allTags}
+				{staleOnly}
+				{hasActiveFilters}
+				showStaleFilter={onStaleFilterChange !== null}
+				{getUniqueValues}
+				onClearFilters={clearFilters}
+				onToggleBoolean={toggleBooleanFilter}
+				onToggleString={toggleStringFilter}
+				onToggleTag={toggleTagFilter}
+				onToggleStale={toggleStaleFilter}
+			/>
 		{/if}
 	</div>
 
 	<!-- Bulk Action Bar (shown when items are selected) -->
 	{#if (onBulkDelete || hasBulkTagging) && selectedIds.size > 0}
-		<div class="card space-y-3 p-4">
-			<div class="flex items-center justify-between">
-				<div class="flex items-center gap-4">
-					<span class="text-primary text-sm font-medium">
-						{common_itemsSelected({
-							count: selectedIds.size,
-							itemLabel: selectedIds.size === 1 ? common_item() : common_items()
-						})}
-					</span>
-					<button
-						onclick={selectNone}
-						class="text-tertiary hover:text-secondary text-sm transition-colors"
-					>
-						{common_clearSelection()}
-					</button>
-				</div>
-				{#if allowBulkDelete && onBulkDelete}
-					<button onclick={handleBulkDelete} class="btn-danger flex items-center gap-2">
-						<Trash2 class="h-4 w-4" />
-						{common_deleteSelected()}
-					</button>
-				{/if}
-			</div>
-
-			<!-- Bulk Tagging -->
-			{#if hasBulkTagging}
-				<div class="flex items-center gap-3 border-t border-gray-700 pt-3">
-					<span class="text-secondary text-sm">{common_tags()}:</span>
-					<TagPickerInline
-						selectedTagIds={commonTags}
-						onAdd={handleBulkTagAdd}
-						onRemove={handleBulkTagRemove}
-					/>
-					{#if commonTags.length === 0 && selectedIds.size > 1}
-						<span class="text-tertiary text-xs">{common_noCommonTags()}</span>
-					{/if}
-				</div>
-			{/if}
-		</div>
+		<BulkActionBar
+			selectedCount={selectedIds.size}
+			showDelete={Boolean(allowBulkDelete && onBulkDelete)}
+			showTagging={hasBulkTagging}
+			{commonTags}
+			onClearSelection={selectNone}
+			onBulkDelete={handleBulkDelete}
+			onTagAdd={handleBulkTagAdd}
+			onTagRemove={handleBulkTagRemove}
+		/>
 	{/if}
 
 	<!-- Results Count and Pagination -->
-	<div class="text-tertiary flex items-center justify-between text-sm">
-		<span>
-			{#if totalCount === 0}
-				{common_noItems()}
-			{:else if totalPages > 1}
-				{common_showingRange({
-					start: showingStart,
-					end: showingEnd,
-					total: totalCount,
-					itemLabel: totalCount === 1 ? common_item() : common_items()
-				})}
-			{:else if useServerPagination}
-				{common_showingTotal({
-					count: totalCount,
-					total: totalCount,
-					itemLabel: totalCount === 1 ? common_item() : common_items()
-				})}
-			{:else}
-				{common_showingTotal({
-					count: processedItems.length,
-					total: items.length,
-					itemLabel: items.length === 1 ? common_item() : common_items()
-				})}
-			{/if}
-		</span>
-		<div class="flex items-center gap-4">
-			{#if hasActiveGrouping}
-				<span>
-					{groupedItems.size}
-					{groupedItems.size === 1 ? common_group() : common_groups()}
-				</span>
-			{/if}
-			<!-- Page size selector (only show when there are more than 20 items) -->
-			{#if totalCount > 20}
-				<div class="flex items-center gap-2">
-					<span class="text-tertiary text-sm">{common_show()}</span>
-					<select
-						value={pageSize}
-						onchange={(e) =>
-							handlePageSizeChange(parseInt(e.currentTarget.value) as PageSizeOption)}
-						class="input-field mx-0 py-1 pr-6"
-					>
-						{#each PAGE_SIZE_OPTIONS as size (size)}
-							<option value={size}>{size}</option>
-						{/each}
-					</select>
-				</div>
-			{/if}
-			{#if totalPages > 1}
-				<div class="flex items-center gap-2">
-					<button
-						onclick={goToPrevPage}
-						disabled={!canGoPrev}
-						class="btn-secondary p-1 disabled:cursor-not-allowed disabled:opacity-50"
-						title={common_previousPage()}
-					>
-						<ChevronLeft class="h-5.5 w-5.5" />
-					</button>
-					<span class="text-secondary min-w-[80px] text-center">
-						{common_pageOf({ current: effectiveCurrentPage, total: totalPages })}
-					</span>
-					<button
-						onclick={goToNextPage}
-						disabled={!canGoNext}
-						class="btn-secondary p-1 disabled:cursor-not-allowed disabled:opacity-50"
-						title={common_nextPage()}
-					>
-						<ChevronRight class="h-5.5 w-5.5" />
-					</button>
-				</div>
-			{/if}
-		</div>
-	</div>
+	<PaginationBar
+		{totalCount}
+		{totalPages}
+		currentPage={effectiveCurrentPage}
+		{pageSize}
+		{showingStart}
+		{showingEnd}
+		{canGoPrev}
+		{canGoNext}
+		groupCount={hasActiveGrouping ? groupedItems.size : null}
+		{useServerPagination}
+		processedCount={processedItems.length}
+		itemCount={items.length}
+		onPrevPage={goToPrevPage}
+		onNextPage={goToNextPage}
+		onPageSizeChange={handlePageSizeChange}
+	/>
 
 	<!-- Content -->
-	{#if hasActiveGrouping}
-		<!-- Grouped view -->
+	{#if viewMode === 'table'}
+		<!--
+			Grouped or not, one table with one header row. Splitting a grouped list
+			into a table per group gave each group its own header and its own column
+			widths, so columns stopped lining up across the very groups you were
+			comparing — which is the whole reason to use a table.
+		-->
+		{@render tableFor(
+			hasActiveGrouping ? null : paginatedItems,
+			hasActiveGrouping ? null : tableCaptionText
+		)}
+	{:else if hasActiveGrouping}
+		<!-- Grouped cards -->
 		<div class="space-y-6">
 			{#each [...groupedItems.entries()] as [groupName, groupItems] (groupName)}
 				{@const range = groupRange(groupItems)}
@@ -1572,23 +1175,9 @@
 						</span>
 					</div>
 
-					<!-- Group Items -->
-					<div
-						class={viewMode === 'list'
-							? 'space-y-2'
-							: 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'}
-					>
+					<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
 						{#each groupItems as item (getItemId(item))}
-							<!-- eslint-disable-next-line @typescript-eslint/no-explicit-any -->
-							{@const itemId = getItemId(item)}
-							{@const isSelected = selectedIds.has(itemId)}
-							{@render children(item, viewMode, isSelected, (selected) => {
-								if (selected) {
-									selectedIds.add(itemId);
-								} else {
-									selectedIds.delete(itemId);
-								}
-							})}
+							{@render cardFor(item)}
 						{/each}
 					</div>
 				</div>
@@ -1596,22 +1185,61 @@
 		</div>
 	{:else}
 		<!-- Ungrouped view (paginated) -->
-		<div
-			class={viewMode === 'list'
-				? 'space-y-2'
-				: 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'}
-		>
+		<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
 			{#each paginatedItems as item (getItemId(item))}
-				{@const itemId = getItemId(item)}
-				{@const isSelected = selectedIds.has(itemId)}
-				{@render children(item, viewMode, isSelected, (selected) => {
-					if (selected) {
-						selectedIds.add(itemId);
-					} else {
-						selectedIds.delete(itemId);
-					}
-				})}
+				{@render cardFor(item)}
 			{/each}
 		</div>
 	{/if}
 </div>
+
+{#snippet tagsCell(item: T)}
+	{@const ids = getItemTags ? getItemTags(item) : []}
+	<TagCell
+		items={tagItems(ids, allTags)}
+		tagIds={ids}
+		entityId={getItemId(item)}
+		entityType={entityType ?? undefined}
+		editable={Boolean(entityType)}
+	/>
+{/snippet}
+
+{#snippet cardFor(item: T)}
+	{@const itemId = getItemId(item)}
+	<EntityCard
+		{item}
+		columns={renderedColumns}
+		actions={getActions ? getActions(item) : []}
+		{getIcon}
+		{getLink}
+		selected={selectedIds.has(itemId)}
+		selectable={showSelection}
+		onSelectionChange={(selected) => setRowSelected(itemId, selected)}
+	/>
+{/snippet}
+
+{#snippet tableFor(rows: T[] | null, caption: string | null)}
+	{@const flat = rows ?? [...groupedItems.values()].flat()}
+	<EntityTable
+		items={rows}
+		groups={rows
+			? null
+			: [...groupedItems.entries()].map(([name, groupItems]) => ({
+					name,
+					items: groupItems,
+					range: groupRange(groupItems)
+				}))}
+		columns={renderedColumns}
+		{sortState}
+		selectable={showSelection}
+		{selectedIds}
+		allSelected={isAllSelected(flat, selectedIds, getItemId)}
+		someSelected={isPartiallySelected(flat, selectedIds, getItemId)}
+		{getItemId}
+		{getActions}
+		caption={caption ?? tableCaptionText}
+		onToggleSort={toggleSort}
+		onToggleRow={setRowSelected}
+		onToggleAll={() => toggleAllIn(flat)}
+	/>
+{/snippet}

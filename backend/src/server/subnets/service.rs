@@ -89,10 +89,13 @@ impl CrudService<Subnet> for SubnetService {
                         && existing_subnet.base.subnet_type.is_container_bridge()
                     {
                         match (
-                            &subnet.base.virtualization,
-                            &existing_subnet.base.virtualization,
+                            subnet.base.virtualization_service_id,
+                            existing_subnet.base.virtualization_service_id,
                         ) {
-                            (Some(a), Some(b)) => a.service_id() == b.service_id(),
+                            (Some(a), Some(b)) => a == b,
+                            // An owner-less bridge row predates this scoping, or had its owner
+                            // quarantined as dangling by the migration. Either way it merges on
+                            // CIDR alone, which is what collapses the duplicates it accumulated.
                             _ => true,
                         }
                     } else {
@@ -203,37 +206,5 @@ impl SubnetService {
             event_bus,
             entity_tag_service,
         }
-    }
-
-    /// Update container-runtime bridge subnets (Docker/Podman) that reference an
-    /// old service_id to use the new one. Called after host upsert remaps the
-    /// runtime service IDs during create_with_children.
-    pub async fn patch_container_bridge_virtualization(
-        &self,
-        network_id: &Uuid,
-        old_service_id: &Uuid,
-        new_service_id: &Uuid,
-    ) -> Result<()> {
-        // SCD2: only patch live subnets; closed historical copies retain
-        // their as-of state.
-        let filter = StorableFilter::<Subnet>::new_from_network_ids(&[*network_id]).live();
-        let subnets = self.storage.get_all(filter).await?;
-
-        for mut subnet in subnets {
-            if let Some(virt) = subnet.base.virtualization.as_mut()
-                && virt.service_id() == Some(*old_service_id)
-            {
-                tracing::debug!(
-                    subnet_id = %subnet.id,
-                    subnet_cidr = %subnet.base.cidr,
-                    old_service_id = %old_service_id,
-                    new_service_id = %new_service_id,
-                    "Patching bridge subnet virtualization service_id"
-                );
-                virt.set_service_id(*new_service_id);
-                self.storage.update(&mut subnet).await?;
-            }
-        }
-        Ok(())
     }
 }

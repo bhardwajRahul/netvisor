@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { entities } from '$lib/shared/stores/metadata';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
@@ -6,7 +7,6 @@
 	import type { Discovery } from '../../types/base';
 	import DiscoveryEditModal from '../DiscoveryModal/DiscoveryEditModal.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
-	import DiscoveryHistoryCard from '../cards/DiscoveryHistoryCard.svelte';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
 	import { defineFields } from '$lib/shared/components/data/types';
 	import {
@@ -25,11 +25,21 @@
 	import type { TabProps } from '$lib/shared/types';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import { modalState, openModal, closeModal } from '$lib/shared/stores/modal-registry';
+	import { Info } from 'lucide-svelte';
+	import { daemonItems } from '$lib/features/daemons/columns';
+	import { networkItems } from '$lib/features/networks/columns';
+	import { toColor, type Color } from '$lib/shared/utils/styling';
+	import type { CardAction } from '$lib/shared/components/data/types';
 	import {
 		common_created,
 		common_daemon,
+		common_details,
 		common_duration,
+		common_cancelled,
+		common_failed,
 		common_name,
+		common_status,
+		common_warnings,
 		common_network,
 		common_type,
 		common_unknown,
@@ -184,11 +194,49 @@
 		await downloadCsv('Discovery', {});
 	}
 
+	/**
+	 * How a run ended, as a tag.
+	 *
+	 * A clean completion has nothing to say, so it returns null and the column
+	 * renders empty — the point is that failures, cancellations and warnings
+	 * stand out. Same rule the card's header tag uses.
+	 */
+	function outcomeTag(discovery: Discovery): { label: string; color: Color } | null {
+		const results = discovery.run_type.type === 'Historical' ? discovery.run_type.results : null;
+		const phase = results?.phase ?? null;
+		if (!phase) return null;
+
+		switch (phase) {
+			case 'Complete':
+				return results?.warnings && results.warnings.length > 0
+					? { label: common_warnings(), color: toColor('yellow') }
+					: null;
+			case 'Failed':
+				return { label: common_failed(), color: toColor('red') };
+			case 'Cancelled':
+				return { label: common_cancelled(), color: toColor('yellow') };
+			default:
+				// Still running, so worth showing — the phase names its stage.
+				return { label: phase, color: toColor('blue') };
+		}
+	}
+
+	/** Row actions for table mode, matching what the card offers. */
+	function discoveryActions(discovery: Discovery): CardAction[] {
+		return [{ label: common_details(), icon: Info, onClick: () => handleEditDiscovery(discovery) }];
+	}
+
 	let fields = $derived(
 		defineFields<Discovery, DiscoveryOrderField>(
 			{
 				// Identity field: grouping by it would render a header per run.
-				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+				name: {
+					label: common_name(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					display: { order: 0 }
+				},
 				daemon_id: {
 					label: common_daemon(),
 					type: 'string',
@@ -199,7 +247,8 @@
 					getGroupValue: (item) => item.daemon_id,
 					getValue: (item) =>
 						daemonsData.find((d) => d.id === item.daemon_id)?.name ??
-						common_unknownEntity({ entity: common_daemon() })
+						common_unknownEntity({ entity: common_daemon() }),
+					display: { order: 6, getItems: (item) => daemonItems(item.daemon_id, daemonsData) }
 				},
 				network_id: {
 					label: common_network(),
@@ -209,7 +258,8 @@
 					groupable: true,
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
-						networksData.find((n) => n.id === item.network_id)?.name ?? common_unknownNetwork()
+						networksData.find((n) => n.id === item.network_id)?.name ?? common_unknownNetwork(),
+					display: { order: 5, getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				discovery_type: {
 					label: common_type(),
@@ -217,12 +267,33 @@
 					searchable: true,
 					filterable: true,
 					groupable: true,
-					getValue: (item) => item.discovery_type.type
+					getValue: (item) => item.discovery_type.type,
+					display: { hiddenByDefault: true }
 				},
-				created_at: { label: common_created(), type: 'date' },
-				updated_at: { label: common_updated(), type: 'date' }
+				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 			},
 			[
+				{
+					// The run's outcome, which the card shows as its header tag. It was
+					// card-only, so a failed or cancelled run looked identical to a
+					// clean one in the table.
+					key: 'outcome',
+					label: common_status(),
+					type: 'string',
+					searchable: true,
+					filterable: true,
+					groupable: true,
+					getValue: (item) => outcomeTag(item)?.label ?? '',
+					display: {
+						order: 1,
+						statusTag: true,
+						getItems: (item) => {
+							const tag = outcomeTag(item);
+							return tag ? [{ id: tag.label, label: tag.label, color: tag.color }] : [];
+						}
+					}
+				},
 				// Derived from the run's JSONB results, so these are display-only:
 				// there is no column to sort or group on.
 				{
@@ -234,7 +305,8 @@
 						return results && results.started_at
 							? formatTimestamp(results.started_at)
 							: common_unknown();
-					}
+					},
+					display: { order: 2 }
 				},
 				{
 					key: 'finished_at',
@@ -245,7 +317,8 @@
 						return results && results.finished_at
 							? formatTimestamp(results.finished_at)
 							: common_unknown();
-					}
+					},
+					display: { order: 3 }
 				},
 				{
 					key: 'duration',
@@ -257,7 +330,8 @@
 							return formatDuration(results.started_at, results.finished_at);
 						}
 						return common_unknown();
-					}
+					},
+					display: { order: 4 }
 				}
 			]
 		)
@@ -285,28 +359,18 @@
 			onBulkDelete={isReadOnly ? undefined : handleBulkDelete}
 			storageKey="scanopy-discovery-historical-table-state"
 			getItemId={(item) => item.id}
+			getIcon={() => ({
+				icon: entities.getIconComponent('Discovery'),
+				color: entities.getColorHelper('Discovery').icon
+			})}
 			serverPagination={discoveriesPagination}
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
 			onSearchChange={handleSearchChange}
 			onCsvExport={handleCsvExport}
-		>
-			{#snippet children(
-				item: Discovery,
-				viewMode: 'card' | 'list',
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				<DiscoveryHistoryCard
-					discovery={item}
-					hosts={hostsData}
-					onView={handleEditDiscovery}
-					{viewMode}
-					selected={isSelected}
-					{onSelectionChange}
-				/>
-			{/snippet}
-		</DataControls>
+			getActions={discoveryActions}
+			entityLabel={discovery_historyTitle()}
+		></DataControls>
 	{/if}
 </div>
 

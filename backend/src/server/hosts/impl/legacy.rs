@@ -307,7 +307,8 @@ impl LegacyService {
                 service_definition,
                 name: self.name,
                 bindings,
-                virtualization: None, // Old virtualization format ignored
+                virtualization_metadata: None, // Old virtualization format ignored
+                virtualization_service_id: None,
                 source: EntitySource::Discovery,
                 tags: self.tags,
                 position: 0,
@@ -364,7 +365,8 @@ impl LegacyHostWithServicesRequest {
                 hostname: host.hostname,
                 description: host.description,
                 source: crate::server::shared::types::entities::EntitySource::Discovery,
-                virtualization: None,
+                virtualization_metadata: None,
+                virtualization_service_id: None,
                 hidden: host.hidden,
                 tags: host.tags,
                 sys_descr: None,

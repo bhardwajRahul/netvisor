@@ -25,11 +25,11 @@
 
 	// Resolve the virtualizer host from the element's host virtualization data
 	let virtualizerHost = $derived.by(() => {
-		const virtualization = elementContext?.host?.virtualization;
-		if (!virtualization) return null;
+		const virtualizerServiceId = elementContext?.host?.virtualization_service_id;
+		if (!virtualizerServiceId) return null;
 
 		// Look up the virtualizing service, then find its host
-		const service = topology.services.find((s) => s.id === virtualization.details.service_id);
+		const service = topology.services.find((s) => s.id === virtualizerServiceId);
 		if (!service?.host_id) return null;
 
 		return topology.hosts.find((h) => h.id === service.host_id) ?? null;

@@ -16,6 +16,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
 
+use strum::EnumCount;
+
 use crate::server::ports::r#impl::base::PortType;
 
 /// How many addresses a summary lists before eliding the rest.
@@ -107,6 +109,17 @@ impl SnmpWalkGroup {
     fn absence_means_unsupported(self) -> bool {
         matches!(self, Self::BridgePortNumbering)
     }
+
+    /// Whether a record in this group can be thrown away *after* a successful read.
+    ///
+    /// True only for the neighbour groups, whose records carry a mandatory identifier — the LLDP
+    /// chassis ID, the CDP device id — that a device can omit while answering everything asked of
+    /// it. Discarding one leaves the group incomplete without the walk having stopped early, which
+    /// is the one case where "incomplete" must not be read as "cut short". Nothing else here
+    /// discards, so for every other group an incomplete result is always a short read.
+    fn discards_malformed_records(self) -> bool {
+        matches!(self, Self::Lldp | Self::Cdp)
+    }
 }
 
 /// LLDP neighbours whose local port could not be matched to an interface on the device.
@@ -162,34 +175,107 @@ pub struct MalformedNeighbours {
     /// Records that survived, so the line can say whether this cost the device some of its
     /// topology or all of it.
     pub kept: usize,
+    /// What accounts for most of the loss on this device.
+    pub reason: MalformedNeighbourReason,
 }
 
-/// One line naming the devices, or empty if there were none.
-pub fn render_malformed_neighbours(records: &[MalformedNeighbours]) -> Vec<String> {
-    let affected: BTreeSet<IpAddr> = records
-        .iter()
-        .filter(|r| r.discarded > 0)
-        .map(|r| r.ip)
-        .collect();
-    if affected.is_empty() {
-        return Vec::new();
+/// Why a device's neighbour records could not be used.
+///
+/// The one thing an operator can act on here is a rescan, and exactly one of these four is worth
+/// spending it on. The single line this replaced told all of them the same thing — that the device
+/// answered in full and a retry would change nothing — which is right for three and wrong for the
+/// fourth, the case where a retry is the whole remedy.
+///
+/// Ordered as declared: renderers group by this, so the ordering fixes the order of the lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MalformedNeighbourReason {
+    /// The column carrying the identifier stopped before the columns that follow it did, so the
+    /// rows arrived describing a neighbour they could not name.
+    ///
+    /// The only cause here a rescan can fix, and it overrides the rest: a row a truncated column
+    /// never reached is indistinguishable from one it never had, so once truncation is in
+    /// evidence the other classifications below cannot be trusted for the same device.
+    WalkCutShort,
+    /// Rows appeared in the descriptive columns at table positions the identifying column never
+    /// listed — there was never an identifier on them to lose.
+    GhostRows,
+    /// The identifying column listed the row and then never supplied a usable value for it. The
+    /// read finished, so the gap is in what the device served.
+    IncompleteRecords,
+    /// The agent answered an identifying column with a value of a type that column cannot hold.
+    UnexpectedType,
+    /// The row's position in the device's table could not be read, so it could not be tied to a
+    /// local port. A firmware serving an index shape the MIB does not describe (GH #668).
+    UnreadableIndex,
+}
+
+impl MalformedNeighbourReason {
+    /// The sentence that follows the count — what happened and, decisively, whether rescanning is
+    /// worth the operator's time.
+    ///
+    /// Written without a subject noun for the devices. One line can cover one address or ten, and
+    /// naming them again here forces a number the sentence cannot know — "The devices answered…"
+    /// reads wrong for the single-device case, which is the common one.
+    fn explanation(self) -> &'static str {
+        match self {
+            Self::WalkCutShort => {
+                "The read of the column identifying the far end stopped before its end, so these \
+                 records may come back on the next complete scan."
+            }
+            Self::GhostRows => {
+                "The rows appeared only in the columns describing each neighbour, never in the one \
+                 identifying it, so there was no identifier to lose. Rescanning will not change \
+                 this."
+            }
+            Self::IncompleteRecords => {
+                "These neighbours were listed and then no identifier was supplied for them. The \
+                 read finished, so rescanning will not change this."
+            }
+            Self::UnexpectedType => {
+                "The identifying column came back with a value of a type it cannot hold. \
+                 Rescanning will not change this."
+            }
+            Self::UnreadableIndex => {
+                "Their position in the neighbour table could not be read, so they could not be \
+                 tied to a local port. Rescanning will not change this."
+            }
+        }
     }
-    let discarded: usize = records.iter().map(|r| r.discarded).sum();
-    // "None left" and "some left" are different situations for whoever reads this: the first
-    // means the device is absent from L2 Physical, the second that it is there but incomplete.
-    let kept: usize = records.iter().map(|r| r.kept).sum();
-    let consequence = if kept == 0 {
-        "so those devices contribute no physical links at all"
-    } else {
-        "so some of their physical links are missing"
-    };
-    vec![format!(
-        "{} reported {discarded} neighbour record{} without the identifier needed to match the \
-         far end, {consequence}. The devices answered in full — the records themselves are \
-         incomplete, so rescanning will not change this.",
-        list_addresses_prose(&affected),
-        if discarded == 1 { "" } else { "s" }
-    )]
+}
+
+/// One line per cause, naming the devices, or empty if there were none.
+///
+/// Grouped by cause rather than summed into one line: the causes differ on whether a rescan helps,
+/// and a single line covering all of them has to pick one answer and be wrong for the rest.
+pub fn render_malformed_neighbours(records: &[MalformedNeighbours]) -> Vec<String> {
+    let mut by_reason: BTreeMap<MalformedNeighbourReason, (BTreeSet<IpAddr>, usize, usize)> =
+        BTreeMap::new();
+    for record in records.iter().filter(|r| r.discarded > 0) {
+        let entry = by_reason.entry(record.reason).or_default();
+        entry.0.insert(record.ip);
+        entry.1 += record.discarded;
+        entry.2 += record.kept;
+    }
+    by_reason
+        .into_iter()
+        .map(|(reason, (affected, discarded, kept))| {
+            // "None left" and "some left" are different situations for whoever reads this: the
+            // first means the device is absent from L2 Physical, the second that it is there but
+            // incomplete.
+            let consequence = if kept == 0 {
+                "so those devices contribute no physical links at all"
+            } else {
+                "so some of their physical links are missing"
+            };
+            format!(
+                "{} reported {discarded} neighbour record{} without the identifier needed to \
+                 match the far end, {consequence}. {}",
+                list_addresses_prose(&affected),
+                if discarded == 1 { "" } else { "s" },
+                reason.explanation(),
+            )
+        })
+        .collect()
 }
 
 /// A device whose VLAN table was read and could not be recorded.
@@ -244,6 +330,29 @@ pub struct SnmpGroupOutcome {
     pub reason: Option<ShortfallReason>,
 }
 
+impl SnmpGroupOutcome {
+    /// The *read* fell short — as opposed to the read finishing and some of its rows being
+    /// discarded as unusable.
+    ///
+    /// `complete` answers one question: may this result overwrite what the server holds? For the
+    /// neighbour groups, two very different things clear it. A truncated walk clears it and
+    /// records why, in `reason`. Discarding a malformed record also clears it — the rows that
+    /// survived are not the whole picture — but the walk itself ran to its end, so there is no
+    /// `reason` to record.
+    ///
+    /// Reporting the second as a short read put two lines on one device giving opposite advice:
+    /// one promising the values would "refresh on the next complete scan", the other saying no
+    /// rescan would ever change them (GH #668). The malformed-record warning already covers that
+    /// case and states the true one.
+    ///
+    /// Scoped to the groups that discard. Elsewhere an absent `reason` carries its own meaning —
+    /// a device with no bridge MIB answers nothing and has nothing to say about why — and must
+    /// still be reported.
+    fn walk_fell_short(&self, group: SnmpWalkGroup) -> bool {
+        !(self.complete || (group.discards_malformed_records() && self.reason.is_none()))
+    }
+}
+
 /// Per-group outcomes for one host, as [`snmp_walk_shortfalls`] consumes them.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SnmpCollectionOutcome {
@@ -283,7 +392,7 @@ pub fn snmp_walk_shortfalls(ip: IpAddr, outcome: SnmpCollectionOutcome) -> Vec<I
         ),
     ]
     .into_iter()
-    .filter(|(_, group, report)| *report && !group.complete)
+    .filter(|(group, outcome, report)| *report && outcome.walk_fell_short(*group))
     .map(|(group, outcome, _)| IncompleteSnmpWalk {
         ip,
         group,
@@ -462,7 +571,17 @@ pub fn render_incomplete_interface_walks(records: &[IncompleteInterfaceWalk]) ->
 /// Every variant maps to a different thing for the operator to do, which is the test for whether
 /// one belongs here. "The device refused my password" and "nothing was listening" arrive as the
 /// same empty result and send an operator to opposite ends of the problem.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    strum_macros::EnumCount,
+    strum_macros::EnumIter,
+)]
 pub enum AttemptOutcome {
     /// The endpoint answered and refused the credential. The credential is wrong.
     Rejected,
@@ -481,6 +600,15 @@ pub enum AttemptOutcome {
     /// The credential worked and the collection after it did not. The host's data is missing
     /// rather than merely stale, which is why it is worth its own line.
     CollectionFailed,
+    /// The credential worked, the collection started, and the time limit stopped it before it
+    /// finished.
+    ///
+    /// Distinct from [`Self::TimedOut`], which is the address never answering, and from
+    /// [`Self::CollectionFailed`], which is the collection erroring: here the service answered
+    /// perfectly well and there was simply more to read than there was time to read it. Reporting
+    /// this as [`Self::TimedOut`] told operators to check that the service was listening, on a
+    /// host where it had just enumerated 77 containers (GH #650).
+    CollectionTimedOut,
     /// The scan was cancelled. Never rendered — the user stopped it, so it is not a finding.
     Cancelled,
 }
@@ -627,7 +755,7 @@ pub fn render_credential_issues(issues: &[CredentialIssue]) -> Vec<String> {
         let matching: Vec<&CredentialIssue> = issues
             .iter()
             .filter(|i| {
-                attempt_outcome(&i.reason) == Some(*outcome)
+                attempt_outcome(&i.reason) == Some(outcome)
                     && !already_covered_by_address_line(issues, i)
             })
             .collect();
@@ -656,12 +784,18 @@ pub fn render_credential_issues(issues: &[CredentialIssue]) -> Vec<String> {
 
 /// The order the outcome lines appear in: most actionable first, so the line an operator can do
 /// something about is not buried under the ones describing the network.
-const ATTEMPT_ORDER: &[AttemptOutcome] = &[
+///
+/// Fixed-length rather than a slice, so a new [`AttemptOutcome`] that is not listed here is an
+/// array-length compile error. As a slice this compiled fine with a variant missing and simply
+/// never rendered it — the same failure mode [`AttemptOutcome::advice`] was made a `match` to
+/// avoid, and the one this constant still had.
+const ATTEMPT_ORDER: [AttemptOutcome; AttemptOutcome::COUNT] = [
     AttemptOutcome::Rejected,
     AttemptOutcome::Malformed,
     AttemptOutcome::TlsFailed,
     AttemptOutcome::NotThisService,
     AttemptOutcome::CollectionFailed,
+    AttemptOutcome::CollectionTimedOut,
     AttemptOutcome::Unreachable,
     AttemptOutcome::TimedOut,
     AttemptOutcome::Cancelled,
@@ -691,6 +825,13 @@ impl AttemptOutcome {
             Self::CollectionFailed => Some(
                 "authenticated and then failed while collecting, so this host's data is missing \
                  rather than out of date",
+            ),
+            // Deliberately outside the `already_covered_by_address_line` suppression below: no
+            // address-level line says this, because the address answered fine. Suppressing it
+            // the way `TimedOut` is suppressed is what made a 300s container scan silent.
+            Self::CollectionTimedOut => Some(
+                "authenticated and then ran out of time before it finished collecting — rescan \
+                 this host on its own, or narrow what the scan covers",
             ),
             // The user stopped the scan. Not a finding.
             Self::Cancelled => None,
@@ -777,6 +918,78 @@ mod tests {
         assert!(render_incomplete_snmp_walks(&[]).is_empty());
         assert!(render_incomplete_interface_walks(&[]).is_empty());
         assert!(render_credential_issues(&[]).is_empty());
+    }
+
+    /// GH #650. A container scan that authenticated, enumerated 77 containers and then ran out of
+    /// time was reported with the `TimedOut` wording — "could not be reached at that address,
+    /// check the service is listening" — and on a sweep was suppressed entirely, because
+    /// `already_covered_by_address_line` treats `TimedOut` as saying the same thing as an
+    /// address-level line. Neither may happen to a collection that ran out of time.
+    #[test]
+    fn a_collection_that_ran_out_of_time_is_not_reported_as_an_unreachable_host() {
+        let addr = ip("10.1.1.99");
+        let issues = vec![
+            CredentialIssue {
+                label: "Podman socket connection",
+                ip: addr,
+                reason: CredentialIssueReason::Attempted {
+                    outcome: AttemptOutcome::CollectionTimedOut,
+                    message: "Integration timed out after 300s".to_string(),
+                },
+            },
+            // An address-level line for the same address, which is what suppresses `TimedOut`.
+            CredentialIssue {
+                label: "SNMP queries",
+                ip: addr,
+                reason: CredentialIssueReason::TargetNotResponding,
+            },
+        ];
+
+        let rendered = render_credential_issues(&issues);
+        let text = joined(&rendered);
+
+        assert!(
+            text.contains("ran out of time"),
+            "a collection that hit its time limit must still be reported: {text}"
+        );
+        assert!(
+            !text.contains("check the address, port and that the service is listening"),
+            "the service answered fine; sending the operator to check it is listening is the \
+             misdiagnosis this outcome exists to prevent: {text}"
+        );
+    }
+
+    /// `ATTEMPT_ORDER`'s length is compiler-checked against the variant count, but an entry that
+    /// is present and unreachable would still render nothing. Pair the compile-time check with a
+    /// behavioural one so both halves of "every outcome the product names gets said out loud"
+    /// hold.
+    #[test]
+    fn every_reportable_outcome_produces_a_line() {
+        use strum::IntoEnumIterator;
+
+        for outcome in AttemptOutcome::iter() {
+            let issues = vec![CredentialIssue {
+                label: "SNMP queries",
+                ip: ip("10.0.0.5"),
+                reason: CredentialIssueReason::Attempted {
+                    outcome,
+                    message: "diagnostic".to_string(),
+                },
+            }];
+            let rendered = render_credential_issues(&issues);
+
+            match outcome.advice() {
+                Some(_) => assert_eq!(
+                    rendered.len(),
+                    1,
+                    "{outcome:?} has advice but rendered {rendered:?}"
+                ),
+                None => assert!(
+                    rendered.is_empty(),
+                    "{outcome:?} has no advice but rendered {rendered:?}"
+                ),
+            }
+        }
     }
 
     /// The reported problem: fifteen hosts produced fifteen paragraphs. One line, always.
@@ -890,6 +1103,94 @@ mod tests {
 
         let groups: Vec<SnmpWalkGroup> = shortfalls.iter().map(|s| s.group).collect();
         assert_eq!(groups, vec![SnmpWalkGroup::BridgePortNumbering]);
+    }
+
+    /// A device that answered in full and had a malformed record thrown away is not a short read.
+    ///
+    /// Discarding clears the same `complete` flag a truncated walk does — it gates whether the
+    /// result may overwrite the server's copy, and a thinned result may not. Reporting it here as
+    /// well put two lines on one device telling the operator opposite things: that the values
+    /// would "refresh on the next complete scan", and that no rescan would ever change them. The
+    /// malformed-record warning covers this case on its own and states the true one.
+    #[test]
+    fn a_discarded_record_is_not_also_reported_as_a_short_walk() {
+        let shortfalls = snmp_walk_shortfalls(
+            ip("192.168.7.243"),
+            SnmpCollectionOutcome {
+                // What `query_lldp_neighbors` produces after discarding a ghost row: incomplete,
+                // rows returned, and no walk-level reason because no walk stopped early.
+                lldp: SnmpGroupOutcome {
+                    complete: false,
+                    returned_any: true,
+                    reason: None,
+                },
+                cdp: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: false,
+                    reason: None,
+                },
+                bridge_port_numbering: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+                bridge_forwarding: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+                vlan_membership: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+            },
+        );
+
+        assert!(
+            shortfalls.is_empty(),
+            "the walk finished; only the malformed-record warning should speak for this device, \
+             and it says a rescan will not help — {shortfalls:?}"
+        );
+    }
+
+    /// The converse, so the rule above cannot silence a real one: a walk that genuinely stopped
+    /// early records why, and that is still the device's own finding.
+    #[test]
+    fn a_walk_that_stopped_early_is_still_reported() {
+        let shortfalls = snmp_walk_shortfalls(
+            ip("192.168.7.243"),
+            SnmpCollectionOutcome {
+                lldp: SnmpGroupOutcome {
+                    complete: false,
+                    returned_any: true,
+                    reason: Some(ShortfallReason::NoAnswer),
+                },
+                cdp: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: false,
+                    reason: None,
+                },
+                bridge_port_numbering: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+                bridge_forwarding: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+                vlan_membership: SnmpGroupOutcome {
+                    complete: true,
+                    returned_any: true,
+                    reason: None,
+                },
+            },
+        );
+
+        let groups: Vec<SnmpWalkGroup> = shortfalls.iter().map(|s| s.group).collect();
+        assert_eq!(groups, vec![SnmpWalkGroup::Lldp]);
     }
 
     /// The suppression is scoped to the root failing. When the bridge-port walk succeeds, a
@@ -1180,12 +1481,60 @@ mod tests {
             group: SnmpWalkGroup::Lldp,
             discarded: 14,
             kept: 0,
+            reason: MalformedNeighbourReason::GhostRows,
         }]));
 
         assert!(msg.contains("192.168.7.244"), "{msg}");
         assert!(msg.contains("14 neighbour records"), "{msg}");
-        assert!(msg.contains("rescanning will not change this"), "{msg}");
+        assert!(msg.contains("Rescanning will not change this"), "{msg}");
         assert!(msg.contains("no physical links at all"), "{msg}");
+    }
+
+    /// The counterpart, and the reason the cause is carried at all: a chassis column that stopped
+    /// early *can* recover, and the line that used to cover every cause told this operator their
+    /// one available remedy was pointless.
+    #[test]
+    fn a_cut_short_read_does_not_tell_the_operator_a_rescan_is_pointless() {
+        let msg = joined(&render_malformed_neighbours(&[MalformedNeighbours {
+            ip: ip("192.168.7.243"),
+            group: SnmpWalkGroup::Lldp,
+            discarded: 6,
+            kept: 0,
+            reason: MalformedNeighbourReason::WalkCutShort,
+        }]));
+
+        assert!(msg.contains("192.168.7.243"), "{msg}");
+        assert!(!msg.contains("will not change this"), "{msg}");
+        assert!(msg.contains("next complete scan"), "{msg}");
+    }
+
+    /// Two devices failing for different reasons need different advice, so they cannot be summed
+    /// into one sentence — whichever cause won would be wrong for the other device.
+    #[test]
+    fn devices_failing_for_different_reasons_are_reported_separately() {
+        let lines = render_malformed_neighbours(&[
+            MalformedNeighbours {
+                ip: ip("10.0.0.1"),
+                group: SnmpWalkGroup::Lldp,
+                discarded: 3,
+                kept: 0,
+                reason: MalformedNeighbourReason::WalkCutShort,
+            },
+            MalformedNeighbours {
+                ip: ip("10.0.0.2"),
+                group: SnmpWalkGroup::Lldp,
+                discarded: 4,
+                kept: 0,
+                reason: MalformedNeighbourReason::UnreadableIndex,
+            },
+        ]);
+
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        let cut_short = lines.iter().find(|l| l.contains("10.0.0.1")).unwrap();
+        let unreadable = lines.iter().find(|l| l.contains("10.0.0.2")).unwrap();
+        assert!(!cut_short.contains("10.0.0.2"), "{cut_short}");
+        assert!(!cut_short.contains("will not change this"), "{cut_short}");
+        assert!(unreadable.contains("will not change this"), "{unreadable}");
     }
 
     /// Losing some neighbours and losing all of them put the device in different places on the
@@ -1197,6 +1546,7 @@ mod tests {
             group: SnmpWalkGroup::Lldp,
             discarded: 2,
             kept: 5,
+            reason: MalformedNeighbourReason::GhostRows,
         }]));
 
         assert!(
@@ -1215,6 +1565,7 @@ mod tests {
                 group: SnmpWalkGroup::Cdp,
                 discarded: 0,
                 kept: 3,
+                reason: MalformedNeighbourReason::GhostRows,
             }])
             .is_empty()
         );

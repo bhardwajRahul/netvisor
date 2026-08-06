@@ -1,5 +1,5 @@
 <script lang="ts">
-	import HostCard from './HostCard.svelte';
+	import { lastSeenItems } from '$lib/shared/utils/freshness';
 	import type {
 		Host,
 		CreateHostWithServicesRequest,
@@ -13,25 +13,37 @@
 	import HostConsolidationModal from './HostConsolidationModal.svelte';
 	import HostExportModal from './HostExportModal.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
-	import { Plus } from 'lucide-svelte';
+	import { defineFields, entityRef, type CardAction } from '$lib/shared/components/data/types';
+	import { tagNames } from '$lib/features/tags/columns';
+	import { networkItems } from '$lib/features/networks/columns';
+	import { credentialItems } from '$lib/features/credentials/columns';
+	import { entities, concepts, serviceDefinitions } from '$lib/shared/stores/metadata';
+	import { Plus, Trash2, RefreshCw, Replace, Eye, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 	import type { TabProps } from '$lib/shared/types';
 	import {
 		common_confirmDeleteName,
+		common_consolidate,
 		common_create,
 		common_created,
+		common_delete,
 		common_description,
+		common_edit,
+		common_hide,
 		common_hidden,
 		common_hostname,
+		common_credentials,
 		common_hosts,
+		common_interfaces,
+		common_ipAddresses,
 		common_lastSeen,
 		common_confirmBulkDelete,
 		common_name,
 		common_network,
 		common_noEntityYet,
+		common_rescan,
 		common_service,
 		common_services,
 		common_tags,
@@ -39,9 +51,9 @@
 		common_unknownNetwork,
 		common_updated,
 		daemons_installPromptHosts,
-		hosts_fields_interfaceIp,
 		hosts_fields_virtualizedBy,
-		hosts_notVirtualized
+		hosts_notVirtualized,
+		hosts_unnamedInterface
 	} from '$lib/paraglide/messages';
 
 	let { isReadOnly = false }: TabProps = $props();
@@ -58,6 +70,12 @@
 	import { useServicesByIds, useServicesCacheQuery } from '$lib/features/services/queries';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useIPAddressesQuery } from '$lib/features/ip-addresses/queries';
+	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
+	import { useCredentialsQuery } from '$lib/features/credentials/queries';
+	import { useSubnetsQuery, isContainerSubnet } from '$lib/features/subnets/queries';
+	import type { Credential } from '$lib/features/credentials/types/base';
+	import type { Interface } from '$lib/features/credentials/types/base';
+	import { formatIPAddress } from '../queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
 	import type { components } from '$lib/api/schema';
@@ -117,13 +135,16 @@
 	const networksQuery = useNetworksQuery();
 	useDaemonsQuery();
 	const ipAddressesQuery = useIPAddressesQuery();
+	const interfacesQuery = useInterfacesQuery();
+	const credentialsQuery = useCredentialsQuery();
+	const subnetsQuery = useSubnetsQuery();
 
 	// Selective service lookup - only fetches services needed for virtualization display
 	// Extract service IDs from visible hosts for "Virtualized By" field
 	const servicesQuery = useServicesByIds(() => {
 		return (hostsQuery.data?.items ?? [])
-			.filter((h) => h.virtualization?.details.service_id)
-			.map((h) => h.virtualization!.details.service_id)
+			.map((h) => h.virtualization_service_id)
+			.filter((id): id is string => id != null)
 			.filter((id, idx, arr) => arr.indexOf(id) === idx);
 	});
 
@@ -144,6 +165,9 @@
 	let allServicesData = $derived(servicesCacheQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
 	let ipAddressesData = $derived(ipAddressesQuery.data ?? []);
+	let interfacesData = $derived(interfacesQuery.data ?? []);
+	let credentialsData = $derived(credentialsQuery.data ?? []);
+	let subnetsData = $derived(subnetsQuery.data ?? []);
 	// Only show full loading on initial load (no data yet)
 	let isInitialLoading = $derived(hostsQuery.isPending && !hostsQuery.data);
 
@@ -233,18 +257,46 @@
 		}
 	});
 
+	// What a host holds. These were resolved inside HostCard, so the table had no
+	// way to show them; resolving here gives both views the same columns.
+	function hostCredentials(host: Host): Credential[] {
+		return (host.credential_assignments ?? [])
+			.map((a) => credentialsData.find((c) => c.id === a.credential_id))
+			.filter((c): c is Credential => c != null);
+	}
+
+	function hostInterfaces(host: Host): Interface[] {
+		return interfacesData.filter((i) => i.host_id === host.id);
+	}
+
+	function hostIPAddresses(host: Host) {
+		return ipAddressesData.filter((i) => i.host_id === host.id);
+	}
+
+	function isContainerSubnetFn(subnetId: string): boolean {
+		const subnet = subnetsData.find((s) => s.id === subnetId);
+		return subnet ? isContainerSubnet(subnet) : false;
+	}
+
 	// Define field configuration for the DataTableControls
 	// Uses defineFields to ensure all HostOrderField values are covered
 	let hostFields = $derived(
 		defineFields<Host, HostOrderField>(
 			{
 				// Identity fields: grouping by one would render a header per host.
-				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
+				name: {
+					label: common_name(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					display: { primary: true, width: 220, order: 0 }
+				},
 				hostname: {
 					label: common_hostname(),
 					type: 'string',
 					searchable: true,
-					groupable: false
+					groupable: false,
+					display: { hiddenByDefault: true }
 				},
 				virtualized_by: {
 					label: hosts_fields_virtualizedBy(),
@@ -255,11 +307,11 @@
 					// The server groups on the virtualizing service's name,
 					// coalescing hosts without one to an empty string.
 					getGroupValue: (host) =>
-						servicesData.find((s) => s.id === host.virtualization?.details.service_id)?.name ?? '',
+						servicesData.find((s) => s.id === host.virtualization_service_id)?.name ?? '',
 					getValue: (host) => {
-						if (host.virtualization) {
+						if (host.virtualization_service_id) {
 							const virtualizationService = servicesData.find(
-								(s) => s.id === host.virtualization?.details.service_id
+								(s) => s.id === host.virtualization_service_id
 							);
 							if (virtualizationService) {
 								return (
@@ -268,10 +320,30 @@
 							}
 						}
 						return hosts_notVirtualized();
+					},
+					display: {
+						// Not in the default column set — it stays a filter and group axis.
+						hiddenByDefault: true,
+						// No chips when a host isn't virtualized, so the cell renders the
+						// em dash rather than repeating "Not Virtualized" down the column.
+						// `getValue` keeps the phrase, so the filter still offers it.
+						getItems: (host) => {
+							const service = servicesData.find((s) => s.id === host.virtualization_service_id);
+							if (!service) return [];
+							return [
+								{
+									id: service.id,
+									label: service.name,
+									color: entities.getColorHelper('Service').color,
+									entityRef: entityRef('Service', service.id, service)
+								}
+							];
+						}
 					}
 				},
 				interface_ip: {
-					label: hosts_fields_interfaceIp(),
+					// The card calls this "IP Addresses"; it named one thing two ways.
+					label: common_ipAddresses(),
 					type: 'string',
 					searchable: true,
 					// Near-unique per host, so grouping by it is one header per host.
@@ -281,6 +353,20 @@
 							.filter((i) => i.host_id === host.id)
 							.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0];
 						return iface?.ip_address ?? '';
+					},
+					display: {
+						order: 5,
+						// The server orders on the primary address, but a host usually has
+						// several — showing only the first would misrepresent the row.
+						getItems: (host) =>
+							hostIPAddresses(host)
+								.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+								.map((i) => ({
+									id: i.id,
+									label: formatIPAddress(i, isContainerSubnetFn),
+									color: entities.getColorHelper('IPAddress').color,
+									entityRef: entityRef('IPAddress', i.id, i, { subnets: subnetsData })
+								}))
 					}
 				},
 				network_id: {
@@ -293,30 +379,74 @@
 					// Displayed as a name, but grouped by id on the server.
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
-						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
+						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
+					display: { order: 2, getItems: (item) => networkItems(item.network_id, networksData) }
 				},
-				created_at: { label: common_created(), type: 'date' },
-				updated_at: { label: common_updated(), type: 'date' },
-				last_seen_at: { label: common_lastSeen(), type: 'date' }
+				// Audit dates stay available but off by default: 12 columns at once
+				// is unreadable, and these are rarely what someone is scanning for.
+				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } },
+				last_seen_at: {
+					label: common_lastSeen(),
+					type: 'date',
+					display: { order: 1, getItems: lastSeenItems(() => networksData, 'Host') }
+				}
 			},
 			[
 				{
 					key: 'description',
 					label: common_description(),
 					type: 'string',
-					searchable: true
+					searchable: true,
+					display: { hiddenByDefault: true }
 				},
-				{ key: 'hidden', label: common_hidden(), type: 'boolean', filterable: true },
+				{
+					key: 'hidden',
+					label: common_hidden(),
+					type: 'boolean',
+					filterable: true,
+					// Useful as a filter, but almost always false — a column of "false"
+					// earns none of the width it takes.
+					display: { hiddenByDefault: true }
+				},
 				{
 					key: 'tags',
 					label: common_tags(),
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: (entity) =>
-						entity.tags
-							.map((id) => tagsData.find((t) => t.id === id)?.name)
-							.filter((name): name is string => !!name)
+					// Search and filter match the same names the cell renders, so a row
+					// can never show a tag the filter above it disagrees with.
+					getValue: (entity) => tagNames(entity.tags, tagsData)
+				},
+				{
+					key: 'credentials',
+					label: common_credentials(),
+					type: 'array',
+					searchable: true,
+					getValue: (host) => hostCredentials(host).map((c) => c.name),
+					display: {
+						order: 3,
+						getItems: (host) => credentialItems(hostCredentials(host))
+					}
+				},
+				{
+					key: 'interfaces',
+					label: common_interfaces(),
+					type: 'array',
+					searchable: true,
+					getValue: (host) =>
+						hostInterfaces(host).map((i) => i.if_descr || hosts_unnamedInterface()),
+					display: {
+						order: 4,
+						getItems: (host) =>
+							hostInterfaces(host).map((iface) => ({
+								id: iface.id,
+								label: iface.if_descr || hosts_unnamedInterface(),
+								color: entities.getColorHelper('Interface').color,
+								entityRef: entityRef('Interface', iface.id, iface)
+							}))
+					}
 				},
 				{
 					key: 'services',
@@ -325,7 +455,24 @@
 					searchable: true,
 					filterable: true,
 					getValue: (host) =>
-						allServicesData.filter((s) => s.host_id === host.id).map((s) => s.name)
+						allServicesData.filter((s) => s.host_id === host.id).map((s) => s.name),
+					display: {
+						order: 6,
+						// Containers are services too, so they share this column rather
+						// than getting one of their own; the colour carries the
+						// distinction instead of a second header.
+						getItems: (host) =>
+							allServicesData
+								.filter((s) => s.host_id === host.id)
+								.map((s) => ({
+									id: s.id,
+									label: s.name,
+									color: s.virtualization_metadata
+										? concepts.getColorHelper('Containerization').color
+										: entities.getColorHelper('Service').color,
+									entityRef: entityRef('Service', s.id, s)
+								}))
+					}
 				}
 			]
 		)
@@ -334,6 +481,35 @@
 	function handleCreateHost() {
 		setEditingHost(null);
 		showHostEditor = true;
+	}
+
+	/**
+	 * Row actions for table mode, matching what the card offers.
+	 *
+	 * The table never renders a card, so the actions the card builds for itself
+	 * are not reachable from it — the tab already owns every handler, so it is
+	 * the natural place to describe them once for both.
+	 */
+	function hostActions(host: Host): CardAction[] {
+		if (isReadOnly) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditHost(host) },
+			{ label: common_rescan(), icon: RefreshCw, onClick: () => handleRescanHost(host) },
+			{ label: common_consolidate(), icon: Replace, onClick: () => handleStartConsolidate(host) },
+			{
+				label: common_hide(),
+				icon: Eye,
+				class: host.hidden ? 'text-blue-400' : '',
+				onClick: () => handleHostHide(host)
+			},
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteHost(host)
+			}
+		];
 	}
 
 	function handleEditHost(host: Host) {
@@ -472,6 +648,18 @@
 			entityType={isReadOnly ? undefined : 'Host'}
 			getItemTags={getHostTags}
 			getItemId={(item) => item.id}
+			getIcon={(host) => {
+				const first = allServicesData.find(
+					(s) => s.host_id === host.id && s.service_definition !== 'Unclaimed Open Ports'
+				);
+				return {
+					icon: first
+						? serviceDefinitions.getIconComponent(first.service_definition)
+						: entities.getIconComponent('Host'),
+					color: entities.getColorHelper('Host').icon
+				};
+			}}
+			getLink={(host) => (host.hostname ? `http://${host.hostname}` : undefined)}
 			serverPagination={hostsPagination}
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
@@ -481,26 +669,9 @@
 			onExportClick={() => {
 				showExportModal = true;
 			}}
-		>
-			{#snippet children(
-				item: Host,
-				viewMode: 'card' | 'list',
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				<HostCard
-					host={item}
-					{viewMode}
-					selected={isSelected}
-					{onSelectionChange}
-					onEdit={isReadOnly ? undefined : handleEditHost}
-					onDelete={isReadOnly ? undefined : handleDeleteHost}
-					onRescan={isReadOnly ? undefined : handleRescanHost}
-					onConsolidate={isReadOnly ? undefined : handleStartConsolidate}
-					onHide={isReadOnly ? undefined : handleHostHide}
-				/>
-			{/snippet}
-		</DataControls>
+			getActions={hostActions}
+			entityLabel={common_hosts()}
+		></DataControls>
 	{/if}
 </div>
 

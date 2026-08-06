@@ -79,9 +79,9 @@
 				});
 			}
 
-			if (service.virtualization) {
+			if (service.virtualization_metadata) {
 				tags.push({
-					label: service.virtualization.type,
+					label: service.virtualization_metadata.type,
 					color: concepts.getColorHelper('Virtualization').color
 				});
 			}

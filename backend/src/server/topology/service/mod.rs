@@ -6,6 +6,7 @@ pub mod element_rules;
 pub mod l2_builder;
 pub mod l3_builder;
 pub mod main;
+pub mod metadata_filter;
 pub mod subnet_graph_builder;
 pub mod subscriber;
 pub mod view;

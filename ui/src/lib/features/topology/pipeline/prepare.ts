@@ -16,9 +16,10 @@ import {
 import { elevateEdgesToContainers } from '../layout/edge-elevation';
 import { containerTypes, views } from '$lib/shared/stores/metadata';
 import { activeView, topologyOptions } from '../queries';
-import { tagHiddenNodeIds, hiddenEntityIds } from '../interactions';
+import { tagHiddenNodeIds, hiddenEntityIdsByType } from '../interactions';
 import { buildTopologyParentIndex } from '../topology-parent-index';
 import { ENTITY_COLLECTIONS } from '../resolvers';
+import { noteRunDetail } from '../diagnostics';
 
 /**
  * Build a stable signature of everything the active view inlines on its
@@ -77,19 +78,68 @@ let defaultsAppliedThisSession = false;
  * `viewSizeCache`/`containerSizeCache`, and without that ELK re-runs against the sizes the
  * cards used to have and the new ones overlap.
  */
-function getHideStateKey(view: string): string {
-	const parts: string[] = [];
+function getHideStateKey(view: string): { resizing: string; structural: string } {
+	const resizing: string[] = [];
+	const structural: string[] = [];
 
+	// Hiding a node removes it. Nothing that survives renders differently, so measured sizes stay
+	// valid — this belongs on the structural side.
 	const hiddenNodes = get(tagHiddenNodeIds);
-	if (hiddenNodes.size > 0) parts.push(`n:${[...hiddenNodes].sort().join(',')}`);
+	if (hiddenNodes.size > 0) structural.push(`n:${[...hiddenNodes].sort().join(',')}`);
 
-	const hiddenEntities = get(hiddenEntityIds);
-	if (hiddenEntities.size > 0) parts.push(`e:${[...hiddenEntities].sort().join(',')}`);
+	// A hidden entity belongs on whichever side its type does. Drawn inside another node's card, it
+	// changes that card's height; drawn as a node of its own, it just disappears and every survivor
+	// renders identically. The flat `hiddenEntityIds` cannot tell them apart, which is why the typed
+	// store exists — reading the flat one here put a link-state toggle on the resizing side and
+	// re-measured all 19,095 nodes on every press.
+	const inlineTypes = inlineEntityTypes(view);
+	for (const [entityType, ids] of get(hiddenEntityIdsByType)) {
+		if (ids.size === 0) continue;
+		const part = `e:${entityType}:${[...ids].sort().join(',')}`;
+		(inlineTypes.has(entityType) ? resizing : structural).push(part);
+	}
 
-	const metadata = hiddenMetadataKey(view);
-	if (metadata) parts.push(`m:${metadata}`);
+	// A metadata filter is whichever of the two its entity is in this view. Hiding unlinked ports in
+	// L2 removes Interface *element nodes* — no card resizes — while hiding a service category in L3
+	// removes services drawn inside host cards and every one of them shrinks. Splitting them is what
+	// stops a filter toggle from discarding 19,095 measured sizes it did not invalidate.
+	for (const [entityType, key] of hiddenMetadataKeysByEntity(view)) {
+		(inlineTypes.has(entityType) ? resizing : structural).push(`m:${key}`);
+	}
 
-	return parts.join('|');
+	return { resizing: resizing.join('|'), structural: structural.join('|') };
+}
+
+/** Entity types this view draws inside other nodes' cards. */
+function inlineEntityTypes(view: string): Set<string> {
+	const meta = views.getMetadata(view) as {
+		element_config?: { element_entities?: Array<{ inline_entities: string[] }> };
+	} | null;
+	const out = new Set<string>();
+	for (const ee of meta?.element_config?.element_entities ?? []) {
+		for (const t of ee.inline_entities) out.add(t);
+	}
+	return out;
+}
+
+/** The active view's metadata hide-set, serialized per entity type so each can be classified. */
+function hiddenMetadataKeysByEntity(view: string): [string, string][] {
+	const byView = (get(topologyOptions).request.hide_metadata_values ?? {}) as Record<
+		string,
+		Record<string, Record<string, string[]>>
+	>;
+	const forView = byView[view];
+	if (!forView) return [];
+	return Object.entries(forView)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([entityType, fields]) => [
+			entityType,
+			`${entityType}.` +
+				Object.entries(fields ?? {})
+					.sort(([a], [b]) => a.localeCompare(b))
+					.map(([field, values]) => `${field}=${[...(values ?? [])].sort().join('+')}`)
+					.join(',')
+		]);
 }
 
 /**
@@ -114,6 +164,59 @@ export function hiddenMetadataKey(view: string): string {
 				.map(([field, values]) => `${entityType}.${field}=${[...(values ?? [])].sort().join('+')}`)
 		)
 		.join(',');
+}
+
+/** The slice of the container-type metadata store this module needs. Keeps the helper testable. */
+interface ContainerTypesAccessor {
+	getMetadata: (containerType: string) => { is_subcontainer?: boolean };
+}
+
+/**
+ * Drop subcontainers left with no element children once filters have removed nodes.
+ *
+ * A filter removes elements, not the boxes that grouped them, so without this a hidden set leaves
+ * empty labelled containers behind.
+ *
+ * **Collapsed subcontainers are pruned too.** They were exempted for a while — the exemption
+ * arrived with the commit that split this file out of the viewer, described as a pure refactor
+ * with no behaviour changes — and it inverted the rule for precisely the containers it matters
+ * most for: `PortOpStatus` is the only type marked `collapsed_by_default`, so it was always
+ * exempt. Hiding unlinked ports then left a collapsed "Down" box on every host with nothing in it
+ * — 716 of them on the seeded reproduction, a third of the rendered nodes at full expansion. The
+ * exemption was never needed: collapse is applied later, by `getVisibleNodes`, so a collapsed
+ * container's children are still present here and still counted.
+ *
+ * Counting only `Element` children is safe because subcontainers never nest: `apply_element_rules`
+ * computes `elements_by_container` once, before running any rule, so every subcontainer a rule
+ * creates is parented to a root container rather than to another rule's subcontainer.
+ */
+export function pruneEmptySubcontainers(
+	layoutNodes: RenderableTopology['nodes'],
+	containerTypes: ContainerTypesAccessor
+): RenderableTopology['nodes'] {
+	const subcontainerIds = new Set(
+		layoutNodes
+			.filter(
+				(n) =>
+					n.node_type === 'Container' &&
+					containerTypes.getMetadata(
+						((n as Record<string, unknown>).container_type as string) ?? 'Subnet'
+					).is_subcontainer
+			)
+			.map((n) => n.id)
+	);
+	if (subcontainerIds.size === 0) return layoutNodes;
+
+	const occupied = new Set<string>();
+	for (const n of layoutNodes) {
+		if (n.node_type !== 'Element') continue;
+		const cid = (n as Record<string, unknown>).container_id as string;
+		if (subcontainerIds.has(cid)) occupied.add(cid);
+	}
+
+	return layoutNodes.filter(
+		(n) => !(n.node_type === 'Container' && subcontainerIds.has(n.id) && !occupied.has(n.id))
+	);
 }
 
 /**
@@ -202,8 +305,10 @@ function getStructureKey(topo: RenderableTopology, view: string): string {
 		.sort()
 		.join(',');
 	const inlineKey = getInlineContentKey(topo, view);
-	const hideKey = getHideStateKey(view);
-	return `${topo.nodes.length}:${topo.edges.length}:${nodeKeys}|${inlineKey}|${hideKey}`;
+	const hide = getHideStateKey(view);
+	// Segments: nodes | inline | resizing-hide | structural-hide. `prepare` compares the middle two
+	// to decide whether measured sizes survive — see the cache handling in `prepareTopologyData`.
+	return `${topo.nodes.length}:${topo.edges.length}:${nodeKeys}|${inlineKey}|${hide.resizing}|${hide.structural}`;
 }
 
 /**
@@ -223,8 +328,41 @@ export function prepareTopologyData(
 	const topologyChanged = topoKey !== state.lastRenderedTopoKey;
 
 	if (topologyChanged) {
-		state.viewSizeCache.clear();
-		state.containerSizeCache.clear();
+		// Discard sizes only when the thing that changed can change a card's size.
+		//
+		// `topoKey` is `nodes|inline|hide` (see `getStructureKey`), and the three differ in what
+		// they invalidate. A change to the inline content or the hide state resizes cards while
+		// every node id stays the same — that is why this cleared the caches, and it must keep
+		// doing so or ELK lays out against sizes the cards no longer have and they overlap.
+		//
+		// A change to the *node set* is different: the nodes that survived render exactly as before,
+		// so their measured sizes are still correct. Clearing for that case threw away all 19,095
+		// sizes on every data refresh and forced the full measurement pass — the whole graph
+		// mounted, ~665MB and 5.5s. One capture showed eight of those across twelve runs, six of
+		// them following a topology refetch.
+		const [, prevInline = '', prevHide = ''] = state.lastRenderedTopoKey.split('|');
+		const [, nextInline = '', nextHide = ''] = topoKey.split('|');
+		// Segment 2 is the resizing hide-state only; the structural one (segment 3) removes nodes
+		// without changing how anything that remains is drawn.
+		const cardsMayHaveResized =
+			state.lastRenderedTopoKey === '' || prevInline !== nextInline || prevHide !== nextHide;
+
+		if (cardsMayHaveResized) {
+			state.viewSizeCache.clear();
+			state.containerSizeCache.clear();
+		} else {
+			const survivingIds = new Set(topology.nodes.map((n) => n.id));
+			for (const sizes of state.viewSizeCache.values()) {
+				for (const id of sizes.keys()) {
+					if (!survivingIds.has(id)) sizes.delete(id);
+				}
+			}
+			for (const id of state.containerSizeCache.keys()) {
+				if (!survivingIds.has(id)) state.containerSizeCache.delete(id);
+			}
+		}
+		// Sizes are being re-learned from scratch, so the one-correction-per-node budget resets.
+		state.driftCorrectedIds.clear();
 		// Remove seenAutoCollapseIds entries that don't exist in the new topology
 		const newContainerIds = new Set(
 			topology.nodes.filter((n) => n.node_type === 'Container').map((n) => n.id)
@@ -297,15 +435,36 @@ export function prepareTopologyData(
 
 	// On view switch, apply the current collapse level to the new view's containers
 	if (viewChanged && topologyChanged && state.collapseLevelInferred) {
+		// ...unless the view being entered is large enough to scale-collapse, in which case open
+		// it collapsed instead of carrying the level across.
+		//
+		// Views do not hold comparable numbers of nodes. L3 draws one element per IP address and
+		// inlines ports and services onto the card; L2 draws one per interface, so the same
+		// network can be ~1,200 nodes in one and ~17,000 in the other. Carrying level 4 across
+		// that boundary hands the whole of the larger view to the renderer fully expanded — which
+		// is how a customer reached an out-of-memory failure: level 4 in L3, then switch to L2.
+		//
+		// Level 1 rather than a clamp to 2 or 3, because level 1 *is* the scale-collapsed state by
+		// construction (`computeCollapsedForLevel` case 1 returns exactly
+		// `scaleCollapseCandidates`), so `inferCurrentLevel` reads it back as 1 and the indicator
+		// agrees with the diagram. Levels 2 and 3 leave every host container open, which at this
+		// scale is most of the node count.
+		//
+		// This does not break the promise that a container the user expanded is never re-collapsed
+		// behind them: container ids are per-view, so nothing here has been expanded by the user in
+		// the view being entered.
+		const enteringAtScale = isScaleCollapsed(topology.nodes);
 		const currentLevel = get(collapseLevel);
+		const effectiveLevel = enteringAtScale ? 1 : currentLevel;
 		const levelCollapsed = computeCollapsedForLevel(
-			currentLevel,
+			effectiveLevel,
 			topology.nodes,
 			containerTypes,
 			getInfrastructureRuleId()
 		);
 		collapsedContainers.set(levelCollapsed);
 		collapsed = levelCollapsed;
+		if (effectiveLevel !== currentLevel) collapseLevel.set(effectiveLevel);
 	}
 
 	// When topology identity changes, reset tracking and strip stale collapsed IDs
@@ -373,38 +532,7 @@ export function prepareTopologyData(
 			? topology.nodes.filter((n) => !hiddenByFilter.has(n.id))
 			: topology.nodes;
 
-	// Remove subcontainers with no remaining element children
-	const subcontainerIds = new Set(
-		layoutNodes
-			.filter(
-				(n) =>
-					n.node_type === 'Container' &&
-					containerTypes.getMetadata(
-						((n as Record<string, unknown>).container_type as string) ?? 'Subnet'
-					).is_subcontainer
-			)
-			.map((n) => n.id)
-	);
-	if (subcontainerIds.size > 0) {
-		const childCounts = new Map<string, number>();
-		for (const n of layoutNodes) {
-			if (n.node_type === 'Element') {
-				const cid = (n as Record<string, unknown>).container_id as string;
-				if (subcontainerIds.has(cid)) {
-					childCounts.set(cid, (childCounts.get(cid) ?? 0) + 1);
-				}
-			}
-		}
-		layoutNodes = layoutNodes.filter(
-			(n) =>
-				!(
-					n.node_type === 'Container' &&
-					subcontainerIds.has(n.id) &&
-					!childCounts.has(n.id) &&
-					!collapsed.has(n.id)
-				)
-		);
-	}
+	layoutNodes = pruneEmptySubcontainers(layoutNodes, containerTypes);
 
 	const elementToContainer = buildElementToContainer(layoutNodes);
 	const parentIndex = buildTopologyParentIndex(topology.nodes);
@@ -450,9 +578,25 @@ export function prepareTopologyData(
 		? undefined
 		: state.layoutGraph?.getContainerChildPositions();
 
-	// Build/rebuild layout graph when structure changes
-	if (!state.layoutGraph || isNewStructure) {
+	// Build/rebuild layout graph when the *node set* changes — not when collapse does.
+	//
+	// `baseKey` covers everything the graph is built from: node ids, their parent links, inline
+	// content, and hide state. `structureKey` is that plus the collapsed set, so keying the rebuild
+	// on it threw the graph away every time a container was collapsed, even though collapse is
+	// visibility applied on top of an unchanged node set via `syncCollapseState`. That cost a full
+	// rebuild per press, and each rebuild recreates every container with `expandedSize` at {0, 0} —
+	// the same reset behind the 0x0 containers, so this narrows that exposure rather than widening
+	// it.
+	//
+	// Restore straight away rather than leaving it to `executeLayout`. This run may never reach the
+	// layout stage — it can go stale, or return early — which would leave the graph zeroed for
+	// whatever runs next. If that run does no layout of its own, `getContainerSize` returns zero and
+	// the containers render as their borders with their contents outside, persistently.
+	if (!state.layoutGraph || isNewBaseStructure) {
+		const carriedSizes = state.layoutGraph?.getExpandedContainerSizes();
 		state.layoutGraph = LayoutGraph.fromTopology(layoutNodes);
+		if (carriedSizes) state.layoutGraph.restoreExpandedSizes(carriedSizes);
+		noteRunDetail({ graphRebuilt: true });
 	}
 
 	// Defer collapse so ELK runs with everything expanded — only if

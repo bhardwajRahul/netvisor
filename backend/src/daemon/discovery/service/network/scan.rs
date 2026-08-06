@@ -1294,7 +1294,8 @@ impl NetworkScan {
                     ip_address: &ip_address,
                     all_ports: &open_ports,
                     endpoint_responses: &endpoint_responses,
-                    virtualization: &None,
+                    virtualization_metadata: &None,
+                    virtualization_service_id: None,
                     client_responses,
                     // Directly scanned, not reported by a controller.
                     managed_device: &None,
@@ -1344,7 +1345,7 @@ impl NetworkScan {
             let if_entries_count = interfaces.len();
             let docker_services = services
                 .iter()
-                .filter(|s| s.base.virtualization.is_some())
+                .filter(|s| s.base.virtualization_metadata.is_some())
                 .count();
             if docker_services > 0 {
                 tracing::info!(
@@ -1497,7 +1498,7 @@ mod tests {
             name: cidr.to_string(),
             description: None,
             subnet_type: SubnetType::Lan,
-            virtualization: None,
+            virtualization_service_id: None,
             source: crate::server::shared::types::entities::EntitySource::System,
             tags: Vec::new(),
         })

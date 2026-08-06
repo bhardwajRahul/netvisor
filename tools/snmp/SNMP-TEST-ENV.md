@@ -1,6 +1,6 @@
 # SNMP Test Environment
 
-15 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668.
+16 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short.
 
 | IP | Host | Version | Credential | Device |
 |---|---|---|---|---|
@@ -19,6 +19,7 @@
 | 192.168.7.242 | switch (Omada) | v2c | community `public` | TP-Link Omada TL-SG3216 |
 | 192.168.7.243 | switch-flaky-01 | v2c | community `netdefault` | Malformed-LLDP profile (see below) |
 | 192.168.7.244 | switch-dlink-01 | v2c | community `netdefault` | D-Link DGS-1210-48 (see below) |
+| 192.168.7.245 | switch-tplink-01 | v2c | community `netdefault` | TP-Link TL-SX3016F (see below) |
 
 **LLDP local-port remap (`.238`/`.239`).** ExtremeXOS reports its `lldpRemTable` local-port index as an `lldpLocPortNum` (1..N) that is a **separate namespace from `ifIndex`** (switch-exos-01 uses ifIndex 1001+, ifName `1:N`), so neighbours only resolve if the daemon walks `lldpLocPortTable` (`1.0.8802.1.1.2.1.3.7`) and suffix-matches `lldpLocPortId` against `ifName`. Before the Issue 2 fix, switch-exos-01 yields **zero** LLDP neighbours. Extreme VOSS (switch-voss-01) reports local-port == ifIndex with `lldpLocPortId` matching `ifName` exactly, so it stays correct on both old and new code — the regression guard for the fix.
 
@@ -37,7 +38,7 @@ Both links should render in L2 Physical, and the server's `LLDP/CDP link resolut
 
 Taken at face value that record is destructive: the chassis ID is a mandatory TLV (IEEE 802.1AB), so it is malformed, but writing it through overwrites a good chassis ID with NULL — and a row without one is excluded from L2 resolution entirely, freezing the link at whatever it last resolved to with no way back. That is what stranded `router-gw-01` in July 2026.
 
-`switch-flaky-01` links to `switch-core-01`'s `Gi0/3` (the one port on that switch with no other neighbour) and ships four LLDP variants. The agent serves whichever is copied over `-lldp-active.txt`, and the `pass` handler re-reads its file per request, so swapping takes effect immediately with **no snmpd restart**:
+`switch-flaky-01` links to `switch-core-01`'s `Gi0/3` (the one port on that switch with no other neighbour) and ships five LLDP variants. The agent serves whichever is copied over `-lldp-active.txt`, and the `pass` handler re-reads its file per request, so swapping takes effect immediately with **no snmpd restart**:
 
 ```bash
 # on the VM — serve the chassis-less record
@@ -49,15 +50,22 @@ cp /etc/snmp-test/data/switch-flaky-01-lldp-complete.txt \
    /etc/snmp-test/data/switch-flaky-01-lldp-active.txt
 ```
 
-The other two variants separate the causes that used to arrive as one number (#668). All three discard the record; the daemon's warning now says which happened, and the counters are what these files exercise:
+The other variants separate the causes that used to arrive as one number (#668). All of them discard the record; the daemon's warning now says which happened — and, decisively, whether a rescan is worth the operator's time — and the counters are what these files exercise:
 
-| Variant file | Serves | Counter it drives |
-|---|---|---|
-| `-lldp-nochassis.txt` | neither `.4` nor `.5` | `missing_subtype` + `missing_value` |
-| `-lldp-nosubtype.txt` | `.5` only | `missing_subtype` |
-| `-lldp-badsubtype.txt` | `.4` as a string, `.5` fine | `unexpected_subtype_type="OctetString"` |
+| Variant file | Serves | Counter it drives | Reported cause |
+|---|---|---|---|
+| `-lldp-nochassis.txt` | neither `.4` nor `.5`, for the only neighbour | `ghost_rows`, `kept=0` | `GhostRows` — device contributes nothing |
+| `-lldp-ghost.txt` | local port 2 in `.6`–`.10` only, port 1 complete | `ghost_rows`, `kept=1` | `GhostRows` — device is present with holes |
+| `-lldp-nosubtype.txt` | `.5` only | `missing_subtype` | `IncompleteRecords` |
+| `-lldp-badsubtype.txt` | `.4` as a string, `.5` fine | `unexpected_subtype_type="OctetString"` | `UnexpectedType` |
 
-The last one matters most: it reads as a *complete* walk — no truncation signal anywhere — so before the per-cause counters the only evidence was the record silently going missing. A `ghost_rows` count exists too, for rows only the later columns mention; no fixture serves that shape, as it needs an agent whose columns disagree with each other.
+Note what the first two have in common: a chassis column that lists **none** of a row's positions is indistinguishable from one that never had them, so both read as ghost rows. They differ in `kept`, which is what decides whether the warning says the device contributes no physical links at all or only that some are missing — a different place on the map, so they must not read the same.
+
+`-lldp-badsubtype.txt` matters most: it reads as a *complete* walk — no truncation signal anywhere — so before the per-cause counters the only evidence was the record silently going missing.
+
+`-lldp-ghost.txt` is the sparse-chassis-column shape. Until August 2026 it had no fixture at all and was reachable only in unit tests, so the classification that separates it from a cut-short read had never been checked against a real agent.
+
+**No variant serves `WalkCutShort`**, and that is not an omission: it needs a column to stop *mid-walk*, which a static data file cannot stage. It is the one cause where a rescan is the remedy rather than a waste, so it is covered by a unit test that fails the transport partway (`a_cut_short_chassis_column_is_not_reported_as_a_firmware_defect`). The sim env produces it by accident anyway — `pass` forks per request and the agents fall behind under load, which is the noise the header of `lxc/setup.sh` warns about.
 
 Re-running `lxc/setup.sh` also resets it, which is the simplest way to undo a test that left the device broken.
 
@@ -67,6 +75,36 @@ Re-running `lxc/setup.sh` also resets it, which is the simplest way to undo a te
 - **A port id that matches nothing, and a port description that does.** `lldpRemPortId` = `ethernet1/0/44` is neither a name on that device nor a number, so the id is a dead end; `lldpRemPortDesc` = `GigabitEthernet0/1` is byte-identical to switch-core-01's `ifDescr` for ifIndex 1. That field was stored and never matched on.
 
 Both should resolve to `Neighbor::Interface` and draw edges in L2 Physical. The records deliberately share `Gi0/1`/`Gi0/2` with links other sim devices also claim — the profile exercises port-id resolution, which runs per interface row, not a physically consistent lab.
+
+**A neighbour table indexed without `lldpRemTimeMark` (`.245`).** Modelled on the TP-Link TL-SX3016F from #668, from the reporter's own `snmpwalk`. The MIB indexes `lldpRemEntry` as `lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex`; this firmware omits the time mark and indexes on the remaining two, so every neighbour row arrives one sub-id shorter than on every other device here:
+
+```
+.1.0.8802.1.1.2.1.4.1.1.4.1.1 = INTEGER: 4                  # local port 1, remIndex 1
+.1.0.8802.1.1.2.1.4.1.1.5.1.1 = STRING: "00:1A:2B:00:10:00"
+```
+
+This is the shape that made the device vanish without evidence. A parser requiring three sub-ids built no record, so nothing reached the discard counters, the walk still reported itself complete, and an empty result from a sixteen-port switch was then treated as the device authoritatively reporting no neighbours — clearing the links the server already held. It was the only failure in this query that raised **no warning of any kind**, which is why the reporter's completed scan named every other problem device and not this one. Verify with:
+
+```bash
+snmpwalk -v2c -c netdefault 192.168.7.245 1.0.8802.1.1.2.1.4.1.1.4   # two-element index
+```
+
+Two further quirks from the same device are kept deliberately, because they decide whether a row that now survives can actually resolve: chassis ids are subtype 4 carrying an **uppercase ASCII MAC** rather than six raw octets, and ports are `ifDescr` `ten-gigabitEthernet 1/0/N` with **no `ifName`** (there is no ifXTable `pass` in its config), alongside a `Vlan-interface1`. Its `lldpLocPortNum` equals `ifIndex`, so the local-port remap is the identity mapping and cannot mask the index parse under test.
+
+Each of its four neighbours resolves through exactly one intended path, matched on a value the far end actually reports:
+
+| Local port | Far end | Host matched by | Port matched by |
+|---|---|---|---|
+| `1/0/1` | switch-core-01 | its own `lldpLocChassisId` `00:1a:2b:00:10:00` | `ifName` `Gi0/3` |
+| `1/0/2` | *nothing* | — | — |
+| `1/0/3` | switch-dlink-01 | chassis `00:ad:24:af:4e:00` | `ifName` `Slot0/3` |
+| `1/0/5` | switch-netgear-01 | `hosts.chassis_id` only — `00:1a:2b:3c:4d:63` is on no port and no IP (the #664 shape) | `ifIndex` 3 (`g3`), since `3` matches no name and the port desc deliberately matches nothing |
+
+So a clean scan gives three edges in L2 Physical — two port-to-port and, from `1/0/2`, none.
+
+**`1/0/2` is unresolvable on purpose.** It advertises a desk phone whose MAC and sysName belong to no device in this lab, so every host tier fails and it is the environment's only source of a non-zero `host_not_found`. That counter is otherwise permanently 0 here, which left the server-side summary that names unmatched far ends with no way to fire. Endpoints exactly like this are what `host_not_found` legitimately consists of on a real network (#668).
+
+> Every far-end value above is checked against what the lab actually reports. An earlier revision used a made-up chassis MAC for switch-netgear-01 and a port (`Gi0/4`) that switch-core-01 does not have; both still appeared to work — one fell through to the sysName tier, the other stopped at a device-level edge — so the profile passed without exercising what it documents. When adding a neighbour here, confirm the far end's `hosts.chassis_id`, `if_name` and `if_index` in the scanned data first.
 
 > **The NUL half of #668 is not reproducible here.** The same D-Links NUL-terminate their port ids (`lldpRemPortId` arrives as `31 00`, i.e. `"1\0"`), which used to fail the write of the entire host. net-snmp's `pass` protocol is line-based — the handler prints OID, type and value as three lines — so an embedded `0x00` cannot survive the transport and no data file can express it. That half is covered by unit tests instead: `value_to_string`, `LldpPortId::from_snmp`, and `PgText`/`PgJson` in `server/shared/storage/pg_value.rs`.
 

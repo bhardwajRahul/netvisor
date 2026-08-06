@@ -34,7 +34,15 @@ pub struct HostBase {
     pub source: EntitySource,
     /// How the host is virtualized, when it is a VM or container guest.
     #[schema(required)]
-    pub virtualization: Option<HostVirtualization>,
+    pub virtualization_metadata: Option<HostVirtualization>,
+    /// The service doing the virtualizing — the hypervisor this VM runs on.
+    ///
+    /// Its own column with a foreign key rather than a field inside
+    /// [`HostVirtualization`]: a reference that no longer resolves now fails the write instead of
+    /// surviving as a value nothing matches, and `ON DELETE SET NULL` clears it when the
+    /// hypervisor service goes away (GH #650).
+    #[schema(required)]
+    pub virtualization_service_id: Option<Uuid>,
     /// Whether the host is hidden from topology views.
     pub hidden: bool,
     /// Tags assigned to this entity.
@@ -87,7 +95,8 @@ impl Default for HostBase {
             hostname: None,
             description: None,
             source: EntitySource::Unknown,
-            virtualization: None,
+            virtualization_metadata: None,
+            virtualization_service_id: None,
             hidden: false,
             tags: Vec::new(),
             sys_descr: None,
@@ -198,7 +207,8 @@ impl ChangeTriggersTopologyStaleness<Host> for Host {
     fn triggers_staleness(&self, other: Option<Host>) -> bool {
         if let Some(other_host) = other {
             self.base.hostname != other_host.base.hostname
-                || self.base.virtualization != other_host.base.virtualization
+                || self.base.virtualization_metadata != other_host.base.virtualization_metadata
+                || self.base.virtualization_service_id != other_host.base.virtualization_service_id
                 || self.base.hidden != other_host.base.hidden
         } else {
             true

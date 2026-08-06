@@ -8,6 +8,7 @@ import {
 } from '$lib/shared/stores/metadata';
 import type { LayoutInput, LayoutResult } from './engine';
 import { getOrgUseCase } from '../queries';
+import { getTopologyIndex } from '../entity-index';
 import * as perf from '../perf';
 import { resolveCollapsedAncestor } from '../collapse';
 
@@ -132,6 +133,16 @@ function buildElkGraph(
 } {
 	const containers: Map<string, ElkNode> = new Map();
 	const containerIds = new Set<string>();
+
+	// Indexed lookups, built once.
+	//
+	// Several sites below scanned `topology.interfaces` (16,964 records) or `input.nodes` (19,095)
+	// linearly from inside per-child loops, and three of them from inside `sort` comparators, where
+	// the scan re-ran on every comparison. Graph construction measured 7.4s and 3.1s across the two
+	// passes — more than a quarter of the 33.7s spent in layout — for lookups that are already
+	// indexed elsewhere. `getTopologyIndex` is built and cached per topology for the render path.
+	const topoIndex = input.topology ? getTopologyIndex(input.topology) : null;
+	const nodeById = new Map(input.nodes.map((n) => [n.id, n]));
 
 	const collapsed = input.collapsedContainers ?? new Set<string>();
 
@@ -314,15 +325,16 @@ function buildElkGraph(
 				const status = (n as Record<string, unknown>).oper_status as string | undefined;
 				// oper_status isn't on the node directly — look it up from topology
 				const ifEntryId = (n as Record<string, unknown>).interface_id as string | undefined;
-				const iface = ifEntryId
-					? input.topology?.interfaces.find((e) => e.id === ifEntryId)
-					: undefined;
+				const iface = ifEntryId ? topoIndex?.interfacesById.get(ifEntryId) : undefined;
 				const s = iface?.oper_status ?? status ?? '';
 				if (s === 'Up') return 0;
 				if (s === 'Down') return 1;
 				return 2;
 			};
-			elements.sort((a, b) => statusOrder(a.node) - statusOrder(b.node));
+			// Ranked once per element rather than once per comparison: `sort` calls its comparator
+			// O(n log n) times, so computing the key inside it multiplied the lookup by that factor.
+			const rankByNode = new Map(elements.map((e) => [e.node, statusOrder(e.node)]));
+			elements.sort((a, b) => (rankByNode.get(a.node) ?? 2) - (rankByNode.get(b.node) ?? 2));
 
 			// UP direction: edge targets (subcontainers with connected ports)
 			// naturally go to upper layers (top). Down ports with no edges
@@ -428,15 +440,11 @@ function buildElkGraph(
 			let upCount = 0;
 			for (const child of sub.children) {
 				if (containerIds.has(child.id)) continue;
-				const ifEntryId = (() => {
-					const node = input.nodes.find((n) => n.id === child.id);
-					return node
-						? ((node as Record<string, unknown>).interface_id as string | undefined)
-						: undefined;
-				})();
-				const iface = ifEntryId
-					? input.topology?.interfaces.find((e) => e.id === ifEntryId)
+				const node = topoIndex?.nodesById.get(child.id);
+				const ifEntryId = node
+					? ((node as Record<string, unknown>).interface_id as string | undefined)
 					: undefined;
+				const iface = ifEntryId ? topoIndex?.interfacesById.get(ifEntryId) : undefined;
 				if (iface?.oper_status === 'Up') upCount++;
 			}
 			subcontainerUpCount.set(subId, upCount);
@@ -873,20 +881,17 @@ function buildElkGraph(
 		}
 
 		// Count VM hosts as workloads on their hypervisor host.
-		// VM hosts have virtualization: { type, details: { service_id } }.
-		// The service_id points to the virtualizer service on the hypervisor.
+		// virtualization_service_id points to the virtualizer service on the hypervisor.
 		const serviceHostMap = new Map<string, string>();
 		for (const svc of input.topology.services ?? []) {
 			serviceHostMap.set(svc.id, svc.host_id);
 		}
 		for (const host of input.topology.hosts ?? []) {
-			if (host.virtualization) {
-				const serviceId = host.virtualization.details?.service_id;
-				if (serviceId) {
-					const hypervisorHostId = serviceHostMap.get(serviceId);
-					if (hypervisorHostId) {
-						countByHostId.set(hypervisorHostId, (countByHostId.get(hypervisorHostId) ?? 0) + 1);
-					}
+			const serviceId = host.virtualization_service_id;
+			if (serviceId) {
+				const hypervisorHostId = serviceHostMap.get(serviceId);
+				if (hypervisorHostId) {
+					countByHostId.set(hypervisorHostId, (countByHostId.get(hypervisorHostId) ?? 0) + 1);
 				}
 			}
 		}
@@ -898,9 +903,12 @@ function buildElkGraph(
 			countByHostName.set(host.name, count);
 		}
 
+		// Names resolved once per container. Two linear scans per comparison over 19,095 nodes made
+		// this the single most expensive thing in graph construction.
+		const nameById = new Map(rootContainers.map((c) => [c.id, nodeById.get(c.id)?.header ?? '']));
 		rootContainers.sort((a, b) => {
-			const nameA = input.nodes.find((n) => n.id === a.id)?.header ?? '';
-			const nameB = input.nodes.find((n) => n.id === b.id)?.header ?? '';
+			const nameA = nameById.get(a.id) ?? '';
+			const nameB = nameById.get(b.id) ?? '';
 			const countA = countByHostName.get(nameA) ?? 0;
 			const countB = countByHostName.get(nameB) ?? 0;
 			if (countB !== countA) return countB - countA;
@@ -1187,6 +1195,10 @@ export function applyLocalSizeAdjustment(
 	const containerSizes = new Map(cachedResult.containerSizes);
 	const leafNodeSizes = new Map(cachedResult.elementNodeSizes);
 
+	// Indexed once. The container lookup below runs per container, and scanning `nodes` linearly
+	// there is quadratic on a graph this size.
+	const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
 	// Build leaf→container mapping and container→children mapping
 	const leafToContainer = new Map<string, string>();
 	const containerChildren = new Map<string, string[]>();
@@ -1248,7 +1260,7 @@ export function applyLocalSizeAdjustment(
 		}
 
 		// Detect container type for correct spacing/padding
-		const containerNode = nodes.find((n) => n.id === containerId);
+		const containerNode = nodeById.get(containerId);
 		const containerType = (containerNode as Record<string, unknown>)?.container_type as
 			| string
 			| undefined;
@@ -1545,11 +1557,29 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 
 	// Pass 1: compute layout with FIXED_SIDE ports (no position info).
 	// This gives us actual element positions within box-packed containers.
-	const build1Done = perf.stage('elk.build-graph');
-	const { graph: graph1, containerIds } = buildElkGraph(input);
+	//
+	// `graph1` and `pass1Children` are deliberately `let`, and dropped the moment each is finished
+	// with. This function is `async`, so its scope is a heap-allocated context that survives every
+	// `await` and V8 does not clear bindings it can no longer reach — holding both passes' graphs
+	// live at once. Pass 2 builds a second complete graph of the same size, so the peak was twice a
+	// single pass even though only one pass's worth is ever retained afterwards. Nulling lets the
+	// first be collected while the second is being built.
+	//
+	// `no-useless-assignment` fires on both clears, and is wrong here in the way it is wrong for any
+	// deliberate release: the assignment has no *dataflow* consumer, which is exactly the point —
+	// its effect is on reachability, not on any later read.
+	const build1Done = perf.stage('elk.build-graph.pass1');
+	let graph1: ElkNode | null;
+	const { graph: builtGraph1, containerIds } = buildElkGraph(input);
+	graph1 = builtGraph1;
 	build1Done();
-	const elkPass1Done = perf.stage('elk.layout');
-	const result1 = await elk.layout(graph1);
+	const elkPass1Done = perf.stage('elk.layout.pass1');
+	// Only the children array is bound, never the root: the root is unreferenced the moment this
+	// expression completes, and clearing this one binding after extraction drops the entire pass-1
+	// tree. Binding the result itself would keep the tree alive through `.children` anyway.
+	let pass1Children: ElkNode[] | null = (await elk.layout(graph1)).children ?? null;
+	// eslint-disable-next-line no-useless-assignment -- releases the pass-1 graph for collection
+	graph1 = null;
 	elkPass1Done();
 
 	// Extract actual element AND subcontainer positions from pass 1
@@ -1581,17 +1611,25 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 			}
 		}
 	}
-	if (result1.children) extractPositions(result1.children);
+	if (pass1Children) {
+		const children = pass1Children;
+		extractPositions(children);
+	}
+	// Everything pass 2 needs from pass 1 now lives in the two position maps above, which hold plain
+	// numbers rather than ELK nodes. Released here so the collector can reclaim the whole first
+	// graph before the second one is allocated.
+	// eslint-disable-next-line no-useless-assignment -- releases the pass-1 tree for collection
+	pass1Children = null;
 
 	// Pass 2: rebuild graph with FIXED_POS ports at actual element positions
-	const build2Done = perf.stage('elk.build-graph');
+	const build2Done = perf.stage('elk.build-graph.pass2');
 	const { graph: graph2, containerIds: cids2 } = buildElkGraph(
 		input,
 		elementPositions,
 		subcontainerPositions
 	);
 	build2Done();
-	const elkPass2Done = perf.stage('elk.layout');
+	const elkPass2Done = perf.stage('elk.layout.pass2');
 	const result2 = await elk.layout(graph2);
 	elkPass2Done();
 

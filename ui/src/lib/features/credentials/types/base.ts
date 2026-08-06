@@ -1,5 +1,5 @@
 import type { components } from '$lib/api/schema';
-import { credentialTypes } from '$lib/shared/stores/metadata';
+import { credentialTypes, entities } from '$lib/shared/stores/metadata';
 import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
 
 export type Credential = components['schemas']['Credential'];
@@ -120,25 +120,32 @@ export function getOperStatusLabels(): Record<IfOperStatus, string> {
 /**
  * Single source of truth for target display properties (color, label, tooltip).
  * Targets are the unified replacement for scope models.
+ *
+ * A scope chip, coloured by the entity it actually reaches.
+ *
+ * Each scope names a real entity, so it borrows that entity's colour rather
+ * than an arbitrary one: a network scope reads as a network, a daemon-host
+ * scope as a daemon, and a remote-host scope as a host. That way a scope means
+ * the same colour here as the thing it points at does everywhere else.
  */
 export function getTargetTagProps(target: string): TagProps {
 	if (target === 'Network') {
 		return {
 			label: common_network(),
-			color: 'Cyan' as Color,
+			color: entities.getColorHelper('Network').color,
 			title: credentials_targetNetworkTooltip()
 		};
 	}
 	if (target === 'DaemonHost') {
 		return {
 			label: credentials_targetDaemonHost(),
-			color: 'Blue' as Color,
+			color: entities.getColorHelper('Daemon').color,
 			title: credentials_targetDaemonHostTooltip()
 		};
 	}
 	return {
 		label: credentials_targetHost(),
-		color: 'Purple' as Color,
+		color: entities.getColorHelper('Host').color,
 		title: credentials_targetHostTooltip()
 	};
 }

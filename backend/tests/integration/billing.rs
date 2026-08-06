@@ -65,7 +65,7 @@ async fn test_billing_past_due_blocks_requests(ctx: &TestContext) -> Result<(), 
         subnet_type: SubnetType::Lan,
         source: EntitySource::System,
         tags: Vec::new(),
-        virtualization: None,
+        virtualization_service_id: None,
     });
 
     let result = ctx

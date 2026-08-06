@@ -95,6 +95,54 @@ export interface HoveredEdgeType {
 }
 export const hoveredEdgeType = writable<HoveredEdgeType | null>(null);
 
+/**
+ * Per node, the handles an edge actually connects to, as `"<type>:<handleId>"`.
+ *
+ * Node components render only these. Every node declares all eight handles in its `handles` data —
+ * that costs nothing and keeps `parseHandles` able to synthesize bounds for a node that has never
+ * mounted — but the *DOM* only has to carry the ones SvelteFlow will look up. It reads handle boxes
+ * out of the DOM whenever a node's rendered size drifts from its `measured`, and only ever for a
+ * handle some edge names, so anything else is eight divs of pure cost. In practice a node uses one
+ * or two: the layout is columnar, so edges leave one side and arrive on the other.
+ *
+ * Written by the pipeline immediately *before* the node store, so a node can never gain an edge
+ * ahead of the handle it needs — that ordering is what stops "Couldn't create edge for source
+ * handle id", which is how SvelteFlow reports a handle it cannot find.
+ */
+export const edgeHandlesByNode = writable<Map<string, Set<string>>>(new Map());
+
+/**
+ * Build that map from the edges about to be drawn.
+ *
+ * A null handle means SvelteFlow falls back to the node's first handle of that type, so one still
+ * has to exist in the DOM — hence the `Top` default rather than skipping the node.
+ */
+export function collectEdgeHandles(
+	edges: {
+		source?: string;
+		target?: string;
+		sourceHandle?: string | null;
+		targetHandle?: string | null;
+	}[]
+): Map<string, Set<string>> {
+	const byNode = new Map<string, Set<string>>();
+	const note = (
+		nodeId: string | undefined,
+		type: 'source' | 'target',
+		handle: string | null | undefined
+	) => {
+		if (!nodeId) return;
+		let set = byNode.get(nodeId);
+		if (!set) byNode.set(nodeId, (set = new Set()));
+		set.add(`${type}:${handle || 'Top'}`);
+	};
+	for (const e of edges) {
+		note(e.source, 'source', e.sourceHandle);
+		note(e.target, 'target', e.targetHandle);
+	}
+	return byNode;
+}
+
 // Edge bundle expand/collapse state (transient, not persisted)
 export const expandedBundles = writable<Set<string>>(new Set());
 
@@ -206,6 +254,39 @@ function hideContainersAndDescendants(
  */
 export interface FilterValueContext {
 	network?: Network;
+	/** The graph being filtered, for values that depend on other entities rather than just this one. */
+	topology?: RenderableTopology;
+}
+
+/**
+ * Interfaces that some other interface names as its neighbour, per topology.
+ *
+ * A link is recorded on one side. In the seeded reproduction 728 interfaces carry a neighbour and
+ * 721 are the *target* of one, but only 12 have it set both ways — so judging "linked" from an
+ * interface's own `neighbor` alone marks the far end of nearly every link as unlinked. With the
+ * link-state filter hiding unlinked ports that silently deleted one endpoint of almost every
+ * physical link, and `buildFlowEdges` drops an edge whose endpoint is not in the node set: 11 edges
+ * drew where there were ~704, which is exactly the count of the 12 bidirectional pairs.
+ *
+ * Cached per topology object so the reverse pass runs once rather than per interface.
+ */
+const linkTargetsByTopology = new WeakMap<RenderableTopology, Set<string>>();
+
+/** Shared empty set for the no-topology-in-context case, so the extractor allocates nothing. */
+const EMPTY_ID_SET: ReadonlySet<string> = new Set<string>();
+
+function interfacesReferencedAsNeighbours(topology: RenderableTopology): Set<string> {
+	const cached = linkTargetsByTopology.get(topology);
+	if (cached) return cached;
+
+	const targets = new Set<string>();
+	for (const iface of topology.interfaces ?? []) {
+		const neighbor = (iface as { neighbor?: { type?: string; id?: string } | null }).neighbor;
+		// Only a port-level resolution makes a specific port linked; `Host` names a device, not a port.
+		if (neighbor?.type === 'Interface' && neighbor.id) targets.add(neighbor.id);
+	}
+	linkTargetsByTopology.set(topology, targets);
+	return targets;
 }
 
 export type FilterValueExtractor = (entity: unknown, ctx: FilterValueContext) => string | null;
@@ -220,10 +301,25 @@ export const FILTER_VALUE_EXTRACTORS: Record<string, Record<string, FilterValueE
 	},
 	Host: {
 		Virtualization: (h) =>
-			(h as { virtualization?: unknown | null }).virtualization != null
+			(h as { virtualization_metadata?: unknown | null }).virtualization_metadata != null
 				? 'Virtualized'
 				: 'BareMetal',
 		Staleness: (h, ctx) => entityFreshness(h as FreshnessSubject, ctx.network)
+	},
+	Interface: {
+		// Ids match `InterfaceLinkState` on the backend, which is what supplies the filter's
+		// values. A partial resolution (`Neighbor::Host` — the remote device known but not the
+		// port) counts as linked: it still draws an edge, so hiding it would break the diagram.
+		//
+		// Linked in *either* direction. A link is recorded on one side, so an interface with no
+		// neighbour of its own is still linked if another interface names it — see
+		// `interfacesReferencedAsNeighbours`.
+		LinkState: (i, ctx) => {
+			const iface = i as { id: string; neighbor?: unknown | null };
+			if (iface.neighbor != null) return 'Linked';
+			const targets = ctx.topology ? interfacesReferencedAsNeighbours(ctx.topology) : EMPTY_ID_SET;
+			return targets.has(iface.id) ? 'Linked' : 'Unlinked';
+		}
 	}
 };
 
@@ -236,6 +332,17 @@ export const FILTER_VALUE_EXTRACTORS: Record<string, Record<string, FilterValueE
  * rather than presenting a control that cannot discriminate. Kept generic
  * across all metadata filters rather than special-cased to staleness.
  */
+/**
+ * The same hidden entities as `hiddenEntityIds`, but keyed by entity type.
+ *
+ * The flat set cannot say whether what was hidden is drawn *inside* another node's card or is a
+ * node in its own right, and those invalidate completely different things: hiding an inline entity
+ * resizes the card containing it, while hiding an element entity removes a node and leaves every
+ * surviving card exactly as it was. `prepare` needs the distinction to decide whether measured
+ * sizes survive a filter change — conflating them re-measured 19,095 nodes on every toggle.
+ */
+export const hiddenEntityIdsByType = writable<Map<string, Set<string>>>(new Map());
+
 export const presentFilterValues = writable<Record<string, Record<string, string[]>>>({});
 
 function computePresentFilterValues(
@@ -249,13 +356,37 @@ function computePresentFilterValues(
 		for (const [filterType, extract] of Object.entries(extractors)) {
 			const seen = new Set<string>();
 			for (const entity of collection) {
-				const value = extract(entity, { network });
+				const value = extract(entity, { network, topology });
 				if (value) seen.add(value);
 			}
 			(out[entityType] ??= {})[filterType] = [...seen];
 		}
 	}
 	return out;
+}
+
+/**
+ * Union the currently-hidden values into the represented set.
+ *
+ * Applied to every filter rather than only server-side ones: a value the user has hidden is one they
+ * can evidently choose, so offering the toggle is right either way, and keying this on
+ * `FilterApplication` would make the panel's behaviour depend on where a filter happens to run.
+ */
+function withHiddenValues(
+	present: Record<string, Record<string, string[]>>,
+	hidden: Record<string, Record<string, string[]>> | undefined
+): Record<string, Record<string, string[]>> {
+	if (!hidden) return present;
+	for (const [entityType, byFilter] of Object.entries(hidden)) {
+		for (const [filterType, values] of Object.entries(byFilter)) {
+			if (!values?.length) continue;
+			const existing = (present[entityType] ??= {})[filterType] ?? [];
+			(present[entityType] as Record<string, string[]>)[filterType] = [
+				...new Set([...existing, ...values])
+			];
+		}
+	}
+	return present;
 }
 
 /** Collections on Topology indexed by the entity-type key used in filters. */
@@ -272,6 +403,7 @@ export function updateTagFilter(
 	if (!topology) {
 		tagHiddenNodeIds.set(new Set());
 		hiddenEntityIds.set(new Set());
+		hiddenEntityIdsByType.set(new Map());
 		presentFilterValues.set({});
 		return;
 	}
@@ -279,7 +411,14 @@ export function updateTagFilter(
 	// Computed before the early-return below: the panel needs this even when no
 	// filter is currently applied, to decide which filter groups are worth
 	// offering at all.
-	presentFilterValues.set(computePresentFilterValues(topology, network));
+	//
+	// The hidden values are folded back in because a server-side filter removes its entities from
+	// the response entirely. Without this, hiding `Unlinked` leaves only `Linked` represented, the
+	// group is judged to offer no choice, the panel drops it — and the user has no way to bring
+	// 16,000 ports back. They are hidden *because* they exist.
+	presentFilterValues.set(
+		withHiddenValues(computePresentFilterValues(topology, network), hiddenMetadataValues)
+	);
 
 	const hasTagFilter = tagFilter && !isTagFilterEmpty(tagFilter);
 	const hasMetadataFilter = hasAnyMetadataFilter(hiddenMetadataValues);
@@ -288,6 +427,7 @@ export function updateTagFilter(
 	if (!hasTagFilter && !hasMetadataFilter && !hasEntityFilter) {
 		tagHiddenNodeIds.set(new Set());
 		hiddenEntityIds.set(new Set());
+		hiddenEntityIdsByType.set(new Map());
 		return;
 	}
 
@@ -399,7 +539,7 @@ export function updateTagFilter(
 					if (!hiddenValues.length) continue;
 					const extract = extractors[filterType];
 					if (!extract) continue;
-					const value = extract(entity, { network });
+					const value = extract(entity, { network, topology });
 					if (value && hiddenValues.includes(value)) {
 						noteHidden(entityType, entity.id);
 					}
@@ -447,6 +587,7 @@ export function updateTagFilter(
 
 	tagHiddenNodeIds.set(hiddenNodeIds);
 	hiddenEntityIds.set(hiddenEntities);
+	hiddenEntityIdsByType.set(hiddenByType);
 }
 
 function isTagFilterEmpty(filter: {

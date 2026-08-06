@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use strum_macros::{EnumDiscriminants, IntoStaticStr, VariantNames};
 use utoipa::ToSchema;
-use uuid::Uuid;
 use validator::Validate;
 
 use crate::server::shared::{
@@ -42,8 +41,6 @@ pub struct DockerVirtualization {
     pub container_name: Option<String>,
     /// Docker container ID.
     pub container_id: Option<String>,
-    /// The service this entity refers to.
-    pub service_id: Uuid,
     /// Compose project the container belongs to, when it was started by Compose.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compose_project: Option<String>,
@@ -55,27 +52,15 @@ pub struct PodmanVirtualization {
     pub container_name: Option<String>,
     /// Podman container ID.
     pub container_id: Option<String>,
-    /// The service this entity refers to.
-    pub service_id: Uuid,
     /// Compose project the container belongs to, when it was started by Compose.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compose_project: Option<String>,
 }
 
 impl ServiceVirtualization {
-    pub fn service_id(&self) -> Option<Uuid> {
-        match self {
-            Self::Docker(d) => Some(d.service_id),
-            Self::Podman(p) => Some(p.service_id),
-        }
-    }
-
-    pub fn set_service_id(&mut self, id: Uuid) {
-        match self {
-            Self::Docker(d) => d.service_id = id,
-            Self::Podman(p) => p.service_id = id,
-        }
-    }
+    // The runtime service that owns this container is `Service::virtualization_service_id`, a
+    // real foreign key, rather than a field inside each payload — see the note on
+    // `HostVirtualization`.
 
     /// Container id for any container-runtime variant (Docker, Podman, …).
     pub fn container_id(&self) -> Option<&str> {
@@ -149,7 +134,6 @@ mod tests {
         let virt = ServiceVirtualization::Docker(DockerVirtualization {
             container_name: Some("plex".to_string()),
             container_id: Some("abc123".to_string()),
-            service_id: Uuid::nil(),
             compose_project: Some("media-stack".to_string()),
         });
 
@@ -170,7 +154,6 @@ mod tests {
         let virt = ServiceVirtualization::Docker(DockerVirtualization {
             container_name: Some("nginx".to_string()),
             container_id: Some("def456".to_string()),
-            service_id: Uuid::nil(),
             compose_project: None,
         });
 

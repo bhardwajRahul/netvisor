@@ -1,11 +1,13 @@
 <script lang="ts">
-	import VlanCard from './VlanCard.svelte';
+	import { lastSeenItems } from '$lib/shared/utils/freshness';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
+	import { defineFields, entityRef } from '$lib/shared/components/data/types';
+	import { networkItems } from '$lib/features/networks/columns';
+	import { entities } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
@@ -79,9 +81,15 @@
 					searchable: true,
 					groupable: false
 				},
-				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
-				created_at: { label: common_created(), type: 'date' },
-				updated_at: { label: common_updated(), type: 'date' }
+				name: {
+					label: common_name(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					display: { primary: true, width: 220 }
+				},
+				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } }
 			},
 			[
 				{ key: 'description', label: common_description(), type: 'string', searchable: true },
@@ -93,7 +101,8 @@
 					filterable: true,
 					groupable: true,
 					getValue: (item) =>
-						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
+						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
+					display: { getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				{
 					key: 'subnet_ids',
@@ -101,14 +110,24 @@
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: getSubnetNames
+					getValue: getSubnetNames,
+					display: {
+						getItems: (vlan) =>
+							getSubnets(vlan).map((subnet) => ({
+								id: subnet.id,
+								label: subnet.name,
+								color: entities.getColorHelper('Subnet').color,
+								entityRef: entityRef('Subnet', subnet.id, subnet)
+							}))
+					}
 				},
 				{
 					// Not in VlanOrderField, so display-only with client-side sorting.
 					key: 'last_seen_at',
 					label: common_lastSeen(),
 					type: 'date',
-					sortable: true
+					sortable: true,
+					display: { getItems: lastSeenItems(() => networksData, 'Vlan') }
 				}
 			]
 		)
@@ -136,22 +155,12 @@
 			fields={vlanFields}
 			storageKey="scanopy-vlans-table-state"
 			getItemId={(item) => item.id}
+			getIcon={() => ({
+				icon: entities.getIconComponent('Vlan'),
+				color: entities.getColorHelper('Vlan').icon
+			})}
 			onCsvExport={handleCsvExport}
-		>
-			{#snippet children(
-				item: Vlan,
-				viewMode: 'card' | 'list',
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				<VlanCard
-					vlan={item}
-					subnets={getSubnets}
-					selected={isSelected}
-					{onSelectionChange}
-					{viewMode}
-				/>
-			{/snippet}
-		</DataControls>
+			entityLabel={common_vlans()}
+		></DataControls>
 	{/if}
 </div>

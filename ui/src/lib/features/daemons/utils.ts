@@ -1,4 +1,5 @@
 import { fieldDefs } from './config';
+import type { components } from '$lib/api/schema';
 import type { Daemon } from './types/base';
 import type { FormValue } from '$lib/shared/components/forms/validators';
 import type { TagProps } from '$lib/shared/components/data/types';
@@ -60,7 +61,10 @@ export function hasSunsetWarning(daemon: Daemon): boolean {
 	return status === 'Deprecated' || status === 'Unsupported';
 }
 
-export type DaemonOS = 'linux' | 'macos' | 'windows' | 'freebsd';
+/// Derived from the generated schema rather than hand-listed: this was a parallel string union
+/// duplicating the backend enum, which is what let the email-install-command call pass a display
+/// label where an OS identifier was expected.
+export type DaemonOS = components['schemas']['DaemonOs'];
 
 export function slugifyNetworkName(name: string): string {
 	return name

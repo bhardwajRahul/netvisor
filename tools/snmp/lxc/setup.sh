@@ -15,7 +15,7 @@ set -euo pipefail
 # simulator, not the product under test.
 # ══════════════════════════════════════════════════════════════════════
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244)
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245)
 CIDR="22"
 IFACE="eth0"
 
@@ -32,8 +32,12 @@ IFACE="eth0"
 # .244 covers the port-id shapes from GH #668 (August 2026): a D-Link that labels its
 # neighbour port ids `interfaceName` while sending a bare port number, and one that can
 # only be matched through lldpRemPortDesc.
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c)
-SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01)
+#
+# .245 covers the last device from the same report: a TP-Link that indexes lldpRemTable
+# without lldpRemTimeMark, so every neighbour row arrives one sub-id short of what the MIB
+# describes.
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c)
+SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01 switch-tplink-01)
 
 # SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
 # AuthPriv with SHA-256 / AES-128 — the broadly-supported pure-Rust default.
@@ -949,6 +953,10 @@ INDEXES="1 $(seq 49153 49168)"
 #      /etc/snmp-test/data/switch-flaky-01-lldp-active.txt     # break it
 #   cp /etc/snmp-test/data/switch-flaky-01-lldp-complete.txt \
 #      /etc/snmp-test/data/switch-flaky-01-lldp-active.txt     # restore it
+#
+# Variants: -complete, -nochassis, -nosubtype, -badsubtype, -ghost. Each drives a different
+# per-cause counter, and the four failing ones now drive different warning text as well — the
+# advice a customer acts on differs between them (GH #668).
 # ══════════════════════════════════════════════════════════════════════
 
 cat > "$DATA_DIR/switch-flaky-01-iftable.txt" << 'EOF'
@@ -1036,6 +1044,34 @@ cat > "$DATA_DIR/switch-flaky-01-lldp-badsubtype.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/3
 .1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
 .1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
+EOF
+
+# Ghost rows: a sparse chassis column against a fuller port column. Local port 1 is complete;
+# local port 2 appears in the port-id, port-desc and sys-name columns and in neither chassis
+# column. That is the third cause behind the same `dropped=N`, and the only one of the four with
+# no simulator coverage at all — it was reproducible only in unit tests, so the classification
+# that separates it from a cut-short read had never been checked against a real agent.
+#
+# The distinction matters to whoever reads the warning: nothing was lost here, because there was
+# never a chassis id on those rows to lose, so a rescan is wasted effort. A truncated chassis
+# column looks identical in the record count and is worth retrying.
+cat > "$DATA_DIR/switch-flaky-01-lldp-ghost.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 00:1a:2b:00:1f:00
+.1.0.8802.1.1.2.1.3.3.0 string switch-flaky-01
+.1.0.8802.1.1.2.1.3.4.0 string Scanopy SNMP simulator, flaky-LLDP profile
+.1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 00:1a:2b:00:10:00
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.0.2.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/3
+.1.0.8802.1.1.2.1.4.1.1.7.0.2.1 string Gi0/4
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/3
+.1.0.8802.1.1.2.1.4.1.1.8.0.2.1 string GigabitEthernet0/4
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.9.0.2.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
+.1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string Cisco IOS Software, C2960
 EOF
 
 # Start healthy. Re-running setup.sh resets it, which is the intended way to undo
@@ -1132,6 +1168,154 @@ cat > "$DATA_DIR/switch-dlink-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.9.0.2.1 string switch-core-01
 .1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
 .1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string Cisco IOS Software, C2960
+EOF
+
+# ══════════════════════════════════════════════════════════════════════
+# switch-tplink-01 — an lldpRemTable indexed without lldpRemTimeMark (GH #668)
+#
+# Modelled on a TP-Link TL-SX3016F, from the reporter's own snmpwalk. The MIB indexes
+# lldpRemEntry as lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex; this firmware omits the
+# time mark and indexes on the remaining two, so every row is one sub-id shorter than every
+# other device here:
+#
+#   .1.0.8802.1.1.2.1.4.1.1.4.1.1 = INTEGER: 4              (local port 1, remIndex 1)
+#   .1.0.8802.1.1.2.1.4.1.1.5.1.1 = STRING: "00:AD:24:89:CC:F0"
+#
+# That shape used to remove the device from the map without leaving any evidence: a parser
+# requiring three sub-ids built no record, so nothing reached the discard counters, the walk
+# still called itself complete, and an empty result from a sixteen-port switch was then treated
+# as the device authoritatively reporting no neighbours — clearing the links the server held.
+# The reporter's completed scan named every other problem device in a warning and this one in
+# none, which is the signature worth being able to reproduce.
+#
+# Two further quirks from the same device are deliberately kept, because they decide whether a
+# row that now survives can actually resolve:
+#
+#   - Chassis ids are subtype 4 (macAddress) carrying an uppercase ASCII MAC rather than six
+#     raw octets. Handled by `parse_mac_id`, and this is the profile that proves it end to end.
+#   - Ports are ifDescr "ten-gigabitEthernet 1/0/N" with no ifName, alongside a Vlan-interface1.
+#     The neighbour port ids are the bare "1/0/N" suffix, which resolves through the boundary-
+#     anchored suffix match rather than an exact name.
+#
+# Neighbours point at switch-core-01 (00:1a:2b:00:10:00), switch-dlink-01 (00:ad:24:af:4e:00)
+# and switch-netgear-01 (00:1a:2b:00:20:00) so the rows resolve to real hosts in this lab.
+#
+# Column-major ordering, as everywhere else here: `pass` answers GETNEXT by scanning the file in
+# the order written.
+# ══════════════════════════════════════════════════════════════════════
+
+cat > "$DATA_DIR/switch-tplink-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.1.3 integer 3
+.1.3.6.1.2.1.2.2.1.1.4 integer 4
+.1.3.6.1.2.1.2.2.1.1.5 integer 5
+.1.3.6.1.2.1.2.2.1.1.17 integer 17
+.1.3.6.1.2.1.2.2.1.2.1 string ten-gigabitEthernet 1/0/1
+.1.3.6.1.2.1.2.2.1.2.2 string ten-gigabitEthernet 1/0/2
+.1.3.6.1.2.1.2.2.1.2.3 string ten-gigabitEthernet 1/0/3
+.1.3.6.1.2.1.2.2.1.2.4 string ten-gigabitEthernet 1/0/4
+.1.3.6.1.2.1.2.2.1.2.5 string ten-gigabitEthernet 1/0/5
+.1.3.6.1.2.1.2.2.1.2.17 string Vlan-interface1
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.3.3 integer 6
+.1.3.6.1.2.1.2.2.1.3.4 integer 6
+.1.3.6.1.2.1.2.2.1.3.5 integer 6
+.1.3.6.1.2.1.2.2.1.3.17 integer 53
+.1.3.6.1.2.1.2.2.1.5.1 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.3 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.4 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.5 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17 gauge 0
+.1.3.6.1.2.1.2.2.1.6.1 string 18:66:da:5d:aa:01
+.1.3.6.1.2.1.2.2.1.6.2 string 18:66:da:5d:aa:02
+.1.3.6.1.2.1.2.2.1.6.3 string 18:66:da:5d:aa:03
+.1.3.6.1.2.1.2.2.1.6.4 string 18:66:da:5d:aa:04
+.1.3.6.1.2.1.2.2.1.6.5 string 18:66:da:5d:aa:05
+.1.3.6.1.2.1.2.2.1.6.17 string 18:66:da:5d:aa:8e
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.7.3 integer 1
+.1.3.6.1.2.1.2.2.1.7.4 integer 1
+.1.3.6.1.2.1.2.2.1.7.5 integer 1
+.1.3.6.1.2.1.2.2.1.7.17 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 2
+.1.3.6.1.2.1.2.2.1.8.3 integer 1
+.1.3.6.1.2.1.2.2.1.8.4 integer 2
+.1.3.6.1.2.1.2.2.1.8.5 integer 1
+.1.3.6.1.2.1.2.2.1.8.17 integer 1
+EOF
+
+# The device's own local identity uses the conformant index (lldpLocPortNum only), which is
+# what makes the remote table's missing time mark the single variable this profile changes.
+#
+# Note the local port numbers here equal ifIndex, so the local-port remap resolves to the identity
+# mapping and cannot mask the index parse under test.
+#
+# Every far end below is a real device in this lab, matched on a value that device actually
+# reports — checked against the scanned data, not invented. An earlier revision of this file used
+# a made-up chassis MAC for switch-netgear-01 and a port (Gi0/4) that switch-core-01 does not
+# have; both still "resolved", one by falling through to the sysName tier and one by stopping at
+# a device-level edge, so the profile passed without exercising what it claims to. Each row now
+# resolves through exactly one intended path:
+#
+#   port 1 → switch-core-01   chassis 00:1a:2b:00:10:00 is that switch's own lldpLocChassisId;
+#                             port id "Gi0/3" is its ifName. Host and port both by name.
+#   port 2 → nothing          a desk phone: no device in this lab bears this MAC or sysName, so
+#                             every host tier fails. Deliberate — it is the only source of a
+#                             non-zero `host_not_found`, which is what the server-side summary
+#                             naming unmatched far ends needs in order to fire at all. Endpoints
+#                             like this are what that counter legitimately consists of.
+#   port 3 → switch-dlink-01  port id "Slot0/3" is its ifName, ifDescr is the long D-Link form.
+#   port 5 → switch-netgear-01 chassis 00:1a:2b:3c:4d:63 is on no port and no IP (the #664
+#                             shape), so only the host's own recorded chassis_id can match it;
+#                             port id "3" matches no name and falls through to ifIndex 3 (g3).
+#                             Its lldpRemPortDesc deliberately matches nothing, so the ifIndex
+#                             fallback is what is actually under test.
+cat > "$DATA_DIR/switch-tplink-01-lldp.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 18:66:da:5d:aa:8e
+.1.0.8802.1.1.2.1.3.3.0 string switch-tplink-01
+.1.0.8802.1.1.2.1.3.4.0 string TL-SX3016F 1.0 - TP-Link Switch
+.1.0.8802.1.1.2.1.3.7.1.2.1 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.2 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.3 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.5 integer 5
+.1.0.8802.1.1.2.1.3.7.1.3.1 string ten-gigabitEthernet 1/0/1
+.1.0.8802.1.1.2.1.3.7.1.3.2 string ten-gigabitEthernet 1/0/2
+.1.0.8802.1.1.2.1.3.7.1.3.3 string ten-gigabitEthernet 1/0/3
+.1.0.8802.1.1.2.1.3.7.1.3.5 string ten-gigabitEthernet 1/0/5
+.1.0.8802.1.1.2.1.4.1.1.4.1.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.2.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.3.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.5.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.1.1 string 00:1A:2B:00:10:00
+.1.0.8802.1.1.2.1.4.1.1.5.2.1 string 9C:AD:97:1F:22:40
+.1.0.8802.1.1.2.1.4.1.1.5.3.1 string 00:AD:24:AF:4E:00
+.1.0.8802.1.1.2.1.4.1.1.5.5.1 string 00:1A:2B:3C:4D:63
+.1.0.8802.1.1.2.1.4.1.1.6.1.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.2.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.3.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.5.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.1.1 string Gi0/3
+.1.0.8802.1.1.2.1.4.1.1.7.2.1 string 1
+.1.0.8802.1.1.2.1.4.1.1.7.3.1 string Slot0/3
+.1.0.8802.1.1.2.1.4.1.1.7.5.1 string 3
+.1.0.8802.1.1.2.1.4.1.1.8.1.1 string GigabitEthernet0/3
+.1.0.8802.1.1.2.1.4.1.1.8.2.1 string Port 1
+.1.0.8802.1.1.2.1.4.1.1.8.3.1 string D-Link DGS-1210-48 Rev.GX/7.20.003 Port 3
+.1.0.8802.1.1.2.1.4.1.1.8.5.1 string Slot: 0 Port: 3 Gigabit - Level
+.1.0.8802.1.1.2.1.4.1.1.9.1.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.9.2.1 string desk-phone-4021
+.1.0.8802.1.1.2.1.4.1.1.9.3.1 string switch-dlink-01
+.1.0.8802.1.1.2.1.4.1.1.9.5.1 string switch-netgear-01
+.1.0.8802.1.1.2.1.4.1.1.10.1.1 string Cisco IOS Software, C2960
+.1.0.8802.1.1.2.1.4.1.1.10.2.1 string Polycom VVX 411
+.1.0.8802.1.1.2.1.4.1.1.10.3.1 string D-Link DGS-1210-48 Rev.GX/7.20.003
+.1.0.8802.1.1.2.1.4.1.1.10.5.1 string GS724Tv3 ProSafe 24-port Gigabit Smart Switch
 EOF
 
 # ── 5. Write snmpd configs ───────────────────────────────────────────
@@ -1381,6 +1565,22 @@ sysservices 2
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-dlink-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-dlink-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-dlink-01-lldp.txt
+EOF
+
+# No ifXTable `pass` here on purpose: this switch serves no ifName, so its ports are known only
+# by the ifDescr "ten-gigabitEthernet 1/0/N" — which is what the neighbour port ids have to be
+# matched against.
+cat > "$CONF_DIR/snmpd-switch-tplink-01.conf" << EOF
+agentAddress udp:${HOSTS[15]}:161
+rocommunity netdefault
+sysdescr TL-SX3016F 1.0 - TP-Link 16-Port 10G SFP+ Managed Switch
+syscontact netops@example.com
+sysname switch-tplink-01
+syslocation Lab
+sysobjectid .1.3.6.1.4.1.11863.5.1.1
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-tplink-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-tplink-01-lldp.txt
 EOF
 
 # ── 6. Create systemd services ───────────────────────────────────────

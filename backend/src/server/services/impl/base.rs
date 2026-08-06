@@ -41,7 +41,11 @@ pub struct ServiceBase {
         default,
         deserialize_with = "crate::server::shared::types::api::deserialize_lenient_option"
     )]
-    pub virtualization: Option<ServiceVirtualization>,
+    pub virtualization_metadata: Option<ServiceVirtualization>,
+    /// The container runtime service hosting this container — see the note on
+    /// `HostBase::virtualization_service_id`.
+    #[schema(required)]
+    pub virtualization_service_id: Option<Uuid>,
     #[schema(read_only)]
     /// Will be automatically set to Manual for creation through API
     pub source: EntitySource,
@@ -63,7 +67,8 @@ impl Default for ServiceBase {
             service_definition: Box::new(DefaultServiceDefinition),
             name: String::new(),
             bindings: Vec::new(),
-            virtualization: None,
+            virtualization_metadata: None,
+            virtualization_service_id: None,
             source: EntitySource::Unknown,
             tags: Vec::new(),
             position: 0,
@@ -76,7 +81,9 @@ impl ChangeTriggersTopologyStaleness<Service> for Service {
         if let Some(other_service) = other {
             self.base.bindings != other_service.base.bindings
                 || self.base.host_id != other_service.base.host_id
-                || self.base.virtualization != other_service.base.virtualization
+                || self.base.virtualization_metadata != other_service.base.virtualization_metadata
+                || self.base.virtualization_service_id
+                    != other_service.base.virtualization_service_id
         } else {
             true
         }
@@ -144,7 +151,9 @@ pub struct ServiceMatchBaselineParams<'a> {
     pub ip_address: &'a IPAddress,
     pub all_ports: &'a Vec<PortType>,
     pub endpoint_responses: &'a Vec<EndpointResponse>,
-    pub virtualization: &'a Option<ServiceVirtualization>,
+    pub virtualization_metadata: &'a Option<ServiceVirtualization>,
+    /// The container runtime service hosting whatever is matched here.
+    pub virtualization_service_id: Option<Uuid>,
     pub client_responses: &'a std::collections::HashMap<
         crate::server::services::r#impl::patterns::ClientProbe,
         Vec<PortType>,
@@ -184,15 +193,16 @@ impl PartialEq for Service {
         if !ServiceDefinitionExt::is_generic(&self.base.service_definition) {
             // Distinct containers can legitimately run the same service (e.g. two pod members):
             // when both carry a container_id, keep them distinct by it. Non-container services
-            // (virtualization = None) are unaffected and stay "same host + definition = same".
+            // (virtualization_metadata = None) are unaffected and stay "same host + definition
+            // = same".
             if let (Some(self_cid), Some(other_cid)) = (
                 self.base
-                    .virtualization
+                    .virtualization_metadata
                     .as_ref()
                     .and_then(|v| v.container_id()),
                 other
                     .base
-                    .virtualization
+                    .virtualization_metadata
                     .as_ref()
                     .and_then(|v| v.container_id()),
             ) {
@@ -218,8 +228,8 @@ impl PartialEq for Service {
         // All possible permutations of generic services on the same host:
 
         // Extract virtualization info (any container runtime: Docker, Podman, …)
-        let self_docker = self.base.virtualization.as_ref();
-        let other_docker = other.base.virtualization.as_ref();
+        let self_docker = self.base.virtualization_metadata.as_ref();
+        let other_docker = other.base.virtualization_metadata.as_ref();
 
         // Extract port IDs from bindings
         let self_port_ids: std::collections::HashSet<_> = self
@@ -411,11 +421,13 @@ impl Service {
 
         let ServiceMatchBaselineParams {
             ip_address,
-            virtualization,
+            virtualization_metadata,
+            virtualization_service_id,
             ..
         } = baseline_params;
 
-        let virtualization = *virtualization;
+        let virtualization_metadata = *virtualization_metadata;
+        let virtualization_service_id = *virtualization_service_id;
 
         let ServiceMatchServiceParams {
             service_definition, ..
@@ -444,7 +456,10 @@ impl Service {
 
             if ServiceDefinitionExt::is_generic(&service_definition) {
                 // Name a generic container service after its container (Docker or Podman).
-                if let Some(c_name) = virtualization.as_ref().and_then(|v| v.container_name()) {
+                if let Some(c_name) = virtualization_metadata
+                    .as_ref()
+                    .and_then(|v| v.container_name())
+                {
                     name = c_name.to_string()
                 }
 
@@ -482,7 +497,8 @@ impl Service {
                 network_id: *network_id,
                 service_definition,
                 name,
-                virtualization: virtualization.clone(),
+                virtualization_metadata: virtualization_metadata.clone(),
+                virtualization_service_id,
                 tags: Vec::new(),
                 bindings,
                 source: EntitySource::DiscoveryWithMatch {
@@ -554,7 +570,8 @@ mod tests {
             bindings,
             network_id,
             service_definition: service_def,
-            virtualization,
+            virtualization_metadata: virtualization,
+            virtualization_service_id: None,
             source: EntitySource::System,
             tags: Vec::new(),
             position: 0,
@@ -565,7 +582,6 @@ mod tests {
         Some(ServiceVirtualization::Docker(DockerVirtualization {
             container_name: Some(container_name.to_string()),
             container_id: Some(Uuid::new_v4().to_string()),
-            service_id: Uuid::new_v4(),
             compose_project: None,
         }))
     }
@@ -670,7 +686,6 @@ mod tests {
             Some(ServiceVirtualization::Docker(DockerVirtualization {
                 container_name: Some("my-container".to_string()),
                 container_id: Some(container_id.clone()),
-                service_id: Uuid::new_v4(),
                 compose_project: None,
             })),
             vec![],
@@ -683,7 +698,6 @@ mod tests {
             Some(ServiceVirtualization::Docker(DockerVirtualization {
                 container_name: Some("my-container".to_string()),
                 container_id: Some(container_id),
-                service_id: Uuid::new_v4(),
                 compose_project: None,
             })),
             vec![],

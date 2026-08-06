@@ -63,6 +63,8 @@
 		clearEdgeHoverState,
 		expandedBundles,
 		collapseAllBundles,
+		collectEdgeHandles,
+		edgeHandlesByNode,
 		searchHiddenNodeIds,
 		tagHiddenNodeIds,
 		hiddenEntityIds
@@ -81,17 +83,27 @@
 	import { containerTypes } from '$lib/shared/stores/metadata';
 
 	// Pipeline imports
-	import { createInitialState } from '../../pipeline/types';
+	import { createInitialState, type XY } from '../../pipeline/types';
 	import { prepareTopologyData, hiddenMetadataKey } from '../../pipeline/prepare';
 	import { resolveNodeSizes } from '../../pipeline/measure';
 	import { executeLayout, handlePortExpansion } from '../../pipeline/execute-layout';
 	import { preloadElk } from '../../layout/elk-layout';
-	import { buildFlowNodes, sortFlowNodes } from '../../pipeline/build-flow-nodes';
+	import { buildFlowNodes, sortFlowNodes, stripSizeSeed } from '../../pipeline/build-flow-nodes';
 	import { buildFlowEdges } from '../../pipeline/build-flow-edges';
-	import { cacheCollapsedSizes } from '../../pipeline/post-render';
+	import { cacheCollapsedSizes, reconcileMeasuredSizes } from '../../pipeline/post-render';
+	import throttle from 'just-throttle';
 	import { computeEdgeDisplayUpdates } from '../../pipeline/sync-edge-display';
 	import { shouldCull } from '../../pipeline/render-mode';
-	import { installDiagnostics, recordAfterRun, recordAfterViewportMove } from '../../diagnostics';
+	import {
+		installDiagnostics,
+		noteNodeStoreWrite,
+		noteRunDetail,
+		noteRunEnd,
+		noteRunStart,
+		noteRunSuperseded,
+		recordAfterRun,
+		recordAfterViewportMove
+	} from '../../diagnostics';
 	import * as perf from '../../perf';
 	import {
 		reloadInputsDiff,
@@ -155,11 +167,24 @@
 		selectedNodes: selNodesStore
 	};
 
+	/**
+	 * Node count at or above which the collapse fade is skipped in favour of a single store write.
+	 *
+	 * Set well above the graphs where the animation reads as polish and well below the scale where a
+	 * second full node adoption costs hundreds of megabytes. The culling threshold (150) is a
+	 * different question — that one is about what is mounted, this one about how many times the set
+	 * is handed over — so it is deliberately not reused.
+	 */
+	const ANIMATE_COLLAPSE_MAX_NODES = 600;
+
+	/** Empty handle map for measurement builds, whose handles `stripSizeSeed` removes anyway. */
+	const NO_HANDLES: Map<string, Set<string>> = new Map();
+
 	// Track viewport panning state
 	let viewportMoved = false;
 	let viewportMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
-	const { fitView, getNodes } = useSvelteFlow();
+	const { fitView, getNodes, getInternalNode } = useSvelteFlow();
 	let containerElement: HTMLDivElement;
 
 	/**
@@ -317,15 +342,47 @@
 
 	// Pipeline state
 	const layoutState = createInitialState();
-	let isMeasuring = $state(false);
+
+	/**
+	 * A DOM measurement pass is running.
+	 *
+	 * Culling must stay off for its duration: the pass mounts every node and reads its height, and
+	 * a culled node never mounts, so measurement would silently return sizes for the on-screen
+	 * subset and hand ELK fallbacks for the rest. Set on *every* measure pass, not just the first.
+	 */
+	let measurePassActive = $state(false);
+
+	/**
+	 * The cold load is measuring, which additionally suppresses the expand animation.
+	 *
+	 * Split from `measurePassActive` because one flag used to do both jobs, and only ever on the
+	 * first render (`lastRenderedTopoKey === ''`). Later measure passes still have to suspend
+	 * culling, and with a single flag they did not — harmless only while culling was inert.
+	 *
+	 * Both flags now hide the pane. A measure pass mounts every node with no container sizes, so
+	 * containers render as 2px slivers with their contents outside for as long as it runs; at a
+	 * few thousand nodes that is a frame or more, and it was plainly visible because only the cold
+	 * load hid anything. This flag still exists on its own because `shouldAnimate` means "not a
+	 * cold load", which is a different question from "is something being measured".
+	 */
+	let coldLoadMeasure = $state(false);
 	let animatingCollapse = $state(false);
+
+	/** Minimum gap between collapsed-size refreshes while panning. */
+	const COLLAPSED_SIZE_REFRESH_MS = 500;
+
+	/** Both flags down: no pass is measuring and the pane may show. */
+	function endMeasurePass(): void {
+		measurePassActive = false;
+		coldLoadMeasure = false;
+	}
 
 	// Cull off-screen nodes once the graph is big enough — see
 	// `pipeline/render-mode.ts` for why measuring and exporting must suspend it.
 	let cullOffscreen = $derived(
 		shouldCull({
 			renderedCount: $nodes.length,
-			measuring: isMeasuring,
+			measuring: measurePassActive,
 			exporting: $isExporting
 		})
 	);
@@ -335,10 +392,40 @@
 	const diagnosticInputs = () => ({
 		storeNodes: $nodes.length,
 		storeEdges: $edges.length,
-		measuring: isMeasuring,
-		exporting: $isExporting
+		measuring: measurePassActive,
+		coldLoadMeasure,
+		exporting: $isExporting,
+		culling: cullOffscreen,
+		container: containerElement,
+		// Read lazily: the diagnostic decides whether it wants all of them or a sample, and at
+		// this customer's node count the difference matters on the throttled viewport path.
+		internalNodes: () => $nodes.map((n) => getInternalNode(n.id))
 	});
 	installDiagnostics(diagnosticInputs);
+
+	/**
+	 * Single point of write for the node store.
+	 *
+	 * Every mount of the graph goes through here, so counting the writes distinguishes one large
+	 * allocation from a remount loop — the question the customer's 247 out-of-memory throws left
+	 * open, and one the per-sample ring buffer could not answer.
+	 */
+	/**
+	 * Every write to the node store, timed and heap-measured.
+	 *
+	 * The per-run heap ledger placed 88% of a run's growth — 357MB of 407MB — between `build-edges`
+	 * finishing and `post-render` starting, with the whole ELK layout accounting for only 50MB. The
+	 * writes in that span are the candidates: each hands the full node set to SvelteFlow, which
+	 * builds an internal representation of all 2,890 nodes per write, and the collapse animation
+	 * performs up to three of them for one press. Instrumented here rather than at each call site so
+	 * every branch is covered; repeated entries appear in the ledger in order.
+	 */
+	function setStoreNodes(next: Node[]): void {
+		const writeDone = perf.stage('render.store-write');
+		noteNodeStoreWrite(next.length);
+		nodes.set(next);
+		writeDone();
+	}
 
 	// --- Reactive triggers ---
 
@@ -411,6 +498,21 @@
 				// full re-layout (two elk.layout() calls).
 				perf.count(`pending-reload:${source}`);
 				pendingReload = true;
+				// Abandon the run in flight the moment we can prove its result is already obsolete.
+				//
+				// A press arrives roughly every 2s and a run takes 1.8-3.7s, so the first run
+				// reliably finished a full layout that the queued run replaced on arrival — two ELK
+				// passes and ~600MB of garbage for one visible result. Bumping the generation makes
+				// `isStale()` true for the in-flight run, which bails at the check before ELK.
+				//
+				// Only when the inputs demonstrably differ: `inFlightInputs` is snapshotted once
+				// `prepare` returns, so a null here means the run has not yet fixed its inputs and
+				// cancelling would be guesswork.
+				if (inFlightInputs && reloadInputsDiff(inFlightInputs, currentReloadInputs()).length > 0) {
+					layoutState.layoutGeneration += 1;
+					perf.count(`superseded:${source}`);
+					noteRunSuperseded();
+				}
 			}
 			return;
 		}
@@ -418,14 +520,18 @@
 		// so each full pipeline execution — two elk.layout() calls — is attributable
 		// to what started it.
 		perf.count(`run-start:${source}`);
+		// Always-on twin of the counter above: `perf` records nothing in a customer's build, and
+		// which trigger started a run is the missing half of the zero-sized-container reports.
+		noteRunStart(source);
 		loadInProgress = true;
 		pendingReload = false;
 		void loadTopologyData()
 			.catch((err) => {
-				isMeasuring = false;
+				endMeasurePass();
 				pushError(topology_parseFailed({ error: String(err) }));
 			})
 			.finally(() => {
+				noteRunEnd();
 				loadInProgress = false;
 				if (pendingReload) {
 					pendingReload = false;
@@ -451,8 +557,33 @@
 	}
 
 	let storesInitialized = false;
+
+	/**
+	 * Start a run *after* the caller that wrote the store has finished.
+	 *
+	 * Svelte notifies subscribers synchronously from `set`, and `loadTopologyData` runs as far as
+	 * `prepare` before its first `await` — so the whole first half of a pipeline run executes
+	 * inside the `.set()` call, before the writing function's next statement. Anything a caller
+	 * does after writing collapse state therefore lands too late to affect the run it just caused.
+	 *
+	 * `stepExpand` was one such caller: it marked the auto-collapse containers seen after writing,
+	 * so `applyAutoCollapse` re-collapsed the very containers it was about to be told to leave
+	 * alone. The level advanced, the collapsed set did not, `collapseChanged` came out false, no
+	 * layout ran, and the diagram stayed on the previous level with anything new to it unsized.
+	 * That call site is now ordered correctly, but the hazard belongs to every writer of these
+	 * stores — a container chevron, the level buttons, a filter — and each would have to remember.
+	 *
+	 * Deferring by a microtask makes the ordering safe by construction: the caller always
+	 * completes first, and the run still starts in the same frame.
+	 */
+	const deferTriggerLoad = (source: string) => {
+		queueMicrotask(() => {
+			if (storesInitialized) triggerLoad(source);
+		});
+	};
+
 	collapsedContainers.subscribe(() => {
-		if (storesInitialized) triggerLoad('collapsed');
+		if (storesInitialized) deferTriggerLoad('collapsed');
 	});
 	expandedBundles.subscribe(() => {
 		if (storesInitialized) triggerLoad('bundles');
@@ -567,12 +698,28 @@
 		// to the watched stores as part of its own work. Snapshot here so those
 		// self-writes don't read as external change at the end of the run.
 		inFlightInputs = snapshotReloadInputs(currentReloadInputs());
+		noteRunDetail({ isNewStructure: prep?.isNewStructure, needsElk: prep?.needsElk });
 		if (!prep) return;
 		const { needsElk, collapsed, visibleNodes: initialVisibleNodes } = prep;
 		let visibleNodes = initialVisibleNodes;
 
+		// Sizes measured by *this* run, once it has measured. Preferred over the view cache so the
+		// same frame that lays a node out can also size it — which is what lets culling work on
+		// the first render after an expand rather than only after everything has mounted once.
+		const viewCacheKey = `${prep.currentView}:${prep.topologyId}`;
+		let runSizes: Map<string, XY> | null = null;
+
+		// Handles the run's edges name, filled in before nodes are built. Null until then, which
+		// makes `buildFlowNodes` declare all eight per node — the measurement pass builds nodes
+		// before any edges exist and must not be narrowed against a stale set.
+		let runUsedHandles: Map<string, Set<string>> | null = null;
+
 		// Helper: build positioned flow nodes (called multiple times with different useGraph)
-		const makeNodes = (useGraph: boolean) =>
+		//
+		// `forMeasurement` suppresses handle synthesis entirely: `buildMeasureNodes` pipes the result
+		// through `stripSizeSeed`, which deletes `handles` again, so synthesizing eight per node
+		// first was building 23,120 objects to throw all of them away.
+		const makeNodes = (useGraph: boolean, forMeasurement = false) =>
 			sortFlowNodes(
 				buildFlowNodes({
 					visibleNodes,
@@ -583,7 +730,9 @@
 					isNewStructure: prep.isNewStructure,
 					liveNodes: getNodes(),
 					infraRuleId: getInfrastructureRuleId(),
-					editMode: editMode ?? false
+					editMode: editMode ?? false,
+					sizeHints: runSizes ?? layoutState.viewSizeCache.get(viewCacheKey) ?? null,
+					usedHandles: forMeasurement ? NO_HANDLES : runUsedHandles
 				})
 			);
 
@@ -593,24 +742,53 @@
 				layoutState,
 				prep,
 				topology,
-				getNodes,
 				containerElement,
 				isStale,
 				{
 					setMeasuring: (v) => {
+						// Culling is suspended for every measurement pass, unconditionally —
+						// the pass reads heights out of the DOM, so a culled node measures as
+						// absent and ELK gets a fallback size for it.
+						measurePassActive = v;
 						// Only hide viewport during measurement for initial load
 						// (no nodes on screen). For subsequent measurements (e.g.
 						// cacheMisses on collapse), nodes keep their current positions
 						// so hiding is unnecessary — and skipping it lets shouldAnimate
 						// fire normally.
 						if (layoutState.lastRenderedTopoKey === '') {
-							isMeasuring = v;
+							coldLoadMeasure = v;
 						}
 					},
-					setNodes: (n) => nodes.set(n),
+					setNodes: (n) => setStoreNodes(n),
 					setEdges: (e) => baseFlowEdges.set(e),
-					buildMeasureNodes: () => {
-						const measureNodes = makeNodes(false);
+					buildMeasureNodes: (onlyIds?: Set<string>) => {
+						// Strip the seeded sizes. The pass exists to learn what a card actually
+						// renders as, and a node carrying `measured` + `handles` reads as already
+						// initialised — so it would be presented at the size we guessed and could
+						// only ever confirm that guess. Dropping both also re-attaches
+						// `NodeWrapper`'s ResizeObserver, which is otherwise never reattached.
+						let measureNodes = stripSizeSeed(makeNodes(false, true));
+						if (onlyIds) {
+							// Ancestors come too, whether or not they need measuring: SvelteFlow
+							// resolves a child's position against its parent and drops a node whose
+							// `parentId` is absent from the set it was given.
+							// Not `SvelteSet`: this is a local computed inside a callback and never read
+							// reactively — the lint rule targets reactive state, and a reactive Set here
+							// would add tracking overhead for a value that is discarded on return.
+							// eslint-disable-next-line svelte/prefer-svelte-reactivity
+							const keep = new Set(onlyIds);
+							const parentOf = new Map(
+								measureNodes.map((n) => [n.id, n.parentId as string | undefined])
+							);
+							for (const id of onlyIds) {
+								let parent = parentOf.get(id);
+								while (parent && !keep.has(parent)) {
+									keep.add(parent);
+									parent = parentOf.get(parent);
+								}
+							}
+							measureNodes = measureNodes.filter((n) => keep.has(n.id));
+						}
 						// Preserve current positions during measurement — DOM
 						// measurement only needs element presence, not positions.
 						// This prevents nodes from jumping to (0,0) while visible.
@@ -666,10 +844,21 @@
 				}
 			);
 			measureDone();
+			// The measurement pass is over the moment `resolveNodeSizes` returns — it has already
+			// read every height it needed out of the DOM — so culling resumes here rather than at
+			// the end of the render.
+			//
+			// It must be cleared on this path, not only in the branches below. `resolveNodeSizes`
+			// calls `setMeasuring(false)` only when it goes stale, and of the render branches only
+			// the cold-load one ends with `endMeasurePass()`. A measure pass on an already-rendered
+			// graph — every expand at scale — therefore left the flag set for the rest of the
+			// session, suspending culling permanently and mounting the whole graph on every run.
+			measurePassActive = false;
 			if (!elementNodeSizes) {
-				isMeasuring = false;
+				endMeasurePass();
 				return;
 			}
+			runSizes = elementNodeSizes;
 
 			const layoutDone = perf.stage('layout');
 			const layoutResult = await executeLayout(
@@ -681,30 +870,46 @@
 			);
 			layoutDone();
 			if (!layoutResult) {
-				isMeasuring = false;
+				endMeasurePass();
 				return;
 			}
 			visibleNodes = layoutResult.visibleNodes;
 		}
 
-		// Port expansion handling (no full ELK re-layout)
+		// Port expansion handling (no full ELK re-layout).
+		//
+		// This is the pipeline's second DOM measurement site: it mounts the rebuilt nodes and reads
+		// `offsetWidth`/`offsetHeight` for the cards whose port list changed. Culling is
+		// deliberately *not* suspended for it, unlike the full measurement pass. Suspending it
+		// would mount every node in the graph to re-measure a handful of cards, which at this
+		// customer's scale is the out-of-memory failure by another route. A card whose ports the
+		// user just toggled is on screen by construction, so it is mounted and measures correctly;
+		// `handlePortExpansion` drops the cached size of any id it could not find in the DOM, so a
+		// card toggled and then scrolled away from re-measures for real the next time it mounts
+		// rather than keeping a stale height.
 		const currentExpandedPorts = get(expandedPortNodeIds);
 		const portsChanged = await handlePortExpansion(
 			layoutState,
 			currentExpandedPorts,
 			containerElement,
 			() => makeNodes(false),
-			(n) => nodes.set(n),
+			(n) => setStoreNodes(n),
 			isStale,
-			needsElk
+			needsElk,
+			viewCacheKey
 		);
 
 		// Build final nodes and edges. Edge handles are computed inside
 		// buildFlowEdges against final post-layout positions (from layoutGraph)
 		// rather than being precomputed by the layout engines.
 		const needsLayout = needsElk || portsChanged || prep.collapseChanged;
-		const allNodes = makeNodes(needsLayout);
 
+		// Edges first, then nodes.
+		//
+		// `buildFlowEdges` takes none of the flow nodes — only the layout graph and the topology —
+		// so the order is free, and reversing it lets the nodes be built already knowing which
+		// handles their edges name. Emitting all eight per node cost a `handleBounds` object each in
+		// `parseHandles`, on every node, on every adoption.
 		const buildEdgesDone = perf.stage('build-edges');
 		const { flowEdges, originalsMap } = buildFlowEdges({
 			elevatedEdges: prep.elevatedEdges,
@@ -722,15 +927,43 @@
 		buildEdgesDone();
 		aggregatedEdgeOriginals.set(originalsMap);
 
+		const makeNodesDone = perf.stage('render.make-nodes');
+		runUsedHandles = collectEdgeHandles(flowEdges);
+		const allNodes = makeNodes(needsLayout);
+		makeNodesDone();
+
+		// Publish the handles each node's edges name, before the nodes that reference them. Node
+		// components render only these; SvelteFlow reads handle boxes out of the DOM, and only for
+		// a handle an edge names, so a node whose handles arrive a frame after its edge has that
+		// edge dropped.
+		const handlesDone = perf.stage('render.publish-handles');
+		edgeHandlesByNode.set(runUsedHandles);
+		handlesDone();
+
 		// Render
+		//
+		// The phased fade is skipped on a large graph, where it is the single most expensive thing a
+		// collapse press does. Each node-store write costs 130-230MB *downstream* of `nodes.set()` —
+		// SvelteFlow adopts the whole node set and Svelte flushes the reactive graph after the
+		// synchronous call returns, which is why the write itself times at 1ms and shows no growth
+		// while the heap climbs between stages. The phased path performs two or three writes for one
+		// press; the direct path performs one. Measured on a 2,890-node graph, that difference was
+		// ~350MB of a 392MB run, against an ELK layout costing 40MB.
+		//
+		// Below the threshold the animation is worth its cost and stays: it is what makes a collapse
+		// legible rather than a jump, and on a small graph a second adoption is cheap.
 		const shouldAnimate =
-			needsElk && !isMeasuring && layoutState.lastRenderedTopoKey !== '' && !prep.viewChanged;
+			needsElk &&
+			!coldLoadMeasure &&
+			layoutState.lastRenderedTopoKey !== '' &&
+			!prep.viewChanged &&
+			allNodes.length < ANIMATE_COLLAPSE_MAX_NODES;
 
 		if (shouldAnimate) {
 			animatingCollapse = true;
 			const previousNodeIds = new Set(get(nodes).map((n) => n.id));
 			const phase1Nodes = allNodes.filter((n) => previousNodeIds.has(n.id));
-			nodes.set(phase1Nodes);
+			setStoreNodes(phase1Nodes);
 			baseFlowEdges.set(flowEdges);
 
 			const fullNodes = [...allNodes];
@@ -747,36 +980,40 @@
 						fullNodes.filter((n) => !previousNodeIds.has(n.id)).map((n) => n.id)
 					);
 					if (newNodeIds.size > 0) {
+						// Copies the whole node set to restyle the new arrivals — one full duplicate of
+						// every node object, on top of the store write that follows it.
+						const fadeCopyDone = perf.stage('render.animate-fade-copy');
 						const fadingNodes = fullNodes.map((n) =>
 							newNodeIds.has(n.id)
 								? { ...n, style: 'opacity: 0; transition: opacity 0.3s ease-in-out;' }
 								: n
 						);
-						nodes.set(fadingNodes);
+						fadeCopyDone();
+						setStoreNodes(fadingNodes);
 						baseFlowEdges.set(fullEdges);
 						requestAnimationFrame(() => {
-							nodes.set(fullNodes);
+							setStoreNodes(fullNodes);
 							baseFlowEdges.set(fullEdges);
 							requestAnimationFrame(() => resolve());
 						});
 					} else {
-						nodes.set(fullNodes);
+						setStoreNodes(fullNodes);
 						baseFlowEdges.set(fullEdges);
 						requestAnimationFrame(() => resolve());
 					}
 				}, 350);
 			});
 			if (isStale()) return;
-		} else if (!isMeasuring) {
-			nodes.set(allNodes);
+		} else if (!coldLoadMeasure) {
+			setStoreNodes(allNodes);
 			baseFlowEdges.set(flowEdges);
 		} else {
 			baseFlowEdges.set([]);
-			nodes.set(allNodes);
+			setStoreNodes(allNodes);
 			pendingEdges = flowEdges;
 			await tick();
 			if (isStale()) {
-				isMeasuring = false;
+				endMeasurePass();
 				return;
 			}
 			if (pendingEdges.length > 0) {
@@ -786,10 +1023,10 @@
 			await tick();
 			await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 			if (isStale()) {
-				isMeasuring = false;
+				endMeasurePass();
 				return;
 			}
-			isMeasuring = false;
+			endMeasurePass();
 		}
 
 		// Post-render: measure collapsed containers at their natural content
@@ -808,8 +1045,34 @@
 				collapsed,
 				layoutState.containerSizeCache
 			);
+
+			// Correct any cached card height the seeded sizes have drifted from. Nodes built with
+			// `measured` never get a ResizeObserver, so this is the only thing that notices — see
+			// `reconcileMeasuredSizes`. Bounded by the mounted set, and it converges, so a drift
+			// costs one extra layout rather than repeating.
+			const viewCache = layoutState.viewSizeCache.get(viewCacheKey);
+			const drifted = viewCache
+				? reconcileMeasuredSizes(
+						containerElement,
+						viewCache,
+						layoutState.layoutGraph,
+						layoutState.driftCorrectedIds
+					)
+				: 0;
+			if (drifted > 0) perf.count('post-render.size-drift');
+
 			cacheSizesDone();
-			if (newEntries > 0 && !isStale()) {
+			// Read the layout *model*, not the DOM: this separates "the graph lost its sizes" from
+			// "the render has not caught up", which the per-sample degenerate count cannot.
+			noteRunDetail({
+				// Expanded containers only. A collapsed one has never been laid out expanded, so a
+				// zero there is normal and would drown the signal — it is the *expanded* container
+				// with no size that renders as its borders with its contents outside.
+				containersZeroSizedAfter: [...layoutState.layoutGraph.containers.values()].filter(
+					(c) => !c.collapsed && c.expandedSize.width === 0
+				).length
+			});
+			if ((newEntries > 0 || drifted > 0) && !isStale()) {
 				// Counted because on a cold load with many collapsed containers this
 				// self-heal fires every time, and each recursion is a full pipeline
 				// run including two more elk.layout() calls.
@@ -899,7 +1162,33 @@
 		// Moving the viewport is what re-evaluates which nodes are inside it, so it is the other
 		// moment a canvas can go blank — and the one a customer reported as "locking it in".
 		recordAfterViewportMove(diagnosticInputs());
+		refreshCollapsedSizesInView();
 	}
+
+	/**
+	 * Record the real collapsed size of any container that has just come into view.
+	 *
+	 * `cacheCollapsedSizes` reads the DOM, so with culling on it only ever sees mounted containers
+	 * — and at scale most collapsed containers are off screen, so they are laid out from their
+	 * type's declared size instead (see `measure.ts`). Running it again as the user pans replaces
+	 * those estimates with measurements without ever mounting the whole graph. Throttled because
+	 * a pan fires move-end repeatedly, and deliberately silent: it fills the cache for the *next*
+	 * layout rather than triggering one, since re-laying out mid-pan is exactly the jank the
+	 * culling work exists to remove.
+	 */
+	const refreshCollapsedSizesInView = throttle(
+		() => {
+			if (!containerElement || !layoutState.layoutGraph) return;
+			cacheCollapsedSizes(
+				containerElement,
+				layoutState.layoutGraph,
+				get(collapsedContainers),
+				layoutState.containerSizeCache
+			);
+		},
+		COLLAPSED_SIZE_REFRESH_MS,
+		{ leading: false, trailing: true }
+	);
 
 	function syncEdgeDisplayState() {
 		const current = get(baseFlowEdges);
@@ -1032,20 +1321,22 @@
 	function handleStepCollapse() {
 		if (editMode) return;
 		clearSelection(selectionStores);
-		stepCollapse(topology.nodes, containerTypes, getInfrastructureRuleId());
-		layoutState.fitViewPending = true;
+		stepCollapse(topology.nodes, containerTypes, getInfrastructureRuleId(), (idsLeftExpanded) => {
+			for (const id of idsLeftExpanded) layoutState.seenAutoCollapseIds.add(id);
+			layoutState.fitViewPending = true;
+		});
 	}
 
 	function handleStepExpand() {
 		if (editMode) return;
 		clearSelection(selectionStores);
-		const { autoCollapseIds } = stepExpand(
-			topology.nodes,
-			containerTypes,
-			getInfrastructureRuleId()
-		);
-		for (const id of autoCollapseIds) layoutState.seenAutoCollapseIds.add(id);
-		layoutState.fitViewPending = true;
+		// Marked seen before the collapse stores are written, not after: the write runs the
+		// pipeline synchronously, so anything done afterwards is too late to affect the run it
+		// caused. See `stepExpand`.
+		stepExpand(topology.nodes, containerTypes, getInfrastructureRuleId(), (idsLeftExpanded) => {
+			for (const id of idsLeftExpanded) layoutState.seenAutoCollapseIds.add(id);
+			layoutState.fitViewPending = true;
+		});
 	}
 
 	export function triggerStepExpand() {
@@ -1106,7 +1397,7 @@
 	class:card={!isEmbed}
 	class:card-static={!isEmbed}
 	class:collapse-transition={animatingCollapse}
-	style:visibility={isMeasuring ? 'hidden' : 'visible'}
+	style:visibility={coldLoadMeasure ? 'hidden' : 'visible'}
 	bind:this={containerElement}
 >
 	<SvelteFlow

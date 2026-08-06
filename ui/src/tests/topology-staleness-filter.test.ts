@@ -229,3 +229,36 @@ describe('topology staleness filter', () => {
 		expect(get(tagHiddenNodeIds).size).toBe(0);
 	});
 });
+
+/**
+ * Server-side filters remove their entities from the response, so the panel can no longer see the
+ * hidden value represented in the topology. `presentFilterValues` drops a filter group whose
+ * entities all share one value — which, unguarded, would delete the only control capable of
+ * bringing those entities back.
+ */
+describe('hidden values stay offerable once the server stops sending them', () => {
+	it('keeps a hidden value represented even when no entity carries it', () => {
+		// One interface, linked. `Unlinked` is hidden, so the server sent none — exactly the state
+		// after a server-side LinkState filter runs.
+		const topology = {
+			id: 'topo-1',
+			nodes: [],
+			edges: [],
+			hosts: [],
+			services: [],
+			ip_addresses: [],
+			subnets: [],
+			interfaces: [{ id: 'if-1', neighbor: { type: 'Interface', id: 'if-2' } }]
+		} as unknown as RenderableTopology;
+
+		updateTagFilter(topology, undefined, 'L2Physical', {
+			Interface: { LinkState: ['Unlinked'] }
+		});
+
+		const present = get(presentFilterValues);
+		expect(
+			present.Interface?.LinkState ?? [],
+			'a hidden value must stay offerable, or the user cannot un-hide it'
+		).toContain('Unlinked');
+	});
+});

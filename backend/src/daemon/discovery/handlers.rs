@@ -46,16 +46,13 @@ pub async fn handle_cancel_request(
 
     let manager = state.services.discovery_manager.clone();
 
-    if manager.is_discovery_running().await {
-        // Just signal cancellation, don't wait
-        if manager.cancel_current_session().await {
-            // Don't clear the task - let the spawned task do it
-            Ok(Json(ApiResponse::success(session_id)))
-        } else {
-            Err(ApiError::internal_error(
-                "Failed to cancel discovery session",
-            ))
-        }
+    // Ask the manager once. Checking liveness here and again inside
+    // `cancel_current_session` is a TOCTOU: a session that ends between the two
+    // reads reported an internal error for what is really "nothing to cancel".
+    // Just signal cancellation, don't wait — the spawned task handles cleanup.
+    if manager.cancel_current_session().await {
+        // Don't clear the task - let the spawned task do it
+        Ok(Json(ApiResponse::success(session_id)))
     } else {
         Err(ApiError::conflict(
             "Discovery session not currently running",

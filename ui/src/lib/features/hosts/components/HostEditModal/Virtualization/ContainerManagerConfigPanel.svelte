@@ -24,7 +24,7 @@
 	// Derived from the effective service list keyed on this manager — updates as
 	// containers are added/removed and resets when a different manager is selected.
 	let managedContainers = $derived(
-		services.filter((s) => s.virtualization && s.virtualization.details.service_id === service.id)
+		services.filter((s) => s.virtualization_service_id === service.id)
 	);
 
 	let containerIds = $derived(managedContainers.map((s) => s.id));
@@ -45,14 +45,14 @@
 		if (containerizedService && variant) {
 			const updatedService: Service = {
 				...containerizedService,
-				virtualization: {
+				virtualization_metadata: {
 					type: variant,
 					details: {
 						container_id: null,
-						container_name: null,
-						service_id: service.id
+						container_name: null
 					}
-				} as ServiceVirtualization
+				} as ServiceVirtualization,
+				virtualization_service_id: service.id
 			};
 
 			// Stage the change; managedContainers re-derives from the effective list.
@@ -66,7 +66,8 @@
 		if (removedContainer) {
 			const updatedService = {
 				...removedContainer,
-				virtualization: null
+				virtualization_metadata: null,
+				virtualization_service_id: null
 			};
 
 			onChange(updatedService);

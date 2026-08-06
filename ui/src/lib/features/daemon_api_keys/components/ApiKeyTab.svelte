@@ -1,12 +1,16 @@
 <script lang="ts">
+	import { formatDateNumeric } from '$lib/shared/utils/formatting';
+	import { Edit, Trash2 } from 'lucide-svelte';
+	import type { CardAction } from '$lib/shared/components/data/types';
+	import { entities } from '$lib/shared/stores/metadata';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import type { FieldConfig } from '$lib/shared/components/data/types';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
+	import { networkItems } from '$lib/features/networks/columns';
 	import CreateApiKeyModal from './ApiKeyModal.svelte';
 	import type { ApiKey } from '../types/base';
-	import ApiKeyCard from './ApiKeyCard.svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import {
 		useApiKeysQuery,
@@ -20,6 +24,13 @@
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import { modalState } from '$lib/shared/stores/modal-registry';
 	import {
+		common_enabled,
+		common_expired,
+		common_expires,
+		common_lastUsed,
+		common_never,
+		common_edit,
+		common_delete,
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
 		common_created,
@@ -29,7 +40,8 @@
 		common_tags,
 		common_unknownNetwork,
 		daemonApiKeys_title,
-		daemonApiKeys_provisionOnlyHint
+		daemonApiKeys_provisionOnlyHint,
+		daemons_legacyKeyHelp
 	} from '$lib/paraglide/messages';
 
 	let { isReadOnly = false }: TabProps = $props();
@@ -117,6 +129,23 @@
 		await downloadCsv('DaemonApiKey', {});
 	}
 
+	/** Row actions, matching what the card offered. */
+	function apiKeyActions(apiKey: ApiKey): CardAction[] {
+		if (isReadOnly) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditApiKey(apiKey) },
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteApiKey(apiKey),
+				// A key a daemon is using cannot be deleted — same gate the card had.
+				disabled: apiKeyIdsInUse.has(apiKey.id)
+			}
+		];
+	}
+
 	const apiKeyFields: FieldConfig<ApiKey>[] = [
 		{
 			key: 'name',
@@ -134,7 +163,36 @@
 			groupable: true,
 			getValue(item) {
 				return networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork();
-			}
+			},
+			display: { getItems: (item) => networkItems(item.network_id, networksData) }
+		},
+		{
+			key: 'is_enabled',
+			label: common_enabled(),
+			type: 'boolean',
+			filterable: true,
+			getValue: (key) => key.is_enabled ?? false
+		},
+		{
+			key: 'last_used',
+			label: common_lastUsed(),
+			type: 'date',
+			sortable: true,
+			getValue: (key) => key.last_used ?? null
+		},
+		{
+			key: 'expires_at',
+			label: common_expires(),
+			type: 'string',
+			sortable: true,
+			// Expired reads as a state, not a date — the date has stopped being
+			// the useful part once it has passed. Same rule the card used.
+			getValue: (key) =>
+				key.expires_at
+					? new Date(key.expires_at) < new Date()
+						? common_expired()
+						: formatDateNumeric(key.expires_at)
+					: common_never()
 		},
 		{
 			key: 'tags',
@@ -161,7 +219,12 @@
 <div class="space-y-6">
 	<!-- Header. No create action: daemon keys are now minted 1:1 through daemon
 	     provisioning, so this tab only lists (and lets you manage) existing keys. -->
-	<TabHeader title={daemonApiKeys_title()} />
+	<!--
+		Every key on this tab is unbound, so the explanation the card carried as a
+		per-row "Legacy" tag says the same thing on every row — it belongs to the
+		tab.
+	-->
+	<TabHeader title={daemonApiKeys_title()} subtitle={daemons_legacyKeyHelp()} />
 	<!-- Loading state -->
 	{#if isLoading}
 		<Loading />
@@ -180,25 +243,13 @@
 			getItemTags={getApiKeyTags}
 			storageKey="scanopy-api-keys-table-state"
 			getItemId={(item) => item.id}
+			getActions={apiKeyActions}
+			getIcon={() => ({
+				icon: entities.getIconComponent('DaemonApiKey'),
+				color: entities.getColorHelper('DaemonApiKey').icon
+			})}
 			onCsvExport={handleCsvExport}
-		>
-			{#snippet children(
-				item: ApiKey,
-				viewMode: 'card' | 'list',
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				<ApiKeyCard
-					apiKey={item}
-					isInUse={apiKeyIdsInUse.has(item.id)}
-					{viewMode}
-					selected={isSelected}
-					{onSelectionChange}
-					onDelete={isReadOnly ? undefined : handleDeleteApiKey}
-					onEdit={isReadOnly ? undefined : handleEditApiKey}
-				/>
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 

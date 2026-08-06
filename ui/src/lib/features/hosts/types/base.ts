@@ -45,7 +45,8 @@ export interface HostFormData {
 	hostname: string | null;
 	description: string | null;
 	source: components['schemas']['EntitySource'];
-	virtualization: HostVirtualization | null;
+	virtualization_metadata: HostVirtualization | null;
+	virtualization_service_id: string | null;
 	hidden: boolean;
 	tags: string[];
 

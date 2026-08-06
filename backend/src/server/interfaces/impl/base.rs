@@ -1,9 +1,18 @@
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
+use crate::server::shared::types::{
+    Color, Icon,
+    metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
+};
 use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+use crate::server::topology::types::views::{
+    FilterValueContext, HasFilterValues, MetadataFilterType,
+};
 use chrono::{DateTime, Utc};
 use mac_address::MacAddress;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt::Display;
+use strum_macros::{EnumIter, IntoStaticStr};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
@@ -55,6 +64,24 @@ impl InterfaceDataComplete {
     pub fn all(&self) -> bool {
         self.lldp && self.cdp && self.fdb && self.vlan_membership
     }
+
+    /// No group has been read yet, so the server keeps everything it already holds.
+    ///
+    /// The counterpart to [`Default`], which claims every group is authoritative. That default is
+    /// right for the wire (an old daemon that never sends the field behaved that way), and wrong
+    /// for a checkpoint written partway through a collection: SNMP persists its interface set as
+    /// soon as the ifTable walk finishes, long before the neighbour and VLAN walks run, and
+    /// shipping the all-`true` default alongside it told the server those columns were
+    /// authoritatively empty. It cleared them — and an interface with no chassis id drops out of
+    /// L2 resolution for good.
+    pub fn none() -> Self {
+        Self {
+            lldp: false,
+            cdp: false,
+            fdb: false,
+            vlan_membership: false,
+        }
+    }
 }
 
 /// Resolved LLDP/CDP neighbor connection.
@@ -89,6 +116,103 @@ impl Neighbor {
     /// Returns true if this is a partial resolution (only host known)
     pub fn is_partial_resolution(&self) -> bool {
         matches!(self, Neighbor::Host(_))
+    }
+}
+
+/// Whether a port resolved to a neighbour, for the `LinkState` metadata filter on Interface.
+///
+/// The L2 view draws one element per row of a device's SNMP ifTable, so its node count scales with
+/// total port count rather than device count: a network of ~700 devices produced 17,236 nodes
+/// against 857 links, because most of those ports are unused access ports and virtual adapters.
+/// Nearly all of them carry no adjacency and so contribute nothing to the fabric the view exists
+/// to show — but they are not noise either. A down access port is exactly what an operator looks
+/// at when asking why something is unreachable, so this classifies rather than discards: the view
+/// hides unlinked ports by default and the filter panel shows them again on one click.
+///
+/// `Linked` covers partial resolution as well as full. A neighbour known only at device level
+/// still draws an edge (`NeighborLink` rather than `PhysicalLink`), so the port is visibly
+/// connected and hiding it would break the diagram.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    IntoStaticStr,
+    EnumIter,
+    ToSchema,
+)]
+pub enum InterfaceLinkState {
+    Linked,
+    Unlinked,
+}
+
+impl InterfaceLinkState {
+    /// Classify a port from evidence in **both** directions.
+    ///
+    /// A link is recorded on one side only, so an interface reporting no neighbour of its own is
+    /// still linked when something points at it. There is no outbound-only constructor on purpose:
+    /// the previous one existed, was never called, and encoded exactly the mistake the frontend
+    /// shipped — judging the local `neighbor` alone drew 11 edges where it should have drawn 720.
+    ///
+    /// A partial resolution (`Neighbor::Host` — remote device known but not the port) counts as
+    /// linked: it still draws an edge, so hiding it would break the diagram.
+    pub fn classify(neighbor: Option<&Neighbor>, referenced_as_neighbour: bool) -> Self {
+        if neighbor.is_some() || referenced_as_neighbour {
+            Self::Linked
+        } else {
+            Self::Unlinked
+        }
+    }
+}
+
+impl HasFilterValues for Interface {
+    fn filter_values(&self, ctx: &FilterValueContext) -> BTreeMap<MetadataFilterType, String> {
+        let state = InterfaceLinkState::classify(
+            self.base.neighbor.as_ref(),
+            ctx.interfaces_referenced_as_neighbours.contains(&self.id),
+        );
+        BTreeMap::from([(MetadataFilterType::LinkState, state.id().to_string())])
+    }
+}
+
+impl HasId for InterfaceLinkState {
+    fn id(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl EntityMetadataProvider for InterfaceLinkState {
+    fn color(&self) -> Color {
+        match self {
+            Self::Linked => Color::Green,
+            Self::Unlinked => Color::Gray,
+        }
+    }
+    fn icon(&self) -> Icon {
+        match self {
+            Self::Linked => Icon::Cable,
+            Self::Unlinked => Icon::Circle,
+        }
+    }
+}
+
+impl TypeMetadataProvider for InterfaceLinkState {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Linked => "Linked",
+            Self::Unlinked => "Unlinked",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        match self {
+            Self::Linked => "Ports with a discovered neighbour",
+            Self::Unlinked => "Ports with no discovered neighbour",
+        }
     }
 }
 

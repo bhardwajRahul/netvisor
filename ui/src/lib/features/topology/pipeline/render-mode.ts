@@ -33,7 +33,7 @@ export const CULLING_THRESHOLD_ELEMENTS = 150;
  * `.svelte-flow__node`; with culling on it would silently score only the
  * visible subset and report a healthy-looking result for a graph it never saw.
  */
-function cullingDisabledForTooling(): boolean {
+export function cullingDisabledForTooling(): boolean {
 	return (
 		typeof window !== 'undefined' &&
 		(window as unknown as { __topoNoCull?: boolean }).__topoNoCull === true

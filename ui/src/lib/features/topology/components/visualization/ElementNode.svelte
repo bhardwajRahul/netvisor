@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
+	import { type NodeProps } from '@xyflow/svelte';
+	import NodeHandles from './NodeHandles.svelte';
 	import { concepts, entities, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import {
 		selectedEdge as globalSelectedEdge,
@@ -31,6 +32,7 @@
 	import type { Port } from '$lib/features/hosts/types/base';
 	import type { Node, Edge } from '@xyflow/svelte';
 	import { topology_hideOpenPorts, topology_openPortsSummary } from '$lib/paraglide/messages';
+	import { ELEMENT_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
 
 	let { id, data, width }: NodeProps = $props();
 
@@ -44,6 +46,7 @@
 	let hiddenEntities = $derived(sharedStores.hiddenEntities.current);
 	let searchHiddenNodes = $derived(sharedStores.searchHiddenNodes.current);
 	let connectedNodes = $derived(sharedStores.connectedNodes.current);
+	let edgeHandles = $derived(sharedStores.edgeHandles.current);
 	let highlightedNewNodes = $derived(sharedStores.highlightedNewNodes.current);
 	let multiSelectedNodes = $derived(sharedStores.multiSelectedNodes.current);
 	let currentHoveredTag = $derived(sharedStores.currentHoveredTag.current);
@@ -208,7 +211,8 @@
 
 	let nodeOpacity = $derived(shouldFadeOut ? 0.3 : 1);
 
-	const hostColorHelper = entities.getColorHelper('Host');
+	// Only the handle styling used this, and `NodeHandles` renders the geometry statically now.
+	// const hostColorHelper = entities.getColorHelper('Host');
 	const virtualizationColorHelper = concepts.getColorHelper('Virtualization');
 	const containerizationColorHelper = concepts.getColorHelper('Containerization');
 	const discoveryColorHelper = entities.getColorHelper('Discovery');
@@ -382,21 +386,16 @@
 
 	let cardClass = $derived(`card ${isNodeSelected ? 'card-selected' : ''}`);
 
-	let handleStyle = $derived.by(() => {
-		const baseSize = 8;
-		const baseOpacity = selectedEdge?.source == id || selectedEdge?.target == id ? 1 : 0;
+	// Handle styling lived here; `NodeHandles` now renders the geometry statically.
 
-		const fillColor = hostColorHelper.rgb;
-
-		return `
-			width: ${baseSize}px;
-			height: ${baseSize}px;
-			border: 2px solid #374151;
-			background-color: ${fillColor};
-			opacity: ${baseOpacity};
-			transition: opacity 0.2s ease-in-out;
-		`;
-	});
+	// A port card whose body is just the status line: no services, no body text, no MAC row. The
+	// wrapper that would centre a column of things has nothing to centre.
+	let onlyStatusLine = $derived(
+		Boolean(nodeRenderData?.portStatus) &&
+			!nodeRenderData?.showServices &&
+			!nodeRenderData?.bodyText &&
+			!nodeRenderData?.portStatus?.macAddress
+	);
 </script>
 
 {#if nodeRenderData}
@@ -426,13 +425,13 @@
 		<!-- Rest of component stays the same -->
 		<!-- Header section with gradient transition to body -->
 		{#if nodeRenderData.headerText}
-			<div class="relative flex-shrink-0 px-2 pt-2 text-center">
-				<div
-					data-entity-header
-					class={`truncate text-xs font-medium leading-none ${nodeRenderData.isVirtualized ? virtualizationColorHelper.text : nodeRenderData.isContainerized ? containerizationColorHelper.text : 'text-tertiary'}`}
-				>
-					{nodeRenderData.headerText}
-				</div>
+			<!-- Padding and centring live on the text element itself; the wrapper that used to hold
+			     them contributed one element per card and nothing else. -->
+			<div
+				data-entity-header
+				class={`relative flex-shrink-0 truncate px-2 pt-2 text-center text-xs font-medium leading-none ${nodeRenderData.isVirtualized ? virtualizationColorHelper.text : nodeRenderData.isContainerized ? containerizationColorHelper.text : 'text-tertiary'}`}
+			>
+				{nodeRenderData.headerText}
 			</div>
 		{/if}
 
@@ -449,7 +448,14 @@
 		{/if}
 
 		<!-- Body section -->
-		<div class="flex flex-1 flex-col items-center justify-center px-3 py-2">
+		<!-- The body region. `contents` when it holds a single status line, so the line itself takes
+		     the region's box instead of sitting inside another flex container — one element per port
+		     card. Anything richer (services, body text, a MAC line) still needs the real column. -->
+		<div
+			class={onlyStatusLine
+				? 'contents'
+				: 'flex flex-1 flex-col items-center justify-center px-3 py-2'}
+		>
 			{#if nodeRenderData.showServices}
 				{#snippet serviceCard(service: (typeof nodeRenderData.services)[number])}
 					{@const ServiceIcon = serviceDefinitions.getIconComponent(service.service_definition)}
@@ -646,8 +652,10 @@
 						{/if}
 					{/if}
 				</div>
-			{:else}
-				<!-- Show host name as body text -->
+			{:else if nodeRenderData.bodyText}
+				<!-- Show host name as body text. Guarded like the footer below: `bodyText` is empty
+				     for whole element types (every Interface, for one), and rendering it anyway put a
+				     0x0 div on each of those cards — 992 of them on the seeded graph. -->
 				<div
 					class="text-secondary truncate text-center text-xs leading-none"
 					title={nodeRenderData.bodyText}
@@ -656,26 +664,31 @@
 				</div>
 			{/if}
 			{#if nodeRenderData.portStatus}
-				<div class="flex flex-col items-center gap-0.5">
-					<div class="flex items-center gap-1.5">
-						<span
-							class="text-xs font-medium"
-							style="color: {nodeRenderData.portStatus.operStatus === 'Up'
-								? '#22c55e'
-								: nodeRenderData.portStatus.operStatus === 'Down'
-									? '#ef4444'
-									: '#9ca3af'}">●</span
-						>
-						{#if nodeRenderData.portStatus.speed}
-							<span class="text-tertiary text-xs">{nodeRenderData.portStatus.speed}</span>
-						{/if}
-					</div>
-					{#if nodeRenderData.portStatus.macAddress}
+				{#snippet statusRow()}
+					<!-- One span, not a row div wrapping a dot span and a speed span: the dot is a
+					     `::before` on the speed text. Three elements per port card became one. -->
+					<span
+						class="status-line text-tertiary text-xs"
+						style="--status-dot-color: {nodeRenderData.portStatus?.operStatus === 'Up'
+							? '#22c55e'
+							: nodeRenderData.portStatus?.operStatus === 'Down'
+								? '#ef4444'
+								: '#9ca3af'}">{nodeRenderData.portStatus?.speed ?? ''}</span
+					>
+				{/snippet}
+
+				<!-- The stacking wrapper only earns its place when there is a second row to stack. On a
+				     port card without a MAC it was a sole-child wrapper, one per card. -->
+				{#if nodeRenderData.portStatus.macAddress}
+					<div class="flex flex-col items-center gap-0.5">
+						{@render statusRow()}
 						<span class="text-tertiary truncate font-mono" style="font-size: 0.55rem; opacity: 0.7"
 							>{nodeRenderData.portStatus.macAddress}</span
 						>
-					{/if}
-				</div>
+					</div>
+				{:else}
+					{@render statusRow()}
+				{/if}
 			{/if}
 		</div>
 
@@ -690,12 +703,30 @@
 	</div>
 {/if}
 
-<Handle type="target" id="Top" position={Position.Top} style={handleStyle} />
-<Handle type="target" id="Right" position={Position.Right} style={handleStyle} />
-<Handle type="target" id="Bottom" position={Position.Bottom} style={handleStyle} />
-<Handle type="target" id="Left" position={Position.Left} style={handleStyle} />
+<!-- Only the handles an edge on this node actually names; see `edgeHandlesByNode`. -->
+{#if edgeHandles.get(id)}
+	<NodeHandles size={ELEMENT_HANDLE_SIZE_PX} used={edgeHandles.get(id)!} />
+{/if}
 
-<Handle type="source" id="Top" position={Position.Top} style={handleStyle} />
-<Handle type="source" id="Right" position={Position.Right} style={handleStyle} />
-<Handle type="source" id="Bottom" position={Position.Bottom} style={handleStyle} />
-<Handle type="source" id="Left" position={Position.Left} style={handleStyle} />
+<style>
+	/*
+	 * Port status is a coloured dot before the speed, drawn with `::before`, rather than a span for
+	 * the dot and a span for the speed inside a flex row. Blink accounts for every element's style
+	 * and layout objects whether or not anything reads them, and at a few thousand cards that row
+	 * was three of them.
+	 */
+	.status-line {
+		/* Fills the body region when that region is `contents`; harmless otherwise. */
+		flex: 1;
+		justify-content: center;
+		padding: 0.5rem 0.75rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-weight: 500;
+	}
+	.status-line::before {
+		content: '●';
+		color: var(--status-dot-color);
+	}
+</style>

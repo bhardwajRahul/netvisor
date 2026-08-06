@@ -1,5 +1,5 @@
 <script lang="ts">
-	import SubnetCard from './SubnetCard.svelte';
+	import { lastSeenItems } from '$lib/shared/utils/freshness';
 	import SubnetEditModal from './SubnetEditModal/SubnetEditModal.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
@@ -7,8 +7,10 @@
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import type { Subnet } from '../types/base';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
-	import { defineFields } from '$lib/shared/components/data/types';
-	import { Plus } from 'lucide-svelte';
+	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
+	import { tagNames } from '$lib/features/tags/columns';
+	import { networkItems } from '$lib/features/networks/columns';
+	import { Plus, Trash2, Edit } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import {
@@ -34,6 +36,8 @@
 		common_name,
 		common_network,
 		common_noEntityYet,
+		common_delete,
+		common_edit,
 		common_subnets,
 		common_tags,
 		common_unknownNetwork,
@@ -104,6 +108,21 @@
 		showSubnetEditor = true;
 	}
 
+	/** Row actions for table mode, matching what the card offers. */
+	function subnetActions(subnet: Subnet): CardAction[] {
+		if (isReadOnly) return [];
+
+		return [
+			{ label: common_edit(), icon: Edit, onClick: () => handleEditSubnet(subnet) },
+			{
+				label: common_delete(),
+				icon: Trash2,
+				class: 'btn-icon-danger',
+				onClick: () => handleDeleteSubnet(subnet)
+			}
+		];
+	}
+
 	function handleEditSubnet(subnet: Subnet) {
 		editingSubnet = subnet;
 		showSubnetEditor = true;
@@ -161,13 +180,36 @@
 		defineFields<Subnet, SubnetOrderField>(
 			{
 				// Identity fields: grouping by one would render a header per subnet.
-				name: { label: common_name(), type: 'string', searchable: true, groupable: false },
-				cidr: { label: common_cidr(), type: 'string', searchable: true, groupable: false },
+				name: {
+					label: common_name(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					display: { order: 0, primary: true, width: 220 }
+				},
+				cidr: {
+					label: common_cidr(),
+					type: 'string',
+					searchable: true,
+					groupable: false,
+					display: { order: 3 }
+				},
 				subnet_type: {
 					label: subnets_subnetType(),
 					type: 'string',
 					searchable: true,
-					filterable: true
+					filterable: true,
+					display: {
+						order: 4,
+						getItems: (subnet) => [
+							{
+								id: subnet.subnet_type,
+								label: subnetTypes.getName(subnet.subnet_type),
+								color: subnetTypes.getColorHelper(subnet.subnet_type).color,
+								icon: subnetTypes.getIconComponent(subnet.subnet_type)
+							}
+						]
+					}
 				},
 				network_id: {
 					label: common_network(),
@@ -176,24 +218,32 @@
 					filterable: true,
 					groupable: true,
 					getValue: (item) =>
-						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork()
+						networksData.find((n) => n.id == item.network_id)?.name || common_unknownNetwork(),
+					display: { order: 2, getItems: (item) => networkItems(item.network_id, networksData) }
 				},
-				created_at: { label: common_created(), type: 'date' },
-				updated_at: { label: common_updated(), type: 'date' },
-				last_seen_at: { label: common_lastSeen(), type: 'date' }
+				created_at: { label: common_created(), type: 'date', display: { hiddenByDefault: true } },
+				updated_at: { label: common_updated(), type: 'date', display: { hiddenByDefault: true } },
+				last_seen_at: {
+					label: common_lastSeen(),
+					type: 'date',
+					display: { order: 1, getItems: lastSeenItems(() => networksData, 'Subnet') }
+				}
 			},
 			[
-				{ key: 'description', label: common_description(), type: 'string', searchable: true },
+				{
+					key: 'description',
+					label: common_description(),
+					type: 'string',
+					searchable: true,
+					display: { hiddenByDefault: true }
+				},
 				{
 					key: 'tags',
 					label: common_tags(),
 					type: 'array',
 					searchable: true,
 					filterable: true,
-					getValue: (entity) =>
-						entity.tags
-							.map((id) => tagsData.find((t) => t.id === id)?.name)
-							.filter((name): name is string => !!name)
+					getValue: (entity) => tagNames(entity.tags, tagsData)
 				}
 			]
 		)
@@ -234,25 +284,15 @@
 			entityType={isReadOnly ? undefined : 'Subnet'}
 			getItemTags={getSubnetTags}
 			getItemId={(item) => item.id}
+			getIcon={(subnet) => ({
+				icon: subnetTypes.getIconComponent(subnet.subnet_type),
+				color: subnetTypes.getColorHelper(subnet.subnet_type).icon
+			})}
 			onStaleFilterChange={handleStaleFilterChange}
 			onCsvExport={handleCsvExport}
-		>
-			{#snippet children(
-				item: Subnet,
-				viewMode: 'card' | 'list',
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				<SubnetCard
-					subnet={item}
-					selected={isSelected}
-					{onSelectionChange}
-					{viewMode}
-					onEdit={isReadOnly ? undefined : handleEditSubnet}
-					onDelete={isReadOnly ? undefined : handleDeleteSubnet}
-				/>
-			{/snippet}
-		</DataControls>
+			getActions={subnetActions}
+			entityLabel={common_subnets()}
+		></DataControls>
 	{/if}
 </div>
 

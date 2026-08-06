@@ -1,33 +1,57 @@
 <script lang="ts">
+	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import { networkItems } from '$lib/features/networks/columns';
+	import type { CardFieldItem } from '$lib/shared/components/data/types';
+	import { Edit, UserX, Trash2 } from 'lucide-svelte';
+	import { formatTimestamp } from '$lib/shared/utils/formatting';
+	import type { CardAction } from '$lib/shared/components/data/types';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import type { FieldConfig } from '$lib/shared/components/data/types';
-	import UserCard from './UserCard.svelte';
-	import InviteCard from './InviteCard.svelte';
-	import { useInvitesQuery } from '$lib/features/organizations/queries';
+	import {
+		useInvitesQuery,
+		formatInviteUrl,
+		useRevokeInviteMutation
+	} from '$lib/features/organizations/queries';
 	import { UserPlus } from 'lucide-svelte';
 	import { isUser, type User, type UserOrInvite } from '../types';
+	import type { OrganizationInvite } from '$lib/features/organizations/types';
 	import InviteModal from './InviteModal.svelte';
-	import { metadata, permissions } from '$lib/shared/stores/metadata';
+	import { metadata, permissions, entities } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 	import UserEditModal from './UserEditModal.svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
-	import { useUsersQuery, useBulkDeleteUsersMutation } from '../queries';
+	import { useUsersQuery, useBulkDeleteUsersMutation, useDeleteUserMutation } from '../queries';
 	import type { TabProps } from '$lib/shared/types';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
 	import { tooltip } from '$lib/shared/actions/tooltip';
 	import {
+		common_all,
+		common_networks,
+		common_edit,
 		common_confirmBulkDelete,
-		common_created,
+		common_delete,
 		common_email,
 		common_emailAndPassword,
+		common_expires,
+		common_joined,
+		common_revoke,
 		common_role,
+		common_status,
+		common_unknownEntity,
+		common_url,
+		common_user,
 		common_users,
+		common_you,
+		invites_confirmRevoke,
+		invites_createdBy,
+		invites_pendingInvite,
 		users_authMethod,
+		users_confirmDeleteUser,
 		users_inviteUser,
 		users_noUsersFound,
 		users_noUsersSubtitle,
@@ -135,6 +159,95 @@
 	}
 
 	// Only define fields for users (invites won't be filtered/sorted)
+	const networksQuery = useNetworksQuery();
+	let networksData = $derived(networksQuery.data ?? []);
+
+	/**
+	 * The networks a user can reach.
+	 *
+	 * Admins and owners reach every network, which is a different statement from
+	 * being assigned all of them — so it reads as one "All" chip rather than a
+	 * list that would go stale the moment a network is added.
+	 */
+	function userNetworkItems(item: UserOrInvite): CardFieldItem[] {
+		if (!isUser(item)) return [];
+		const user = item.data;
+
+		if (user.permissions === 'Admin' || user.permissions === 'Owner') {
+			return [{ id: 'all', label: common_all(), color: entities.getColorHelper('Network').color }];
+		}
+
+		return networkItems(user.network_ids ?? [], networksData);
+	}
+
+	const revokeInviteMutation = useRevokeInviteMutation();
+
+	/** Whether the current user is allowed to grant — and so revoke — this invite. */
+	function canRevoke(invite: OrganizationInvite): boolean {
+		return currentUser
+			? (permissions
+					.getMetadata(currentUser.permissions)
+					?.grantable_user_permissions?.includes(invite.permissions) ?? false)
+			: false;
+	}
+
+	function handleRevokeInvite(invite: OrganizationInvite) {
+		if (confirm(invites_confirmRevoke())) {
+			revokeInviteMutation.mutate(invite.id);
+		}
+	}
+
+	const deleteUserMutation = useDeleteUserMutation();
+
+	function handleDeleteUser(user: User) {
+		if (confirm(users_confirmDeleteUser())) {
+			deleteUserMutation.mutate(user.id);
+		}
+	}
+
+	/** Whether the current user may manage the given user's account. */
+	function canManageUser(user: User): boolean {
+		return currentUser
+			? (permissions
+					.getMetadata(currentUser.permissions)
+					?.grantable_user_permissions?.includes(user.permissions) ?? false)
+			: false;
+	}
+
+	/** Row actions. A user is edited or deleted; an invite is revoked. */
+	function userActions(item: UserOrInvite): CardAction[] {
+		if (isUser(item)) {
+			const actions: CardAction[] = [
+				{ label: common_edit(), icon: Edit, onClick: () => handleEditUser(item.data) }
+			];
+			// You cannot delete yourself, and you cannot delete someone whose role
+			// you could not have granted in the first place.
+			if (item.data.id !== currentUser?.id && canManageUser(item.data)) {
+				actions.push({
+					label: common_delete(),
+					icon: Trash2,
+					class: 'btn-icon-danger',
+					onClick: () => handleDeleteUser(item.data)
+				});
+			}
+			return actions;
+		}
+		if (!canRevoke(item.data)) return [];
+		return [
+			{
+				label: common_revoke(),
+				icon: UserX,
+				class: 'btn-icon-danger',
+				onClick: () => handleRevokeInvite(item.data)
+			}
+		];
+	}
+
+	/**
+	 * The list holds two shapes, so every field resolves for both. A field that
+	 * only one variant has returns empty for the other rather than existing in
+	 * only one view — that asymmetry is what the card/table split used to hide.
+	 */
 	const userFields: FieldConfig<UserOrInvite>[] = [
 		{
 			key: 'email',
@@ -143,7 +256,32 @@
 			searchable: true,
 			sortable: true,
 			getValue(item) {
-				return isUser(item) ? item.data.email : '';
+				return isUser(item) ? item.data.email : item.data.send_to || invites_pendingInvite();
+			},
+			display: { primary: true, width: 220 }
+		},
+		{
+			key: 'invite_status',
+			label: common_status(),
+			type: 'string',
+			filterable: true,
+			groupable: true,
+			getValue: (item) =>
+				!isUser(item)
+					? invites_pendingInvite()
+					: item.data.id === currentUser?.id
+						? common_you()
+						: common_user(),
+			display: {
+				statusTag: true,
+				getItems: (item) => {
+					if (!isUser(item)) {
+						return [{ id: 'pending', label: invites_pendingInvite(), color: 'Yellow' }];
+					}
+					return item.data.id === currentUser?.id
+						? [{ id: 'you', label: common_you(), color: 'Yellow' }]
+						: [];
+				}
 			}
 		},
 		{
@@ -154,8 +292,28 @@
 			filterable: true,
 			groupable: true,
 			getValue(item) {
-				return isUser(item) ? item.data.permissions : '';
+				return item.data.permissions;
+			},
+			display: {
+				getItems: (item) => {
+					const role = item.data.permissions;
+					return [
+						{
+							id: role,
+							label: permissions.getName(role) || role,
+							color: permissions.getColorHelper(role).color
+						}
+					];
+				}
 			}
+		},
+		{
+			key: 'network_ids',
+			label: common_networks(),
+			type: 'array',
+			searchable: true,
+			getValue: (item) => userNetworkItems(item).map((n) => n.label),
+			display: { getItems: userNetworkItems }
 		},
 		{
 			key: 'oidc_provider',
@@ -170,10 +328,38 @@
 		},
 		{
 			key: 'created_at',
-			label: common_created(),
+			label: common_joined(),
 			type: 'date',
 			sortable: true,
 			getValue: (item) => item.data.created_at
+		},
+		{
+			key: 'invite_url',
+			label: common_url(),
+			type: 'string',
+			searchable: true,
+			getValue: (item) => (isUser(item) ? '' : formatInviteUrl(item.data)),
+			display: { hiddenByDefault: true }
+		},
+		{
+			key: 'invited_by',
+			label: invites_createdBy(),
+			type: 'string',
+			searchable: true,
+			getValue: (item) =>
+				isUser(item)
+					? ''
+					: usersData.find((u) => u.id == item.data.created_by)?.email ||
+						common_unknownEntity({ entity: common_user() }),
+			display: { hiddenByDefault: true }
+		},
+		{
+			key: 'expires_at',
+			label: common_expires(),
+			type: 'date',
+			sortable: true,
+			getValue: (item) => (isUser(item) ? '' : formatTimestamp(item.data.expires_at)),
+			display: { hiddenByDefault: true }
 		}
 	];
 </script>
@@ -222,27 +408,13 @@
 			storageKey="scanopy-users-table-state"
 			onBulkDelete={handleBulkDelete}
 			getItemId={(item) => item.id}
+			getActions={userActions}
+			getIcon={() => ({
+				icon: entities.getIconComponent('User'),
+				color: entities.getColorHelper('User').icon
+			})}
 			onCsvExport={handleCsvExport}
-		>
-			{#snippet children(
-				item: UserOrInvite,
-				viewMode: 'card' | 'list',
-				isSelected: boolean,
-				onSelectionChange: (selected: boolean) => void
-			)}
-				{#if isUser(item)}
-					<UserCard
-						user={item.data}
-						{viewMode}
-						selected={isSelected}
-						{onSelectionChange}
-						onEdit={handleEditUser}
-					/>
-				{:else}
-					<InviteCard invite={item.data} {viewMode} />
-				{/if}
-			{/snippet}
-		</DataControls>
+		></DataControls>
 	{/if}
 </div>
 

@@ -6,7 +6,6 @@ use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::api::deserialize_empty_string_as_none;
 use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::types::SubnetType;
-use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 use chrono::{DateTime, Utc};
 use cidr::{IpCidr, Ipv4Cidr};
 use pnet::ipnetwork::IpNetwork;
@@ -54,15 +53,16 @@ pub struct SubnetBase {
     pub description: Option<String>,
     /// What kind of subnet this is — physical, virtual, container bridge, and so on.
     pub subnet_type: SubnetType,
-    /// Virtualization provider that owns this subnet.
-    /// Docker bridge subnets use this for per-host dedup (same CIDR on different hosts = distinct).
-    /// Virtualization platform that owns the subnet, when it is virtual.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::server::shared::types::api::deserialize_lenient_option"
-    )]
-    pub virtualization: Option<SubnetVirtualization>,
+    /// The container runtime service that owns this bridge network.
+    ///
+    /// Load-bearing for dedup: the same CIDR on two different Docker daemons is two distinct
+    /// subnets, so bridge rows only merge when this matches as well as the CIDR and network.
+    /// A foreign key rather than a field inside a JSONB blob because a stale value here is
+    /// precisely what made a scan add a duplicate bridge row every time (GH #650) — now it
+    /// cannot be written at all.
+    #[serde(default)]
+    #[schema(required)]
+    pub virtualization_service_id: Option<Uuid>,
     #[serde(default)]
     #[schema(required)]
     /// Will be automatically set to Manual for creation through API
@@ -81,7 +81,7 @@ impl Default for SubnetBase {
             network_id: Uuid::new_v4(),
             description: None,
             subnet_type: SubnetType::Unknown,
-            virtualization: None,
+            virtualization_service_id: None,
             source: EntitySource::Manual,
             tags: Vec::new(),
         }
@@ -160,7 +160,7 @@ impl Subnet {
         existing.base.source == EntitySource::Discovery
             && self.base.source == EntitySource::Discovery
             && existing.base.subnet_type.is_container_bridge()
-            && existing.base.virtualization.is_none()
+            && existing.base.virtualization_service_id.is_none()
             && !self.base.subnet_type.is_container_bridge()
     }
 
@@ -203,7 +203,7 @@ impl Subnet {
                     tags: Vec::new(),
                     name: cidr.to_string(),
                     subnet_type,
-                    virtualization: None,
+                    virtualization_service_id: None,
                     source: EntitySource::Discovery,
                 }))
             }
@@ -263,7 +263,6 @@ impl ChangeTriggersTopologyStaleness<Subnet> for Subnet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::subnets::r#impl::virtualization::DockerSubnetVirtualization;
     use pnet::ipnetwork::IpNetwork;
     use std::str::FromStr;
 
@@ -281,13 +280,17 @@ mod tests {
         assert!(result.is_some(), "/2 prefix should be accepted");
     }
 
-    fn subnet(subnet_type: SubnetType, virtualization: Option<SubnetVirtualization>) -> Subnet {
-        sourced_subnet(subnet_type, virtualization, EntitySource::Discovery)
+    fn subnet(subnet_type: SubnetType, virtualization_service_id: Option<Uuid>) -> Subnet {
+        sourced_subnet(
+            subnet_type,
+            virtualization_service_id,
+            EntitySource::Discovery,
+        )
     }
 
     fn sourced_subnet(
         subnet_type: SubnetType,
-        virtualization: Option<SubnetVirtualization>,
+        virtualization_service_id: Option<Uuid>,
         source: EntitySource,
     ) -> Subnet {
         Subnet::new(SubnetBase {
@@ -296,7 +299,7 @@ mod tests {
             name: "172.30.10.0/24".into(),
             description: None,
             subnet_type,
-            virtualization,
+            virtualization_service_id,
             source,
             tags: Vec::new(),
         })
@@ -317,12 +320,7 @@ mod tests {
     /// derived from an interface name may downgrade it.
     #[test]
     fn authoritative_bridge_is_never_downgraded() {
-        let authoritative = subnet(
-            SubnetType::DockerBridge,
-            Some(SubnetVirtualization::Docker(DockerSubnetVirtualization {
-                service_id: Uuid::new_v4(),
-            })),
-        );
+        let authoritative = subnet(SubnetType::DockerBridge, Some(Uuid::new_v4()));
         assert!(!subnet(SubnetType::Guest, None).corrects_container_bridge_guess(&authoritative));
         // Nor may one bridge observation replace another.
         assert!(

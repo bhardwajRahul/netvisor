@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.7\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.7\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.7)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.8\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.8\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.8)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -14265,12 +14265,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.7"
+            "example": "0.17.8"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.7"
+          "server_version": "0.17.8"
         }
       },
       "ApiResponse": {
@@ -14400,19 +14400,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-29T15:23:06.672964Z",
+              "created_at": "2026-08-03T19:06:30.690316Z",
               "first_discovery_id": null,
-              "id": "93be57ee-b9bd-4938-b65c-f9f7d4caa974",
+              "id": "3b7ac356-18e6-40df-8c0d-d13bdc2f5f1b",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T15:23:06.672964Z",
+              "last_seen_at": "2026-08-03T19:06:30.690316Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T15:23:06.672964Z",
-              "valid_from": "2026-07-29T15:23:06.672964Z",
+              "updated_at": "2026-08-03T19:06:30.690316Z",
+              "valid_from": "2026-08-03T19:06:30.690316Z",
               "valid_to": null
             }
           },
@@ -15594,7 +15594,7 @@
                 "format": "date-time",
                 "description": "When this record was last modified."
               },
-              "virtualization": {
+              "virtualization_metadata": {
                 "oneOf": [
                   {
                     "type": "null"
@@ -15604,6 +15604,14 @@
                     "description": "How the host is virtualized, when it is a VM or container guest."
                   }
                 ]
+              },
+              "virtualization_service_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "The hypervisor service this VM runs on."
               }
             },
             "example": {
@@ -15694,19 +15702,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-29T15:23:06.660146Z",
+                      "created_at": "2026-08-03T19:06:30.671280Z",
                       "first_discovery_id": null,
-                      "id": "1065baf6-9ba7-46ec-aad9-9aa6ce7cfed6",
+                      "id": "778db3b7-5a61-4b49-8808-b4cdbd4e899f",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-29T15:23:06.660146Z",
+                      "last_seen_at": "2026-08-03T19:06:30.671280Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-29T15:23:06.660146Z",
-                      "valid_from": "2026-07-29T15:23:06.660146Z",
+                      "updated_at": "2026-08-03T19:06:30.671280Z",
+                      "valid_from": "2026-08-03T19:06:30.671280Z",
                       "valid_to": null
                     }
                   ],
@@ -15720,7 +15728,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Unclaimed Open Ports",
+                  "service_definition": "Tasmota",
                   "source": {
                     "type": "Manual"
                   },
@@ -15728,7 +15736,8 @@
                   "updated_at": "2026-01-15T10:30:00Z",
                   "valid_from": "2026-01-15T10:30:00Z",
                   "valid_to": null,
-                  "virtualization": null
+                  "virtualization_metadata": null,
+                  "virtualization_service_id": null
                 }
               ],
               "source": {
@@ -15736,7 +15745,8 @@
               },
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z",
-              "virtualization": null
+              "virtualization_metadata": null,
+              "virtualization_service_id": null
             }
           },
           "error": {
@@ -16921,19 +16931,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T15:23:06.668616Z",
+                  "created_at": "2026-08-03T19:06:30.684204Z",
                   "first_discovery_id": null,
-                  "id": "7ad6de19-781d-4c36-b3a6-426ca0d47007",
+                  "id": "99339589-6317-4468-8c09-3c12cfeb929d",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T15:23:06.668616Z",
+                  "last_seen_at": "2026-08-03T19:06:30.684204Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T15:23:06.668616Z",
-                  "valid_from": "2026-07-29T15:23:06.668616Z",
+                  "updated_at": "2026-08-03T19:06:30.684204Z",
+                  "valid_from": "2026-08-03T19:06:30.684204Z",
                   "valid_to": null
                 }
               ],
@@ -16947,7 +16957,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Unclaimed Open Ports",
+              "service_definition": "Tasmota",
               "source": {
                 "type": "Manual"
               },
@@ -16955,7 +16965,8 @@
               "updated_at": "2026-01-15T10:30:00Z",
               "valid_from": "2026-01-15T10:30:00Z",
               "valid_to": null,
-              "virtualization": null
+              "virtualization_metadata": null,
+              "virtualization_service_id": null
             }
           },
           "error": {
@@ -17349,7 +17360,8 @@
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z",
               "valid_from": "2026-01-15T10:30:00Z",
-              "valid_to": null
+              "valid_to": null,
+              "virtualization_service_id": null
             }
           },
           "error": {
@@ -19005,19 +19017,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-29T15:23:06.660397Z",
+          "created_at": "2026-08-03T19:06:30.671658Z",
           "first_discovery_id": null,
-          "id": "bdb8981f-4fca-4ed5-a9f6-0ee40dfa6ca7",
+          "id": "ca0478cb-6d49-4b13-9fb6-344652876bb8",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-29T15:23:06.660397Z",
+          "last_seen_at": "2026-08-03T19:06:30.671658Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-29T15:23:06.660397Z",
-          "valid_from": "2026-07-29T15:23:06.660397Z",
+          "updated_at": "2026-08-03T19:06:30.671658Z",
+          "valid_from": "2026-08-03T19:06:30.671658Z",
           "valid_to": null
         }
       },
@@ -19597,7 +19609,7 @@
             },
             "description": "Tags assigned to this entity."
           },
-          "virtualization": {
+          "virtualization_metadata": {
             "oneOf": [
               {
                 "type": "null"
@@ -19607,6 +19619,14 @@
                 "description": "How the host is virtualized, when it is a VM or container guest."
               }
             ]
+          },
+          "virtualization_service_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The hypervisor service this VM runs on."
           }
         },
         "example": {
@@ -19647,13 +19667,15 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Unclaimed Open Ports",
+              "service_definition": "Tasmota",
               "tags": [],
-              "virtualization": null
+              "virtualization_metadata": null,
+              "virtualization_service_id": null
             }
           ],
           "tags": [],
-          "virtualization": null
+          "virtualization_metadata": null,
+          "virtualization_service_id": null
         }
       },
       "CreateInviteRequest": {
@@ -19736,16 +19758,24 @@
             },
             "description": "Tags assigned to this entity."
           },
-          "virtualization": {
+          "virtualization_metadata": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
                 "$ref": "#/components/schemas/ServiceVirtualization",
-                "description": "Container runtime the service runs in, when it is containerized."
+                "description": "Container identity (name, id, compose project), when it is containerized."
               }
             ]
+          },
+          "virtualization_service_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The container runtime service hosting this container, if any."
           }
         }
       },
@@ -21699,24 +21729,8 @@
           }
         }
       },
-      "DockerSubnetVirtualization": {
-        "type": "object",
-        "required": [
-          "service_id"
-        ],
-        "properties": {
-          "service_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The Docker daemon service that owns this bridge network.\nDifferent Docker daemons on different hosts = distinct bridge subnets."
-          }
-        }
-      },
       "DockerVirtualization": {
         "type": "object",
-        "required": [
-          "service_id"
-        ],
         "properties": {
           "compose_project": {
             "type": [
@@ -21738,11 +21752,6 @@
               "null"
             ],
             "description": "Container name as reported by Docker."
-          },
-          "service_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The service this entity refers to."
           }
         }
       },
@@ -22491,15 +22500,7 @@
       },
       "EsxiVirtualization": {
         "type": "object",
-        "required": [
-          "service_id"
-        ],
         "properties": {
-          "service_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The service this entity refers to."
-          },
           "vm_id": {
             "type": [
               "string",
@@ -22711,7 +22712,8 @@
           "updated_at": "2026-01-15T10:30:00Z",
           "valid_from": "2026-01-15T10:30:00Z",
           "valid_to": null,
-          "virtualization": null
+          "virtualization_metadata": null,
+          "virtualization_service_id": null
         }
       },
       "HostBase": {
@@ -22723,7 +22725,8 @@
           "hostname",
           "description",
           "source",
-          "virtualization",
+          "virtualization_metadata",
+          "virtualization_service_id",
           "hidden",
           "tags",
           "credential_assignments"
@@ -22846,7 +22849,7 @@
             },
             "description": "Tags assigned to this entity."
           },
-          "virtualization": {
+          "virtualization_metadata": {
             "oneOf": [
               {
                 "type": "null"
@@ -22856,6 +22859,14 @@
                 "description": "How the host is virtualized, when it is a VM or container guest."
               }
             ]
+          },
+          "virtualization_service_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The service doing the virtualizing — the hypervisor this VM runs on.\n\nIts own column with a foreign key rather than a field inside\n[`HostVirtualization`]: a reference that no longer resolves now fails the write instead of\nsurviving as a value nothing matches, and `ON DELETE SET NULL` clears it when the\nhypervisor service goes away (GH #650)."
           }
         }
       },
@@ -23035,7 +23046,7 @@
             "format": "date-time",
             "description": "When this record was last modified."
           },
-          "virtualization": {
+          "virtualization_metadata": {
             "oneOf": [
               {
                 "type": "null"
@@ -23045,6 +23056,14 @@
                 "description": "How the host is virtualized, when it is a VM or container guest."
               }
             ]
+          },
+          "virtualization_service_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The hypervisor service this VM runs on."
           }
         },
         "example": {
@@ -23135,19 +23154,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-29T15:23:06.659870Z",
+                  "created_at": "2026-08-03T19:06:30.670854Z",
                   "first_discovery_id": null,
-                  "id": "1c47dabd-b340-4f22-88ad-39a54f0860b8",
+                  "id": "46e98061-733c-446d-800f-2cc1efe90719",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-29T15:23:06.659870Z",
+                  "last_seen_at": "2026-08-03T19:06:30.670854Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-29T15:23:06.659870Z",
-                  "valid_from": "2026-07-29T15:23:06.659870Z",
+                  "updated_at": "2026-08-03T19:06:30.670854Z",
+                  "valid_from": "2026-08-03T19:06:30.670854Z",
                   "valid_to": null
                 }
               ],
@@ -23161,7 +23180,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Unclaimed Open Ports",
+              "service_definition": "Tasmota",
               "source": {
                 "type": "Manual"
               },
@@ -23169,7 +23188,8 @@
               "updated_at": "2026-01-15T10:30:00Z",
               "valid_from": "2026-01-15T10:30:00Z",
               "valid_to": null,
-              "virtualization": null
+              "virtualization_metadata": null,
+              "virtualization_service_id": null
             }
           ],
           "source": {
@@ -23177,7 +23197,8 @@
           },
           "tags": [],
           "updated_at": "2026-01-15T10:30:00Z",
-          "virtualization": null
+          "virtualization_metadata": null,
+          "virtualization_service_id": null
         }
       },
       "HostVirtualization": {
@@ -25484,7 +25505,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.7"
+            "example": "0.17.8"
           }
         },
         "example": {
@@ -25495,7 +25516,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.7"
+          "server_version": "0.17.8"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -26001,7 +26022,7 @@
                   "format": "date-time",
                   "description": "When this record was last modified."
                 },
-                "virtualization": {
+                "virtualization_metadata": {
                   "oneOf": [
                     {
                       "type": "null"
@@ -26011,6 +26032,14 @@
                       "description": "How the host is virtualized, when it is a VM or container guest."
                     }
                   ]
+                },
+                "virtualization_service_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid",
+                  "description": "The hypervisor service this VM runs on."
                 }
               },
               "example": {
@@ -26101,19 +26130,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-29T15:23:06.654949Z",
+                        "created_at": "2026-08-03T19:06:30.660821Z",
                         "first_discovery_id": null,
-                        "id": "cdaa0fcd-d19d-48a9-9049-cd2526d9d826",
+                        "id": "cf5e1878-cefe-4acd-8ce7-73f240cfccad",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-29T15:23:06.654949Z",
+                        "last_seen_at": "2026-08-03T19:06:30.660821Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-29T15:23:06.654949Z",
-                        "valid_from": "2026-07-29T15:23:06.654949Z",
+                        "updated_at": "2026-08-03T19:06:30.660821Z",
+                        "valid_from": "2026-08-03T19:06:30.660821Z",
                         "valid_to": null
                       }
                     ],
@@ -26127,7 +26156,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Unclaimed Open Ports",
+                    "service_definition": "Tasmota",
                     "source": {
                       "type": "Manual"
                     },
@@ -26135,7 +26164,8 @@
                     "updated_at": "2026-01-15T10:30:00Z",
                     "valid_from": "2026-01-15T10:30:00Z",
                     "valid_to": null,
-                    "virtualization": null
+                    "virtualization_metadata": null,
+                    "virtualization_service_id": null
                   }
                 ],
                 "source": {
@@ -26143,7 +26173,8 @@
                 },
                 "tags": [],
                 "updated_at": "2026-01-15T10:30:00Z",
-                "virtualization": null
+                "virtualization_metadata": null,
+                "virtualization_service_id": null
               }
             },
             "description": "The page of results. Empty when nothing matched the query."
@@ -26261,19 +26292,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-29T15:23:06.667799Z",
+                    "created_at": "2026-08-03T19:06:30.683091Z",
                     "first_discovery_id": null,
-                    "id": "4fda6a99-00cc-4d78-8168-30f365a51990",
+                    "id": "92d00350-6219-476e-84cd-8ae54a9d09e4",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-29T15:23:06.667799Z",
+                    "last_seen_at": "2026-08-03T19:06:30.683091Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-29T15:23:06.667799Z",
-                    "valid_from": "2026-07-29T15:23:06.667799Z",
+                    "updated_at": "2026-08-03T19:06:30.683091Z",
+                    "valid_from": "2026-08-03T19:06:30.683091Z",
                     "valid_to": null
                   }
                 ],
@@ -26287,7 +26318,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Unclaimed Open Ports",
+                "service_definition": "Tasmota",
                 "source": {
                   "type": "Manual"
                 },
@@ -26295,7 +26326,8 @@
                 "updated_at": "2026-01-15T10:30:00Z",
                 "valid_from": "2026-01-15T10:30:00Z",
                 "valid_to": null,
-                "virtualization": null
+                "virtualization_metadata": null,
+                "virtualization_service_id": null
               }
             },
             "description": "The page of results. Empty when nothing matched the query."
@@ -26428,7 +26460,8 @@
                 "tags": [],
                 "updated_at": "2026-01-15T10:30:00Z",
                 "valid_from": "2026-01-15T10:30:00Z",
-                "valid_to": null
+                "valid_to": null,
+                "virtualization_service_id": null
               }
             },
             "description": "The page of results. Empty when nothing matched the query."
@@ -27108,24 +27141,8 @@
           }
         }
       },
-      "PodmanSubnetVirtualization": {
-        "type": "object",
-        "required": [
-          "service_id"
-        ],
-        "properties": {
-          "service_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The Podman daemon service that owns this bridge network.\nDifferent Podman daemons on different hosts = distinct bridge subnets."
-          }
-        }
-      },
       "PodmanVirtualization": {
         "type": "object",
-        "required": [
-          "service_id"
-        ],
         "properties": {
           "compose_project": {
             "type": [
@@ -27147,11 +27164,6 @@
               "null"
             ],
             "description": "Container name as reported by Podman."
-          },
-          "service_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The service this entity refers to."
           }
         }
       },
@@ -27484,15 +27496,7 @@
       },
       "ProxmoxVirtualization": {
         "type": "object",
-        "required": [
-          "service_id"
-        ],
         "properties": {
-          "service_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The service this entity refers to."
-          },
           "vm_id": {
             "type": [
               "string",
@@ -28292,19 +28296,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-29T15:23:06.660341Z",
+              "created_at": "2026-08-03T19:06:30.671574Z",
               "first_discovery_id": null,
-              "id": "999dbf39-0357-4b20-8bd8-cc20520334ea",
+              "id": "092afe22-97f8-4bc4-a103-569782d4393f",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-29T15:23:06.660341Z",
+              "last_seen_at": "2026-08-03T19:06:30.671574Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-29T15:23:06.660341Z",
-              "valid_from": "2026-07-29T15:23:06.660341Z",
+              "updated_at": "2026-08-03T19:06:30.671574Z",
+              "valid_from": "2026-08-03T19:06:30.671574Z",
               "valid_to": null
             }
           ],
@@ -28318,7 +28322,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Unclaimed Open Ports",
+          "service_definition": "Tasmota",
           "source": {
             "type": "Manual"
           },
@@ -28326,7 +28330,8 @@
           "updated_at": "2026-01-15T10:30:00Z",
           "valid_from": "2026-01-15T10:30:00Z",
           "valid_to": null,
-          "virtualization": null
+          "virtualization_metadata": null,
+          "virtualization_service_id": null
         }
       },
       "ServiceBase": {
@@ -28337,6 +28342,7 @@
           "service_definition",
           "name",
           "bindings",
+          "virtualization_service_id",
           "source",
           "tags",
           "position"
@@ -28384,7 +28390,7 @@
             },
             "description": "Tags assigned to this entity."
           },
-          "virtualization": {
+          "virtualization_metadata": {
             "oneOf": [
               {
                 "type": "null"
@@ -28394,6 +28400,14 @@
                 "description": "Container runtime the service runs in, when it is containerized."
               }
             ]
+          },
+          "virtualization_service_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The container runtime service hosting this container — see the note on\n`HostBase::virtualization_service_id`."
           }
         }
       },
@@ -28485,16 +28499,24 @@
             },
             "description": "Tags for categorization"
           },
-          "virtualization": {
+          "virtualization_metadata": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
                 "$ref": "#/components/schemas/ServiceVirtualization",
-                "description": "Container/VM virtualization info if applicable"
+                "description": "Container identity (name, id, compose project) if this service is a container."
               }
             ]
+          },
+          "virtualization_service_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The container runtime service hosting this container, if any."
           }
         }
       },
@@ -28967,7 +28989,8 @@
           "tags": [],
           "updated_at": "2026-01-15T10:30:00Z",
           "valid_from": "2026-01-15T10:30:00Z",
-          "valid_to": null
+          "valid_to": null,
+          "virtualization_service_id": null
         }
       },
       "SubnetBase": {
@@ -28977,6 +29000,7 @@
           "network_id",
           "name",
           "subnet_type",
+          "virtualization_service_id",
           "source",
           "tags"
         ],
@@ -29019,16 +29043,13 @@
             },
             "description": "Tags assigned to this entity."
           },
-          "virtualization": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SubnetVirtualization",
-                "description": "Virtualization provider that owns this subnet.\nDocker bridge subnets use this for per-host dedup (same CIDR on different hosts = distinct).\nVirtualization platform that owns the subnet, when it is virtual."
-              }
-            ]
+          "virtualization_service_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The container runtime service that owns this bridge network.\n\nLoad-bearing for dedup: the same CIDR on two different Docker daemons is two distinct\nsubnets, so bridge rows only merge when this matches as well as the CIDR and network.\nA foreign key rather than a field inside a JSONB blob because a stale value here is\nprecisely what made a scan add a duplicate bridge row every time (GH #650) — now it\ncannot be written at all."
           }
         }
       },
@@ -29066,59 +29087,6 @@
           "Loopback",
           "Unknown"
         ]
-      },
-      "SubnetVirtualization": {
-        "oneOf": [
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/DockerSubnetVirtualization",
-                "description": "Docker bridge network — host-scoped, same CIDR on different hosts are distinct subnets."
-              },
-              {
-                "type": "object",
-                "required": [
-                  "type"
-                ],
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "Docker"
-                    ]
-                  }
-                }
-              }
-            ],
-            "title": "Docker",
-            "description": "Docker bridge network — host-scoped, same CIDR on different hosts are distinct subnets."
-          },
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PodmanSubnetVirtualization",
-                "description": "Podman bridge network — host-scoped like Docker; same CIDR on different daemons are distinct subnets."
-              },
-              {
-                "type": "object",
-                "required": [
-                  "type"
-                ],
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "Podman"
-                    ]
-                  }
-                }
-              }
-            ],
-            "title": "Podman",
-            "description": "Podman bridge network — host-scoped like Docker; same CIDR on different daemons are distinct subnets."
-          }
-        ],
-        "description": "Virtualization metadata for subnets that belong to a virtual infrastructure.\nConsistent with HostVirtualization and ServiceVirtualization patterns.\nPoints to the service that provides the virtualization (e.g., Docker daemon)."
       },
       "Tag": {
         "allOf": [
@@ -29552,7 +29520,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "398d0287-bc2d-4753-99bc-b5ac170172b5",
+                  "id": "a84691d3-74d0-4967-ae76-cf510fb432a7",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -29562,23 +29530,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "385a9401-906a-4f8e-8f4f-c02564e8d173",
+                  "id": "b49472d1-1cd4-4340-b9d2-19674a0cfedb",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "3b5aa500-b9cb-4f5f-a94a-52412a1815b0",
+                  "id": "31d4c8e7-77be-449c-b2f9-0ab5836924f8",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "32477e07-d47c-44a6-90a7-f7666f5408e4",
+                  "id": "9675598e-a790-4199-a294-66a36ee34c5e",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "385a9401-906a-4f8e-8f4f-c02564e8d173",
+                  "id": "b49472d1-1cd4-4340-b9d2-19674a0cfedb",
                   "rule": "ByHost"
                 }
               ]
@@ -29608,19 +29576,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "b639a20c-3d84-4365-871f-4bf152ddd0a8",
+                "id": "283ff095-7f0c-4c8d-a63e-8be4e9a7bb61",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "300857a5-6b64-4926-853f-86e4f0bc97ac",
+                "id": "b4f0758b-ce9a-43ac-802a-e1f385b65079",
                 "rule": "ByVLAN"
               },
               {
-                "id": "f3cb5129-6282-4814-b8ab-e440af777788",
+                "id": "3a622453-ccf7-45dd-b4f3-e6b3ffb33e51",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "d2e85250-eb06-40e3-b8e8-f231ade2bead",
+                "id": "9ac43a4b-758c-4052-a760-4cff987bfea3",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -29638,7 +29606,7 @@
                 }
               },
               {
-                "id": "4f4a8d39-d504-45ef-9d31-f6db1755d122",
+                "id": "f9f4444e-f370-44c7-9247-548c0dceb468",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -29647,15 +29615,15 @@
                 }
               },
               {
-                "id": "59b8b695-b1c5-485e-b32c-41edb0129dc7",
+                "id": "c760800f-c45d-4ad1-91ab-ece194327a05",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "6e0c3d69-dc0a-40e9-ada6-47a53506d054",
+                "id": "0471f9e4-1610-4734-9dca-540b2d871dc5",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "645619b3-5092-49b1-b073-cc583e8b9790",
+                "id": "88ce46ee-7577-47c3-b8f9-e1ec4944f66b",
                 "rule": "ByStack"
               }
             ]
@@ -29920,7 +29888,7 @@
             },
             "description": "Tags assigned to this entity."
           },
-          "virtualization": {
+          "virtualization_metadata": {
             "oneOf": [
               {
                 "type": "null"
@@ -29930,6 +29898,14 @@
                 "description": "How the host is virtualized, when it is a VM or container guest."
               }
             ]
+          },
+          "virtualization_service_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The hypervisor service this VM runs on."
           }
         }
       },
@@ -30229,15 +30205,7 @@
       },
       "VCenterVirtualization": {
         "type": "object",
-        "required": [
-          "service_id"
-        ],
         "properties": {
-          "service_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The service this entity refers to."
-          },
           "vm_id": {
             "type": [
               "string",
