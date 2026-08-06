@@ -349,7 +349,7 @@ impl SnmpGroupOutcome {
     /// a device with no bridge MIB answers nothing and has nothing to say about why — and must
     /// still be reported.
     fn walk_fell_short(&self, group: SnmpWalkGroup) -> bool {
-        !self.complete && !(group.discards_malformed_records() && self.reason.is_none())
+        !(self.complete || (group.discards_malformed_records() && self.reason.is_none()))
     }
 }
 

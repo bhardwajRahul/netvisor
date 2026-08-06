@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import {
 	enablePerfInstrumentation,
 	readDiagnostics,
@@ -67,10 +67,6 @@ const MIN_NODES_TO_ASSERT = 1_000;
  * so a fixed small allowance separates the two without pinning incidental behaviour.
  */
 const COLD_LOAD_ALLOWANCE = 3;
-
-async function elkRuns(page: Page): Promise<number> {
-	return (await readDiagnostics(page)).cumulative.elkRuns ?? 0;
-}
 
 test('rapid collapse presses cost one ELK layout each', async ({ page, context }) => {
 	test.setTimeout(240_000);
