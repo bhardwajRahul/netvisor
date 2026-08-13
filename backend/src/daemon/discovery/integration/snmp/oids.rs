@@ -147,11 +147,20 @@ pub mod lldp {
         // textual port id, which we resolve back to the real ifIndex. Some vendors
         // (e.g. ExtremeXOS) use a lldpLocPortNum space distinct from ifIndex.
 
-        /// lldpLocPortIdSubtype - subtype of lldpLocPortId (5 = interfaceName, 2 = interfaceIndex)
+        /// lldpLocPortIdSubtype — how to read lldpLocPortId. 5 = interfaceName and
+        /// 2 = interfaceIndex identify the interface directly; 3 = macAddress gives the
+        /// port's own MAC as six raw octets, which matches an interface only through
+        /// ifPhysAddress and only where that address is unique to one port.
         pub const LLDP_LOC_PORT_ID_SUBTYPE: &str = "1.0.8802.1.1.2.1.3.7.1.2";
 
-        /// lldpLocPortId - textual identifier of the local port
+        /// lldpLocPortId - identifier of the local port, in the form the subtype names
         pub const LLDP_LOC_PORT_ID: &str = "1.0.8802.1.1.2.1.3.7.1.3";
+
+        /// lldpLocPortDesc — the port's description, and on some vendors the only column
+        /// that names the interface at all: Westermo reports every port as macAddress(3)
+        /// and carries "100-T eth10" here, with no arithmetic relation between the local
+        /// port number and the interface it belongs to.
+        pub const LLDP_LOC_PORT_DESC: &str = "1.0.8802.1.1.2.1.3.7.1.4";
     }
 
     /// lldpRemTable - Remote device information table

@@ -1,6 +1,6 @@
 # SNMP Test Environment
 
-16 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short.
+18 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short; `.246`/`.247` cover #674 and the Westermo local-port report.
 
 | IP | Host | Version | Credential | Device |
 |---|---|---|---|---|
@@ -20,6 +20,8 @@
 | 192.168.7.243 | switch-flaky-01 | v2c | community `netdefault` | Malformed-LLDP profile (see below) |
 | 192.168.7.244 | switch-dlink-01 | v2c | community `netdefault` | D-Link DGS-1210-48 (see below) |
 | 192.168.7.245 | switch-tplink-01 | v2c | community `netdefault` | TP-Link TL-SX3016F (see below) |
+| 192.168.7.246 | switch-unsorted-01 | v2c | community `netdefault` | Out-of-order ARP table (see below) |
+| 192.168.7.247 | switch-macport-01 | v2c | community `netdefault` | macAddress-subtype local ports (see below) |
 
 **LLDP local-port remap (`.238`/`.239`).** ExtremeXOS reports its `lldpRemTable` local-port index as an `lldpLocPortNum` (1..N) that is a **separate namespace from `ifIndex`** (switch-exos-01 uses ifIndex 1001+, ifName `1:N`), so neighbours only resolve if the daemon walks `lldpLocPortTable` (`1.0.8802.1.1.2.1.3.7`) and suffix-matches `lldpLocPortId` against `ifName`. Before the Issue 2 fix, switch-exos-01 yields **zero** LLDP neighbours. Extreme VOSS (switch-voss-01) reports local-port == ifIndex with `lldpLocPortId` matching `ifName` exactly, so it stays correct on both old and new code — the regression guard for the fix.
 
@@ -75,6 +77,25 @@ Re-running `lxc/setup.sh` also resets it, which is the simplest way to undo a te
 - **A port id that matches nothing, and a port description that does.** `lldpRemPortId` = `ethernet1/0/44` is neither a name on that device nor a number, so the id is a dead end; `lldpRemPortDesc` = `GigabitEthernet0/1` is byte-identical to switch-core-01's `ifDescr` for ifIndex 1. That field was stored and never matched on.
 
 Both should resolve to `Neighbor::Interface` and draw edges in L2 Physical. The records deliberately share `Gi0/1`/`Gi0/2` with links other sim devices also claim — the profile exercises port-id resolution, which runs per interface row, not a physically consistent lab.
+
+**A table served out of ascending OID order (`.246`).** Modelled on the Hikvision DS-3T1512HP from #674. The switch stores its ARP table unsorted and iterates it positionally, so GETNEXT hands back whatever row physically follows the one asked for — answering `…10.20.30.44` with `…10.20.30.1`. `snmpwalk` stops at `OID not increasing`; `snmpbulkwalk -Cc` reads all 45 rows. The data is retrievable, and only a client insisting every step ascend refuses it.
+
+This is the one device served by `snmp-pass-handler-unsorted.sh` rather than the usual handler: the normal one answers GETNEXT with the first line *numerically* greater than the request, so a shuffled file would just end the walk early and could never reproduce the defect.
+
+Two properties of the fixture matter and should survive any edit. There are 45 rows per column, so the walk needs more than one GETBULK page (the daemon asks 20 at a time); and the rows are ordered evens-then-odds so that the **second page ends lower than the first** — which is the exact moment a strictly-ascending walk gives up. Its `ifTable` is deliberately ordinary, so an empty ARP table here is visibly a property of that table rather than of the whole host.
+
+```bash
+snmpwalk    -v2c -c netdefault 192.168.7.246 1.3.6.1.2.1.4.22.1.1   # stops: OID not increasing
+snmpbulkwalk -Cc -v2c -c netdefault 192.168.7.246 1.3.6.1.2.1.4.22.1.1   # all 45 rows
+```
+
+A scan of this host must produce 45 ARP entries. Before the #674 fix it collects 40 and reports the walk as desynchronised; the ARP entry is a join across four columns, so a column that comes up short discards every row the others read — which is how the reporter's switch logged `count=0` while answering hundreds of rows.
+
+**Local ports identified only by MAC (`.247`).** Modelled on the Westermo industrial switches from the August 2026 customer report. `lldpLocPortIdSubtype` is `macAddress(3)` on every port and `lldpLocPortId` is the port's own hardware address, so there is no name to match against `ifName`. `lldpLocPortNum` runs 10–19 while the interfaces run `eth10` down to `eth1` — local port 11 is `eth9`, 16 is `eth4`, 19 is `eth1` — so the numbers are not arithmetic either. `lldpLocPortDesc` is the only column that names the interface, and it carries the media type in front of it (`100-T eth9`).
+
+Both resolution paths are live here and must agree: each port's MAC matches that interface's `ifPhysAddress`, and the description carries its name. The three neighbours must land on `eth9`, `eth1` and `eth7`. Before the fix all three are unresolved — the raw six-octet id is not text, so it was dropped on read and the port had nothing left to match on.
+
+Note the contrast with `.244`/`.245`, which report **one shared MAC across every interface**: MAC-based local-port matching must decline there rather than collapsing every neighbour onto one port, which is why it is conditioned on the address belonging to exactly one interface.
 
 **A neighbour table indexed without `lldpRemTimeMark` (`.245`).** Modelled on the TP-Link TL-SX3016F from #668, from the reporter's own `snmpwalk`. The MIB indexes `lldpRemEntry` as `lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex`; this firmware omits the time mark and indexes on the remaining two, so every neighbour row arrives one sub-id shorter than on every other device here:
 

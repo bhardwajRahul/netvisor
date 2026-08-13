@@ -23,7 +23,8 @@ CREATE TEMPORARY TABLE seed_snmp_credentials (name TEXT PRIMARY KEY, credential_
 INSERT INTO seed_snmp_credentials (name, credential_type) VALUES
     -- .230 switch-core-01, .231 switch-access-01, .235 ap-wireless-01, .238 switch-exos-01,
     -- .239 switch-voss-01, .240 switch-netgear-01, .241 switch-aruba-01, .243 switch-flaky-01,
-    -- .244 switch-dlink-01, .245 switch-tplink-01
+    -- .244 switch-dlink-01, .245 switch-tplink-01, .246 switch-unsorted-01,
+    -- .247 switch-macport-01
     ('SNMP sim — netdefault (v2c)',
      '{"type":"SnmpV2c","community":{"mode":"Inline","value":"netdefault"}}'),
     -- .232 router-gw-01, .233 firewall-01
