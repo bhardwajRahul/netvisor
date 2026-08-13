@@ -224,11 +224,31 @@ impl SubnetType {
         matches!(self, SubnetType::Loopback)
     }
 
-    pub fn hide_from_subnet_list(&self) -> bool {
-        matches!(
-            self,
-            SubnetType::Loopback | SubnetType::Internet | SubnetType::Remote
-        )
+    /// The categories Scanopy assigns to the subnets it fabricates for itself:
+    /// the per-network `0.0.0.0/0` Internet and Remote supernets seeded by
+    /// `seed_data`, and the `127.0.0.0/8` loopback row seeded per daemon host.
+    ///
+    /// One definition, shared by [`Self::is_synthetic_category`] and the SQL in
+    /// `StorableFilter::<Subnet>::user_managed`, so the two cannot drift.
+    pub fn synthetic_categories() -> &'static [SubnetType] {
+        &[
+            SubnetType::Internet,
+            SubnetType::Remote,
+            SubnetType::Loopback,
+        ]
+    }
+
+    /// Whether this is one of the categories Scanopy fabricates rows in.
+    ///
+    /// **Half a verdict, never the whole one.** A user may legitimately assign
+    /// any of these categories to a subnet they created, and that subnet is
+    /// still theirs to manage — see [`Subnet::is_user_managed`], which is the
+    /// predicate management lists must use. Keying visibility on the category
+    /// alone is what stranded a reporter's `Remote` subnet in GH #677.
+    ///
+    /// [`Subnet::is_user_managed`]: crate::server::subnets::r#impl::base::Subnet::is_user_managed
+    pub fn is_synthetic_category(&self) -> bool {
+        Self::synthetic_categories().contains(self)
     }
 
     pub fn show_label(&self) -> bool {
@@ -371,7 +391,7 @@ impl TypeMetadataProvider for SubnetType {
             "is_for_containers": is_for_containers,
             "is_container_bridge": self.is_container_bridge(),
             "show_label": self.show_label(),
-            "hide_from_subnet_list": self.hide_from_subnet_list()
+            "is_synthetic_category": self.is_synthetic_category()
         })
     }
 }

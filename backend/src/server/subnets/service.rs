@@ -49,6 +49,19 @@ impl CrudService<Subnet> for SubnetService {
         Some(&self.entity_tag_service)
     }
 
+    /// Counts only the subnets the user curates, so the dashboard's per-network
+    /// subnet count agrees with the rows the management lists show.
+    ///
+    /// The default counts every live row (`shared/services/traits.rs`), which is
+    /// how the reporter's dashboard total came to include a subnet no page would
+    /// display (GH #677).
+    async fn count_for_networks(&self, network_ids: &[Uuid]) -> Result<u64, anyhow::Error> {
+        let filter = StorableFilter::<Subnet>::new_from_network_ids(network_ids)
+            .live()
+            .user_managed();
+        self.storage().count(filter).await
+    }
+
     async fn create(
         &self,
         subnet: Subnet,

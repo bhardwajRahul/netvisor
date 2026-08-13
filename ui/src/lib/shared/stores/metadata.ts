@@ -191,7 +191,12 @@ export interface SubnetTypeMetadata {
 	is_for_containers: boolean;
 	is_container_bridge: boolean;
 	show_label: boolean;
-	hide_from_subnet_list: boolean;
+	/**
+	 * A category Scanopy fabricates rows in. Half a verdict — a user may pick the
+	 * same category for a subnet they created, and that one is still theirs.
+	 * Use `isUserManagedSubnet` rather than reading this directly.
+	 */
+	is_synthetic_category: boolean;
 }
 
 /**

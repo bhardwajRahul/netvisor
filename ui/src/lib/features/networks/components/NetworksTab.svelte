@@ -9,7 +9,7 @@
 	import type { FieldConfig } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { entityRef, type CardAction } from '$lib/shared/components/data/types';
-	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
+	import { entities } from '$lib/shared/stores/metadata';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import type { Credential } from '$lib/features/credentials/types/base';
 	import type { Daemon } from '$lib/features/daemons/types/base';
@@ -48,7 +48,7 @@
 	} from '../queries';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
-	import { useSubnetsQuery } from '$lib/features/subnets/queries';
+	import { isUserManagedSubnet, useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useVlansQuery } from '$lib/features/vlans/queries';
 	import type { Vlan } from '$lib/features/vlans/types/base';
 	import { useDependenciesQuery } from '$lib/features/dependencies/queries';
@@ -94,7 +94,9 @@
 	let tagsData = $derived(tagsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
-	let subnetsData = $derived(subnetsQuery.data ?? []);
+	// Narrowed once, here: both the per-network subnet column and the daemon chips
+	// below must show the same list the Subnets and Daemons tabs do.
+	let subnetsData = $derived((subnetsQuery.data ?? []).filter(isUserManagedSubnet));
 	let vlansData = $derived(vlansQuery.data ?? []);
 	let credentialsData = $derived(credentialsQuery.data ?? []);
 	let isLoading = $derived(networksQuery.isPending);
@@ -217,11 +219,7 @@
 	}
 
 	function networkSubnets(network: Network): Subnet[] {
-		return subnetsData.filter(
-			(subnet) =>
-				subnet.network_id === network.id &&
-				!subnetTypes.getMetadata(subnet.subnet_type).hide_from_subnet_list
-		);
+		return subnetsData.filter((subnet) => subnet.network_id === network.id);
 	}
 
 	function networkVlans(network: Network): Vlan[] {

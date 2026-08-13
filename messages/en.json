@@ -359,6 +359,7 @@
 	"common_nextPage": "Next page",
 	"common_no": "No",
 	"common_noCommonTags": "No common tags",
+	"common_noEntityMatchesFilters": "No {entity} match the current filters",
 	"common_noEntitySelected": "No {entity} selected",
 	"common_noEntityYet": "No {entity} configured yet",
 	"common_noItems": "No items",
