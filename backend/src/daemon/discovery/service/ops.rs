@@ -487,6 +487,9 @@ impl DiscoveryOps {
         if let Ok(records) = session.malformed_neighbours.lock() {
             warnings.extend(warnings::render_malformed_neighbours(&records));
         }
+        if let Ok(records) = session.snmp_collected_nothing.lock() {
+            warnings.extend(warnings::render_snmp_collected_nothing(&records));
+        }
         if let Ok(records) = session.vlan_recording_failures.lock() {
             warnings.extend(warnings::render_vlan_recording_failures(&records));
         }
@@ -723,6 +726,15 @@ impl DiscoveryOps {
         }
         if let Ok(session) = self.get_session().await
             && let Ok(mut buffer) = session.unresolved_lldp_ports.lock()
+        {
+            buffer.push(record);
+        }
+    }
+
+    /// Record a device that answered the credential and returned nothing from any table.
+    pub async fn record_snmp_collected_nothing(&self, record: warnings::SnmpCollectedNothing) {
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.snmp_collected_nothing.lock()
         {
             buffer.push(record);
         }

@@ -13,6 +13,7 @@ pub mod types;
 pub mod values;
 
 // Re-export commonly used items
+use queries::SnmpCollection;
 pub use queries::{
     query_arp_table, query_bridge_fdb, query_bridge_port_mapping, query_cdp_neighbors,
     query_entity_physical, query_ip_addr_table, query_lldp_local, query_lldp_local_ports,
@@ -26,11 +27,13 @@ pub use types::{
     LldpLocalInfo, LldpLocalPort, LldpNeighbor, PortVlanMembership, SystemInfo, VlanInfo,
 };
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use mac_address::MacAddress;
 use tokio::time::timeout;
 use tracing::debug;
 use uuid::Uuid;
@@ -63,8 +66,9 @@ use super::{
 };
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::{
-    AttemptOutcome, IncompleteInterfaceWalk, MalformedNeighbours, SnmpCollectionOutcome,
-    SnmpGroupOutcome, SnmpWalkGroup, UnresolvedLldpPorts, snmp_walk_shortfalls,
+    AttemptOutcome, IncompleteInterfaceWalk, MalformedNeighbours, SnmpCollectedNothing,
+    SnmpCollectionOutcome, SnmpGroupOutcome, SnmpWalkGroup, UnresolvedLldpPorts,
+    snmp_walk_shortfalls,
 };
 
 /// Handle returned by a successful SNMP probe — carries the working credential and port.
@@ -393,6 +397,8 @@ impl DiscoveryIntegration for SnmpIntegration {
         // lldpLocPortTable; falls back to identity (correct for VOSS and any device
         // that reports lldpLocPortNum == ifIndex or omits the table). CDP is not
         // remapped: cdpCacheIfIndex is already a real ifIndex.
+        // Not walked at all when there is no neighbour to place, so its outcome is "nothing to
+        // ask" rather than a complete read of an empty table.
         let lldp_local_ports = if lldp_count > 0 {
             query_or_default(
                 ip,
@@ -401,8 +407,14 @@ impl DiscoveryIntegration for SnmpIntegration {
             )
             .await
         } else {
-            std::collections::HashMap::new()
+            SnmpCollection::skipped()
         };
+        let lldp_local_ports_outcome = SnmpGroupOutcome {
+            complete: lldp_local_ports.complete,
+            returned_any: !lldp_local_ports.records.is_empty(),
+            reason: lldp_local_ports.reason,
+        };
+        let lldp_local_ports = lldp_local_ports.records;
         let unresolved_ports =
             remap_lldp_local_ports(&mut lldp_neighbors, &lldp_local_ports, &snmp_if_entries);
         if unresolved_ports > 0 {
@@ -425,15 +437,38 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Query ipAddrTable for IP->ifIndex+netMask mappings
         let ip_addr_table =
             query_or_default(ip, "ip_addr_table", query_ip_addr_table(&mut session, ip)).await;
+        let ip_addresses_outcome = SnmpGroupOutcome {
+            complete: ip_addr_table.complete,
+            returned_any: !ip_addr_table.records.is_empty(),
+            reason: ip_addr_table.reason,
+        };
+        let ip_addr_table = ip_addr_table.records;
 
         // Query ARP table for remote host discovery
-        let arp_entries = query_or_default(ip, "arp", query_arp_table(&mut session, ip)).await;
+        let arp = query_or_default(ip, "arp", query_arp_table(&mut session, ip)).await;
+        let arp_outcome = SnmpGroupOutcome {
+            complete: arp.complete,
+            returned_any: !arp.records.is_empty(),
+            reason: arp.reason,
+        };
+        let arp_entries = arp.records;
         let arp_count = arp_entries.len();
-        tracing::info!(ip = %ip, count = arp_count, "ARP table entries collected");
+        tracing::info!(
+            ip = %ip,
+            count = arp_count,
+            complete = arp_outcome.complete,
+            "ARP table entries collected"
+        );
 
         // Query ENTITY-MIB for hardware inventory
         let device_inventory =
             query_or_default(ip, "entity_mib", query_entity_physical(&mut session, ip)).await;
+        let device_inventory_outcome = SnmpGroupOutcome {
+            complete: device_inventory.complete,
+            returned_any: device_inventory.records.is_some(),
+            reason: device_inventory.reason,
+        };
+        let device_inventory = device_inventory.records;
         let has_entity_inventory = device_inventory.is_some();
         tracing::info!(
             ip = %ip,
@@ -480,6 +515,12 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Query VLAN table for VLAN names and persist as VLAN entities
         let vlan_table =
             query_or_default(ip, "vlan_table", query_vlan_table(&mut session, ip)).await;
+        let vlan_names_outcome = SnmpGroupOutcome {
+            complete: vlan_table.complete,
+            returned_any: !vlan_table.records.is_empty(),
+            reason: vlan_table.reason,
+        };
+        let vlan_table = vlan_table.records;
         let vlan_number_to_uuid: std::collections::HashMap<u16, Uuid> = if !vlan_table.is_empty() {
             tracing::info!(
                 ip = %ip,
@@ -675,9 +716,43 @@ impl DiscoveryIntegration for SnmpIntegration {
                     returned_any: !port_vlan_membership.is_empty(),
                     reason: vlan_membership_reason,
                 },
+                arp_table: arp_outcome,
+                device_inventory: device_inventory_outcome,
+                ip_addresses: ip_addresses_outcome,
+                lldp_local_ports: lldp_local_ports_outcome,
+                vlan_names: vlan_names_outcome,
             },
         );
         ctx.ops.record_snmp_shortfalls(incomplete).await;
+
+        // A device that answered the credential and then produced nothing from any table.
+        //
+        // The per-group lines above cannot say this. Each of them reports a walk that fell
+        // *short* of the others, and a device where every walk ends cleanly on an empty table
+        // has no group to single out — so GH #674's switch was logged five times at INFO with
+        // `count=0` and reported to the operator as a clean scan. The probe already proved the
+        // address, port and community are right, which is what makes silence worth a line.
+        //
+        // Deliberately every group, not any: one interface or one neighbour means SNMP is
+        // working and this is a device with little to say, which is not worth warning about.
+        let collected_nothing = snmp_if_entries.is_empty()
+            && lldp_count == 0
+            && cdp_count == 0
+            && arp_count == 0
+            && fdb_count == 0
+            && port_vlan_membership.is_empty()
+            && vlan_table.is_empty()
+            && ip_addr_table.is_empty()
+            && device_inventory.is_none();
+        if collected_nothing {
+            tracing::warn!(
+                ip = %ip,
+                "SNMP probe succeeded but every table came back empty"
+            );
+            ctx.ops
+                .record_snmp_collected_nothing(SnmpCollectedNothing { ip })
+                .await;
+        }
 
         // --- Discover remote subnets from ipAddrTable ---
         let scanning_subnet = ctx.scanning_subnet;
@@ -890,7 +965,7 @@ impl DiscoveryIntegration for SnmpIntegration {
 /// visibly missing; a link drawn to the wrong port is worse, because the map looks complete.
 fn remap_lldp_local_ports(
     neighbors: &mut [LldpNeighbor],
-    loc_ports: &std::collections::HashMap<i32, LldpLocalPort>,
+    loc_ports: &HashMap<i32, LldpLocalPort>,
     if_entries: &[IfTableEntry],
 ) -> usize {
     // An empty table is the identity mapping, not a failure: devices where `lldpLocPortNum ==
@@ -898,23 +973,105 @@ fn remap_lldp_local_ports(
     if loc_ports.is_empty() {
         return 0;
     }
+    // Built once for the whole device rather than per neighbour, and deliberately only for
+    // addresses belonging to exactly one interface. See [`unique_interface_macs`].
+    let macs = unique_interface_macs(if_entries);
     let mut unresolved = 0;
     for neighbor in neighbors.iter_mut() {
-        match resolve_lldp_local_port(neighbor.local_port_index, loc_ports, if_entries) {
-            Some(if_index) => neighbor.local_port_index = if_index,
-            None => unresolved += 1,
+        let port = neighbor.local_port_index;
+        match resolve_lldp_local_port(port, loc_ports, if_entries, &macs) {
+            Some((if_index, evidence)) => {
+                tracing::debug!(
+                    local_port = port,
+                    if_index,
+                    ?evidence,
+                    "Matched an LLDP local port to an interface"
+                );
+                neighbor.local_port_index = if_index;
+            }
+            None => {
+                // The evidence, not just the failure. This is the line that decides whether the
+                // next unmatched switch needs another walk from its owner: it names what the
+                // device offered and therefore which tier would have to grow to place it.
+                let entry = loc_ports.get(&port);
+                tracing::debug!(
+                    local_port = port,
+                    subtype = ?entry.and_then(|e| e.port_id_subtype),
+                    port_id = ?entry.and_then(|e| e.port_id.as_deref()),
+                    port_id_mac = ?entry.and_then(|e| e.port_id_mac),
+                    port_desc = ?entry.and_then(|e| e.port_desc.as_deref()),
+                    "No interface matched an LLDP local port"
+                );
+                unresolved += 1;
+            }
         }
     }
     unresolved
 }
 
-/// Resolve a single `lldpLocPortNum` to an `ifIndex`. Returns `None` to keep the
-/// original value (no confident match).
+/// Which column matched, for the log line that has to explain a device nothing matched on.
+///
+/// Ordered as the tiers are tried: an identifier that names the interface outright beats one that
+/// has to be matched by shape, and both beat free text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LocalPortEvidence {
+    /// `lldpLocPortIdSubtype = 2` — the id is the ifIndex.
+    InterfaceIndex,
+    /// `lldpLocPortIdSubtype = 3` — the id is a MAC held by exactly one interface.
+    UniqueMac,
+    /// `lldpLocPortId` equals an ifName or ifDescr.
+    PortIdName,
+    /// `lldpLocPortId` is the tail of an ifName or ifDescr, at a slot boundary.
+    PortIdSuffix,
+    /// `lldpLocPortDesc` equals an ifName or ifDescr.
+    PortDescName,
+    /// One word of `lldpLocPortDesc` equals an ifName or ifDescr, and only one interface's.
+    PortDescWord,
+}
+
+/// The interfaces whose `ifPhysAddress` identifies them on their own.
+///
+/// A MAC is only evidence of *which* port when the device gives each port a different one.
+/// Westermo does; the D-Link DGS and TP-Link switches in GH #668 report the chassis address on
+/// every interface, and matching on it there would collapse every neighbour onto one port —
+/// worse than leaving them unresolved, because the resulting map looks complete. So an address
+/// that appears more than once is dropped rather than arbitrated, and those devices fall through
+/// to the description tiers.
+///
+/// The all-zero address is dropped for the same reason: it is what firmware reports for an
+/// interface that has no hardware address, not an identity.
+fn unique_interface_macs(if_entries: &[IfTableEntry]) -> HashMap<MacAddress, i32> {
+    let unset = MacAddress::new([0; 6]);
+    let mut by_mac: HashMap<MacAddress, Option<i32>> = HashMap::new();
+    for e in if_entries {
+        let Some(mac) = e.if_phys_address.filter(|m| *m != unset) else {
+            continue;
+        };
+        by_mac
+            .entry(mac)
+            .and_modify(|slot| *slot = None)
+            .or_insert(Some(e.if_index));
+    }
+    by_mac
+        .into_iter()
+        .filter_map(|(mac, if_index)| if_index.map(|i| (mac, i)))
+        .collect()
+}
+
+/// Resolve a single `lldpLocPortNum` to an `ifIndex`, and say what matched it. Returns `None` to
+/// keep the original value (no confident match).
+///
+/// Tiered most-specific-first, because the columns disagree in practice and the cost of a wrong
+/// answer is a link drawn against the wrong port. Every tier is something a real device needed:
+/// ExtremeXOS numbers its LLDP ports separately from its interfaces, Westermo identifies every
+/// port by MAC and names it only in the description, and the description is free text on a device
+/// that is under no obligation to make it parseable.
 fn resolve_lldp_local_port(
     local_port_num: i32,
-    loc_ports: &std::collections::HashMap<i32, LldpLocalPort>,
+    loc_ports: &HashMap<i32, LldpLocalPort>,
     if_entries: &[IfTableEntry],
-) -> Option<i32> {
+    unique_macs: &HashMap<MacAddress, i32>,
+) -> Option<(i32, LocalPortEvidence)> {
     let entry = loc_ports.get(&local_port_num)?;
 
     // interfaceIndex(2): the port id is literally the ifIndex.
@@ -922,32 +1079,76 @@ fn resolve_lldp_local_port(
         && let Some(id) = entry.port_id.as_deref()
         && let Ok(idx) = id.trim().parse::<i32>()
     {
-        return Some(idx);
+        return Some((idx, LocalPortEvidence::InterfaceIndex));
     }
 
-    let id = entry.port_id.as_deref()?.trim();
-    if id.is_empty() {
-        return None;
+    // macAddress(3): the port id is the port's own hardware address, in raw octets. Only usable
+    // where that address belongs to one interface — see `unique_interface_macs`.
+    if entry.port_id_subtype == Some(3)
+        && let Some(mac) = entry.port_id_mac
+        && let Some(&if_index) = unique_macs.get(&mac)
+    {
+        return Some((if_index, LocalPortEvidence::UniqueMac));
     }
 
-    // Exact match against ifName / ifDescr (VOSS: "1/1" == ifName "1/1").
-    for e in if_entries {
-        if e.if_name.as_deref() == Some(id) || e.if_descr.as_deref() == Some(id) {
-            return Some(e.if_index);
+    let named = |text: &str, evidence| {
+        let text = text.trim();
+        if text.is_empty() {
+            return None;
         }
+        // Exact match against ifName / ifDescr (VOSS: "1/1" == ifName "1/1").
+        if_entries
+            .iter()
+            .find(|e| e.if_name.as_deref() == Some(text) || e.if_descr.as_deref() == Some(text))
+            .map(|e| (e.if_index, evidence))
+    };
+
+    if let Some(id) = entry.port_id.as_deref()
+        && let Some(hit) = named(id, LocalPortEvidence::PortIdName)
+    {
+        return Some(hit);
     }
 
     // Suffix match for vendors whose lldpLocPortId drops the slot prefix (EXOS: id
     // "4" vs ifName "1:4"). Anchor on a ':' or '/' boundary so "4" does not match
     // "14".
-    let colon = format!(":{id}");
-    let slash = format!("/{id}");
-    let ends_at_boundary =
-        |name: Option<&str>| name.is_some_and(|n| n.ends_with(&colon) || n.ends_with(&slash));
-    for e in if_entries {
-        if ends_at_boundary(e.if_name.as_deref()) || ends_at_boundary(e.if_descr.as_deref()) {
-            return Some(e.if_index);
+    if let Some(id) = entry.port_id.as_deref() {
+        let id = id.trim();
+        if !id.is_empty() {
+            let colon = format!(":{id}");
+            let slash = format!("/{id}");
+            let ends_at_boundary = |name: Option<&str>| {
+                name.is_some_and(|n| n.ends_with(&colon) || n.ends_with(&slash))
+            };
+            for e in if_entries {
+                if ends_at_boundary(e.if_name.as_deref()) || ends_at_boundary(e.if_descr.as_deref())
+                {
+                    return Some((e.if_index, LocalPortEvidence::PortIdSuffix));
+                }
+            }
         }
+    }
+
+    let desc = entry.port_desc.as_deref()?;
+    if let Some(hit) = named(desc, LocalPortEvidence::PortDescName) {
+        return Some(hit);
+    }
+
+    // The description is prose, and the interface name may be one word of it — Westermo sends
+    // "100-T eth10" for the port whose ifName is "eth10". Take a word only when it identifies a
+    // single interface: a description matching two of them is not evidence of either.
+    let mut matched: Vec<i32> = Vec::new();
+    for word in desc.split_whitespace() {
+        for e in if_entries {
+            if (e.if_name.as_deref() == Some(word) || e.if_descr.as_deref() == Some(word))
+                && !matched.contains(&e.if_index)
+            {
+                matched.push(e.if_index);
+            }
+        }
+    }
+    if let [only] = matched[..] {
+        return Some((only, LocalPortEvidence::PortDescWord));
     }
 
     None
@@ -1302,6 +1503,7 @@ mod tests {
         LldpLocalPort {
             port_id_subtype: Some(subtype),
             port_id: Some(id.to_string()),
+            ..Default::default()
         }
     }
 
@@ -1391,5 +1593,165 @@ mod tests {
             &std::collections::HashMap::new(),
         );
         assert_eq!(result.base.lldp_sys_name, Some("switch-peer".to_string()));
+    }
+
+    // --- macAddress(3) local ports (Westermo industrial switches) ---
+
+    use std::collections::HashMap;
+
+    fn mac(last: u8) -> mac_address::MacAddress {
+        mac_address::MacAddress::new([0x02, 0x00, 0x00, 0x00, 0x00, last])
+    }
+
+    fn if_entry_with_mac(
+        if_index: i32,
+        if_name: &str,
+        phys: mac_address::MacAddress,
+    ) -> IfTableEntry {
+        IfTableEntry {
+            if_phys_address: Some(phys),
+            ..if_entry(if_index, if_name)
+        }
+    }
+
+    /// A switch reporting `lldpLocPortIdSubtype = 3` gives each port's own MAC as the id, in raw
+    /// octets. That is not text, so the id never survived being read as a string and the port had
+    /// nothing to match on — every neighbour on the device stayed unresolved.
+    #[test]
+    fn a_port_identified_by_its_own_mac_resolves_to_that_interface() {
+        use super::remap_lldp_local_ports;
+
+        let if_entries = [
+            if_entry_with_mac(1, "eth1", mac(0xE1)),
+            if_entry_with_mac(2, "eth2", mac(0xE2)),
+        ];
+        let mut loc_ports = HashMap::new();
+        loc_ports.insert(
+            19,
+            LldpLocalPort {
+                port_id_subtype: Some(3),
+                port_id_mac: Some(mac(0xE1)),
+                ..Default::default()
+            },
+        );
+
+        let mut neighbors = vec![lldp_neighbor(19, "peer")];
+        let unresolved = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+
+        assert_eq!(unresolved, 0);
+        assert_eq!(neighbors[0].local_port_index, 1);
+    }
+
+    /// The D-Link DGS and TP-Link switches in GH #668 report the chassis MAC on every interface.
+    /// Matching on it would put every neighbour on whichever port won the lookup — a map that
+    /// looks complete and is wrong. The tier must decline and let a later one answer.
+    #[test]
+    fn a_mac_shared_by_every_interface_resolves_through_the_description_instead() {
+        use super::remap_lldp_local_ports;
+
+        let shared = mac(0xAA);
+        let if_entries = [
+            if_entry_with_mac(1, "eth1", shared),
+            if_entry_with_mac(2, "eth2", shared),
+        ];
+        let mut loc_ports = HashMap::new();
+        loc_ports.insert(
+            19,
+            LldpLocalPort {
+                port_id_subtype: Some(3),
+                port_id_mac: Some(shared),
+                port_desc: Some("1000-LX eth2".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let mut neighbors = vec![lldp_neighbor(19, "peer")];
+        let unresolved = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+
+        assert_eq!(unresolved, 0);
+        assert_eq!(
+            neighbors[0].local_port_index, 2,
+            "the description names the port; the shared MAC names nothing"
+        );
+    }
+
+    /// The reference case. Local port numbers run 10..19 against interfaces eth10 down to eth1,
+    /// so there is no arithmetic to exploit and the description is the only authority — and it
+    /// carries the media type in front of the name.
+    #[test]
+    fn local_port_numbers_that_run_backwards_map_through_the_description() {
+        use super::remap_lldp_local_ports;
+
+        let if_entries: Vec<IfTableEntry> = (1..=10)
+            .map(|n| if_entry_with_mac(n, &format!("eth{n}"), mac(0xE0 + n as u8)))
+            .collect();
+        // Port 10 is eth10 and each port after it counts the interfaces back down.
+        let mut loc_ports = HashMap::new();
+        for port in 10..=19i32 {
+            let interface = 20 - port;
+            loc_ports.insert(
+                port,
+                LldpLocalPort {
+                    port_id_subtype: Some(3),
+                    // A distinct MAC per port, as this vendor sends — but one that belongs to no
+                    // interface, so only the description can place it.
+                    port_id_mac: Some(mac(0x70 + port as u8)),
+                    port_desc: Some(format!("100-T eth{interface}")),
+                    ..Default::default()
+                },
+            );
+        }
+
+        let mut neighbors = vec![
+            lldp_neighbor(11, "peer-a"),
+            lldp_neighbor(19, "peer-b"),
+            lldp_neighbor(16, "peer-c"),
+        ];
+        let unresolved = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+
+        assert_eq!(unresolved, 0);
+        assert_eq!(
+            neighbors
+                .iter()
+                .map(|n| n.local_port_index)
+                .collect::<Vec<_>>(),
+            vec![9, 1, 4]
+        );
+    }
+
+    /// A description word that names two interfaces is not evidence of either. Leaving the
+    /// neighbour unresolved is the honest outcome — it is counted and warned about, where a
+    /// wrong port would be neither.
+    #[test]
+    fn a_description_matching_two_interfaces_resolves_to_neither() {
+        use super::remap_lldp_local_ports;
+
+        // Two interfaces answering to the same name across ifName and ifDescr.
+        let if_entries = [
+            if_entry(1, "eth1"),
+            IfTableEntry {
+                if_index: 2,
+                if_descr: Some("eth1".to_string()),
+                ..Default::default()
+            },
+        ];
+        let mut loc_ports = HashMap::new();
+        loc_ports.insert(
+            11,
+            LldpLocalPort {
+                port_id_subtype: Some(3),
+                port_desc: Some("100-T eth1".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let mut neighbors = vec![lldp_neighbor(11, "peer")];
+        let unresolved = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+
+        assert_eq!(unresolved, 1);
+        assert_eq!(
+            neighbors[0].local_port_index, 11,
+            "an unresolved neighbour keeps its local port number rather than guessing"
+        );
     }
 }

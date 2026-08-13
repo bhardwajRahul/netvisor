@@ -85,6 +85,18 @@ pub enum SnmpWalkGroup {
     BridgePortNumbering,
     BridgeForwarding,
     VlanMembership,
+    /// `ipNetToMediaTable` — the ARP cache, which is how a switch tells us about hosts that
+    /// answer nothing themselves.
+    ArpTable,
+    /// `entPhysicalTable` — model, serial and hardware revision.
+    DeviceInventory,
+    /// `ipAddrTable` — the device's own addresses and their netmasks.
+    IpAddresses,
+    /// `lldpLocPortTable` — the device's own port numbering, needed to attach each LLDP
+    /// neighbour to the right interface.
+    LldpLocalPorts,
+    /// `dot1qVlanStaticName` — VLAN names, as opposed to which ports are in them.
+    VlanNames,
 }
 
 impl SnmpWalkGroup {
@@ -96,6 +108,11 @@ impl SnmpWalkGroup {
             Self::BridgePortNumbering => "SNMP bridge-port numbering",
             Self::BridgeForwarding => "bridge forwarding",
             Self::VlanMembership => "VLAN membership",
+            Self::ArpTable => "the ARP table",
+            Self::DeviceInventory => "hardware inventory",
+            Self::IpAddresses => "device IP addresses",
+            Self::LldpLocalPorts => "LLDP local port numbering",
+            Self::VlanNames => "VLAN names",
         }
     }
 
@@ -153,6 +170,38 @@ pub fn render_unresolved_lldp_ports(records: &[UnresolvedLldpPorts]) -> Vec<Stri
          switch numbers its LLDP ports separately from its interfaces.",
         list_addresses_prose(&affected),
         if total == 1 { "" } else { "s" }
+    )]
+}
+
+/// A device that answered the credential and then produced nothing at all.
+///
+/// Every other warning here describes one group falling short of the rest. This one is for the
+/// case where there is no rest: the probe succeeded, so the address, the port and the community
+/// or USM user are all right, and then every table came back empty. GH #674 is what that looks
+/// like — a switch logged at INFO with `count=0` five times over, reported to the operator as a
+/// clean scan, and diagnosable only by someone reading the daemon log line by line.
+///
+/// Kept separate from [`IncompleteSnmpWalk`] rather than emitted as one line per empty group,
+/// because a device that read nothing has not failed eight ways. It is also not necessarily a
+/// fault of ours — a camera switch may genuinely implement nothing past `system` — so the line
+/// says what was observed and what to check, and does not promise a rescan will help.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnmpCollectedNothing {
+    pub ip: IpAddr,
+}
+
+/// One line naming the devices, or empty if there were none.
+pub fn render_snmp_collected_nothing(records: &[SnmpCollectedNothing]) -> Vec<String> {
+    let affected: BTreeSet<IpAddr> = records.iter().map(|r| r.ip).collect();
+    if affected.is_empty() {
+        return Vec::new();
+    }
+    vec![format!(
+        "{} answered SNMP but returned no interfaces, neighbours, addresses or forwarding data \
+         at all. The credential is working, so this is either a device that implements nothing \
+         beyond its system description, or one whose tables could not be read — the daemon log \
+         records which for each table.",
+        list_addresses_prose(&affected)
     )]
 }
 
@@ -361,6 +410,11 @@ pub struct SnmpCollectionOutcome {
     pub bridge_port_numbering: SnmpGroupOutcome,
     pub bridge_forwarding: SnmpGroupOutcome,
     pub vlan_membership: SnmpGroupOutcome,
+    pub arp_table: SnmpGroupOutcome,
+    pub device_inventory: SnmpGroupOutcome,
+    pub ip_addresses: SnmpGroupOutcome,
+    pub lldp_local_ports: SnmpGroupOutcome,
+    pub vlan_names: SnmpGroupOutcome,
 }
 
 /// The groups worth reporting for one host.
@@ -390,6 +444,19 @@ pub fn snmp_walk_shortfalls(ip: IpAddr, outcome: SnmpCollectionOutcome) -> Vec<I
             outcome.vlan_membership,
             !root_failed,
         ),
+        (SnmpWalkGroup::ArpTable, outcome.arp_table, true),
+        (
+            SnmpWalkGroup::DeviceInventory,
+            outcome.device_inventory,
+            true,
+        ),
+        (SnmpWalkGroup::IpAddresses, outcome.ip_addresses, true),
+        (
+            SnmpWalkGroup::LldpLocalPorts,
+            outcome.lldp_local_ports,
+            true,
+        ),
+        (SnmpWalkGroup::VlanNames, outcome.vlan_names, true),
     ]
     .into_iter()
     .filter(|(group, outcome, report)| *report && outcome.walk_fell_short(*group))
@@ -1077,6 +1144,60 @@ mod tests {
         assert!(!msg.contains("timed out"), "{msg}");
     }
 
+    /// The groups a shortfall test is not varying, read cleanly so they report nothing.
+    ///
+    /// Not `SnmpCollectionOutcome::default()`: a defaulted `SnmpGroupOutcome` is a walk that ran
+    /// and failed, so spreading it would add a finding per group these tests never mention.
+    fn quiet_groups() -> SnmpCollectionOutcome {
+        let clean = SnmpGroupOutcome {
+            complete: true,
+            returned_any: true,
+            reason: None,
+        };
+        SnmpCollectionOutcome {
+            lldp: clean,
+            cdp: clean,
+            bridge_port_numbering: clean,
+            bridge_forwarding: clean,
+            vlan_membership: clean,
+            arp_table: clean,
+            device_inventory: clean,
+            ip_addresses: clean,
+            lldp_local_ports: clean,
+            vlan_names: clean,
+        }
+    }
+
+    /// The suppression above is scoped to the groups keyed by `dot1dBasePortIfIndex`. The ARP
+    /// table, hardware inventory and the rest are read from unrelated MIBs, so a switch with no
+    /// bridge MIB says nothing about whether they were read — theirs is a finding of its own.
+    ///
+    /// Until GH #674 they could not be reported at all: those walks dropped their stop on the
+    /// floor, so a truncated ARP table reached the operator as no data and no explanation.
+    #[test]
+    fn a_group_unrelated_to_the_bridge_mib_reports_even_when_the_bridge_mib_failed() {
+        let shortfalls = snmp_walk_shortfalls(
+            ip("192.168.7.246"),
+            SnmpCollectionOutcome {
+                bridge_port_numbering: SnmpGroupOutcome::default(),
+                bridge_forwarding: SnmpGroupOutcome::default(),
+                vlan_membership: SnmpGroupOutcome::default(),
+                arp_table: SnmpGroupOutcome {
+                    complete: false,
+                    returned_any: true,
+                    reason: Some(ShortfallReason::Desynchronised),
+                },
+                ..quiet_groups()
+            },
+        );
+
+        let groups: Vec<SnmpWalkGroup> = shortfalls.iter().map(|s| s.group).collect();
+        assert_eq!(
+            groups,
+            vec![SnmpWalkGroup::BridgePortNumbering, SnmpWalkGroup::ArpTable]
+        );
+    }
+
     /// A switch with no bridge MIB fails three groups at once, but only one of them is a
     /// finding: the other two never ran. Reporting all three read as three separate faults.
     #[test]
@@ -1098,6 +1219,7 @@ mod tests {
                 bridge_port_numbering: SnmpGroupOutcome::default(),
                 bridge_forwarding: SnmpGroupOutcome::default(),
                 vlan_membership: SnmpGroupOutcome::default(),
+                ..quiet_groups()
             },
         );
 
@@ -1144,6 +1266,7 @@ mod tests {
                     returned_any: true,
                     reason: None,
                 },
+                ..quiet_groups()
             },
         );
 
@@ -1186,6 +1309,7 @@ mod tests {
                     returned_any: true,
                     reason: None,
                 },
+                ..quiet_groups()
             },
         );
 
@@ -1225,6 +1349,7 @@ mod tests {
                     returned_any: true,
                     reason: None,
                 },
+                ..quiet_groups()
             },
         );
 

@@ -15,7 +15,7 @@ set -euo pipefail
 # simulator, not the product under test.
 # ══════════════════════════════════════════════════════════════════════
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245)
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245 192.168.7.246 192.168.7.247)
 CIDR="22"
 IFACE="eth0"
 
@@ -36,8 +36,16 @@ IFACE="eth0"
 # .245 covers the last device from the same report: a TP-Link that indexes lldpRemTable
 # without lldpRemTimeMark, so every neighbour row arrives one sub-id short of what the MIB
 # describes.
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c)
-SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01 switch-tplink-01)
+#
+# .246/.247 cover GH #674 and the Westermo report (August 2026). .246 serves its ARP table out
+# of ascending OID order — a real firmware bug that `snmpbulkwalk -Cc` tolerates and a strict
+# client refuses, which emptied every multi-column collection on the reporter's switch. It is
+# the only device using the positional `pass` handler. .247 identifies every local LLDP port by
+# `macAddress(3)` and names the interface only in `lldpLocPortDesc`, with local port numbers
+# running backwards against the interfaces — so neither the port id nor arithmetic can place a
+# neighbour, and only the description or a per-port MAC can.
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c)
+SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01 switch-tplink-01 switch-unsorted-01 switch-macport-01)
 
 # SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
 # AuthPriv with SHA-256 / AES-128 — the broadly-supported pure-Rust default.
@@ -163,6 +171,75 @@ case "$REQUEST" in
 esac
 PASSEOF
 chmod +x "$CONF_DIR/snmp-pass-handler.sh"
+
+# A second handler that walks its data file in FILE order rather than OID order.
+#
+# The handler above answers GETNEXT with the first line numerically greater than the request, so
+# a shuffled data file would simply end the walk early — it can only ever produce an ascending
+# sequence. Firmware that stores a table unsorted and iterates it positionally does not: it hands
+# back whatever row physically follows the one asked for, which is how a switch answers
+# `...10.0.0.54` with `...10.0.0.7` and makes `snmpwalk` stop at "OID not increasing" while
+# `snmpbulkwalk -Cc` reads the table in full (GH #674).
+#
+# Reproducing that needs the positional behaviour, so the two handlers coexist: this one is used
+# only by the device that is meant to be broken.
+cat > "$CONF_DIR/snmp-pass-handler-unsorted.sh" << 'PASSEOF'
+#!/bin/bash
+DATA_FILE="$1"
+REQUEST="$2"
+OID="$3"
+
+if [ ! -f "$DATA_FILE" ]; then
+    echo "NONE"
+    exit 0
+fi
+
+case "$REQUEST" in
+    -g)
+        LINE=$(awk -v oid="$OID" '$1 == oid { print; exit }' "$DATA_FILE")
+        ;;
+    -n)
+        # The line after the requested one, in file order. A request naming no line of its own
+        # — a bare column or table prefix — is answered with the first line under it, again in
+        # file order, which is where the shuffle first shows.
+        LINE=$(awk -v oid="$OID" '
+            { line[NR] = $0; o[NR] = $1 }
+            function oid_gt(a, b,   na, nb, sa, sb, i, ai, bi) {
+                na = split(a, sa, ".")
+                nb = split(b, sb, ".")
+                for (i = 1; i <= (na > nb ? na : nb); i++) {
+                    ai = (i <= na) ? sa[i]+0 : -1
+                    bi = (i <= nb) ? sb[i]+0 : -1
+                    if (ai > bi) return 1
+                    if (ai < bi) return 0
+                }
+                return 0
+            }
+            END {
+                for (i = 1; i <= NR; i++)
+                    if (o[i] == oid) { if (i < NR) print line[i + 1]; exit }
+                for (i = 1; i <= NR; i++)
+                    if (index(o[i], oid ".") == 1) { print line[i]; exit }
+                # Neither a row nor a prefix we hold: advance the way a sane agent would, so a
+                # request landing between rows still gets an answer.
+                for (i = 1; i <= NR; i++)
+                    if (oid_gt(o[i], oid)) { print line[i]; exit }
+            }
+        ' "$DATA_FILE")
+        ;;
+    *)
+        echo "NONE"
+        exit 0
+        ;;
+esac
+
+if [ -z "$LINE" ]; then
+    echo "NONE"
+    exit 0
+fi
+echo "$LINE" | awk '{ print $1; print $2; $1=""; $2=""; sub(/^  */, ""); print }'
+PASSEOF
+chmod +x "$CONF_DIR/snmp-pass-handler-unsorted.sh"
 
 # ── 4. Write MIB data files ──────────────────────────────────────────
 echo "Writing MIB data..."
@@ -1318,11 +1395,389 @@ cat > "$DATA_DIR/switch-tplink-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.10.5.1 string GS724Tv3 ProSafe 24-port Gigabit Smart Switch
 EOF
 
+# switch-unsorted-01 IF-MIB (GH #674). Ordinary and sorted: the interfaces must come back
+# whole, so that an empty ARP table on this device is visibly a property of that table and not
+# of the whole host.
+cat > "$DATA_DIR/switch-unsorted-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.1.3 integer 3
+.1.3.6.1.2.1.2.2.1.2.1 string GigabitEthernet0/1
+.1.3.6.1.2.1.2.2.1.2.2 string GigabitEthernet0/2
+.1.3.6.1.2.1.2.2.1.2.3 string Vlan1
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.3.3 integer 53
+.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.3 gauge 0
+.1.3.6.1.2.1.2.2.1.6.1 string 00:1f:c6:aa:00:01
+.1.3.6.1.2.1.2.2.1.6.2 string 00:1f:c6:aa:00:02
+.1.3.6.1.2.1.2.2.1.6.3 string 00:1f:c6:aa:00:03
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.7.3 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.3 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string Gi0/1
+.1.3.6.1.2.1.31.1.1.1.1.2 string Gi0/2
+.1.3.6.1.2.1.31.1.1.1.1.3 string Vlan1
+EOF
+
+# switch-unsorted-01 ARP (GH #674) — the defect itself.
+#
+# Every column is written with its rows deliberately shuffled, and this file is served by the
+# POSITIONAL handler, so a GETNEXT walk follows the file rather than the numbers: asking after
+# .54 answers .7. That is what makes `snmpwalk` stop at "OID not increasing" here and what a
+# strict client reads as a table that ends after two rows.
+#
+# The shape matters as much as the disorder. Enough rows that the walk needs more than one
+# GETBULK page (the daemon asks 20 at a time), and the shuffle arranged so a later page ends
+# lower than an earlier one — which is the moment a strictly-ascending walk gives up. The four
+# columns each need to survive, because an ARP entry is a join across all of them and one short
+# column discards every row the others read.
+cat > "$DATA_DIR/switch-unsorted-01-arp.txt" << 'EOF'
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.2 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.4 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.6 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.8 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.10 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.12 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.14 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.16 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.18 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.20 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.22 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.24 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.26 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.28 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.30 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.32 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.34 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.36 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.38 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.40 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.42 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.44 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.1 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.3 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.5 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.7 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.9 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.11 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.13 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.15 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.17 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.19 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.21 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.23 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.25 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.27 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.29 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.31 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.33 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.35 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.37 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.39 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.41 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.43 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.45 integer 2
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.2 string 00:25:90:f0:00:02
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.4 string 00:25:90:f0:00:04
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.6 string 00:25:90:f0:00:06
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.8 string 00:25:90:f0:00:08
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.10 string 00:25:90:f0:00:10
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.12 string 00:25:90:f0:00:12
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.14 string 00:25:90:f0:00:14
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.16 string 00:25:90:f0:00:16
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.18 string 00:25:90:f0:00:18
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.20 string 00:25:90:f0:00:20
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.22 string 00:25:90:f0:00:22
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.24 string 00:25:90:f0:00:24
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.26 string 00:25:90:f0:00:26
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.28 string 00:25:90:f0:00:28
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.30 string 00:25:90:f0:00:30
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.32 string 00:25:90:f0:00:32
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.34 string 00:25:90:f0:00:34
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.36 string 00:25:90:f0:00:36
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.38 string 00:25:90:f0:00:38
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.40 string 00:25:90:f0:00:40
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.42 string 00:25:90:f0:00:42
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.44 string 00:25:90:f0:00:44
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.1 string 00:25:90:f0:00:01
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.3 string 00:25:90:f0:00:03
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.5 string 00:25:90:f0:00:05
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.7 string 00:25:90:f0:00:07
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.9 string 00:25:90:f0:00:09
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.11 string 00:25:90:f0:00:11
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.13 string 00:25:90:f0:00:13
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.15 string 00:25:90:f0:00:15
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.17 string 00:25:90:f0:00:17
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.19 string 00:25:90:f0:00:19
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.21 string 00:25:90:f0:00:21
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.23 string 00:25:90:f0:00:23
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.25 string 00:25:90:f0:00:25
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.27 string 00:25:90:f0:00:27
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.29 string 00:25:90:f0:00:29
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.31 string 00:25:90:f0:00:31
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.33 string 00:25:90:f0:00:33
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.35 string 00:25:90:f0:00:35
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.37 string 00:25:90:f0:00:37
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.39 string 00:25:90:f0:00:39
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.41 string 00:25:90:f0:00:41
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.43 string 00:25:90:f0:00:43
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.45 string 00:25:90:f0:00:45
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.2 ipaddress 10.20.30.2
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.4 ipaddress 10.20.30.4
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.6 ipaddress 10.20.30.6
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.8 ipaddress 10.20.30.8
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.10 ipaddress 10.20.30.10
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.12 ipaddress 10.20.30.12
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.14 ipaddress 10.20.30.14
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.16 ipaddress 10.20.30.16
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.18 ipaddress 10.20.30.18
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.20 ipaddress 10.20.30.20
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.22 ipaddress 10.20.30.22
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.24 ipaddress 10.20.30.24
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.26 ipaddress 10.20.30.26
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.28 ipaddress 10.20.30.28
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.30 ipaddress 10.20.30.30
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.32 ipaddress 10.20.30.32
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.34 ipaddress 10.20.30.34
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.36 ipaddress 10.20.30.36
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.38 ipaddress 10.20.30.38
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.40 ipaddress 10.20.30.40
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.42 ipaddress 10.20.30.42
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.44 ipaddress 10.20.30.44
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.1 ipaddress 10.20.30.1
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.3 ipaddress 10.20.30.3
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.5 ipaddress 10.20.30.5
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.7 ipaddress 10.20.30.7
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.9 ipaddress 10.20.30.9
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.11 ipaddress 10.20.30.11
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.13 ipaddress 10.20.30.13
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.15 ipaddress 10.20.30.15
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.17 ipaddress 10.20.30.17
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.19 ipaddress 10.20.30.19
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.21 ipaddress 10.20.30.21
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.23 ipaddress 10.20.30.23
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.25 ipaddress 10.20.30.25
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.27 ipaddress 10.20.30.27
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.29 ipaddress 10.20.30.29
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.31 ipaddress 10.20.30.31
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.33 ipaddress 10.20.30.33
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.35 ipaddress 10.20.30.35
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.37 ipaddress 10.20.30.37
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.39 ipaddress 10.20.30.39
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.41 ipaddress 10.20.30.41
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.43 ipaddress 10.20.30.43
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.45 ipaddress 10.20.30.45
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.2 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.4 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.6 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.8 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.10 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.12 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.14 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.16 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.18 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.20 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.22 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.24 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.26 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.28 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.30 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.32 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.34 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.36 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.38 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.40 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.42 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.44 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.1 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.3 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.5 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.7 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.9 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.11 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.13 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.15 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.17 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.19 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.21 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.23 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.25 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.27 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.29 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.31 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.33 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.35 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.37 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.39 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.41 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.43 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.45 integer 3
+EOF
+
+# switch-macport-01 IF-MIB. Interfaces eth1..eth10, each with its own hardware address, and
+# ifIndex ascending — the ordinary case. What is not ordinary is how LLDP refers to them below.
+cat > "$DATA_DIR/switch-macport-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.1.3 integer 3
+.1.3.6.1.2.1.2.2.1.1.4 integer 4
+.1.3.6.1.2.1.2.2.1.1.5 integer 5
+.1.3.6.1.2.1.2.2.1.1.6 integer 6
+.1.3.6.1.2.1.2.2.1.1.7 integer 7
+.1.3.6.1.2.1.2.2.1.1.8 integer 8
+.1.3.6.1.2.1.2.2.1.1.9 integer 9
+.1.3.6.1.2.1.2.2.1.1.10 integer 10
+.1.3.6.1.2.1.2.2.1.2.1 string eth1
+.1.3.6.1.2.1.2.2.1.2.2 string eth2
+.1.3.6.1.2.1.2.2.1.2.3 string eth3
+.1.3.6.1.2.1.2.2.1.2.4 string eth4
+.1.3.6.1.2.1.2.2.1.2.5 string eth5
+.1.3.6.1.2.1.2.2.1.2.6 string eth6
+.1.3.6.1.2.1.2.2.1.2.7 string eth7
+.1.3.6.1.2.1.2.2.1.2.8 string eth8
+.1.3.6.1.2.1.2.2.1.2.9 string eth9
+.1.3.6.1.2.1.2.2.1.2.10 string eth10
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.3.3 integer 6
+.1.3.6.1.2.1.2.2.1.3.4 integer 6
+.1.3.6.1.2.1.2.2.1.3.5 integer 6
+.1.3.6.1.2.1.2.2.1.3.6 integer 6
+.1.3.6.1.2.1.2.2.1.3.7 integer 6
+.1.3.6.1.2.1.2.2.1.3.8 integer 6
+.1.3.6.1.2.1.2.2.1.3.9 integer 6
+.1.3.6.1.2.1.2.2.1.3.10 integer 6
+.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.3 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.4 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.5 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.6 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.7 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.8 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.9 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.10 gauge 100000000
+.1.3.6.1.2.1.2.2.1.6.1 string 00:07:7c:20:01:e1
+.1.3.6.1.2.1.2.2.1.6.2 string 00:07:7c:20:01:e2
+.1.3.6.1.2.1.2.2.1.6.3 string 00:07:7c:20:01:e3
+.1.3.6.1.2.1.2.2.1.6.4 string 00:07:7c:20:01:e4
+.1.3.6.1.2.1.2.2.1.6.5 string 00:07:7c:20:01:e5
+.1.3.6.1.2.1.2.2.1.6.6 string 00:07:7c:20:01:e6
+.1.3.6.1.2.1.2.2.1.6.7 string 00:07:7c:20:01:e7
+.1.3.6.1.2.1.2.2.1.6.8 string 00:07:7c:20:01:e8
+.1.3.6.1.2.1.2.2.1.6.9 string 00:07:7c:20:01:e9
+.1.3.6.1.2.1.2.2.1.6.10 string 00:07:7c:20:01:ea
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.7.3 integer 1
+.1.3.6.1.2.1.2.2.1.7.4 integer 1
+.1.3.6.1.2.1.2.2.1.7.5 integer 1
+.1.3.6.1.2.1.2.2.1.7.6 integer 1
+.1.3.6.1.2.1.2.2.1.7.7 integer 1
+.1.3.6.1.2.1.2.2.1.7.8 integer 1
+.1.3.6.1.2.1.2.2.1.7.9 integer 1
+.1.3.6.1.2.1.2.2.1.7.10 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.3 integer 1
+.1.3.6.1.2.1.2.2.1.8.4 integer 1
+.1.3.6.1.2.1.2.2.1.8.5 integer 1
+.1.3.6.1.2.1.2.2.1.8.6 integer 1
+.1.3.6.1.2.1.2.2.1.8.7 integer 2
+.1.3.6.1.2.1.2.2.1.8.8 integer 2
+.1.3.6.1.2.1.2.2.1.8.9 integer 1
+.1.3.6.1.2.1.2.2.1.8.10 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string eth1
+.1.3.6.1.2.1.31.1.1.1.1.2 string eth2
+.1.3.6.1.2.1.31.1.1.1.1.3 string eth3
+.1.3.6.1.2.1.31.1.1.1.1.4 string eth4
+.1.3.6.1.2.1.31.1.1.1.1.5 string eth5
+.1.3.6.1.2.1.31.1.1.1.1.6 string eth6
+.1.3.6.1.2.1.31.1.1.1.1.7 string eth7
+.1.3.6.1.2.1.31.1.1.1.1.8 string eth8
+.1.3.6.1.2.1.31.1.1.1.1.9 string eth9
+.1.3.6.1.2.1.31.1.1.1.1.10 string eth10
+EOF
+
+# switch-macport-01 LLDP — local ports identified only by MAC and description.
+#
+# lldpLocPortIdSubtype is macAddress(3) on every port and lldpLocPortId is the port's own
+# hardware address, so there is no name to match on. lldpLocPortNum runs 10..19 while the
+# interfaces run eth10 down to eth1, so the numbers cannot be arithmetic either: local port 11
+# is eth9, 16 is eth4, 19 is eth1. lldpLocPortDesc is the only column that says so.
+#
+# Two resolutions are in play and both must land on the same interface — the per-port MAC
+# matches ifPhysAddress, and the description carries the interface name after the media type.
+cat > "$DATA_DIR/switch-macport-01-lldp.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 00:07:7c:20:01:e0
+.1.0.8802.1.1.2.1.3.3.0 string switch-macport-01
+.1.0.8802.1.1.2.1.3.4.0 string WeOS 5.21.0 industrial ethernet switch
+.1.0.8802.1.1.2.1.3.7.1.2.10 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.11 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.12 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.13 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.14 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.15 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.16 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.17 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.18 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.19 integer 3
+.1.0.8802.1.1.2.1.3.7.1.3.10 string 00:07:7c:20:01:ea
+.1.0.8802.1.1.2.1.3.7.1.3.11 string 00:07:7c:20:01:e9
+.1.0.8802.1.1.2.1.3.7.1.3.12 string 00:07:7c:20:01:e8
+.1.0.8802.1.1.2.1.3.7.1.3.13 string 00:07:7c:20:01:e7
+.1.0.8802.1.1.2.1.3.7.1.3.14 string 00:07:7c:20:01:e6
+.1.0.8802.1.1.2.1.3.7.1.3.15 string 00:07:7c:20:01:e5
+.1.0.8802.1.1.2.1.3.7.1.3.16 string 00:07:7c:20:01:e4
+.1.0.8802.1.1.2.1.3.7.1.3.17 string 00:07:7c:20:01:e3
+.1.0.8802.1.1.2.1.3.7.1.3.18 string 00:07:7c:20:01:e2
+.1.0.8802.1.1.2.1.3.7.1.3.19 string 00:07:7c:20:01:e1
+.1.0.8802.1.1.2.1.3.7.1.4.10 string 100-T eth10
+.1.0.8802.1.1.2.1.3.7.1.4.11 string 100-T eth9
+.1.0.8802.1.1.2.1.3.7.1.4.12 string 100-T eth8
+.1.0.8802.1.1.2.1.3.7.1.4.13 string 100-T eth7
+.1.0.8802.1.1.2.1.3.7.1.4.14 string 100-T eth6
+.1.0.8802.1.1.2.1.3.7.1.4.15 string 100-T eth5
+.1.0.8802.1.1.2.1.3.7.1.4.16 string 100-T eth4
+.1.0.8802.1.1.2.1.3.7.1.4.17 string 100-T eth3
+.1.0.8802.1.1.2.1.3.7.1.4.18 string 1000-T eth2
+.1.0.8802.1.1.2.1.3.7.1.4.19 string 1000-LX eth1
+.1.0.8802.1.1.2.1.4.1.1.4.100.11.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.500.19.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.1400.16.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.100.11.1 string 00:07:7c:31:00:11
+.1.0.8802.1.1.2.1.4.1.1.5.500.19.1 string 00:07:7c:31:00:19
+.1.0.8802.1.1.2.1.4.1.1.5.1400.16.1 string 00:07:7c:31:00:16
+.1.0.8802.1.1.2.1.4.1.1.6.100.11.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.500.19.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.1400.16.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.100.11.1 string eth3
+.1.0.8802.1.1.2.1.4.1.1.7.500.19.1 string eth1
+.1.0.8802.1.1.2.1.4.1.1.7.1400.16.1 string eth7
+.1.0.8802.1.1.2.1.4.1.1.8.100.11.1 string 100-T eth3
+.1.0.8802.1.1.2.1.4.1.1.8.500.19.1 string 1000-LX eth1
+.1.0.8802.1.1.2.1.4.1.1.8.1400.16.1 string 100-T eth7
+.1.0.8802.1.1.2.1.4.1.1.9.100.11.1 string ring-peer-a
+.1.0.8802.1.1.2.1.4.1.1.9.500.19.1 string ring-peer-b
+.1.0.8802.1.1.2.1.4.1.1.9.1400.16.1 string ring-peer-c
+.1.0.8802.1.1.2.1.4.1.1.10.100.11.1 string WeOS 5.21.0 industrial ethernet switch
+.1.0.8802.1.1.2.1.4.1.1.10.500.19.1 string WeOS 5.21.0 industrial ethernet switch
+.1.0.8802.1.1.2.1.4.1.1.10.1400.16.1 string WeOS 5.21.0 industrial ethernet switch
+EOF
+
 # ── 5. Write snmpd configs ───────────────────────────────────────────
 echo "Writing snmpd configs..."
 
 D="$CONF_DIR/data"
 H="$CONF_DIR/snmp-pass-handler.sh"
+HU="$CONF_DIR/snmp-pass-handler-unsorted.sh"
 
 cat > "$CONF_DIR/snmpd-switch-core-01.conf" << EOF
 agentAddress udp:${HOSTS[0]}:161
@@ -1581,6 +2036,37 @@ sysobjectid .1.3.6.1.4.1.11863.5.1.1
 sysservices 2
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-tplink-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-tplink-01-lldp.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-unsorted-01.conf" << EOF
+agentAddress udp:${HOSTS[16]}:161
+rocommunity netdefault
+sysdescr PoE switch, firmware V3.3.3
+syscontact netops@example.com
+sysname switch-unsorted-01
+syslocation Floor 1, camera room
+sysobjectid .1.3.6.1.4.1.99999.1.1
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-unsorted-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-unsorted-01-iftable.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.1 /bin/bash $HU $D/switch-unsorted-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.2 /bin/bash $HU $D/switch-unsorted-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.3 /bin/bash $HU $D/switch-unsorted-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.4 /bin/bash $HU $D/switch-unsorted-01-arp.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-macport-01.conf" << EOF
+agentAddress udp:${HOSTS[17]}:161
+rocommunity netdefault
+sysdescr WeOS 5.21.0 industrial ethernet switch
+syscontact netops@example.com
+sysname switch-macport-01
+syslocation Substation B, DIN rail
+sysobjectid .1.3.6.1.4.1.16177.1.1
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-macport-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-macport-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-macport-01-lldp.txt
 EOF
 
 # ── 6. Create systemd services ───────────────────────────────────────
