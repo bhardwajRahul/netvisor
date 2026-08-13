@@ -54,13 +54,17 @@
 	import { onMount } from 'svelte';
 	import {
 		common_all,
+		common_clearAll,
 		common_groupTotalShowing,
+		common_noEntityMatchesFilters,
 		common_ungrouped,
 		common_tableCaption,
 		common_tags,
 		common_item,
 		common_items
 	} from '$lib/paraglide/messages';
+	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
+	import { SearchX } from 'lucide-svelte';
 	import {
 		useTagsQuery,
 		useBulkAddTagMutation,
@@ -622,6 +626,17 @@
 		searchQuery = '';
 	}
 
+	/**
+	 * Everything that can narrow the list, in one action — including the
+	 * server-side ones, which `clearFilters` and the search effect notify the
+	 * parent about. This is what the filtered-empty state offers, so a filter
+	 * that matches nothing is always reversible from where the user is looking.
+	 */
+	function clearAllNarrowing() {
+		clearFilters();
+		clearSearch();
+	}
+
 	// Clear grouping
 	function clearGrouping() {
 		selectedGroupField = null;
@@ -1142,7 +1157,24 @@
 	/>
 
 	<!-- Content -->
-	{#if viewMode === 'table'}
+	{#if totalCount === 0 && (hasActiveFilters || hasActiveSearch)}
+		<!--
+			A filter that matches nothing is not an empty inventory, and must not be
+			reported as one. It also has to stay reversible from here: a tab that swaps
+			its "nothing configured yet" state in for this whole component takes the
+			filter controls with it, which is how "Stale only" could strand a user with
+			no way to undo it (GH #677 follow-up).
+
+			`totalCount`, not this page's length — under server pagination a page can be
+			empty while the filter still matches rows on another one.
+		-->
+		<EmptyState
+			IconComponent={SearchX}
+			title={common_noEntityMatchesFilters({ entity: entityLabel ?? common_items() })}
+		>
+			<button onclick={clearAllNarrowing} class="btn-secondary">{common_clearAll()}</button>
+		</EmptyState>
+	{:else if viewMode === 'table'}
 		<!--
 			Grouped or not, one table with one header row. Splitting a grouped list
 			into a table per group gave each group its own header and its own column

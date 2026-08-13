@@ -11,8 +11,8 @@
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
 	import { entityRef } from '$lib/shared/components/data/types';
-	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
-	import { useSubnetsQuery } from '$lib/features/subnets/queries';
+	import { entities } from '$lib/shared/stores/metadata';
+	import { isUserManagedSubnet, useSubnetsQuery } from '$lib/features/subnets/queries';
 	import type { Subnet } from '$lib/features/subnets/types/base';
 	import { Plus, Trash2, Edit, ArrowBigUp, RefreshCw } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
@@ -111,7 +111,7 @@
 		});
 	});
 	let networksData = $derived(networksQuery.data ?? []);
-	let subnetsData = $derived(subnetsQuery.data ?? []);
+	let subnetsData = $derived((subnetsQuery.data ?? []).filter(isUserManagedSubnet));
 	let isLoading = $derived(daemonsQuery.isPending || networksQuery.isPending);
 
 	let showCreateDaemonModal = $state(false);
@@ -268,12 +268,12 @@
 		return daemon.tags;
 	}
 
-	/** Subnets this daemon has an interface on, minus the ones the UI never lists. */
+	/** Subnets this daemon has an interface on; `subnetsData` is already narrowed to the
+	 * ones the management lists show. */
 	function interfacedSubnets(daemon: Daemon): Subnet[] {
 		return daemon.interfaced_subnet_ids
 			.map((id) => subnetsData.find((subnet) => subnet.id === id))
-			.filter((subnet): subnet is Subnet => subnet !== undefined)
-			.filter((subnet) => !subnetTypes.getMetadata(subnet.subnet_type).hide_from_subnet_list);
+			.filter((subnet): subnet is Subnet => subnet !== undefined);
 	}
 
 	// CSV export handler

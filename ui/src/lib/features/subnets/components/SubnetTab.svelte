@@ -14,6 +14,7 @@
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import {
+		isUserManagedSubnet,
 		useSubnetsQuery,
 		useCreateSubnetMutation,
 		useUpdateSubnetMutation,
@@ -77,11 +78,7 @@
 
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
-	let subnetsData = $derived(
-		(subnetsQuery.data ?? []).filter(
-			(s) => !subnetTypes.getMetadata(s.subnet_type).hide_from_subnet_list
-		)
-	);
+	let subnetsData = $derived((subnetsQuery.data ?? []).filter(isUserManagedSubnet));
 	let networksData = $derived(networksQuery.data ?? []);
 	let isLoading = $derived(subnetsQuery.isPending);
 
@@ -267,8 +264,13 @@
 	{:else if isLoading}
 		<!-- Loading state -->
 		<Loading />
-	{:else if subnetsData.length === 0}
-		<!-- Empty state -->
+	{:else if subnetsData.length === 0 && stale === null}
+		<!--
+			"Nothing configured yet" only when nothing is narrowing the list. `stale` is a
+			server-side filter, so an empty response under it means "no matches", not "no
+			subnets" — and this branch replaces the controls that would let the user clear
+			it. DataControls renders the filtered-empty state instead.
+		-->
 		<EmptyState
 			title={common_noEntityYet({ entity: common_subnets() })}
 			subtitle=""

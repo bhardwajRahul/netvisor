@@ -346,8 +346,14 @@
 		<PreDaemonEmptyState title={daemons_installPromptDiscoveries()} />
 	{:else if isLoading}
 		<Loading />
-	{:else if discoveriesData.length === 0}
-		<!-- Empty state -->
+	{:else if discoveriesData.length === 0 && !search}
+		<!--
+			"No sessions yet" only when nothing is narrowing the list. The search runs
+			server-side and is restored from storage on mount, so an empty response under
+			it means "no matches" — and this branch would take the search box away with
+			it, re-arming the same no-match query on every reload. DataControls renders
+			the filtered-empty state instead.
+		-->
 		<EmptyState
 			title={discovery_noHistorySessions()}
 			subtitle={discovery_noHistorySessionsSubtitle()}
