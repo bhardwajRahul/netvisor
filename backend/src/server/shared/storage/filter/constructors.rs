@@ -133,6 +133,10 @@ impl<T: Storable> StorableFilter<T> {
         Self::new().unresolved_fdb_in_network(network_id)
     }
 
+    pub fn new_for_port_resolved_by_mac_in_network(network_id: Uuid) -> Self {
+        Self::new().port_resolved_by_mac_in_network(network_id)
+    }
+
     pub fn new_without_brevo_company_id() -> Self {
         Self::new().without_brevo_company_id()
     }

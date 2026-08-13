@@ -85,8 +85,17 @@ pub enum IdentityResolution {
     Resolved(Uuid),
     /// No lookup strategy applies to the advertised identifier.
     NoStrategy,
-    /// A strategy ran and matched nothing, or matched ambiguously.
+    /// A strategy ran and matched nothing.
     NotFound,
+    /// A strategy ran and matched more than one entity, so the identifier does not identify.
+    ///
+    /// Split out from [`Self::NotFound`] because the two mean opposite things to whoever reads the
+    /// stats: `NotFound` says the far end is absent from the inventory (scan it and the link
+    /// appears), while `Ambiguous` says it is present several times over and the identifier cannot
+    /// choose between them. The case this exists for is a switch that reports its chassis base MAC
+    /// as `ifPhysAddress` on every port — legal SNMP, and common on D-Link/TP-Link/Omada/UniFi —
+    /// where a MAC names the device but no single port on it (GH #668).
+    Ambiguous,
 }
 
 impl IdentityResolution {
@@ -283,7 +292,8 @@ impl LldpPortId {
     /// scoped to one device's own interfaces.
     ///
     /// The resolution strategy depends on the port ID subtype:
-    /// - MacAddress: Look up via interfaces.mac_address
+    /// - MacAddress: Look up via interfaces.mac_address, and only when that MAC belongs to exactly
+    ///   one of the host's ports — see [`LldpResolver::find_if_entry_by_mac`]
     /// - NetworkAddress: Look up via ip_address_id FK on interfaces
     /// - InterfaceName/PortComponent/AgentCircuitId/LocallyAssigned: device-local port identifier
     ///   — see [`Self::resolve_device_local_port`]
@@ -294,9 +304,7 @@ impl LldpPortId {
         host_id: Uuid,
     ) -> IdentityResolution {
         match self {
-            Self::MacAddress(mac) => {
-                IdentityResolution::found(resolver.find_if_entry_by_mac(mac, host_id).await)
-            }
+            Self::MacAddress(mac) => resolver.find_if_entry_by_mac(mac, host_id).await,
             Self::InterfaceAlias(_) => IdentityResolution::NoStrategy, // user-configurable, non-unique
             Self::NetworkAddress(ip) => {
                 IdentityResolution::found(resolver.find_if_entry_by_ip(ip, host_id).await)
@@ -689,10 +697,18 @@ mod resolution_tests {
     #[async_trait]
     impl LldpResolver for FakeInventory {
         async fn find_host_by_mac(&self, mac: &str, _network_id: Uuid) -> Option<Uuid> {
-            self.interfaces
+            // Collapsed to distinct hosts before the single-match rule, exactly as the production
+            // resolver does: many ports of one switch carrying the chassis MAC is one host.
+            let hosts: Vec<Uuid> = self
+                .interfaces
                 .iter()
-                .find(|i| i.mac.as_deref() == Some(mac))
+                .filter(|i| i.mac.as_deref() == Some(mac))
                 .map(|i| i.host_id)
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+
+            Self::only(hosts)
         }
 
         async fn find_host_by_ip(&self, _ip: &IpAddr, _network_id: Uuid) -> Option<Uuid> {
@@ -730,11 +746,19 @@ mod resolution_tests {
             .map(|h| h.id)
         }
 
-        async fn find_if_entry_by_mac(&self, mac: &str, host_id: Uuid) -> Option<Uuid> {
-            self.interfaces
+        async fn find_if_entry_by_mac(&self, mac: &str, host_id: Uuid) -> IdentityResolution {
+            let matches: Vec<Uuid> = self
+                .interfaces
                 .iter()
-                .find(|i| i.host_id == host_id && i.mac.as_deref() == Some(mac))
+                .filter(|i| i.host_id == host_id && i.mac.as_deref() == Some(mac))
                 .map(|i| i.id)
+                .collect();
+
+            match matches.len() {
+                0 => IdentityResolution::NotFound,
+                1 => IdentityResolution::Resolved(matches[0]),
+                _ => IdentityResolution::Ambiguous,
+            }
         }
 
         async fn find_if_entry_by_name(&self, name: &str, host_id: Uuid) -> Option<Uuid> {
@@ -1030,6 +1054,125 @@ mod resolution_tests {
         assert_eq!(
             port.resolve_if_entry_id(&inventory, Uuid::new_v4()).await,
             IdentityResolution::NoStrategy
+        );
+    }
+
+    /// Three ports of one switch, all reporting the chassis base MAC as `ifPhysAddress` — the
+    /// D-Link/TP-Link/Omada shape from GH #668.
+    fn shared_chassis_mac_switch(host_id: Uuid, mac: &str) -> Vec<FakeInterface> {
+        (1..=3)
+            .map(|n| FakeInterface {
+                id: Uuid::new_v4(),
+                host_id,
+                if_descr: Some(format!("Slot0/{n}")),
+                if_index: n,
+                mac: Some(mac.to_string()),
+                ..Default::default()
+            })
+            .collect()
+    }
+
+    /// GH #668: a switch that repeats one MAC across every port makes that MAC name the device,
+    /// not a port. Before the guard this resolved to whichever row the database returned first,
+    /// drawing a port-precise link to an arbitrary port — a wrong answer that reads as an
+    /// authoritative one, which is worse than the device-level link it now degrades to.
+    #[tokio::test]
+    async fn a_port_mac_the_device_repeats_on_every_port_identifies_no_port() {
+        let switch = Uuid::new_v4();
+        let inventory = FakeInventory {
+            interfaces: shared_chassis_mac_switch(switch, "00:ad:24:af:4e:00"),
+            ..Default::default()
+        };
+
+        let port = LldpPortId::MacAddress("00:ad:24:af:4e:00".to_string());
+        assert_eq!(
+            port.resolve_if_entry_id(&inventory, switch).await,
+            IdentityResolution::Ambiguous
+        );
+    }
+
+    /// The guard must not cost the vendors that do give each port its own address — Westermo
+    /// advertises exactly this, a distinct per-port MAC as the port identifier.
+    #[tokio::test]
+    async fn a_port_mac_unique_within_the_device_still_resolves() {
+        let switch = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        let inventory = FakeInventory {
+            interfaces: vec![
+                FakeInterface {
+                    id: target,
+                    host_id: switch,
+                    if_index: 1,
+                    mac: Some("00:11:b4:8c:02:ea".to_string()),
+                    ..Default::default()
+                },
+                FakeInterface {
+                    id: Uuid::new_v4(),
+                    host_id: switch,
+                    if_index: 2,
+                    mac: Some("00:11:b4:8c:02:eb".to_string()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let port = LldpPortId::MacAddress("00:11:b4:8c:02:ea".to_string());
+        assert_eq!(
+            port.resolve_if_entry_id(&inventory, switch).await,
+            IdentityResolution::Resolved(target)
+        );
+    }
+
+    /// The same repetition that makes a MAC useless for naming a *port* leaves it perfectly good
+    /// for naming the *device*: many ports, still one host. Guarding the port lookup must not take
+    /// the host tier down with it, or every neighbour of an affected switch stops resolving at all.
+    #[tokio::test]
+    async fn a_chassis_mac_repeated_on_every_port_still_identifies_the_device() {
+        let switch = Uuid::new_v4();
+        let inventory = FakeInventory {
+            interfaces: shared_chassis_mac_switch(switch, "00:ad:24:af:4e:00"),
+            ..Default::default()
+        };
+
+        let chassis = LldpChassisId::MacAddress("00:ad:24:af:4e:00".to_string());
+        assert_eq!(
+            chassis
+                .resolve_host_id(&inventory, Uuid::new_v4(), None)
+                .await,
+            IdentityResolution::Resolved(switch)
+        );
+    }
+
+    /// Two devices answering to one MAC is a duplicate this cannot choose between — unlike the
+    /// case above, where the repetition is within a single device.
+    #[tokio::test]
+    async fn a_mac_carried_by_two_devices_identifies_neither() {
+        let mac = "00:ad:24:af:4e:00";
+        let inventory = FakeInventory {
+            interfaces: vec![
+                FakeInterface {
+                    id: Uuid::new_v4(),
+                    host_id: Uuid::new_v4(),
+                    mac: Some(mac.to_string()),
+                    ..Default::default()
+                },
+                FakeInterface {
+                    id: Uuid::new_v4(),
+                    host_id: Uuid::new_v4(),
+                    mac: Some(mac.to_string()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let chassis = LldpChassisId::MacAddress(mac.to_string());
+        assert_eq!(
+            chassis
+                .resolve_host_id(&inventory, Uuid::new_v4(), None)
+                .await,
+            IdentityResolution::NotFound
         );
     }
 }

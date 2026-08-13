@@ -1095,6 +1095,19 @@ cp "$DATA_DIR/switch-flaky-01-lldp-complete.txt" "$DATA_DIR/switch-flaky-01-lldp
 # N), so it is also a ready-made target for a future fixture that needs a device where the
 # advertised number is the ifIndex and the name is something else.
 #
+#   3. Every port reports the same ifPhysAddress — the chassis base MAC, 00:ad:24:af:4e:00, which
+#      is also this device's lldpLocChassisId. This is what the real DGS-1210-48 does, it is legal
+#      SNMP (RFC 2863 does not require per-port addresses), and it is the third report on the same
+#      issue: the reporter saw one MAC repeated down the whole interface list and read it as
+#      Scanopy mis-attributing them. It is not — but it did make an interface MAC a false identity
+#      key. A MAC that names 3 ports names none of them, and the server used to take whichever row
+#      the database returned first, drawing a port-precise link to an arbitrary port. Consumers now
+#      resolve on a single match only; see `find_if_entry_by_mac` and `plan_interface_ip_links`.
+#      switch-tplink-01's local port 4 is the neighbour that exercises it from the far side.
+#
+#      An earlier revision gave each port its own address (…:4e:01..03), which is the case that
+#      never needed guarding. Nothing else here depended on those being distinct.
+#
 # NOT covered here: the NUL-terminated port ids from the same report. net-snmp's `pass`
 # protocol is line-based — the handler prints OID, type and value as three lines — so an
 # embedded 0x00 cannot survive the transport, and no data file can express it. That half is
@@ -1114,9 +1127,9 @@ cat > "$DATA_DIR/switch-dlink-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
 .1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
 .1.3.6.1.2.1.2.2.1.5.3 gauge 1000000000
-.1.3.6.1.2.1.2.2.1.6.1 string 00:ad:24:af:4e:01
-.1.3.6.1.2.1.2.2.1.6.2 string 00:ad:24:af:4e:02
-.1.3.6.1.2.1.2.2.1.6.3 string 00:ad:24:af:4e:03
+.1.3.6.1.2.1.2.2.1.6.1 string 00:ad:24:af:4e:00
+.1.3.6.1.2.1.2.2.1.6.2 string 00:ad:24:af:4e:00
+.1.3.6.1.2.1.2.2.1.6.3 string 00:ad:24:af:4e:00
 .1.3.6.1.2.1.2.2.1.7.1 integer 1
 .1.3.6.1.2.1.2.2.1.7.2 integer 1
 .1.3.6.1.2.1.2.2.1.7.3 integer 1
@@ -1270,6 +1283,21 @@ EOF
 #                             naming unmatched far ends needs in order to fire at all. Endpoints
 #                             like this are what that counter legitimately consists of.
 #   port 3 → switch-dlink-01  port id "Slot0/3" is its ifName, ifDescr is the long D-Link form.
+#                             Its chassis id now sits on that switch's ports as well as on its
+#                             hosts.chassis_id, so the host resolves at the MAC tier rather than
+#                             the chassis-id fallback it used to reach. The #664 fallback is still
+#                             covered on its own by port 5 below, whose chassis MAC is on no port.
+#   port 4 → switch-dlink-01  the same device again, reached the way GH #668 exposed: port id
+#                             subtype 3 (macAddress) carrying 00:AD:24:AF:4E:00, which that switch
+#                             reports as ifPhysAddress on *every* port. The chassis id resolves the
+#                             host, and the port id must then resolve nothing — a MAC that names
+#                             three ports names none of them. Expect one device-level (amber)
+#                             NeighborLink and port_ambiguous=1, not a port-precise link to
+#                             whichever of Slot0/1..3 came back first. lldpRemPortDesc is
+#                             deliberately "Uplink to core", matching no ifName or ifDescr on that
+#                             switch: the port-desc tier still runs after an ambiguous port id (a
+#                             description that does match should win), so anything matchable here
+#                             would resolve the port and hide the case under test.
 #   port 5 → switch-netgear-01 chassis 00:1a:2b:3c:4d:63 is on no port and no IP (the #664
 #                             shape), so only the host's own recorded chassis_id can match it;
 #                             port id "3" matches no name and falls through to ifIndex 3 (g3).
@@ -1283,38 +1311,47 @@ cat > "$DATA_DIR/switch-tplink-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.7.1.2.1 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.2 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.3 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.4 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.5 integer 5
 .1.0.8802.1.1.2.1.3.7.1.3.1 string ten-gigabitEthernet 1/0/1
 .1.0.8802.1.1.2.1.3.7.1.3.2 string ten-gigabitEthernet 1/0/2
 .1.0.8802.1.1.2.1.3.7.1.3.3 string ten-gigabitEthernet 1/0/3
+.1.0.8802.1.1.2.1.3.7.1.3.4 string ten-gigabitEthernet 1/0/4
 .1.0.8802.1.1.2.1.3.7.1.3.5 string ten-gigabitEthernet 1/0/5
 .1.0.8802.1.1.2.1.4.1.1.4.1.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.2.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.3.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.4.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.5.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.5.1.1 string 00:1A:2B:00:10:00
 .1.0.8802.1.1.2.1.4.1.1.5.2.1 string 9C:AD:97:1F:22:40
 .1.0.8802.1.1.2.1.4.1.1.5.3.1 string 00:AD:24:AF:4E:00
+.1.0.8802.1.1.2.1.4.1.1.5.4.1 string 00:AD:24:AF:4E:00
 .1.0.8802.1.1.2.1.4.1.1.5.5.1 string 00:1A:2B:3C:4D:63
 .1.0.8802.1.1.2.1.4.1.1.6.1.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.2.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.3.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.4.1 integer 3
 .1.0.8802.1.1.2.1.4.1.1.6.5.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.7.1.1 string Gi0/3
 .1.0.8802.1.1.2.1.4.1.1.7.2.1 string 1
 .1.0.8802.1.1.2.1.4.1.1.7.3.1 string Slot0/3
+.1.0.8802.1.1.2.1.4.1.1.7.4.1 string 00:AD:24:AF:4E:00
 .1.0.8802.1.1.2.1.4.1.1.7.5.1 string 3
 .1.0.8802.1.1.2.1.4.1.1.8.1.1 string GigabitEthernet0/3
 .1.0.8802.1.1.2.1.4.1.1.8.2.1 string Port 1
 .1.0.8802.1.1.2.1.4.1.1.8.3.1 string D-Link DGS-1210-48 Rev.GX/7.20.003 Port 3
+.1.0.8802.1.1.2.1.4.1.1.8.4.1 string Uplink to core
 .1.0.8802.1.1.2.1.4.1.1.8.5.1 string Slot: 0 Port: 3 Gigabit - Level
 .1.0.8802.1.1.2.1.4.1.1.9.1.1 string switch-core-01
 .1.0.8802.1.1.2.1.4.1.1.9.2.1 string desk-phone-4021
 .1.0.8802.1.1.2.1.4.1.1.9.3.1 string switch-dlink-01
+.1.0.8802.1.1.2.1.4.1.1.9.4.1 string switch-dlink-01
 .1.0.8802.1.1.2.1.4.1.1.9.5.1 string switch-netgear-01
 .1.0.8802.1.1.2.1.4.1.1.10.1.1 string Cisco IOS Software, C2960
 .1.0.8802.1.1.2.1.4.1.1.10.2.1 string Polycom VVX 411
 .1.0.8802.1.1.2.1.4.1.1.10.3.1 string D-Link DGS-1210-48 Rev.GX/7.20.003
+.1.0.8802.1.1.2.1.4.1.1.10.4.1 string D-Link DGS-1210-48 Rev.GX/7.20.003
 .1.0.8802.1.1.2.1.4.1.1.10.5.1 string GS724Tv3 ProSafe 24-port Gigabit Smart Switch
 EOF
 
