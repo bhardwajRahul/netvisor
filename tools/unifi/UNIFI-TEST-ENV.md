@@ -15,16 +15,20 @@ A self-hosted UniFi controller for developing and validating the UniFi integrati
 | `{"meta":…,"data":[…]}` envelope | ✅ | |
 | Site scoping, 401 vs 404 error shapes | ✅ | |
 | Self-signed TLS handling | ✅ | |
-| `port_table` → interfaces | | ❌ |
-| `lldp_table` → LLDP neighbors | | ❌ |
-| `mac_table` → bridge FDB | | ❌ |
-| `uplink` / `downlink_table` → topology edges | | ❌ |
+| `port_table` → interfaces | | ✅ |
+| `lldp_table` → LLDP neighbors | | ✅ |
+| `mac_table` → bridge FDB | | ✅ |
+| `uplink` / `downlink_table` → topology edges | | ✅ |
+
+The right-hand column is confirmed, but not by this environment — a production deployment against
+a real controller reported devices, ports and LLDP neighbors all resolving correctly. Nothing in
+that column is reproducible here.
 
 A controller with no adopted devices returns `"data": []` from `stat/device`. That confirms the
 envelope and proves **nothing** about the device sub-table shapes — which are precisely the
-fields Ubiquiti does not document and that we inferred from the unpoller Go structs. Those stay
-unvalidated until either real hardware is adopted here or the customer's captured `stat/device`
-arrives. This is why the credential type ships as `stability: Beta`.
+fields Ubiquiti does not document and that we inferred from the unpoller Go structs. So a green
+run here still leaves every right-hand row untested: adopt real hardware, or work from a captured
+`stat/device`, before concluding anything about them.
 
 ### Measured behaviour (UniFi OS Server 5.1.21 / Network Application 10.4.57)
 
@@ -188,8 +192,7 @@ and a captured payload must be labelled as captured. The distinction is the diff
 
 ## End-to-end against Scanopy
 
-1. Create a **UniFi API Key** (or **UniFi Local Admin**) credential in the UI. It carries a
-   **Beta** tag — that is expected.
+1. Create a **UniFi API Key** (or **UniFi Local Admin**) credential in the UI.
 2. Target it at the controller's host, or at the daemon host if the controller runs there.
 3. Run a discovery covering the controller's IP.
 4. Expect: the controller host gains a *UniFi Controller* service; each adopted device becomes a
