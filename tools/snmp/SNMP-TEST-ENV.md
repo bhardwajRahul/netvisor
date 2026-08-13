@@ -1,6 +1,6 @@
 # SNMP Test Environment
 
-18 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short; `.246`/`.247` cover #674 and the Westermo local-port report.
+18 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668 and repeats one MAC across every port; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short; `.246`/`.247` cover #674 and the Westermo local-port report.
 
 | IP | Host | Version | Credential | Device |
 |---|---|---|---|---|
@@ -78,6 +78,14 @@ Re-running `lxc/setup.sh` also resets it, which is the simplest way to undo a te
 
 Both should resolve to `Neighbor::Interface` and draw edges in L2 Physical. The records deliberately share `Gi0/1`/`Gi0/2` with links other sim devices also claim — the profile exercises port-id resolution, which runs per interface row, not a physically consistent lab.
 
+It also carries the third report from the same issue: **every one of its ports reports the same `ifPhysAddress`**, the chassis base MAC `00:ad:24:af:4e:00`, which is also its `lldpLocChassisId`. The real DGS-1210-48 does this, RFC 2863 does not require per-port addresses, and the reporter — seeing one MAC repeated down the whole interface list — read it as Scanopy mis-attributing them. It is not: the ifTable walk keys each `ifPhysAddress` off its own row's OID sub-id and cannot copy one row's value onto another. What it did break is identity: a MAC that names three ports names none of them, and the lookups that treated one as a port identifier picked whichever row the database returned first. Confirm the device's side of it with:
+
+```bash
+snmpwalk -v2c -c netdefault 192.168.7.244 1.3.6.1.2.1.2.2.1.6   # one MAC, three ifIndexes
+```
+
+The far side is `switch-tplink-01`'s local port 4, below. An earlier revision of this profile gave each port its own address (`…:4e:01`–`03`) — the case that never needed guarding — and nothing else here depended on them being distinct.
+
 **A table served out of ascending OID order (`.246`).** Modelled on the Hikvision DS-3T1512HP from #674. The switch stores its ARP table unsorted and iterates it positionally, so GETNEXT hands back whatever row physically follows the one asked for — answering `…10.20.30.44` with `…10.20.30.1`. `snmpwalk` stops at `OID not increasing`; `snmpbulkwalk -Cc` reads all 45 rows. The data is retrievable, and only a client insisting every step ascend refuses it.
 
 This is the one device served by `snmp-pass-handler-unsorted.sh` rather than the usual handler: the normal one answers GETNEXT with the first line *numerically* greater than the request, so a shuffled file would just end the walk early and could never reproduce the defect.
@@ -112,16 +120,21 @@ snmpwalk -v2c -c netdefault 192.168.7.245 1.0.8802.1.1.2.1.4.1.1.4   # two-eleme
 
 Two further quirks from the same device are kept deliberately, because they decide whether a row that now survives can actually resolve: chassis ids are subtype 4 carrying an **uppercase ASCII MAC** rather than six raw octets, and ports are `ifDescr` `ten-gigabitEthernet 1/0/N` with **no `ifName`** (there is no ifXTable `pass` in its config), alongside a `Vlan-interface1`. Its `lldpLocPortNum` equals `ifIndex`, so the local-port remap is the identity mapping and cannot mask the index parse under test.
 
-Each of its four neighbours resolves through exactly one intended path, matched on a value the far end actually reports:
+Each of its five neighbours resolves through exactly one intended path, matched on a value the far end actually reports:
 
 | Local port | Far end | Host matched by | Port matched by |
 |---|---|---|---|
 | `1/0/1` | switch-core-01 | its own `lldpLocChassisId` `00:1a:2b:00:10:00` | `ifName` `Gi0/3` |
 | `1/0/2` | *nothing* | — | — |
-| `1/0/3` | switch-dlink-01 | chassis `00:ad:24:af:4e:00` | `ifName` `Slot0/3` |
+| `1/0/3` | switch-dlink-01 | chassis `00:ad:24:af:4e:00`, now on that switch's ports as well as its `hosts.chassis_id` | `ifName` `Slot0/3` |
+| `1/0/4` | switch-dlink-01 | same chassis MAC | **nothing, deliberately** — see below |
 | `1/0/5` | switch-netgear-01 | `hosts.chassis_id` only — `00:1a:2b:3c:4d:63` is on no port and no IP (the #664 shape) | `ifIndex` 3 (`g3`), since `3` matches no name and the port desc deliberately matches nothing |
 
-So a clean scan gives three edges in L2 Physical — two port-to-port and, from `1/0/2`, none.
+So a clean scan gives three edges in L2 Physical — two port-to-port, one device-level from `1/0/4`, and, from `1/0/2`, none.
+
+**`1/0/4` is the far side of the shared-MAC case.** It advertises `lldpRemPortIdSubtype` = 3 (`macAddress`) with `00:AD:24:AF:4E:00` — the address switch-dlink-01 reports on all three of its ports. The chassis id resolves the host; the port id must then resolve *nothing*, because a MAC belonging to three ports identifies none of them. Expect `port_ambiguous=1` on the `LLDP/CDP link resolution complete` line, a named entry on the companion warning, and one amber `NeighborLink` — **not** a teal `PhysicalLink` to whichever of `Slot0/1`–`Slot0/3` came back first, which is what it drew before #668. Its `lldpRemPortDesc` is `Uplink to core`, matching no `ifName` or `ifDescr` on that switch: the port-description tier still runs after an ambiguous port id (a description that *does* match should win), so anything matchable there would resolve the port and hide the case.
+
+Note that `1/0/3` and `1/0/4` name the same far-end device on purpose. The pair is the A/B: identical host resolution, one port id that identifies a port and one that cannot.
 
 **`1/0/2` is unresolvable on purpose.** It advertises a desk phone whose MAC and sysName belong to no device in this lab, so every host tier fails and it is the environment's only source of a non-zero `host_not_found`. That counter is otherwise permanently 0 here, which left the server-side summary that names unmatched far ends with no way to fire. Endpoints exactly like this are what `host_not_found` legitimately consists of on a real network (#668).
 

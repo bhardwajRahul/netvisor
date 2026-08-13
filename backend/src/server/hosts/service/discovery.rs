@@ -198,64 +198,39 @@ impl HostService {
     /// For each Interface with a MAC address, finds an IPAddress on the same host with
     /// the same MAC address and sets `interface.ip_address_id = ip_address.id`.
     /// This enables PhysicalLink topology edges to have source/target Interface IDs.
+    ///
+    /// The decision itself is [`plan_interface_ip_links`]; this only loads and persists.
     async fn link_interfaces_to_ip_addresses(
         &self,
         host_id: &Uuid,
         authentication: AuthenticatedEntity,
     ) -> Result<()> {
-        use crate::server::interfaces::r#impl::base::if_type;
-
-        // Get all ip_addresses for this host
         let ip_addresses = self.ip_address_service.get_for_host(host_id).await?;
-
-        // Build MAC -> ip_address_id lookup
-        let mac_to_interface: std::collections::HashMap<_, _> = ip_addresses
-            .iter()
-            .filter_map(|iface| iface.base.mac_address.map(|mac| (mac, iface.id)))
-            .collect();
-
-        // Find loopback interface (by IP address)
-        let loopback_interface_id = ip_addresses
-            .iter()
-            .find(|iface| iface.base.ip_address.is_loopback())
-            .map(|iface| iface.id);
-
-        // Get all IfEntries for this host
         let interfaces = self.interface_service.get_for_host(host_id).await?;
+
+        let planned: HashMap<Uuid, Uuid> = plan_interface_ip_links(&interfaces, &ip_addresses)
+            .into_iter()
+            .collect();
 
         let mut linked_count = 0;
         for mut interface in interfaces {
-            // Skip if already linked
-            if interface.base.ip_address_id.is_some() {
+            let Some(&ip_address_id) = planned.get(&interface.id) else {
                 continue;
-            }
-
-            // Try loopback linking by if_type
-            let matched_interface_id = if interface.base.if_type == if_type::SOFTWARE_LOOPBACK {
-                loopback_interface_id
-            } else {
-                // Try MAC-based linking
-                interface
-                    .base
-                    .mac_address
-                    .and_then(|mac| mac_to_interface.get(&mac).copied())
             };
 
-            if let Some(ip_address_id) = matched_interface_id {
-                interface.base.ip_address_id = Some(ip_address_id);
-                if let Err(e) = self
-                    .interface_service
-                    .update(&mut interface, authentication.clone())
-                    .await
-                {
-                    tracing::warn!(
-                        interface_id = %interface.id,
-                        error = %e,
-                        "Failed to link Interface to IPAddress"
-                    );
-                } else {
-                    linked_count += 1;
-                }
+            interface.base.ip_address_id = Some(ip_address_id);
+            if let Err(e) = self
+                .interface_service
+                .update(&mut interface, authentication.clone())
+                .await
+            {
+                tracing::warn!(
+                    interface_id = %interface.id,
+                    error = %e,
+                    "Failed to link Interface to IPAddress"
+                );
+            } else {
+                linked_count += 1;
             }
         }
 
@@ -346,5 +321,124 @@ impl HostService {
         }
 
         Ok(())
+    }
+}
+
+/// Which IPAddress row each of a host's unlinked interfaces should point at.
+///
+/// Returns `(interface_id, ip_address_id)` pairs. Pure, so the rules below can be exercised
+/// without a database — the same split `match_existing_interface` uses for interface dedup.
+///
+/// A MAC only links an interface when exactly one of the host's interfaces carries it. Switches
+/// that report the chassis base MAC as `ifPhysAddress` on every port (GH #668) otherwise match all
+/// of them against the management IP, giving every port on a 48-port switch the same
+/// `ip_address_id` — which is what `resolve_ip_address_for_interface` anchors topology edges on.
+/// Losing the link costs such a device nothing: that fallback already resolves a host with a single
+/// IP without it.
+///
+/// The reverse multiplicity is deliberately *not* guarded. Several IPs on one NIC share a MAC, and
+/// that is an ordinary configuration where every candidate is a correct answer rather than an
+/// ambiguity — refusing to link would strip the anchor from hosts that are not affected by
+/// anything here.
+fn plan_interface_ip_links(
+    interfaces: &[Interface],
+    ip_addresses: &[IPAddress],
+) -> Vec<(Uuid, Uuid)> {
+    use crate::server::interfaces::r#impl::base::if_type;
+
+    let loopback_ip_id = ip_addresses
+        .iter()
+        .find(|ip| ip.base.ip_address.is_loopback())
+        .map(|ip| ip.id);
+
+    let ip_by_mac: HashMap<MacAddress, Uuid> = ip_addresses
+        .iter()
+        .filter_map(|ip| ip.base.mac_address.map(|mac| (mac, ip.id)))
+        .collect();
+
+    let mut interfaces_per_mac: HashMap<MacAddress, usize> = HashMap::new();
+    for mac in interfaces.iter().filter_map(|i| i.base.mac_address) {
+        *interfaces_per_mac.entry(mac).or_default() += 1;
+    }
+
+    interfaces
+        .iter()
+        .filter(|i| i.base.ip_address_id.is_none())
+        .filter_map(|i| {
+            let target = if i.base.if_type == if_type::SOFTWARE_LOOPBACK {
+                loopback_ip_id
+            } else {
+                i.base
+                    .mac_address
+                    .filter(|mac| interfaces_per_mac.get(mac) == Some(&1))
+                    .and_then(|mac| ip_by_mac.get(&mac).copied())
+            }?;
+            Some((i.id, target))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::interfaces::r#impl::base::InterfaceBase;
+    use crate::server::ip_addresses::r#impl::base::IPAddressBase;
+
+    fn iface(if_index: i32, mac: &str) -> Interface {
+        let mut base = InterfaceBase::default();
+        base.if_index = if_index;
+        base.if_descr = format!("Slot0/{if_index}");
+        base.mac_address = Some(mac.parse::<MacAddress>().unwrap());
+        Interface::new(base)
+    }
+
+    fn management_ip(ip: &str, mac: &str) -> IPAddress {
+        IPAddress::new(IPAddressBase {
+            ip_address: ip.parse().unwrap(),
+            mac_address: Some(mac.parse::<MacAddress>().unwrap()),
+            ..Default::default()
+        })
+    }
+
+    /// GH #668: a switch reporting its chassis base MAC on every port matched all of them against
+    /// the one IP it has, giving 48 ports the same `ip_address_id` — the FK topology anchors edges
+    /// on. Its management port is not identifiable from the MAC alone, so none of them link, and
+    /// `resolve_ip_address_for_interface`'s single-IP fallback covers the device anyway.
+    #[test]
+    fn a_mac_every_port_reports_links_none_of_them() {
+        let chassis_mac = "00:ad:24:af:4e:00";
+        let interfaces: Vec<Interface> = (1..=3).map(|n| iface(n, chassis_mac)).collect();
+        let ips = vec![management_ip("10.0.0.2", chassis_mac)];
+
+        assert!(plan_interface_ip_links(&interfaces, &ips).is_empty());
+    }
+
+    /// The guard is on repetition, not on MACs — a device whose ports each have their own address
+    /// still links the one that carries the IP, and only that one.
+    #[test]
+    fn a_port_mac_unique_within_the_device_still_links() {
+        let interfaces = vec![iface(1, "00:ad:24:af:4e:01"), iface(2, "00:ad:24:af:4e:02")];
+        let ip = management_ip("10.0.0.2", "00:ad:24:af:4e:01");
+
+        assert_eq!(
+            plan_interface_ip_links(&interfaces, std::slice::from_ref(&ip)),
+            vec![(interfaces[0].id, ip.id)]
+        );
+    }
+
+    /// Several IPs on one NIC share its MAC. That is an ordinary configuration in which every
+    /// candidate is a correct answer, not an ambiguity — the interface must still get an anchor.
+    #[test]
+    fn several_ips_on_one_nic_still_link_that_nic() {
+        let mac = "00:ad:24:af:4e:01";
+        let interfaces = vec![iface(1, mac)];
+        let ips = vec![
+            management_ip("10.0.0.2", mac),
+            management_ip("10.0.0.3", mac),
+        ];
+
+        let planned = plan_interface_ip_links(&interfaces, &ips);
+        assert_eq!(planned.len(), 1);
+        assert!(ips.iter().any(|ip| planned[0] == (interfaces[0].id, ip.id)));
     }
 }

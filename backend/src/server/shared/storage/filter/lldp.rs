@@ -104,6 +104,48 @@ impl<T: Storable> StorableFilter<T> {
         self.live()
     }
 
+    /// Filter interfaces whose remote port is already known *and* could only have been matched on
+    /// a MAC, in a network.
+    ///
+    /// The complement of [`Self::unresolved_lldp_port_in_network`], and the only way to reach a
+    /// binding that pass will never look at again: once `neighbor_interface_id` is set, that filter
+    /// excludes the row permanently. Used to re-examine bindings made under a rule that has since
+    /// been tightened — a port matched on a MAC the device repeats across every port (GH #668).
+    ///
+    /// The MAC condition is the SQL half of `Interface::port_bound_by_mac`, which stays the
+    /// authority and re-checks every row this returns; keep the two in step. It is here rather than
+    /// in Rust alone because this runs after every scan on a table that holds every port of every
+    /// switch, and reading the whole resolved population to discard almost all of it is a standing
+    /// cost for a backlog that drains once.
+    ///
+    /// Scoped to live SCD2 rows for the same reason as its complement: a closed snapshot copy is
+    /// history, not a link to re-resolve.
+    pub fn port_resolved_by_mac_in_network(mut self, network_id: Uuid) -> Self {
+        let network_col = self.qualify_column("network_id");
+        let neighbor_if_entry_col = self.qualify_column("neighbor_interface_id");
+        let lldp_port_col = self.qualify_column("lldp_port_id");
+        let lldp_chassis_col = self.qualify_column("lldp_chassis_id");
+        let cdp_device_col = self.qualify_column("cdp_device_id");
+        let fdb_col = self.qualify_column("fdb_macs");
+
+        self.conditions
+            .push(format!("{} = ${}", network_col, self.values.len() + 1));
+        self.values.push(SqlValue::Uuid(network_id));
+
+        self.conditions
+            .push(format!("{} IS NOT NULL", neighbor_if_entry_col));
+
+        // An LLDP port id of subtype 3 (macAddress), or a bridge-FDB port that learned exactly one
+        // address — the two tiers that place a far-end port by MAC and nothing else.
+        self.conditions.push(format!(
+            "({lldp_port_col}->>'subtype' = 'MacAddress' \
+             OR ({lldp_chassis_col} IS NULL AND {cdp_device_col} IS NULL \
+             AND {fdb_col} IS NOT NULL AND jsonb_array_length({fdb_col}) = 1))"
+        ));
+
+        self.live()
+    }
+
     /// Filter interfaces with unresolved single-MAC FDB data in a network.
     /// Matches entries that have exactly 1 learned MAC, no existing neighbor,
     /// and no LLDP/CDP data (FDB is lower-priority than protocol-based discovery).

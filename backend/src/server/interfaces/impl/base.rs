@@ -595,6 +595,30 @@ impl Interface {
             self.base.if_alias = None;
         }
     }
+
+    /// Whether this row's remote *port*, if resolved, could only have been matched on a MAC.
+    ///
+    /// The two sources that identify a far-end port by MAC and nothing else: an LLDP port id of
+    /// subtype 3 (`macAddress`), and a bridge-FDB port that learned exactly one address. Both are
+    /// only as good as the MAC's uniqueness on the far-end device, which is what makes them the
+    /// bindings worth re-examining after that rule was tightened (GH #668). Every other tier
+    /// matches on a name, an ifIndex or an IP and is unaffected.
+    pub fn port_bound_by_mac(&self) -> bool {
+        if matches!(self.base.lldp_port_id, Some(LldpPortId::MacAddress(_))) {
+            return true;
+        }
+
+        // FDB resolution only runs on rows with no LLDP/CDP data and exactly one learned MAC —
+        // mirror that condition rather than assuming, so a row that has since gained LLDP data is
+        // judged by the tier that actually placed it.
+        self.base.lldp_chassis_id.is_none()
+            && self.base.cdp_device_id.is_none()
+            && self
+                .base
+                .fdb_macs
+                .as_ref()
+                .is_some_and(|macs| macs.len() == 1)
+    }
 }
 
 /// Common IANAifType values for reference
@@ -613,4 +637,59 @@ pub mod if_type {
     pub const VLAN: i32 = 135;
     pub const L2_VLAN: i32 = 136;
     pub const L3_IPVLAN: i32 = 137;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn interface(configure: impl FnOnce(&mut InterfaceBase)) -> Interface {
+        let mut base = InterfaceBase::default();
+        configure(&mut base);
+        Interface::new(base)
+    }
+
+    /// Only the tiers that match on a MAC are re-examined when that MAC turns out to be shared;
+    /// a port matched on its name or ifIndex was never resting on the MAC's uniqueness, and
+    /// re-opening it would tear down a healthy link on every scan.
+    #[test]
+    fn only_a_mac_matched_port_is_worth_re_examining() {
+        let by_mac = interface(|b| {
+            b.lldp_chassis_id = Some(LldpChassisId::MacAddress("00:ad:24:af:4e:00".into()));
+            b.lldp_port_id = Some(LldpPortId::MacAddress("00:ad:24:af:4e:00".into()));
+        });
+        assert!(by_mac.port_bound_by_mac());
+
+        let by_name = interface(|b| {
+            b.lldp_chassis_id = Some(LldpChassisId::MacAddress("00:ad:24:af:4e:00".into()));
+            b.lldp_port_id = Some(LldpPortId::InterfaceName("Slot0/3".into()));
+        });
+        assert!(!by_name.port_bound_by_mac());
+    }
+
+    /// A bridge-FDB port that learned exactly one address is placed by that address and nothing
+    /// else, so it rests on the same uniqueness assumption as a subtype-3 port id. More than one
+    /// learned address means FDB resolution never ran on the row at all.
+    #[test]
+    fn a_single_mac_fdb_port_rests_on_the_same_assumption() {
+        let single = interface(|b| b.fdb_macs = Some(vec!["00:ad:24:af:4e:00".into()]));
+        assert!(single.port_bound_by_mac());
+
+        let several = interface(|b| {
+            b.fdb_macs = Some(vec!["00:ad:24:af:4e:00".into(), "00:ad:24:af:4e:01".into()])
+        });
+        assert!(!several.port_bound_by_mac());
+    }
+
+    /// FDB resolution only claims rows with no LLDP/CDP data, so a row carrying both is judged by
+    /// the protocol tier that actually placed it — here a name, which is not MAC-dependent.
+    #[test]
+    fn lldp_data_decides_a_row_that_also_carries_fdb_addresses() {
+        let both = interface(|b| {
+            b.lldp_chassis_id = Some(LldpChassisId::MacAddress("00:ad:24:af:4e:00".into()));
+            b.lldp_port_id = Some(LldpPortId::InterfaceName("Slot0/3".into()));
+            b.fdb_macs = Some(vec!["00:ad:24:af:4e:09".into()]);
+        });
+        assert!(!both.port_bound_by_mac());
+    }
 }
