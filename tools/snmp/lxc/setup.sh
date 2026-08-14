@@ -15,7 +15,7 @@ set -euo pipefail
 # simulator, not the product under test.
 # ══════════════════════════════════════════════════════════════════════
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245 192.168.7.246 192.168.7.247)
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245 192.168.7.246 192.168.7.247 192.168.7.248 192.168.7.249)
 CIDR="22"
 IFACE="eth0"
 
@@ -44,8 +44,8 @@ IFACE="eth0"
 # `macAddress(3)` and names the interface only in `lldpLocPortDesc`, with local port numbers
 # running backwards against the interfaces — so neither the port id nor arithmetic can place a
 # neighbour, and only the description or a per-port MAC can.
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c)
-SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01 switch-tplink-01 switch-unsorted-01 switch-macport-01)
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c)
+SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01 switch-tplink-01 switch-unsorted-01 switch-macport-01 switch-mute-01 switch-stuck-01)
 
 # SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
 # AuthPriv with SHA-256 / AES-128 — the broadly-supported pure-Rust default.
@@ -246,6 +246,38 @@ fi
 echo "$LINE" | awk '{ print $1; print $2; $1=""; $2=""; sub(/^  */, ""); print }'
 PASSEOF
 chmod +x "$CONF_DIR/snmp-pass-handler-unsorted.sh"
+
+# A third handler: one that never advances.
+#
+# Answers every GETNEXT with the same row, whatever was asked. That is the agent the walk's
+# retry-then-stop guard was written for — left to itself it would have the daemon re-request the
+# same page until the entry cap or the integration timeout. Here it is deliberate and permanent,
+# so the guard has something to hold against, and so one device reliably produces the
+# "did not finish reporting" warning that reports a walk falling short.
+cat > "$CONF_DIR/snmp-pass-handler-stuck.sh" << 'PASSEOF'
+#!/bin/bash
+DATA_FILE="$1"
+REQUEST="$2"
+OID="$3"
+
+if [ ! -f "$DATA_FILE" ]; then
+    echo "NONE"
+    exit 0
+fi
+
+case "$REQUEST" in
+    -g) LINE=$(awk -v oid="$OID" '$1 == oid { print; exit }' "$DATA_FILE") ;;
+    -n) LINE=$(head -1 "$DATA_FILE") ;;
+    *)  echo "NONE"; exit 0 ;;
+esac
+
+if [ -z "$LINE" ]; then
+    echo "NONE"
+    exit 0
+fi
+echo "$LINE" | awk '{ print $1; print $2; $1=""; $2=""; sub(/^  */, ""); print }'
+PASSEOF
+chmod +x "$CONF_DIR/snmp-pass-handler-stuck.sh"
 
 # ── 4. Write MIB data files ──────────────────────────────────────────
 echo "Writing MIB data..."
@@ -1793,12 +1825,52 @@ cat > "$DATA_DIR/switch-macport-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.10.1400.16.1 string WeOS 5.21.0 industrial ethernet switch
 EOF
 
+# switch-mute-01 — answers the credential and serves nothing.
+#
+# An empty file, pointed at by every table the built-in modules would otherwise answer from the
+# VM's own kernel state. Without these the "device" would report the VM's real addresses and ARP
+# cache and would not be mute at all. ifTable/ifXTable are suppressed by the -I flag the units
+# already carry; ipAddrTable and ipNetToMediaTable cannot be, so they are overridden per column
+# at priority 1, the same technique ap-wireless-01 uses to serve its own ipAddrTable.
+: > "$DATA_DIR/switch-mute-01-empty.txt"
+
+# switch-stuck-01 — one ARP row, served for ever.
+#
+# The file holds a single line and the stuck handler returns it for every GETNEXT, so the walk
+# collects it once and then sees the same OID again. The walk must recognise a page that
+# contributes nothing new, retry its budget and stop — and report the ARP table as a walk that
+# fell short rather than as a table that ended.
+cat > "$DATA_DIR/switch-stuck-01-arp.txt" << 'EOF'
+.1.3.6.1.2.1.4.22.1.1.1.10.40.50.1 integer 1
+EOF
+
+# switch-stuck-01 interfaces — ordinary, so this device is a *shortfall* case and not a mute one.
+cat > "$DATA_DIR/switch-stuck-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.2.1 string ether1
+.1.3.6.1.2.1.2.2.1.2.2 string ether2
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.6.1 octet 00 0c 42 7a 00 01
+.1.3.6.1.2.1.2.2.1.6.2 octet 00 0c 42 7a 00 02
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string ether1
+.1.3.6.1.2.1.31.1.1.1.1.2 string ether2
+EOF
+
 # ── 5. Write snmpd configs ───────────────────────────────────────────
 echo "Writing snmpd configs..."
 
 D="$CONF_DIR/data"
 H="$CONF_DIR/snmp-pass-handler.sh"
 HU="$CONF_DIR/snmp-pass-handler-unsorted.sh"
+HS="$CONF_DIR/snmp-pass-handler-stuck.sh"
 
 cat > "$CONF_DIR/snmpd-switch-core-01.conf" << EOF
 agentAddress udp:${HOSTS[0]}:161
@@ -2088,6 +2160,41 @@ sysservices 2
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-macport-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-macport-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-macport-01-lldp.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-mute-01.conf" << EOF
+agentAddress udp:${HOSTS[18]}:161
+rocommunity netdefault
+sysdescr Mute agent, system MIB only
+syscontact netops@example.com
+sysname switch-mute-01
+syslocation Rack 9, top
+sysobjectid .1.3.6.1.4.1.99999.2.1
+sysservices 2
+pass -p 1 .1.3.6.1.2.1.4.20.1.1 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.20.1.2 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.20.1.3 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.1 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.2 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.3 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.4 /bin/bash $H $D/switch-mute-01-empty.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-stuck-01.conf" << EOF
+agentAddress udp:${HOSTS[19]}:161
+rocommunity netdefault
+sysdescr Non-advancing agent, ARP table loops
+syscontact netops@example.com
+sysname switch-stuck-01
+syslocation Rack 9, middle
+sysobjectid .1.3.6.1.4.1.99999.3.1
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-stuck-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-stuck-01-iftable.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.1 /bin/bash $HS $D/switch-stuck-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.2 /bin/bash $HS $D/switch-stuck-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.3 /bin/bash $HS $D/switch-stuck-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.4 /bin/bash $HS $D/switch-stuck-01-arp.txt
 EOF
 
 # ── 6. Create systemd services ───────────────────────────────────────
