@@ -1,6 +1,6 @@
 # SNMP Test Environment
 
-18 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668 and repeats one MAC across every port; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short; `.246`/`.247` cover #674 and the Westermo local-port report.
+20 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668 and repeats one MAC across every port; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short; `.246`/`.247` cover #674 and the Westermo local-port report; `.248`/`.249` are the two failure shapes the partial-failure reporting exists for.
 
 | IP | Host | Version | Credential | Device |
 |---|---|---|---|---|
@@ -22,6 +22,8 @@
 | 192.168.7.245 | switch-tplink-01 | v2c | community `netdefault` | TP-Link TL-SX3016F (see below) |
 | 192.168.7.246 | switch-unsorted-01 | v2c | community `netdefault` | Out-of-order ARP table (see below) |
 | 192.168.7.247 | switch-macport-01 | v2c | community `netdefault` | macAddress-subtype local ports (see below) |
+| 192.168.7.248 | switch-mute-01 | v2c | community `netdefault` | Answers the credential, serves nothing (see below) |
+| 192.168.7.249 | switch-stuck-01 | v2c | community `netdefault` | ARP table never advances (see below) |
 
 **LLDP local-port remap (`.238`/`.239`).** ExtremeXOS reports its `lldpRemTable` local-port index as an `lldpLocPortNum` (1..N) that is a **separate namespace from `ifIndex`** (switch-exos-01 uses ifIndex 1001+, ifName `1:N`), so neighbours only resolve if the daemon walks `lldpLocPortTable` (`1.0.8802.1.1.2.1.3.7`) and suffix-matches `lldpLocPortId` against `ifName`. Before the Issue 2 fix, switch-exos-01 yields **zero** LLDP neighbours. Extreme VOSS (switch-voss-01) reports local-port == ifIndex with `lldpLocPortId` matching `ifName` exactly, so it stays correct on both old and new code — the regression guard for the fix.
 
@@ -92,6 +94,25 @@ It also carries the third report from the same issue: **every one of its ports r
 > ```
 
 An earlier revision of this profile gave each port its own address (`…:4e:01`–`03`) — the case that never needed guarding — and nothing else here depended on them being distinct.
+
+**Two devices that fail on purpose (`.248`/`.249`).** These exist because the partial-failure
+reporting had nothing to report against: before they were added, no scan of this environment had
+ever produced an incomplete-walk warning for any group, so that entire path went unexercised while
+looking healthy.
+
+- **`.248 switch-mute-01`** answers the credential and then serves nothing — no interfaces, no
+  neighbours, no addresses, no forwarding data. That is the shape a host takes when SNMP
+  "succeeds" and yields nothing, which used to read to an operator as a clean scan. It must
+  produce the warning saying the device answered SNMP and returned nothing at all. Note the seven
+  `pass -p 1` lines in its config: `ifTable`/`ifXTable` are suppressed by the `-I` flag every unit
+  carries, but `ipAddrTable` and `ipNetToMediaTable` cannot be, so without those overrides it
+  would report the VM's own addresses and ARP cache and would not be mute.
+- **`.249 switch-stuck-01`** answers every request for its ARP table with the same row, whatever
+  was asked. This is the non-advancing agent the walk's retry-then-stop guard was written for
+  (originally a Ubiquiti bridge FDB): left unguarded it would have the daemon re-request the same
+  page until the entry cap or the integration timeout. It has an ordinary `ifTable` so that it is
+  a *shortfall* case rather than a mute one, and it must produce a warning naming the ARP table
+  with a desynchronised reason — not a device that quietly reports no ARP entries.
 
 **A table served out of ascending OID order (`.246`).** Modelled on the Hikvision DS-3T1512HP from #674. The switch stores its ARP table unsorted and iterates it positionally, so GETNEXT hands back whatever row physically follows the one asked for — answering `…10.20.30.44` with `…10.20.30.1`. `snmpwalk` stops at `OID not increasing`; `snmpbulkwalk -Cc` reads all 45 rows. The data is retrievable, and only a client insisting every step ascend refuses it.
 
