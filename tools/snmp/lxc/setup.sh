@@ -317,9 +317,13 @@ EOF
 # walks are exercised on every device without extra data here. (ap-wireless-01 is
 # the one exception — it serves its own ipAddrTable so it can advertise a guest
 # subnet the VM's kernel doesn't have; see the #663 fixture below.)
-# (net-snmp `pass` can't emit binary MAC octet-strings, so dot1dTpFdb/dot1qTpFdb
-# rows and ARP MACs are not simulated; the daemon still walks those subtrees via
-# getbulk and terminates cleanly — the walk mechanism is what we're covering.)
+# (dot1dTpFdb/dot1qTpFdb rows are not simulated here; the daemon still walks those
+# subtrees via getbulk and terminates cleanly — the walk mechanism is what we're
+# covering. This is a gap in the data, not a limitation of the transport: `pass`
+# emits binary via type `octet` (space-separated hex), which is how the physAddress
+# and ARP columns elsewhere in this file send real six-byte MACs. An earlier version
+# of this note claimed the transport could not carry them, and that is what led two
+# separate fixtures to encode MACs as `string` and silently test nothing.)
 cat > "$DATA_DIR/switch-core-01-bridge.txt" << 'EOF'
 .1.3.6.1.2.1.17.1.4.1.2.1 integer 1
 .1.3.6.1.2.1.17.1.4.1.2.2 integer 2
@@ -1180,7 +1184,14 @@ cp "$DATA_DIR/switch-flaky-01-lldp-complete.txt" "$DATA_DIR/switch-flaky-01-lldp
 #      key. A MAC that names 3 ports names none of them, and the server used to take whichever row
 #      the database returned first, drawing a port-precise link to an arbitrary port. Consumers now
 #      resolve on a single match only; see `find_if_entry_by_mac` and `plan_interface_ip_links`.
-#      switch-tplink-01's local port 4 is the neighbour that exercises it from the far side.
+#
+#      The physAddress column uses type `octet`, not `string`. `string` sends the value as text,
+#      so `00:ad:24:af:4e:00` arrives as 17 ASCII bytes where a PhysAddress is six raw octets;
+#      `value_to_mac` rightly refuses it and the interface stores no MAC at all, which makes this
+#      fixture look like it is testing something it never reaches. `octet` takes space-separated
+#      hex and emits the six bytes a real agent sends. Verify with
+#      `snmpwalk -v2c -c netdefault -Ox 192.168.7.244 1.3.6.1.2.1.2.2.1.6` — six octets, three
+#      times over, not seventeen.
 #
 #      An earlier revision gave each port its own address (…:4e:01..03), which is the case that
 #      never needed guarding. Nothing else here depended on those being distinct.
@@ -1204,9 +1215,9 @@ cat > "$DATA_DIR/switch-dlink-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
 .1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
 .1.3.6.1.2.1.2.2.1.5.3 gauge 1000000000
-.1.3.6.1.2.1.2.2.1.6.1 string 00:ad:24:af:4e:00
-.1.3.6.1.2.1.2.2.1.6.2 string 00:ad:24:af:4e:00
-.1.3.6.1.2.1.2.2.1.6.3 string 00:ad:24:af:4e:00
+.1.3.6.1.2.1.2.2.1.6.1 octet 00 ad 24 af 4e 00
+.1.3.6.1.2.1.2.2.1.6.2 octet 00 ad 24 af 4e 00
+.1.3.6.1.2.1.2.2.1.6.3 octet 00 ad 24 af 4e 00
 .1.3.6.1.2.1.2.2.1.7.1 integer 1
 .1.3.6.1.2.1.2.2.1.7.2 integer 1
 .1.3.6.1.2.1.2.2.1.7.3 integer 1
@@ -1366,15 +1377,24 @@ EOF
 #                             covered on its own by port 5 below, whose chassis MAC is on no port.
 #   port 4 → switch-dlink-01  the same device again, reached the way GH #668 exposed: port id
 #                             subtype 3 (macAddress) carrying 00:AD:24:AF:4E:00, which that switch
-#                             reports as ifPhysAddress on *every* port. The chassis id resolves the
-#                             host, and the port id must then resolve nothing — a MAC that names
-#                             three ports names none of them. Expect one device-level (amber)
-#                             NeighborLink and port_ambiguous=1, not a port-precise link to
-#                             whichever of Slot0/1..3 came back first. lldpRemPortDesc is
-#                             deliberately "Uplink to core", matching no ifName or ifDescr on that
-#                             switch: the port-desc tier still runs after an ambiguous port id (a
-#                             description that does match should win), so anything matchable here
-#                             would resolve the port and hide the case under test.
+#                             reports as ifPhysAddress on *every* port. This is the only subtype-3
+#                             port id in the lab, so it is what proves subtype 3 parses and reaches
+#                             a lookup at all, and that failing it leaves a device-level (amber)
+#                             NeighborLink rather than no edge. lldpRemPortDesc is deliberately
+#                             "Uplink to core", matching no ifName or ifDescr on that switch: the
+#                             port-desc tier still runs after a failed port id, so anything
+#                             matchable here would resolve the port and hide the case.
+#
+#                             The chassis id resolves the host; the port id must then resolve
+#                             nothing, because a MAC belonging to three ports names none of them.
+#                             Expect port_ambiguous=1 on the resolution summary, a named entry on
+#                             the companion warning, and one device-level edge — not a port-precise
+#                             link to whichever of Slot0/1..3 came back first.
+#
+#                             This only holds because switch-dlink-01 sends its physAddress as
+#                             `octet`; with `string` the far end stores no MACs, the lookup returns
+#                             port_not_found instead, and the same amber edge appears for an
+#                             entirely different reason.
 #   port 5 → switch-netgear-01 chassis 00:1a:2b:3c:4d:63 is on no port and no IP (the #664
 #                             shape), so only the host's own recorded chassis_id can match it;
 #                             port id "3" matches no name and falls through to ifIndex 3 (g3).

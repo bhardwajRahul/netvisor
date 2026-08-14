@@ -78,13 +78,20 @@ Re-running `lxc/setup.sh` also resets it, which is the simplest way to undo a te
 
 Both should resolve to `Neighbor::Interface` and draw edges in L2 Physical. The records deliberately share `Gi0/1`/`Gi0/2` with links other sim devices also claim — the profile exercises port-id resolution, which runs per interface row, not a physically consistent lab.
 
-It also carries the third report from the same issue: **every one of its ports reports the same `ifPhysAddress`**, the chassis base MAC `00:ad:24:af:4e:00`, which is also its `lldpLocChassisId`. The real DGS-1210-48 does this, RFC 2863 does not require per-port addresses, and the reporter — seeing one MAC repeated down the whole interface list — read it as Scanopy mis-attributing them. It is not: the ifTable walk keys each `ifPhysAddress` off its own row's OID sub-id and cannot copy one row's value onto another. What it did break is identity: a MAC that names three ports names none of them, and the lookups that treated one as a port identifier picked whichever row the database returned first. Confirm the device's side of it with:
+It also carries the third report from the same issue: **every one of its ports reports the same `ifPhysAddress`**, the chassis base MAC `00:ad:24:af:4e:00`, which is also its `lldpLocChassisId`. The real DGS-1210-48 does this, RFC 2863 does not require per-port addresses, and the reporter — seeing one MAC repeated down the whole interface list — read it as Scanopy mis-attributing them. It is not: the ifTable walk keys each `ifPhysAddress` off its own row's OID sub-id and cannot copy one row's value onto another. What it did break is identity: a MAC that names three ports names none of them, and the lookups that treated one as a port identifier picked whichever row the database returned first.
 
-```bash
-snmpwalk -v2c -c netdefault 192.168.7.244 1.3.6.1.2.1.2.2.1.6   # one MAC, three ifIndexes
-```
+> **Send a MAC with `octet`, never `string`.** `string` transmits the value as text, so
+> `00:ad:24:af:4e:00` arrives as 17 ASCII bytes where a `PhysAddress` is six raw octets. The daemon
+> correctly refuses to read that as an address, the interface stores no MAC, and the fixture quietly
+> tests nothing while the L2 view still looks healthy. `octet` takes space-separated hex
+> (`octet 00 ad 24 af 4e 00`) and emits what a real agent sends. This has caught three fixtures so
+> far. Check any MAC-valued column you add:
+>
+> ```bash
+> snmpwalk -v2c -c netdefault -Ox 192.168.7.244 1.3.6.1.2.1.2.2.1.6   # six octets, not seventeen
+> ```
 
-The far side is `switch-tplink-01`'s local port 4, below. An earlier revision of this profile gave each port its own address (`…:4e:01`–`03`) — the case that never needed guarding — and nothing else here depended on them being distinct.
+An earlier revision of this profile gave each port its own address (`…:4e:01`–`03`) — the case that never needed guarding — and nothing else here depended on them being distinct.
 
 **A table served out of ascending OID order (`.246`).** Modelled on the Hikvision DS-3T1512HP from #674. The switch stores its ARP table unsorted and iterates it positionally, so GETNEXT hands back whatever row physically follows the one asked for — answering `…10.20.30.44` with `…10.20.30.1`. `snmpwalk` stops at `OID not increasing`; `snmpbulkwalk -Cc` reads all 45 rows. The data is retrievable, and only a client insisting every step ascend refuses it.
 
@@ -132,7 +139,9 @@ Each of its five neighbours resolves through exactly one intended path, matched 
 
 So a clean scan gives three edges in L2 Physical — two port-to-port, one device-level from `1/0/4`, and, from `1/0/2`, none.
 
-**`1/0/4` is the far side of the shared-MAC case.** It advertises `lldpRemPortIdSubtype` = 3 (`macAddress`) with `00:AD:24:AF:4E:00` — the address switch-dlink-01 reports on all three of its ports. The chassis id resolves the host; the port id must then resolve *nothing*, because a MAC belonging to three ports identifies none of them. Expect `port_ambiguous=1` on the `LLDP/CDP link resolution complete` line, a named entry on the companion warning, and one amber `NeighborLink` — **not** a teal `PhysicalLink` to whichever of `Slot0/1`–`Slot0/3` came back first, which is what it drew before #668. Its `lldpRemPortDesc` is `Uplink to core`, matching no `ifName` or `ifDescr` on that switch: the port-description tier still runs after an ambiguous port id (a description that *does* match should win), so anything matchable there would resolve the port and hide the case.
+**`1/0/4` is the far side of the shared-MAC case**, and the only subtype-3 port id in the lab. It advertises `lldpRemPortIdSubtype` = 3 (`macAddress`) with `00:AD:24:AF:4E:00` — the address switch-dlink-01 reports on all three of its ports. The chassis id resolves the host; the port id must then resolve *nothing*, because a MAC belonging to three ports identifies none of them. Expect `port_ambiguous=1` on the `LLDP/CDP link resolution complete` line, a named entry on the companion warning, and one amber `NeighborLink` — **not** a teal `PhysicalLink` to whichever of `Slot0/1`–`Slot0/3` came back first, which is what it drew before #668. Its `lldpRemPortDesc` is `Uplink to core`, matching no `ifName` or `ifDescr` on that switch: the port-description tier still runs after an ambiguous port id (a description that *does* match should win), so anything matchable there would resolve the port and hide the case.
+
+Check `port_ambiguous`, not the edge colour. If switch-dlink-01's physAddress is ever sent as `string` again it stores no MACs, the lookup returns `port_not_found` instead, and the identical amber edge appears for an entirely different reason.
 
 Note that `1/0/3` and `1/0/4` name the same far-end device on purpose. The pair is the A/B: identical host resolution, one port id that identifies a port and one that cannot.
 
