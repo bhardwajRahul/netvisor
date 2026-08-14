@@ -10,6 +10,7 @@ use tokio::time::timeout;
 use tracing::{debug, trace, warn};
 
 use crate::daemon::discovery::service::warnings::{MalformedNeighbourReason, ShortfallReason};
+use crate::server::snmp::resolution::lldp::canonical_mac;
 
 use super::oids::{self, oid_to_vec, parse_oid};
 use super::session::{MAX_WALK_ENTRIES, SNMP_TIMEOUT};
@@ -151,6 +152,15 @@ where
     let mut stop = WalkStop::EndOfSubtree;
     let mut stop_detail: Option<String> = None;
     let mut desync_retries = 0u8;
+    // Every in-subtree OID already handed to `on_entry`. This is what tells the two devices that
+    // used to look identical apart: an OID below where we asked from is the GH #674 firmware bug
+    // when it names a row we have not seen, and an agent going in circles when it does not.
+    // Bounded by `MAX_WALK_ENTRIES` because nothing is inserted without also counting.
+    let mut seen: HashSet<Vec<u64>> = HashSet::new();
+    // The highest in-subtree OID accepted so far. The staleness test below has to compare against
+    // this rather than the cursor: the cursor now follows the agent's own order and may sit below
+    // rows already collected, and comparing against it would let a genuinely stale response pass.
+    let mut high_water = base_parts.clone();
 
     'walk: loop {
         if count >= MAX_WALK_ENTRIES {
@@ -222,6 +232,9 @@ where
         // Set when the agent answered with an OID belonging to some other question. Re-asking is
         // worth a try before giving up on the column.
         let mut retry_page = false;
+        // Rows on this page the walk had not already collected. A page that contributes none is
+        // the agent repeating itself, which is the one shape that cannot terminate on its own.
+        let mut page_new = 0usize;
         for (resp_parts, value) in varbinds {
             if matches!(
                 value,
@@ -238,7 +251,7 @@ where
                 // over from a cancelled request reads exactly like this), and calling it a
                 // natural end would report a column that stopped early as authoritative, which
                 // then re-enables the server-side prune #649 exists to suppress.
-                if resp_parts <= current_parts {
+                if resp_parts <= high_water {
                     stop_detail = Some(format!("responded with {resp_parts:?}"));
                     stop = WalkStop::StaleResponse;
                     // Retryable for the same reason a request-id mismatch is: the answer belongs
@@ -253,8 +266,22 @@ where
                 done = true;
                 break;
             }
-            on_entry(&resp_parts[base_parts.len()..], &value);
-            count += 1;
+            // In the subtree, so this is a row of the table being walked — whether or not it
+            // ascends. Firmware that stores a table unsorted serves real rows in a real order
+            // that simply is not numeric (GH #674); refusing them read part of the reporter's
+            // switch and reported the rest as absent. Identity, not ordering, is what separates
+            // that from an agent looping: a row already collected is a repeat and is dropped,
+            // which also keeps a re-asked page from emitting its rows twice.
+            if seen.insert(resp_parts.clone()) {
+                if resp_parts > high_water {
+                    high_water.clone_from(&resp_parts);
+                }
+                on_entry(&resp_parts[base_parts.len()..], &value);
+                count += 1;
+                page_new += 1;
+            }
+            // Continue from where the agent left off in its own order, which is what lets the
+            // rest of an out-of-order table be reached at all.
             next_parts = Some(resp_parts);
             if count >= MAX_WALK_ENTRIES {
                 stop = WalkStop::EntryCap;
@@ -265,12 +292,15 @@ where
         if !done {
             match next_parts {
                 Some(parts) => {
-                    // The walk must strictly advance. A device that answers with a tail OID
-                    // that doesn't lexicographically exceed the one we asked from (observed
-                    // on Ubiquiti bridge-FDB) would otherwise have us re-request the same
-                    // page until MAX_WALK_ENTRIES or the integration timeout. `Vec<u64>`
-                    // compares lexicographically, matching SNMP OID ordering.
-                    if parts <= current_parts {
+                    // The walk must keep making progress — but progress is new rows, not a
+                    // larger OID. A device that answers with a tail OID that doesn't
+                    // lexicographically exceed the one we asked from (observed on Ubiquiti
+                    // bridge-FDB) would otherwise have us re-request the same page until
+                    // MAX_WALK_ENTRIES or the integration timeout; it still does, because its
+                    // second identical page contributes nothing new. Testing the tail OID
+                    // instead used to catch out-of-order firmware in the same net (#674),
+                    // which had us discard rows that were there for the asking.
+                    if page_new == 0 {
                         stop_detail = Some(format!("responded with {parts:?}"));
                         stop = WalkStop::NonAdvancingOid;
                         retry_page = true;
@@ -298,8 +328,11 @@ where
                 detail = stop_detail.as_deref().unwrap_or(""),
                 "Re-asking after an answer that belonged to another request"
             );
-            // Nothing from this page reached `on_entry` — a wrong-OID response is rejected
-            // before the callback — so re-asking cannot duplicate rows.
+            // Re-asking cannot duplicate rows, because `seen` drops any the callback already
+            // took. It used to be able to: the wrong-OID varbind is rejected before the
+            // callback, but the in-subtree ones ahead of it on the same page were not, and the
+            // cursor had not moved — so a re-ask re-delivered them, pushing duplicate VLANs and
+            // duplicate per-port memberships into the collectors that append rather than key.
             stop = WalkStop::EndOfSubtree;
             stop_detail = None;
             continue 'walk;
@@ -439,6 +472,42 @@ pub struct SnmpCollection<T> {
     /// asserted that it never would — true of a device serving malformed rows, false of a column
     /// that stopped early, and the two were indistinguishable to the operator (GH #668).
     pub discard_reason: Option<MalformedNeighbourReason>,
+}
+
+impl<T: Default> SnmpCollection<T> {
+    /// A collection the caller had no reason to attempt.
+    ///
+    /// Distinct from [`Default`], which means a query that ran and failed. Nothing was asked, so
+    /// there is no shortfall to report and no reason to name — reporting one would put a warning
+    /// on every device that simply had no neighbours to place.
+    pub fn skipped() -> Self {
+        Self {
+            records: T::default(),
+            complete: true,
+            unsupported: false,
+            reason: None,
+            discarded: 0,
+            discard_reason: None,
+        }
+    }
+}
+
+impl<T> SnmpCollection<T> {
+    /// The ordinary outcome of a multi-column walk: the records, plus whether every column
+    /// finished and why the first one that didn't stopped.
+    ///
+    /// `unsupported` and the discard fields stay at their neutral values — a query that discards
+    /// rows, or that can tell "no such MIB" from "implemented and empty", sets them itself.
+    fn from_walk(records: T, shortfall: Shortfall) -> Self {
+        Self {
+            records,
+            complete: shortfall.complete,
+            unsupported: false,
+            reason: shortfall.reason,
+            discarded: 0,
+            discard_reason: None,
+        }
+    }
 }
 
 impl<T: Default> Default for SnmpCollection<T> {
@@ -1151,31 +1220,59 @@ fn dominant_discard_reason(
 /// maps that number to a textual port id (`lldpLocPortId`), which the caller resolves
 /// back to the real ifIndex. Returns an empty map if the device does not expose the
 /// table (callers fall back to treating the local-port number as the ifIndex).
-pub async fn query_lldp_local_ports(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn query_lldp_local_ports<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
-) -> Result<HashMap<i32, LldpLocalPort>> {
+) -> Result<SnmpCollection<HashMap<i32, LldpLocalPort>>> {
     let mut ports: HashMap<i32, LldpLocalPort> = HashMap::new();
+    let mut shortfall = Shortfall::default();
 
     let columns = [
         (oids::lldp::local::LLDP_LOC_PORT_ID_SUBTYPE, "subtype"),
         (oids::lldp::local::LLDP_LOC_PORT_ID, "id"),
+        (oids::lldp::local::LLDP_LOC_PORT_DESC, "desc"),
     ];
 
     for (base_oid_str, column_name) in columns {
         // Index is a single sub-id: lldpLocPortNum.
-        walk_subtree(session, ip, base_oid_str, |suffix, value| {
-            let Some(&local_port_num) = suffix.first() else {
-                return;
-            };
-            let entry = ports.entry(local_port_num as i32).or_default();
-            match column_name {
-                "subtype" => entry.port_id_subtype = value_to_i32(value).map(|v| v as u8),
-                "id" => entry.port_id = value_to_string(value),
-                _ => {}
-            }
-        })
-        .await?;
+        walk_column(
+            session,
+            ip,
+            base_oid_str,
+            &mut shortfall,
+            |suffix, value| {
+                let Some(&local_port_num) = suffix.first() else {
+                    return;
+                };
+                let entry = ports.entry(local_port_num as i32).or_default();
+                match column_name {
+                    "subtype" => entry.port_id_subtype = value_to_i32(value).map(|v| v as u8),
+                    "id" => {
+                        // Both readings of the same column, because the subtype decides which one
+                        // is meaningful and the columns arrive in separate walks. A macAddress(3)
+                        // port id is six raw octets, which is not text — reading it only as a
+                        // string dropped it silently and left the port unresolvable.
+                        //
+                        // Reading every id as a MAC would misread a six-character port *name* as
+                        // one (`canonical_mac` documents the trap). That is safe here only because
+                        // the resolver consults this field on subtype 3 alone.
+                        entry.port_id = value_to_string(value);
+                        entry.port_id_mac = value_to_mac(value).or_else(|| {
+                            // Firmware that renders the address as text rather than octets, the
+                            // same quirk `LldpPortId::from_snmp` already absorbs on the remote side.
+                            entry
+                                .port_id
+                                .as_deref()
+                                .and_then(canonical_mac)
+                                .and_then(|m| m.parse().ok())
+                        });
+                    }
+                    "desc" => entry.port_desc = value_to_string(value),
+                    _ => {}
+                }
+            },
+        )
+        .await;
     }
 
     debug!(
@@ -1183,24 +1280,26 @@ pub async fn query_lldp_local_ports(
         ip,
         ports.len()
     );
-    Ok(ports)
+    Ok(SnmpCollection::from_walk(ports, shortfall))
 }
 
 /// Query ipAddrTable for IP address to ifIndex + subnet mask mappings.
 /// Walks ipAdEntIfIndex and ipAdEntNetMask columns where the OID suffix
 /// encodes the IP address as A.B.C.D.
-pub async fn query_ip_addr_table(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn query_ip_addr_table<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
-) -> Result<HashMap<IpAddr, IpAddrEntry>> {
+) -> Result<SnmpCollection<HashMap<IpAddr, IpAddrEntry>>> {
     let mut if_index_map: HashMap<IpAddr, i32> = HashMap::new();
     let mut net_mask_map: HashMap<IpAddr, IpAddr> = HashMap::new();
+    let mut shortfall = Shortfall::default();
 
     // Walk ipAdEntIfIndex — OID suffix encodes the IP address as A.B.C.D.
-    walk_subtree(
+    walk_column(
         session,
         ip,
         oids::ip_mib::ip_addr_entry::IP_AD_ENT_IF_INDEX,
+        &mut shortfall,
         |suffix, value| {
             if suffix.len() == 4
                 && let Some(if_index) = value_to_i32(value)
@@ -1215,13 +1314,14 @@ pub async fn query_ip_addr_table(
             }
         },
     )
-    .await?;
+    .await;
 
     // Walk ipAdEntNetMask
-    walk_subtree(
+    walk_column(
         session,
         ip,
         oids::ip_mib::ip_addr_entry::IP_AD_ENT_NET_MASK,
+        &mut shortfall,
         |suffix, value| {
             if suffix.len() == 4
                 && let Some(mask) = value_to_ip(value)
@@ -1236,7 +1336,7 @@ pub async fn query_ip_addr_table(
             }
         },
     )
-    .await?;
+    .await;
 
     // Combine ifIndex and netMask results
     let result: HashMap<IpAddr, IpAddrEntry> = if_index_map
@@ -1253,7 +1353,7 @@ pub async fn query_ip_addr_table(
         result.len()
     );
 
-    Ok(result)
+    Ok(SnmpCollection::from_walk(result, shortfall))
 }
 
 /// Query CDP cache table for neighbor information (Cisco devices)
@@ -1367,10 +1467,10 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
 
 /// Query ARP table (ipNetToMediaTable) for IP-to-MAC mappings.
 /// Returns entries with ifIndex, MAC, and IP for each ARP cache entry.
-pub async fn query_arp_table(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn query_arp_table<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
-) -> Result<Vec<ArpEntry>> {
+) -> Result<SnmpCollection<Vec<ArpEntry>>> {
     // We need to walk 4 columns: ifIndex, physAddress, netAddress, type
     // OID suffix format: ifIndex.A.B.C.D
     struct ArpEntryBuilder {
@@ -1381,6 +1481,7 @@ pub async fn query_arp_table(
     }
 
     let mut entries: HashMap<String, ArpEntryBuilder> = HashMap::new();
+    let mut shortfall = Shortfall::default();
 
     let columns = [
         (oids::arp::entry::IP_NET_TO_MEDIA_IF_INDEX, "ifIndex"),
@@ -1394,31 +1495,39 @@ pub async fn query_arp_table(
 
     for (base_oid_str, column_name) in columns {
         // OID suffix: ifIndex.A.B.C.D
-        walk_subtree(session, ip, base_oid_str, |suffix, value| {
-            if suffix.len() < 5 {
-                return;
-            }
-            let key = suffix
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<_>>()
-                .join(".");
-            let entry = entries.entry(key).or_insert_with(|| ArpEntryBuilder {
-                if_index: None,
-                mac_address: None,
-                ip_address: None,
-                entry_type: None,
-            });
-            match column_name {
-                "ifIndex" => entry.if_index = value_to_i32(value),
-                "physAddress" => entry.mac_address = value_to_mac(value),
-                "netAddress" => entry.ip_address = value_to_ip(value),
-                "type" => entry.entry_type = value_to_i32(value),
-                _ => {}
-            }
-        })
-        .await?;
+        walk_column(
+            session,
+            ip,
+            base_oid_str,
+            &mut shortfall,
+            |suffix, value| {
+                if suffix.len() < 5 {
+                    return;
+                }
+                let key = suffix
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                let entry = entries.entry(key).or_insert_with(|| ArpEntryBuilder {
+                    if_index: None,
+                    mac_address: None,
+                    ip_address: None,
+                    entry_type: None,
+                });
+                match column_name {
+                    "ifIndex" => entry.if_index = value_to_i32(value),
+                    "physAddress" => entry.mac_address = value_to_mac(value),
+                    "netAddress" => entry.ip_address = value_to_ip(value),
+                    "type" => entry.entry_type = value_to_i32(value),
+                    _ => {}
+                }
+            },
+        )
+        .await;
     }
+
+    let rows_read = entries.len();
 
     // Filter out invalid entries (type==2) and entries missing required fields
     let result: Vec<ArpEntry> = entries
@@ -1437,21 +1546,27 @@ pub async fn query_arp_table(
         })
         .collect();
 
+    // `rows_read` alongside the result is what makes an empty ARP table diagnosable. The entry is
+    // a join across four columns and needs all of them, so a column that comes back empty drops
+    // every row the others read — reported as "no ARP entries" from a device that answered
+    // hundreds of them (GH #674). The two numbers together say which happened.
     debug!(
-        "ARP table walk from {} returned {} entries",
-        ip,
-        result.len()
+        ip = %ip,
+        entries = result.len(),
+        rows_read,
+        complete = shortfall.complete,
+        "ARP table walk finished"
     );
 
-    Ok(result)
+    Ok(SnmpCollection::from_walk(result, shortfall))
 }
 
 /// Query ENTITY-MIB entPhysicalTable for hardware inventory.
 /// Returns the best-match physical entity (chassis > stack > module).
-pub async fn query_entity_physical(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn query_entity_physical<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
-) -> Result<Option<DeviceInventory>> {
+) -> Result<SnmpCollection<Option<DeviceInventory>>> {
     struct PhysicalEntry {
         description: Option<String>,
         class: Option<i32>,
@@ -1462,6 +1577,7 @@ pub async fn query_entity_physical(
     }
 
     let mut entries: HashMap<i32, PhysicalEntry> = HashMap::new();
+    let mut shortfall = Shortfall::default();
 
     let columns = [
         (oids::entity::entry::ENT_PHYSICAL_DESCR, "descr"),
@@ -1474,33 +1590,41 @@ pub async fn query_entity_physical(
 
     for (base_oid_str, column_name) in columns {
         // OID suffix is entPhysicalIndex (single integer).
-        walk_subtree(session, ip, base_oid_str, |suffix, value| {
-            let Some(&index_u64) = suffix.last() else {
-                return;
-            };
-            let entry = entries
-                .entry(index_u64 as i32)
-                .or_insert_with(|| PhysicalEntry {
-                    description: None,
-                    class: None,
-                    name: None,
-                    serial_number: None,
-                    manufacturer: None,
-                    model: None,
-                });
-            match column_name {
-                "descr" => entry.description = value_to_string(value),
-                "class" => entry.class = value_to_i32(value),
-                "name" => entry.name = value_to_string(value),
-                "serialNum" => {
-                    entry.serial_number = value_to_string(value).filter(|s| !s.is_empty())
+        walk_column(
+            session,
+            ip,
+            base_oid_str,
+            &mut shortfall,
+            |suffix, value| {
+                let Some(&index_u64) = suffix.last() else {
+                    return;
+                };
+                let entry = entries
+                    .entry(index_u64 as i32)
+                    .or_insert_with(|| PhysicalEntry {
+                        description: None,
+                        class: None,
+                        name: None,
+                        serial_number: None,
+                        manufacturer: None,
+                        model: None,
+                    });
+                match column_name {
+                    "descr" => entry.description = value_to_string(value),
+                    "class" => entry.class = value_to_i32(value),
+                    "name" => entry.name = value_to_string(value),
+                    "serialNum" => {
+                        entry.serial_number = value_to_string(value).filter(|s| !s.is_empty())
+                    }
+                    "mfgName" => {
+                        entry.manufacturer = value_to_string(value).filter(|s| !s.is_empty())
+                    }
+                    "modelName" => entry.model = value_to_string(value).filter(|s| !s.is_empty()),
+                    _ => {}
                 }
-                "mfgName" => entry.manufacturer = value_to_string(value).filter(|s| !s.is_empty()),
-                "modelName" => entry.model = value_to_string(value).filter(|s| !s.is_empty()),
-                _ => {}
-            }
-        })
-        .await?;
+            },
+        )
+        .await;
     }
 
     // Select best match: prefer chassis (3), fallback to stack (11), then module (9)
@@ -1524,7 +1648,7 @@ pub async fn query_entity_physical(
         result.is_some()
     );
 
-    Ok(result)
+    Ok(SnmpCollection::from_walk(result, shortfall))
 }
 
 /// Walk dot1dBasePortIfIndex to build bridge_port → ifIndex mapping.
@@ -1816,17 +1940,19 @@ pub async fn query_lldp_local(
 
 /// Query VLAN table for VLAN IDs and names.
 /// Tries Q-BRIDGE dot1qVlanStaticName first, falls back to Cisco VTP vtpVlanName.
-pub async fn query_vlan_table(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn query_vlan_table<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
-) -> Result<Vec<VlanInfo>> {
+) -> Result<SnmpCollection<Vec<VlanInfo>>> {
     let mut vlans: Vec<VlanInfo> = Vec::new();
+    let mut shortfall = Shortfall::default();
 
     // Try Q-BRIDGE dot1qVlanStaticName first. OID suffix is the VLAN ID.
-    walk_subtree(
+    walk_column(
         session,
         ip,
         oids::vlan::q_bridge::DOT1Q_VLAN_STATIC_NAME,
+        &mut shortfall,
         |suffix, value| {
             if let Some(&vlan_u64) = suffix.last()
                 && let Some(name) = value_to_string(value)
@@ -1838,15 +1964,19 @@ pub async fn query_vlan_table(
             }
         },
     )
-    .await?;
+    .await;
 
     // Fall back to Cisco VTP if Q-BRIDGE returned nothing. VTP index is
     // mgmtDomainIndex.vlanId — use the last sub-id as the VLAN ID.
     if vlans.is_empty() {
-        walk_subtree(
+        // A device with no Q-BRIDGE VLAN names has not fallen short if VTP answers instead, so
+        // the fallback starts the reckoning again rather than inheriting the first walk's stop.
+        shortfall = Shortfall::default();
+        walk_column(
             session,
             ip,
             oids::vlan::cisco_vtp::VTP_VLAN_NAME,
+            &mut shortfall,
             |suffix, value| {
                 if let Some(&vlan_u64) = suffix.last()
                     && let Some(name) = value_to_string(value)
@@ -1858,7 +1988,7 @@ pub async fn query_vlan_table(
                 }
             },
         )
-        .await?;
+        .await;
     }
 
     debug!(
@@ -1867,7 +1997,7 @@ pub async fn query_vlan_table(
         vlans.len()
     );
 
-    Ok(vlans)
+    Ok(SnmpCollection::from_walk(vlans, shortfall))
 }
 
 /// Query per-port VLAN membership from Q-BRIDGE-MIB.
@@ -2139,6 +2269,8 @@ mod if_table_tests {
     enum Canned {
         Int(i64),
         Str(&'static str),
+        /// Raw octets, for columns whose value is not text — an `lldpLocPortId` carrying a MAC.
+        Bytes(&'static [u8]),
     }
 
     /// An agent backed by a sorted OID table, answering GETNEXT/GETBULK the way a real one does:
@@ -2204,6 +2336,7 @@ mod if_table_tests {
                     let value = match v {
                         Canned::Int(i) => Value::Integer(*i),
                         Canned::Str(s) => Value::OctetString(s.as_bytes()),
+                        Canned::Bytes(b) => Value::OctetString(b),
                     };
                     (oid.clone(), value)
                 })
@@ -3046,5 +3179,296 @@ mod if_table_tests {
             "a table walked past is implemented and empty, not absent"
         );
         assert!(lldp.complete);
+    }
+
+    /// `lldpLocPortId` under subtype 3 is the port's MAC, sent either as six raw octets or —
+    /// on firmware that formats it itself — as text. Neither reached the resolver: the column
+    /// was read only as a string, so the octets decoded to nothing and the text to something
+    /// that matches no interface name. Both must arrive as the same address.
+    ///
+    /// The description column is walked here too; it was not collected at all before, and on
+    /// this vendor it is the only column that names the interface.
+    #[tokio::test]
+    async fn a_mac_port_id_is_read_from_either_encoding_alongside_its_description() {
+        const SUBTYPE: &str = "1.0.8802.1.1.2.1.3.7.1.2";
+        const PORT_ID: &str = "1.0.8802.1.1.2.1.3.7.1.3";
+        const PORT_DESC: &str = "1.0.8802.1.1.2.1.3.7.1.4";
+
+        let mut agent = FakeAgent::new(&[
+            (&format!("{SUBTYPE}.10"), Canned::Int(3)),
+            (
+                &format!("{PORT_ID}.10"),
+                Canned::Bytes(&[2, 0, 0, 0, 0, 0xEA]),
+            ),
+            (&format!("{PORT_DESC}.10"), Canned::Str("100-T eth10")),
+            (&format!("{SUBTYPE}.11"), Canned::Int(3)),
+            (&format!("{PORT_ID}.11"), Canned::Str("02:00:00:00:00:e9")),
+            (&format!("{PORT_DESC}.11"), Canned::Str("100-T eth9")),
+        ]);
+
+        let ports = query_lldp_local_ports(&mut agent, ip())
+            .await
+            .unwrap()
+            .records;
+
+        assert_eq!(
+            ports[&10].port_id_mac,
+            Some(mac_address::MacAddress::new([2, 0, 0, 0, 0, 0xEA])),
+            "six raw octets are the port's address"
+        );
+        assert_eq!(
+            ports[&11].port_id_mac,
+            Some(mac_address::MacAddress::new([2, 0, 0, 0, 0, 0xE9])),
+            "the same address written as text is the same address"
+        );
+        assert_eq!(ports[&10].port_desc.as_deref(), Some("100-T eth10"));
+    }
+}
+
+/// GH #674: an agent whose table rows are not in ascending OID order.
+///
+/// Firmware that stores a table unsorted and iterates it positionally answers GETNEXT with
+/// whatever row comes next *in its own order*. That is what makes `snmpwalk` stop with "OID not
+/// increasing" while `snmpbulkwalk -Cc` reads the same table in full: the rows are real and
+/// retrievable, and only a client that insists every step ascend refuses them.
+#[cfg(test)]
+mod out_of_order_tests {
+    use super::*;
+
+    const ARP_IF_INDEX: &str = "1.3.6.1.2.1.4.22.1.1";
+    const ARP_PHYS: &str = "1.3.6.1.2.1.4.22.1.2";
+    const ARP_NET: &str = "1.3.6.1.2.1.4.22.1.3";
+    const ARP_TYPE: &str = "1.3.6.1.2.1.4.22.1.4";
+
+    fn ip() -> IpAddr {
+        "192.0.2.1".parse().unwrap()
+    }
+
+    fn oid(s: &str) -> Vec<u64> {
+        s.split('.').map(|p| p.parse().unwrap()).collect()
+    }
+
+    enum Cell {
+        Int(i64),
+        Bytes(Vec<u8>),
+        Ip([u8; 4]),
+    }
+
+    /// An agent that iterates its rows in the order it was given them, not in OID order.
+    struct ScrambledAgent {
+        seq: Vec<(Vec<u64>, Cell)>,
+    }
+
+    impl ScrambledAgent {
+        fn page(&self, from: &[u64], max: usize) -> Varbinds<'_> {
+            let start = match self.seq.iter().position(|(o, _)| o.as_slice() == from) {
+                Some(i) => i + 1,
+                // A bare column base names no row of its own. A real agent answers it with the
+                // first row it holds beyond that point — which, iterating its own order, need
+                // not be the numerically smallest one.
+                None => self
+                    .seq
+                    .iter()
+                    .position(|(o, _)| o.as_slice() > from)
+                    .unwrap_or(self.seq.len()),
+            };
+            let page: Varbinds<'_> = self.seq[start..]
+                .iter()
+                .take(max)
+                .map(|(o, cell)| {
+                    let value = match cell {
+                        Cell::Int(i) => Value::Integer(*i),
+                        Cell::Bytes(b) => Value::OctetString(b),
+                        Cell::Ip(a) => Value::IpAddress(*a),
+                    };
+                    (o.clone(), value)
+                })
+                .collect();
+            if page.is_empty() {
+                return vec![(from.to_vec(), Value::EndOfMibView)];
+            }
+            page
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SnmpWalkTransport for ScrambledAgent {
+        async fn walk_getbulk<'a>(&'a mut self, from: &[u64], max: u32) -> Result<WalkPage<'a>> {
+            Ok(WalkPage::Varbinds(self.page(from, max as usize)))
+        }
+        async fn walk_getnext<'a>(&'a mut self, from: &[u64]) -> Result<Varbinds<'a>> {
+            Ok(self.page(from, 1))
+        }
+    }
+
+    /// Host octets in the order the agent hands them out: evens first, then odds. The point is
+    /// only that a later page ends lower than an earlier one did, which is what a strictly
+    /// ascending walk cannot survive. `HOSTS` is sized so that happens on a full second page.
+    fn scrambled_hosts() -> Vec<u8> {
+        let evens = (1..=45u8).filter(|n| n % 2 == 0);
+        let odds = (1..=45u8).filter(|n| n % 2 == 1);
+        evens.chain(odds).collect()
+    }
+
+    /// A complete four-column ARP table, every column served in the scrambled order.
+    fn scrambled_arp() -> ScrambledAgent {
+        let mut seq = Vec::new();
+        for (column, _) in [
+            (ARP_IF_INDEX, 0),
+            (ARP_PHYS, 1),
+            (ARP_NET, 2),
+            (ARP_TYPE, 3),
+        ] {
+            for host in scrambled_hosts() {
+                let key = format!("{column}.3.192.0.2.{host}");
+                let cell = match column {
+                    ARP_PHYS => Cell::Bytes(vec![0x00, 0x11, 0x22, 0x33, 0x44, host]),
+                    ARP_NET => Cell::Ip([192, 0, 2, host]),
+                    ARP_TYPE => Cell::Int(3),
+                    _ => Cell::Int(3),
+                };
+                seq.push((oid(&key), cell));
+            }
+        }
+        ScrambledAgent { seq }
+    }
+
+    /// The defect itself: rows that go backwards are still rows. A walk that refuses them reads
+    /// part of the table and calls the rest absent, which is what emptied the reporter's scan.
+    #[tokio::test]
+    async fn a_table_served_out_of_order_is_read_in_full() {
+        let mut agent = scrambled_arp();
+
+        let entries = query_arp_table(&mut agent, ip()).await.unwrap().records;
+
+        assert_eq!(
+            entries.len(),
+            45,
+            "every ARP row the device holds must be collected, whatever order it serves them in"
+        );
+    }
+
+    /// The reporter's symptom was `count=0`, not a short count — and an ordering fault alone does
+    /// not explain that, because rows already passed to the collector are kept. This is what does:
+    /// the ARP row is a join across four columns and needs all of them, so one column coming up
+    /// empty discards every row the other three read in full.
+    ///
+    /// The join is right to insist — an ARP entry with no MAC is not usable — so the fix is not to
+    /// relax it but to stop the loss being silent (`SnmpWalkGroup::ArpTable`).
+    #[tokio::test]
+    async fn one_empty_column_discards_every_row_the_others_read() {
+        let mut agent = scrambled_arp();
+        // A device that answers the other three columns and holds nothing under physAddress.
+        agent.seq.retain(|(o, _)| !o.starts_with(&oid(ARP_PHYS)));
+
+        let entries = query_arp_table(&mut agent, ip()).await.unwrap().records;
+
+        assert!(
+            entries.is_empty(),
+            "the join drops rows with no MAC, so the collection reports nothing at all"
+        );
+    }
+
+    /// An agent that serves a fixed script regardless of what was asked, so a page can be
+    /// re-delivered exactly as a real one does when the walk re-asks.
+    struct ScriptedAgent {
+        pages: std::collections::VecDeque<Varbinds<'static>>,
+    }
+
+    #[async_trait::async_trait]
+    impl SnmpWalkTransport for ScriptedAgent {
+        async fn walk_getbulk<'a>(&'a mut self, _from: &[u64], _max: u32) -> Result<WalkPage<'a>> {
+            Ok(WalkPage::Varbinds(
+                self.pages.pop_front().unwrap_or_default(),
+            ))
+        }
+        async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
+            Ok(self.pages.pop_front().unwrap_or_default())
+        }
+    }
+
+    /// A page that ends in a response belonging to another question is re-asked, and the rows
+    /// ahead of that response on the same page have already reached the collector. The cursor has
+    /// not moved, so the agent serves them again — which used to append a second copy of every
+    /// VLAN and every per-port membership, the two collectors that push rather than key by index.
+    #[tokio::test]
+    async fn re_asking_a_page_does_not_deliver_its_rows_twice() {
+        const BASE: &str = "1.3.6.1.2.1.2.2.1.2";
+        let row = |oid_str: &str| (oid(oid_str), Value::Integer(1));
+        // The trailing OID is below the base and outside it: a leftover answer to an earlier
+        // question, which is what triggers the re-ask. `Value` is not `Clone`, so the page the
+        // agent re-delivers is built a second time rather than copied.
+        let interrupted = || {
+            vec![
+                row("1.3.6.1.2.1.2.2.1.2.1"),
+                row("1.3.6.1.2.1.2.2.1.2.2"),
+                row("1.3.6.1.2.1.2.2.1.1.9"),
+            ]
+        };
+        let mut agent = ScriptedAgent {
+            pages: [
+                interrupted(),
+                interrupted(),
+                vec![row("1.3.6.1.2.1.2.2.1.3.1")],
+            ]
+            .into_iter()
+            .collect(),
+        };
+
+        let mut suffixes = Vec::new();
+        walk_subtree(&mut agent, ip(), BASE, |suffix, _v| {
+            suffixes.push(suffix.to_vec())
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(
+            suffixes,
+            vec![vec![1], vec![2]],
+            "each row must reach the collector once, however many times the page is served"
+        );
+    }
+
+    /// Tolerating rows that go backwards removes the ordering guarantee that used to bound the
+    /// walk, so something else has to. An agent that never repeats itself and never leaves the
+    /// subtree cannot be told from a very large table, and only the entry cap ends it.
+    #[tokio::test]
+    async fn an_agent_that_never_repeats_still_stops_at_the_entry_cap() {
+        /// Answers every request with rows it has never sent before, for ever.
+        struct EndlessAgent {
+            next: u64,
+        }
+
+        #[async_trait::async_trait]
+        impl SnmpWalkTransport for EndlessAgent {
+            async fn walk_getbulk<'a>(
+                &'a mut self,
+                _from: &[u64],
+                max: u32,
+            ) -> Result<WalkPage<'a>> {
+                let page = (0..max as u64)
+                    .map(|i| {
+                        (
+                            oid(&format!("1.3.6.1.2.1.2.2.1.2.{}", self.next + i)),
+                            Value::Integer(1),
+                        )
+                    })
+                    .collect();
+                self.next += max as u64;
+                Ok(WalkPage::Varbinds(page))
+            }
+            async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
+                unreachable!("the walk uses getbulk here")
+            }
+        }
+
+        let mut agent = EndlessAgent { next: 1 };
+        let mut count = 0usize;
+        let stop = walk_subtree(&mut agent, ip(), "1.3.6.1.2.1.2.2.1.2", |_s, _v| count += 1)
+            .await
+            .unwrap();
+
+        assert_eq!(count, MAX_WALK_ENTRIES);
+        assert!(!stop.is_complete(), "a capped walk is not a finished one");
     }
 }

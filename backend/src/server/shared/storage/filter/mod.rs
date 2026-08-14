@@ -35,6 +35,7 @@ mod constructors;
 mod filters;
 mod lldp;
 mod organization;
+mod subnets;
 
 #[cfg(test)]
 mod tests {

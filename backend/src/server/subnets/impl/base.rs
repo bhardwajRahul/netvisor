@@ -231,6 +231,29 @@ impl Subnet {
         let organizational_cidr = IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(0, 0, 0, 0), 0).unwrap());
         self.base.cidr == organizational_cidr
     }
+
+    /// Whether this subnet belongs to the inventory the user curates, and so
+    /// appears in the management lists (Subnets, Networks and Daemon tabs) and
+    /// in the dashboard's subnet count.
+    ///
+    /// Provenance, not category. The rows Scanopy fabricates for itself — the
+    /// per-network `0.0.0.0/0` Internet and Remote supernets (`EntitySource::System`,
+    /// `seed_data::create_wan_subnet` / `create_remote_subnet`) and the loopback
+    /// row seeded per daemon host (`EntitySource::Discovery`) — are fixtures nobody
+    /// curates, and omitting them is what
+    /// [`SubnetType::is_synthetic_category`] was added for.
+    ///
+    /// But a `Manual` subnet is one the user deliberately created and must always
+    /// be able to edit or delete. Keying purely on the category swallowed those
+    /// too: in GH #677 assigning `Remote` to a new subnet made it vanish from every
+    /// view while still blocking its own CIDR from being recreated, leaving no way
+    /// to reach it from the UI at all.
+    ///
+    /// `StorableFilter::<Subnet>::user_managed` is the SQL form of this; the two
+    /// must be changed together.
+    pub fn is_user_managed(&self) -> bool {
+        self.base.source == EntitySource::Manual || !self.base.subnet_type.is_synthetic_category()
+    }
 }
 
 impl PartialEq for Subnet {
@@ -343,6 +366,47 @@ mod tests {
             !sourced_subnet(SubnetType::Guest, None, EntitySource::Manual)
                 .corrects_container_bridge_guess(&discovered)
         );
+    }
+
+    /// GH #677: assigning `Remote` to a subnet they had created made it vanish from
+    /// every management view — unlistable, so uneditable and undeletable, while its
+    /// CIDR still blocked any attempt to recreate it. Whatever category a user picks,
+    /// the subnet stays theirs to manage.
+    #[test]
+    fn a_user_created_subnet_is_managed_whatever_its_category() {
+        use strum::IntoEnumIterator;
+        for subnet_type in SubnetType::iter() {
+            let manual = sourced_subnet(subnet_type, None, EntitySource::Manual);
+            assert!(
+                manual.is_user_managed(),
+                "{subnet_type:?}: a Manual subnet must never drop out of the management lists"
+            );
+        }
+    }
+
+    /// The other half of the rule: the rows Scanopy fabricates for itself stay out
+    /// of the lists a user curates. Built from the real constructors, so this fails
+    /// if one of them stops stamping the source the rule reads.
+    #[test]
+    fn scanopy_fabricated_subnets_are_not_user_managed() {
+        use crate::server::shared::storage::seed_data;
+
+        let network_id = Uuid::new_v4();
+        assert!(!seed_data::create_wan_subnet(network_id).is_user_managed());
+        assert!(!seed_data::create_remote_subnet(network_id).is_user_managed());
+
+        let loopback_ip = IpNetwork::V4(
+            pnet::ipnetwork::Ipv4Network::new(std::net::Ipv4Addr::LOCALHOST, 8).unwrap(),
+        );
+        let loopback = Subnet::from_discovery("lo".to_string(), &loopback_ip, network_id)
+            .expect("loopback /8 should produce a subnet");
+        assert!(!loopback.is_user_managed());
+
+        // A discovered subnet of any other category is real inventory and stays.
+        let discovered = IpNetwork::from_str("192.168.1.0/24").unwrap();
+        let lan = Subnet::from_discovery("eth0".to_string(), &discovered, network_id)
+            .expect("/24 should produce a subnet");
+        assert!(lan.is_user_managed());
     }
 
     /// Guards the invariants `HostService::seed_loopback` depends on: the daemon-host

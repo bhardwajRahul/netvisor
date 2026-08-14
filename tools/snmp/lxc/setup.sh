@@ -15,7 +15,7 @@ set -euo pipefail
 # simulator, not the product under test.
 # ══════════════════════════════════════════════════════════════════════
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245)
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245 192.168.7.246 192.168.7.247 192.168.7.248 192.168.7.249)
 CIDR="22"
 IFACE="eth0"
 
@@ -36,8 +36,16 @@ IFACE="eth0"
 # .245 covers the last device from the same report: a TP-Link that indexes lldpRemTable
 # without lldpRemTimeMark, so every neighbour row arrives one sub-id short of what the MIB
 # describes.
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c)
-SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01 switch-tplink-01)
+#
+# .246/.247 cover GH #674 and the Westermo report (August 2026). .246 serves its ARP table out
+# of ascending OID order — a real firmware bug that `snmpbulkwalk -Cc` tolerates and a strict
+# client refuses, which emptied every multi-column collection on the reporter's switch. It is
+# the only device using the positional `pass` handler. .247 identifies every local LLDP port by
+# `macAddress(3)` and names the interface only in `lldpLocPortDesc`, with local port numbers
+# running backwards against the interfaces — so neither the port id nor arithmetic can place a
+# neighbour, and only the description or a per-port MAC can.
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c)
+SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01 switch-tplink-01 switch-unsorted-01 switch-macport-01 switch-mute-01 switch-stuck-01)
 
 # SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
 # AuthPriv with SHA-256 / AES-128 — the broadly-supported pure-Rust default.
@@ -164,6 +172,113 @@ esac
 PASSEOF
 chmod +x "$CONF_DIR/snmp-pass-handler.sh"
 
+# A second handler that walks its data file in FILE order rather than OID order.
+#
+# The handler above answers GETNEXT with the first line numerically greater than the request, so
+# a shuffled data file would simply end the walk early — it can only ever produce an ascending
+# sequence. Firmware that stores a table unsorted and iterates it positionally does not: it hands
+# back whatever row physically follows the one asked for, which is how a switch answers
+# `...10.0.0.54` with `...10.0.0.7` and makes `snmpwalk` stop at "OID not increasing" while
+# `snmpbulkwalk -Cc` reads the table in full (GH #674).
+#
+# Reproducing that needs the positional behaviour, so the two handlers coexist: this one is used
+# only by the device that is meant to be broken.
+cat > "$CONF_DIR/snmp-pass-handler-unsorted.sh" << 'PASSEOF'
+#!/bin/bash
+DATA_FILE="$1"
+REQUEST="$2"
+OID="$3"
+
+if [ ! -f "$DATA_FILE" ]; then
+    echo "NONE"
+    exit 0
+fi
+
+case "$REQUEST" in
+    -g)
+        LINE=$(awk -v oid="$OID" '$1 == oid { print; exit }' "$DATA_FILE")
+        ;;
+    -n)
+        # The line after the requested one, in file order. A request naming no line of its own
+        # — a bare column or table prefix — is answered with the first line under it, again in
+        # file order, which is where the shuffle first shows.
+        #
+        # Single pass, exits as soon as it has an answer. That matters more than it looks: this
+        # handler is forked per varbind, so a full scan runs it thousands of times against every
+        # column. An earlier version read the whole file into awk arrays before deciding, and
+        # under the load of an 18-host scan it was slow enough that snmpd gave up on it — which
+        # the agent reports as endOfMibView, and a walk cannot tell that from a table that
+        # genuinely ended. The symptom was a column returning one row and calling itself
+        # complete, which looks exactly like a daemon bug and is not one.
+        LINE=$(awk -v oid="$OID" '
+            function oid_gt(a, b,   na, nb, sa, sb, i, ai, bi) {
+                na = split(a, sa, ".")
+                nb = split(b, sb, ".")
+                for (i = 1; i <= (na > nb ? na : nb); i++) {
+                    ai = (i <= na) ? sa[i]+0 : -1
+                    bi = (i <= nb) ? sb[i]+0 : -1
+                    if (ai > bi) return 1
+                    if (ai < bi) return 0
+                }
+                return 0
+            }
+            matched { print; answered = 1; exit }
+            $1 == oid { matched = 1; next }
+            !have_prefix && index($1, oid ".") == 1 { prefix = $0; have_prefix = 1 }
+            !have_gt && oid_gt($1, oid) { gt = $0; have_gt = 1 }
+            END {
+                if (answered || matched) exit
+                if (have_prefix) print prefix
+                else if (have_gt) print gt
+            }
+        ' "$DATA_FILE")
+        ;;
+    *)
+        echo "NONE"
+        exit 0
+        ;;
+esac
+
+if [ -z "$LINE" ]; then
+    echo "NONE"
+    exit 0
+fi
+echo "$LINE" | awk '{ print $1; print $2; $1=""; $2=""; sub(/^  */, ""); print }'
+PASSEOF
+chmod +x "$CONF_DIR/snmp-pass-handler-unsorted.sh"
+
+# A third handler: one that never advances.
+#
+# Answers every GETNEXT with the same row, whatever was asked. That is the agent the walk's
+# retry-then-stop guard was written for — left to itself it would have the daemon re-request the
+# same page until the entry cap or the integration timeout. Here it is deliberate and permanent,
+# so the guard has something to hold against, and so one device reliably produces the
+# "did not finish reporting" warning that reports a walk falling short.
+cat > "$CONF_DIR/snmp-pass-handler-stuck.sh" << 'PASSEOF'
+#!/bin/bash
+DATA_FILE="$1"
+REQUEST="$2"
+OID="$3"
+
+if [ ! -f "$DATA_FILE" ]; then
+    echo "NONE"
+    exit 0
+fi
+
+case "$REQUEST" in
+    -g) LINE=$(awk -v oid="$OID" '$1 == oid { print; exit }' "$DATA_FILE") ;;
+    -n) LINE=$(head -1 "$DATA_FILE") ;;
+    *)  echo "NONE"; exit 0 ;;
+esac
+
+if [ -z "$LINE" ]; then
+    echo "NONE"
+    exit 0
+fi
+echo "$LINE" | awk '{ print $1; print $2; $1=""; $2=""; sub(/^  */, ""); print }'
+PASSEOF
+chmod +x "$CONF_DIR/snmp-pass-handler-stuck.sh"
+
 # ── 4. Write MIB data files ──────────────────────────────────────────
 echo "Writing MIB data..."
 
@@ -240,9 +355,13 @@ EOF
 # walks are exercised on every device without extra data here. (ap-wireless-01 is
 # the one exception — it serves its own ipAddrTable so it can advertise a guest
 # subnet the VM's kernel doesn't have; see the #663 fixture below.)
-# (net-snmp `pass` can't emit binary MAC octet-strings, so dot1dTpFdb/dot1qTpFdb
-# rows and ARP MACs are not simulated; the daemon still walks those subtrees via
-# getbulk and terminates cleanly — the walk mechanism is what we're covering.)
+# (dot1dTpFdb/dot1qTpFdb rows are not simulated here; the daemon still walks those
+# subtrees via getbulk and terminates cleanly — the walk mechanism is what we're
+# covering. This is a gap in the data, not a limitation of the transport: `pass`
+# emits binary via type `octet` (space-separated hex), which is how the physAddress
+# and ARP columns elsewhere in this file send real six-byte MACs. An earlier version
+# of this note claimed the transport could not carry them, and that is what led two
+# separate fixtures to encode MACs as `string` and silently test nothing.)
 cat > "$DATA_DIR/switch-core-01-bridge.txt" << 'EOF'
 .1.3.6.1.2.1.17.1.4.1.2.1 integer 1
 .1.3.6.1.2.1.17.1.4.1.2.2 integer 2
@@ -1095,6 +1214,26 @@ cp "$DATA_DIR/switch-flaky-01-lldp-complete.txt" "$DATA_DIR/switch-flaky-01-lldp
 # N), so it is also a ready-made target for a future fixture that needs a device where the
 # advertised number is the ifIndex and the name is something else.
 #
+#   3. Every port reports the same ifPhysAddress — the chassis base MAC, 00:ad:24:af:4e:00, which
+#      is also this device's lldpLocChassisId. This is what the real DGS-1210-48 does, it is legal
+#      SNMP (RFC 2863 does not require per-port addresses), and it is the third report on the same
+#      issue: the reporter saw one MAC repeated down the whole interface list and read it as
+#      Scanopy mis-attributing them. It is not — but it did make an interface MAC a false identity
+#      key. A MAC that names 3 ports names none of them, and the server used to take whichever row
+#      the database returned first, drawing a port-precise link to an arbitrary port. Consumers now
+#      resolve on a single match only; see `find_if_entry_by_mac` and `plan_interface_ip_links`.
+#
+#      The physAddress column uses type `octet`, not `string`. `string` sends the value as text,
+#      so `00:ad:24:af:4e:00` arrives as 17 ASCII bytes where a PhysAddress is six raw octets;
+#      `value_to_mac` rightly refuses it and the interface stores no MAC at all, which makes this
+#      fixture look like it is testing something it never reaches. `octet` takes space-separated
+#      hex and emits the six bytes a real agent sends. Verify with
+#      `snmpwalk -v2c -c netdefault -Ox 192.168.7.244 1.3.6.1.2.1.2.2.1.6` — six octets, three
+#      times over, not seventeen.
+#
+#      An earlier revision gave each port its own address (…:4e:01..03), which is the case that
+#      never needed guarding. Nothing else here depended on those being distinct.
+#
 # NOT covered here: the NUL-terminated port ids from the same report. net-snmp's `pass`
 # protocol is line-based — the handler prints OID, type and value as three lines — so an
 # embedded 0x00 cannot survive the transport, and no data file can express it. That half is
@@ -1114,9 +1253,9 @@ cat > "$DATA_DIR/switch-dlink-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
 .1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
 .1.3.6.1.2.1.2.2.1.5.3 gauge 1000000000
-.1.3.6.1.2.1.2.2.1.6.1 string 00:ad:24:af:4e:01
-.1.3.6.1.2.1.2.2.1.6.2 string 00:ad:24:af:4e:02
-.1.3.6.1.2.1.2.2.1.6.3 string 00:ad:24:af:4e:03
+.1.3.6.1.2.1.2.2.1.6.1 octet 00 ad 24 af 4e 00
+.1.3.6.1.2.1.2.2.1.6.2 octet 00 ad 24 af 4e 00
+.1.3.6.1.2.1.2.2.1.6.3 octet 00 ad 24 af 4e 00
 .1.3.6.1.2.1.2.2.1.7.1 integer 1
 .1.3.6.1.2.1.2.2.1.7.2 integer 1
 .1.3.6.1.2.1.2.2.1.7.3 integer 1
@@ -1138,6 +1277,31 @@ EOF
 #   local port 2 → subtype 5, port id "ethernet1/0/44". Matches no name and is not a number, so
 #                  the port id is a dead end; lldpRemPortDesc carries GigabitEthernet0/1, which
 #                  is exactly switch-core-01's ifDescr for ifIndex 1.
+#   local port 3 → switch-macport-01, and the positive half of the shared-MAC pair. Port id
+#                  subtype 3 (macAddress) carrying 00:07:7c:20:01:e3, which is that switch's
+#                  ifPhysAddress for eth3 and for nothing else. One match, so it must resolve to
+#                  that exact port — the counter-case to switch-tplink-01 local port 4, where the
+#                  same subtype against a device repeating one MAC must resolve to no port at all.
+#                  Both are needed: a guard that rejected this one too would look like it worked
+#                  while quietly costing every vendor that addresses its ports individually.
+#
+#                  Deliberate choices worth keeping:
+#                    - The chassis id is 00:07:7c:20:01:e0, that device's own lldpLocChassisId,
+#                      which sits on none of its ports. Host resolution therefore goes through
+#                      hosts.chassis_id and cannot borrow the answer from the port lookup.
+#                    - lldpRemPortDesc is "Ring port to peer", matching no ifName or ifDescr over
+#                      there (they are eth1..eth10). If the MAC tier ever breaks, this fails
+#                      loudly instead of being rescued by the description tier — the failure mode
+#                      that has already made three fixtures in this file look healthy while
+#                      testing nothing.
+#                    - Both identifiers are sent as `octet`, six raw bytes, which is what a real
+#                      agent sends and what no other LLDP fixture here does; the ASCII form is
+#                      covered by switch-tplink-01. This is the only end-to-end coverage of
+#                      `parse_mac_id`'s raw-octet branch.
+#
+#                  switch-macport-01 lives on fix/snmp-walk-and-lldp-local-port. Until that
+#                  merges, this row resolves to no host and counts as host_not_found — harmless,
+#                  and it starts working the moment the device exists.
 #
 # Rows are listed column-major (all of column 4, then all of column 5, …), matching every other
 # LLDP fixture here. That is not cosmetic: `pass` answers GETNEXT by scanning this file in the
@@ -1152,22 +1316,31 @@ cat > "$DATA_DIR/switch-dlink-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.4.0 string D-Link DGS-1210-48 Rev.GX/7.20.003
 .1.0.8802.1.1.2.1.3.7.1.2.1 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.2 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.3 integer 5
 .1.0.8802.1.1.2.1.3.7.1.3.1 string Slot0/1
 .1.0.8802.1.1.2.1.3.7.1.3.2 string Slot0/2
+.1.0.8802.1.1.2.1.3.7.1.3.3 string Slot0/3
 .1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.0.2.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.0.3.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 00:1a:2b:00:10:00
 .1.0.8802.1.1.2.1.4.1.1.5.0.2.1 string 00:1a:2b:00:10:00
+.1.0.8802.1.1.2.1.4.1.1.5.0.3.1 octet 00 07 7c 20 01 e0
 .1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.0.2.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.0.3.1 integer 3
 .1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string 2
 .1.0.8802.1.1.2.1.4.1.1.7.0.2.1 string ethernet1/0/44
+.1.0.8802.1.1.2.1.4.1.1.7.0.3.1 octet 00 07 7c 20 01 e3
 .1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/2
 .1.0.8802.1.1.2.1.4.1.1.8.0.2.1 string GigabitEthernet0/1
+.1.0.8802.1.1.2.1.4.1.1.8.0.3.1 string Ring port to peer
 .1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
 .1.0.8802.1.1.2.1.4.1.1.9.0.2.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.9.0.3.1 string switch-macport-01
 .1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
 .1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string Cisco IOS Software, C2960
+.1.0.8802.1.1.2.1.4.1.1.10.0.3.1 string Westermo WeOS
 EOF
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1270,6 +1443,30 @@ EOF
 #                             naming unmatched far ends needs in order to fire at all. Endpoints
 #                             like this are what that counter legitimately consists of.
 #   port 3 → switch-dlink-01  port id "Slot0/3" is its ifName, ifDescr is the long D-Link form.
+#                             Its chassis id now sits on that switch's ports as well as on its
+#                             hosts.chassis_id, so the host resolves at the MAC tier rather than
+#                             the chassis-id fallback it used to reach. The #664 fallback is still
+#                             covered on its own by port 5 below, whose chassis MAC is on no port.
+#   port 4 → switch-dlink-01  the same device again, reached the way GH #668 exposed: port id
+#                             subtype 3 (macAddress) carrying 00:AD:24:AF:4E:00, which that switch
+#                             reports as ifPhysAddress on *every* port. This is the only subtype-3
+#                             port id in the lab, so it is what proves subtype 3 parses and reaches
+#                             a lookup at all, and that failing it leaves a device-level (amber)
+#                             NeighborLink rather than no edge. lldpRemPortDesc is deliberately
+#                             "Uplink to core", matching no ifName or ifDescr on that switch: the
+#                             port-desc tier still runs after a failed port id, so anything
+#                             matchable here would resolve the port and hide the case.
+#
+#                             The chassis id resolves the host; the port id must then resolve
+#                             nothing, because a MAC belonging to three ports names none of them.
+#                             Expect port_ambiguous=1 on the resolution summary, a named entry on
+#                             the companion warning, and one device-level edge — not a port-precise
+#                             link to whichever of Slot0/1..3 came back first.
+#
+#                             This only holds because switch-dlink-01 sends its physAddress as
+#                             `octet`; with `string` the far end stores no MACs, the lookup returns
+#                             port_not_found instead, and the same amber edge appears for an
+#                             entirely different reason.
 #   port 5 → switch-netgear-01 chassis 00:1a:2b:3c:4d:63 is on no port and no IP (the #664
 #                             shape), so only the host's own recorded chassis_id can match it;
 #                             port id "3" matches no name and falls through to ifIndex 3 (g3).
@@ -1283,39 +1480,479 @@ cat > "$DATA_DIR/switch-tplink-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.7.1.2.1 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.2 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.3 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.4 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.5 integer 5
 .1.0.8802.1.1.2.1.3.7.1.3.1 string ten-gigabitEthernet 1/0/1
 .1.0.8802.1.1.2.1.3.7.1.3.2 string ten-gigabitEthernet 1/0/2
 .1.0.8802.1.1.2.1.3.7.1.3.3 string ten-gigabitEthernet 1/0/3
+.1.0.8802.1.1.2.1.3.7.1.3.4 string ten-gigabitEthernet 1/0/4
 .1.0.8802.1.1.2.1.3.7.1.3.5 string ten-gigabitEthernet 1/0/5
 .1.0.8802.1.1.2.1.4.1.1.4.1.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.2.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.3.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.4.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.5.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.5.1.1 string 00:1A:2B:00:10:00
 .1.0.8802.1.1.2.1.4.1.1.5.2.1 string 9C:AD:97:1F:22:40
 .1.0.8802.1.1.2.1.4.1.1.5.3.1 string 00:AD:24:AF:4E:00
+.1.0.8802.1.1.2.1.4.1.1.5.4.1 string 00:AD:24:AF:4E:00
 .1.0.8802.1.1.2.1.4.1.1.5.5.1 string 00:1A:2B:3C:4D:63
 .1.0.8802.1.1.2.1.4.1.1.6.1.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.2.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.3.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.4.1 integer 3
 .1.0.8802.1.1.2.1.4.1.1.6.5.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.7.1.1 string Gi0/3
 .1.0.8802.1.1.2.1.4.1.1.7.2.1 string 1
 .1.0.8802.1.1.2.1.4.1.1.7.3.1 string Slot0/3
+.1.0.8802.1.1.2.1.4.1.1.7.4.1 string 00:AD:24:AF:4E:00
 .1.0.8802.1.1.2.1.4.1.1.7.5.1 string 3
 .1.0.8802.1.1.2.1.4.1.1.8.1.1 string GigabitEthernet0/3
 .1.0.8802.1.1.2.1.4.1.1.8.2.1 string Port 1
 .1.0.8802.1.1.2.1.4.1.1.8.3.1 string D-Link DGS-1210-48 Rev.GX/7.20.003 Port 3
+.1.0.8802.1.1.2.1.4.1.1.8.4.1 string Uplink to core
 .1.0.8802.1.1.2.1.4.1.1.8.5.1 string Slot: 0 Port: 3 Gigabit - Level
 .1.0.8802.1.1.2.1.4.1.1.9.1.1 string switch-core-01
 .1.0.8802.1.1.2.1.4.1.1.9.2.1 string desk-phone-4021
 .1.0.8802.1.1.2.1.4.1.1.9.3.1 string switch-dlink-01
+.1.0.8802.1.1.2.1.4.1.1.9.4.1 string switch-dlink-01
 .1.0.8802.1.1.2.1.4.1.1.9.5.1 string switch-netgear-01
 .1.0.8802.1.1.2.1.4.1.1.10.1.1 string Cisco IOS Software, C2960
 .1.0.8802.1.1.2.1.4.1.1.10.2.1 string Polycom VVX 411
 .1.0.8802.1.1.2.1.4.1.1.10.3.1 string D-Link DGS-1210-48 Rev.GX/7.20.003
+.1.0.8802.1.1.2.1.4.1.1.10.4.1 string D-Link DGS-1210-48 Rev.GX/7.20.003
 .1.0.8802.1.1.2.1.4.1.1.10.5.1 string GS724Tv3 ProSafe 24-port Gigabit Smart Switch
+EOF
+
+# switch-unsorted-01 IF-MIB (GH #674). Ordinary and sorted: the interfaces must come back
+# whole, so that an empty ARP table on this device is visibly a property of that table and not
+# of the whole host.
+cat > "$DATA_DIR/switch-unsorted-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.1.3 integer 3
+.1.3.6.1.2.1.2.2.1.2.1 string GigabitEthernet0/1
+.1.3.6.1.2.1.2.2.1.2.2 string GigabitEthernet0/2
+.1.3.6.1.2.1.2.2.1.2.3 string Vlan1
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.3.3 integer 53
+.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.3 gauge 0
+.1.3.6.1.2.1.2.2.1.6.1 string 00:1f:c6:aa:00:01
+.1.3.6.1.2.1.2.2.1.6.2 string 00:1f:c6:aa:00:02
+.1.3.6.1.2.1.2.2.1.6.3 string 00:1f:c6:aa:00:03
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.7.3 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.3 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string Gi0/1
+.1.3.6.1.2.1.31.1.1.1.1.2 string Gi0/2
+.1.3.6.1.2.1.31.1.1.1.1.3 string Vlan1
+EOF
+
+# switch-unsorted-01 ARP (GH #674) — the defect itself.
+#
+# The physAddress column uses type `octet`, not `string`. This is the difference between a
+# fixture that exercises the code and one that silently proves nothing: `string` sends the
+# value as *text*, so `00:25:90:f0:00:02` arrives as 17 ASCII bytes, and a MAC is six raw
+# octets. The daemon rightly refuses to read the text as an address, the ARP entry loses the
+# MAC it is joined on, and all 45 rows are discarded — the walk succeeds and the table reports
+# empty. `octet` takes space-separated hex and emits the six bytes a real agent sends.
+#
+# Every column is written with its rows deliberately shuffled, and this file is served by the
+# POSITIONAL handler, so a GETNEXT walk follows the file rather than the numbers: asking after
+# .54 answers .7. That is what makes `snmpwalk` stop at "OID not increasing" here and what a
+# strict client reads as a table that ends after two rows.
+#
+# The shape matters as much as the disorder. Enough rows that the walk needs more than one
+# GETBULK page (the daemon asks 20 at a time), and the shuffle arranged so a later page ends
+# lower than an earlier one — which is the moment a strictly-ascending walk gives up. The four
+# columns each need to survive, because an ARP entry is a join across all of them and one short
+# column discards every row the others read.
+cat > "$DATA_DIR/switch-unsorted-01-arp.txt" << 'EOF'
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.2 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.4 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.6 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.8 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.10 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.12 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.14 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.16 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.18 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.20 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.22 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.24 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.26 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.28 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.30 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.32 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.34 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.36 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.38 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.40 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.42 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.44 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.1 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.3 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.5 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.7 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.9 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.11 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.13 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.15 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.17 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.19 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.21 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.23 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.25 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.27 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.29 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.31 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.33 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.35 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.37 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.39 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.41 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.43 integer 2
+.1.3.6.1.2.1.4.22.1.1.2.10.20.30.45 integer 2
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.2 octet 00 25 90 f0 00 02
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.4 octet 00 25 90 f0 00 04
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.6 octet 00 25 90 f0 00 06
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.8 octet 00 25 90 f0 00 08
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.10 octet 00 25 90 f0 00 10
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.12 octet 00 25 90 f0 00 12
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.14 octet 00 25 90 f0 00 14
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.16 octet 00 25 90 f0 00 16
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.18 octet 00 25 90 f0 00 18
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.20 octet 00 25 90 f0 00 20
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.22 octet 00 25 90 f0 00 22
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.24 octet 00 25 90 f0 00 24
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.26 octet 00 25 90 f0 00 26
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.28 octet 00 25 90 f0 00 28
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.30 octet 00 25 90 f0 00 30
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.32 octet 00 25 90 f0 00 32
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.34 octet 00 25 90 f0 00 34
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.36 octet 00 25 90 f0 00 36
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.38 octet 00 25 90 f0 00 38
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.40 octet 00 25 90 f0 00 40
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.42 octet 00 25 90 f0 00 42
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.44 octet 00 25 90 f0 00 44
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.1 octet 00 25 90 f0 00 01
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.3 octet 00 25 90 f0 00 03
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.5 octet 00 25 90 f0 00 05
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.7 octet 00 25 90 f0 00 07
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.9 octet 00 25 90 f0 00 09
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.11 octet 00 25 90 f0 00 11
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.13 octet 00 25 90 f0 00 13
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.15 octet 00 25 90 f0 00 15
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.17 octet 00 25 90 f0 00 17
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.19 octet 00 25 90 f0 00 19
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.21 octet 00 25 90 f0 00 21
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.23 octet 00 25 90 f0 00 23
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.25 octet 00 25 90 f0 00 25
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.27 octet 00 25 90 f0 00 27
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.29 octet 00 25 90 f0 00 29
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.31 octet 00 25 90 f0 00 31
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.33 octet 00 25 90 f0 00 33
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.35 octet 00 25 90 f0 00 35
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.37 octet 00 25 90 f0 00 37
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.39 octet 00 25 90 f0 00 39
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.41 octet 00 25 90 f0 00 41
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.43 octet 00 25 90 f0 00 43
+.1.3.6.1.2.1.4.22.1.2.2.10.20.30.45 octet 00 25 90 f0 00 45
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.2 ipaddress 10.20.30.2
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.4 ipaddress 10.20.30.4
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.6 ipaddress 10.20.30.6
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.8 ipaddress 10.20.30.8
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.10 ipaddress 10.20.30.10
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.12 ipaddress 10.20.30.12
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.14 ipaddress 10.20.30.14
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.16 ipaddress 10.20.30.16
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.18 ipaddress 10.20.30.18
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.20 ipaddress 10.20.30.20
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.22 ipaddress 10.20.30.22
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.24 ipaddress 10.20.30.24
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.26 ipaddress 10.20.30.26
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.28 ipaddress 10.20.30.28
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.30 ipaddress 10.20.30.30
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.32 ipaddress 10.20.30.32
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.34 ipaddress 10.20.30.34
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.36 ipaddress 10.20.30.36
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.38 ipaddress 10.20.30.38
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.40 ipaddress 10.20.30.40
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.42 ipaddress 10.20.30.42
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.44 ipaddress 10.20.30.44
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.1 ipaddress 10.20.30.1
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.3 ipaddress 10.20.30.3
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.5 ipaddress 10.20.30.5
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.7 ipaddress 10.20.30.7
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.9 ipaddress 10.20.30.9
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.11 ipaddress 10.20.30.11
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.13 ipaddress 10.20.30.13
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.15 ipaddress 10.20.30.15
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.17 ipaddress 10.20.30.17
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.19 ipaddress 10.20.30.19
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.21 ipaddress 10.20.30.21
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.23 ipaddress 10.20.30.23
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.25 ipaddress 10.20.30.25
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.27 ipaddress 10.20.30.27
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.29 ipaddress 10.20.30.29
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.31 ipaddress 10.20.30.31
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.33 ipaddress 10.20.30.33
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.35 ipaddress 10.20.30.35
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.37 ipaddress 10.20.30.37
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.39 ipaddress 10.20.30.39
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.41 ipaddress 10.20.30.41
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.43 ipaddress 10.20.30.43
+.1.3.6.1.2.1.4.22.1.3.2.10.20.30.45 ipaddress 10.20.30.45
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.2 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.4 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.6 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.8 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.10 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.12 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.14 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.16 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.18 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.20 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.22 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.24 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.26 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.28 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.30 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.32 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.34 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.36 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.38 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.40 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.42 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.44 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.1 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.3 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.5 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.7 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.9 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.11 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.13 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.15 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.17 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.19 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.21 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.23 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.25 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.27 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.29 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.31 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.33 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.35 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.37 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.39 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.41 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.43 integer 3
+.1.3.6.1.2.1.4.22.1.4.2.10.20.30.45 integer 3
+EOF
+
+# switch-macport-01 IF-MIB. Interfaces eth1..eth10, each with its own hardware address, and
+# ifIndex ascending — the ordinary case. What is not ordinary is how LLDP refers to them below.
+cat > "$DATA_DIR/switch-macport-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.1.3 integer 3
+.1.3.6.1.2.1.2.2.1.1.4 integer 4
+.1.3.6.1.2.1.2.2.1.1.5 integer 5
+.1.3.6.1.2.1.2.2.1.1.6 integer 6
+.1.3.6.1.2.1.2.2.1.1.7 integer 7
+.1.3.6.1.2.1.2.2.1.1.8 integer 8
+.1.3.6.1.2.1.2.2.1.1.9 integer 9
+.1.3.6.1.2.1.2.2.1.1.10 integer 10
+.1.3.6.1.2.1.2.2.1.2.1 string eth1
+.1.3.6.1.2.1.2.2.1.2.2 string eth2
+.1.3.6.1.2.1.2.2.1.2.3 string eth3
+.1.3.6.1.2.1.2.2.1.2.4 string eth4
+.1.3.6.1.2.1.2.2.1.2.5 string eth5
+.1.3.6.1.2.1.2.2.1.2.6 string eth6
+.1.3.6.1.2.1.2.2.1.2.7 string eth7
+.1.3.6.1.2.1.2.2.1.2.8 string eth8
+.1.3.6.1.2.1.2.2.1.2.9 string eth9
+.1.3.6.1.2.1.2.2.1.2.10 string eth10
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.3.3 integer 6
+.1.3.6.1.2.1.2.2.1.3.4 integer 6
+.1.3.6.1.2.1.2.2.1.3.5 integer 6
+.1.3.6.1.2.1.2.2.1.3.6 integer 6
+.1.3.6.1.2.1.2.2.1.3.7 integer 6
+.1.3.6.1.2.1.2.2.1.3.8 integer 6
+.1.3.6.1.2.1.2.2.1.3.9 integer 6
+.1.3.6.1.2.1.2.2.1.3.10 integer 6
+.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.3 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.4 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.5 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.6 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.7 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.8 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.9 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.10 gauge 100000000
+.1.3.6.1.2.1.2.2.1.6.1 octet 00 07 7c 20 01 e1
+.1.3.6.1.2.1.2.2.1.6.2 octet 00 07 7c 20 01 e2
+.1.3.6.1.2.1.2.2.1.6.3 octet 00 07 7c 20 01 e3
+.1.3.6.1.2.1.2.2.1.6.4 octet 00 07 7c 20 01 e4
+.1.3.6.1.2.1.2.2.1.6.5 octet 00 07 7c 20 01 e5
+.1.3.6.1.2.1.2.2.1.6.6 octet 00 07 7c 20 01 e6
+.1.3.6.1.2.1.2.2.1.6.7 octet 00 07 7c 20 01 e7
+.1.3.6.1.2.1.2.2.1.6.8 octet 00 07 7c 20 01 e8
+.1.3.6.1.2.1.2.2.1.6.9 octet 00 07 7c 20 01 e9
+.1.3.6.1.2.1.2.2.1.6.10 octet 00 07 7c 20 01 ea
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.7.3 integer 1
+.1.3.6.1.2.1.2.2.1.7.4 integer 1
+.1.3.6.1.2.1.2.2.1.7.5 integer 1
+.1.3.6.1.2.1.2.2.1.7.6 integer 1
+.1.3.6.1.2.1.2.2.1.7.7 integer 1
+.1.3.6.1.2.1.2.2.1.7.8 integer 1
+.1.3.6.1.2.1.2.2.1.7.9 integer 1
+.1.3.6.1.2.1.2.2.1.7.10 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.3 integer 1
+.1.3.6.1.2.1.2.2.1.8.4 integer 1
+.1.3.6.1.2.1.2.2.1.8.5 integer 1
+.1.3.6.1.2.1.2.2.1.8.6 integer 1
+.1.3.6.1.2.1.2.2.1.8.7 integer 2
+.1.3.6.1.2.1.2.2.1.8.8 integer 2
+.1.3.6.1.2.1.2.2.1.8.9 integer 1
+.1.3.6.1.2.1.2.2.1.8.10 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string eth1
+.1.3.6.1.2.1.31.1.1.1.1.2 string eth2
+.1.3.6.1.2.1.31.1.1.1.1.3 string eth3
+.1.3.6.1.2.1.31.1.1.1.1.4 string eth4
+.1.3.6.1.2.1.31.1.1.1.1.5 string eth5
+.1.3.6.1.2.1.31.1.1.1.1.6 string eth6
+.1.3.6.1.2.1.31.1.1.1.1.7 string eth7
+.1.3.6.1.2.1.31.1.1.1.1.8 string eth8
+.1.3.6.1.2.1.31.1.1.1.1.9 string eth9
+.1.3.6.1.2.1.31.1.1.1.1.10 string eth10
+EOF
+
+# switch-macport-01 LLDP — local ports identified only by MAC and description.
+#
+# lldpLocPortIdSubtype is macAddress(3) on every port and lldpLocPortId is the port's own
+# hardware address, so there is no name to match on. lldpLocPortNum runs 10..19 while the
+# interfaces run eth10 down to eth1, so the numbers cannot be arithmetic either: local port 11
+# is eth9, 16 is eth4, 19 is eth1. lldpLocPortDesc is the only column that says so.
+#
+# Both resolution paths are exercised deliberately. Ports 11 and 19 report their own port
+# address, which matches that interface's ifPhysAddress, so they resolve on the MAC. Port 16
+# reports the *chassis* address instead — a real variation, and one that belongs to no
+# interface — so it has to fall through to lldpLocPortDesc. One scan therefore covers the MAC
+# tier and the description tier rather than leaving the second one to unit tests alone.
+#
+# Both columns use type `octet` for the same reason the ARP table above does: `string` would
+# send an address as text, and a MAC is six raw octets. Sent as text, the port id is not a MAC
+# and ifPhysAddress is not read at all, which is exactly the shape that makes the MAC tier look
+# tested when it never ran.
+cat > "$DATA_DIR/switch-macport-01-lldp.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 00:07:7c:20:01:e0
+.1.0.8802.1.1.2.1.3.3.0 string switch-macport-01
+.1.0.8802.1.1.2.1.3.4.0 string WeOS 5.21.0 industrial ethernet switch
+.1.0.8802.1.1.2.1.3.7.1.2.10 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.11 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.12 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.13 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.14 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.15 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.16 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.17 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.18 integer 3
+.1.0.8802.1.1.2.1.3.7.1.2.19 integer 3
+.1.0.8802.1.1.2.1.3.7.1.3.10 octet 00 07 7c 20 01 ea
+.1.0.8802.1.1.2.1.3.7.1.3.11 octet 00 07 7c 20 01 e9
+.1.0.8802.1.1.2.1.3.7.1.3.12 octet 00 07 7c 20 01 e8
+.1.0.8802.1.1.2.1.3.7.1.3.13 octet 00 07 7c 20 01 e7
+.1.0.8802.1.1.2.1.3.7.1.3.14 octet 00 07 7c 20 01 e6
+.1.0.8802.1.1.2.1.3.7.1.3.15 octet 00 07 7c 20 01 e5
+.1.0.8802.1.1.2.1.3.7.1.3.16 octet 00 07 7c 20 01 e0
+.1.0.8802.1.1.2.1.3.7.1.3.17 octet 00 07 7c 20 01 e3
+.1.0.8802.1.1.2.1.3.7.1.3.18 octet 00 07 7c 20 01 e2
+.1.0.8802.1.1.2.1.3.7.1.3.19 octet 00 07 7c 20 01 e1
+.1.0.8802.1.1.2.1.3.7.1.4.10 string 100-T eth10
+.1.0.8802.1.1.2.1.3.7.1.4.11 string 100-T eth9
+.1.0.8802.1.1.2.1.3.7.1.4.12 string 100-T eth8
+.1.0.8802.1.1.2.1.3.7.1.4.13 string 100-T eth7
+.1.0.8802.1.1.2.1.3.7.1.4.14 string 100-T eth6
+.1.0.8802.1.1.2.1.3.7.1.4.15 string 100-T eth5
+.1.0.8802.1.1.2.1.3.7.1.4.16 string 100-T eth4
+.1.0.8802.1.1.2.1.3.7.1.4.17 string 100-T eth3
+.1.0.8802.1.1.2.1.3.7.1.4.18 string 1000-T eth2
+.1.0.8802.1.1.2.1.3.7.1.4.19 string 1000-LX eth1
+.1.0.8802.1.1.2.1.4.1.1.4.100.11.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.500.19.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.1400.16.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.100.11.1 string 00:07:7c:31:00:11
+.1.0.8802.1.1.2.1.4.1.1.5.500.19.1 string 00:07:7c:31:00:19
+.1.0.8802.1.1.2.1.4.1.1.5.1400.16.1 string 00:07:7c:31:00:16
+.1.0.8802.1.1.2.1.4.1.1.6.100.11.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.500.19.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.1400.16.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.100.11.1 string eth3
+.1.0.8802.1.1.2.1.4.1.1.7.500.19.1 string eth1
+.1.0.8802.1.1.2.1.4.1.1.7.1400.16.1 string eth7
+.1.0.8802.1.1.2.1.4.1.1.8.100.11.1 string 100-T eth3
+.1.0.8802.1.1.2.1.4.1.1.8.500.19.1 string 1000-LX eth1
+.1.0.8802.1.1.2.1.4.1.1.8.1400.16.1 string 100-T eth7
+.1.0.8802.1.1.2.1.4.1.1.9.100.11.1 string ring-peer-a
+.1.0.8802.1.1.2.1.4.1.1.9.500.19.1 string ring-peer-b
+.1.0.8802.1.1.2.1.4.1.1.9.1400.16.1 string ring-peer-c
+.1.0.8802.1.1.2.1.4.1.1.10.100.11.1 string WeOS 5.21.0 industrial ethernet switch
+.1.0.8802.1.1.2.1.4.1.1.10.500.19.1 string WeOS 5.21.0 industrial ethernet switch
+.1.0.8802.1.1.2.1.4.1.1.10.1400.16.1 string WeOS 5.21.0 industrial ethernet switch
+EOF
+
+# switch-mute-01 — answers the credential and serves nothing.
+#
+# An empty file, pointed at by every table the built-in modules would otherwise answer from the
+# VM's own kernel state. Without these the "device" would report the VM's real addresses and ARP
+# cache and would not be mute at all. ifTable/ifXTable are suppressed by the -I flag the units
+# already carry; ipAddrTable and ipNetToMediaTable cannot be, so they are overridden per column
+# at priority 1, the same technique ap-wireless-01 uses to serve its own ipAddrTable.
+: > "$DATA_DIR/switch-mute-01-empty.txt"
+
+# switch-stuck-01 — one ARP row, served for ever.
+#
+# The file holds a single line and the stuck handler returns it for every GETNEXT, so the walk
+# collects it once and then sees the same OID again. The walk must recognise a page that
+# contributes nothing new, retry its budget and stop — and report the ARP table as a walk that
+# fell short rather than as a table that ended.
+cat > "$DATA_DIR/switch-stuck-01-arp.txt" << 'EOF'
+.1.3.6.1.2.1.4.22.1.1.1.10.40.50.1 integer 1
+EOF
+
+# switch-stuck-01 interfaces — ordinary, so this device is a *shortfall* case and not a mute one.
+cat > "$DATA_DIR/switch-stuck-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.2.1 string ether1
+.1.3.6.1.2.1.2.2.1.2.2 string ether2
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.6.1 octet 00 0c 42 7a 00 01
+.1.3.6.1.2.1.2.2.1.6.2 octet 00 0c 42 7a 00 02
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string ether1
+.1.3.6.1.2.1.31.1.1.1.1.2 string ether2
 EOF
 
 # ── 5. Write snmpd configs ───────────────────────────────────────────
@@ -1323,6 +1960,8 @@ echo "Writing snmpd configs..."
 
 D="$CONF_DIR/data"
 H="$CONF_DIR/snmp-pass-handler.sh"
+HU="$CONF_DIR/snmp-pass-handler-unsorted.sh"
+HS="$CONF_DIR/snmp-pass-handler-stuck.sh"
 
 cat > "$CONF_DIR/snmpd-switch-core-01.conf" << EOF
 agentAddress udp:${HOSTS[0]}:161
@@ -1581,6 +2220,72 @@ sysobjectid .1.3.6.1.4.1.11863.5.1.1
 sysservices 2
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-tplink-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-tplink-01-lldp.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-unsorted-01.conf" << EOF
+agentAddress udp:${HOSTS[16]}:161
+rocommunity netdefault
+sysdescr PoE switch, firmware V3.3.3
+syscontact netops@example.com
+sysname switch-unsorted-01
+syslocation Floor 1, camera room
+sysobjectid .1.3.6.1.4.1.99999.1.1
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-unsorted-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-unsorted-01-iftable.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.1 /bin/bash $HU $D/switch-unsorted-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.2 /bin/bash $HU $D/switch-unsorted-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.3 /bin/bash $HU $D/switch-unsorted-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.4 /bin/bash $HU $D/switch-unsorted-01-arp.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-macport-01.conf" << EOF
+agentAddress udp:${HOSTS[17]}:161
+rocommunity netdefault
+sysdescr WeOS 5.21.0 industrial ethernet switch
+syscontact netops@example.com
+sysname switch-macport-01
+syslocation Substation B, DIN rail
+sysobjectid .1.3.6.1.4.1.16177.1.1
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-macport-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-macport-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-macport-01-lldp.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-mute-01.conf" << EOF
+agentAddress udp:${HOSTS[18]}:161
+rocommunity netdefault
+sysdescr Mute agent, system MIB only
+syscontact netops@example.com
+sysname switch-mute-01
+syslocation Rack 9, top
+sysobjectid .1.3.6.1.4.1.99999.2.1
+sysservices 2
+pass -p 1 .1.3.6.1.2.1.4.20.1.1 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.20.1.2 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.20.1.3 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.1 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.2 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.3 /bin/bash $H $D/switch-mute-01-empty.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.4 /bin/bash $H $D/switch-mute-01-empty.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-stuck-01.conf" << EOF
+agentAddress udp:${HOSTS[19]}:161
+rocommunity netdefault
+sysdescr Non-advancing agent, ARP table loops
+syscontact netops@example.com
+sysname switch-stuck-01
+syslocation Rack 9, middle
+sysobjectid .1.3.6.1.4.1.99999.3.1
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-stuck-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-stuck-01-iftable.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.1 /bin/bash $HS $D/switch-stuck-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.2 /bin/bash $HS $D/switch-stuck-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.3 /bin/bash $HS $D/switch-stuck-01-arp.txt
+pass -p 1 .1.3.6.1.2.1.4.22.1.4 /bin/bash $HS $D/switch-stuck-01-arp.txt
 EOF
 
 # ── 6. Create systemd services ───────────────────────────────────────

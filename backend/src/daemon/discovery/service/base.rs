@@ -8,7 +8,7 @@ use std::{
 
 use crate::daemon::discovery::service::warnings::{
     CredentialIssue, IncompleteInterfaceWalk, IncompleteSnmpWalk, MalformedNeighbours,
-    UnresolvedLldpPorts, VlanRecordingFailed,
+    SnmpCollectedNothing, UnresolvedLldpPorts, VlanRecordingFailed,
 };
 use crate::daemon::discovery::types::base::DiscoverySessionInfo;
 use crate::daemon::{
@@ -157,6 +157,9 @@ pub struct DiscoverySession {
     /// Neighbour records served without the identifier L2 resolution matches on. Also not a
     /// shortfall in a walk — the rows arrived and are unusable, which no rescan changes.
     pub(super) malformed_neighbours: Arc<std::sync::Mutex<Vec<MalformedNeighbours>>>,
+    /// Devices that answered the credential and then returned nothing from any table. Not one
+    /// group falling short of the others — there are no others.
+    pub(super) snmp_collected_nothing: Arc<std::sync::Mutex<Vec<SnmpCollectedNothing>>>,
     /// Devices whose VLAN table was read and could not be saved.
     pub(super) vlan_recording_failures: Arc<std::sync::Mutex<Vec<VlanRecordingFailed>>>,
     /// IP-targeted credentials that produced nothing, and why.
@@ -179,6 +182,7 @@ impl DiscoverySession {
             incomplete_interface_walks: Arc::new(std::sync::Mutex::new(Vec::new())),
             unresolved_lldp_ports: Arc::new(std::sync::Mutex::new(Vec::new())),
             malformed_neighbours: Arc::new(std::sync::Mutex::new(Vec::new())),
+            snmp_collected_nothing: Arc::new(std::sync::Mutex::new(Vec::new())),
             vlan_recording_failures: Arc::new(std::sync::Mutex::new(Vec::new())),
             credential_issues: Arc::new(std::sync::Mutex::new(Vec::new())),
         }

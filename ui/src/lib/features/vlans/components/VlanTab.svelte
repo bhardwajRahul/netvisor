@@ -10,7 +10,7 @@
 	import { entities } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { useSubnetsQuery } from '$lib/features/subnets/queries';
+	import { isUserManagedSubnet, useSubnetsQuery } from '$lib/features/subnets/queries';
 	import type { Subnet } from '$lib/features/subnets/types/base';
 	import { useVlansQuery } from '../queries';
 	import type { Vlan, VlanOrderField } from '../types/base';
@@ -53,7 +53,9 @@
 	// Derived data
 	let vlansData = $derived(vlansQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
-	let subnetsById = $derived(new Map((subnetsQuery.data ?? []).map((s) => [s.id, s])));
+	let subnetsById = $derived(
+		new Map((subnetsQuery.data ?? []).filter(isUserManagedSubnet).map((s) => [s.id, s]))
+	);
 	let isLoading = $derived(vlansQuery.isPending);
 
 	function getSubnets(vlan: Vlan): Subnet[] {

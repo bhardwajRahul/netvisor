@@ -5,6 +5,39 @@ use super::*;
 /// daemon's scan warnings use, for the same reason: a line long enough to scroll is not read.
 const MAX_LISTED_UNMATCHED: usize = 10;
 
+/// Why a far end could not be placed, carried alongside the identifiers that were tried.
+///
+/// The distinction is the whole point of naming these at all: `NotFound` is a gap in what has been
+/// scanned and the operator can close it, `Ambiguous` is a device that *is* scanned but reports one
+/// identifier for many ports, and `NoStrategy` is a gap on our side. Reporting all three as "did
+/// not resolve" is what made a device-level edge un-triagable without a customer snmpwalk (GH #668).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnresolvedReason {
+    NoStrategy,
+    NotFound,
+    Ambiguous,
+}
+
+impl UnresolvedReason {
+    /// `None` for a resolution that succeeded — there is nothing to report.
+    fn from_resolution(resolution: IdentityResolution) -> Option<Self> {
+        match resolution {
+            IdentityResolution::Resolved(_) => None,
+            IdentityResolution::NoStrategy => Some(Self::NoStrategy),
+            IdentityResolution::NotFound => Some(Self::NotFound),
+            IdentityResolution::Ambiguous => Some(Self::Ambiguous),
+        }
+    }
+
+    fn describe(self) -> &'static str {
+        match self {
+            Self::NoStrategy => "no lookup strategy for this port-id subtype",
+            Self::NotFound => "no port on that device matches",
+            Self::Ambiguous => "several ports on that device match, so it identifies none",
+        }
+    }
+}
+
 /// A neighbour advertised by a local interface whose far end no strategy could place.
 ///
 /// Holds what identifies both ends — which of our devices saw it, on which port, and the
@@ -42,6 +75,66 @@ impl UnmatchedNeighbour {
     }
 }
 
+/// A neighbour whose far-end *device* is known but whose port could not be identified.
+///
+/// This is the row that draws a device-level edge instead of a port-to-port one — the "attached to
+/// the whole switch" outcome. `host_not_found` already names the far ends we have never seen; this
+/// names the ones we have, which is the harder case to reason about from a counter alone: the
+/// devices are both on the map and the operator has nothing left to scan.
+struct UnresolvedPort {
+    /// The local device that saw the neighbour, and the port it saw it on.
+    host_id: Uuid,
+    if_descr: String,
+    /// The far-end device, already resolved — this is what makes it distinct from
+    /// [`UnmatchedNeighbour`].
+    remote_host_id: Uuid,
+    /// The advertised port id in `Debug` form, which carries subtype and value together
+    /// (`MacAddress("00:ad:24:af:4e:00")`, `InterfaceName("2")`). Both halves are needed: the
+    /// subtype says which tier ran and the value says what it looked for.
+    port_id: Option<String>,
+    /// `lldpRemPortDesc`, the last-resort tier. Present here because "the id failed and the
+    /// description was empty" and "both were tried and neither matched" call for different fixes.
+    port_desc: Option<String>,
+    reason: UnresolvedReason,
+}
+
+impl UnresolvedPort {
+    fn new(
+        interface: &Interface,
+        remote_host_id: Uuid,
+        port_id: Option<String>,
+        reason: UnresolvedReason,
+    ) -> Self {
+        Self {
+            host_id: interface.base.host_id,
+            if_descr: interface.base.if_descr.clone(),
+            remote_host_id,
+            port_id,
+            port_desc: interface.base.lldp_port_desc.clone(),
+            reason,
+        }
+    }
+
+    /// `switch7 Gi0/1 -> switch3 via MacAddress("00:ad:…") desc "Port 9": several ports match`
+    fn describe(&self, host_name: Option<&String>, remote_name: Option<&String>) -> String {
+        let host = host_name.map(String::as_str).unwrap_or("unknown host");
+        let remote = remote_name.map(String::as_str).unwrap_or("unknown host");
+        let port_id = match &self.port_id {
+            Some(id) => format!(" via {id}"),
+            None => " with no port id".to_string(),
+        };
+        let desc = match &self.port_desc {
+            Some(desc) if !desc.trim().is_empty() => format!(" desc {desc:?}"),
+            _ => String::new(),
+        };
+        format!(
+            "{host} {} -> {remote}{port_id}{desc}: {}",
+            self.if_descr,
+            self.reason.describe()
+        )
+    }
+}
+
 impl HostService {
     // =========================================================================
     // LLDP link resolution
@@ -65,6 +158,13 @@ impl HostService {
             self.storage.clone(),
         );
 
+        // Re-open port bindings made before MAC ambiguity was checked, *before* selecting the work
+        // below: a downgraded row becomes eligible for the filter and so is retried in this same
+        // run rather than waiting for the next scan.
+        let downgraded = self
+            .reopen_ambiguous_mac_ports(network_id, &resolver)
+            .await?;
+
         // Every interface in this network whose remote *port* isn't known yet — including ones
         // already resolved as far as the remote host, whose port half is retried below.
         let filter =
@@ -82,6 +182,8 @@ impl HostService {
         // expected case) from a resolution defect without knowing *which* devices they are
         // (GH #668).
         let mut unmatched: Vec<UnmatchedNeighbour> = Vec::new();
+        // Every far end whose device is known but whose port is not — the device-level edges.
+        let mut unresolved_ports: Vec<UnresolvedPort> = Vec::new();
 
         for mut interface in unresolved {
             stats.total += 1;
@@ -147,6 +249,18 @@ impl HostService {
                                 _ => unresolved,
                             },
                         };
+                        if let Some(reason) = UnresolvedReason::from_resolution(port) {
+                            unresolved_ports.push(UnresolvedPort::new(
+                                &interface,
+                                host_id,
+                                interface
+                                    .base
+                                    .lldp_port_id
+                                    .as_ref()
+                                    .map(|p| format!("{p:?}")),
+                                reason,
+                            ));
+                        }
                         Some(stats.record_port(port, host_id))
                     }
                 }
@@ -171,6 +285,18 @@ impl HostService {
                             ),
                             None => IdentityResolution::NoStrategy,
                         };
+                        if let Some(reason) = UnresolvedReason::from_resolution(port) {
+                            unresolved_ports.push(UnresolvedPort::new(
+                                &interface,
+                                host_id,
+                                interface
+                                    .base
+                                    .cdp_port_id
+                                    .as_ref()
+                                    .map(|id| format!("CdpPortId({id:?})")),
+                                reason,
+                            ));
+                        }
                         Some(stats.record_port(port, host_id))
                     }
                 }
@@ -202,31 +328,119 @@ impl HostService {
             host_not_found = stats.host_not_found,
             port_no_strategy = stats.port_no_strategy,
             port_not_found = stats.port_not_found,
+            port_ambiguous = stats.port_ambiguous,
+            reopened = downgraded,
             "LLDP/CDP link resolution complete"
         );
 
-        self.log_unmatched_neighbours(network_id, &unmatched).await;
+        self.log_unresolved(network_id, &unmatched, &unresolved_ports)
+            .await;
 
         Ok(stats)
     }
 
-    /// Name the neighbours no strategy could place, so `host_not_found` can be checked rather
-    /// than inferred.
+    /// Downgrade port bindings that were made on a MAC the far-end device repeats across its ports.
     ///
-    /// One line for the whole network, capped like the daemon's scan warnings and saying how many
-    /// were elided — a list that simply stops reads as though that was all of them. This is a log
-    /// rather than a scan warning because neighbour resolution runs in a debounced subscriber that
-    /// fires after the historical Discovery row and its warning list are already written.
-    async fn log_unmatched_neighbours(&self, network_id: Uuid, unmatched: &[UnmatchedNeighbour]) {
-        if unmatched.is_empty() {
+    /// `unresolved_lldp_port_in_network` selects only rows with `neighbor_interface_id IS NULL`, so
+    /// a binding made before that MAC's uniqueness was checked is never revisited: it is not a link
+    /// that failed to resolve, it is one that resolved to an arbitrary port and looks authoritative.
+    /// Without this, tightening the rule would only ever apply to newly-seen neighbours and every
+    /// existing wrong edge would survive indefinitely.
+    ///
+    /// Downgrades to `Neighbor::Host` rather than clearing: the far-end *device* was never in
+    /// doubt, and a partial is exactly the state the pass above is built to retry, so the row is
+    /// re-examined in the same run and can be re-resolved by a tier that does identify a port.
+    ///
+    /// Self-limiting — a binding of this shape can no longer be created, so once the backlog has
+    /// drained this finds nothing and costs one query returning no rows per scan.
+    async fn reopen_ambiguous_mac_ports(
+        &self,
+        network_id: Uuid,
+        resolver: &LldpResolverImpl,
+    ) -> Result<usize> {
+        // The filter narrows to MAC-matched bindings in SQL so this does not read every resolved
+        // link in the network on every scan; `port_bound_by_mac` re-checks each row it returns and
+        // remains the authority on what that means.
+        let filter =
+            StorableFilter::<Interface>::new_for_port_resolved_by_mac_in_network(network_id);
+        let resolved = self.interface_service.get_all(filter).await?;
+
+        let mut downgraded = 0usize;
+        for mut interface in resolved {
+            let Some(Neighbor::Interface(bound_id)) = interface.base.neighbor else {
+                continue;
+            };
+            if !interface.port_bound_by_mac() {
+                continue;
+            }
+
+            let bound_filter = StorableFilter::<Interface>::new_from_entity_ids(&[bound_id]).live();
+            let Some(bound) = self.interface_service.get_one(bound_filter).await? else {
+                continue;
+            };
+            let Some(mac) = bound.base.mac_address else {
+                continue;
+            };
+
+            // Ask the guard itself rather than re-deriving "is this MAC unique on that device", so
+            // the two can never disagree about which bindings are legitimate.
+            if !matches!(
+                resolver
+                    .find_if_entry_by_mac(&mac.to_string(), bound.base.host_id)
+                    .await,
+                IdentityResolution::Ambiguous
+            ) {
+                continue;
+            }
+
+            interface.base.neighbor = Some(Neighbor::Host(bound.base.host_id));
+            self.interface_service
+                .update(&mut interface, AuthenticatedEntity::System)
+                .await?;
+            downgraded += 1;
+        }
+
+        if downgraded > 0 {
+            tracing::info!(
+                network_id = %network_id,
+                downgraded,
+                "Re-opened port links matched on a MAC the far-end device repeats across its ports"
+            );
+        }
+
+        Ok(downgraded)
+    }
+
+    /// Name the far ends that could not be placed, so the counters can be checked rather than
+    /// inferred.
+    ///
+    /// Two lines, because the two populations call for different actions: a device we have never
+    /// discovered is the operator's to scan, whereas a device we *have* discovered whose port we
+    /// cannot name is ours to explain. Each is capped like the daemon's scan warnings and says how
+    /// many were elided — a list that simply stops reads as though that was all of them. These are
+    /// logs rather than scan warnings because neighbour resolution runs in a debounced subscriber
+    /// that fires after the historical Discovery row and its warning list are already written.
+    async fn log_unresolved(
+        &self,
+        network_id: Uuid,
+        unmatched: &[UnmatchedNeighbour],
+        unresolved_ports: &[UnresolvedPort],
+    ) {
+        if unmatched.is_empty() && unresolved_ports.is_empty() {
             return;
         }
 
-        // One fetch for the whole batch: this runs after every scan, and the list is dominated by
-        // a handful of local devices reporting many unknown far ends each.
+        // One fetch for both lines: this runs after every scan, and the lists are dominated by a
+        // handful of local devices reporting many far ends each. Remote hosts are included because
+        // the port line names both ends.
         let host_ids: Vec<Uuid> = unmatched
             .iter()
             .map(|u| u.host_id)
+            .chain(
+                unresolved_ports
+                    .iter()
+                    .flat_map(|p| [p.host_id, p.remote_host_id]),
+            )
             .collect::<HashSet<_>>()
             .into_iter()
             .collect();
@@ -235,30 +449,51 @@ impl HostService {
             .await
         {
             Ok(hosts) => hosts.into_iter().map(|h| (h.id, h.base.name)).collect(),
-            // The identifiers below are the point of the line; losing the local host's name makes
-            // it harder to read, not useless.
+            // The identifiers below are the point of the lines; losing a host's name makes them
+            // harder to read, not useless.
             Err(e) => {
-                tracing::debug!(network_id = %network_id, error = %e, "Could not name the local hosts for unmatched LLDP neighbours");
+                tracing::debug!(network_id = %network_id, error = %e, "Could not name the hosts for unresolved LLDP neighbours");
                 HashMap::new()
             }
         };
 
-        let listed: Vec<String> = unmatched
-            .iter()
-            .take(MAX_LISTED_UNMATCHED)
-            .map(|u| u.describe(names.get(&u.host_id)))
-            .collect();
-        let elided = unmatched.len().saturating_sub(listed.len());
+        if !unmatched.is_empty() {
+            let listed: Vec<String> = unmatched
+                .iter()
+                .take(MAX_LISTED_UNMATCHED)
+                .map(|u| u.describe(names.get(&u.host_id)))
+                .collect();
+            let elided = unmatched.len().saturating_sub(listed.len());
 
-        tracing::warn!(
-            network_id = %network_id,
-            unmatched = unmatched.len(),
-            elided,
-            neighbours = %listed.join("; "),
-            "LLDP/CDP neighbours identify devices this network has not discovered, so they draw \
-             no links. Expected where the far end is an endpoint or unmanaged device; a device \
-             that should have been scanned means its identifier is not one we hold."
-        );
+            tracing::warn!(
+                network_id = %network_id,
+                unmatched = unmatched.len(),
+                elided,
+                neighbours = %listed.join("; "),
+                "LLDP/CDP neighbours identify devices this network has not discovered, so they draw \
+                 no links. Expected where the far end is an endpoint or unmanaged device; a device \
+                 that should have been scanned means its identifier is not one we hold."
+            );
+        }
+
+        if !unresolved_ports.is_empty() {
+            let listed: Vec<String> = unresolved_ports
+                .iter()
+                .take(MAX_LISTED_UNMATCHED)
+                .map(|p| p.describe(names.get(&p.host_id), names.get(&p.remote_host_id)))
+                .collect();
+            let elided = unresolved_ports.len().saturating_sub(listed.len());
+
+            tracing::warn!(
+                network_id = %network_id,
+                unresolved_ports = unresolved_ports.len(),
+                elided,
+                neighbours = %listed.join("; "),
+                "LLDP/CDP neighbours resolved to a device but not to one of its ports, so they draw \
+                 a device-level link instead of a port-to-port one. Each entry names the port id \
+                 that was tried and why it did not identify a single port."
+            );
+        }
     }
 
     /// Resolve FDB (bridge forwarding database) single-MAC ports to neighbor links.
@@ -288,13 +523,13 @@ impl HostService {
                 None => continue,
             };
 
-            // Try full resolution (specific port)
-            let neighbor =
-                if let Some(interface_id) = resolver.find_if_entry_by_mac(mac, host_id).await {
-                    Neighbor::Interface(interface_id)
-                } else {
-                    Neighbor::Host(host_id)
-                };
+            // Try full resolution (specific port). A far end that repeats one MAC across its ports
+            // names no single port, so the link stays at device level rather than being attached to
+            // whichever port the database returned first.
+            let neighbor = match resolver.find_if_entry_by_mac(mac, host_id).await {
+                IdentityResolution::Resolved(interface_id) => Neighbor::Interface(interface_id),
+                _ => Neighbor::Host(host_id),
+            };
 
             interface.base.neighbor = Some(neighbor);
             self.interface_service

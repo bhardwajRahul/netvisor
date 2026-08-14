@@ -301,12 +301,9 @@ impl CredentialTypeDiscriminants {
             | Self::DockerProxy
             | Self::DockerSocket
             | Self::PodmanProxy
-            | Self::PodmanSocket => CredentialStability::Stable,
-            // Built from Ubiquiti's documented API shapes and the unpoller reference structs,
-            // and validated against a self-hosted UniFi OS Server — but the adopted-device
-            // tables (`port_table`, `lldp_table`, `mac_table`, uplinks) have never been seen
-            // from real hardware. Promote once a real controller's `stat/device` confirms them.
-            Self::UnifiApiKey | Self::UnifiLocalAdmin => CredentialStability::Beta,
+            | Self::PodmanSocket
+            | Self::UnifiApiKey
+            | Self::UnifiLocalAdmin => CredentialStability::Stable,
         }
     }
 

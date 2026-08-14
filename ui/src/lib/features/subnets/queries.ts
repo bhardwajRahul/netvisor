@@ -136,6 +136,7 @@ export function useBulkDeleteSubnetsMutation() {
 }
 
 import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
+import { subnetTypes } from '$lib/shared/stores/metadata';
 
 // ============================================================================
 // Utility Functions
@@ -146,6 +147,28 @@ import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formattin
  */
 export function isContainerSubnet(subnet: Subnet): boolean {
 	return subnet.cidr === '0.0.0.0/0' && subnet.source.type === 'System';
+}
+
+/**
+ * Whether this subnet belongs to the inventory the user curates, and so belongs in
+ * the management lists (Subnets, Networks, Daemon and VLAN tabs).
+ *
+ * Mirrors `Subnet::is_user_managed` (`backend/src/server/subnets/impl/base.rs`), which
+ * the dashboard's subnet count uses — the two must agree or the totals disagree with
+ * the pages, as they did in GH #677.
+ *
+ * Provenance, not category: Scanopy fabricates the per-network `0.0.0.0/0` Internet and
+ * Remote supernets and the loopback rows, and those stay out of the way; a subnet the
+ * user created is theirs to manage whatever category they gave it.
+ *
+ * Fails open, like the metadata store it reads: a `subnet_type` this build doesn't
+ * recognise yields no metadata, and an unrecognised subnet is shown rather than hidden.
+ */
+export function isUserManagedSubnet(subnet: Subnet): boolean {
+	return (
+		subnet.source.type === 'Manual' ||
+		!subnetTypes.getMetadata(subnet.subnet_type).is_synthetic_category
+	);
 }
 
 /**

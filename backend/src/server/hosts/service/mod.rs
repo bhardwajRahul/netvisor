@@ -207,6 +207,12 @@ pub struct LldpResolutionStats {
     pub port_no_strategy: usize,
     /// Remote host known, port ID looked up, no such port on that host.
     pub port_not_found: usize,
+    /// Remote host known, but the identifier matched several of its ports and so names none.
+    ///
+    /// Its own counter because it is the one port outcome that is not a gap in our data: the far
+    /// end was found, and the device is reporting one MAC for every port (GH #668). Reading it as
+    /// `port_not_found` would send an operator hunting a device that is already scanned.
+    pub port_ambiguous: usize,
 }
 
 impl LldpResolutionStats {
@@ -222,6 +228,13 @@ impl LldpResolutionStats {
                 None
             }
             IdentityResolution::NotFound => {
+                self.host_not_found += 1;
+                None
+            }
+            // Not produced by the host ladder: an ambiguous MAC there yields no host and falls
+            // through to the chassis-id and sysName tiers, so the verdict that reaches here is
+            // theirs. Counted with `not_found` to keep the match total.
+            IdentityResolution::Ambiguous => {
                 self.host_not_found += 1;
                 None
             }
@@ -242,6 +255,10 @@ impl LldpResolutionStats {
             }
             IdentityResolution::NotFound => {
                 self.port_not_found += 1;
+                Neighbor::Host(host_id)
+            }
+            IdentityResolution::Ambiguous => {
+                self.port_ambiguous += 1;
                 Neighbor::Host(host_id)
             }
         }
