@@ -1162,6 +1162,31 @@ EOF
 #   local port 2 → subtype 5, port id "ethernet1/0/44". Matches no name and is not a number, so
 #                  the port id is a dead end; lldpRemPortDesc carries GigabitEthernet0/1, which
 #                  is exactly switch-core-01's ifDescr for ifIndex 1.
+#   local port 3 → switch-macport-01, and the positive half of the shared-MAC pair. Port id
+#                  subtype 3 (macAddress) carrying 00:07:7c:20:01:e3, which is that switch's
+#                  ifPhysAddress for eth3 and for nothing else. One match, so it must resolve to
+#                  that exact port — the counter-case to switch-tplink-01 local port 4, where the
+#                  same subtype against a device repeating one MAC must resolve to no port at all.
+#                  Both are needed: a guard that rejected this one too would look like it worked
+#                  while quietly costing every vendor that addresses its ports individually.
+#
+#                  Deliberate choices worth keeping:
+#                    - The chassis id is 00:07:7c:20:01:e0, that device's own lldpLocChassisId,
+#                      which sits on none of its ports. Host resolution therefore goes through
+#                      hosts.chassis_id and cannot borrow the answer from the port lookup.
+#                    - lldpRemPortDesc is "Ring port to peer", matching no ifName or ifDescr over
+#                      there (they are eth1..eth10). If the MAC tier ever breaks, this fails
+#                      loudly instead of being rescued by the description tier — the failure mode
+#                      that has already made three fixtures in this file look healthy while
+#                      testing nothing.
+#                    - Both identifiers are sent as `octet`, six raw bytes, which is what a real
+#                      agent sends and what no other LLDP fixture here does; the ASCII form is
+#                      covered by switch-tplink-01. This is the only end-to-end coverage of
+#                      `parse_mac_id`'s raw-octet branch.
+#
+#                  switch-macport-01 lives on fix/snmp-walk-and-lldp-local-port. Until that
+#                  merges, this row resolves to no host and counts as host_not_found — harmless,
+#                  and it starts working the moment the device exists.
 #
 # Rows are listed column-major (all of column 4, then all of column 5, …), matching every other
 # LLDP fixture here. That is not cosmetic: `pass` answers GETNEXT by scanning this file in the
@@ -1176,22 +1201,31 @@ cat > "$DATA_DIR/switch-dlink-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.4.0 string D-Link DGS-1210-48 Rev.GX/7.20.003
 .1.0.8802.1.1.2.1.3.7.1.2.1 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.2 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.3 integer 5
 .1.0.8802.1.1.2.1.3.7.1.3.1 string Slot0/1
 .1.0.8802.1.1.2.1.3.7.1.3.2 string Slot0/2
+.1.0.8802.1.1.2.1.3.7.1.3.3 string Slot0/3
 .1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.0.2.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.0.3.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 00:1a:2b:00:10:00
 .1.0.8802.1.1.2.1.4.1.1.5.0.2.1 string 00:1a:2b:00:10:00
+.1.0.8802.1.1.2.1.4.1.1.5.0.3.1 octet 00 07 7c 20 01 e0
 .1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.0.2.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.0.3.1 integer 3
 .1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string 2
 .1.0.8802.1.1.2.1.4.1.1.7.0.2.1 string ethernet1/0/44
+.1.0.8802.1.1.2.1.4.1.1.7.0.3.1 octet 00 07 7c 20 01 e3
 .1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/2
 .1.0.8802.1.1.2.1.4.1.1.8.0.2.1 string GigabitEthernet0/1
+.1.0.8802.1.1.2.1.4.1.1.8.0.3.1 string Ring port to peer
 .1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
 .1.0.8802.1.1.2.1.4.1.1.9.0.2.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.9.0.3.1 string switch-macport-01
 .1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
 .1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string Cisco IOS Software, C2960
+.1.0.8802.1.1.2.1.4.1.1.10.0.3.1 string Westermo WeOS
 EOF
 
 # ══════════════════════════════════════════════════════════════════════
