@@ -202,8 +202,15 @@ case "$REQUEST" in
         # The line after the requested one, in file order. A request naming no line of its own
         # — a bare column or table prefix — is answered with the first line under it, again in
         # file order, which is where the shuffle first shows.
+        #
+        # Single pass, exits as soon as it has an answer. That matters more than it looks: this
+        # handler is forked per varbind, so a full scan runs it thousands of times against every
+        # column. An earlier version read the whole file into awk arrays before deciding, and
+        # under the load of an 18-host scan it was slow enough that snmpd gave up on it — which
+        # the agent reports as endOfMibView, and a walk cannot tell that from a table that
+        # genuinely ended. The symptom was a column returning one row and calling itself
+        # complete, which looks exactly like a daemon bug and is not one.
         LINE=$(awk -v oid="$OID" '
-            { line[NR] = $0; o[NR] = $1 }
             function oid_gt(a, b,   na, nb, sa, sb, i, ai, bi) {
                 na = split(a, sa, ".")
                 nb = split(b, sb, ".")
@@ -215,15 +222,14 @@ case "$REQUEST" in
                 }
                 return 0
             }
+            matched { print; answered = 1; exit }
+            $1 == oid { matched = 1; next }
+            !have_prefix && index($1, oid ".") == 1 { prefix = $0; have_prefix = 1 }
+            !have_gt && oid_gt($1, oid) { gt = $0; have_gt = 1 }
             END {
-                for (i = 1; i <= NR; i++)
-                    if (o[i] == oid) { if (i < NR) print line[i + 1]; exit }
-                for (i = 1; i <= NR; i++)
-                    if (index(o[i], oid ".") == 1) { print line[i]; exit }
-                # Neither a row nor a prefix we hold: advance the way a sane agent would, so a
-                # request landing between rows still gets an answer.
-                for (i = 1; i <= NR; i++)
-                    if (oid_gt(o[i], oid)) { print line[i]; exit }
+                if (answered || matched) exit
+                if (have_prefix) print prefix
+                else if (have_gt) print gt
             }
         ' "$DATA_FILE")
         ;;
