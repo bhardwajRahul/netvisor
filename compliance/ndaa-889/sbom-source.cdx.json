@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:77f4cbcd-dbec-47b8-b393-5f849292e253",
+  "serialNumber": "urn:uuid:f8bd6ed1-efc1-4196-8407-77a362cfedb7",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-02T16:03:55Z",
+    "timestamp": "2026-08-06T02:45:03Z",
     "tools": {
       "components": [
         {
@@ -5808,6 +5808,63 @@
         {
           "name": "syft:cpe23",
           "value": "cpe:2.3:a:\\@tanstack\\/svelte:\\@tanstack\\/svelte_store:0.9.1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/ui/package-lock.json"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/%40tanstack/table-core@8.21.3?package-id=3bddf21a0702cbc2",
+      "type": "library",
+      "name": "@tanstack/table-core",
+      "version": "8.21.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@tanstack\\/table-core:\\@tanstack\\/table-core:8.21.3:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40tanstack/table-core@8.21.3",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@tanstack\\/table-core:\\@tanstack\\/table_core:8.21.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@tanstack\\/table_core:\\@tanstack\\/table-core:8.21.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@tanstack\\/table_core:\\@tanstack\\/table_core:8.21.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@tanstack\\/table:\\@tanstack\\/table-core:8.21.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@tanstack\\/table:\\@tanstack\\/table_core:8.21.3:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -40239,12 +40296,12 @@
       ]
     },
     {
-      "bom-ref": "pkg:cargo/scanopy-server@0.17.8?package-id=a0bcabf457a4447a",
+      "bom-ref": "pkg:cargo/scanopy-server@0.17.9?package-id=ab4e65ac5d7a6b82",
       "type": "library",
       "name": "scanopy-server",
-      "version": "0.17.8",
-      "cpe": "cpe:2.3:a:scanopy-server:scanopy-server:0.17.8:*:*:*:*:*:*:*",
-      "purl": "pkg:cargo/scanopy-server@0.17.8",
+      "version": "0.17.9",
+      "cpe": "cpe:2.3:a:scanopy-server:scanopy-server:0.17.9:*:*:*:*:*:*:*",
+      "purl": "pkg:cargo/scanopy-server@0.17.9",
       "properties": [
         {
           "name": "syft:package:foundBy",
@@ -40264,23 +40321,23 @@
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy-server:scanopy_server:0.17.8:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy-server:scanopy_server:0.17.9:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_server:scanopy-server:0.17.8:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_server:scanopy-server:0.17.9:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_server:scanopy_server:0.17.8:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_server:scanopy_server:0.17.9:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy-server:0.17.8:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy-server:0.17.9:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy_server:0.17.8:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy_server:0.17.9:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -40289,12 +40346,12 @@
       ]
     },
     {
-      "bom-ref": "pkg:npm/scanopy-ui@0.17.8?package-id=a7378c037b6f7f1f",
+      "bom-ref": "pkg:npm/scanopy-ui@0.17.9?package-id=35c789ac93d6ee5f",
       "type": "library",
       "name": "scanopy-ui",
-      "version": "0.17.8",
-      "cpe": "cpe:2.3:a:scanopy-ui:scanopy-ui:0.17.8:*:*:*:*:*:*:*",
-      "purl": "pkg:npm/scanopy-ui@0.17.8",
+      "version": "0.17.9",
+      "cpe": "cpe:2.3:a:scanopy-ui:scanopy-ui:0.17.9:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/scanopy-ui@0.17.9",
       "properties": [
         {
           "name": "syft:package:foundBy",
@@ -40314,23 +40371,23 @@
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy-ui:scanopy_ui:0.17.8:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy-ui:scanopy_ui:0.17.9:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_ui:scanopy-ui:0.17.8:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_ui:scanopy-ui:0.17.9:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_ui:scanopy_ui:0.17.8:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_ui:scanopy_ui:0.17.9:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy-ui:0.17.8:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy-ui:0.17.9:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy_ui:0.17.8:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy_ui:0.17.9:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -44179,63 +44236,6 @@
         {
           "name": "syft:cpe23",
           "value": "cpe:2.3:a:svelte:svelte_prism:1.1.6:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:location:0:path",
-          "value": "/ui/package-lock.json"
-        }
-      ]
-    },
-    {
-      "bom-ref": "pkg:npm/svelte-table@0.6.5?package-id=4f77c0a9ed15e466",
-      "type": "library",
-      "name": "svelte-table",
-      "version": "0.6.5",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "cpe": "cpe:2.3:a:svelte-table:svelte-table:0.6.5:*:*:*:*:*:*:*",
-      "purl": "pkg:npm/svelte-table@0.6.5",
-      "properties": [
-        {
-          "name": "syft:package:foundBy",
-          "value": "javascript-lock-cataloger"
-        },
-        {
-          "name": "syft:package:language",
-          "value": "javascript"
-        },
-        {
-          "name": "syft:package:type",
-          "value": "npm"
-        },
-        {
-          "name": "syft:package:metadataType",
-          "value": "javascript-npm-package-lock-entry"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:svelte-table:svelte_table:0.6.5:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:svelte_table:svelte-table:0.6.5:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:svelte_table:svelte_table:0.6.5:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:svelte:svelte-table:0.6.5:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:svelte:svelte_table:0.6.5:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -56092,11 +56092,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "0ef8b6f1b889022648d5472a81c7f40a998b1551"
+          "content": "8cfff6360774bd3125def03d5d01ecc8579edd84"
         },
         {
           "alg": "SHA-256",
-          "content": "764c788ac542a9b7baa5e5ed910ac4bc4fafce43cc18824caaaeef9879ebe52e"
+          "content": "e5cd717a4ef5bd9190902a3ad2ff09dc8b60a7961790438feaeddf7eca826cd5"
         }
       ]
     },
@@ -56122,11 +56122,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "9af158a6be2999f479642962f30db3c7190f21ef"
+          "content": "72ce3543bee2c5565d7b621b50636b35de54014b"
         },
         {
           "alg": "SHA-256",
-          "content": "f99cd7f409291e4dbb0ba05668ae2224d6c455b73c56fcf0b1fc1ffc21481e33"
+          "content": "9b4756fc5d678ec1b32ac51459eab56a2f9eef7efb70f3860a4c4e674ac5361e"
         }
       ]
     }
@@ -59838,7 +59838,7 @@
       ]
     },
     {
-      "ref": "pkg:cargo/scanopy-server@0.17.8?package-id=a0bcabf457a4447a",
+      "ref": "pkg:cargo/scanopy-server@0.17.9?package-id=ab4e65ac5d7a6b82",
       "dependsOn": [
         "pkg:cargo/anstyle-query@1.1.5?package-id=3eb3e92be11ef569",
         "pkg:cargo/anyhow@1.0.103?package-id=cc88ccfde1e2cc6a",
@@ -62267,7 +62267,7 @@
       ]
     },
     {
-      "ref": "pkg:npm/scanopy-ui@0.17.8?package-id=a7378c037b6f7f1f",
+      "ref": "pkg:npm/scanopy-ui@0.17.9?package-id=35c789ac93d6ee5f",
       "dependsOn": [
         "pkg:npm/%40beyonk/gdpr-cookie-consent-banner@16.0.2?package-id=cd6aef3707be3a0f",
         "pkg:npm/%40peculiar/x509@1.14.3?package-id=f9f09aa6bd0dd2b7",
@@ -62275,6 +62275,7 @@
         "pkg:npm/%40tailwindcss/forms@0.5.11?package-id=c4e06eaa1fd86e52",
         "pkg:npm/%40tanstack/svelte-form@1.28.3?package-id=ed03a61a54a62e31",
         "pkg:npm/%40tanstack/svelte-query@6.0.18?package-id=23ebc66d3d1f7fcd",
+        "pkg:npm/%40tanstack/table-core@8.21.3?package-id=3bddf21a0702cbc2",
         "pkg:npm/%40types/d3-force@3.0.10?package-id=3ded41696afd1fa1",
         "pkg:npm/%40types/jquery@3.5.33?package-id=13e7ee6c1d86e2d0",
         "pkg:npm/%40xyflow/svelte@1.5.1?package-id=396e2a568c303cf2",
@@ -62296,7 +62297,6 @@
         "pkg:npm/semver@7.7.4?package-id=bf564866ea4b030c",
         "pkg:npm/svelte-forms@2.3.1?package-id=c0f246fa65336def",
         "pkg:npm/svelte-prism@1.1.6?package-id=3855204c1e37a873",
-        "pkg:npm/svelte-table@0.6.5?package-id=4f77c0a9ed15e466",
         "pkg:npm/tailwindcss@3.4.19?package-id=556b77a31d9f3cf8",
         "pkg:npm/uuid@14.0.0?package-id=005855fe94c148a5",
         "pkg:npm/vite@7.3.5?package-id=f596f04129341e4e"

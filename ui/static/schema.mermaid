@@ -3,10 +3,12 @@ erDiagram
 "public.users" }o--|| "public.organizations" : "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE"
 "public.networks" }o--|| "public.organizations" : "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE"
 "public.hosts" }o--|| "public.networks" : "FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE"
+"public.hosts" }o--o| "public.services" : "FOREIGN KEY (virtualization_service_id) REFERENCES services(id) ON DELETE SET NULL"
 "public.hosts" }o--o| "public.discovery" : "FOREIGN KEY (first_discovery_id) REFERENCES discovery(id) ON DELETE SET NULL"
 "public.hosts" }o--o| "public.discovery" : "FOREIGN KEY (last_discovery_id) REFERENCES discovery(id) ON DELETE SET NULL"
 "public.hosts" }o--o| "public.snapshots" : "FOREIGN KEY (snapshot_id) REFERENCES snapshots(id) ON DELETE CASCADE"
 "public.subnets" }o--|| "public.networks" : "FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE"
+"public.subnets" }o--o| "public.services" : "FOREIGN KEY (virtualization_service_id) REFERENCES services(id) ON DELETE SET NULL"
 "public.subnets" }o--o| "public.discovery" : "FOREIGN KEY (first_discovery_id) REFERENCES discovery(id) ON DELETE SET NULL"
 "public.subnets" }o--o| "public.discovery" : "FOREIGN KEY (last_discovery_id) REFERENCES discovery(id) ON DELETE SET NULL"
 "public.subnets" }o--o| "public.snapshots" : "FOREIGN KEY (snapshot_id) REFERENCES snapshots(id) ON DELETE CASCADE"
@@ -17,6 +19,7 @@ erDiagram
 "public.daemons" }o--o| "public.api_keys" : "FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE SET NULL"
 "public.services" }o--|| "public.networks" : "FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE"
 "public.services" }o--|| "public.hosts" : "FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE CASCADE"
+"public.services" }o--o| "public.services" : "FOREIGN KEY (virtualization_service_id) REFERENCES services(id) ON DELETE SET NULL"
 "public.services" }o--o| "public.discovery" : "FOREIGN KEY (first_discovery_id) REFERENCES discovery(id) ON DELETE SET NULL"
 "public.services" }o--o| "public.discovery" : "FOREIGN KEY (last_discovery_id) REFERENCES discovery(id) ON DELETE SET NULL"
 "public.services" }o--o| "public.snapshots" : "FOREIGN KEY (snapshot_id) REFERENCES snapshots(id) ON DELETE CASCADE"
@@ -134,7 +137,7 @@ erDiagram
   text hostname
   text description
   jsonb source
-  jsonb virtualization
+  jsonb virtualization_metadata
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
   boolean hidden
@@ -155,6 +158,7 @@ erDiagram
   uuid last_discovery_id FK
   uuid first_discovery_id FK
   uuid snapshot_id FK
+  uuid virtualization_service_id FK
 }
 "public.subnets" {
   uuid id
@@ -166,7 +170,6 @@ erDiagram
   text description
   text subnet_type
   jsonb source
-  jsonb virtualization
   timestamp_with_time_zone valid_from
   timestamp_with_time_zone valid_to
   uuid lineage_id
@@ -174,6 +177,7 @@ erDiagram
   uuid last_discovery_id FK
   uuid first_discovery_id FK
   uuid snapshot_id FK
+  uuid virtualization_service_id FK
 }
 "public.dependencies" {
   uuid id
@@ -217,7 +221,7 @@ erDiagram
   text name
   uuid host_id FK
   text service_definition
-  jsonb virtualization
+  jsonb virtualization_metadata
   jsonb source
   integer position
   timestamp_with_time_zone valid_from
@@ -227,6 +231,7 @@ erDiagram
   uuid last_discovery_id FK
   uuid first_discovery_id FK
   uuid snapshot_id FK
+  uuid virtualization_service_id FK
 }
 "public.discovery" {
   uuid id
@@ -266,7 +271,6 @@ erDiagram
   text brevo_company_id
   boolean has_payment_method
   timestamp_with_time_zone trial_end_date
-  jsonb plan_limit_notifications
   text use_case
   timestamp_with_time_zone last_paused_at
   boolean trial_extended_used
