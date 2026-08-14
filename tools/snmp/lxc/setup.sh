@@ -1103,7 +1103,17 @@ cp "$DATA_DIR/switch-flaky-01-lldp-complete.txt" "$DATA_DIR/switch-flaky-01-lldp
 #      key. A MAC that names 3 ports names none of them, and the server used to take whichever row
 #      the database returned first, drawing a port-precise link to an arbitrary port. Consumers now
 #      resolve on a single match only; see `find_if_entry_by_mac` and `plan_interface_ip_links`.
-#      switch-tplink-01's local port 4 is the neighbour that exercises it from the far side.
+#
+#      >> The stored value does NOT survive this transport, for the same reason the FDB and ARM
+#      >> MACs above are not simulated: `pass` is line-based and emits `string`, so these 17 bytes
+#      >> arrive as ASCII rather than the six raw octets a PhysAddress is, and `value_to_mac`
+#      >> correctly rejects them. Every simulated interface therefore stores a NULL mac_address —
+#      >> verify with `snmpwalk -v2c -c netdefault -Ox 192.168.7.244 1.3.6.1.2.1.2.2.1.6`, which
+#      >> shows 17 octets, not 6. The lines are kept because they are what the device reports and
+#      >> because a future transport that can carry octets would need them, but nothing downstream
+#      >> of collection is exercised by them. The server-side rule is covered by unit tests in
+#      >> `resolver.rs`/`lldp.rs` and `plan_interface_ip_links`, and by any real device that
+#      >> repeats one MAC across its ports.
 #
 #      An earlier revision gave each port its own address (…:4e:01..03), which is the case that
 #      never needed guarding. Nothing else here depended on those being distinct.
@@ -1289,15 +1299,20 @@ EOF
 #                             covered on its own by port 5 below, whose chassis MAC is on no port.
 #   port 4 → switch-dlink-01  the same device again, reached the way GH #668 exposed: port id
 #                             subtype 3 (macAddress) carrying 00:AD:24:AF:4E:00, which that switch
-#                             reports as ifPhysAddress on *every* port. The chassis id resolves the
-#                             host, and the port id must then resolve nothing — a MAC that names
-#                             three ports names none of them. Expect one device-level (amber)
-#                             NeighborLink and port_ambiguous=1, not a port-precise link to
-#                             whichever of Slot0/1..3 came back first. lldpRemPortDesc is
-#                             deliberately "Uplink to core", matching no ifName or ifDescr on that
-#                             switch: the port-desc tier still runs after an ambiguous port id (a
-#                             description that does match should win), so anything matchable here
-#                             would resolve the port and hide the case under test.
+#                             reports as ifPhysAddress on *every* port. This is the only subtype-3
+#                             port id in the lab, so it is what proves subtype 3 parses and reaches
+#                             a lookup at all, and that failing it leaves a device-level (amber)
+#                             NeighborLink rather than no edge. lldpRemPortDesc is deliberately
+#                             "Uplink to core", matching no ifName or ifDescr on that switch: the
+#                             port-desc tier still runs after a failed port id, so anything
+#                             matchable here would resolve the port and hide the case.
+#
+#                             Note what it does NOT prove: because ifPhysAddress cannot survive
+#                             `pass` (see switch-dlink-01 above), that switch stores no interface
+#                             MACs at all, so this resolves as port_not_found, not port_ambiguous.
+#                             The outcome is the same amber edge for a different reason. Reading a
+#                             passing L2 view here as evidence that the ambiguity guard works would
+#                             be wrong — that guard is covered by unit tests.
 #   port 5 → switch-netgear-01 chassis 00:1a:2b:3c:4d:63 is on no port and no IP (the #664
 #                             shape), so only the host's own recorded chassis_id can match it;
 #                             port id "3" matches no name and falls through to ifIndex 3 (g3).
