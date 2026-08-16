@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 // Re-export type-specific types so external imports don't break
 pub use super::types::container_proxy::ContainerProxyQueryCredential;
+pub use super::types::instant_on::InstantOnQueryCredential;
 pub use super::types::unifi::{UnifiAuth, UnifiQueryCredential};
 
 /// Container-runtime (Docker/Podman) socket query credential. The daemon connects via a local
@@ -197,6 +198,10 @@ pub enum CredentialQueryPayload {
     /// Both UniFi transports (API key and local admin) share this payload; the auth
     /// material is discriminated inside `UnifiAuth`.
     UnifiController(UnifiQueryCredential),
+    /// HPE Networking Instant On cloud portal. The only payload here whose endpoint is off the
+    /// operator's network entirely — the daemon authenticates to HPE's cloud and reads the site
+    /// inventory, while the credential stays bound to the switch it reports on.
+    InstantOn(InstantOnQueryCredential),
     /// Forward-compat fallback: a credential type from a newer server that this
     /// daemon doesn't recognize. `#[serde(other)]` deserializes any unknown `type`
     /// tag here (a unit variant, the only shape allowed for `other` on an
@@ -223,6 +228,7 @@ impl From<CredentialQueryPayloadDiscriminants> for super::types::CredentialTypeD
             // Lossy but harmless: this reverse map only picks a representative
             // `CredentialType` for a wire tag, and both UniFi transports share one.
             CredentialQueryPayloadDiscriminants::UnifiController => Self::UnifiApiKey,
+            CredentialQueryPayloadDiscriminants::InstantOn => Self::InstantOnAccount,
             // `Unknown` is the daemon-side forward-compat sentinel; the server only
             // ever builds `CredentialQueryPayload` from a known `CredentialType`, so
             // this reverse conversion never sees it. Fall back to the SNMP default to
@@ -250,6 +256,9 @@ impl CredentialQueryPayload {
             Self::DockerProxy(d) | Self::PodmanProxy(d) => vec![d.port],
             Self::DockerSocket(_) | Self::PodmanSocket(_) => vec![],
             Self::UnifiController(u) => vec![u.port],
+            // Nothing to scan for: the endpoint is HPE's cloud, and the switch this credential is
+            // bound to does not have to expose any port for the fetch to work.
+            Self::InstantOn(_) => vec![],
             Self::Unknown => vec![],
         }
     }
@@ -262,6 +271,7 @@ impl CredentialQueryPayload {
             Self::PodmanProxy(_) => "Podman proxy connection",
             Self::PodmanSocket(_) => "Podman socket connection",
             Self::UnifiController(_) => "UniFi controller connection",
+            Self::InstantOn(_) => "Instant On portal connection",
             Self::Unknown => "unknown credential",
         }
     }
@@ -354,6 +364,12 @@ impl CredentialQueryPayload {
                     },
                 },
             })),
+            // No PEM validation — a portal password is an opaque plain string.
+            Self::InstantOn(i) => Ok(Self::InstantOn(InstantOnQueryCredential {
+                username: i.username.clone(),
+                password: i.password.resolve_to_value("password", label)?,
+                site: i.site.clone(),
+            })),
             Self::Unknown => Ok(Self::Unknown),
         }
     }
@@ -364,6 +380,7 @@ impl CredentialQueryPayload {
             Self::DockerProxy(c) | Self::PodmanProxy(c) => c.banner_lines(),
             Self::DockerSocket(_) | Self::PodmanSocket(_) => vec![],
             Self::UnifiController(u) => u.banner_lines(),
+            Self::InstantOn(i) => i.banner_lines(),
             Self::Unknown => vec![],
         }
     }
@@ -384,11 +401,28 @@ pub enum ResolvableValue {
 /// (`{"mode":"Value","value":"..."}`) and legacy plain strings (`"********"`)
 /// from pre-v0.15.0 discovery_type JSONB. Legacy strings deserialize as
 /// `Value { value: string }`.
-#[derive(Debug, Clone, Serialize, Eq, PartialEq, Hash, ToSchema)]
+#[derive(Clone, Serialize, Eq, PartialEq, Hash, ToSchema)]
 #[serde(tag = "mode")]
 pub enum ResolvableSecret {
     Value { value: String },
     FilePath { path: String },
+}
+
+/// Redacts the secret rather than deriving `Debug`, so *holding* one of these is enough to be
+/// safe in a log line. `SnmpV3Params` and `SnmpQueryCredential` hand-write redacting impls for
+/// the same reason; doing it here as well means a payload that forgets to — as
+/// `UnifiQueryCredential` did, and as the Instant On payload would have — cannot leak. A file
+/// path is not a secret and stays legible, which is what makes a misconfigured path debuggable.
+impl std::fmt::Debug for ResolvableSecret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Value { value } => f
+                .debug_struct("Value")
+                .field("value", &format_args!("******** ({} chars)", value.len()))
+                .finish(),
+            Self::FilePath { path } => f.debug_struct("FilePath").field("path", path).finish(),
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for ResolvableSecret {

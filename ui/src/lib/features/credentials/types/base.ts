@@ -10,6 +10,10 @@ export type CredentialOrderField = components['schemas']['CredentialOrderField']
 export type IntegrationTarget = components['schemas']['IntegrationTarget'];
 /** Release maturity of a credential type's integration. Derived from the backend enum. */
 export type CredentialStability = components['schemas']['CredentialStability'];
+/** Whether the vendor publishes the API this credential type talks to. Derived from the backend
+ *  enum, and independent of `CredentialStability` — an integration can be stable and still ride
+ *  an endpoint the vendor never documented. */
+export type UpstreamSupport = components['schemas']['UpstreamSupport'];
 
 // Re-export SNMP types still used by other features (Interface display, etc.)
 export type Interface = components['schemas']['Interface'];
@@ -24,6 +28,8 @@ import {
 	common_testing,
 	common_unknown,
 	credentials_betaTooltip,
+	credentials_unofficialApi,
+	credentials_unofficialApiTooltip,
 	credentials_targetNetworkTooltip,
 	credentials_targetDaemonHost,
 	credentials_targetDaemonHostTooltip,
@@ -164,6 +170,28 @@ export function getStabilityTagProps(stability: CredentialStability | undefined)
 		label: common_beta(),
 		color: 'Amber' as Color,
 		title: credentials_betaTooltip()
+	};
+}
+
+/**
+ * Tag marking a credential type that talks to an API its vendor does not publish, or `null` for
+ * vendor-supported ones.
+ *
+ * Separate from `getStabilityTagProps` because the two say different things and change
+ * independently: beta is about how far *we* have validated the integration and goes away when it
+ * is promoted, while an undocumented upstream is a permanent property of the vendor's API. A
+ * credential type can carry both tags, one, or neither.
+ */
+export function getUpstreamSupportTagProps(
+	upstreamSupport: UpstreamSupport | undefined
+): TagProps | null {
+	if (upstreamSupport !== 'Undocumented') return null;
+	return {
+		label: credentials_unofficialApi(),
+		// Gray rather than the amber Beta uses: this is a standing property of the vendor's API,
+		// not a warning about our own maturity, and the two can appear side by side.
+		color: 'Gray' as Color,
+		title: credentials_unofficialApiTooltip()
 	};
 }
 
