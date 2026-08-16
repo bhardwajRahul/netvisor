@@ -14,6 +14,7 @@ use strum_macros::{IntoStaticStr, VariantNames};
 use utoipa::ToSchema;
 
 pub mod container_proxy;
+pub mod instant_on;
 pub mod snmp;
 pub mod unifi;
 
@@ -24,6 +25,7 @@ mod secrets;
 pub use fields::{FieldDefinition, FieldType, InlineFormat, PemTag, SelectOption};
 pub use metadata::{
     CredentialAssignment, CredentialCategory, CredentialHostAssignment, CredentialStability,
+    UpstreamSupport,
 };
 // `Target` is the strum-discriminant of `IntegrationTarget` (single source of truth for the
 // scope scheme); re-export it here so `CredentialType::targets()` and existing imports resolve.
@@ -36,6 +38,7 @@ pub use secrets::{
 // Re-export SnmpVersion and v3 protocol enums from snmp submodule
 pub use snmp::{SnmpV3AuthProtocol, SnmpV3PrivProtocol, SnmpVersion};
 
+pub use instant_on::InstantOnQueryCredential;
 pub use unifi::{UnifiAuth, UnifiQueryCredential, default_unifi_port, default_unifi_site};
 
 fn default_docker_port() -> u16 {
@@ -210,6 +213,21 @@ pub enum CredentialType {
         /// Password for that account.
         password: SecretValue,
     },
+    /// HPE Networking Instant On cloud portal account.
+    ///
+    /// The endpoint is HPE's cloud, not a host on the network — bind this to the Instant On
+    /// switch it reports on. Requires an account with **MFA disabled**; use a dedicated
+    /// site account with the read-only Viewer role.
+    #[schema(title = "InstantOnAccount")]
+    InstantOnAccount {
+        /// Portal account email address.
+        username: String,
+        /// Password for that account.
+        password: SecretValue,
+        /// Restrict the fetch to one site by name. Blank ⇒ every site the account can see.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        site: Option<String>,
+    },
 }
 
 /// Convert a stored `SecretValue` into a daemon-bound `ResolvableSecret`,
@@ -313,6 +331,13 @@ impl CredentialType {
                     password: existing_password,
                     ..
                 },
+            )
+            | (
+                Self::InstantOnAccount { password, .. },
+                Self::InstantOnAccount {
+                    password: existing_password,
+                    ..
+                },
             ) => {
                 if password.is_redacted_sentinel() {
                     *password = existing_password.clone();
@@ -334,7 +359,8 @@ impl CredentialType {
             | (Self::PodmanProxy { .. }, _)
             | (Self::PodmanSocket { .. }, _)
             | (Self::UnifiApiKey { .. }, _)
-            | (Self::UnifiLocalAdmin { .. }, _) => {}
+            | (Self::UnifiLocalAdmin { .. }, _)
+            | (Self::InstantOnAccount { .. }, _) => {}
         }
     }
 
@@ -347,9 +373,9 @@ impl CredentialType {
             | Self::DockerSocket { .. }
             | Self::PodmanProxy { .. }
             | Self::PodmanSocket { .. } => CredentialCategory::ContainerVirtualization,
-            Self::UnifiApiKey { .. } | Self::UnifiLocalAdmin { .. } => {
-                CredentialCategory::NetworkController
-            }
+            Self::UnifiApiKey { .. }
+            | Self::UnifiLocalAdmin { .. }
+            | Self::InstantOnAccount { .. } => CredentialCategory::NetworkController,
         }
     }
 
@@ -375,6 +401,12 @@ impl CredentialType {
             Self::UnifiApiKey { .. } | Self::UnifiLocalAdmin { .. } => {
                 vec![Target::DaemonHost, Target::Hosts]
             }
+            // Instant On has no on-network endpoint at all — the daemon talks to HPE's cloud. Bind
+            // it to the switch it reports on: an IP binding names what a credential produces data
+            // about, and this credential says nothing about the machine running the daemon, so
+            // `DaemonHost` is wrong here even though it is right for a self-hosted controller.
+            // Not `Network` either, for the same reason as UniFi.
+            Self::InstantOnAccount { .. } => vec![Target::Hosts],
         }
     }
 
@@ -404,7 +436,9 @@ impl CredentialType {
             | Self::PodmanSocket { .. }
             // One controller instance per host; API key and local admin are two ways in.
             | Self::UnifiApiKey { .. }
-            | Self::UnifiLocalAdmin { .. } => true,
+            | Self::UnifiLocalAdmin { .. }
+            // One Instant On site reports a given switch, and there is one way to reach it.
+            | Self::InstantOnAccount { .. } => true,
             Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => false,
         }
     }
@@ -453,10 +487,12 @@ impl CredentialType {
                 "api_key" => inline_secret(api_key),
                 _ => None,
             },
-            Self::UnifiLocalAdmin { password, .. } => match field_id {
-                "password" => inline_secret(password),
-                _ => None,
-            },
+            Self::UnifiLocalAdmin { password, .. } | Self::InstantOnAccount { password, .. } => {
+                match field_id {
+                    "password" => inline_secret(password),
+                    _ => None,
+                }
+            }
             Self::DockerSocket { .. } | Self::PodmanSocket { .. } => None,
         }
     }
@@ -491,6 +527,9 @@ impl CredentialType {
             }
             Self::UnifiApiKey { .. } | Self::UnifiLocalAdmin { .. } => {
                 Box::new(crate::server::services::definitions::unifi_controller::UnifiController)
+            }
+            Self::InstantOnAccount { .. } => {
+                Box::new(crate::server::services::definitions::instant_on::InstantOn)
             }
         }
     }
@@ -588,6 +627,17 @@ impl CredentialType {
                     username: username.clone(),
                     password: secret_to_resolvable(password),
                 },
+            }),
+            CredentialType::InstantOnAccount {
+                username,
+                password,
+                site,
+            } => CredentialQueryPayload::InstantOn(InstantOnQueryCredential {
+                username: username.clone(),
+                password: secret_to_resolvable(password),
+                // A blank site field means "every site", so normalise it to None rather than
+                // sending an empty string the client would then have to treat as a wildcard.
+                site: site.as_ref().filter(|s| !s.trim().is_empty()).cloned(),
             }),
         }
     }

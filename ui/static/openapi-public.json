@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.8\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.8\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.8)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.9\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.9\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.9)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -12013,12 +12013,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.8"
+            "example": "0.17.9"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.8"
+          "server_version": "0.17.9"
         }
       },
       "ApiResponse": {
@@ -12148,19 +12148,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-08-03T19:06:30.690347Z",
+              "created_at": "2026-08-16T21:28:14.326047Z",
               "first_discovery_id": null,
-              "id": "3d503a79-616d-42a6-a792-c1baad6c865b",
+              "id": "125d51fc-0ef5-4fab-9a33-176c5ce78a1a",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-03T19:06:30.690347Z",
+              "last_seen_at": "2026-08-16T21:28:14.326047Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-03T19:06:30.690347Z",
-              "valid_from": "2026-08-03T19:06:30.690347Z",
+              "updated_at": "2026-08-16T21:28:14.326047Z",
+              "valid_from": "2026-08-16T21:28:14.326047Z",
               "valid_to": null
             }
           },
@@ -13450,19 +13450,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-08-03T19:06:30.671262Z",
+                      "created_at": "2026-08-16T21:28:14.301929Z",
                       "first_discovery_id": null,
-                      "id": "b4b0be9e-0f24-4a38-b67c-22abba336dbe",
+                      "id": "a890c9ce-3f2e-43bf-bdea-c6f2a039df1d",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-08-03T19:06:30.671262Z",
+                      "last_seen_at": "2026-08-16T21:28:14.301929Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-08-03T19:06:30.671262Z",
-                      "valid_from": "2026-08-03T19:06:30.671262Z",
+                      "updated_at": "2026-08-16T21:28:14.301929Z",
+                      "valid_from": "2026-08-16T21:28:14.301929Z",
                       "valid_to": null
                     }
                   ],
@@ -13476,7 +13476,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Tasmota",
+                  "service_definition": "SIP Server",
                   "source": {
                     "type": "Manual"
                   },
@@ -14679,19 +14679,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-08-03T19:06:30.684192Z",
+                  "created_at": "2026-08-16T21:28:14.318082Z",
                   "first_discovery_id": null,
-                  "id": "ab533aaa-463d-4042-b9d3-fbcb5f51cf99",
+                  "id": "570a765c-aa6b-4645-ada1-9b41eeb6993b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-03T19:06:30.684192Z",
+                  "last_seen_at": "2026-08-16T21:28:14.318082Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-03T19:06:30.684192Z",
-                  "valid_from": "2026-08-03T19:06:30.684192Z",
+                  "updated_at": "2026-08-16T21:28:14.318082Z",
+                  "valid_from": "2026-08-16T21:28:14.318082Z",
                   "valid_to": null
                 }
               ],
@@ -14705,7 +14705,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Tasmota",
+              "service_definition": "SIP Server",
               "source": {
                 "type": "Manual"
               },
@@ -16765,19 +16765,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-08-03T19:06:30.671637Z",
+          "created_at": "2026-08-16T21:28:14.302402Z",
           "first_discovery_id": null,
-          "id": "140ed72f-e599-4b7c-9b04-8e462484b901",
+          "id": "fb09d86d-7bb9-491e-a9bb-c57cd879784b",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-08-03T19:06:30.671637Z",
+          "last_seen_at": "2026-08-16T21:28:14.302402Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-08-03T19:06:30.671637Z",
-          "valid_from": "2026-08-03T19:06:30.671637Z",
+          "updated_at": "2026-08-16T21:28:14.302402Z",
+          "valid_from": "2026-08-16T21:28:14.302402Z",
           "valid_to": null
         }
       },
@@ -17415,7 +17415,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Tasmota",
+              "service_definition": "SIP Server",
               "tags": [],
               "virtualization_metadata": null,
               "virtualization_service_id": null
@@ -18032,6 +18032,39 @@
                 "description": "Local admin account on the controller."
               }
             }
+          },
+          {
+            "type": "object",
+            "title": "InstantOnAccount",
+            "description": "HPE Networking Instant On cloud portal account.\n\nThe endpoint is HPE's cloud, not a host on the network — bind this to the Instant On\nswitch it reports on. Requires an account with **MFA disabled**; use a dedicated\nsite account with the read-only Viewer role.",
+            "required": [
+              "username",
+              "password",
+              "type"
+            ],
+            "properties": {
+              "password": {
+                "$ref": "#/components/schemas/SecretValue",
+                "description": "Password for that account."
+              },
+              "site": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Restrict the fetch to one site by name. Blank ⇒ every site the account can see."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "InstantOnAccount"
+                ]
+              },
+              "username": {
+                "type": "string",
+                "description": "Portal account email address."
+              }
+            }
           }
         ],
         "description": "Universal credential type — tagged enum stored as JSONB.\nEach variant represents a different credential protocol/method."
@@ -18047,7 +18080,8 @@
           "PodmanProxy",
           "PodmanSocket",
           "UnifiApiKey",
-          "UnifiLocalAdmin"
+          "UnifiLocalAdmin",
+          "InstantOnAccount"
         ]
       },
       "Daemon": {
@@ -20902,19 +20936,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-08-03T19:06:30.670848Z",
+                  "created_at": "2026-08-16T21:28:14.301262Z",
                   "first_discovery_id": null,
-                  "id": "98043b33-f473-4e04-83f1-5845168b6cb4",
+                  "id": "ecd635ea-2f66-458a-92e7-18084349571d",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-03T19:06:30.670848Z",
+                  "last_seen_at": "2026-08-16T21:28:14.301262Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-03T19:06:30.670848Z",
-                  "valid_from": "2026-08-03T19:06:30.670848Z",
+                  "updated_at": "2026-08-16T21:28:14.301262Z",
+                  "valid_from": "2026-08-16T21:28:14.301262Z",
                   "valid_to": null
                 }
               ],
@@ -20928,7 +20962,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Tasmota",
+              "service_definition": "SIP Server",
               "source": {
                 "type": "Manual"
               },
@@ -23253,7 +23287,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.8"
+            "example": "0.17.9"
           }
         },
         "example": {
@@ -23264,7 +23298,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.8"
+          "server_version": "0.17.9"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -23878,19 +23912,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-08-03T19:06:30.660794Z",
+                        "created_at": "2026-08-16T21:28:14.289954Z",
                         "first_discovery_id": null,
-                        "id": "7c6c22cb-da14-4407-9253-b087281d24e8",
+                        "id": "0cb32c0c-4107-413f-8e35-e6abe6124ce6",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-08-03T19:06:30.660794Z",
+                        "last_seen_at": "2026-08-16T21:28:14.289954Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-08-03T19:06:30.660794Z",
-                        "valid_from": "2026-08-03T19:06:30.660794Z",
+                        "updated_at": "2026-08-16T21:28:14.289954Z",
+                        "valid_from": "2026-08-16T21:28:14.289954Z",
                         "valid_to": null
                       }
                     ],
@@ -23904,7 +23938,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Tasmota",
+                    "service_definition": "SIP Server",
                     "source": {
                       "type": "Manual"
                     },
@@ -24040,19 +24074,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-08-03T19:06:30.683098Z",
+                    "created_at": "2026-08-16T21:28:14.316452Z",
                     "first_discovery_id": null,
-                    "id": "9f1ff0ac-21b8-4a3c-b94e-c9f35072d06c",
+                    "id": "058de1b0-1170-496a-bd68-fc8b45e4270a",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-08-03T19:06:30.683098Z",
+                    "last_seen_at": "2026-08-16T21:28:14.316452Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-08-03T19:06:30.683098Z",
-                    "valid_from": "2026-08-03T19:06:30.683098Z",
+                    "updated_at": "2026-08-16T21:28:14.316452Z",
+                    "valid_from": "2026-08-16T21:28:14.316452Z",
                     "valid_to": null
                   }
                 ],
@@ -24066,7 +24100,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Tasmota",
+                "service_definition": "SIP Server",
                 "source": {
                   "type": "Manual"
                 },
@@ -26044,19 +26078,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-08-03T19:06:30.671553Z",
+              "created_at": "2026-08-16T21:28:14.302279Z",
               "first_discovery_id": null,
-              "id": "01e6884f-c3ad-4148-9317-8ff2e14eea4d",
+              "id": "c03e3fe5-06d4-4208-b605-b964d8de2845",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-03T19:06:30.671553Z",
+              "last_seen_at": "2026-08-16T21:28:14.302279Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-03T19:06:30.671553Z",
-              "valid_from": "2026-08-03T19:06:30.671553Z",
+              "updated_at": "2026-08-16T21:28:14.302279Z",
+              "valid_from": "2026-08-16T21:28:14.302279Z",
               "valid_to": null
             }
           ],
@@ -26070,7 +26104,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Tasmota",
+          "service_definition": "SIP Server",
           "source": {
             "type": "Manual"
           },
@@ -27268,7 +27302,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "dc21a29b-7131-4b48-bad5-5a282bca6677",
+                  "id": "4b1832b9-6195-4757-ae5d-298674c462c6",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -27278,23 +27312,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "51d9ea98-1a2e-4b11-b76a-79d310aa8e7e",
+                  "id": "2f74093d-ab49-4a50-9f8d-4006ad804d98",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "d9df80dd-b789-4559-8411-0357bd4ef598",
+                  "id": "da25831e-87b2-4545-b2b7-5f154be3dda9",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "7e148b8b-7ed3-4f2a-878b-5f25291ba562",
+                  "id": "dc988be4-fe7b-40d5-b6b6-7f854b89c3a7",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "51d9ea98-1a2e-4b11-b76a-79d310aa8e7e",
+                  "id": "2f74093d-ab49-4a50-9f8d-4006ad804d98",
                   "rule": "ByHost"
                 }
               ]
@@ -27324,19 +27358,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "385a9ae4-58a9-48e7-ba54-e70d7ab2e77d",
+                "id": "55551c5a-7712-4cf9-af41-fd29e92f42bb",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "7dc2c26d-b61d-4155-96c3-a3b156773356",
+                "id": "352d5ab8-fd42-44f9-b92f-f8c05874ab57",
                 "rule": "ByVLAN"
               },
               {
-                "id": "6ec4bf66-3a5a-463b-aa94-ead00aaa8adb",
+                "id": "3572fcfd-a48c-4b3b-97d5-5ca3b18c6827",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "b127f3e4-df5f-494d-b46d-3b7ddd1cf611",
+                "id": "12efc501-e692-4f1d-b2a9-b280f7aee352",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -27354,7 +27388,7 @@
                 }
               },
               {
-                "id": "352bb33f-229a-49fd-b3d5-50125c2d97a3",
+                "id": "3dcd77d8-e985-4adb-b26e-b762ee6cd249",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -27363,15 +27397,15 @@
                 }
               },
               {
-                "id": "276bf733-14bb-407b-8cc0-5e30e94d84eb",
+                "id": "70bb796f-3d5d-4f0d-9419-fecbe73979c6",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "2e81c39e-a42c-4c0f-abd5-3d81e013c24b",
+                "id": "2d1b2936-f2f6-407b-a024-c2b0de3ae6ee",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "0f9d5b2b-d661-4212-a66d-dc933eb44646",
+                "id": "35524645-0a28-4d88-8ff1-d074354202af",
                 "rule": "ByStack"
               }
             ]
@@ -27409,6 +27443,11 @@
                 }
               },
               "L2Physical": {
+                "Interface": {
+                  "LinkState": [
+                    "Unlinked"
+                  ]
+                },
                 "Service": {
                   "Category": [
                     "OpenPorts"
@@ -27446,6 +27485,7 @@
                   "enum": [
                     "Category",
                     "Virtualization",
+                    "LinkState",
                     "Staleness"
                   ]
                 }

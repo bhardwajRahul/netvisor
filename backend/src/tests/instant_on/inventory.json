@@ -1,0 +1,90 @@
+{
+  "elements": [
+    {
+      "id": "dev-stack",
+      "name": "Core Stack",
+      "deviceType": "STACK",
+      "macAddress": "AA:BB:CC:00:00:01",
+      "ipAddress": "192.168.20.2",
+      "model": "1960-48G-4SFP",
+      "serialNumber": "STACK-SER-1",
+      "firmwareVersion": "3.4.0",
+      "members": [
+        { "memberId": 1, "serialNumber": "STACK-SER-1", "model": "1960-48G-4SFP" },
+        { "memberId": 2, "serialNumber": "STACK-SER-2", "model": "1960-48G-4SFP" }
+      ],
+      "ports": [
+        { "id": "1/1/1", "name": "Uplink to core", "portNumber": 1, "up": true, "enabled": true, "speed": 1000 },
+        { "id": "1/1/2", "portNumber": 2, "up": true, "enabled": true, "speed": "1000" },
+        { "id": "2/1/1", "portNumber": 1, "up": "true", "enabled": 1, "speed": 10000 },
+        { "id": "2/1/2", "portNumber": 2, "up": false, "enabled": false, "speed": 0 }
+      ]
+    },
+    {
+      "id": "dev-edge",
+      "name": "Edge Switch",
+      "deviceType": "SWITCH",
+      "macAddress": "AA:BB:CC:00:00:02",
+      "ipAddress": "192.168.20.3",
+      "model": "1930-24G",
+      "serialNumber": "EDGE-SER-1",
+      "firmwareVersion": "2.9.1",
+      "someFutureFieldTheApiAdded": { "nested": true },
+      "ports": [
+        { "id": "1", "name": "Reception", "portNumber": 1, "up": true, "enabled": true, "speed": 1000 },
+        { "id": "2", "portNumber": 2, "up": true, "enabled": true, "speed": 1000 },
+        { "id": "24", "name": "Uplink", "portNumber": 24, "up": true, "enabled": true, "speed": 10000 }
+      ],
+      "uplink": {
+        "connectedTo": "dev-stack",
+        "portId": "24",
+        "remotePortId": "1/1/2"
+      }
+    },
+    {
+      "id": "dev-ap",
+      "name": "Office AP",
+      "deviceType": "ACCESS_POINT",
+      "macAddress": "AA:BB:CC:00:00:03",
+      "ipAddress": "192.168.20.4",
+      "model": "AP25",
+      "serialNumber": "AP-SER-1",
+      "firmwareVersion": "3.4.0",
+      "uplink": {
+        "connectedTo": "dev-edge",
+        "connectedToMacAddress": "AA:BB:CC:00:00:02",
+        "portId": "eth0",
+        "remotePortId": "1"
+      }
+    },
+    {
+      "id": "dev-gw",
+      "name": "Site Gateway",
+      "deviceType": "GATEWAY",
+      "macAddress": "AA:BB:CC:00:00:04",
+      "ipAddress": "192.168.20.1",
+      "model": "1930-8G",
+      "ports": [
+        { "id": "1", "name": "WAN", "portNumber": 1, "up": true, "enabled": true, "speed": 1000 }
+      ]
+    },
+    {
+      "id": "dev-offsite",
+      "name": "Offsite Switch",
+      "deviceType": "SWITCH",
+      "macAddress": "AA:BB:CC:00:00:05",
+      "ipAddress": "10.99.99.99",
+      "model": "1830-8G",
+      "ports": [
+        { "id": "1", "portNumber": 1, "up": true, "enabled": true }
+      ]
+    },
+    {
+      "id": "dev-never-checked-in",
+      "name": "Spare Switch",
+      "deviceType": "SWITCH",
+      "macAddress": "AA:BB:CC:00:00:06",
+      "model": "1830-8G"
+    }
+  ]
+}

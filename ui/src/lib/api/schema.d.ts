@@ -5890,9 +5890,18 @@ export interface components {
             type: "UnifiLocalAdmin";
             /** @description Local admin account on the controller. */
             username: string;
+        } | {
+            /** @description Password for that account. */
+            password: components["schemas"]["SecretValue"];
+            /** @description Restrict the fetch to one site by name. Blank ⇒ every site the account can see. */
+            site?: string | null;
+            /** @enum {string} */
+            type: "InstantOnAccount";
+            /** @description Portal account email address. */
+            username: string;
         };
         /** @enum {string} */
-        CredentialTypeDiscriminants: "SnmpV1" | "SnmpV2c" | "SnmpV3" | "DockerProxy" | "DockerSocket" | "PodmanProxy" | "PodmanSocket" | "UnifiApiKey" | "UnifiLocalAdmin";
+        CredentialTypeDiscriminants: "SnmpV1" | "SnmpV2c" | "SnmpV3" | "DockerProxy" | "DockerSocket" | "PodmanProxy" | "PodmanSocket" | "UnifiApiKey" | "UnifiLocalAdmin" | "InstantOnAccount";
         Daemon: components["schemas"]["DaemonBase"] & {
             /**
              * Format: date-time
