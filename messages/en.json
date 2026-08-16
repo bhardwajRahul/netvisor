@@ -1280,7 +1280,7 @@
 	"meta_credential_types_DockerSocket_socket_path_helpText": "Path to the Docker Unix socket. Leave blank to auto-detect (DOCKER_HOST or /var/run/docker.sock).",
 	"meta_credential_types_DockerSocket_socket_path_label": "Socket Path",
 	"meta_credential_types_DockerSocket_socket_path_placeholder": "/var/run/docker.sock",
-	"meta_credential_types_InstantOnAccount_description": "Discover Instant On switches, access points and gateways, their ports, the uplinks between them, and the MACs attached to each port — without enabling SNMP or leaving cloud management. Connects to the Instant On cloud portal with a site account. The account must have multi-factor authentication disabled; use a dedicated account with the read-only Viewer role.",
+	"meta_credential_types_InstantOnAccount_description": "Discover Instant On switches, access points and gateways, their ports, the uplinks between them, and the MACs attached to each port. Connects to the Instant On cloud portal with a site account.",
 	"meta_credential_types_InstantOnAccount_name": "Instant On Portal Account",
 	"meta_credential_types_InstantOnAccount_password_helpText": "Password for that portal account.",
 	"meta_credential_types_InstantOnAccount_password_label": "Password",

@@ -251,6 +251,30 @@ impl CredentialTypeDiscriminants {
     /// `integrations` fixture both derive from this. Exhaustive (no wildcard): a
     /// new credential variant cannot compile until it declares its integration's
     /// discovery text.
+    ///
+    /// # Writing these
+    ///
+    /// A credential description answers exactly two questions, and nothing else:
+    /// **what it discovers** (here) and **how it connects**
+    /// ([`transport_note`](Self::transport_note)). Every arm in both functions reads the same
+    /// way, because they are rendered side by side in the credential picker and a longer one
+    /// does not look more capable — it looks like the odd one out.
+    ///
+    /// Three things that do not belong:
+    ///
+    /// - **Setup instructions.** Which account to create, what role it needs, whether MFA has to
+    ///   be off — that is field help text, next to the field it applies to
+    ///   ([`field_definitions`](super::CredentialType::field_definitions)). Repeating it here
+    ///   makes the picker a wall of prose the user has to read before they can even choose.
+    /// - **What the integration does *not* do.** "Without enabling SNMP", "no agent required",
+    ///   "does not modify anything" — an absence is not a capability, and it invites the reader
+    ///   to wonder what else it might not do. State what it collects.
+    /// - **Selling points.** The picker is for someone who has already decided to connect this
+    ///   thing and now needs to know what they will get and what it will ask them for.
+    ///
+    /// A compatibility caveat *is* allowed in the transport note when it changes which option
+    /// the user can pick — UniFi's "requires UniFi OS; the legacy Network Application does not
+    /// support API keys" is the model, because it decides between two transports.
     pub(crate) fn integration_discovers(&self) -> &'static str {
         match self {
             Self::SnmpV1 | Self::SnmpV2c | Self::SnmpV3 => {
@@ -266,7 +290,7 @@ impl CredentialTypeDiscriminants {
                 "Discover UniFi-managed switches, access points and gateways, their ports, and the LLDP neighbors and uplinks the controller sees."
             }
             Self::InstantOnAccount => {
-                "Discover Instant On switches, access points and gateways, their ports, the uplinks between them, and the MACs attached to each port — without enabling SNMP or leaving cloud management."
+                "Discover Instant On switches, access points and gateways, their ports, the uplinks between them, and the MACs attached to each port."
             }
         }
     }
@@ -274,6 +298,11 @@ impl CredentialTypeDiscriminants {
     /// Transport-specific note appended after the canonical discovery text. This is
     /// the only per-transport prose; the shared "what's discovered" stem lives in
     /// [`integration_discovers`](Self::integration_discovers).
+    ///
+    /// One sentence saying **how it connects**, plus a compatibility caveat only when that
+    /// caveat decides which transport the user should pick. See the writing guidance on
+    /// [`integration_discovers`](Self::integration_discovers) — in particular, credential setup
+    /// belongs in field help text, not here.
     pub(crate) fn transport_note(&self) -> &'static str {
         match self {
             Self::SnmpV1 => "Uses SNMPv1.",
@@ -288,7 +317,7 @@ impl CredentialTypeDiscriminants {
                 "Connects with a local admin account. Works with every controller, including the legacy self-hosted Network Application."
             }
             Self::InstantOnAccount => {
-                "Connects to the Instant On cloud portal with a site account. The account must have multi-factor authentication disabled; use a dedicated account with the read-only Viewer role."
+                "Connects to the Instant On cloud portal with a site account."
             }
         }
     }
