@@ -10573,6 +10573,19 @@ export interface components {
              */
             new_password: string;
         };
+        /**
+         * @description Whether the vendor publishes and supports the API a credential type talks to.
+         *
+         *     Deliberately *not* folded into [`CredentialStability`], because the two describe different
+         *     things and change independently. Stability is about our own maturity and is meant to be retired
+         *     by promotion to `Stable`; an undocumented upstream is a permanent property of the vendor's API
+         *     that our promotion does not change. Collapsing them would force an integration built on a
+         *     reverse-engineered API to sit in `Beta` forever to keep the warning — or to reach `Stable` with
+         *     the warning silently dropped. UniFi is the proof that both combinations are real: it is
+         *     `Stable` and `Undocumented` today.
+         * @enum {string}
+         */
+        UpstreamSupport: "Vendor" | "Undocumented";
         /** @enum {string} */
         UseCase: "homelab" | "internal_it" | "msp" | "other";
         User: components["schemas"]["UserBase"] & {

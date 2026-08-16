@@ -573,6 +573,8 @@
 	"credentials_targetHostTooltip": "Can be targeted to hosts remote to the daemon running the scan.",
 	"credentials_targetNetworkTooltip": "Can be assigned to a network to target to all hosts.",
 	"credentials_typeImmutableWarning": "The credential type cannot be changed after creation.",
+	"credentials_unofficialApi": "Unofficial API",
+	"credentials_unofficialApiTooltip": "The vendor does not publish or support this API. It can change or stop working without notice, and Scanopy tracks it on a best-effort basis.",
 	"daemonApiKeys_createApiKey": "Create Daemon API Key",
 	"daemonApiKeys_enableApiKeyHelp": "Manually enable or disable API Key. Will be auto-disabled if used in a request after expiry date passes.",
 	"daemonApiKeys_namePlaceholder": "e.g., Production Daemon Key, Terraform Deployment",

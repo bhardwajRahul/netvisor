@@ -14400,19 +14400,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-08-16T21:28:14.326156Z",
+              "created_at": "2026-08-16T21:33:14.598482Z",
               "first_discovery_id": null,
-              "id": "4b984ddd-9267-42eb-933f-9dc455d1e6ec",
+              "id": "20d57f9d-e757-4d0c-84b7-ded864bc3129",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-16T21:28:14.326156Z",
+              "last_seen_at": "2026-08-16T21:33:14.598482Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-16T21:28:14.326156Z",
-              "valid_from": "2026-08-16T21:28:14.326156Z",
+              "updated_at": "2026-08-16T21:33:14.598482Z",
+              "valid_from": "2026-08-16T21:33:14.598482Z",
               "valid_to": null
             }
           },
@@ -15702,19 +15702,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-08-16T21:28:14.301758Z",
+                      "created_at": "2026-08-16T21:33:14.574414Z",
                       "first_discovery_id": null,
-                      "id": "be6729d6-d24b-4a9b-9c11-ccf9a8593a98",
+                      "id": "b7f912ee-2ae4-4fb7-b7da-d04c5b3e1571",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-08-16T21:28:14.301758Z",
+                      "last_seen_at": "2026-08-16T21:33:14.574414Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-08-16T21:28:14.301758Z",
-                      "valid_from": "2026-08-16T21:28:14.301758Z",
+                      "updated_at": "2026-08-16T21:33:14.574414Z",
+                      "valid_from": "2026-08-16T21:33:14.574414Z",
                       "valid_to": null
                     }
                   ],
@@ -15728,7 +15728,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "SIP Server",
+                  "service_definition": "Google Home",
                   "source": {
                     "type": "Manual"
                   },
@@ -16931,19 +16931,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-08-16T21:28:14.317885Z",
+                  "created_at": "2026-08-16T21:33:14.590050Z",
                   "first_discovery_id": null,
-                  "id": "a2a6d3e4-4c4f-4022-8d61-bd0ff0085c0f",
+                  "id": "e42af11d-e271-4c92-882c-6804441dad7b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-16T21:28:14.317885Z",
+                  "last_seen_at": "2026-08-16T21:33:14.590050Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-16T21:28:14.317885Z",
-                  "valid_from": "2026-08-16T21:28:14.317885Z",
+                  "updated_at": "2026-08-16T21:33:14.590050Z",
+                  "valid_from": "2026-08-16T21:33:14.590050Z",
                   "valid_to": null
                 }
               ],
@@ -16957,7 +16957,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "SIP Server",
+              "service_definition": "Google Home",
               "source": {
                 "type": "Manual"
               },
@@ -19017,19 +19017,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-08-16T21:28:14.302104Z",
+          "created_at": "2026-08-16T21:33:14.574839Z",
           "first_discovery_id": null,
-          "id": "49ceb34a-76f2-4c46-a360-8a0ad57ad29d",
+          "id": "24c9a034-f9be-447a-84ce-80592117e2e3",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-08-16T21:28:14.302104Z",
+          "last_seen_at": "2026-08-16T21:33:14.574839Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-08-16T21:28:14.302104Z",
-          "valid_from": "2026-08-16T21:28:14.302104Z",
+          "updated_at": "2026-08-16T21:33:14.574839Z",
+          "valid_from": "2026-08-16T21:33:14.574839Z",
           "valid_to": null
         }
       },
@@ -19667,7 +19667,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "SIP Server",
+              "service_definition": "Google Home",
               "tags": [],
               "virtualization_metadata": null,
               "virtualization_service_id": null
@@ -23188,19 +23188,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-08-16T21:28:14.301189Z",
+                  "created_at": "2026-08-16T21:33:14.573951Z",
                   "first_discovery_id": null,
-                  "id": "9679fb8c-a5b4-4d3f-90a0-d7afd626bf4e",
+                  "id": "da3406ff-3ee7-4560-a62b-a43be8ffd82d",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-16T21:28:14.301189Z",
+                  "last_seen_at": "2026-08-16T21:33:14.573951Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-16T21:28:14.301189Z",
-                  "valid_from": "2026-08-16T21:28:14.301189Z",
+                  "updated_at": "2026-08-16T21:33:14.573951Z",
+                  "valid_from": "2026-08-16T21:33:14.573951Z",
                   "valid_to": null
                 }
               ],
@@ -23214,7 +23214,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "SIP Server",
+              "service_definition": "Google Home",
               "source": {
                 "type": "Manual"
               },
@@ -26164,19 +26164,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-08-16T21:28:14.289918Z",
+                        "created_at": "2026-08-16T21:33:14.563709Z",
                         "first_discovery_id": null,
-                        "id": "5eb25b6e-6369-4acd-8381-490f7f882365",
+                        "id": "2158a7fe-c67e-476f-b264-735bd49ba6d9",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-08-16T21:28:14.289918Z",
+                        "last_seen_at": "2026-08-16T21:33:14.563709Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-08-16T21:28:14.289918Z",
-                        "valid_from": "2026-08-16T21:28:14.289918Z",
+                        "updated_at": "2026-08-16T21:33:14.563709Z",
+                        "valid_from": "2026-08-16T21:33:14.563709Z",
                         "valid_to": null
                       }
                     ],
@@ -26190,7 +26190,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "SIP Server",
+                    "service_definition": "Google Home",
                     "source": {
                       "type": "Manual"
                     },
@@ -26326,19 +26326,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-08-16T21:28:14.316494Z",
+                    "created_at": "2026-08-16T21:33:14.587943Z",
                     "first_discovery_id": null,
-                    "id": "5851971b-a4bf-4395-8653-0b360c60e04b",
+                    "id": "e90e1cc5-4e86-4994-9bbd-c0f8cca24a0c",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-08-16T21:28:14.316494Z",
+                    "last_seen_at": "2026-08-16T21:33:14.587943Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-08-16T21:28:14.316494Z",
-                    "valid_from": "2026-08-16T21:28:14.316494Z",
+                    "updated_at": "2026-08-16T21:33:14.587943Z",
+                    "valid_from": "2026-08-16T21:33:14.587943Z",
                     "valid_to": null
                   }
                 ],
@@ -26352,7 +26352,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "SIP Server",
+                "service_definition": "Google Home",
                 "source": {
                   "type": "Manual"
                 },
@@ -28330,19 +28330,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-08-16T21:28:14.302017Z",
+              "created_at": "2026-08-16T21:33:14.574753Z",
               "first_discovery_id": null,
-              "id": "175d545d-6379-4d85-9d80-25184d6a0f66",
+              "id": "3bd18329-1797-44d6-87cf-33cefba030ed",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-16T21:28:14.302017Z",
+              "last_seen_at": "2026-08-16T21:33:14.574753Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-16T21:28:14.302017Z",
-              "valid_from": "2026-08-16T21:28:14.302017Z",
+              "updated_at": "2026-08-16T21:33:14.574753Z",
+              "valid_from": "2026-08-16T21:33:14.574753Z",
               "valid_to": null
             }
           ],
@@ -28356,7 +28356,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "SIP Server",
+          "service_definition": "Google Home",
           "source": {
             "type": "Manual"
           },
@@ -29554,7 +29554,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "180672b9-b35d-4598-a288-e60f7a6c0bb6",
+                  "id": "3b10e2e3-054c-403b-af4a-6322942754d0",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -29564,23 +29564,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "b64c474e-f198-4274-9a8f-641078efda12",
+                  "id": "87cc9a7d-a263-4c9b-89d3-e66b96bb8569",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "e02fc909-1d01-4012-9a8d-942361af6269",
+                  "id": "282f9ae4-79ad-4642-abeb-95183b4e90be",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "c5736769-dee7-449b-90b2-ca47d8b0cb2e",
+                  "id": "329551de-fd2e-4dcc-98db-d35f343f1fb1",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "b64c474e-f198-4274-9a8f-641078efda12",
+                  "id": "87cc9a7d-a263-4c9b-89d3-e66b96bb8569",
                   "rule": "ByHost"
                 }
               ]
@@ -29610,19 +29610,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "20ea9d27-3e75-4e05-9a5b-ad8138c3e503",
+                "id": "73aaadcf-2b1a-42e8-9f90-4a58968e3dda",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "02b791d1-4c86-4403-9b7b-a50a43cf46e1",
+                "id": "134bf26c-33e4-4620-81c0-864d767284fe",
                 "rule": "ByVLAN"
               },
               {
-                "id": "14b2ffb2-1b77-40a8-ab82-ecbb4863bb37",
+                "id": "b57181b5-941f-499d-a975-e2345e2e3b05",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "341ca820-5732-442f-89bb-f2bfa4fc7f1f",
+                "id": "cce27a35-11b2-4f9b-8eb8-5203e861c4f7",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -29640,7 +29640,7 @@
                 }
               },
               {
-                "id": "103708eb-ecb4-4b05-8e93-58471de62737",
+                "id": "3720a046-9112-4694-8541-c9a67fef19d2",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -29649,15 +29649,15 @@
                 }
               },
               {
-                "id": "e1b2b0b8-1a3d-41c8-9112-86f2388b3063",
+                "id": "0c512b2e-3e03-4c0a-b2ae-b7043b847243",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "d0f094d6-da4e-4cc8-a329-2f690d5fbdde",
+                "id": "2e1a1c48-7da7-4e05-a9be-f939515b72ec",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "14a50d63-2c63-4ff2-9ff4-320bd8a969ed",
+                "id": "17425e24-f87d-4a2e-aa82-c9f5ac051c37",
                 "rule": "ByStack"
               }
             ]
@@ -29971,6 +29971,14 @@
             "writeOnly": true
           }
         }
+      },
+      "UpstreamSupport": {
+        "type": "string",
+        "description": "Whether the vendor publishes and supports the API a credential type talks to.\n\nDeliberately *not* folded into [`CredentialStability`], because the two describe different\nthings and change independently. Stability is about our own maturity and is meant to be retired\nby promotion to `Stable`; an undocumented upstream is a permanent property of the vendor's API\nthat our promotion does not change. Collapsing them would force an integration built on a\nreverse-engineered API to sit in `Beta` forever to keep the warning — or to reach `Stable` with\nthe warning silently dropped. UniFi is the proof that both combinations are real: it is\n`Stable` and `Undocumented` today.",
+        "enum": [
+          "Vendor",
+          "Undocumented"
+        ]
       },
       "UseCase": {
         "type": "string",
