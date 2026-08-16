@@ -1177,4 +1177,100 @@ mod tests {
             );
         }
     }
+
+    /// The credential carries a password, so the redacted round-trip is the one thing the
+    /// compiler cannot check: without an arm in `merge_redacted_secrets` an edit would persist
+    /// the literal "********" and destroy the stored credential.
+    #[test]
+    fn merge_redacted_secrets_preserves_the_instant_on_password() {
+        let mut updated = CredentialType::InstantOnAccount {
+            username: "scanopy@example.com".to_string(),
+            password: inline(REDACTED_SECRET_SENTINEL),
+            site: None,
+        };
+        updated.merge_redacted_secrets(&CredentialType::InstantOnAccount {
+            username: "scanopy@example.com".to_string(),
+            password: inline("real-portal-password"),
+            site: None,
+        });
+        match &updated {
+            CredentialType::InstantOnAccount {
+                password: SecretValue::Inline { value },
+                ..
+            } => assert_eq!(value.expose_secret(), "real-portal-password"),
+            _ => panic!("Expected InstantOnAccount with an inline password"),
+        }
+    }
+
+    /// The password must be exposed on the wire to the daemon (which has to send it to HPE) and
+    /// redacted everywhere else. A blank site is normalised to `None` rather than travelling as
+    /// an empty string the client would have to treat as a wildcard.
+    #[test]
+    fn instant_on_query_payload_exposes_the_password_and_normalises_a_blank_site() {
+        let cred = CredentialType::InstantOnAccount {
+            username: "scanopy@example.com".to_string(),
+            password: inline("portal-pw"),
+            site: Some("   ".to_string()),
+        };
+        match cred.to_query_payload() {
+            CredentialQueryPayload::InstantOn(i) => {
+                assert_eq!(i.username, "scanopy@example.com");
+                assert_eq!(
+                    i.password,
+                    ResolvableSecret::Value {
+                        value: "portal-pw".to_string()
+                    }
+                );
+                assert_eq!(
+                    i.site, None,
+                    "a blank site means every site, not a site named ''"
+                );
+            }
+            other => panic!("expected an InstantOn payload, got {other:?}"),
+        }
+
+        // Default serialization (API responses) must never leak the password, and the debug
+        // rendering of the wire payload must not either.
+        let json = serde_json::to_string(&cred).expect("serialize");
+        assert!(!json.contains("portal-pw"));
+        assert!(json.contains(REDACTED_SECRET_SENTINEL));
+        assert!(!format!("{:?}", cred.to_query_payload()).contains("portal-pw"));
+    }
+
+    /// Binding is what says *which host a credential produces data about*. Instant On describes
+    /// the switch it reports on — never the daemon's own machine, which runs nothing Instant On,
+    /// and never a whole network, which would spray portal credentials at unrelated hosts.
+    #[test]
+    fn instant_on_targets_hosts_only() {
+        let cred = CredentialTypeDiscriminants::InstantOnAccount.to_credential_type();
+        assert_eq!(cred.targets(), vec![Target::Hosts]);
+    }
+
+    /// Stability and upstream support are independent axes. UniFi is the case that proves it:
+    /// validated enough to be Stable, but still reading Ubiquiti's legacy undocumented API.
+    #[test]
+    fn upstream_support_is_independent_of_stability() {
+        use crate::server::credentials::r#impl::types::UpstreamSupport;
+
+        assert_eq!(
+            CredentialTypeDiscriminants::UnifiApiKey.stability(),
+            CredentialStability::Stable
+        );
+        assert_eq!(
+            CredentialTypeDiscriminants::UnifiApiKey.upstream_support(),
+            UpstreamSupport::Undocumented
+        );
+        assert_eq!(
+            CredentialTypeDiscriminants::InstantOnAccount.stability(),
+            CredentialStability::Beta
+        );
+        assert_eq!(
+            CredentialTypeDiscriminants::InstantOnAccount.upstream_support(),
+            UpstreamSupport::Undocumented
+        );
+        assert_eq!(
+            CredentialTypeDiscriminants::SnmpV2c.upstream_support(),
+            UpstreamSupport::Vendor
+        );
+    }
 }

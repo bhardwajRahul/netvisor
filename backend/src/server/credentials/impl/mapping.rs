@@ -401,11 +401,28 @@ pub enum ResolvableValue {
 /// (`{"mode":"Value","value":"..."}`) and legacy plain strings (`"********"`)
 /// from pre-v0.15.0 discovery_type JSONB. Legacy strings deserialize as
 /// `Value { value: string }`.
-#[derive(Debug, Clone, Serialize, Eq, PartialEq, Hash, ToSchema)]
+#[derive(Clone, Serialize, Eq, PartialEq, Hash, ToSchema)]
 #[serde(tag = "mode")]
 pub enum ResolvableSecret {
     Value { value: String },
     FilePath { path: String },
+}
+
+/// Redacts the secret rather than deriving `Debug`, so *holding* one of these is enough to be
+/// safe in a log line. `SnmpV3Params` and `SnmpQueryCredential` hand-write redacting impls for
+/// the same reason; doing it here as well means a payload that forgets to — as
+/// `UnifiQueryCredential` did, and as the Instant On payload would have — cannot leak. A file
+/// path is not a secret and stays legible, which is what makes a misconfigured path debuggable.
+impl std::fmt::Debug for ResolvableSecret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Value { value } => f
+                .debug_struct("Value")
+                .field("value", &format_args!("******** ({} chars)", value.len()))
+                .finish(),
+            Self::FilePath { path } => f.debug_struct("FilePath").field("path", path).finish(),
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for ResolvableSecret {
