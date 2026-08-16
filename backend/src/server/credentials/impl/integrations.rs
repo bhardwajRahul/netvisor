@@ -15,7 +15,9 @@ use strum::IntoEnumIterator;
 use crate::server::services::r#impl::definitions::{ServiceDefinition, ServiceDefinitionExt};
 use crate::server::shared::fixtures::logo_slug;
 
-use super::types::{CredentialStability, CredentialTypeDiscriminants, FieldDefinition, Target};
+use super::types::{
+    CredentialStability, CredentialTypeDiscriminants, FieldDefinition, Target, UpstreamSupport,
+};
 
 /// One integration: a service plus the transports (credential types) that reach
 /// it, with a single canonical discovery description and a one-line summary.
@@ -68,6 +70,10 @@ pub struct IntegrationTransport {
     pub targets: Vec<Target>,
     /// Release maturity of this specific transport.
     pub stability: CredentialStability,
+    /// Whether the vendor publishes the API this transport talks to. Independent of
+    /// `stability`: a transport can be fully validated (`Stable`) and still ride an
+    /// endpoint the vendor never documented, which is true of both UniFi transports.
+    pub upstream_support: UpstreamSupport,
     /// Minimum daemon version that can receive this transport.
     pub minimum_daemon_version: semver::Version,
     /// What the operator has to fill in, in the order the form asks for it. The
@@ -96,6 +102,7 @@ pub fn all_integrations() -> Vec<Integration> {
             single_endpoint_per_host: ct.single_endpoint_per_host(),
             targets: ct.targets(),
             stability: disc.stability(),
+            upstream_support: disc.upstream_support(),
             minimum_daemon_version: disc.minimum_daemon_version(),
             // Form order, not sorted: it is the order the fields are meant to be
             // read in, and it is already deterministic.

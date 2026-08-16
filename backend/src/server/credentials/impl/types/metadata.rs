@@ -67,6 +67,24 @@ impl PartialOrd for CredentialStability {
     }
 }
 
+/// Whether the vendor publishes and supports the API a credential type talks to.
+///
+/// Deliberately *not* folded into [`CredentialStability`], because the two describe different
+/// things and change independently. Stability is about our own maturity and is meant to be retired
+/// by promotion to `Stable`; an undocumented upstream is a permanent property of the vendor's API
+/// that our promotion does not change. Collapsing them would force an integration built on a
+/// reverse-engineered API to sit in `Beta` forever to keep the warning — or to reach `Stable` with
+/// the warning silently dropped. UniFi is the proof that both combinations are real: it is
+/// `Stable` and `Undocumented` today.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, IntoStaticStr, ToSchema, PartialEq, Eq)]
+pub enum UpstreamSupport {
+    /// The vendor publishes and supports this API.
+    Vendor,
+    /// Reverse-engineered from the vendor's own client. There is no published contract, so it can
+    /// change or stop working without notice.
+    Undocumented,
+}
+
 /// A credential assigned to a host, optionally limited to specific ip_addresses.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct CredentialAssignment {
@@ -149,6 +167,35 @@ impl CredentialTypeDiscriminants {
                     value: SecretString::from(String::new()),
                 },
             },
+            Self::InstantOnAccount => CredentialType::InstantOnAccount {
+                username: String::new(),
+                password: SecretValue::Inline {
+                    value: SecretString::from(String::new()),
+                },
+                site: None,
+            },
+        }
+    }
+
+    /// Whether the vendor publishes the API behind this credential type. Exhaustive, so a new
+    /// credential type cannot compile without saying which it is.
+    pub fn upstream_support(&self) -> UpstreamSupport {
+        match self {
+            // Standard protocol, or the vendor's own documented API.
+            Self::SnmpV1
+            | Self::SnmpV2c
+            | Self::SnmpV3
+            | Self::DockerProxy
+            | Self::DockerSocket
+            | Self::PodmanProxy
+            | Self::PodmanSocket => UpstreamSupport::Vendor,
+            // Both UniFi transports read `/proxy/network/api/s/<site>/stat/device`, the legacy
+            // Network API, not Ubiquiti's documented Integration API (`.../integration/v1/...`,
+            // added with v9 API keys). Undocumented regardless of which transport authenticates.
+            Self::UnifiApiKey | Self::UnifiLocalAdmin => UpstreamSupport::Undocumented,
+            // HPE publishes APIs for Aruba Central, Instant AOS-8 and ArubaOS-Switch, but none
+            // for Instant On; this is reverse-engineered from the portal's own web client.
+            Self::InstantOnAccount => UpstreamSupport::Undocumented,
         }
     }
 }
@@ -172,8 +219,10 @@ impl EntityMetadataProvider for CredentialTypeDiscriminants {
             Self::DockerProxy | Self::DockerSocket | Self::PodmanProxy | Self::PodmanSocket => {
                 Concept::Containerization.icon()
             }
-            // Fallback only — the UniFi service logo is what normally renders.
-            Self::UnifiApiKey | Self::UnifiLocalAdmin => Concept::L2.icon(),
+            // Fallback only — the service logo is what normally renders.
+            Self::UnifiApiKey | Self::UnifiLocalAdmin | Self::InstantOnAccount => {
+                Concept::L2.icon()
+            }
         }
     }
 }
@@ -191,6 +240,7 @@ impl CredentialTypeDiscriminants {
             Self::PodmanSocket => "Podman Socket",
             Self::UnifiApiKey => "UniFi API Key",
             Self::UnifiLocalAdmin => "UniFi Local Admin",
+            Self::InstantOnAccount => "Instant On Portal Account",
         }
     }
 
@@ -201,6 +251,30 @@ impl CredentialTypeDiscriminants {
     /// `integrations` fixture both derive from this. Exhaustive (no wildcard): a
     /// new credential variant cannot compile until it declares its integration's
     /// discovery text.
+    ///
+    /// # Writing these
+    ///
+    /// A credential description answers exactly two questions, and nothing else:
+    /// **what it discovers** (here) and **how it connects**
+    /// ([`transport_note`](Self::transport_note)). Every arm in both functions reads the same
+    /// way, because they are rendered side by side in the credential picker and a longer one
+    /// does not look more capable — it looks like the odd one out.
+    ///
+    /// Three things that do not belong:
+    ///
+    /// - **Setup instructions.** Which account to create, what role it needs, whether MFA has to
+    ///   be off — that is field help text, next to the field it applies to
+    ///   ([`field_definitions`](super::CredentialType::field_definitions)). Repeating it here
+    ///   makes the picker a wall of prose the user has to read before they can even choose.
+    /// - **What the integration does *not* do.** "Without enabling SNMP", "no agent required",
+    ///   "does not modify anything" — an absence is not a capability, and it invites the reader
+    ///   to wonder what else it might not do. State what it collects.
+    /// - **Selling points.** The picker is for someone who has already decided to connect this
+    ///   thing and now needs to know what they will get and what it will ask them for.
+    ///
+    /// A compatibility caveat *is* allowed in the transport note when it changes which option
+    /// the user can pick — UniFi's "requires UniFi OS; the legacy Network Application does not
+    /// support API keys" is the model, because it decides between two transports.
     pub(crate) fn integration_discovers(&self) -> &'static str {
         match self {
             Self::SnmpV1 | Self::SnmpV2c | Self::SnmpV3 => {
@@ -215,12 +289,20 @@ impl CredentialTypeDiscriminants {
             Self::UnifiApiKey | Self::UnifiLocalAdmin => {
                 "Discover UniFi-managed switches, access points and gateways, their ports, and the LLDP neighbors and uplinks the controller sees."
             }
+            Self::InstantOnAccount => {
+                "Discover Instant On switches, access points and gateways, their ports, the uplinks between them, and the MACs attached to each port."
+            }
         }
     }
 
     /// Transport-specific note appended after the canonical discovery text. This is
     /// the only per-transport prose; the shared "what's discovered" stem lives in
     /// [`integration_discovers`](Self::integration_discovers).
+    ///
+    /// One sentence saying **how it connects**, plus a compatibility caveat only when that
+    /// caveat decides which transport the user should pick. See the writing guidance on
+    /// [`integration_discovers`](Self::integration_discovers) — in particular, credential setup
+    /// belongs in field help text, not here.
     pub(crate) fn transport_note(&self) -> &'static str {
         match self {
             Self::SnmpV1 => "Uses SNMPv1.",
@@ -233,6 +315,9 @@ impl CredentialTypeDiscriminants {
             }
             Self::UnifiLocalAdmin => {
                 "Connects with a local admin account. Works with every controller, including the legacy self-hosted Network Application."
+            }
+            Self::InstantOnAccount => {
+                "Connects to the Instant On cloud portal with a site account."
             }
         }
     }
@@ -247,6 +332,7 @@ impl CredentialTypeDiscriminants {
             Self::DockerSocket | Self::PodmanSocket => "Socket",
             Self::UnifiApiKey => "API Key",
             Self::UnifiLocalAdmin => "Local Admin",
+            Self::InstantOnAccount => "Portal Account",
         }
     }
 
@@ -286,6 +372,8 @@ impl CredentialTypeDiscriminants {
             Self::PodmanProxy | Self::PodmanSocket => semver::Version::new(0, 17, 2),
             // UniFi variants ship in 0.17.7.
             Self::UnifiApiKey | Self::UnifiLocalAdmin => semver::Version::new(0, 17, 7),
+            // Instant On ships in 0.17.11.
+            Self::InstantOnAccount => semver::Version::new(0, 17, 11),
         }
     }
 
@@ -304,6 +392,9 @@ impl CredentialTypeDiscriminants {
             | Self::PodmanSocket
             | Self::UnifiApiKey
             | Self::UnifiLocalAdmin => CredentialStability::Stable,
+            // New and validated against one operator's 1960s only; the field shape may still move
+            // once other Instant On models' payloads are seen.
+            Self::InstantOnAccount => CredentialStability::Beta,
         }
     }
 
@@ -342,6 +433,9 @@ impl CredentialTypeDiscriminants {
             "minimum_daemon_version": self.minimum_daemon_version().to_string(),
             // Release maturity. The frontend renders a "Beta" tag; it is not a gate.
             "stability": self.stability(),
+            // Whether the vendor publishes this API. Orthogonal to `stability` — an integration
+            // can be fully validated and still be riding an undocumented endpoint.
+            "upstream_support": self.upstream_support(),
             "associated_service": ServiceDefinition::name(&*service),
             "has_logo": service.has_logo(),
             "logo_ext": logo_ext,

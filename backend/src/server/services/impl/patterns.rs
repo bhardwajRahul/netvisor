@@ -158,6 +158,10 @@ pub enum ClientProbe {
     Podman,
     Snmp,
     UnifiController,
+    /// Authenticated to the Instant On cloud portal with the credential bound to this host.
+    /// Unlike the others this proves nothing is listening *on* the host — it proves the portal
+    /// account works, which is what gates the integration's `execute`.
+    InstantOn,
 }
 
 /// A device reported by a management controller the daemon authenticated to, rather than one
@@ -182,6 +186,19 @@ impl UnifiDeviceType {
     pub const SWITCH: &'static str = "usw";
     pub const GATEWAY: &'static str = "ugw";
     pub const DREAM_MACHINE: &'static str = "udm";
+}
+
+/// Instant On's inventory `deviceType` values — the four members of the portal's own
+/// `device-type-enum`, read from its web client.
+///
+/// `STACK` is a stack of switches the portal presents as a single device, so it resolves to the
+/// same service as `SWITCH` rather than getting one of its own.
+pub struct InstantOnDeviceType;
+impl InstantOnDeviceType {
+    pub const ACCESS_POINT: &'static str = "ACCESS_POINT";
+    pub const SWITCH: &'static str = "SWITCH";
+    pub const STACK: &'static str = "STACK";
+    pub const GATEWAY: &'static str = "GATEWAY";
 }
 
 #[derive(Debug, Clone, EnumDiscriminants)]

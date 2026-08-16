@@ -16,7 +16,9 @@ use utoipa::openapi::{Components, OpenApi, PathItem};
 use crate::server::bindings::r#impl::base::Binding;
 use crate::server::credentials::handlers::CredentialOrderField;
 use crate::server::credentials::r#impl::base::Credential;
-use crate::server::credentials::r#impl::types::{CredentialStability, CredentialTypeDiscriminants};
+use crate::server::credentials::r#impl::types::{
+    CredentialStability, CredentialTypeDiscriminants, UpstreamSupport,
+};
 use crate::server::daemon_api_keys::r#impl::base::DaemonApiKey;
 use crate::server::daemons::handlers::DaemonOrderField;
 use crate::server::daemons::r#impl::base::Daemon;
@@ -109,6 +111,10 @@ pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
         // `TypeMetadata.metadata` blob, so nothing else pulls it into the schema — but the
         // frontend must derive its union from here rather than hand-maintaining one.
         CredentialStability,
+        // Whether the vendor publishes the API a credential type talks to. Travels the same way
+        // `CredentialStability` does and for the same reason — and it is a *separate* axis: an
+        // integration can be `Stable` and still ride an undocumented endpoint, as UniFi is.
+        UpstreamSupport,
         // Referenced by the install-command query parameter, so it needs a registered schema.
         InstallCommandKind,
         // Referenced by the credential-list `?type` filter, which utoipa collects from

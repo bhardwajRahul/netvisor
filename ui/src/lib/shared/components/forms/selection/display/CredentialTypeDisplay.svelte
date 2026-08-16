@@ -1,7 +1,11 @@
 <script lang="ts" module>
 	import { credentialTypes } from '$lib/shared/stores/metadata';
 	import type { TypedTypeMetadata, CredentialTypeMetadata } from '$lib/shared/stores/metadata';
-	import { getStabilityTagProps, getTargetTagProps } from '$lib/features/credentials/types/base';
+	import {
+		getStabilityTagProps,
+		getTargetTagProps,
+		getUpstreamSupportTagProps
+	} from '$lib/features/credentials/types/base';
 
 	export type CredentialTypeOption = TypedTypeMetadata<CredentialTypeMetadata>;
 
@@ -19,13 +23,15 @@
 		getIcon: (item) => credentialTypes.getIconComponent(item.id),
 		getIconColor: (item) => credentialTypes.getColorHelper(item.id).icon,
 		getCategory: (item) => item.category ?? null,
-		// Beta leads, then the target tags. This is the one place credential-type tags are
-		// built, so it covers the wizard card grid, the type dropdown, and dropdown search
-		// (RichSelect folds tag labels into its filter text) in a single definition.
+		// Beta leads, then the unofficial-API marker, then the target tags. This is the one place
+		// credential-type tags are built, so it covers the wizard card grid, the type dropdown,
+		// and dropdown search (RichSelect folds tag labels into its filter text) in a single
+		// definition. Beta and unofficial are independent, so a type may carry both.
 		getTags: (item) => {
 			const stability = getStabilityTagProps(item.metadata?.stability);
+			const upstream = getUpstreamSupportTagProps(item.metadata?.upstream_support);
 			const targets = (item.metadata?.targets ?? []).map((t: string) => getTargetTagProps(t));
-			return stability ? [stability, ...targets] : targets;
+			return [stability, upstream, ...targets].filter((tag) => tag !== null);
 		},
 		getDisabled: (_item, context) => !!context?.disabledReason,
 		getDisabledReason: (_item, context) => context?.disabledReason ?? null

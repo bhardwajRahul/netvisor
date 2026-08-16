@@ -333,6 +333,51 @@ impl CredentialType {
                 });
                 fields
             }
+            Self::InstantOnAccount { .. } => vec![
+                FieldDefinition {
+                    id: "username",
+                    label: "Portal Account",
+                    field_type: FieldType::String,
+                    placeholder: Some("scanopy@example.com"),
+                    secret: false,
+                    optional: false,
+                    help_text: Some(
+                        "Email address of an Instant On portal account with access to the site. Add a dedicated account with the read-only Viewer role (Site management → Accounts managing this site) rather than using your own administrator login, and make sure multi-factor authentication is disabled on it — the sign-in cannot answer an MFA prompt.",
+                    ),
+                    options: None,
+                    default_value: None,
+                    inline_format: None,
+                    group: Some("Authentication"),
+                },
+                FieldDefinition {
+                    id: "password",
+                    label: "Password",
+                    field_type: FieldType::SecretPathOrInline,
+                    placeholder: None,
+                    secret: true,
+                    optional: false,
+                    help_text: Some("Password for that portal account."),
+                    options: None,
+                    default_value: None,
+                    inline_format: Some(InlineFormat::Plain),
+                    group: Some("Authentication"),
+                },
+                FieldDefinition {
+                    id: "site",
+                    label: "Site",
+                    field_type: FieldType::String,
+                    placeholder: Some("(all sites)"),
+                    secret: false,
+                    optional: true,
+                    help_text: Some(
+                        "Limit the fetch to one Instant On site by name. Leave blank to read every site this account can see. Assign this credential to a single switch — each host it is assigned to fetches the whole site again.",
+                    ),
+                    options: None,
+                    default_value: None,
+                    inline_format: None,
+                    group: Some("Scope"),
+                },
+            ],
         }
     }
 }

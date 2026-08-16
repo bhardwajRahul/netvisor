@@ -208,21 +208,9 @@ fn collect_subnets(
     merge_subnets(ctx.known_subnets, ctx.scanning_subnet, &host_data.subnets)
 }
 
-/// Union the three sources by id, preserving order: network-wide first, then the subnet being
-/// swept, then anything this host's own collection turned up.
-fn merge_subnets(
-    known: &[crate::server::subnets::r#impl::base::Subnet],
-    scanning: Option<&crate::server::subnets::r#impl::base::Subnet>,
-    from_host: &[crate::server::subnets::r#impl::base::Subnet],
-) -> Vec<crate::server::subnets::r#impl::base::Subnet> {
-    let mut subnets = known.to_vec();
-    for subnet in scanning.into_iter().chain(from_host) {
-        if !subnets.iter().any(|s| s.id == subnet.id) {
-            subnets.push(subnet.clone());
-        }
-    }
-    subnets
-}
+// `merge_subnets` lives in `super` now: Instant On needs the identical union, and the rule is
+// about where any controller-reported device's IP may live, not about UniFi.
+use super::merge_subnets;
 
 /// Fold the controller's own device record into the host being scanned.
 ///

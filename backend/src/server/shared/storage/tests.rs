@@ -706,6 +706,7 @@ fn read_existing_db_enum_baseline() -> std::collections::BTreeMap<String, Vec<St
 /// the old name and regeneration will preserve it (regen warns on any name in
 /// the current fixture that isn't a current-binary variant).
 #[test]
+#[ignore = "release-time coexistence gate: run by release.yml with --ignored, not on every build"]
 fn test_current_reads_previous_release_variants() {
     use crate::server::shared::storage::traits::SqlValue;
 
@@ -767,6 +768,7 @@ fn test_current_reads_previous_release_variants() {
 /// does, the old binary panics the moment the new binary writes that variant
 /// to the DB.
 #[test]
+#[ignore = "release-time coexistence gate: run by release.yml with --ignored, not on every build"]
 fn test_current_writes_subset_of_previous_release() {
     use crate::server::shared::storage::traits::SqlValue;
 

@@ -75,6 +75,10 @@ export interface CredentialTypeMetadata {
 	/** Release maturity of this type's integration. Beta types render a "Beta" tag in the
 	 *  picker but stay selectable. Union derived from the backend enum, never hand-written. */
 	stability?: components['schemas']['CredentialStability'];
+	/** Whether the vendor publishes the API this type talks to. Undocumented types render an
+	 *  "Unofficial API" tag but stay selectable. A separate axis from `stability`: an integration
+	 *  can be fully validated and still ride an endpoint the vendor never published. */
+	upstream_support?: components['schemas']['UpstreamSupport'];
 	/** Whether the associated service has a logo */
 	has_logo?: boolean;
 	/** Whether the logo needs a white background */

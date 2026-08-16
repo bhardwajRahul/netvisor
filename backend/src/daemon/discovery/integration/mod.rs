@@ -12,6 +12,8 @@ pub mod container;
 pub mod dispatch;
 pub mod docker;
 pub mod failure;
+pub mod flex;
+pub mod instant_on;
 pub mod podman;
 pub mod snmp;
 pub mod unifi;
@@ -100,6 +102,27 @@ impl<'a> Checkpoint<'a> {
             *slot = Some(host_data.clone());
         }
     }
+}
+
+/// Union the three subnet sources by id, preserving order: network-wide first, then the subnet
+/// being swept, then anything this host's own collection turned up.
+///
+/// Shared by every integration where one credential reports on devices it did not scan. The
+/// network's whole address space matters rather than the scan's scope: a controller reports every
+/// device it manages, and on a segmented network almost none of them sit in the subnet a rescan is
+/// sweeping — scoping to the sweep dropped all of them.
+pub fn merge_subnets(
+    known: &[Subnet],
+    scanning: Option<&Subnet>,
+    from_host: &[Subnet],
+) -> Vec<Subnet> {
+    let mut subnets = known.to_vec();
+    for subnet in scanning.into_iter().chain(from_host) {
+        if !subnets.iter().any(|s| s.id == subnet.id) {
+            subnets.push(subnet.clone());
+        }
+    }
+    subnets
 }
 
 // ============================================================================
@@ -340,6 +363,9 @@ impl IntegrationRegistry {
             }
             CredentialQueryPayloadDiscriminants::UnifiController => {
                 Box::new(unifi::UnifiIntegration)
+            }
+            CredentialQueryPayloadDiscriminants::InstantOn => {
+                Box::new(instant_on::InstantOnIntegration)
             }
             CredentialQueryPayloadDiscriminants::Unknown => return None,
         })

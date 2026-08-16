@@ -1,0 +1,37 @@
+{
+  "elements": [
+    {
+      "macAddress": "DE:AD:BE:EF:00:01",
+      "name": "reception-pc",
+      "ipAddress": "192.168.20.50",
+      "connectedTo": "dev-edge",
+      "portId": "2",
+      "vlanId": 10
+    },
+    {
+      "macAddress": "DE:AD:BE:EF:00:02",
+      "name": "nas",
+      "ipAddress": "",
+      "connectedTo": "dev-stack",
+      "portId": "2/1/1"
+    },
+    {
+      "macAddress": "DE:AD:BE:EF:00:03",
+      "name": "phone",
+      "wirelessNetworkId": "ssid-guest",
+      "connectedTo": "dev-ap"
+    },
+    {
+      "macAddress": "AA:BB:CC:00:00:02",
+      "name": "the switch itself",
+      "connectedTo": "dev-edge",
+      "portId": "1"
+    },
+    {
+      "macAddress": "DE:AD:BE:EF:00:04",
+      "name": "printer on an unknown port",
+      "connectedTo": "dev-edge",
+      "portId": "99"
+    }
+  ]
+}
