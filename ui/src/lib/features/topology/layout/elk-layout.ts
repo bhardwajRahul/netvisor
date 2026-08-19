@@ -13,6 +13,22 @@ import * as perf from '../perf';
 import { resolveCollapsedAncestor } from '../collapse';
 
 /**
+ * The port-constraint a container's own ports can honour.
+ *
+ * `FIXED_POS` is a promise that every port on the node carries coordinates, and ELK reads one
+ * without them as (0, 0) — stacking it on the container's top-left corner. So a single
+ * unpositioned port disqualifies the whole container, no matter how many of its siblings are
+ * placed. `FIXED_SIDE` keeps the side constraint that makes edges leave in the right direction and
+ * lets ELK space the ports itself.
+ */
+export function portConstraintFor(ports: { x?: number; y?: number }[]): 'FIXED_POS' | 'FIXED_SIDE' {
+	const allPositioned = ports.every(
+		(port) => typeof port.x === 'number' && typeof port.y === 'number'
+	);
+	return allPositioned ? 'FIXED_POS' : 'FIXED_SIDE';
+}
+
+/**
  * Resolve any node ID (element, subcontainer, or root container) to its
  * root container ID. Returns undefined if the ID isn't found in any map.
  */
@@ -579,16 +595,13 @@ function buildElkGraph(
 		if (!container.ports) container.ports = [];
 		if (!container.layoutOptions) container.layoutOptions = {};
 
-		const useFixedPos = elementPositions && elementPositions.size > 0;
-		container.layoutOptions['elk.portConstraints'] = useFixedPos ? 'FIXED_POS' : 'FIXED_SIDE';
-
 		// Port side depends on layout direction: DOWN→SOUTH/NORTH, RIGHT→EAST/WEST
 		const srcSide = useLayeredChildren ? 'EAST' : 'SOUTH';
 		const elementPortIds = new Map<string, string>();
 		for (const [elemId] of sortedElements) {
 			const portId = `port-${elemId}-${srcSide}`;
 			const pos = elementPositions?.get(elemId);
-			if (useFixedPos && pos) {
+			if (pos) {
 				// Pass 2: place port at the element's actual position within the container
 				const portPos = useLayeredChildren
 					? { x: pos.containerW * 0.9, y: pos.x + pos.w / 2 } // RIGHT: port on east side, y = element center
@@ -644,25 +657,22 @@ function buildElkGraph(
 			if (!tgtContainer.ports) tgtContainer.ports = [];
 			if (!tgtContainer.layoutOptions) tgtContainer.layoutOptions = {};
 
-			// Use FIXED_POS in pass 2 so port Y-positions match element positions,
-			// giving ELK crossing minimization real positional signals
-			const useFixedPosTgt = elementPositions && elementPositions.size > 0 && useLayeredChildren;
-			if (useLayeredChildren) {
-				// Layered layout handled below via portConstraints
-			}
-			tgtContainer.layoutOptions['elk.portConstraints'] = useFixedPosTgt
-				? 'FIXED_POS'
-				: 'FIXED_SIDE';
+			// Only the layered (L2) child layout consumes target-port Y for crossing minimization;
+			// elsewhere the side constraint alone is what the target end needs.
+			const positionTargets = !!elementPositions && useLayeredChildren;
 
 			for (const elemId of elemIds) {
 				const tgtPortId = `port-${elemId}-${tgtSide}`;
 				if (!tgtContainer.ports.some((p: { id: string }) => p.id === tgtPortId)) {
-					if (useFixedPosTgt) {
-						// Compute absolute Y within the root container
-						const elemPos = elementPositions!.get(elemId);
+					const elemPos = positionTargets ? elementPositions!.get(elemId) : undefined;
+					if (elemPos) {
+						// Absolute Y within the root container. Only written for an element pass 1
+						// actually placed — an element inside a collapsed container has no position,
+						// and defaulting it to zero used to put every such port on the container's
+						// top edge, which is a crossing signal that says the opposite of the truth.
 						const immContainer = elementToImmediateContainer.get(elemId);
 						const subPos = immContainer ? subcontainerPositions?.get(immContainer) : undefined;
-						const absY = (subPos?.y ?? 0) + (elemPos?.y ?? 0) + (elemPos?.h ?? 0) / 2;
+						const absY = (subPos?.y ?? 0) + elemPos.y + elemPos.h / 2;
 						tgtContainer.ports.push({
 							id: tgtPortId,
 							x: 0,
@@ -696,6 +706,27 @@ function buildElkGraph(
 				targets: [tgtEndpoint]
 			});
 		}
+	}
+
+	// Decide each container's port constraint from the ports it actually carries.
+	//
+	// `FIXED_POS` is a promise that every port on the node has coordinates; ELK reads a port
+	// without them as (0, 0), stacking it on the container's top-left corner. Ports arrive here
+	// from two places — a container is a source for its own edges and a target for other
+	// containers' — and only some of them can be positioned: an element inside a collapsed
+	// container is skipped from the pass-1 graph, so it has no position, yet it still emits a port
+	// because edge endpoints deliberately resolve through the collapsed ancestor.
+	//
+	// Deciding at each push site made the outcome depend on which loop wrote last, and deciding
+	// from a graph-wide "did pass 1 position anything" flag declared FIXED_POS on containers full
+	// of coordinate-less ports. Both are only reachable in a *mixed* collapse state, where some
+	// containers are open and some closed; the uniform states either position every element or
+	// none, which is why the extremes always looked fine. One decision, taken once every port is
+	// known, is the only form of this that cannot disagree with itself.
+	for (const container of containers.values()) {
+		if (!container.ports?.length) continue;
+		if (!container.layoutOptions) container.layoutOptions = {};
+		container.layoutOptions['elk.portConstraints'] = portConstraintFor(container.ports);
 	}
 
 	// Detect cross-child edges within the same root container (e.g., element → ByHypervisor

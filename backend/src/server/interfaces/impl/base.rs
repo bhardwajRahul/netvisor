@@ -637,6 +637,26 @@ pub mod if_type {
     pub const VLAN: i32 = 135;
     pub const L2_VLAN: i32 = 136;
     pub const L3_IPVLAN: i32 = 137;
+    pub const IEEE80211: i32 = 71; // Wi-Fi
+
+    /// The virtual/software interface families, excluded wherever a question is about a physical
+    /// port: which rows the L2 view draws, and which rows count towards a MAC's uniqueness within
+    /// a device.
+    ///
+    /// Kept here rather than beside either consumer because the two must agree. A VLAN interface
+    /// carrying the chassis base MAC is not a candidate far end for a cable, so it must neither
+    /// be drawn as a port nor make a physical port's address look ambiguous — the customer's
+    /// Westermo has six `propVirtual` VLAN rows sharing `…02:E0` while every physical port has a
+    /// unique address.
+    pub const EXCLUDED_IF_TYPES: &[i32] = &[
+        SOFTWARE_LOOPBACK,
+        PROP_VIRTUAL,
+        IEEE80211,
+        TUNNEL,
+        VLAN,
+        L2_VLAN,
+        BRIDGE,
+    ];
 }
 
 #[cfg(test)]

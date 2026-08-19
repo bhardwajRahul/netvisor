@@ -19,10 +19,7 @@ use crate::server::{
     bindings::{r#impl::base::Binding, service::BindingService},
     dependencies::{r#impl::base::Dependency, service::DependencyService},
     hosts::{r#impl::base::Host, service::HostService},
-    interfaces::{
-        r#impl::base::{Interface, Neighbor},
-        service::InterfaceService,
-    },
+    interfaces::{r#impl::base::Interface, service::InterfaceService},
     ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},
     networks::service::NetworkService,
     ports::{r#impl::base::Port, service::PortService},
@@ -333,9 +330,11 @@ impl TopologyService {
         // snapshot can't populate (no LLDP neighbors → no L2; no app tags → no
         // Application).
         let support = TopologyViewSupport {
-            l2_physical: interfaces
-                .iter()
-                .any(|i| matches!(i.base.neighbor, Some(Neighbor::Interface(_)))),
+            // Any resolved neighbour, port-precise or device-level. A network whose links have
+            // all degraded to `Neighbor::Host` still has an L2 topology to show — dashed
+            // `NeighborLink` edges between host containers — and hiding the view is the one
+            // outcome that leaves the operator nothing to look at.
+            l2_physical: interfaces.iter().any(|i| i.base.neighbor.is_some()),
             application: tags.iter().any(|t| t.base.is_application),
         };
         let available_views: Vec<TopologyView> = TopologyView::iter()
@@ -410,9 +409,8 @@ impl TopologyService {
                 network_id,
             ]))
             .await?;
-        let l2_physical = interfaces
-            .iter()
-            .any(|i| matches!(i.base.neighbor, Some(Neighbor::Interface(_))));
+        // Device-level neighbours count too — see the equivalent in `get_topology_data`.
+        let l2_physical = interfaces.iter().any(|i| i.base.neighbor.is_some());
 
         let application = match self.network_service.get_by_id(&network_id).await? {
             Some(network) => self

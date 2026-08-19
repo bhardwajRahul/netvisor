@@ -1050,6 +1050,44 @@ INDEXES="1 $(seq 49153 49168)"
     echo ".1.3.6.1.2.1.31.1.1.1.1.1 string Vlan-interface1"
 } > "$DATA_DIR/switch-omada-01-iftable.txt"
 
+# switch-omada-01 LLDP — the reciprocal half of a link neither end can name a port on.
+#
+# This device and switch-dlink-01 both report one chassis address on every interface, so when
+# each advertises that address as its port id neither can identify a port on the other: the MAC
+# names the device and nothing narrower. Before the reciprocal tier the link degraded to a dashed
+# device-level edge on both sides, which is what the August 2026 customer saw across an entire
+# Ubiquiti/Westermo estate.
+#
+# What makes it resolvable is that each device names the other on exactly one port. Those two
+# ports are locally known — each is attached by ifIndex on its own device — so the pair can be
+# bound without either far-end port ever being identified. Keep it at exactly one port each way:
+# a second link between these two is a LAG, genuinely ambiguous, and must stay device-level.
+# switch-tplink-01 local ports 3 and 4 are that case and are deliberately left as they are.
+#
+# lldpLocPortNum here is 1..16 against ifIndex 49153..49168, so the local-port remap is load
+# bearing: lldpLocPortId is subtype 5 carrying the ifDescr, the only column these nameless ports
+# have. Without the remap every neighbour lands on an index no interface holds and is discarded
+# whole — the drop this environment previously had no device to reproduce.
+{
+    echo ".1.0.8802.1.1.2.1.3.1.0 integer 4"
+    echo ".1.0.8802.1.1.2.1.3.2.0 octet 30 de 4b 30 f0 ac"
+    echo ".1.0.8802.1.1.2.1.3.3.0 string switch"
+    echo ".1.0.8802.1.1.2.1.3.4.0 string TP-Link Omada TL-SG3216"
+    for port in $(seq 1 16); do echo ".1.0.8802.1.1.2.1.3.7.1.2.${port} integer 5"; done
+    for port in $(seq 1 16); do
+        echo ".1.0.8802.1.1.2.1.3.7.1.3.${port} string gigabitEthernet 1/0/${port}"
+    done
+    # One neighbour, on local port 5 (ifIndex 49157): switch-dlink-01, addressed by the chassis
+    # MAC it repeats across all of its ports.
+    echo ".1.0.8802.1.1.2.1.4.1.1.4.0.5.1 integer 4"
+    echo ".1.0.8802.1.1.2.1.4.1.1.5.0.5.1 octet 00 ad 24 af 4e 00"
+    echo ".1.0.8802.1.1.2.1.4.1.1.6.0.5.1 integer 3"
+    echo ".1.0.8802.1.1.2.1.4.1.1.7.0.5.1 octet 00 ad 24 af 4e 00"
+    echo ".1.0.8802.1.1.2.1.4.1.1.8.0.5.1 string Uplink"
+    echo ".1.0.8802.1.1.2.1.4.1.1.9.0.5.1 string switch-dlink-01"
+    echo ".1.0.8802.1.1.2.1.4.1.1.10.0.5.1 string D-Link DGS-1210-48 Rev.GX/7.20.003"
+} > "$DATA_DIR/switch-omada-01-lldp.txt"
+
 # ══════════════════════════════════════════════════════════════════════
 # switch-flaky-01 — a neighbour record that is missing its chassis ID
 #
@@ -1244,27 +1282,35 @@ cat > "$DATA_DIR/switch-dlink-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.2.2.1.1.1 integer 1
 .1.3.6.1.2.1.2.2.1.1.2 integer 2
 .1.3.6.1.2.1.2.2.1.1.3 integer 3
+.1.3.6.1.2.1.2.2.1.1.4 integer 4
 .1.3.6.1.2.1.2.2.1.2.1 string D-Link DGS-1210-48 Rev.GX/7.20.003 Port 1
 .1.3.6.1.2.1.2.2.1.2.2 string D-Link DGS-1210-48 Rev.GX/7.20.003 Port 2
 .1.3.6.1.2.1.2.2.1.2.3 string D-Link DGS-1210-48 Rev.GX/7.20.003 Port 3
+.1.3.6.1.2.1.2.2.1.2.4 string D-Link DGS-1210-48 Rev.GX/7.20.003 Port 4
 .1.3.6.1.2.1.2.2.1.3.1 integer 6
 .1.3.6.1.2.1.2.2.1.3.2 integer 6
 .1.3.6.1.2.1.2.2.1.3.3 integer 6
+.1.3.6.1.2.1.2.2.1.3.4 integer 6
 .1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
 .1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
 .1.3.6.1.2.1.2.2.1.5.3 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.4 gauge 1000000000
 .1.3.6.1.2.1.2.2.1.6.1 octet 00 ad 24 af 4e 00
 .1.3.6.1.2.1.2.2.1.6.2 octet 00 ad 24 af 4e 00
 .1.3.6.1.2.1.2.2.1.6.3 octet 00 ad 24 af 4e 00
+.1.3.6.1.2.1.2.2.1.6.4 octet 00 ad 24 af 4e 00
 .1.3.6.1.2.1.2.2.1.7.1 integer 1
 .1.3.6.1.2.1.2.2.1.7.2 integer 1
 .1.3.6.1.2.1.2.2.1.7.3 integer 1
+.1.3.6.1.2.1.2.2.1.7.4 integer 1
 .1.3.6.1.2.1.2.2.1.8.1 integer 1
 .1.3.6.1.2.1.2.2.1.8.2 integer 1
 .1.3.6.1.2.1.2.2.1.8.3 integer 1
+.1.3.6.1.2.1.2.2.1.8.4 integer 1
 .1.3.6.1.2.1.31.1.1.1.1.1 string Slot0/1
 .1.3.6.1.2.1.31.1.1.1.1.2 string Slot0/2
 .1.3.6.1.2.1.31.1.1.1.1.3 string Slot0/3
+.1.3.6.1.2.1.31.1.1.1.1.4 string Slot0/4
 EOF
 
 # Both neighbours point at switch-core-01 (chassis 00:1a:2b:00:10:00). They deliberately share
@@ -1317,30 +1363,39 @@ cat > "$DATA_DIR/switch-dlink-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.7.1.2.1 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.2 integer 5
 .1.0.8802.1.1.2.1.3.7.1.2.3 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.4 integer 5
 .1.0.8802.1.1.2.1.3.7.1.3.1 string Slot0/1
 .1.0.8802.1.1.2.1.3.7.1.3.2 string Slot0/2
 .1.0.8802.1.1.2.1.3.7.1.3.3 string Slot0/3
+.1.0.8802.1.1.2.1.3.7.1.3.4 string Slot0/4
 .1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.0.2.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.4.0.3.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.0.4.1 integer 4
 .1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 00:1a:2b:00:10:00
 .1.0.8802.1.1.2.1.4.1.1.5.0.2.1 string 00:1a:2b:00:10:00
 .1.0.8802.1.1.2.1.4.1.1.5.0.3.1 octet 00 07 7c 20 01 e0
+.1.0.8802.1.1.2.1.4.1.1.5.0.4.1 octet 30 de 4b 30 f0 ac
 .1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.0.2.1 integer 5
 .1.0.8802.1.1.2.1.4.1.1.6.0.3.1 integer 3
+.1.0.8802.1.1.2.1.4.1.1.6.0.4.1 integer 3
 .1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string 2
 .1.0.8802.1.1.2.1.4.1.1.7.0.2.1 string ethernet1/0/44
 .1.0.8802.1.1.2.1.4.1.1.7.0.3.1 octet 00 07 7c 20 01 e3
+.1.0.8802.1.1.2.1.4.1.1.7.0.4.1 octet 30 de 4b 30 f0 ac
 .1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/2
 .1.0.8802.1.1.2.1.4.1.1.8.0.2.1 string GigabitEthernet0/1
 .1.0.8802.1.1.2.1.4.1.1.8.0.3.1 string Ring port to peer
+.1.0.8802.1.1.2.1.4.1.1.8.0.4.1 string Uplink
 .1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
 .1.0.8802.1.1.2.1.4.1.1.9.0.2.1 string switch-core-01
 .1.0.8802.1.1.2.1.4.1.1.9.0.3.1 string switch-macport-01
+.1.0.8802.1.1.2.1.4.1.1.9.0.4.1 string switch
 .1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
 .1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string Cisco IOS Software, C2960
 .1.0.8802.1.1.2.1.4.1.1.10.0.3.1 string Westermo WeOS
+.1.0.8802.1.1.2.1.4.1.1.10.0.4.1 string TP-Link Omada TL-SG3216
 EOF
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1756,111 +1811,211 @@ cat > "$DATA_DIR/switch-unsorted-01-arp.txt" << 'EOF'
 .1.3.6.1.2.1.4.22.1.4.2.10.20.30.45 integer 3
 EOF
 
-# switch-macport-01 IF-MIB. Interfaces eth1..eth10, each with its own hardware address, and
-# ifIndex ascending — the ordinary case. What is not ordinary is how LLDP refers to them below.
+# switch-macport-01 IF-MIB — the customer's Westermo WeOS switch, from its own walk.
+#
+# Every column here is a shape that costs a link when it is guessed at:
+#
+#   ifIndex is not the port number and does not ascend with it. Ports run ifIndex 10..19 while
+#   the interfaces they name run eth10 down to eth1, so ifIndex 11 is eth9 and 19 is eth1.
+#
+#   ifDescr carries the media type in front of the name — "100-T eth9", "1000-LX eth1" — so a
+#   neighbour advertising the bare port name matches ifDescr on no device of this family.
+#   ifName and ifAlias both hold the bare name, which is why both are served: the alias column is
+#   the one that makes "eth9" resolvable, and no other fixture emits it.
+#
+#   ifPhysAddress is unique per *physical* port (…e1 through …ea) but the six VLAN interfaces all
+#   repeat the chassis address …e0, which belongs to no physical port. A MAC lookup that counts
+#   virtual rows finds six matches and declines, costing a port no physical interface contested.
+#
+#   lo (ifType 24) and the VLANs (ifType 53) are here because they are on the real device and
+#   because their presence is the test — a fixture of ten clean ethernet rows cannot fail this way.
 cat > "$DATA_DIR/switch-macport-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.2.2.1.1.1 integer 1
-.1.3.6.1.2.1.2.2.1.1.2 integer 2
-.1.3.6.1.2.1.2.2.1.1.3 integer 3
-.1.3.6.1.2.1.2.2.1.1.4 integer 4
-.1.3.6.1.2.1.2.2.1.1.5 integer 5
-.1.3.6.1.2.1.2.2.1.1.6 integer 6
-.1.3.6.1.2.1.2.2.1.1.7 integer 7
-.1.3.6.1.2.1.2.2.1.1.8 integer 8
-.1.3.6.1.2.1.2.2.1.1.9 integer 9
 .1.3.6.1.2.1.2.2.1.1.10 integer 10
-.1.3.6.1.2.1.2.2.1.2.1 string eth1
-.1.3.6.1.2.1.2.2.1.2.2 string eth2
-.1.3.6.1.2.1.2.2.1.2.3 string eth3
-.1.3.6.1.2.1.2.2.1.2.4 string eth4
-.1.3.6.1.2.1.2.2.1.2.5 string eth5
-.1.3.6.1.2.1.2.2.1.2.6 string eth6
-.1.3.6.1.2.1.2.2.1.2.7 string eth7
-.1.3.6.1.2.1.2.2.1.2.8 string eth8
-.1.3.6.1.2.1.2.2.1.2.9 string eth9
-.1.3.6.1.2.1.2.2.1.2.10 string eth10
-.1.3.6.1.2.1.2.2.1.3.1 integer 6
-.1.3.6.1.2.1.2.2.1.3.2 integer 6
-.1.3.6.1.2.1.2.2.1.3.3 integer 6
-.1.3.6.1.2.1.2.2.1.3.4 integer 6
-.1.3.6.1.2.1.2.2.1.3.5 integer 6
-.1.3.6.1.2.1.2.2.1.3.6 integer 6
-.1.3.6.1.2.1.2.2.1.3.7 integer 6
-.1.3.6.1.2.1.2.2.1.3.8 integer 6
-.1.3.6.1.2.1.2.2.1.3.9 integer 6
+.1.3.6.1.2.1.2.2.1.1.11 integer 11
+.1.3.6.1.2.1.2.2.1.1.12 integer 12
+.1.3.6.1.2.1.2.2.1.1.13 integer 13
+.1.3.6.1.2.1.2.2.1.1.14 integer 14
+.1.3.6.1.2.1.2.2.1.1.15 integer 15
+.1.3.6.1.2.1.2.2.1.1.16 integer 16
+.1.3.6.1.2.1.2.2.1.1.17 integer 17
+.1.3.6.1.2.1.2.2.1.1.18 integer 18
+.1.3.6.1.2.1.2.2.1.1.19 integer 19
+.1.3.6.1.2.1.2.2.1.1.22 integer 22
+.1.3.6.1.2.1.2.2.1.1.23 integer 23
+.1.3.6.1.2.1.2.2.1.1.26 integer 26
+.1.3.6.1.2.1.2.2.1.1.28 integer 28
+.1.3.6.1.2.1.2.2.1.1.29 integer 29
+.1.3.6.1.2.1.2.2.1.1.30 integer 30
+.1.3.6.1.2.1.2.2.1.2.1 string lo
+.1.3.6.1.2.1.2.2.1.2.10 string 100-T eth10
+.1.3.6.1.2.1.2.2.1.2.11 string 100-T eth9
+.1.3.6.1.2.1.2.2.1.2.12 string 100-T eth8
+.1.3.6.1.2.1.2.2.1.2.13 string 100-T eth7
+.1.3.6.1.2.1.2.2.1.2.14 string 100-T eth6
+.1.3.6.1.2.1.2.2.1.2.15 string 100-T eth5
+.1.3.6.1.2.1.2.2.1.2.16 string 100-T eth4
+.1.3.6.1.2.1.2.2.1.2.17 string 100-T eth3
+.1.3.6.1.2.1.2.2.1.2.18 string 1000-T eth2
+.1.3.6.1.2.1.2.2.1.2.19 string 1000-LX eth1
+.1.3.6.1.2.1.2.2.1.2.22 string vlan1
+.1.3.6.1.2.1.2.2.1.2.23 string vlan6
+.1.3.6.1.2.1.2.2.1.2.26 string vlan832
+.1.3.6.1.2.1.2.2.1.2.28 string vlan1302
+.1.3.6.1.2.1.2.2.1.2.29 string vlan1305
+.1.3.6.1.2.1.2.2.1.2.30 string vlan1251
+.1.3.6.1.2.1.2.2.1.3.1 integer 24
 .1.3.6.1.2.1.2.2.1.3.10 integer 6
-.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
-.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
-.1.3.6.1.2.1.2.2.1.5.3 gauge 100000000
-.1.3.6.1.2.1.2.2.1.5.4 gauge 100000000
-.1.3.6.1.2.1.2.2.1.5.5 gauge 100000000
-.1.3.6.1.2.1.2.2.1.5.6 gauge 100000000
-.1.3.6.1.2.1.2.2.1.5.7 gauge 100000000
-.1.3.6.1.2.1.2.2.1.5.8 gauge 100000000
-.1.3.6.1.2.1.2.2.1.5.9 gauge 100000000
+.1.3.6.1.2.1.2.2.1.3.11 integer 6
+.1.3.6.1.2.1.2.2.1.3.12 integer 6
+.1.3.6.1.2.1.2.2.1.3.13 integer 6
+.1.3.6.1.2.1.2.2.1.3.14 integer 6
+.1.3.6.1.2.1.2.2.1.3.15 integer 6
+.1.3.6.1.2.1.2.2.1.3.16 integer 6
+.1.3.6.1.2.1.2.2.1.3.17 integer 6
+.1.3.6.1.2.1.2.2.1.3.18 integer 6
+.1.3.6.1.2.1.2.2.1.3.19 integer 6
+.1.3.6.1.2.1.2.2.1.3.22 integer 53
+.1.3.6.1.2.1.2.2.1.3.23 integer 53
+.1.3.6.1.2.1.2.2.1.3.26 integer 53
+.1.3.6.1.2.1.2.2.1.3.28 integer 53
+.1.3.6.1.2.1.2.2.1.3.29 integer 53
+.1.3.6.1.2.1.2.2.1.3.30 integer 53
+.1.3.6.1.2.1.2.2.1.5.1 gauge 0
 .1.3.6.1.2.1.2.2.1.5.10 gauge 100000000
-.1.3.6.1.2.1.2.2.1.6.1 octet 00 07 7c 20 01 e1
-.1.3.6.1.2.1.2.2.1.6.2 octet 00 07 7c 20 01 e2
-.1.3.6.1.2.1.2.2.1.6.3 octet 00 07 7c 20 01 e3
-.1.3.6.1.2.1.2.2.1.6.4 octet 00 07 7c 20 01 e4
-.1.3.6.1.2.1.2.2.1.6.5 octet 00 07 7c 20 01 e5
-.1.3.6.1.2.1.2.2.1.6.6 octet 00 07 7c 20 01 e6
-.1.3.6.1.2.1.2.2.1.6.7 octet 00 07 7c 20 01 e7
-.1.3.6.1.2.1.2.2.1.6.8 octet 00 07 7c 20 01 e8
-.1.3.6.1.2.1.2.2.1.6.9 octet 00 07 7c 20 01 e9
+.1.3.6.1.2.1.2.2.1.5.11 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.12 gauge 0
+.1.3.6.1.2.1.2.2.1.5.13 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.14 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.15 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.16 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.17 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.18 gauge 0
+.1.3.6.1.2.1.2.2.1.5.19 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.22 gauge 0
+.1.3.6.1.2.1.2.2.1.5.23 gauge 0
+.1.3.6.1.2.1.2.2.1.5.26 gauge 0
+.1.3.6.1.2.1.2.2.1.5.28 gauge 0
+.1.3.6.1.2.1.2.2.1.5.29 gauge 0
+.1.3.6.1.2.1.2.2.1.5.30 gauge 0
+.1.3.6.1.2.1.2.2.1.6.1 octet 00 00 00 00 00 00
 .1.3.6.1.2.1.2.2.1.6.10 octet 00 07 7c 20 01 ea
+.1.3.6.1.2.1.2.2.1.6.11 octet 00 07 7c 20 01 e9
+.1.3.6.1.2.1.2.2.1.6.12 octet 00 07 7c 20 01 e8
+.1.3.6.1.2.1.2.2.1.6.13 octet 00 07 7c 20 01 e7
+.1.3.6.1.2.1.2.2.1.6.14 octet 00 07 7c 20 01 e6
+.1.3.6.1.2.1.2.2.1.6.15 octet 00 07 7c 20 01 e5
+.1.3.6.1.2.1.2.2.1.6.16 octet 00 07 7c 20 01 e4
+.1.3.6.1.2.1.2.2.1.6.17 octet 00 07 7c 20 01 e3
+.1.3.6.1.2.1.2.2.1.6.18 octet 00 07 7c 20 01 e2
+.1.3.6.1.2.1.2.2.1.6.19 octet 00 07 7c 20 01 e1
+.1.3.6.1.2.1.2.2.1.6.22 octet 00 07 7c 20 01 e0
+.1.3.6.1.2.1.2.2.1.6.23 octet 00 07 7c 20 01 e0
+.1.3.6.1.2.1.2.2.1.6.26 octet 00 07 7c 20 01 e0
+.1.3.6.1.2.1.2.2.1.6.28 octet 00 07 7c 20 01 e0
+.1.3.6.1.2.1.2.2.1.6.29 octet 00 07 7c 20 01 e0
+.1.3.6.1.2.1.2.2.1.6.30 octet 00 07 7c 20 01 e0
 .1.3.6.1.2.1.2.2.1.7.1 integer 1
-.1.3.6.1.2.1.2.2.1.7.2 integer 1
-.1.3.6.1.2.1.2.2.1.7.3 integer 1
-.1.3.6.1.2.1.2.2.1.7.4 integer 1
-.1.3.6.1.2.1.2.2.1.7.5 integer 1
-.1.3.6.1.2.1.2.2.1.7.6 integer 1
-.1.3.6.1.2.1.2.2.1.7.7 integer 1
-.1.3.6.1.2.1.2.2.1.7.8 integer 1
-.1.3.6.1.2.1.2.2.1.7.9 integer 1
 .1.3.6.1.2.1.2.2.1.7.10 integer 1
+.1.3.6.1.2.1.2.2.1.7.11 integer 1
+.1.3.6.1.2.1.2.2.1.7.12 integer 1
+.1.3.6.1.2.1.2.2.1.7.13 integer 1
+.1.3.6.1.2.1.2.2.1.7.14 integer 1
+.1.3.6.1.2.1.2.2.1.7.15 integer 1
+.1.3.6.1.2.1.2.2.1.7.16 integer 1
+.1.3.6.1.2.1.2.2.1.7.17 integer 1
+.1.3.6.1.2.1.2.2.1.7.18 integer 1
+.1.3.6.1.2.1.2.2.1.7.19 integer 1
+.1.3.6.1.2.1.2.2.1.7.22 integer 1
+.1.3.6.1.2.1.2.2.1.7.23 integer 1
+.1.3.6.1.2.1.2.2.1.7.26 integer 1
+.1.3.6.1.2.1.2.2.1.7.28 integer 1
+.1.3.6.1.2.1.2.2.1.7.29 integer 1
+.1.3.6.1.2.1.2.2.1.7.30 integer 1
 .1.3.6.1.2.1.2.2.1.8.1 integer 1
-.1.3.6.1.2.1.2.2.1.8.2 integer 1
-.1.3.6.1.2.1.2.2.1.8.3 integer 1
-.1.3.6.1.2.1.2.2.1.8.4 integer 1
-.1.3.6.1.2.1.2.2.1.8.5 integer 1
-.1.3.6.1.2.1.2.2.1.8.6 integer 1
-.1.3.6.1.2.1.2.2.1.8.7 integer 2
-.1.3.6.1.2.1.2.2.1.8.8 integer 2
-.1.3.6.1.2.1.2.2.1.8.9 integer 1
 .1.3.6.1.2.1.2.2.1.8.10 integer 1
-.1.3.6.1.2.1.31.1.1.1.1.1 string eth1
-.1.3.6.1.2.1.31.1.1.1.1.2 string eth2
-.1.3.6.1.2.1.31.1.1.1.1.3 string eth3
-.1.3.6.1.2.1.31.1.1.1.1.4 string eth4
-.1.3.6.1.2.1.31.1.1.1.1.5 string eth5
-.1.3.6.1.2.1.31.1.1.1.1.6 string eth6
-.1.3.6.1.2.1.31.1.1.1.1.7 string eth7
-.1.3.6.1.2.1.31.1.1.1.1.8 string eth8
-.1.3.6.1.2.1.31.1.1.1.1.9 string eth9
+.1.3.6.1.2.1.2.2.1.8.11 integer 1
+.1.3.6.1.2.1.2.2.1.8.12 integer 2
+.1.3.6.1.2.1.2.2.1.8.13 integer 1
+.1.3.6.1.2.1.2.2.1.8.14 integer 1
+.1.3.6.1.2.1.2.2.1.8.15 integer 1
+.1.3.6.1.2.1.2.2.1.8.16 integer 1
+.1.3.6.1.2.1.2.2.1.8.17 integer 1
+.1.3.6.1.2.1.2.2.1.8.18 integer 2
+.1.3.6.1.2.1.2.2.1.8.19 integer 1
+.1.3.6.1.2.1.2.2.1.8.22 integer 2
+.1.3.6.1.2.1.2.2.1.8.23 integer 1
+.1.3.6.1.2.1.2.2.1.8.26 integer 1
+.1.3.6.1.2.1.2.2.1.8.28 integer 1
+.1.3.6.1.2.1.2.2.1.8.29 integer 1
+.1.3.6.1.2.1.2.2.1.8.30 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string lo
 .1.3.6.1.2.1.31.1.1.1.1.10 string eth10
+.1.3.6.1.2.1.31.1.1.1.1.11 string eth9
+.1.3.6.1.2.1.31.1.1.1.1.12 string eth8
+.1.3.6.1.2.1.31.1.1.1.1.13 string eth7
+.1.3.6.1.2.1.31.1.1.1.1.14 string eth6
+.1.3.6.1.2.1.31.1.1.1.1.15 string eth5
+.1.3.6.1.2.1.31.1.1.1.1.16 string eth4
+.1.3.6.1.2.1.31.1.1.1.1.17 string eth3
+.1.3.6.1.2.1.31.1.1.1.1.18 string eth2
+.1.3.6.1.2.1.31.1.1.1.1.19 string eth1
+.1.3.6.1.2.1.31.1.1.1.1.22 string vlan1
+.1.3.6.1.2.1.31.1.1.1.1.23 string vlan6
+.1.3.6.1.2.1.31.1.1.1.1.26 string vlan832
+.1.3.6.1.2.1.31.1.1.1.1.28 string vlan1302
+.1.3.6.1.2.1.31.1.1.1.1.29 string vlan1305
+.1.3.6.1.2.1.31.1.1.1.1.30 string vlan1251
+.1.3.6.1.2.1.31.1.1.1.18.1 string lo
+.1.3.6.1.2.1.31.1.1.1.18.10 string eth10
+.1.3.6.1.2.1.31.1.1.1.18.11 string eth9
+.1.3.6.1.2.1.31.1.1.1.18.12 string eth8
+.1.3.6.1.2.1.31.1.1.1.18.13 string eth7
+.1.3.6.1.2.1.31.1.1.1.18.14 string eth6
+.1.3.6.1.2.1.31.1.1.1.18.15 string eth5
+.1.3.6.1.2.1.31.1.1.1.18.16 string eth4
+.1.3.6.1.2.1.31.1.1.1.18.17 string eth3
+.1.3.6.1.2.1.31.1.1.1.18.18 string eth2
+.1.3.6.1.2.1.31.1.1.1.18.19 string eth1
+.1.3.6.1.2.1.31.1.1.1.18.22 string vlan1
+.1.3.6.1.2.1.31.1.1.1.18.23 string vlan6
+.1.3.6.1.2.1.31.1.1.1.18.26 string vlan832
+.1.3.6.1.2.1.31.1.1.1.18.28 string vlan1302
+.1.3.6.1.2.1.31.1.1.1.18.29 string vlan1305
+.1.3.6.1.2.1.31.1.1.1.18.30 string vlan1251
 EOF
 
-# switch-macport-01 LLDP — local ports identified only by MAC and description.
+# switch-macport-01 LLDP — local ports keyed by ifIndex, remote ends of three different shapes.
 #
-# lldpLocPortIdSubtype is macAddress(3) on every port and lldpLocPortId is the port's own
-# hardware address, so there is no name to match on. lldpLocPortNum runs 10..19 while the
-# interfaces run eth10 down to eth1, so the numbers cannot be arithmetic either: local port 11
-# is eth9, 16 is eth4, 19 is eth1. lldpLocPortDesc is the only column that says so.
+# lldpLocPortNum is 10..19, which are exactly this device's ifIndex values: the local-port table is
+# the identity mapping, and each port advertises subtype 3 with its own unique ifPhysAddress so the
+# unique-MAC tier confirms it. The earlier version of this fixture modelled a device whose
+# lldpLocPortNum was a separate namespace from ifIndex; the customer's walk shows it is not, which
+# is why the local-port remap could never have been what broke this device. The reverse-numbering
+# case that remap exists for is still covered, by unit test rather than by pretending this device
+# is it.
 #
-# Both resolution paths are exercised deliberately. Ports 11 and 19 report their own port
-# address, which matches that interface's ifPhysAddress, so they resolve on the MAC. Port 16
-# reports the *chassis* address instead — a real variation, and one that belongs to no
-# interface — so it has to fall through to lldpLocPortDesc. One scan therefore covers the MAC
-# tier and the description tier rather than leaving the second one to unit tests alone.
+# The three neighbours are the ones the real device reports, and each reaches its far end by a
+# different route:
 #
-# Both columns use type `octet` for the same reason the ARP table above does: `string` would
-# send an address as text, and a MAC is six raw octets. Sent as text, the port id is not a MAC
-# and ifPhysAddress is not read at all, which is exactly the shape that makes the MAC tier look
-# tested when it never ran.
+#   port 11 — chassis subtype 7 (local) "C230408" with **no sysName and no portDesc**. Nothing
+#   about this identifies a MAC, an address or a name: the only way to find that device is
+#   hosts.chassis_id, recorded from its own lldpLocChassisId. If those two paths ever canonicalise
+#   differently the neighbour is unfindable, and nothing else in this environment covers it.
+#
+#   port 19 — an Extreme 5520 FabricEngine: chassis subtype 4 MAC, port id subtype 5 "1/19",
+#   sysName present.
+#
+#   port 16 — a Lexmark printer advertising the same MAC as chassis and as port id, the ordinary
+#   single-port-endpoint shape.
+#
+# `octet` throughout for the address columns, for the reason the ARP table above gives: `string`
+# sends an address as text, and a MAC is six raw octets. The chassis id is deliberately sent as
+# octets here while switch-dlink-01 names this same device with the text form, so one scan
+# exercises both encodings reaching one identity.
 cat > "$DATA_DIR/switch-macport-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.1.0 integer 4
-.1.0.8802.1.1.2.1.3.2.0 string 00:07:7c:20:01:e0
+.1.0.8802.1.1.2.1.3.2.0 octet 00 07 7c 20 01 e0
 .1.0.8802.1.1.2.1.3.3.0 string switch-macport-01
 .1.0.8802.1.1.2.1.3.4.0 string WeOS 5.21.0 industrial ethernet switch
 .1.0.8802.1.1.2.1.3.7.1.2.10 integer 3
@@ -1879,7 +2034,7 @@ cat > "$DATA_DIR/switch-macport-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.7.1.3.13 octet 00 07 7c 20 01 e7
 .1.0.8802.1.1.2.1.3.7.1.3.14 octet 00 07 7c 20 01 e6
 .1.0.8802.1.1.2.1.3.7.1.3.15 octet 00 07 7c 20 01 e5
-.1.0.8802.1.1.2.1.3.7.1.3.16 octet 00 07 7c 20 01 e0
+.1.0.8802.1.1.2.1.3.7.1.3.16 octet 00 07 7c 20 01 e4
 .1.0.8802.1.1.2.1.3.7.1.3.17 octet 00 07 7c 20 01 e3
 .1.0.8802.1.1.2.1.3.7.1.3.18 octet 00 07 7c 20 01 e2
 .1.0.8802.1.1.2.1.3.7.1.3.19 octet 00 07 7c 20 01 e1
@@ -1893,27 +2048,24 @@ cat > "$DATA_DIR/switch-macport-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.3.7.1.4.17 string 100-T eth3
 .1.0.8802.1.1.2.1.3.7.1.4.18 string 1000-T eth2
 .1.0.8802.1.1.2.1.3.7.1.4.19 string 1000-LX eth1
-.1.0.8802.1.1.2.1.4.1.1.4.100.11.1 integer 4
-.1.0.8802.1.1.2.1.4.1.1.4.500.19.1 integer 4
-.1.0.8802.1.1.2.1.4.1.1.4.1400.16.1 integer 4
-.1.0.8802.1.1.2.1.4.1.1.5.100.11.1 string 00:07:7c:31:00:11
-.1.0.8802.1.1.2.1.4.1.1.5.500.19.1 string 00:07:7c:31:00:19
-.1.0.8802.1.1.2.1.4.1.1.5.1400.16.1 string 00:07:7c:31:00:16
-.1.0.8802.1.1.2.1.4.1.1.6.100.11.1 integer 5
-.1.0.8802.1.1.2.1.4.1.1.6.500.19.1 integer 5
-.1.0.8802.1.1.2.1.4.1.1.6.1400.16.1 integer 5
-.1.0.8802.1.1.2.1.4.1.1.7.100.11.1 string eth3
-.1.0.8802.1.1.2.1.4.1.1.7.500.19.1 string eth1
-.1.0.8802.1.1.2.1.4.1.1.7.1400.16.1 string eth7
-.1.0.8802.1.1.2.1.4.1.1.8.100.11.1 string 100-T eth3
-.1.0.8802.1.1.2.1.4.1.1.8.500.19.1 string 1000-LX eth1
-.1.0.8802.1.1.2.1.4.1.1.8.1400.16.1 string 100-T eth7
-.1.0.8802.1.1.2.1.4.1.1.9.100.11.1 string ring-peer-a
-.1.0.8802.1.1.2.1.4.1.1.9.500.19.1 string ring-peer-b
-.1.0.8802.1.1.2.1.4.1.1.9.1400.16.1 string ring-peer-c
-.1.0.8802.1.1.2.1.4.1.1.10.100.11.1 string WeOS 5.21.0 industrial ethernet switch
-.1.0.8802.1.1.2.1.4.1.1.10.500.19.1 string WeOS 5.21.0 industrial ethernet switch
-.1.0.8802.1.1.2.1.4.1.1.10.1400.16.1 string WeOS 5.21.0 industrial ethernet switch
+.1.0.8802.1.1.2.1.4.1.1.4.100.11.1 integer 7
+.1.0.8802.1.1.2.1.4.1.1.4.500.19.2 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.1400.16.3 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.100.11.1 string C230408
+.1.0.8802.1.1.2.1.4.1.1.5.500.19.2 octet f0 64 26 b3 84 00
+.1.0.8802.1.1.2.1.4.1.1.5.1400.16.3 octet 78 8c 77 e5 92 7d
+.1.0.8802.1.1.2.1.4.1.1.6.100.11.1 integer 3
+.1.0.8802.1.1.2.1.4.1.1.6.500.19.2 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.1400.16.3 integer 3
+.1.0.8802.1.1.2.1.4.1.1.7.100.11.1 octet e8 80 88 be 30 e7
+.1.0.8802.1.1.2.1.4.1.1.7.500.19.2 string 1/19
+.1.0.8802.1.1.2.1.4.1.1.7.1400.16.3 octet 78 8c 77 e5 92 7d
+.1.0.8802.1.1.2.1.4.1.1.8.500.19.2 string Extreme Networks 5520-24X-FabricEngine - GbicLx Port 1/19
+.1.0.8802.1.1.2.1.4.1.1.8.1400.16.3 string eth0
+.1.0.8802.1.1.2.1.4.1.1.9.500.19.2 string VSAFC11
+.1.0.8802.1.1.2.1.4.1.1.9.1400.16.3 string M300.printers.motala.se
+.1.0.8802.1.1.2.1.4.1.1.10.500.19.2 string 5520-24X-FabricEngine (9.3.1.0)
+.1.0.8802.1.1.2.1.4.1.1.10.1400.16.3 string Lexmark Poky (Yocto Project Reference Distro) 4.0.14 (kirkstone) Linux 5.15.58-yocto-standard aarch64
 EOF
 
 # switch-mute-01 — answers the credential and serves nothing.
@@ -2176,6 +2328,7 @@ sysobjectid .1.3.6.1.4.1.11863.6.96
 sysservices 2
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-omada-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-omada-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-omada-01-lldp.txt
 EOF
 
 cat > "$CONF_DIR/snmpd-switch-flaky-01.conf" << EOF

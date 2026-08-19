@@ -454,6 +454,23 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// The historical row recording one completed session.
+    ///
+    /// Keyed on the session id inside the recorded payload because that is the only identifier the
+    /// row and the completion event share — the row's own id is minted at write time. Used to add
+    /// to a finished scan's warning list from a subscriber that necessarily runs after the row was
+    /// written.
+    pub fn historical_session(mut self, session_id: Uuid) -> Self {
+        self.conditions
+            .push("run_type->>'type' = 'Historical'".to_string());
+        self.conditions.push(format!(
+            "run_type->'results'->>'session_id' = ${}",
+            self.values.len() + 1
+        ));
+        self.values.push(SqlValue::String(session_id.to_string()));
+        self
+    }
+
     pub fn exclude_historical(mut self) -> Self {
         self.conditions
             .push("run_type->>'type' != 'Historical'".to_string());

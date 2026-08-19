@@ -139,38 +139,82 @@ impl SnmpWalkGroup {
     }
 }
 
-/// LLDP neighbours whose local port could not be matched to an interface on the device.
+/// LLDP neighbours whose local port could not be placed on an interface of the device.
 ///
 /// Kept apart from [`IncompleteSnmpWalk`] because it is a different kind of problem and reads
-/// nothing like one. The walk succeeded — the neighbours are there — but their `lldpLocPortNum`
-/// could not be translated to an `ifIndex`, so each one is attached to whatever interface holds
-/// that number, or to nothing. The result is a map that looks complete and is wrong in a
-/// specific place, which no "data was incomplete" sentence describes.
+/// nothing like one: the walk succeeded and the neighbours are there, but their `lldpLocPortNum`
+/// could not be translated to an `ifIndex`.
+///
+/// Two outcomes follow, and the difference is what the operator needs. Where the untranslated
+/// number happens to name a real interface, the neighbour attaches to it and the map is wrong in a
+/// specific place. Where it names none, the neighbour is attached nowhere and discarded whole — no
+/// chassis id is stored, no link is drawn, and the device reads as though it had no LLDP data at
+/// all. The second is the common case on a device whose `lldpLocPortTable` is absent or unreadable,
+/// and it was the outcome this warning previously described as "may be drawn against the wrong
+/// port".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnresolvedLldpPorts {
     pub ip: IpAddr,
+    /// Neighbours no tier could place, which keep their raw `lldpLocPortNum`.
     pub unresolved: usize,
+    /// Neighbours that reached no interface and were discarded. A subset in effect, not in
+    /// arithmetic: a neighbour can be placed and still be dropped for colliding with another on
+    /// the same port, and one can be unplaced and still land on a real ifIndex.
+    pub dropped: usize,
+    /// How many neighbours the device reported in total, so a figure has a denominator.
     pub total: usize,
 }
 
-/// One line naming the devices, or empty if there were none.
+/// One or two lines naming the devices, or empty if there were none.
 pub fn render_unresolved_lldp_ports(records: &[UnresolvedLldpPorts]) -> Vec<String> {
-    let affected: BTreeSet<IpAddr> = records
+    let mut lines = Vec::new();
+
+    let dropped_by: BTreeSet<IpAddr> = records
         .iter()
-        .filter(|r| r.unresolved > 0)
+        .filter(|r| r.dropped > 0)
         .map(|r| r.ip)
         .collect();
-    if affected.is_empty() {
-        return Vec::new();
+    if !dropped_by.is_empty() {
+        let dropped: usize = records.iter().map(|r| r.dropped).sum();
+        let total: usize = records
+            .iter()
+            .filter(|r| r.dropped > 0)
+            .map(|r| r.total)
+            .sum();
+        lines.push(format!(
+            "{} reported {dropped} of {total} LLDP neighbour{} on a local port that matches no \
+             interface on the device, so {} discarded and draw no links — those devices will look \
+             as though they have no LLDP neighbours. This usually means the switch numbers its \
+             LLDP ports separately from its interfaces, or did not answer for its LLDP port table.",
+            list_addresses_prose(&dropped_by),
+            if total == 1 { "" } else { "s" },
+            if dropped == 1 { "it is" } else { "they are" },
+        ));
     }
-    let total: usize = records.iter().map(|r| r.unresolved).sum();
-    vec![format!(
-        "{} reported {total} LLDP neighbour{} whose local port does not match any interface on \
-         the device, so those links may be drawn against the wrong port. This usually means the \
-         switch numbers its LLDP ports separately from its interfaces.",
-        list_addresses_prose(&affected),
-        if total == 1 { "" } else { "s" }
-    )]
+
+    // Only the neighbours that landed somewhere: the ones that landed nowhere are the line above,
+    // and reporting them twice under two different consequences reads as two problems.
+    let misplaced_by: BTreeSet<IpAddr> = records
+        .iter()
+        .filter(|r| r.unresolved > r.dropped)
+        .map(|r| r.ip)
+        .collect();
+    if !misplaced_by.is_empty() {
+        let misplaced: usize = records
+            .iter()
+            .map(|r| r.unresolved.saturating_sub(r.dropped))
+            .sum();
+        lines.push(format!(
+            "{} reported {misplaced} LLDP neighbour{} whose local port could not be identified but \
+             does match an interface number, so {} drawn against a port that may not be the right \
+             one.",
+            list_addresses_prose(&misplaced_by),
+            if misplaced == 1 { "" } else { "s" },
+            if misplaced == 1 { "it is" } else { "they are" },
+        ));
+    }
+
+    lines
 }
 
 /// A device that answered the credential and then produced nothing at all.
@@ -1568,19 +1612,49 @@ mod tests {
         assert!(!msg.contains("refresh on the next complete scan"), "{msg}");
     }
 
-    /// This one produces a map that is *wrong* rather than incomplete — the link is drawn, against
-    /// the wrong port — so it must not be phrased as missing data.
+    /// The two outcomes are separate lines, because the operator can act on one and can only
+    /// distrust the other: a discarded neighbour is a link that is not on the map at all, while a
+    /// neighbour placed on an unconfirmed port is a link that is on it and may be in the wrong
+    /// place. A device with both gets both lines, and the counts partition — reporting a discarded
+    /// neighbour under the second heading too would double-count it.
     #[test]
-    fn unresolved_lldp_ports_say_the_links_may_be_wrong_not_missing() {
-        let msg = joined(&render_unresolved_lldp_ports(&[UnresolvedLldpPorts {
+    fn discarded_and_misplaced_neighbours_are_reported_as_separate_outcomes() {
+        let both = render_unresolved_lldp_ports(&[UnresolvedLldpPorts {
             ip: ip("192.168.7.238"),
             unresolved: 3,
+            dropped: 1,
             total: 4,
-        }]));
+        }]);
+        assert_eq!(both.len(), 2, "{both:?}");
+        assert!(both.iter().all(|line| line.contains("192.168.7.238")));
 
-        assert!(msg.contains("192.168.7.238"), "{msg}");
-        assert!(msg.contains("3 LLDP neighbours"), "{msg}");
-        assert!(msg.contains("wrong port"), "{msg}");
+        let dropped_only = render_unresolved_lldp_ports(&[UnresolvedLldpPorts {
+            ip: ip("192.168.7.238"),
+            unresolved: 3,
+            dropped: 3,
+            total: 4,
+        }]);
+        assert_eq!(
+            dropped_only.len(),
+            1,
+            "every unplaced neighbour was discarded, so there is no second population: \
+             {dropped_only:?}"
+        );
+    }
+
+    /// A device that placed every neighbour somewhere real is not silent about it: the walk itself
+    /// is what the tiers could not confirm, and that is still worth a line even though nothing was
+    /// lost.
+    #[test]
+    fn a_device_that_dropped_nothing_still_reports_its_unconfirmed_ports() {
+        let lines = render_unresolved_lldp_ports(&[UnresolvedLldpPorts {
+            ip: ip("10.0.0.1"),
+            unresolved: 2,
+            dropped: 0,
+            total: 6,
+        }]);
+
+        assert_eq!(lines.len(), 1, "{lines:?}");
     }
 
     /// Everything resolved is the normal case on most vendors, and must be silent.
@@ -1590,6 +1664,7 @@ mod tests {
             render_unresolved_lldp_ports(&[UnresolvedLldpPorts {
                 ip: ip("10.0.0.1"),
                 unresolved: 0,
+                dropped: 0,
                 total: 6,
             }])
             .is_empty()
