@@ -123,6 +123,20 @@ impl HostService {
             );
         }
 
+        // The name's rank is likewise server-authoritative at its top rung. `HostNameSource::Manual`
+        // means "a person typed this into Scanopy", which nothing running on a daemon can know;
+        // clamping here is what makes that unforgeable over the wire, rather than trusting every
+        // integration author not to claim it.
+        let claimed = host.base.name_source;
+        if host.base.clamp_name_source(HostNameSource::Integration) {
+            tracing::warn!(
+                host_name = %host.base.name,
+                %claimed,
+                "Discovery payload claimed a name provenance above Integration; clamping — only \
+                 the server can record that a person named a host"
+            );
+        }
+
         if let Some(ctx) = scan_ctx {
             use crate::server::shared::storage::snapshot::DiscoveryTracked;
             host.refresh_scan_timestamps(ctx.scan_time);

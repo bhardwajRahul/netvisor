@@ -593,6 +593,7 @@ CREATE TABLE public.hosts (
     id uuid NOT NULL,
     network_id uuid NOT NULL,
     name text NOT NULL,
+    name_source text DEFAULT 'Manual'::text NOT NULL,
     hostname text,
     description text,
     source jsonb NOT NULL,

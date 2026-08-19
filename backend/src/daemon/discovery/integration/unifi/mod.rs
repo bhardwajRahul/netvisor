@@ -38,6 +38,7 @@ use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::base::ServiceMatchBaselineParams;
 use crate::server::services::r#impl::patterns::{ClientProbe, ManagedDevice};
 
+use super::controller;
 use super::{
     Checkpoint, Completeness, DiscoveryIntegration, IntegrationContext, IntegrationFailure,
     ProbeContext, ProbeFailure, ProbeSuccess,
@@ -45,7 +46,7 @@ use super::{
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::AttemptOutcome;
 use client::UnifiClient;
-use types::UnifiDevice;
+use types::{UnifiDevice, UnifiStation};
 
 /// Connected client carried from `probe` to `execute`.
 struct UnifiProbeHandle {
@@ -160,6 +161,10 @@ impl DiscoveryIntegration for UnifiIntegration {
                 .await;
         }
 
+        // The adopted devices' own addresses, so the client pass can skip records that describe
+        // a device we already named from the inventory.
+        let device_ips: Vec<std::net::IpAddr> = mapped.iter().map(|d| d.ip).collect();
+
         let mut created = 0usize;
         for device in mapped {
             if ctx.cancel.is_cancelled() {
@@ -183,6 +188,37 @@ impl DiscoveryIntegration for UnifiIntegration {
         }
 
         tracing::info!(created, "UniFi device sync complete");
+        ctx.ops.report_progress(70).await.ok();
+
+        // Clients: the devices the controller sees but has not adopted. Their names live nowhere
+        // else — a phone or a server has no LLDP, and its DHCP hostname is frequently all there
+        // is — so a client the sweep already found gets a better label, and one the sweep could
+        // not reach becomes a host the controller is the only witness for.
+        let created_clients = match handle.client.get_site::<UnifiStation>("stat/sta").await {
+            Ok(envelope) => {
+                let stations = envelope.data;
+                let clients = mapping::map_clients(&stations, network_id, &subnets, &device_ips);
+                tracing::info!(
+                    ip = %ctx.ip,
+                    reported = stations.len(),
+                    placed = clients.len(),
+                    "Fetched UniFi client inventory"
+                );
+                controller::create_client_hosts(ctx, clients).await
+            }
+            Err(e) => {
+                // Not fatal: the device sync above is the load-bearing half, and a controller
+                // that refuses `stat/sta` should not lose the switches it did report.
+                tracing::warn!(
+                    ip = %ctx.ip,
+                    error = %e,
+                    "Could not read UniFi clients; continuing without client hosts"
+                );
+                0
+            }
+        };
+
+        tracing::info!(created = created_clients, "UniFi client sync complete");
         ctx.ops.report_progress(90).await.ok();
         // No checkpoint: each device is committed server-side by `create_device_host` as it is
         // reached, so UniFi's progress never depended on `host_data` surviving a drop. The only
@@ -213,26 +249,8 @@ fn collect_subnets(
 use super::merge_subnets;
 
 /// Fold the controller's own device record into the host being scanned.
-///
-/// Every setter here is first-write-wins, so a prior SNMP pass in the same scan keeps its
-/// values — SNMP reads the device directly and is the better source when both are present.
 fn enrich_scanned_host(host_data: &mut HostData, device: &mapping::MappedDevice) {
-    let base = &device.host.base;
-    if let Some(name) = &base.sys_name {
-        host_data.with_sys_name(name.clone());
-    }
-    if let Some(chassis_id) = &base.chassis_id {
-        host_data.with_chassis_id(chassis_id.clone());
-    }
-    if let Some(manufacturer) = &base.manufacturer {
-        host_data.with_manufacturer(manufacturer.clone());
-    }
-    if let Some(model) = &base.model {
-        host_data.with_model(model.clone());
-    }
-    if let Some(serial) = &base.serial_number {
-        host_data.with_serial_number(serial.clone());
-    }
+    device.identity.enrich(host_data);
 
     // `HostData` is shared across every integration for this IP. If SNMP already walked the
     // ifTable, its view is strictly richer (VLAN, loopback and CPU interfaces UniFi omits),
@@ -257,12 +275,15 @@ async fn create_device_host(
     device: mapping::MappedDevice,
 ) -> Result<(), Error> {
     let mapping::MappedDevice {
-        host,
+        identity,
         ip_address,
         interfaces,
         device_type,
         ip,
     } = device;
+
+    let network_id = ctx.ops.network_id().await?;
+    let host = identity.into_host(network_id);
 
     // Run the real service matcher rather than stamping a service on. The controller's
     // reported device class enters as `ManagedDevice` evidence and `Pattern::ManagedDeviceType`

@@ -11,6 +11,7 @@ use crate::server::{
     credentials::r#impl::types::CredentialAssignment,
     hosts::r#impl::{
         base::{Host, HostBase},
+        name::HostNameSource,
         virtualization::HostVirtualization,
     },
     interfaces::r#impl::base::{
@@ -739,6 +740,11 @@ pub struct HostResponse {
     // Host fields
     /// Human-facing name for the host.
     pub name: String,
+    /// Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever
+    /// supplied the name, not by the caller.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub name_source: HostNameSource,
     /// The network this entity belongs to.
     pub network_id: Uuid,
     /// Hostname as resolved or reported by the host.
@@ -806,6 +812,7 @@ impl HostResponse {
             updated_at,
             last_seen_at,
             name,
+            name_source,
             network_id,
             hostname,
             description,
@@ -843,6 +850,7 @@ impl HostResponse {
             first_discovery_id: None,
             base: HostBase {
                 name: name.clone(),
+                name_source: *name_source,
                 network_id: *network_id,
                 hostname: hostname.clone(),
                 description: description.clone(),
@@ -897,6 +905,7 @@ impl HostResponse {
         // If a field is added to HostBase, this will fail to compile
         let crate::server::hosts::r#impl::base::HostBase {
             name,
+            name_source,
             network_id,
             hostname,
             description,
@@ -924,6 +933,7 @@ impl HostResponse {
             updated_at,
             last_seen_at,
             name,
+            name_source,
             network_id,
             hostname,
             description,

@@ -389,7 +389,10 @@ impl Default for EntityBuffer {
 mod tests {
     use super::*;
     use crate::server::{
-        hosts::r#impl::base::{Host, HostBase},
+        hosts::r#impl::{
+            base::{Host, HostBase},
+            name::HostNameSource,
+        },
         shared::types::entities::EntitySource,
     };
 
@@ -401,6 +404,7 @@ mod tests {
         let host = DiscoveryHostRequest {
             host: Host::new(HostBase {
                 name: "test-host".to_string(),
+                name_source: HostNameSource::default(),
                 hostname: None,
                 tags: vec![],
                 network_id: Uuid::new_v4(),
@@ -456,6 +460,7 @@ mod tests {
                     let host = DiscoveryHostRequest {
                         host: Host::new(HostBase {
                             name: format!("host-{}", i),
+                            name_source: HostNameSource::default(),
                             hostname: None,
                             tags: vec![],
                             network_id: Uuid::new_v4(),
@@ -810,6 +815,7 @@ mod tests {
         let host1 = DiscoveryHostRequest {
             host: Host::new(HostBase {
                 name: "daemon-host".to_string(),
+                name_source: HostNameSource::default(),
                 hostname: None,
                 tags: vec![],
                 network_id,
@@ -904,6 +910,7 @@ mod tests {
         let host2 = DiscoveryHostRequest {
             host: Host::new(HostBase {
                 name: "daemon-host".to_string(),
+                name_source: HostNameSource::default(),
                 hostname: None,
                 tags: vec![],
                 network_id,
@@ -1103,6 +1110,7 @@ mod tests {
         let host_req = DiscoveryHostRequest {
             host: Host::new(HostBase {
                 name: "test-host".to_string(),
+                name_source: HostNameSource::default(),
                 hostname: None,
                 tags: vec![],
                 network_id,

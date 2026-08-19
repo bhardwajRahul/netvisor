@@ -11,6 +11,7 @@ use crate::server::{
             PortInput, ServiceInput, UpdateHostRequest,
         },
         base::{Host, HostBase},
+        name::{HostName, HostNameSource},
     },
     interfaces::{
         r#impl::base::{Interface, InterfaceDataComplete, Neighbor},
