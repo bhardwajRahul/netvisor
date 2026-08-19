@@ -75,11 +75,14 @@ pub trait LldpResolver: Send + Sync {
     /// Find the one interface on `host_id` carrying this MAC.
     ///
     /// Reports [`IdentityResolution::Ambiguous`] rather than choosing when the device repeats the
-    /// MAC across several ports, so the neighbour degrades to a device-level edge and the reason
-    /// reaches the resolution summary.
+    /// MAC across several *physical* ports, so the neighbour degrades to a device-level edge and
+    /// the reason reaches the resolution summary. Virtual interfaces are not candidate far ends
+    /// and do not contest the lookup — see `if_type::EXCLUDED_IF_TYPES`.
     async fn find_if_entry_by_mac(&self, mac: &str, host_id: Uuid) -> IdentityResolution;
 
-    /// Find interface by name (if_descr or if_alias).
+    /// Find the one interface on `host_id` whose `ifDescr`, `ifName` or `ifAlias` is this name.
+    ///
+    /// All three columns are non-unique, so each is resolved on a single match only.
     async fn find_if_entry_by_name(&self, name: &str, host_id: Uuid) -> Option<Uuid>;
 
     /// Find interface by ifIndex on a known host.
@@ -181,11 +184,17 @@ impl LldpResolver for LldpResolverImpl {
             return IdentityResolution::NotFound;
         };
 
-        // Every interface on the host carrying this MAC, not just the first one the database
-        // happens to return — `get_one` has no ORDER BY, so on a device that repeats one MAC
-        // across its ports it picked an arbitrary port and the link looked port-precise.
+        // Every *physical* interface on the host carrying this MAC, not just the first one the
+        // database happens to return — `get_one` has no ORDER BY, so on a device that repeats one
+        // MAC across its ports it picked an arbitrary port and the link looked port-precise.
+        //
+        // Virtual rows are excluded because they contest a lookup they can never win: a VLAN or
+        // loopback interface is not the far end of a cable, and on the customer's Westermo six
+        // `propVirtual` VLAN rows share the chassis base MAC while all ten physical ports have
+        // unique addresses. Counting them turned every such lookup `Ambiguous` and cost the port.
         let filter = StorableFilter::<Interface>::new_from_host_ids(&[host_id])
             .mac_address(&mac_addr)
+            .physical_if_types()
             .live();
         let Ok(entries) = self.interface_service.get_all(filter).await else {
             return IdentityResolution::NotFound;
@@ -213,6 +222,15 @@ impl LldpResolver for LldpResolverImpl {
         if let Ok(Some(entry)) = self.interface_service.get_one(filter).await {
             return Some(entry.id);
         }
+        // Try if_alias (the operator-assigned description). On Westermo WeOS the ifDescr carries
+        // the media type in front of the name ("100-T eth9") while ifName and ifAlias both hold
+        // the bare "eth9", so a neighbour advertising the bare name matches neither column above.
+        let filter = StorableFilter::<Interface>::new_from_host_ids(&[host_id])
+            .if_alias(name)
+            .live();
+        if let Ok(Some(entry)) = self.interface_service.get_one(filter).await {
+            return Some(entry.id);
+        }
         // Vendor quirk (MikroTik RouterOS): bridged ports advertise the port-ID as
         // "<bridge>/<port>" (e.g. "bridge-LAN/ether4-Center"), which never matches the
         // stored if_name/if_descr ("ether4-Center"). Retry with the segment after the
@@ -228,6 +246,12 @@ impl LldpResolver for LldpResolverImpl {
             }
             let filter = StorableFilter::<Interface>::new_from_host_ids(&[host_id])
                 .if_name(suffix)
+                .live();
+            if let Ok(Some(entry)) = self.interface_service.get_one(filter).await {
+                return Some(entry.id);
+            }
+            let filter = StorableFilter::<Interface>::new_from_host_ids(&[host_id])
+                .if_alias(suffix)
                 .live();
             if let Ok(Some(entry)) = self.interface_service.get_one(filter).await {
                 return Some(entry.id);

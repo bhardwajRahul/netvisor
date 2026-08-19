@@ -295,9 +295,8 @@ impl LldpPortId {
     /// - MacAddress: Look up via interfaces.mac_address, and only when that MAC belongs to exactly
     ///   one of the host's ports — see [`LldpResolver::find_if_entry_by_mac`]
     /// - NetworkAddress: Look up via ip_address_id FK on interfaces
-    /// - InterfaceName/PortComponent/AgentCircuitId/LocallyAssigned: device-local port identifier
-    ///   — see [`Self::resolve_device_local_port`]
-    /// - InterfaceAlias: user-configurable and non-unique, no reliable resolution
+    /// - InterfaceName/PortComponent/AgentCircuitId/LocallyAssigned/InterfaceAlias: device-local
+    ///   port identifier — see [`Self::resolve_device_local_port`]
     pub async fn resolve_if_entry_id<R: LldpResolver>(
         &self,
         resolver: &R,
@@ -305,7 +304,14 @@ impl LldpPortId {
     ) -> IdentityResolution {
         match self {
             Self::MacAddress(mac) => resolver.find_if_entry_by_mac(mac, host_id).await,
-            Self::InterfaceAlias(_) => IdentityResolution::NoStrategy, // user-configurable, non-unique
+            // `ifAlias` is user-configurable and not required to be unique, so it is resolved the
+            // same way every other name-shaped identifier is: against the far end's own ifDescr /
+            // ifName / ifAlias columns, on a single match only. Declining outright cost the port
+            // on every device that advertises subtype 1 — which on Westermo WeOS is the bare port
+            // name its ifAlias column already holds.
+            Self::InterfaceAlias(id) => {
+                Self::resolve_device_local_port(resolver, id, host_id).await
+            }
             Self::NetworkAddress(ip) => {
                 IdentityResolution::found(resolver.find_if_entry_by_ip(ip, host_id).await)
             }
@@ -318,7 +324,7 @@ impl LldpPortId {
         }
     }
 
-    /// Resolve a device-local port identifier (subtypes 2, 5, 6 and 7) against one host's
+    /// Resolve a device-local port identifier (subtypes 1, 2, 5, 6 and 7) against one host's
     /// interfaces.
     ///
     /// These subtypes are "whatever the device calls this port", which sounds unusable but in
@@ -673,8 +679,21 @@ mod resolution_tests {
         host_id: Uuid,
         if_descr: Option<String>,
         if_name: Option<String>,
+        if_alias: Option<String>,
         if_index: i32,
         mac: Option<String>,
+        /// IANA ifType. Defaults to 0 rather than a physical value so a test that does not care
+        /// is still treated as a port; the virtual families are named explicitly where they matter.
+        if_type: i32,
+    }
+
+    impl FakeInterface {
+        /// Mirrors the production resolver's SQL scope: virtual rows are not candidate far ends
+        /// and do not contest a MAC lookup.
+        fn is_physical(&self) -> bool {
+            !crate::server::interfaces::r#impl::base::if_type::EXCLUDED_IF_TYPES
+                .contains(&self.if_type)
+        }
     }
 
     /// Stands in for the database: the same inventory the production resolver queries, matched
@@ -751,6 +770,7 @@ mod resolution_tests {
                 .interfaces
                 .iter()
                 .filter(|i| i.host_id == host_id && i.mac.as_deref() == Some(mac))
+                .filter(|i| i.is_physical())
                 .map(|i| i.id)
                 .collect();
 
@@ -767,7 +787,8 @@ mod resolution_tests {
                 .find(|i| {
                     i.host_id == host_id
                         && (i.if_descr.as_deref() == Some(name)
-                            || i.if_name.as_deref() == Some(name))
+                            || i.if_name.as_deref() == Some(name)
+                            || i.if_alias.as_deref() == Some(name))
                 })
                 .map(|i| i.id)
         }
@@ -1043,17 +1064,168 @@ mod resolution_tests {
         );
     }
 
-    /// An ifAlias is an operator-typed description, non-unique and frequently empty — there is
-    /// nothing to look it up against, which is a different situation from "looked and found
-    /// nothing" and is reported as such.
+    /// An ifAlias is an operator-typed description, but it is a column the far end's own ifXTable
+    /// carries, so it is looked up like every other name-shaped identifier. Declining outright
+    /// cost the port on every device advertising subtype 1 — on Westermo WeOS that is the bare
+    /// port name, which its ifAlias column holds verbatim while its ifDescr prefixes the media
+    /// type ("100-T eth9").
     #[tokio::test]
-    async fn an_alias_port_id_reports_that_no_strategy_applies() {
-        let inventory = FakeInventory::default();
-        let port = LldpPortId::InterfaceAlias("uplink to core".to_string());
+    async fn an_alias_port_id_resolves_against_the_far_ends_alias_column() {
+        let switch = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        let inventory = FakeInventory {
+            interfaces: vec![FakeInterface {
+                id: target,
+                host_id: switch,
+                if_descr: Some("100-T eth9".to_string()),
+                if_name: Some("eth9".to_string()),
+                if_alias: Some("eth9".to_string()),
+                if_index: 11,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
 
+        let port = LldpPortId::InterfaceAlias("eth9".to_string());
         assert_eq!(
-            port.resolve_if_entry_id(&inventory, Uuid::new_v4()).await,
-            IdentityResolution::NoStrategy
+            port.resolve_if_entry_id(&inventory, switch).await,
+            IdentityResolution::Resolved(target)
+        );
+    }
+
+    /// The media-type prefix is the reason the alias tier exists: a neighbour naming the bare port
+    /// matches neither the ifDescr it is embedded in nor an ifIndex, and before the alias column
+    /// was consulted the link degraded to device level.
+    #[tokio::test]
+    async fn a_bare_port_name_resolves_when_only_the_alias_carries_it() {
+        let switch = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        let inventory = FakeInventory {
+            interfaces: vec![FakeInterface {
+                id: target,
+                host_id: switch,
+                if_descr: Some("1000-LX eth1".to_string()),
+                if_alias: Some("eth1".to_string()),
+                if_index: 19,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let port = LldpPortId::InterfaceName("eth1".to_string());
+        assert_eq!(
+            port.resolve_if_entry_id(&inventory, switch).await,
+            IdentityResolution::Resolved(target)
+        );
+    }
+
+    /// The Westermo port-11 neighbour, and the one path in this ladder with no second chance.
+    ///
+    /// Its chassis id is subtype 7 (`localOther`) `"C230408"` with no sysName and no port
+    /// description — nothing that names a MAC, an address or an interface. The only server-side
+    /// record of that identity is `hosts.chassis_id`, written from the far end's own
+    /// `lldpLocChassisId` by way of `LldpChassisId::identifier()`. Both halves are exercised
+    /// deliberately rather than assumed: if the two ever canonicalise differently, every neighbour
+    /// of that device is unfindable and the counters cannot tell it apart from a device nobody
+    /// scanned.
+    #[tokio::test]
+    async fn a_subtype_7_chassis_id_matches_the_same_value_recorded_from_the_far_ends_own_identity()
+    {
+        let westermo = Uuid::new_v4();
+        // Exactly what the daemon stores: from_snmp on the far end's own lldpLocChassisId, then
+        // `identifier()`. Anything else here would test a hand-written string, not the round trip.
+        let recorded = LldpChassisId::from_snmp(7, b"C230408")
+            .expect("subtype 7 is a chassis id this parses")
+            .identifier();
+
+        let inventory = FakeInventory {
+            hosts: vec![FakeHost {
+                id: westermo,
+                chassis_id: Some(recorded),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        // And exactly what the neighbour advertises, through the same parser.
+        let advertised =
+            LldpChassisId::from_snmp(7, b"C230408").expect("the neighbour sends the same bytes");
+        assert_eq!(
+            advertised
+                .resolve_host_id(&inventory, Uuid::new_v4(), None)
+                .await,
+            IdentityResolution::Resolved(westermo)
+        );
+    }
+
+    /// The trailing-NUL form, because a device that pads its chassis id must still match the same
+    /// device recorded from an unpadded one. `decode_tlv_text` strips them on both paths, and if
+    /// it ever stopped doing so on one, this is the neighbour that would silently stop resolving.
+    #[tokio::test]
+    async fn a_nul_padded_subtype_7_chassis_id_reaches_the_same_device() {
+        let westermo = Uuid::new_v4();
+        let inventory = FakeInventory {
+            hosts: vec![FakeHost {
+                id: westermo,
+                chassis_id: Some(
+                    LldpChassisId::from_snmp(7, b"C230408")
+                        .expect("parses")
+                        .identifier(),
+                ),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let advertised = LldpChassisId::from_snmp(7, b"C230408\0").expect("parses");
+        assert_eq!(
+            advertised
+                .resolve_host_id(&inventory, Uuid::new_v4(), None)
+                .await,
+            IdentityResolution::Resolved(westermo)
+        );
+    }
+
+    /// The customer's Westermo shape: ten physical ports with unique addresses alongside six
+    /// `propVirtual` VLAN interfaces sharing the chassis base MAC. A virtual row is not the far end
+    /// of a cable, so it must not make a physical port's address look ambiguous — counting them
+    /// turned every such lookup `Ambiguous` and cost the port on a device no port would have
+    /// contested.
+    #[tokio::test]
+    async fn virtual_interfaces_sharing_a_mac_do_not_contest_a_physical_ports_lookup() {
+        use crate::server::interfaces::r#impl::base::if_type;
+
+        let switch = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        let shared = "00:11:b4:8c:02:e0";
+        let mut interfaces = vec![FakeInterface {
+            id: target,
+            host_id: switch,
+            if_descr: Some("100-T eth10".to_string()),
+            if_index: 10,
+            mac: Some(shared.to_string()),
+            if_type: if_type::ETHERNET_CSMA_CD,
+            ..Default::default()
+        }];
+        interfaces.extend((22..=27).map(|n| FakeInterface {
+            id: Uuid::new_v4(),
+            host_id: switch,
+            if_descr: Some(format!("vlan{n}")),
+            if_index: n,
+            mac: Some(shared.to_string()),
+            if_type: if_type::PROP_VIRTUAL,
+            ..Default::default()
+        }));
+
+        let inventory = FakeInventory {
+            interfaces,
+            ..Default::default()
+        };
+
+        let port = LldpPortId::MacAddress(shared.to_string());
+        assert_eq!(
+            port.resolve_if_entry_id(&inventory, switch).await,
+            IdentityResolution::Resolved(target)
         );
     }
 

@@ -36,13 +36,30 @@ impl Subscriber<DiscoveryPhase> for HostService {
             let network_id = event.scope.network_id;
             // Resolve LLDP/CDP neighbor links — purely server-side DB operation,
             // works for all daemon modes (DaemonPoll and ServerPoll).
-            if let Err(e) = self.resolve_lldp_links(network_id).await {
-                tracing::warn!(
+            match self.resolve_lldp_links(network_id).await {
+                // Resolution necessarily runs after the historical Discovery row is written, so
+                // its findings are appended to that row rather than carried in the daemon's own
+                // warning list. Without this they exist only in server logs, which a self-hosted
+                // operator has no way to read from the UI.
+                Ok(outcome) => {
+                    if let Err(e) = self
+                        .append_resolution_warnings(session_id, outcome.warnings)
+                        .await
+                    {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            network_id = %network_id,
+                            error = %e,
+                            "Failed to record LLDP resolution warnings on the scan record"
+                        );
+                    }
+                }
+                Err(e) => tracing::warn!(
                     session_id = %session_id,
                     network_id = %network_id,
                     error = %e,
                     "Failed to resolve LLDP links after discovery completion"
-                );
+                ),
             }
             // Resolve FDB single-MAC ports after LLDP/CDP (lower priority)
             if let Err(e) = self.resolve_fdb_links(network_id).await {

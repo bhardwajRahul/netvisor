@@ -21,6 +21,9 @@
 --   hosts_per_switch      hosts hanging off each switch -> the tall columns
 --   extra_ifaces_per_host additional unlinked ports per host, for realistic
 --                         element counts inside each host container
+--   device_level_pct      percentage of uplinks resolved only as far as the
+--                         far-end device, drawing a dashed NeighborLink between
+--                         host containers instead of a port-precise PhysicalLink
 --
 -- Defaults give 8 switches + 400 hosts = 408 host containers, ~1600 interface
 -- elements and 400 PhysicalLink edges.
@@ -38,10 +41,18 @@
 --   # survive EXCLUDED_IF_TYPES.
 --   psql ... -v hosts_per_switch=88 -v extra_ifaces_per_host=22 \
 --     < backend/scripts/seed-l2-perf.sql
+--
+--   # the post-guard edge mix: switches that report one chassis MAC on every
+--   # port name no port on each other, so almost every link degrades to a
+--   # device-level NeighborLink. That is what the August 2026 customer's L2
+--   # Physical actually contained, and the two edge types are laid out and drawn
+--   # differently enough that a view proven on PhysicalLinks alone is not proven.
+--   psql ... -v device_level_pct=99 < backend/scripts/seed-l2-perf.sql
 
 \if :{?n_switches} \else \set n_switches 8 \endif
 \if :{?hosts_per_switch} \else \set hosts_per_switch 50 \endif
 \if :{?extra_ifaces_per_host} \else \set extra_ifaces_per_host 2 \endif
+\if :{?device_level_pct} \else \set device_level_pct 0 \endif
 
 BEGIN;
 
@@ -163,10 +174,18 @@ ON CONFLICT (id) DO UPDATE SET updated_at = now();
 -- ---------------------------------------------------------------------------
 -- neighbor_interface_id is what l2_builder turns into a PhysicalLink. Only one
 -- direction is needed: the builder dedups the pair on sorted endpoint ids.
--- neighbor_host_id stays NULL (chk_neighbor_exclusive enforces that anyway).
+--
+-- The first :device_level_pct percent of each switch's ports instead set
+-- neighbor_host_id, which is the state a link degrades to when the far end
+-- reports one MAC across every port: the device is known and the port is not, so
+-- l2_builder draws a device-level NeighborLink between the two Host containers.
+-- Exactly one of the two columns may be set — chk_neighbor_exclusive — and they
+-- produce different node endpoints (interface elements vs host containers),
+-- different strokes and different layout behaviour, so a view exercised only on
+-- port-precise links has not been exercised on what the customer actually had.
 INSERT INTO interfaces (
     id, host_id, network_id, if_index, if_descr, if_alias, if_type,
-    speed_bps, admin_status, oper_status, neighbor_interface_id,
+    speed_bps, admin_status, oper_status, neighbor_interface_id, neighbor_host_id,
     lldp_sys_name, lldp_port_desc, created_at, updated_at
 )
 SELECT
@@ -179,7 +198,10 @@ SELECT
     6,
     1000000000,
     1, 1,
-    md5('l2perf:switchport:' || s || ':' || p)::uuid,
+    CASE WHEN p > (:hosts_per_switch * :device_level_pct) / 100
+         THEN md5('l2perf:switchport:' || s || ':' || p)::uuid END,
+    CASE WHEN p <= (:hosts_per_switch * :device_level_pct) / 100
+         THEN md5('l2perf:switch:' || s)::uuid END,
     'l2perf-switch-' || lpad(s::text, 2, '0'),
     'Port 1/0/' || p,
     now(), now()
@@ -188,6 +210,7 @@ FROM l2perf_target t,
      generate_series(1, :hosts_per_switch) AS p
 ON CONFLICT (id) DO UPDATE SET
     neighbor_interface_id = EXCLUDED.neighbor_interface_id,
+    neighbor_host_id = EXCLUDED.neighbor_host_id,
     updated_at = now();
 
 -- ---------------------------------------------------------------------------
@@ -231,7 +254,11 @@ SELECT
     (SELECT count(*) FROM interfaces i
        WHERE i.network_id = (SELECT network_id FROM l2perf_target)
          AND i.valid_to IS NULL
-         AND i.neighbor_interface_id IS NOT NULL) AS physical_links;
+         AND i.neighbor_interface_id IS NOT NULL) AS physical_links,
+    (SELECT count(*) FROM interfaces i
+       WHERE i.network_id = (SELECT network_id FROM l2perf_target)
+         AND i.valid_to IS NULL
+         AND i.neighbor_host_id IS NOT NULL) AS neighbor_links;
 
 COMMIT;
 

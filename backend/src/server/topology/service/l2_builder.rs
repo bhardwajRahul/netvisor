@@ -10,7 +10,7 @@ use super::{
     view::ViewBuilder,
 };
 use crate::server::{
-    interfaces::r#impl::base::Neighbor,
+    interfaces::r#impl::base::{Neighbor, if_type::EXCLUDED_IF_TYPES},
     shared::entities::EntityDiscriminants,
     topology::types::{
         edges::{DiscoveryProtocol, Edge, EdgeHandle, EdgeType, EdgeViewConfig},
@@ -18,17 +18,6 @@ use crate::server::{
         nodes::{ContainerType, ElementEntityType, Node, NodeType},
     },
 };
-
-/// if_type values to exclude from L2 view (virtual/software ip_addresses)
-const EXCLUDED_IF_TYPES: &[i32] = &[
-    24,  // softwareLoopback
-    53,  // propVirtual
-    71,  // ieee80211 (Wi-Fi)
-    131, // tunnel
-    135, // l2vlan
-    136, // l3ipvlan
-    209, // bridge
-];
 
 pub struct L2Builder;
 

@@ -721,7 +721,7 @@ impl DiscoveryOps {
 
     /// Record LLDP neighbours whose local port could not be matched to an interface.
     pub async fn record_unresolved_lldp_ports(&self, record: warnings::UnresolvedLldpPorts) {
-        if record.unresolved == 0 {
+        if record.unresolved == 0 && record.dropped == 0 {
             return;
         }
         if let Ok(session) = self.get_session().await
