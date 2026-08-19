@@ -19,7 +19,7 @@ use crate::server::{
     billing::types::base::BillingPlan,
     daemons::r#impl::base::DaemonMode,
     discovery::r#impl::types::{DiscoveryType, RunType},
-    hosts::r#impl::{base::Host, virtualization::HostVirtualization},
+    hosts::r#impl::{base::Host, name::HostNameSource, virtualization::HostVirtualization},
     interfaces::r#impl::base::Interface,
     ip_addresses::r#impl::base::IPAddress,
     organizations::r#impl::base::OrgNotifications,
@@ -256,6 +256,7 @@ pub enum SqlValue {
     IpAddr(IpAddr),
     OptionalIpAddr(Option<IpAddr>),
     EntitySource(EntitySource),
+    HostNameSource(HostNameSource),
     EntityDiscriminant(EntityDiscriminants),
     ServiceDefinition(Box<dyn ServiceDefinition>),
     OptionalServiceVirtualization(Option<ServiceVirtualization>),
@@ -441,6 +442,7 @@ impl_db_enum_contributor_empty!(
 // coexistence-window risk is negligible in practice).
 impl_db_enum_contributor_via_variant_names!(
     EntitySource,
+    HostNameSource,
     HostVirtualization,
     ServiceVirtualization,
     RunType,
@@ -566,6 +568,7 @@ impl SqlValue {
                 MacAddress::contribute(out)
             }
             SqlValueDiscriminants::EntitySource => EntitySource::contribute(out),
+            SqlValueDiscriminants::HostNameSource => HostNameSource::contribute(out),
             SqlValueDiscriminants::EntityDiscriminant => EntityDiscriminants::contribute(out),
             SqlValueDiscriminants::ServiceDefinition => {
                 <Box<dyn ServiceDefinition>>::contribute(out)

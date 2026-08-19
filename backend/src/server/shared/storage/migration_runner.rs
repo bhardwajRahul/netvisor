@@ -19,7 +19,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, anyhow};
+use anyhow::Context;
 use sha2::{Digest, Sha384};
 use sqlx::PgPool;
 
@@ -55,7 +55,7 @@ pub async fn apply_migrations(pool: &PgPool, migrations_dir: &Path) -> anyhow::R
             .with_context(|| format!("reading migration {}", path.display()))?;
 
         if sql.starts_with("-- no-transaction") {
-            apply_no_tx_migration(pool, version, &description, &path, &sql).await?;
+            apply_no_tx_migration(pool, &path, &sql).await?;
         } else {
             apply_tx_migration(pool, &sql)
                 .await
@@ -68,28 +68,7 @@ pub async fn apply_migrations(pool: &PgPool, migrations_dir: &Path) -> anyhow::R
     Ok(())
 }
 
-async fn apply_no_tx_migration(
-    pool: &PgPool,
-    version: i64,
-    description: &str,
-    path: &Path,
-    sql: &str,
-) -> anyhow::Result<()> {
-    // Guard against dollar-quoted blocks. Splitting on `;` would break a
-    // `CREATE FUNCTION ... $$ ... ; ... $$` body. The Phase 2 migrations
-    // are all plain DDL; if a future no-tx migration needs a $$-block,
-    // either rewrite it as plain DDL or upgrade this runner to a real
-    // SQL parser (e.g. via the `sqlparser` crate).
-    if sql.contains("$$") {
-        return Err(anyhow!(
-            "no-transaction migration {}_{}.sql contains a $$-quoted block; \
-             the simple semicolon splitter would break it. Either rewrite as \
-             plain DDL, or upgrade the runner to use a real SQL parser.",
-            version,
-            description
-        ));
-    }
-
+async fn apply_no_tx_migration(pool: &PgPool, path: &Path, sql: &str) -> anyhow::Result<()> {
     for stmt in split_statements(sql) {
         // `raw_sql` uses PG's simple_query protocol, bypassing the prepared-
         // statement path that `sqlx::query()` uses. Required because
@@ -113,38 +92,102 @@ async fn apply_tx_migration(pool: &PgPool, sql: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Split SQL into individual statements on `;` boundaries. Strips `--`
-/// line comments BEFORE splitting so semicolons inside comments don't
-/// cause spurious splits. Each returned statement has its trailing `;`
-/// re-attached.
+/// Split SQL into individual statements on `;` boundaries, dropping `--` line
+/// comments as it goes. Each returned statement has its trailing `;` re-attached.
 ///
-/// Still naive about string literals — relies on the caller having
-/// guarded against `$$`-quoted blocks (which can contain semicolons in
-/// function bodies) and on migrations not using string literals
-/// containing semicolons (none of this project's migrations do).
+/// A single scan rather than a line-wise strip followed by `split(';')`, because a
+/// semicolon only ends a statement when it is not inside something: a `'...'` literal,
+/// a `--` comment, or a `$tag$ ... $tag$` dollar-quoted block. The dollar-quote case is
+/// the one that matters — a batched backfill's `DO $$ ... ; ... $$` body is full of
+/// semicolons, and splitting on them yields fragments that are not valid SQL. This
+/// runner used to refuse such migrations outright; a batched backfill is exactly what
+/// the migration guidelines ask for on a table with data, so it has to be able to run one.
 fn split_statements(sql: &str) -> Vec<String> {
-    let stripped: String = sql
-        .lines()
-        .map(strip_line_comment)
-        .collect::<Vec<_>>()
-        .join("\n");
+    let chars: Vec<char> = sql.chars().collect();
+    let mut statements = Vec::new();
+    let mut current = String::new();
+    let mut i = 0;
 
-    stripped
-        .split(';')
-        .map(|seg| seg.trim())
-        .filter(|seg| !seg.is_empty())
-        .map(|seg| format!("{seg};"))
-        .collect()
+    while i < chars.len() {
+        // `--` to end of line.
+        if chars[i] == '-' && chars.get(i + 1) == Some(&'-') {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        // '...', with '' as the escape for a literal quote.
+        if chars[i] == '\'' {
+            current.push(chars[i]);
+            i += 1;
+            while i < chars.len() {
+                current.push(chars[i]);
+                if chars[i] == '\'' {
+                    if chars.get(i + 1) == Some(&'\'') {
+                        current.push(chars[i + 1]);
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+
+        // $tag$ ... $tag$ — copied through verbatim, semicolons and all.
+        if chars[i] == '$'
+            && let Some(tag) = dollar_tag_at(&chars, i)
+        {
+            current.push_str(&tag);
+            i += tag.chars().count();
+            while i < chars.len() {
+                if chars[i] == '$' && dollar_tag_at(&chars, i).as_deref() == Some(tag.as_str()) {
+                    current.push_str(&tag);
+                    i += tag.chars().count();
+                    break;
+                }
+                current.push(chars[i]);
+                i += 1;
+            }
+            continue;
+        }
+
+        if chars[i] == ';' {
+            push_statement(&mut statements, &mut current);
+            i += 1;
+            continue;
+        }
+
+        current.push(chars[i]);
+        i += 1;
+    }
+
+    push_statement(&mut statements, &mut current);
+    statements
 }
 
-/// Drop the `--` line-comment portion of a line, keeping any preceding
-/// SQL. Naive about `--` inside string literals — but our migrations
-/// don't use those.
-fn strip_line_comment(line: &str) -> String {
-    match line.find("--") {
-        Some(idx) => line[..idx].trim_end().to_string(),
-        None => line.to_string(),
+fn push_statement(statements: &mut Vec<String>, current: &mut String) {
+    let trimmed = current.trim();
+    if !trimmed.is_empty() {
+        statements.push(format!("{trimmed};"));
     }
+    current.clear();
+}
+
+/// The dollar-quote delimiter starting at `start` (`$$`, `$body$`, …), or `None` when
+/// this `$` is something else — a positional parameter, or part of an identifier.
+fn dollar_tag_at(chars: &[char], start: usize) -> Option<String> {
+    let mut end = start + 1;
+    while end < chars.len() && (chars[end].is_alphanumeric() || chars[end] == '_') {
+        end += 1;
+    }
+    if chars.get(end) != Some(&'$') {
+        return None;
+    }
+    Some(chars[start..=end].iter().collect())
 }
 
 fn parse_migration_file(path: &Path) -> Option<(i64, String, PathBuf)> {
@@ -277,26 +320,30 @@ mod tests {
         assert!(parse_migration_file(p).is_none());
     }
 
-    #[tokio::test]
-    async fn no_tx_migration_with_dollar_quoted_block_errors() {
-        // Guard test — confirm the runner refuses to apply a no-tx
-        // migration that contains a $$-quoted block, since the naive
-        // semicolon splitter would corrupt it.
-        use std::io::Write;
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("20990101000000_bad_no_tx.sql");
-        let mut f = std::fs::File::create(&path).expect("create");
-        writeln!(
-            f,
-            "-- no-transaction\nCREATE FUNCTION foo() RETURNS void AS $$\n  BEGIN; END;\n$$;"
-        )
-        .expect("write");
+    #[test]
+    fn split_statements_keeps_a_dollar_quoted_block_whole() {
+        // A batched backfill's DO block is full of semicolons. Splitting on them would hand
+        // the server fragments that are not valid SQL, which is why this used to be refused
+        // outright rather than mis-executed.
+        let sql = "SET lock_timeout = '5s';\n\
+                   DO $$\n\
+                   BEGIN\n\
+                     UPDATE hosts SET name = 'a';\n\
+                     COMMIT;\n\
+                   END $$;\n\
+                   ALTER TABLE hosts ADD COLUMN x TEXT;";
+        let stmts = split_statements(sql);
+        assert_eq!(stmts.len(), 3, "got {stmts:?}");
+        assert!(stmts[1].starts_with("DO $$"));
+        assert!(stmts[1].contains("UPDATE hosts SET name = 'a';"));
+        assert!(stmts[1].contains("COMMIT;"));
+        assert!(stmts[2].starts_with("ALTER TABLE"));
+    }
 
-        // We can't easily exercise `apply_migrations` end-to-end without a
-        // PgPool, so call the inner `apply_no_tx_migration` shape via the
-        // same guard logic here. The guard test is also the simplest way
-        // to flag regressions if someone removes the `$$` check.
-        let sql = std::fs::read_to_string(&path).expect("read");
-        assert!(sql.contains("$$"));
+    #[test]
+    fn split_statements_does_not_split_inside_a_string_literal() {
+        let stmts = split_statements("INSERT INTO t VALUES ('a;b'); SELECT 1;");
+        assert_eq!(stmts.len(), 2, "got {stmts:?}");
+        assert!(stmts[0].contains("'a;b'"));
     }
 }

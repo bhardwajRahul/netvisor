@@ -79,6 +79,26 @@ pub struct UnifiDevice {
     pub uplink: Option<UnifiUplink>,
 }
 
+/// One connected client from `GET /stat/sta`.
+///
+/// unpoller: `unifi.Client`. These are the devices the controller sees on the network but has
+/// not adopted — laptops, phones, servers — and the controller is often the only place their
+/// user-assigned name exists.
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct UnifiStation {
+    /// unpoller: `Client.Mac`.
+    pub mac: Option<String>,
+    /// unpoller: `Client.IP`. Absent for a client with no current lease.
+    pub ip: Option<String>,
+    /// unpoller: `Client.Name`. The alias an administrator typed in the controller.
+    pub name: Option<String>,
+    /// unpoller: `Client.Hostname`. What the client called itself over DHCP — a fallback for a
+    /// client nobody has named.
+    pub hostname: Option<String>,
+    /// unpoller: `Client.Oui`. The MAC vendor the controller resolved.
+    pub oui: Option<String>,
+}
+
 /// One switch port. unpoller: `unifi.Port`.
 #[derive(Debug, Default, Clone, Deserialize)]
 pub struct UnifiPort {

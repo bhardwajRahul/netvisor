@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::server::{
     hosts::r#impl::{
         base::{Host, HostBase},
+        name::HostNameSource,
         virtualization::HostVirtualization,
     },
     shared::{
@@ -103,6 +104,7 @@ impl Storable for Host {
             base:
                 Self::BaseData {
                     name,
+                    name_source,
                     description,
                     hostname,
                     network_id,
@@ -131,6 +133,7 @@ impl Storable for Host {
                 "created_at",
                 "updated_at",
                 "name",
+                "name_source",
                 "description",
                 "network_id",
                 "source",
@@ -160,6 +163,7 @@ impl Storable for Host {
                 SqlValue::Timestamp(created_at),
                 SqlValue::Timestamp(updated_at),
                 SqlValue::String(name),
+                SqlValue::HostNameSource(name_source),
                 SqlValue::OptionalString(description),
                 SqlValue::Uuid(network_id),
                 SqlValue::EntitySource(source),
@@ -202,6 +206,11 @@ impl Storable for Host {
                 None => None,
             };
 
+        let name_source: HostNameSource = row
+            .get::<String, _>("name_source")
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize name_source: {}", e))?;
+
         Ok(Host {
             id: row.get("id"),
             created_at: row.get("created_at"),
@@ -214,6 +223,7 @@ impl Storable for Host {
             first_discovery_id: row.get("first_discovery_id"),
             base: HostBase {
                 name: row.get("name"),
+                name_source,
                 description: row.get("description"),
                 network_id: row.get("network_id"),
                 source,

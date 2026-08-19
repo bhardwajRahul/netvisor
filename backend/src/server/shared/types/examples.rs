@@ -29,6 +29,7 @@ use crate::server::{
             BindingInput, CreateHostRequest, HostResponse, IPAddressInput, PortInput, ServiceInput,
         },
         base::{Host, HostBase},
+        name::HostNameSource,
     },
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
@@ -118,6 +119,7 @@ pub fn host() -> Host {
         first_discovery_id: None,
         base: HostBase {
             name: "web-server-01".to_string(),
+            name_source: HostNameSource::Manual,
             hostname: Some("web-server-01.local".to_string()),
             network_id: ids::NETWORK,
             description: Some("Primary web server".to_string()),

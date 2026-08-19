@@ -217,6 +217,7 @@ impl SqlValue {
             Self::Email(v) => Bound::Text(PgText::new(v.as_str())),
             Self::UserOrgPermissions(v) => Bound::Text(PgText::new(v.as_str())),
             Self::EdgeStyle(v) => Bound::Text(PgText::owned(v.to_string())),
+            Self::HostNameSource(v) => Bound::Text(PgText::owned(v.to_string())),
             Self::StringArray(v) => Bound::TextArray(v.iter().map(|s| PgText::new(s)).collect()),
             Self::OptionalStringArray(v) => Bound::OptTextArray(
                 v.as_ref()

@@ -3773,6 +3773,7 @@ export interface components {
              *       ],
              *       "last_seen_at": "2026-01-15T10:30:00Z",
              *       "name": "web-server-01",
+             *       "name_source": "Manual",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "ports": [
              *         {
@@ -3879,6 +3880,11 @@ export interface components {
                 management_url?: string | null;
                 /** @description Human-facing name for the host. */
                 name: string;
+                /**
+                 * @description Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever
+                 *     supplied the name, not by the caller.
+                 */
+                name_source?: components["schemas"]["HostNameSource"];
                 /**
                  * Format: uuid
                  * @description The network this entity belongs to.
@@ -7013,6 +7019,7 @@ export interface components {
          *       "last_seen_at": "2026-01-15T10:30:00Z",
          *       "lineage_id": null,
          *       "name": "web-server-01",
+         *       "name_source": "Manual",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "source": {
          *         "type": "Manual"
@@ -7106,8 +7113,18 @@ export interface components {
             manufacturer?: string | null;
             /** @description ENTITY-MIB entPhysicalModelName - hardware model */
             model?: string | null;
-            /** @description Human-facing name for the host. */
+            /**
+             * @description Human-facing name for the host.
+             *
+             *     Always the best name known. Which rung of the naming ladder it came from is recorded
+             *     separately in `name_source`, and only `apply_name` may write either.
+             */
             name: string;
+            /**
+             * @description Which rung of the naming ladder produced `name`: an address, a detected service, a
+             *     hostname, an integration's device name, or a person typing it. Read-only over the API.
+             */
+            name_source?: components["schemas"]["HostNameSource"];
             /**
              * Format: uuid
              * @description The network this entity belongs to.
@@ -7141,6 +7158,17 @@ export interface components {
              */
             virtualization_service_id: string | null;
         };
+        /**
+         * @description Which rung of the naming ladder produced a host's display name, weakest first.
+         *
+         *     Declaration order is the precedence order — `Ord` is derived from it, and that derive is the
+         *     whole enforcement mechanism: a rung inserted at its rank propagates to every comparison, so
+         *     there is no per-call-site precedence to keep in sync.
+         *
+         *     Persisted as bare text (`Manual`, `Integration`, …) via `Display`/`FromStr`.
+         * @enum {string}
+         */
+        HostNameSource: "Unspecified" | "Ip" | "DetectedService" | "Hostname" | "Integration" | "Manual";
         /** @enum {string} */
         HostNamingFallback: "Ip" | "BestService";
         /**
@@ -7216,6 +7244,7 @@ export interface components {
          *       ],
          *       "last_seen_at": "2026-01-15T10:30:00Z",
          *       "name": "web-server-01",
+         *       "name_source": "Manual",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "ports": [
          *         {
@@ -7322,6 +7351,11 @@ export interface components {
             management_url?: string | null;
             /** @description Human-facing name for the host. */
             name: string;
+            /**
+             * @description Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever
+             *     supplied the name, not by the caller.
+             */
+            name_source?: components["schemas"]["HostNameSource"];
             /**
              * Format: uuid
              * @description The network this entity belongs to.
@@ -8595,6 +8629,11 @@ export interface components {
                 management_url?: string | null;
                 /** @description Human-facing name for the host. */
                 name: string;
+                /**
+                 * @description Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever
+                 *     supplied the name, not by the caller.
+                 */
+                name_source?: components["schemas"]["HostNameSource"];
                 /**
                  * Format: uuid
                  * @description The network this entity belongs to.

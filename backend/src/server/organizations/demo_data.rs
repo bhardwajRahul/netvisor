@@ -28,6 +28,7 @@ use crate::server::{
     },
     hosts::r#impl::{
         base::{Host, HostBase},
+        name::HostNameSource,
         virtualization::{HostVirtualization, ProxmoxVirtualization},
     },
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
@@ -883,6 +884,7 @@ fn create_host(
         updated_at: now,
         base: HostBase {
             name: name.to_string(),
+            name_source: HostNameSource::Manual,
             network_id: network.id,
             hostname: hostname.map(String::from),
             description: description.map(String::from),
@@ -1861,6 +1863,7 @@ fn generate_hosts_and_services(
             updated_at: now,
             base: HostBase {
                 name: "docker-prod01".to_string(),
+                name_source: HostNameSource::Manual,
                 network_id: hq.id,
                 hostname: Some("docker-prod01.acme.local".to_string()),
                 description: Some("Production Docker host".to_string()),
@@ -2982,6 +2985,7 @@ fn generate_hosts_and_services(
             updated_at: now,
             base: HostBase {
                 name: "dc-docker01".to_string(),
+                name_source: HostNameSource::Manual,
                 network_id: dc.id,
                 hostname: Some("docker01.dc.acme.io".to_string()),
                 description: Some("Data center Docker host".to_string()),

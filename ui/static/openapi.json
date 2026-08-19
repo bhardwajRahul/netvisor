@@ -15530,6 +15530,10 @@
                 "type": "string",
                 "description": "Human-facing name for the host."
               },
+              "name_source": {
+                "$ref": "#/components/schemas/HostNameSource",
+                "description": "Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever\nsupplied the name, not by the caller."
+              },
               "network_id": {
                 "type": "string",
                 "format": "uuid",
@@ -15679,6 +15683,7 @@
               ],
               "last_seen_at": "2026-01-15T10:30:00Z",
               "name": "web-server-01",
+              "name_source": "Manual",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "ports": [
                 {
@@ -22738,6 +22743,7 @@
           "last_seen_at": "2026-01-15T10:30:00Z",
           "lineage_id": null,
           "name": "web-server-01",
+          "name_source": "Manual",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "source": {
             "type": "Manual"
@@ -22822,7 +22828,11 @@
           },
           "name": {
             "type": "string",
-            "description": "Human-facing name for the host."
+            "description": "Human-facing name for the host.\n\nAlways the best name known. Which rung of the naming ladder it came from is recorded\nseparately in `name_source`, and only `apply_name` may write either."
+          },
+          "name_source": {
+            "$ref": "#/components/schemas/HostNameSource",
+            "description": "Which rung of the naming ladder produced `name`: an address, a detected service, a\nhostname, an integration's device name, or a person typing it. Read-only over the API."
           },
           "network_id": {
             "type": "string",
@@ -22903,6 +22913,18 @@
             "description": "The service doing the virtualizing — the hypervisor this VM runs on.\n\nIts own column with a foreign key rather than a field inside\n[`HostVirtualization`]: a reference that no longer resolves now fails the write instead of\nsurviving as a value nothing matches, and `ON DELETE SET NULL` clears it when the\nhypervisor service goes away (GH #650)."
           }
         }
+      },
+      "HostNameSource": {
+        "type": "string",
+        "description": "Which rung of the naming ladder produced a host's display name, weakest first.\n\nDeclaration order is the precedence order — `Ord` is derived from it, and that derive is the\nwhole enforcement mechanism: a rung inserted at its rank propagates to every comparison, so\nthere is no per-call-site precedence to keep in sync.\n\nPersisted as bare text (`Manual`, `Integration`, …) via `Display`/`FromStr`.",
+        "enum": [
+          "Unspecified",
+          "Ip",
+          "DetectedService",
+          "Hostname",
+          "Integration",
+          "Manual"
+        ]
       },
       "HostNamingFallback": {
         "type": "string",
@@ -23015,6 +23037,10 @@
           "name": {
             "type": "string",
             "description": "Human-facing name for the host."
+          },
+          "name_source": {
+            "$ref": "#/components/schemas/HostNameSource",
+            "description": "Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever\nsupplied the name, not by the caller."
           },
           "network_id": {
             "type": "string",
@@ -23165,6 +23191,7 @@
           ],
           "last_seen_at": "2026-01-15T10:30:00Z",
           "name": "web-server-01",
+          "name_source": "Manual",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "ports": [
             {
@@ -25992,6 +26019,10 @@
                   "type": "string",
                   "description": "Human-facing name for the host."
                 },
+                "name_source": {
+                  "$ref": "#/components/schemas/HostNameSource",
+                  "description": "Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever\nsupplied the name, not by the caller."
+                },
                 "network_id": {
                   "type": "string",
                   "format": "uuid",
@@ -26141,6 +26172,7 @@
                 ],
                 "last_seen_at": "2026-01-15T10:30:00Z",
                 "name": "web-server-01",
+                "name_source": "Manual",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "ports": [
                   {

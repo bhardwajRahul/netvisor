@@ -370,9 +370,12 @@ impl DaemonService {
         self.check_unverified_daemon_limit(org_id).await?;
 
         // New registration - create host and daemon
-        let dummy_host = Host::new(HostBase {
+        let mut dummy_host = Host::new(HostBase {
             network_id: effective_network_id,
-            name: request.name.clone(),
+            // Placeholder identity: the daemon's own reported name, which sits at the same rung
+            // as a hostname, so a later scan of the machine can improve on it.
+            name: String::new(),
+            name_source: HostNameSource::default(),
             hostname: None,
             description: None,
             source: EntitySource::Discovery,
@@ -392,6 +395,9 @@ impl DaemonService {
             serial_number: None,
             credential_assignments: vec![],
         });
+        if let Some(candidate) = HostName::from_hostname(request.name.clone()) {
+            dummy_host.base.apply_name(candidate);
+        }
 
         let host_response = host_service
             .discover_host(

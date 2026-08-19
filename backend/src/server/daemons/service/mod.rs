@@ -47,6 +47,7 @@ use crate::server::discovery::r#impl::types::{DiscoveryType, HostNamingFallback,
 use crate::server::discovery::service::DiscoveryService;
 use crate::server::email::service::EmailService;
 use crate::server::hosts::r#impl::base::{Host, HostBase};
+use crate::server::hosts::r#impl::name::{HostName, HostNameSource};
 use crate::server::hosts::service::{HostLimitContext, HostService};
 use crate::server::networks::r#impl::Network;
 use crate::server::networks::service::NetworkService;

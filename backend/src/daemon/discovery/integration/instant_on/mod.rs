@@ -44,6 +44,7 @@ use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::base::ServiceMatchBaselineParams;
 use crate::server::services::r#impl::patterns::{ClientProbe, ManagedDevice};
 
+use super::controller::{self, MappedClient};
 use super::{
     Checkpoint, CollectionShortfall, Completeness, DiscoveryIntegration, IntegrationContext,
     IntegrationFailure, ProbeContext, ProbeFailure, ProbeSuccess,
@@ -133,6 +134,7 @@ impl DiscoveryIntegration for InstantOnIntegration {
         let site_count = sites.len();
         let mut read = 0usize;
         let mut created = 0usize;
+        let mut created_clients = 0usize;
         let mut anchor_matched = false;
 
         for (index, site) in sites.iter().enumerate() {
@@ -147,8 +149,12 @@ impl DiscoveryIntegration for InstantOnIntegration {
                 .read_site(ctx, handle, site_id, &subnets, network_id)
                 .await
             {
-                Ok(devices) => {
+                Ok((devices, clients)) => {
                     read += 1;
+                    // Clients before devices: a client record that describes an adopted device
+                    // is already excluded, and doing them first keeps the device loop's early
+                    // `continue` paths from skipping them.
+                    created_clients += controller::create_client_hosts(ctx, clients).await;
                     for device in devices {
                         if ctx.cancel.is_cancelled() {
                             return Err(IntegrationFailure::cancelled());
@@ -208,7 +214,12 @@ impl DiscoveryIntegration for InstantOnIntegration {
                 .await;
         }
 
-        tracing::info!(created, sites = read, "Instant On device sync complete");
+        tracing::info!(
+            created,
+            clients = created_clients,
+            sites = read,
+            "Instant On device sync complete"
+        );
         // No checkpoint: each device is committed server-side by `create_device_host` as it is
         // reached, so progress never depended on `host_data` surviving a drop. The only thing in
         // the scratch buffer is the anchor's own enrichment, which is all-or-nothing by nature.
@@ -272,7 +283,7 @@ impl InstantOnIntegration {
         site_id: &str,
         subnets: &[crate::server::subnets::r#impl::base::Subnet],
         network_id: uuid::Uuid,
-    ) -> Result<Vec<mapping::MappedDevice>> {
+    ) -> Result<(Vec<mapping::MappedDevice>, Vec<MappedClient>)> {
         let devices: Vec<InstantOnDevice> = handle
             .client
             .get_site::<InstantOnDevice>(site_id, "inventory")
@@ -303,6 +314,8 @@ impl InstantOnIntegration {
         );
 
         let mapped = mapping::map_devices(&devices, &clients, network_id, subnets);
+        let device_ips: Vec<std::net::IpAddr> = mapped.iter().map(|d| d.ip).collect();
+        let mapped_clients = mapping::map_clients(&clients, network_id, subnets, &device_ips);
 
         if mapped.len() < devices.len() {
             // Silent truncation would read as "the site only contains these devices", and in the
@@ -332,7 +345,7 @@ impl InstantOnIntegration {
                 .await;
         }
 
-        Ok(mapped)
+        Ok((mapped, mapped_clients))
     }
 }
 
@@ -349,25 +362,8 @@ fn collect_subnets(
 }
 
 /// Fold the portal's own device record into the host being scanned.
-///
-/// Every setter here is first-write-wins, so a prior pass in the same scan keeps its values.
 fn enrich_scanned_host(host_data: &mut HostData, device: &mapping::MappedDevice) {
-    let base = &device.host.base;
-    if let Some(name) = &base.sys_name {
-        host_data.with_sys_name(name.clone());
-    }
-    if let Some(chassis_id) = &base.chassis_id {
-        host_data.with_chassis_id(chassis_id.clone());
-    }
-    if let Some(manufacturer) = &base.manufacturer {
-        host_data.with_manufacturer(manufacturer.clone());
-    }
-    if let Some(model) = &base.model {
-        host_data.with_model(model.clone());
-    }
-    if let Some(serial) = &base.serial_number {
-        host_data.with_serial_number(serial.clone());
-    }
+    device.identity.enrich(host_data);
 
     // `HostData` is shared across every integration for this IP. If SNMP already walked the
     // ifTable its view is strictly richer, and overwriting it would also discard SNMP's honest
@@ -393,12 +389,15 @@ async fn create_device_host(
     device: mapping::MappedDevice,
 ) -> Result<(), Error> {
     let mapping::MappedDevice {
-        host,
+        identity,
         ip_address,
         interfaces,
         device_type,
         ip,
     } = device;
+
+    let network_id = ctx.ops.network_id().await?;
+    let host = identity.into_host(network_id);
 
     // Run the real service matcher rather than stamping a service on. The portal's reported device
     // class enters as `ManagedDevice` evidence and `Pattern::ManagedDeviceType` consumes it, so

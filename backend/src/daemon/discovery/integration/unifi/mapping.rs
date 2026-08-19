@@ -15,23 +15,24 @@ use std::net::IpAddr;
 
 use uuid::Uuid;
 
-use crate::server::hosts::r#impl::base::{Host, HostBase};
+use crate::daemon::discovery::integration::controller::{ControllerIdentity, MappedClient};
 use crate::server::interfaces::r#impl::base::{
     IfAdminStatus, IfOperStatus, Interface, InterfaceBase,
 };
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
-use crate::server::shared::types::entities::EntitySource;
 use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId, canonical_mac};
 use crate::server::subnets::r#impl::base::Subnet;
 
-use super::types::{UnifiDevice, UnifiPort};
+use super::types::{UnifiDevice, UnifiPort, UnifiStation};
 
 /// IANA ifType 6 — ethernetCsmacd. Every UniFi port we model is a physical Ethernet port.
 const IF_TYPE_ETHERNET: i32 = 6;
 
 /// A UniFi device translated into the entities Scanopy stores.
 pub struct MappedDevice {
-    pub host: Host,
+    /// What the controller knows this device by. The caller turns it into a host, or folds it
+    /// into the host being scanned — either way the name reaches the ladder the same way.
+    pub identity: ControllerIdentity,
     pub ip_address: IPAddress,
     pub interfaces: Vec<Interface>,
     /// The controller's device-class string (`"usw"`, `"uap"`, …), fed to the service matcher
@@ -76,22 +77,22 @@ fn map_device(
     let subnet = subnets.iter().find(|s| s.base.cidr.contains(&ip))?;
     let device_mac = device.mac.as_deref().and_then(canonical_mac);
 
-    let host = Host::new(HostBase {
-        network_id,
-        source: EntitySource::Discovery,
-        sys_name: device.name.clone().filter(|n| !n.trim().is_empty()),
+    let identity = ControllerIdentity {
+        name: device.name.clone(),
+        // Adopted infrastructure has no separate reported hostname; the controller's name is
+        // the only one there is.
+        hostname: None,
         // Same canonical form the SNMP daemon writes, so `find_host_by_chassis_id` can reach
         // this device from a neighbor's advertised chassis ID.
         chassis_id: device_mac.clone(),
         manufacturer: Some("Ubiquiti".to_string()),
-        model: device.model.clone().filter(|m| !m.trim().is_empty()),
-        serial_number: device.serial.clone().filter(|s| !s.trim().is_empty()),
+        model: device.model.clone(),
+        serial_number: device.serial.clone(),
         sys_descr: device
             .version
             .as_ref()
             .map(|v| format!("UniFi firmware {v}")),
-        ..Default::default()
-    });
+    };
 
     let ip_address = IPAddress::new(IPAddressBase {
         network_id,
@@ -104,7 +105,7 @@ fn map_device(
     });
 
     Some(MappedDevice {
-        host,
+        identity,
         ip_address,
         interfaces: map_interfaces(device, network_id, device_mac.as_deref(), by_mac),
         device_type: device.device_type.clone().filter(|t| !t.trim().is_empty()),
@@ -310,10 +311,46 @@ fn apply_lldp_table(interfaces: &mut [Interface], device: &UnifiDevice) {
     }
 }
 
+/// Translate a `stat/sta` payload into client hosts.
+///
+/// `device_ips` are the management addresses of the adopted devices from the same sync. A UDM or
+/// switch also appears in the client list, and letting it through would have the client record's
+/// DHCP hostname compete with the adopted device's administrator-assigned name at the same rung.
+pub fn map_clients(
+    stations: &[UnifiStation],
+    network_id: Uuid,
+    subnets: &[Subnet],
+    device_ips: &[IpAddr],
+) -> Vec<MappedClient> {
+    stations
+        .iter()
+        .filter_map(|station| {
+            let identity = ControllerIdentity {
+                name: station.name.clone(),
+                hostname: station.hostname.clone(),
+                chassis_id: None,
+                manufacturer: station.oui.clone(),
+                model: None,
+                serial_number: None,
+                sys_descr: None,
+            };
+            MappedClient::new(
+                identity,
+                station.ip.as_deref(),
+                station.mac.as_deref(),
+                network_id,
+                subnets,
+            )
+        })
+        .filter(|client| !device_ips.contains(&client.ip))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::daemon::discovery::integration::unifi::types::UnifiEnvelope;
+    use crate::server::shared::types::entities::EntitySource;
     use crate::server::subnets::r#impl::base::SubnetBase;
     use crate::server::subnets::r#impl::types::SubnetType;
 
@@ -374,7 +411,7 @@ mod tests {
     fn find<'a>(devices: &'a [MappedDevice], name: &str) -> &'a MappedDevice {
         devices
             .iter()
-            .find(|d| d.host.base.sys_name.as_deref() == Some(name))
+            .find(|d| d.identity.name.as_deref() == Some(name))
             .unwrap_or_else(|| panic!("expected a device named {name}"))
     }
 
@@ -438,7 +475,7 @@ mod tests {
             "the fixture's mixed-case unpadded '0:1A:2b:3C:4d:5E' must canonicalize"
         );
         assert_eq!(
-            switch.host.base.chassis_id.as_deref(),
+            switch.identity.chassis_id.as_deref(),
             Some("78:8a:20:11:22:33")
         );
     }
@@ -616,8 +653,8 @@ mod tests {
             Some("uap")
         );
         for device in &devices {
-            assert_eq!(device.host.base.manufacturer.as_deref(), Some("Ubiquiti"));
-            assert!(device.host.base.chassis_id.is_some());
+            assert_eq!(device.identity.manufacturer.as_deref(), Some("Ubiquiti"));
+            assert!(device.identity.chassis_id.is_some());
         }
     }
 }

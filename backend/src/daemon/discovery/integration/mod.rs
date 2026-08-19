@@ -9,6 +9,7 @@
 //! and service matches — no integration-specific code in the orchestrator.
 
 pub mod container;
+pub mod controller;
 pub mod dispatch;
 pub mod docker;
 pub mod failure;
