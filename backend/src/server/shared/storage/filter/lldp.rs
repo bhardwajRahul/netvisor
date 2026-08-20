@@ -1,5 +1,6 @@
 //! LLDP/FDB neighbor-resolution filters.
 use super::*;
+use crate::server::interfaces::r#impl::base::if_type::EXCLUDED_IF_TYPES;
 
 impl<T: Storable> StorableFilter<T> {
     // =========================================================================
@@ -30,6 +31,43 @@ impl<T: Storable> StorableFilter<T> {
         self.conditions
             .push(format!("{} = ${}", col, self.values.len() + 1));
         self.values.push(SqlValue::String(name.to_string()));
+        self
+    }
+
+    /// Filter by if_alias (for interfaces table)
+    ///
+    /// `ifAlias` is the operator-assigned description (`ifXTable`), and on several families it is
+    /// the only column carrying the bare port name: the Westermo WeOS switches report
+    /// `ifDescr = "100-T eth9"` (media type prefixed) while `ifName` and `ifAlias` both hold
+    /// `eth9`. Non-unique by nature — it is user-configurable — so every caller resolves it on a
+    /// single match only.
+    pub fn if_alias(mut self, alias: &str) -> Self {
+        let col = self.qualify_column("if_alias");
+        self.conditions
+            .push(format!("{} = ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::String(alias.to_string()));
+        self
+    }
+
+    /// Restrict to interfaces that are physical ports, excluding the virtual/software families.
+    ///
+    /// A device's VLAN and loopback rows routinely repeat the chassis base MAC that no physical
+    /// port carries — the customer's Westermo has six `propVirtual` VLAN interfaces sharing
+    /// `…02:E0` while all ten physical ports have unique addresses. Counting those rows against a
+    /// MAC-uniqueness test makes a lookup ambiguous that no port would have contested, so the test
+    /// is scoped to the rows that can actually be the far end of a cable.
+    ///
+    pub fn physical_if_types(mut self) -> Self {
+        let col = self.qualify_column("if_type");
+        let start = self.values.len() + 1;
+        let placeholders: Vec<String> = (start..start + EXCLUDED_IF_TYPES.len())
+            .map(|i| format!("${i}"))
+            .collect();
+        self.conditions
+            .push(format!("{col} NOT IN ({})", placeholders.join(", ")));
+        for if_type in EXCLUDED_IF_TYPES {
+            self.values.push(SqlValue::I32(*if_type));
+        }
         self
     }
 
@@ -104,43 +142,33 @@ impl<T: Storable> StorableFilter<T> {
         self.live()
     }
 
-    /// Filter interfaces whose remote port is already known *and* could only have been matched on
-    /// a MAC, in a network.
+    /// Every interface in a network that names a neighbour, whatever state its resolution is in.
     ///
-    /// The complement of [`Self::unresolved_lldp_port_in_network`], and the only way to reach a
-    /// binding that pass will never look at again: once `neighbor_interface_id` is set, that filter
-    /// excludes the row permanently. Used to re-examine bindings made under a rule that has since
-    /// been tightened — a port matched on a MAC the device repeats across every port (GH #668).
+    /// The superset of [`Self::unresolved_lldp_port_in_network`] and
+    /// [`Self::port_resolved_by_mac_in_network`], and the input to the reciprocal-pairing tier:
+    /// deciding that host A names host B on exactly one port has to count *every* port that names
+    /// it, not just the ones still unresolved. Counting only the unresolved half would pair one
+    /// leg of a LAG whose other leg happened to resolve, which is the arbitrary-port outcome the
+    /// MAC guard exists to prevent.
     ///
-    /// The MAC condition is the SQL half of `Interface::port_bound_by_mac`, which stays the
-    /// authority and re-checks every row this returns; keep the two in step. It is here rather than
-    /// in Rust alone because this runs after every scan on a table that holds every port of every
-    /// switch, and reading the whole resolved population to discard almost all of it is a standing
-    /// cost for a backlog that drains once.
-    ///
-    /// Scoped to live SCD2 rows for the same reason as its complement: a closed snapshot copy is
-    /// history, not a link to re-resolve.
-    pub fn port_resolved_by_mac_in_network(mut self, network_id: Uuid) -> Self {
+    /// Bounded by adjacencies rather than by interfaces — a switch contributes one row per port
+    /// that sees something, not one per port.
+    pub fn lldp_neighbors_in_network(mut self, network_id: Uuid) -> Self {
         let network_col = self.qualify_column("network_id");
-        let neighbor_if_entry_col = self.qualify_column("neighbor_interface_id");
-        let lldp_port_col = self.qualify_column("lldp_port_id");
         let lldp_chassis_col = self.qualify_column("lldp_chassis_id");
         let cdp_device_col = self.qualify_column("cdp_device_id");
-        let fdb_col = self.qualify_column("fdb_macs");
+        let cdp_addr_col = self.qualify_column("cdp_address");
+        let neighbor_if_entry_col = self.qualify_column("neighbor_interface_id");
+        let neighbor_host_col = self.qualify_column("neighbor_host_id");
 
         self.conditions
             .push(format!("{} = ${}", network_col, self.values.len() + 1));
         self.values.push(SqlValue::Uuid(network_id));
 
-        self.conditions
-            .push(format!("{} IS NOT NULL", neighbor_if_entry_col));
-
-        // An LLDP port id of subtype 3 (macAddress), or a bridge-FDB port that learned exactly one
-        // address — the two tiers that place a far-end port by MAC and nothing else.
         self.conditions.push(format!(
-            "({lldp_port_col}->>'subtype' = 'MacAddress' \
-             OR ({lldp_chassis_col} IS NULL AND {cdp_device_col} IS NULL \
-             AND {fdb_col} IS NOT NULL AND jsonb_array_length({fdb_col}) = 1))"
+            "({lldp_chassis_col} IS NOT NULL OR {cdp_device_col} IS NOT NULL \
+             OR {cdp_addr_col} IS NOT NULL OR {neighbor_if_entry_col} IS NOT NULL \
+             OR {neighbor_host_col} IS NOT NULL)"
         ));
 
         self.live()

@@ -26,7 +26,7 @@ impl Email for PasswordReset<'_> {
 
     fn body_html(&self) -> String {
         let reset_url = format!(
-            "{}/reset-password?token={}",
+            "{}/login?token={}",
             self.url.trim_end_matches('/'),
             self.token
         );

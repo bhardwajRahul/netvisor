@@ -27,7 +27,7 @@ pub use types::{
     LldpLocalInfo, LldpLocalPort, LldpNeighbor, PortVlanMembership, SystemInfo, VlanInfo,
 };
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::time::Duration;
 
@@ -415,20 +415,22 @@ impl DiscoveryIntegration for SnmpIntegration {
             reason: lldp_local_ports.reason,
         };
         let lldp_local_ports = lldp_local_ports.records;
-        let unresolved_ports =
+        let local_ports =
             remap_lldp_local_ports(&mut lldp_neighbors, &lldp_local_ports, &snmp_if_entries);
-        if unresolved_ports > 0 {
+        if local_ports.unmatched > 0 || local_ports.dropped > 0 {
             tracing::warn!(
                 ip = %ip,
-                unresolved = unresolved_ports,
+                unmatched = local_ports.unmatched,
+                dropped = local_ports.dropped,
                 total = lldp_count,
-                "LLDP neighbours could not be matched to a local interface; their links may \
-                 attach to the wrong port"
+                "LLDP neighbours could not be placed on a local interface; the dropped ones \
+                 contribute no link at all"
             );
             ctx.ops
                 .record_unresolved_lldp_ports(UnresolvedLldpPorts {
                     ip,
-                    unresolved: unresolved_ports,
+                    unresolved: local_ports.unmatched,
+                    dropped: local_ports.dropped,
                     total: lldp_count,
                 })
                 .await;
@@ -951,62 +953,128 @@ impl DiscoveryIntegration for SnmpIntegration {
     }
 }
 
+/// What placing a device's LLDP neighbours onto its interfaces produced.
+///
+/// Two different failures, because they call for different things. `unmatched` is a neighbour no
+/// tier could place, which keeps its raw `lldpLocPortNum`; `dropped` is a neighbour that will
+/// reach no interface at all and therefore contributes nothing — no chassis id is stored, no link
+/// is drawn, and until this was counted the device simply looked as though it had no LLDP data.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct LocalPortOutcome {
+    /// Neighbours whose local port no tier could identify.
+    pub unmatched: usize,
+    /// Neighbours whose final index names no interface, or names one another neighbour already
+    /// claimed. Every one of these is discarded whole by [`convert_snmp_if_entry`].
+    pub dropped: usize,
+}
+
 /// Translate each LLDP neighbour's `local_port_index` from an `lldpLocPortNum` to the
 /// device's real `ifIndex`, using `lldpLocPortTable` (`loc_ports`) resolved against the
 /// interface table (`if_entries`). Neighbours whose port cannot be resolved keep their
 /// original index. An empty `loc_ports` is identity — correct for devices where
 /// `lldpLocPortNum == ifIndex` (e.g. Extreme VOSS) or that omit the table.
-/// Returns how many neighbours could not be resolved and kept their original index.
 ///
-/// The count matters because this failure is *silent and wrong* rather than silent and missing.
-/// An unresolved neighbour keeps its `lldpLocPortNum`, which on a device where that is a separate
-/// namespace from `ifIndex` — ExtremeXOS reports ports 1..N against ifIndexes 1001+ — attaches
-/// the link to whatever interface happens to hold that index, or to none. A missing link is
-/// visibly missing; a link drawn to the wrong port is worse, because the map looks complete.
+/// Both outcomes are counted because both are silent. An unmatched neighbour keeps its
+/// `lldpLocPortNum`, which on a device where that is a separate namespace from `ifIndex` —
+/// ExtremeXOS reports ports 1..N against ifIndexes 1001+ — attaches the link to whatever interface
+/// happens to hold that index. Where it holds none, `convert_snmp_if_entry` attaches the neighbour
+/// nowhere and the whole record is discarded: no `lldp_chassis_id` is ever written, so the device
+/// contributes nothing and the server has nothing to resolve. The identity path is counted too —
+/// returning zero there meant a device whose `lldpLocPortTable` was absent or unreadable dropped
+/// every neighbour while raising no warning at all.
 fn remap_lldp_local_ports(
     neighbors: &mut [LldpNeighbor],
     loc_ports: &HashMap<i32, LldpLocalPort>,
     if_entries: &[IfTableEntry],
-) -> usize {
+) -> LocalPortOutcome {
+    let mut outcome = LocalPortOutcome::default();
+
     // An empty table is the identity mapping, not a failure: devices where `lldpLocPortNum ==
-    // ifIndex` (Extreme VOSS, most vendors) legitimately omit it.
-    if loc_ports.is_empty() {
-        return 0;
-    }
-    // Built once for the whole device rather than per neighbour, and deliberately only for
-    // addresses belonging to exactly one interface. See [`unique_interface_macs`].
-    let macs = unique_interface_macs(if_entries);
-    let mut unresolved = 0;
-    for neighbor in neighbors.iter_mut() {
-        let port = neighbor.local_port_index;
-        match resolve_lldp_local_port(port, loc_ports, if_entries, &macs) {
-            Some((if_index, evidence)) => {
-                tracing::debug!(
-                    local_port = port,
-                    if_index,
-                    ?evidence,
-                    "Matched an LLDP local port to an interface"
-                );
-                neighbor.local_port_index = if_index;
-            }
-            None => {
-                // The evidence, not just the failure. This is the line that decides whether the
-                // next unmatched switch needs another walk from its owner: it names what the
-                // device offered and therefore which tier would have to grow to place it.
-                let entry = loc_ports.get(&port);
-                tracing::debug!(
-                    local_port = port,
-                    subtype = ?entry.and_then(|e| e.port_id_subtype),
-                    port_id = ?entry.and_then(|e| e.port_id.as_deref()),
-                    port_id_mac = ?entry.and_then(|e| e.port_id_mac),
-                    port_desc = ?entry.and_then(|e| e.port_desc.as_deref()),
-                    "No interface matched an LLDP local port"
-                );
-                unresolved += 1;
+    // ifIndex` (Extreme VOSS, most vendors) legitimately omit it. It still has to be checked —
+    // identity is only correct where the number *is* an ifIndex.
+    if !loc_ports.is_empty() {
+        // Built once for the whole device rather than per neighbour, and deliberately only for
+        // addresses belonging to exactly one interface. See [`unique_interface_macs`].
+        let macs = unique_interface_macs(if_entries);
+        for neighbor in neighbors.iter_mut() {
+            let port = neighbor.local_port_index;
+            match resolve_lldp_local_port(port, loc_ports, if_entries, &macs) {
+                Some((if_index, evidence)) => {
+                    tracing::debug!(
+                        local_port = port,
+                        if_index,
+                        ?evidence,
+                        "Matched an LLDP local port to an interface"
+                    );
+                    neighbor.local_port_index = if_index;
+                }
+                None => {
+                    // The evidence, not just the failure. This is the line that decides whether the
+                    // next unmatched switch needs another walk from its owner: it names what the
+                    // device offered and therefore which tier would have to grow to place it.
+                    let entry = loc_ports.get(&port);
+                    tracing::debug!(
+                        local_port = port,
+                        subtype = ?entry.and_then(|e| e.port_id_subtype),
+                        port_id = ?entry.and_then(|e| e.port_id.as_deref()),
+                        port_id_mac = ?entry.and_then(|e| e.port_id_mac),
+                        port_desc = ?entry.and_then(|e| e.port_desc.as_deref()),
+                        "No interface matched an LLDP local port"
+                    );
+                    outcome.unmatched += 1;
+                }
             }
         }
     }
-    unresolved
+
+    outcome.dropped = count_dropped_neighbours(neighbors, loc_ports, if_entries);
+    outcome
+}
+
+/// Count the neighbours that will reach no interface, naming each one's evidence.
+///
+/// Mirrors the attachment rule in [`convert_snmp_if_entry`] exactly — first neighbour whose
+/// `local_port_index` equals an interface's `if_index` — so "counted as dropped" and "actually
+/// dropped" cannot drift apart. The evidence line carries the far end's own identity as well as
+/// the local-port columns, because on the identity path there is no `lldpLocPortTable` row to
+/// describe and the neighbour's chassis is the only thing that names what was lost.
+fn count_dropped_neighbours(
+    neighbors: &[LldpNeighbor],
+    loc_ports: &HashMap<i32, LldpLocalPort>,
+    if_entries: &[IfTableEntry],
+) -> usize {
+    let if_indexes: HashSet<i32> = if_entries.iter().map(|e| e.if_index).collect();
+    let mut claimed: HashSet<i32> = HashSet::new();
+    let mut dropped = 0;
+
+    for neighbor in neighbors {
+        let port = neighbor.local_port_index;
+        let reason = if !if_indexes.contains(&port) {
+            "no interface on the device has this ifIndex"
+        } else if !claimed.insert(port) {
+            "another neighbour on the same port was recorded first"
+        } else {
+            continue;
+        };
+
+        let entry = loc_ports.get(&port);
+        tracing::debug!(
+            local_port = port,
+            reason,
+            subtype = ?entry.and_then(|e| e.port_id_subtype),
+            port_id = ?entry.and_then(|e| e.port_id.as_deref()),
+            port_id_mac = ?entry.and_then(|e| e.port_id_mac),
+            port_desc = ?entry.and_then(|e| e.port_desc.as_deref()),
+            remote_chassis_subtype = ?neighbor.remote_chassis_id_subtype,
+            remote_port_subtype = ?neighbor.remote_port_id_subtype,
+            remote_port_desc = ?neighbor.remote_port_desc.as_deref(),
+            remote_sys_name = ?neighbor.remote_sys_name.as_deref(),
+            "Discarding an LLDP neighbour that reaches no interface"
+        );
+        dropped += 1;
+    }
+
+    dropped
 }
 
 /// Which column matched, for the log line that has to explain a device nothing matched on.
@@ -1553,8 +1621,47 @@ mod tests {
         let if_entries = [if_entry(5, "Gi0/5")];
         let empty = std::collections::HashMap::new();
         let mut neighbors = vec![lldp_neighbor(5, "peer")];
-        remap_lldp_local_ports(&mut neighbors, &empty, &if_entries);
+        let outcome = remap_lldp_local_ports(&mut neighbors, &empty, &if_entries);
         assert_eq!(neighbors[0].local_port_index, 5);
+        assert_eq!(outcome, super::LocalPortOutcome::default());
+    }
+
+    /// The identity path is only correct where the local port number *is* an ifIndex. Where the
+    /// device numbers its LLDP ports separately and serves no `lldpLocPortTable` — or served one
+    /// the walk could not read — every neighbour lands on an index no interface holds and is
+    /// discarded by `convert_snmp_if_entry` without a word. Returning zero here is what let a
+    /// switch report neighbours all day and appear to have none.
+    #[test]
+    fn an_absent_local_port_table_over_a_separate_numbering_drops_every_neighbour() {
+        use super::remap_lldp_local_ports;
+
+        let if_entries = [if_entry(1001, "1:1"), if_entry(1002, "1:2")];
+        let empty = std::collections::HashMap::new();
+        let mut neighbors = vec![lldp_neighbor(1, "peer-a"), lldp_neighbor(2, "peer-b")];
+
+        let outcome = remap_lldp_local_ports(&mut neighbors, &empty, &if_entries);
+
+        assert_eq!(outcome.dropped, 2);
+        assert_eq!(
+            outcome.unmatched, 0,
+            "no tier ran, so nothing failed to match — the loss is the drop"
+        );
+    }
+
+    /// `convert_snmp_if_entry` attaches the first neighbour whose index matches and no more, so a
+    /// second one on the same port is lost as completely as one on no port. Counting only the
+    /// index misses would report this device as clean.
+    #[test]
+    fn a_second_neighbour_on_one_port_is_counted_as_dropped() {
+        use super::remap_lldp_local_ports;
+
+        let if_entries = [if_entry(3, "Gi0/3")];
+        let empty = std::collections::HashMap::new();
+        let mut neighbors = vec![lldp_neighbor(3, "phone"), lldp_neighbor(3, "laptop")];
+
+        let outcome = remap_lldp_local_ports(&mut neighbors, &empty, &if_entries);
+
+        assert_eq!(outcome.dropped, 1);
     }
 
     #[test]
@@ -1636,9 +1743,9 @@ mod tests {
         );
 
         let mut neighbors = vec![lldp_neighbor(19, "peer")];
-        let unresolved = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+        let outcome = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
 
-        assert_eq!(unresolved, 0);
+        assert_eq!(outcome.unmatched, 0);
         assert_eq!(neighbors[0].local_port_index, 1);
     }
 
@@ -1666,9 +1773,9 @@ mod tests {
         );
 
         let mut neighbors = vec![lldp_neighbor(19, "peer")];
-        let unresolved = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+        let outcome = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
 
-        assert_eq!(unresolved, 0);
+        assert_eq!(outcome.unmatched, 0);
         assert_eq!(
             neighbors[0].local_port_index, 2,
             "the description names the port; the shared MAC names nothing"
@@ -1707,9 +1814,9 @@ mod tests {
             lldp_neighbor(19, "peer-b"),
             lldp_neighbor(16, "peer-c"),
         ];
-        let unresolved = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+        let outcome = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
 
-        assert_eq!(unresolved, 0);
+        assert_eq!(outcome.unmatched, 0);
         assert_eq!(
             neighbors
                 .iter()
@@ -1746,12 +1853,16 @@ mod tests {
         );
 
         let mut neighbors = vec![lldp_neighbor(11, "peer")];
-        let unresolved = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+        let outcome = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
 
-        assert_eq!(unresolved, 1);
+        assert_eq!(outcome.unmatched, 1);
         assert_eq!(
             neighbors[0].local_port_index, 11,
             "an unresolved neighbour keeps its local port number rather than guessing"
+        );
+        assert_eq!(
+            outcome.dropped, 1,
+            "port 11 is no interface's ifIndex, so the neighbour reaches nothing at all"
         );
     }
 }

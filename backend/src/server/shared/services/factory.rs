@@ -244,6 +244,7 @@ impl ServiceFactory {
             service_service.clone(),
             interface_service.clone(),
             daemon_service.clone(),
+            discovery_service.clone(),
             credential_service.clone(),
             subnet_service.clone(),
             vlan_service.clone(),

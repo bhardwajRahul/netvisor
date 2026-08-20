@@ -103,13 +103,27 @@ impl HostService {
         {
             has_updates = true;
             existing_host.base.hostname = new_host_data.base.hostname.clone();
+        }
 
-            // Also update display name if it was auto-set to IP (not manually renamed)
-            if existing_host.base.name.parse::<std::net::IpAddr>().is_ok()
-                && let Some(ref hostname) = existing_host.base.hostname
-            {
-                existing_host.base.name = hostname.clone();
-            }
+        // The display name. Both candidates go through the same ladder, which is the whole
+        // reason this is two arms rather than a string-shape guess: the incoming name carries
+        // the rank of whatever produced it, so a controller's name refreshes on every sync, a
+        // reverse-DNS hostname fills in only over something weaker, and a name a person typed is
+        // never touched by either. A daemon too old to send a rank enters as `Unspecified` and
+        // changes nothing on its own — the hostname arm still reproduces its old IP-upgrade.
+        if let Some(candidate) = new_host_data.base.name_candidate()
+            && existing_host.base.apply_name(candidate)
+        {
+            has_updates = true;
+        }
+        if let Some(candidate) = existing_host
+            .base
+            .hostname
+            .clone()
+            .and_then(HostName::from_hostname)
+            && existing_host.base.apply_name(candidate)
+        {
+            has_updates = true;
         }
 
         // Update SNMP fields if not set

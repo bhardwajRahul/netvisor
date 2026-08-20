@@ -45,7 +45,7 @@ services:
       - "60072:60072"
     environment:
       SCANOPY_LOG_LEVEL: ${SCANOPY_LOG_LEVEL:-info}
-      SCANOPY_LICENSE_KEY: ${SCANOPY_LICENSE_KEY:?SCANOPY_LICENSE_KEY is required for the commercial image}
+      SCANOPY_LICENSE_KEY: ${SCANOPY_LICENSE_KEY:?SCANOPY_LICENSE_KEY is required for the commercial edition}
       SCANOPY_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/scanopy
       SCANOPY_WEB_EXTERNAL_PATH: /app/static
       SCANOPY_PUBLIC_URL: ${SCANOPY_PUBLIC_URL:-http://localhost:60072}

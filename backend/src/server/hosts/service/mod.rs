@@ -4,12 +4,14 @@ use crate::server::{
     bindings::r#impl::base::{Binding, BindingType},
     credentials::service::CredentialService,
     daemons::{r#impl::base::Daemon, service::DaemonService},
+    discovery::service::DiscoveryService,
     hosts::r#impl::{
         api::{
             BindingInput, ConflictBehavior, CreateHostRequest, HostResponse, IPAddressInput,
             PortInput, ServiceInput, UpdateHostRequest,
         },
         base::{Host, HostBase},
+        name::{HostName, HostNameSource},
     },
     interfaces::{
         r#impl::base::{Interface, InterfaceDataComplete, Neighbor},
@@ -71,6 +73,8 @@ pub struct HostService {
     service_service: Arc<ServiceService>,
     interface_service: Arc<InterfaceService>,
     pub daemon_service: Arc<DaemonService>,
+    /// Used to carry post-scan resolution findings back onto the scan record the operator reads.
+    discovery_service: Arc<DiscoveryService>,
     credential_service: Arc<CredentialService>,
     subnet_service: Arc<SubnetService>,
     vlan_service: Arc<VlanService>,
@@ -199,6 +203,13 @@ pub struct LldpResolutionStats {
     pub hosts_resolved: usize,
     /// Number of interfaces where remote port (interface) was resolved
     pub ports_resolved: usize,
+    /// How many of `ports_resolved` were placed by the reciprocal-LLDP tier rather than by an
+    /// identifier the far end advertised.
+    ///
+    /// Separated because it is the tier that carries the switch families reporting one chassis MAC
+    /// across every port: a figure of zero on a network full of such devices says the pairing is
+    /// not firing, which no other counter distinguishes from "nothing needed it".
+    pub ports_resolved_reciprocal: usize,
     /// Neighbor advertised no identifier any strategy can look up.
     pub host_no_strategy: usize,
     /// Neighbor identified a device this network has never discovered.
@@ -213,6 +224,16 @@ pub struct LldpResolutionStats {
     /// end was found, and the device is reporting one MAC for every port (GH #668). Reading it as
     /// `port_not_found` would send an operator hunting a device that is already scanned.
     pub port_ambiguous: usize,
+}
+
+/// What one LLDP/CDP resolution pass produced.
+///
+/// The stats go to the summary log line; the warnings go onto the scan record the operator reads,
+/// because a self-hosted operator has no other way to see why the physical view is sparse.
+pub struct LldpResolutionOutcome {
+    pub stats: LldpResolutionStats,
+    /// Operator-facing lines, in the same voice as the daemon's scan warnings.
+    pub warnings: Vec<String>,
 }
 
 impl LldpResolutionStats {

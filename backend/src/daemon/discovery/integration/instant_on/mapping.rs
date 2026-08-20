@@ -25,12 +25,11 @@ use std::net::IpAddr;
 
 use uuid::Uuid;
 
-use crate::server::hosts::r#impl::base::{Host, HostBase};
+use crate::daemon::discovery::integration::controller::{ControllerIdentity, MappedClient};
 use crate::server::interfaces::r#impl::base::{
     IfAdminStatus, IfOperStatus, Interface, InterfaceBase,
 };
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
-use crate::server::shared::types::entities::EntitySource;
 use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId, canonical_mac};
 use crate::server::subnets::r#impl::base::Subnet;
 
@@ -41,7 +40,9 @@ const IF_TYPE_ETHERNET: i32 = 6;
 
 /// An Instant On device translated into the entities Scanopy stores.
 pub struct MappedDevice {
-    pub host: Host,
+    /// What the portal knows this device by. The caller turns it into a host, or folds it into
+    /// the host being scanned — either way the name reaches the ladder the same way.
+    pub identity: ControllerIdentity,
     pub ip_address: IPAddress,
     pub interfaces: Vec<Interface>,
     /// The portal's device-class string (`"SWITCH"`, `"STACK"`, …), fed to the service matcher as
@@ -106,25 +107,22 @@ fn map_device(
     let subnet = subnets.iter().find(|s| s.base.cidr.contains(&ip))?;
     let device_mac = device.mac_address.as_deref().and_then(canonical_mac);
 
-    let host = Host::new(HostBase {
-        network_id,
-        source: EntitySource::Discovery,
-        sys_name: device.name.clone().filter(|n| !n.trim().is_empty()),
+    let identity = ControllerIdentity {
+        name: device.name.clone(),
+        // Adopted infrastructure has no separate reported hostname; the portal's name is the
+        // only one there is.
+        hostname: None,
         // Same canonical form the SNMP daemon writes, so `find_host_by_chassis_id` can reach this
         // device from a neighbor's advertised chassis ID.
         chassis_id: device_mac.clone(),
         manufacturer: Some("HPE".to_string()),
-        model: device.model.clone().filter(|m| !m.trim().is_empty()),
-        serial_number: device
-            .serial_number
-            .clone()
-            .filter(|s| !s.trim().is_empty()),
+        model: device.model.clone(),
+        serial_number: device.serial_number.clone(),
         sys_descr: device
             .firmware_version
             .as_ref()
             .map(|v| format!("Instant On firmware {v}")),
-        ..Default::default()
-    });
+    };
 
     let ip_address = IPAddress::new(IPAddressBase {
         network_id,
@@ -137,7 +135,7 @@ fn map_device(
     });
 
     Some(MappedDevice {
-        host,
+        identity,
         ip_address,
         interfaces: map_interfaces(device, clients, network_id, by_id),
         device_type: device.device_type.clone().filter(|t| !t.trim().is_empty()),
@@ -375,11 +373,53 @@ fn apply_client_macs(
     }
 }
 
+/// Translate a `clientSummary` payload into client hosts.
+///
+/// Wired clients keep contributing their MAC to the port's FDB entry as before — that is what
+/// resolves them into topology edges. This is the other half: the portal is often the only place
+/// a client's name exists at all, and without a host to hang it on it was parsed and discarded.
+///
+/// `device_ips` are the addresses of the site's adopted devices, which also appear in the client
+/// list; excluding them keeps a client record's hostname from competing with the administrator's
+/// name for the same device.
+pub fn map_clients(
+    clients: &[InstantOnClient],
+    network_id: Uuid,
+    subnets: &[Subnet],
+    device_ips: &[IpAddr],
+) -> Vec<MappedClient> {
+    clients
+        .iter()
+        .filter_map(|client| {
+            let identity = ControllerIdentity {
+                name: client.name.clone(),
+                // The portal reports one name per client and does not distinguish an assigned
+                // alias from a DHCP hostname.
+                hostname: None,
+                chassis_id: None,
+                manufacturer: None,
+                model: None,
+                serial_number: None,
+                sys_descr: None,
+            };
+            MappedClient::new(
+                identity,
+                client.ip_address.as_deref(),
+                client.mac_address.as_deref(),
+                network_id,
+                subnets,
+            )
+        })
+        .filter(|client| !device_ips.contains(&client.ip))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::daemon::discovery::integration::instant_on::types::InstantOnEnvelope;
     use crate::server::interfaces::r#impl::base::{IfAdminStatus, IfOperStatus};
+    use crate::server::shared::types::entities::EntitySource;
     use crate::server::subnets::r#impl::base::SubnetBase;
     use crate::server::subnets::r#impl::types::SubnetType;
 
@@ -433,7 +473,7 @@ mod tests {
     fn find<'a>(devices: &'a [MappedDevice], name: &str) -> &'a MappedDevice {
         devices
             .iter()
-            .find(|d| d.host.base.sys_name.as_deref() == Some(name))
+            .find(|d| d.identity.name.as_deref() == Some(name))
             .unwrap_or_else(|| panic!("expected a device named {name}"))
     }
 
@@ -549,9 +589,8 @@ mod tests {
         let devices = map();
         assert_eq!(devices.len(), 4);
         assert!(!devices.iter().any(|d| {
-            d.host
-                .base
-                .sys_name
+            d.identity
+                .name
                 .as_deref()
                 .is_some_and(|n| n == "Offsite Switch" || n == "Spare Switch")
         }));
@@ -613,20 +652,17 @@ mod tests {
     fn host_carries_identity_from_the_inventory() {
         let devices = map();
         let stack = find(&devices, "Core Stack");
-        assert_eq!(stack.host.base.manufacturer.as_deref(), Some("HPE"));
-        assert_eq!(stack.host.base.model.as_deref(), Some("1960-48G-4SFP"));
+        assert_eq!(stack.identity.manufacturer.as_deref(), Some("HPE"));
+        assert_eq!(stack.identity.model.as_deref(), Some("1960-48G-4SFP"));
+        assert_eq!(stack.identity.serial_number.as_deref(), Some("STACK-SER-1"));
         assert_eq!(
-            stack.host.base.serial_number.as_deref(),
-            Some("STACK-SER-1")
-        );
-        assert_eq!(
-            stack.host.base.sys_descr.as_deref(),
+            stack.identity.sys_descr.as_deref(),
             Some("Instant On firmware 3.4.0")
         );
         // Canonicalised to the same lowercase-colon form SNMP writes, so a neighbor's advertised
         // chassis ID can reach this host by string equality.
         assert_eq!(
-            stack.host.base.chassis_id.as_deref(),
+            stack.identity.chassis_id.as_deref(),
             Some("aa:bb:cc:00:00:01")
         );
     }

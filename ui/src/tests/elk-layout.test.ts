@@ -997,7 +997,9 @@ describe('LayoutGraph.restoreExpandedSizes', () => {
 
 	it('restores an expanded container, not just a collapsed one', () => {
 		const graph = graphWith(false);
-		expect(graph.getContainerSize('host')).toEqual({ width: 0, height: 0 });
+		// Not `{0, 0}`: an unsized container reports no size at all, so a caller falls back to a
+		// measured hint instead of publishing a 0x0 node that renders as nothing.
+		expect(graph.getContainerSize('host')).toBeUndefined();
 
 		graph.restoreExpandedSizes(new Map([['host', { width: 350, height: 179 }]]));
 

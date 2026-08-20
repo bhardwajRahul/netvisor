@@ -361,6 +361,9 @@ impl LegacyHostWithServicesRequest {
             first_discovery_id: None,
             base: crate::server::hosts::r#impl::base::HostBase {
                 name: host.name,
+                // A legacy daemon says nothing about where the name came from, so it enters at
+                // the bottom of the ladder and cannot displace a better-attributed one.
+                name_source: crate::server::hosts::r#impl::name::HostNameSource::Unspecified,
                 network_id: host.network_id,
                 hostname: host.hostname,
                 description: host.description,

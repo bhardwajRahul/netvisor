@@ -399,7 +399,10 @@
 		container: containerElement,
 		// Read lazily: the diagnostic decides whether it wants all of them or a sample, and at
 		// this customer's node count the difference matters on the throttled viewport path.
-		internalNodes: () => $nodes.map((n) => getInternalNode(n.id))
+		internalNodes: () => $nodes.map((n) => getInternalNode(n.id)),
+		// The payload as the server sent it, so a report can tell "few edges arrived" from "many
+		// arrived and were dropped in rendering" — the two causes `store.edges` cannot separate.
+		payload: () => topology ?? null
 	});
 	installDiagnostics(diagnosticInputs);
 

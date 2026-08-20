@@ -2090,6 +2090,42 @@
   {
     "category": "NetworkAccess",
     "color": "Green",
+    "description": "HPE Networking Instant On switch",
+    "discovery_pattern": "Any of: (Controller reports device type 'SWITCH', Controller reports device type 'STACK')",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/hpe.svg",
+    "name": "Instant On Switch"
+  },
+  {
+    "category": "NetworkAccess",
+    "color": "Green",
+    "description": "HPE Networking Instant On gateway",
+    "discovery_pattern": "Controller reports device type 'GATEWAY'",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/hpe.svg",
+    "name": "Instant On Gateway"
+  },
+  {
+    "category": "NetworkAccess",
+    "color": "Green",
+    "description": "HPE Networking Instant On wireless access point",
+    "discovery_pattern": "Controller reports device type 'ACCESS_POINT'",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/hpe.svg",
+    "name": "Instant On Access Point"
+  },
+  {
+    "category": "NetworkAccess",
+    "color": "Green",
+    "description": "Managed through the HPE Networking Instant On cloud portal",
+    "discovery_pattern": "Any of: (Client probe InstantOn succeeded, Controller reports device type 'SWITCH', Controller reports device type 'STACK', Controller reports device type 'ACCESS_POINT', Controller reports device type 'GATEWAY')",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/hpe.svg",
+    "name": "Instant On"
+  },
+  {
+    "category": "NetworkAccess",
+    "color": "Green",
     "description": "Google Nest Wifi router",
     "discovery_pattern": "All of: (Any of: (MAC Address belongs to Nest Labs Inc., MAC Address belongs to Google, Inc.), Host IP is a gateway in daemon's routing tables, or ends in .1 or .254., Endpoint response body from <ip>:80/ contains \"Nest Wifi\")",
     "logo_needs_white_background": false,

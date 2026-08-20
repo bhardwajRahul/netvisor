@@ -35,6 +35,7 @@ use crate::{
         hosts::r#impl::{
             api::{DiscoveryHostRequest, HostResponse},
             base::{Host, HostBase},
+            name::{HostName, HostNameSource},
             virtualization::HostVirtualization,
         },
         interfaces::r#impl::base::{Interface, InterfaceDataComplete},
@@ -299,19 +300,27 @@ impl HostData {
     }
 
     /// Set hostname from SNMP sysName as a fallback if DNS didn't provide one.
-    /// Also updates `host.base.name` when it was set to the IP address as a fallback.
+    ///
+    /// The name follows the same ladder as everything else: a hostname outranks an IP or a
+    /// detected service, and loses to a name a controller or a person supplied.
     pub fn with_hostname_fallback(&mut self, hostname: String) -> &mut Self {
         if self.host.base.hostname.is_none() {
-            // Check if host.name was set to IP as fallback — if so, override with hostname
-            let ip_str = self
-                .ip_addresses
-                .first()
-                .map(|i| i.base.ip_address.to_string());
-            if ip_str.as_deref() == Some(&self.host.base.name) {
-                self.host.base.name = hostname.clone();
+            if let Some(candidate) = HostName::from_hostname(hostname.clone()) {
+                self.host.base.apply_name(candidate);
             }
             self.host.base.hostname = Some(hostname);
         }
+        self
+    }
+
+    /// Apply a name an integration learned for the host being scanned.
+    ///
+    /// Integrations reach this through [`ControllerIdentity::enrich`]; it is here rather than
+    /// inline in each integration so the precedence question is answered in one place.
+    ///
+    /// [`ControllerIdentity::enrich`]: crate::daemon::discovery::integration::controller::ControllerIdentity::enrich
+    pub fn apply_name(&mut self, candidate: HostName) -> &mut Self {
+        self.host.base.apply_name(candidate);
         self
     }
 }
@@ -721,7 +730,7 @@ impl DiscoveryOps {
 
     /// Record LLDP neighbours whose local port could not be matched to an interface.
     pub async fn record_unresolved_lldp_ports(&self, record: warnings::UnresolvedLldpPorts) {
-        if record.unresolved == 0 {
+        if record.unresolved == 0 && record.dropped == 0 {
             return;
         }
         if let Ok(session) = self.get_session().await
@@ -1161,6 +1170,7 @@ impl DiscoveryOps {
 
         let mut host = Host::new(HostBase {
             name: "Unknown Device".to_string(),
+            name_source: HostNameSource::default(),
             hostname: hostname.clone(),
             tags: Vec::new(),
             network_id,
@@ -1193,19 +1203,19 @@ impl DiscoveryOps {
             .find(|s| !ServiceDefinitionExt::is_generic(&s.base.service_definition))
             .map(|s| s.base.service_definition.name().to_string());
 
-        if let Some(hostname) = hostname {
-            host.base.name = hostname;
-        } else if host_naming_fallback == HostNamingFallback::BestService
-            && let Some(best_service_name) = best_service_name
-        {
-            host.base.name = best_service_name
-        } else if host_naming_fallback == HostNamingFallback::Ip {
-            host.base.name = ip_address.base.ip_address.to_string()
-        } else if let Some(best_service_name) = best_service_name {
-            host.base.name = best_service_name
-        } else {
-            host.base.name = ip_address.base.ip_address.to_string()
-        }
+        // Rungs the scan itself can reach. `host_naming_fallback` decides which of the two
+        // bottom rungs the user prefers when there is no hostname; an integration that knows a
+        // human-assigned name outranks all of them and applies later, during `execute()`.
+        let ip_name = HostName::from_ip(ip_address.base.ip_address);
+        let candidate = match (hostname, best_service_name, host_naming_fallback) {
+            (Some(hostname), _, _) => HostName::from_hostname(hostname).unwrap_or(ip_name),
+            (None, _, HostNamingFallback::Ip) => ip_name,
+            (None, Some(service), HostNamingFallback::BestService) => {
+                HostName::from_service(service).unwrap_or(ip_name)
+            }
+            (None, None, HostNamingFallback::BestService) => ip_name,
+        };
+        host.base.apply_name(candidate);
 
         tracing::info!(
             ip = %ip_address.base.ip_address,

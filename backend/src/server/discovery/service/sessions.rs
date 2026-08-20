@@ -240,6 +240,61 @@ impl DiscoveryService {
         }
     }
 
+    /// Add lines to the warning list of the historical row recording a finished session.
+    ///
+    /// Post-scan work that a daemon cannot do — neighbour resolution above all — necessarily runs
+    /// after the historical row is written, because it is driven by the completion event that row
+    /// records. Left in server logs, its findings are invisible to a self-hosted operator, which is
+    /// what made a sparse Physical Topology take three rounds of email to narrow. Appending them
+    /// here puts them in the one place scan results are already read: the warning list on the
+    /// discovery's history entry.
+    ///
+    /// Silent when the row is gone (retention pruned it, or the session failed before one was
+    /// written) — a missing scan record is not worth failing resolution over.
+    pub async fn append_historical_warnings(
+        &self,
+        session_id: Uuid,
+        lines: Vec<String>,
+    ) -> Result<()> {
+        if lines.is_empty() {
+            return Ok(());
+        }
+
+        let filter = StorableFilter::<Discovery>::new_for_historical_session(session_id);
+        let Some(mut discovery) = self.discovery_storage.get_one(filter).await? else {
+            tracing::debug!(
+                session_id = %session_id,
+                "No historical discovery row to carry the post-scan warnings"
+            );
+            return Ok(());
+        };
+
+        let RunType::Historical { ref mut results } = discovery.base.run_type else {
+            return Ok(());
+        };
+        results.warnings.extend(lines);
+
+        let updated = self.discovery_storage.update(&mut discovery).await?;
+
+        // The Discovery modal renders the warning list from a fetched row, so without an event an
+        // operator watching the scan it belongs to never sees the additions.
+        if let Some(scope) = EntityScope::from_ids(
+            updated.id(),
+            updated.clone().into(),
+            self.get_network_id(&updated),
+            self.get_organization_id(&updated),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Updated, AuthenticatedEntity::System)
+                        .with_flags(EntityEventFlags::default()),
+                )
+                .await?;
+        }
+
+        Ok(())
+    }
+
     pub async fn pull_cancellation_for_daemon(&self, daemon_id: &Uuid) -> (bool, Uuid) {
         let mut daemon_cancellation_ids = self.daemon_pull_cancellations.write().await;
         daemon_cancellation_ids

@@ -315,9 +315,20 @@ export class LayoutGraph {
 		return out;
 	}
 
-	/** Get container size (respects collapsed state) */
+	/** Get container size (respects collapsed state), or undefined if it has none yet.
+	 *
+	 * `LayoutContainer.expandedSize` starts at `{0, 0}` and is only filled in once ELK has sized
+	 * the container, so an expanded container that has not been through a layout returns a
+	 * real-looking zero. Callers treat the result as a size — `build-flow-nodes` puts it straight
+	 * on the node — and a 0×0 container renders as nothing with its contents clipped out of it,
+	 * which is indistinguishable from a blank canvas. `undefined` is the honest answer and the one
+	 * every caller already handles: it falls back to a measured hint or leaves the node unsized so
+	 * the DOM measures it for real.
+	 */
 	getContainerSize(containerId: string): { width: number; height: number } | undefined {
-		return this.containers.get(containerId)?.size;
+		const size = this.containers.get(containerId)?.size;
+		if (!size || size.width <= 0 || size.height <= 0) return undefined;
+		return size;
 	}
 
 	/** Get container expanded size (ignores collapsed state) */

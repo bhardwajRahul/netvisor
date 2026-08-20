@@ -48,7 +48,8 @@
     "PodmanProxy",
     "PodmanSocket",
     "UnifiApiKey",
-    "UnifiLocalAdmin"
+    "UnifiLocalAdmin",
+    "InstantOnAccount"
   ],
   "DaemonMode": [
     "ServerPoll",
