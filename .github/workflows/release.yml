@@ -356,16 +356,18 @@ jobs:
   # ============================================
   build-server-binaries:
     name: Build Server Binaries
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     needs: [build-ui, migration-branch-test]
     permissions:
       contents: read
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-musl
+          - runner: ubuntu-latest
+            platform: linux/amd64
             binary: scanopy-server-linux-amd64
-          - target: aarch64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
             binary: scanopy-server-linux-arm64
 
     steps:
@@ -376,20 +378,6 @@ jobs:
           git fetch origin ${{ github.event.release.target_commitish }}
           git reset --hard origin/${{ github.event.release.target_commitish }}
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.90.0
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: backend
-          key: ${{ matrix.target }}-server
-
-      - name: Install cross
-        uses: taiki-e/install-action@cross
-
       # rust-embed resolves `#[folder = "../ui/build"]` at compile time, so the
       # build output has to be in place before cargo runs.
       - name: Download UI build
@@ -398,14 +386,27 @@ jobs:
           name: ui-build
           path: ui/build/
 
-      - name: Build server
-        working-directory: backend
-        run: cross build --release --bin server --features embed-ui --target ${{ matrix.target }}
+      # Built in the official Alpine Rust image rather than with `cross`, for
+      # two reasons. `cross` mounts the cargo workspace root — `backend/` — so
+      # `../ui/build` is not visible inside its container and the rust-embed
+      # derive fails. And on Alpine the host target already is musl, so this
+      # needs no cross-linking: each runner builds its own architecture
+      # natively (matching the runner pair build-docker-server uses) and the
+      # result is a statically linked binary.
+      - name: Build server (static musl)
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "$PWD":/src -w /src/backend \
+            rust:1.90-alpine \
+            sh -c 'apk add --no-cache musl-dev build-base perl && cargo build --release --bin server --features embed-ui'
 
       - name: Prepare binary
         run: |
-          cp backend/target/${{ matrix.target }}/release/server ${{ matrix.binary }}
+          # The container writes target/ as root.
+          sudo cp backend/target/release/server ${{ matrix.binary }}
+          sudo chown "$USER" ${{ matrix.binary }}
           chmod +x ${{ matrix.binary }}
+          file ${{ matrix.binary }}
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
