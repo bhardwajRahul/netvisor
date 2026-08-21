@@ -17,59 +17,142 @@
 //! semantics.
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Context;
+use rust_embed::Embed;
 use sha2::{Digest, Sha384};
 use sqlx::PgPool;
 
-/// Apply pending migrations from `migrations_dir` to the database `pool`.
+/// The `migrations/` directory, compiled into the binary.
 ///
-/// For each migration file (sorted by `<version>` prefix):
-/// - If the file starts with `-- no-transaction`, split on `;` and send
-///   each statement as its own `pool.execute()` call. Guards against
-///   `$$`-quoted blocks (would break naive splitting); migrations in this
-///   path must be plain DDL.
-/// - Otherwise, wrap the whole file in a transaction and execute as one.
-///
-/// Records each successfully applied migration in `_sqlx_migrations`
-/// using sqlx's bookkeeping schema, so re-applies are idempotent and
-/// state stays compatible with sqlx-cli.
-pub async fn apply_migrations(pool: &PgPool, migrations_dir: &Path) -> anyhow::Result<()> {
-    ensure_migrations_table(pool).await?;
-    let applied = applied_versions(pool).await?;
+/// Reading migrations from `./migrations` at runtime made a correct start
+/// depend on where the process was launched from — hence `WorkingDirectory=`
+/// in the systemd unit and the `test -d /app/migrations` guard in the
+/// Dockerfile. Embedding removes that: a binary carries the migrations it was
+/// built with, and a self-contained server binary needs nothing beside it.
+#[derive(Embed)]
+#[folder = "migrations/"]
+struct EmbeddedMigrations;
 
-    let mut entries: Vec<(i64, String, PathBuf)> = std::fs::read_dir(migrations_dir)
+/// One migration ready to apply, from an embedded asset or a file on disk.
+struct Migration {
+    version: i64,
+    description: String,
+    /// Human-readable origin (asset name or path), for error context only.
+    source: String,
+    sql: String,
+}
+
+/// Apply pending migrations compiled into this binary.
+///
+/// This is the path the server takes at startup. See [`apply`] for the
+/// per-migration semantics, which are identical whatever the source.
+pub async fn apply_embedded_migrations(pool: &PgPool) -> anyhow::Result<()> {
+    let mut migrations = Vec::new();
+
+    for name in EmbeddedMigrations::iter() {
+        let Some((version, description)) = parse_migration_name(&name) else {
+            continue;
+        };
+        let file = EmbeddedMigrations::get(&name)
+            .with_context(|| format!("reading embedded migration {name}"))?;
+        let sql = String::from_utf8(file.data.into_owned())
+            .with_context(|| format!("embedded migration {name} is not valid UTF-8"))?;
+
+        migrations.push(Migration {
+            version,
+            description,
+            source: name.to_string(),
+            sql,
+        });
+    }
+
+    apply(pool, migrations).await
+}
+
+/// Apply pending migrations from `migrations_dir` on disk.
+///
+/// Kept for tooling that must run migrations the binary wasn't built with —
+/// `bin/migrate.rs --migrations-dir` and CI checks against a candidate
+/// migration. Production startup uses [`apply_embedded_migrations`].
+pub async fn apply_migrations(pool: &PgPool, migrations_dir: &Path) -> anyhow::Result<()> {
+    let mut migrations = Vec::new();
+
+    for entry in std::fs::read_dir(migrations_dir)
         .with_context(|| format!("reading migrations dir {}", migrations_dir.display()))?
         .filter_map(|entry| entry.ok())
-        .filter_map(|entry| parse_migration_file(&entry.path()))
-        .collect();
-    entries.sort_by_key(|(version, _, _)| *version);
-
-    for (version, description, path) in entries {
-        if applied.contains(&version) {
+    {
+        let path = entry.path();
+        let Some((version, description)) = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(parse_migration_name)
+        else {
             continue;
-        }
-
+        };
         let sql = std::fs::read_to_string(&path)
             .with_context(|| format!("reading migration {}", path.display()))?;
 
-        if sql.starts_with("-- no-transaction") {
-            apply_no_tx_migration(pool, &path, &sql).await?;
-        } else {
-            apply_tx_migration(pool, &sql)
-                .await
-                .with_context(|| format!("applying migration {}", path.display()))?;
+        migrations.push(Migration {
+            version,
+            description,
+            source: path.display().to_string(),
+            sql,
+        });
+    }
+
+    apply(pool, migrations).await
+}
+
+/// Apply whichever of `migrations` the database hasn't recorded yet, in
+/// `<version>` order.
+///
+/// For each migration:
+/// - If it starts with `-- no-transaction`, split on `;` and send each
+///   statement as its own `pool.execute()` call. Guards against `$$`-quoted
+///   blocks (would break naive splitting); migrations in this path must be
+///   plain DDL.
+/// - Otherwise, wrap the whole file in a transaction and execute as one.
+///
+/// Records each successfully applied migration in `_sqlx_migrations` using
+/// sqlx's bookkeeping schema, so re-applies are idempotent and state stays
+/// compatible with sqlx-cli. The recorded checksum is a digest of the SQL
+/// itself, so a database migrated from disk and one migrated from the
+/// embedded copy of the same file agree.
+async fn apply(pool: &PgPool, mut migrations: Vec<Migration>) -> anyhow::Result<()> {
+    ensure_migrations_table(pool).await?;
+    let applied = applied_versions(pool).await?;
+
+    migrations.sort_by_key(|migration| migration.version);
+
+    for migration in migrations {
+        if applied.contains(&migration.version) {
+            continue;
         }
 
-        record_migration(pool, version, &description, &sql).await?;
+        if migration.sql.starts_with("-- no-transaction") {
+            apply_no_tx_migration(pool, &migration).await?;
+        } else {
+            apply_tx_migration(pool, &migration.sql)
+                .await
+                .with_context(|| format!("applying migration {}", migration.source))?;
+        }
+
+        record_migration(
+            pool,
+            migration.version,
+            &migration.description,
+            &migration.sql,
+        )
+        .await?;
     }
 
     Ok(())
 }
 
-async fn apply_no_tx_migration(pool: &PgPool, path: &Path, sql: &str) -> anyhow::Result<()> {
-    for stmt in split_statements(sql) {
+async fn apply_no_tx_migration(pool: &PgPool, migration: &Migration) -> anyhow::Result<()> {
+    for stmt in split_statements(&migration.sql) {
         // `raw_sql` uses PG's simple_query protocol, bypassing the prepared-
         // statement path that `sqlx::query()` uses. Required because
         // `CREATE INDEX CONCURRENTLY` and similar can't be prepared, and
@@ -78,7 +161,7 @@ async fn apply_no_tx_migration(pool: &PgPool, path: &Path, sql: &str) -> anyhow:
         sqlx::raw_sql(&stmt)
             .execute(pool)
             .await
-            .with_context(|| format!("executing statement from {}", path.display()))?;
+            .with_context(|| format!("executing statement from {}", migration.source))?;
     }
     Ok(())
 }
@@ -190,15 +273,13 @@ fn dollar_tag_at(chars: &[char], start: usize) -> Option<String> {
     Some(chars[start..=end].iter().collect())
 }
 
-fn parse_migration_file(path: &Path) -> Option<(i64, String, PathBuf)> {
-    let file_name = path.file_name()?.to_str()?;
-    if !file_name.ends_with(".sql") {
-        return None;
-    }
-    let stem = file_name.trim_end_matches(".sql");
+/// Split a `<version>_<description>.sql` file name into its parts. `None` for
+/// anything else in the directory (a stray `README.md`, an editor swap file).
+fn parse_migration_name(file_name: &str) -> Option<(i64, String)> {
+    let stem = file_name.strip_suffix(".sql")?;
     let (version_str, description) = stem.split_once('_')?;
     let version = version_str.parse::<i64>().ok()?;
-    Some((version, description.to_string(), path.to_path_buf()))
+    Some((version, description.to_string()))
 }
 
 async fn ensure_migrations_table(pool: &PgPool) -> anyhow::Result<()> {
@@ -307,17 +388,42 @@ mod tests {
     }
 
     #[test]
-    fn parse_migration_file_extracts_version_and_description() {
-        let p = Path::new("/tmp/migrations/20260502000004_scd2_partial_unique_indexes.sql");
-        let parsed = parse_migration_file(p).expect("should parse");
+    fn parse_migration_name_extracts_version_and_description() {
+        let parsed = parse_migration_name("20260502000004_scd2_partial_unique_indexes.sql")
+            .expect("should parse");
         assert_eq!(parsed.0, 20260502000004);
         assert_eq!(parsed.1, "scd2_partial_unique_indexes");
     }
 
     #[test]
-    fn parse_migration_file_rejects_non_sql() {
-        let p = Path::new("/tmp/migrations/README.md");
-        assert!(parse_migration_file(p).is_none());
+    fn parse_migration_name_rejects_non_sql() {
+        assert!(parse_migration_name("README.md").is_none());
+    }
+
+    #[test]
+    fn embedded_migrations_match_the_directory() {
+        // The binary must ship exactly what the repo holds. A wrong `#[folder]`
+        // still compiles — it just embeds nothing — and the server would then
+        // start against an unmigrated database. Likewise a migration the embed
+        // misses would apply from disk in CI and silently not apply in
+        // production.
+        let mut embedded: Vec<String> = EmbeddedMigrations::iter()
+            .filter(|name| parse_migration_name(name).is_some())
+            .map(|name| name.to_string())
+            .collect();
+        embedded.sort();
+
+        // `cargo test` runs with the crate root as the working directory.
+        let mut on_disk: Vec<String> = std::fs::read_dir("migrations")
+            .expect("migrations directory should exist at the crate root")
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| entry.file_name().to_str().map(str::to_string))
+            .filter(|name| parse_migration_name(name).is_some())
+            .collect();
+        on_disk.sort();
+
+        assert!(!embedded.is_empty(), "no migrations were embedded");
+        assert_eq!(embedded, on_disk);
     }
 
     #[test]

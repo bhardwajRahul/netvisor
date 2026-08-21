@@ -10,7 +10,9 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use scanopy::server::shared::storage::migration_runner::apply_migrations;
+use scanopy::server::shared::storage::migration_runner::{
+    apply_embedded_migrations, apply_migrations,
+};
 use sqlx::postgres::PgPoolOptions;
 
 #[derive(Parser, Debug)]
@@ -20,9 +22,12 @@ struct Args {
     #[arg(long)]
     database_url: String,
 
-    /// Directory containing the migration SQL files.
-    #[arg(long, default_value = "./migrations")]
-    migrations_dir: PathBuf,
+    /// Directory containing the migration SQL files. Defaults to the
+    /// migrations compiled into this binary, which is what the server
+    /// applies at startup. Pass a directory to run migrations this binary
+    /// wasn't built with.
+    #[arg(long)]
+    migrations_dir: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -34,7 +39,10 @@ async fn main() -> anyhow::Result<()> {
         .connect(&args.database_url)
         .await?;
 
-    apply_migrations(&pool, &args.migrations_dir).await?;
+    match &args.migrations_dir {
+        Some(dir) => apply_migrations(&pool, dir).await?,
+        None => apply_embedded_migrations(&pool).await?,
+    }
 
     pool.close().await;
     Ok(())
