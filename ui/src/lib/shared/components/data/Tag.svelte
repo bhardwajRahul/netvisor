@@ -46,7 +46,11 @@
 		faded ? 'opacity-50 grayscale hover:opacity-75 hover:grayscale-[50%] dark:opacity-40' : ''
 	);
 
-	let isUnknown = $derived(!label || !color);
+	// An icon carries the meaning on its own, so a tag with one is not unknown for lacking text.
+	// Without either there is nothing to show, which is what `common_unknown` is for.
+	let isUnknown = $derived((!label && !icon) || !color);
+	// Null collapses the text element entirely rather than rendering an empty span.
+	let displayLabel = $derived(label ?? (icon ? null : common_unknown()));
 	let colorHelper = $derived(color ? createColorHelper(color) : null);
 	let bgColor = $derived(colorHelper?.bg ?? '');
 	let textColor = $derived(colorHelper?.text ?? '');
@@ -56,9 +60,9 @@
 
 {#snippet content()}
 	<span
-		class="inline-flex items-center gap-1 {pill
-			? 'rounded-full'
-			: 'rounded'} px-2 py-0.5 text-xs font-medium
+		class="inline-flex items-center gap-1 {pill ? 'rounded-full' : 'rounded'} {displayLabel
+			? 'px-2'
+			: 'px-1.5'} py-0.5 text-xs font-medium
 		{isUnknown ? unknownClasses : disabled ? 'text-tertiary bg-gray-700/30' : `${bgColor} ${textColor}`}
 		{isShiny ? 'tag-shiny' : ''}"
 	>
@@ -67,7 +71,9 @@
 			<Icon size={16} class="{textColor} flex-shrink-0" />
 		{/if}
 
-		<span class="truncate">{label ?? common_unknown()}</span>
+		{#if displayLabel}
+			<span class="truncate">{displayLabel}</span>
+		{/if}
 		{#if badge.length > 0}
 			<span class="flex-shrink-0 {textColor}">{badge}</span>
 		{/if}

@@ -25,7 +25,11 @@ export const DAEMON_STATUS_DOCS_URL = 'https://scanopy.net/docs/reference/daemon
  * Unsupported ranks above Unreachable: a rejected daemon can't connect, so its
  * unreachability is a symptom — the version is the actionable cause.
  */
-export function getDaemonStatusTag(daemon: Daemon): TagProps {
+/**
+ * The `label` is guaranteed, unlike the optional one on `TagProps`: callers use it as the daemon's
+ * searchable, groupable status value and as the chip's id, not only as display text.
+ */
+export function getDaemonStatusTag(daemon: Daemon): TagProps & { label: string } {
 	const docsTag = { href: DAEMON_STATUS_DOCS_URL, icon: CircleHelp };
 
 	if (daemon.version_status.status === 'Unsupported') {

@@ -20,7 +20,11 @@ export type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number];
 export const MAX_ITEMS_IN_CELL = 3;
 
 export interface TagProps {
-	label: string;
+	/**
+	 * Omit to render the tag as its icon alone — the text element collapses rather than rendering
+	 * empty. A tag with neither label nor icon has nothing to show and reads as unknown.
+	 */
+	label?: string;
 	textColor?: string;
 	bgColor?: string;
 	color?: Color;
@@ -64,9 +68,19 @@ export function entityRef(
 	return { entityType, entityId, data, context };
 }
 
+/**
+ * A `CardFieldItem` whose label is guaranteed.
+ *
+ * The shape to return when the label is not only display text but the field's searchable,
+ * groupable value — several columns derive `getValue` from `getItems(...).map((i) => i.label)`,
+ * and that is only sound if every item has one.
+ */
+export type LabelledCardFieldItem = CardFieldItem & { label: string };
+
 export interface CardFieldItem {
 	id: string;
-	label: string;
+	/** Omit to render the item as its icon alone — see `TagProps.label`. */
+	label?: string;
 	icon?: IconComponent; // Svelte component instead of HTML
 	iconColor?: string;
 	bgColor?: string;

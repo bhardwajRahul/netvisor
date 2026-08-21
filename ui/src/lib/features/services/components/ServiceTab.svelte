@@ -8,7 +8,7 @@
 		defineFields,
 		entityRef,
 		type CardAction,
-		type CardFieldItem
+		type LabelledCardFieldItem
 	} from '$lib/shared/components/data/types';
 	import { usePortsQuery } from '$lib/features/ports/queries';
 	import { useIPAddressesQuery } from '$lib/features/ip-addresses/queries';
@@ -202,7 +202,7 @@
 	 * returns) two distinct bindings would otherwise collapse to the same
 	 * 'unbound' literal and trip Svelte's each_key_duplicate.
 	 */
-	function portBindingItems(service: Service): CardFieldItem[] {
+	function portBindingItems(service: Service): LabelledCardFieldItem[] {
 		const grouped = new SvelteMap<string | null, { iface: IPAddress | null; ports: Port[] }>();
 
 		for (const binding of service.bindings.filter((b) => b.type === 'Port')) {
@@ -232,7 +232,7 @@
 	}
 
 	/** Interfaces a service is bound to directly, rather than through a port. */
-	function ipBindingItems(service: Service): CardFieldItem[] {
+	function ipBindingItems(service: Service): LabelledCardFieldItem[] {
 		return service.bindings
 			.filter((b) => b.type === 'IPAddress')
 			.map((b) => b.ip_address_id)

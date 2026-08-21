@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { networkItems } from '$lib/features/networks/columns';
-	import type { CardFieldItem } from '$lib/shared/components/data/types';
+	import type { LabelledCardFieldItem } from '$lib/shared/components/data/types';
 	import { Edit, UserX, Trash2 } from 'lucide-svelte';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
 	import type { CardAction } from '$lib/shared/components/data/types';
@@ -169,7 +169,7 @@
 	 * being assigned all of them — so it reads as one "All" chip rather than a
 	 * list that would go stale the moment a network is added.
 	 */
-	function userNetworkItems(item: UserOrInvite): CardFieldItem[] {
+	function userNetworkItems(item: UserOrInvite): LabelledCardFieldItem[] {
 		if (!isUser(item)) return [];
 		const user = item.data;
 
