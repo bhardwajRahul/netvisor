@@ -1080,19 +1080,21 @@ fn count_dropped_neighbours(
 /// Which column matched, for the log line that has to explain a device nothing matched on.
 ///
 /// Ordered as the tiers are tried: an identifier that names the interface outright beats one that
-/// has to be matched by shape, and both beat free text.
+/// has to be matched by shape, and both beat free text. Both name tiers come before both shape
+/// tiers, whichever column they read — a whole name is more than the device had to tell us, and a
+/// fragment that happens to match is less, so the column they arrive in does not outrank that.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LocalPortEvidence {
-    /// `lldpLocPortIdSubtype = 2` — the id is the ifIndex.
+    /// `lldpLocPortIdSubtype = 2` — the id is the ifIndex, and the device has one by that number.
     InterfaceIndex,
     /// `lldpLocPortIdSubtype = 3` — the id is a MAC held by exactly one interface.
     UniqueMac,
-    /// `lldpLocPortId` equals an ifName or ifDescr.
+    /// `lldpLocPortId` equals an ifName, ifDescr or ifAlias.
     PortIdName,
-    /// `lldpLocPortId` is the tail of an ifName or ifDescr, at a slot boundary.
-    PortIdSuffix,
-    /// `lldpLocPortDesc` equals an ifName or ifDescr.
+    /// `lldpLocPortDesc` equals an ifName, ifDescr or ifAlias.
     PortDescName,
+    /// `lldpLocPortId` is the tail of one interface's ifName or ifDescr, at a slot boundary.
+    PortIdSuffix,
     /// One word of `lldpLocPortDesc` equals an ifName or ifDescr, and only one interface's.
     PortDescWord,
 }
@@ -1142,10 +1144,16 @@ fn resolve_lldp_local_port(
 ) -> Option<(i32, LocalPortEvidence)> {
     let entry = loc_ports.get(&local_port_num)?;
 
-    // interfaceIndex(2): the port id is literally the ifIndex.
+    // interfaceIndex(2): the port id is literally the ifIndex — but only if the device has an
+    // interface by that number. Returning the advertised integer unchecked put neighbours on a
+    // port that does not exist, where `count_dropped_neighbours` discards them whole and the
+    // switch reads as having no LLDP at all; a Dell OS10 numbers its LLDP ports past 568 against
+    // 23 interfaces, so an unchecked answer here is not a near miss (GH #685). Falling through
+    // gives the name and description tiers, which know the OS10 port names, their turn.
     if entry.port_id_subtype == Some(2)
         && let Some(id) = entry.port_id.as_deref()
         && let Ok(idx) = id.trim().parse::<i32>()
+        && if_entries.iter().any(|e| e.if_index == idx)
     {
         return Some((idx, LocalPortEvidence::InterfaceIndex));
     }
@@ -1164,10 +1172,17 @@ fn resolve_lldp_local_port(
         if text.is_empty() {
             return None;
         }
-        // Exact match against ifName / ifDescr (VOSS: "1/1" == ifName "1/1").
+        // Exact match against ifName / ifDescr / ifAlias (VOSS: "1/1" == ifName "1/1"). ifAlias is
+        // included to match the server's ladder in `snmp::resolution::resolver`, which added it
+        // for Westermo WeOS — the daemon holding a narrower rule than the server meant the two
+        // could place the same neighbour on different ports.
         if_entries
             .iter()
-            .find(|e| e.if_name.as_deref() == Some(text) || e.if_descr.as_deref() == Some(text))
+            .find(|e| {
+                e.if_name.as_deref() == Some(text)
+                    || e.if_descr.as_deref() == Some(text)
+                    || e.if_alias.as_deref() == Some(text)
+            })
             .map(|e| (e.if_index, evidence))
     };
 
@@ -1177,9 +1192,28 @@ fn resolve_lldp_local_port(
         return Some(hit);
     }
 
+    // An exact name in the description outranks a partial match on the id. Both are the same
+    // question — which interface is this? — answered with different amounts of evidence, and the
+    // suffix tier answers it from a fragment. A Dell OS10 breakout port advertising the bare id
+    // "4" alongside the description "mgmt1/1/1" ends at the boundary in `ethernet1/1/4` and
+    // nowhere else, so the fragment is unambiguous and wrong: it names a port on the front panel
+    // while the device is telling us, in full, which port it means (GH #685).
+    let desc = entry.port_desc.as_deref();
+    if let Some(hit) = desc.and_then(|d| named(d, LocalPortEvidence::PortDescName)) {
+        return Some(hit);
+    }
+
     // Suffix match for vendors whose lldpLocPortId drops the slot prefix (EXOS: id
     // "4" vs ifName "1:4"). Anchor on a ':' or '/' boundary so "4" does not match
     // "14".
+    //
+    // Only when the boundary names one interface. The anchor characters mean different things to
+    // different vendors — on EXOS ':' separates slot from port, on Dell OS10 it separates a port
+    // from its breakout lane — so on a switch carrying both `ethernet1/1/1` and
+    // `ethernet1/1/14:1` the id "1" ends at a boundary in three places at once, and taking the
+    // first left a neighbour bound to a lane of an unrelated port, or to `mgmt1/1/1`, with
+    // `PortIdSuffix` recorded as though it were evidence. Same rule as the description-word tier
+    // below: an id matching two interfaces is evidence of neither.
     if let Some(id) = entry.port_id.as_deref() {
         let id = id.trim();
         if !id.is_empty() {
@@ -1188,19 +1222,21 @@ fn resolve_lldp_local_port(
             let ends_at_boundary = |name: Option<&str>| {
                 name.is_some_and(|n| n.ends_with(&colon) || n.ends_with(&slash))
             };
-            for e in if_entries {
-                if ends_at_boundary(e.if_name.as_deref()) || ends_at_boundary(e.if_descr.as_deref())
-                {
-                    return Some((e.if_index, LocalPortEvidence::PortIdSuffix));
-                }
+            let matched: Vec<i32> = if_entries
+                .iter()
+                .filter(|e| {
+                    ends_at_boundary(e.if_name.as_deref())
+                        || ends_at_boundary(e.if_descr.as_deref())
+                })
+                .map(|e| e.if_index)
+                .collect();
+            if let [only] = matched[..] {
+                return Some((only, LocalPortEvidence::PortIdSuffix));
             }
         }
     }
 
-    let desc = entry.port_desc.as_deref()?;
-    if let Some(hit) = named(desc, LocalPortEvidence::PortDescName) {
-        return Some(hit);
-    }
+    let desc = desc?;
 
     // The description is prose, and the interface name may be one word of it — Westermo sends
     // "100-T eth10" for the port whose ifName is "eth10". Take a word only when it identifies a
@@ -1863,6 +1899,136 @@ mod tests {
         assert_eq!(
             outcome.dropped, 1,
             "port 11 is no interface's ifIndex, so the neighbour reaches nothing at all"
+        );
+    }
+
+    // --- Dell OS10 breakout ports (GH #685) ---
+
+    /// A Dell PowerSwitch S4112T-ON as the reporter's switch is configured: port 14 broken out
+    /// into three lanes, so the interface names carry both a `/` and a `:`, and `mgmt1/1/1`
+    /// repeats the `/1` the lanes end on. Breakout lanes come before the management port because
+    /// OS10 numbers its ethernet interfaces below it.
+    fn dell_os10_if_entries() -> Vec<IfTableEntry> {
+        let mut entries = vec![
+            if_entry(15, "ethernet1/1/14:1"),
+            if_entry(16, "ethernet1/1/14:2"),
+            if_entry(17, "ethernet1/1/14:3"),
+        ];
+        entries.extend((1..=13).map(|n| if_entry(n + 1, &format!("ethernet1/1/{n}"))));
+        entries.push(if_entry(1, "mgmt1/1/1"));
+        entries
+    }
+
+    fn loc_port_named(subtype: u8, id: &str, desc: &str) -> LldpLocalPort {
+        LldpLocalPort {
+            port_desc: Some(desc.to_string()),
+            ..loc_port(subtype, id)
+        }
+    }
+
+    /// The mapping the reporter published, end to end: local ports 4, 568, 569 and 570 reach
+    /// `mgmt1/1/1` and the three lanes of port 14, and nothing else. `lldpLocPortNum` is a
+    /// separate namespace here — it runs past 568 against 23 interfaces — so every one of these
+    /// has to come from the port table rather than from the number itself.
+    #[test]
+    fn dell_os10_breakout_neighbours_reach_the_ports_the_switch_names() {
+        use super::remap_lldp_local_ports;
+        let if_entries = dell_os10_if_entries();
+        let mut loc_ports = HashMap::new();
+        loc_ports.insert(4, loc_port(5, "mgmt1/1/1"));
+        loc_ports.insert(568, loc_port(5, "ethernet1/1/14:1"));
+        loc_ports.insert(569, loc_port(5, "ethernet1/1/14:2"));
+        loc_ports.insert(570, loc_port(5, "ethernet1/1/14:3"));
+
+        let mut neighbors = vec![
+            lldp_neighbor(570, "TAMMIERENEW"),
+            lldp_neighbor(4, "unnamed-host"),
+            lldp_neighbor(568, "EVILCORP"),
+            lldp_neighbor(569, "VIRTUALPC"),
+        ];
+        let outcome = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+
+        assert_eq!(outcome, super::LocalPortOutcome::default());
+        let placed: Vec<(&str, i32)> = neighbors
+            .iter()
+            .map(|n| (n.remote_sys_name.as_deref().unwrap(), n.local_port_index))
+            .collect();
+        assert_eq!(
+            placed,
+            vec![
+                ("TAMMIERENEW", 17),
+                ("unnamed-host", 1),
+                ("EVILCORP", 15),
+                ("VIRTUALPC", 16),
+            ]
+        );
+    }
+
+    /// The suffix tier anchors on `:` and `/`, and on this switch a bare port id ends at one in
+    /// three places at once — `mgmt1/1/1`, `ethernet1/1/1` and the first lane of port 14 all
+    /// qualify for the id "1". Taking the first match placed the neighbour on whichever interface
+    /// the ifTable happened to list first and recorded `PortIdSuffix` as though that were
+    /// evidence. An id matching three interfaces is evidence of none of them, so the walk falls
+    /// through to the description, which names one port and only one.
+    #[test]
+    fn a_port_id_ending_at_three_boundaries_defers_to_the_description() {
+        use super::remap_lldp_local_ports;
+        let if_entries = dell_os10_if_entries();
+        let mut loc_ports = HashMap::new();
+        loc_ports.insert(4, loc_port_named(5, "1", "mgmt1/1/1"));
+
+        let mut neighbors = vec![lldp_neighbor(4, "peer")];
+        let outcome = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+
+        assert_eq!(outcome, super::LocalPortOutcome::default());
+        assert_eq!(
+            neighbors[0].local_port_index, 1,
+            "the description names mgmt1/1/1; the ambiguous suffix must not outrank it"
+        );
+    }
+
+    /// An unambiguous suffix match can still be the wrong port. The management port advertising
+    /// the bare id "4" ends at a boundary in `ethernet1/1/4` and nowhere else, so uniqueness does
+    /// not save it — but the same row's description says `mgmt1/1/1` in full. A fragment that
+    /// matches one interface is still weaker evidence than a name that matches one interface, and
+    /// the tiers have to be ordered by how much the device actually told us.
+    #[test]
+    fn an_exact_name_in_the_description_outranks_a_matching_id_fragment() {
+        use super::remap_lldp_local_ports;
+        let if_entries = dell_os10_if_entries();
+        let mut loc_ports = HashMap::new();
+        loc_ports.insert(4, loc_port_named(7, "4", "mgmt1/1/1"));
+
+        let mut neighbors = vec![lldp_neighbor(4, "peer")];
+        let outcome = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+
+        assert_eq!(outcome, super::LocalPortOutcome::default());
+        assert_eq!(
+            neighbors[0].local_port_index, 1,
+            "\"4\" ends at a boundary in ethernet1/1/4, but the device named mgmt1/1/1 outright"
+        );
+    }
+
+    /// `interfaceIndex(2)` says the port id *is* an ifIndex, and the tier used to return whatever
+    /// integer arrived without asking whether the device has an interface by that number. On a
+    /// switch numbering its LLDP ports past 568 against 23 interfaces that is not a near miss:
+    /// the neighbour reaches no interface, `convert_snmp_if_entry` discards it whole, and the
+    /// switch reads as having no LLDP at all. An index naming nothing is not an answer, so the
+    /// later tiers get their turn.
+    #[test]
+    fn an_advertised_index_naming_no_interface_falls_through() {
+        use super::remap_lldp_local_ports;
+        let if_entries = dell_os10_if_entries();
+        let mut loc_ports = HashMap::new();
+        loc_ports.insert(568, loc_port_named(2, "568", "ethernet1/1/14:1"));
+
+        let mut neighbors = vec![lldp_neighbor(568, "EVILCORP")];
+        let outcome = remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+
+        assert_eq!(outcome, super::LocalPortOutcome::default());
+        assert_eq!(
+            neighbors[0].local_port_index, 15,
+            "no interface has ifIndex 568, so the description has to place the neighbour"
         );
     }
 }

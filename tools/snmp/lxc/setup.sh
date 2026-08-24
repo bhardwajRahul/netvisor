@@ -5,7 +5,7 @@ set -euo pipefail
 # SNMP Test Environment — Proxmox VM setup (self-contained)
 #
 # Paste this entire script into a Debian/Ubuntu VM terminal.
-# Creates 14 snmpd instances on secondary IPs, each simulating a
+# Creates 21 snmpd instances on secondary IPs, each simulating a
 # different network device with its own community string.
 #
 # Edit HOSTS/CIDR/IFACE below to match your network.
@@ -15,7 +15,7 @@ set -euo pipefail
 # simulator, not the product under test.
 # ══════════════════════════════════════════════════════════════════════
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245 192.168.7.246 192.168.7.247 192.168.7.248 192.168.7.249)
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245 192.168.7.246 192.168.7.247 192.168.7.248 192.168.7.249 192.168.7.250)
 CIDR="22"
 IFACE="eth0"
 
@@ -44,8 +44,8 @@ IFACE="eth0"
 # `macAddress(3)` and names the interface only in `lldpLocPortDesc`, with local port numbers
 # running backwards against the interfaces — so neither the port id nor arithmetic can place a
 # neighbour, and only the description or a per-port MAC can.
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c)
-SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01 switch-tplink-01 switch-unsorted-01 switch-macport-01 switch-mute-01 switch-stuck-01)
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c)
+SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01 switch-tplink-01 switch-unsorted-01 switch-macport-01 switch-mute-01 switch-stuck-01 switch-dell-01)
 
 # SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
 # AuthPriv with SHA-256 / AES-128 — the broadly-supported pure-Rust default.
@@ -2107,6 +2107,359 @@ cat > "$DATA_DIR/switch-stuck-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.31.1.1.1.1.2 string ether2
 EOF
 
+# switch-dell-01 IF-MIB — a Dell PowerSwitch S4112T-ON running OS10, port 14 broken out.
+#
+# 23 interfaces, as the reporter's switch has, and the reason this device is here is what they are
+# called. OS10 names a breakout lane `ethernet1/1/14:1`, so one interface name carries both of the
+# characters the local-port suffix tier anchors on — and `mgmt1/1/1` ends in the same `/1` those
+# lanes end in. Nothing else in this environment has a name sharing a boundary with three other
+# names on the same device (GH #685).
+#
+# ifIndex is OS10's own numbering, nowhere near the lldpLocPortNum values below: the two
+# namespaces have to be joined through lldpLocPortTable, never by arithmetic or coincidence.
+cat > "$DATA_DIR/switch-dell-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.17301505 integer 17301505
+.1.3.6.1.2.1.2.2.1.1.17301506 integer 17301506
+.1.3.6.1.2.1.2.2.1.1.17301507 integer 17301507
+.1.3.6.1.2.1.2.2.1.1.17301508 integer 17301508
+.1.3.6.1.2.1.2.2.1.1.17301509 integer 17301509
+.1.3.6.1.2.1.2.2.1.1.17301510 integer 17301510
+.1.3.6.1.2.1.2.2.1.1.17301511 integer 17301511
+.1.3.6.1.2.1.2.2.1.1.17301512 integer 17301512
+.1.3.6.1.2.1.2.2.1.1.17301513 integer 17301513
+.1.3.6.1.2.1.2.2.1.1.17301514 integer 17301514
+.1.3.6.1.2.1.2.2.1.1.17301515 integer 17301515
+.1.3.6.1.2.1.2.2.1.1.17301516 integer 17301516
+.1.3.6.1.2.1.2.2.1.1.17301517 integer 17301517
+.1.3.6.1.2.1.2.2.1.1.17301518 integer 17301518
+.1.3.6.1.2.1.2.2.1.1.17301519 integer 17301519
+.1.3.6.1.2.1.2.2.1.1.17301520 integer 17301520
+.1.3.6.1.2.1.2.2.1.1.22020097 integer 22020097
+.1.3.6.1.2.1.2.2.1.1.22020106 integer 22020106
+.1.3.6.1.2.1.2.2.1.1.35127296 integer 35127296
+.1.3.6.1.2.1.2.2.1.1.1107787777 integer 1107787777
+.1.3.6.1.2.1.2.2.1.1.1107787876 integer 1107787876
+.1.3.6.1.2.1.2.2.1.1.1107787976 integer 1107787976
+.1.3.6.1.2.1.2.2.1.2.1 string lo
+.1.3.6.1.2.1.2.2.1.2.17301505 string ethernet1/1/1
+.1.3.6.1.2.1.2.2.1.2.17301506 string ethernet1/1/2
+.1.3.6.1.2.1.2.2.1.2.17301507 string ethernet1/1/3
+.1.3.6.1.2.1.2.2.1.2.17301508 string ethernet1/1/4
+.1.3.6.1.2.1.2.2.1.2.17301509 string ethernet1/1/5
+.1.3.6.1.2.1.2.2.1.2.17301510 string ethernet1/1/6
+.1.3.6.1.2.1.2.2.1.2.17301511 string ethernet1/1/7
+.1.3.6.1.2.1.2.2.1.2.17301512 string ethernet1/1/8
+.1.3.6.1.2.1.2.2.1.2.17301513 string ethernet1/1/9
+.1.3.6.1.2.1.2.2.1.2.17301514 string ethernet1/1/10
+.1.3.6.1.2.1.2.2.1.2.17301515 string ethernet1/1/11
+.1.3.6.1.2.1.2.2.1.2.17301516 string ethernet1/1/12
+.1.3.6.1.2.1.2.2.1.2.17301517 string ethernet1/1/13
+.1.3.6.1.2.1.2.2.1.2.17301518 string ethernet1/1/14:1
+.1.3.6.1.2.1.2.2.1.2.17301519 string ethernet1/1/14:2
+.1.3.6.1.2.1.2.2.1.2.17301520 string ethernet1/1/14:3
+.1.3.6.1.2.1.2.2.1.2.22020097 string port-channel1
+.1.3.6.1.2.1.2.2.1.2.22020106 string port-channel10
+.1.3.6.1.2.1.2.2.1.2.35127296 string mgmt1/1/1
+.1.3.6.1.2.1.2.2.1.2.1107787777 string vlan1
+.1.3.6.1.2.1.2.2.1.2.1107787876 string vlan100
+.1.3.6.1.2.1.2.2.1.2.1107787976 string vlan200
+.1.3.6.1.2.1.2.2.1.3.1 integer 24
+.1.3.6.1.2.1.2.2.1.3.17301505 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301506 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301507 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301508 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301509 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301510 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301511 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301512 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301513 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301514 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301515 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301516 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301517 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301518 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301519 integer 6
+.1.3.6.1.2.1.2.2.1.3.17301520 integer 6
+.1.3.6.1.2.1.2.2.1.3.22020097 integer 161
+.1.3.6.1.2.1.2.2.1.3.22020106 integer 161
+.1.3.6.1.2.1.2.2.1.3.35127296 integer 6
+.1.3.6.1.2.1.2.2.1.3.1107787777 integer 53
+.1.3.6.1.2.1.2.2.1.3.1107787876 integer 53
+.1.3.6.1.2.1.2.2.1.3.1107787976 integer 53
+.1.3.6.1.2.1.2.2.1.4.1 integer 65535
+.1.3.6.1.2.1.2.2.1.4.17301505 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301506 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301507 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301508 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301509 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301510 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301511 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301512 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301513 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301514 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301515 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301516 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301517 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301518 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301519 integer 1532
+.1.3.6.1.2.1.2.2.1.4.17301520 integer 1532
+.1.3.6.1.2.1.2.2.1.4.22020097 integer 1532
+.1.3.6.1.2.1.2.2.1.4.22020106 integer 1532
+.1.3.6.1.2.1.2.2.1.4.35127296 integer 1532
+.1.3.6.1.2.1.2.2.1.4.1107787777 integer 1532
+.1.3.6.1.2.1.2.2.1.4.1107787876 integer 1532
+.1.3.6.1.2.1.2.2.1.4.1107787976 integer 1532
+.1.3.6.1.2.1.2.2.1.5.1 gauge 0
+.1.3.6.1.2.1.2.2.1.5.17301505 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301506 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301507 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301508 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301509 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301510 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301511 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301512 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301513 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301514 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301515 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301516 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301517 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.17301518 gauge 25000000000
+.1.3.6.1.2.1.2.2.1.5.17301519 gauge 25000000000
+.1.3.6.1.2.1.2.2.1.5.17301520 gauge 25000000000
+.1.3.6.1.2.1.2.2.1.5.22020097 gauge 20000000000
+.1.3.6.1.2.1.2.2.1.5.22020106 gauge 0
+.1.3.6.1.2.1.2.2.1.5.35127296 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.1107787777 gauge 0
+.1.3.6.1.2.1.2.2.1.5.1107787876 gauge 0
+.1.3.6.1.2.1.2.2.1.5.1107787976 gauge 0
+.1.3.6.1.2.1.2.2.1.6.17301505 octet 14 18 77 aa bb 11
+.1.3.6.1.2.1.2.2.1.6.17301506 octet 14 18 77 aa bb 12
+.1.3.6.1.2.1.2.2.1.6.17301507 octet 14 18 77 aa bb 13
+.1.3.6.1.2.1.2.2.1.6.17301508 octet 14 18 77 aa bb 14
+.1.3.6.1.2.1.2.2.1.6.17301509 octet 14 18 77 aa bb 15
+.1.3.6.1.2.1.2.2.1.6.17301510 octet 14 18 77 aa bb 16
+.1.3.6.1.2.1.2.2.1.6.17301511 octet 14 18 77 aa bb 17
+.1.3.6.1.2.1.2.2.1.6.17301512 octet 14 18 77 aa bb 18
+.1.3.6.1.2.1.2.2.1.6.17301513 octet 14 18 77 aa bb 19
+.1.3.6.1.2.1.2.2.1.6.17301514 octet 14 18 77 aa bb 1a
+.1.3.6.1.2.1.2.2.1.6.17301515 octet 14 18 77 aa bb 1b
+.1.3.6.1.2.1.2.2.1.6.17301516 octet 14 18 77 aa bb 1c
+.1.3.6.1.2.1.2.2.1.6.17301517 octet 14 18 77 aa bb 1d
+.1.3.6.1.2.1.2.2.1.6.17301518 octet 14 18 77 aa bb 21
+.1.3.6.1.2.1.2.2.1.6.17301519 octet 14 18 77 aa bb 22
+.1.3.6.1.2.1.2.2.1.6.17301520 octet 14 18 77 aa bb 23
+.1.3.6.1.2.1.2.2.1.6.35127296 octet 14 18 77 aa bb 01
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301505 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301506 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301507 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301508 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301509 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301510 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301511 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301512 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301513 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301514 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301515 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301516 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301517 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301518 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301519 integer 1
+.1.3.6.1.2.1.2.2.1.7.17301520 integer 1
+.1.3.6.1.2.1.2.2.1.7.22020097 integer 1
+.1.3.6.1.2.1.2.2.1.7.22020106 integer 2
+.1.3.6.1.2.1.2.2.1.7.35127296 integer 1
+.1.3.6.1.2.1.2.2.1.7.1107787777 integer 1
+.1.3.6.1.2.1.2.2.1.7.1107787876 integer 1
+.1.3.6.1.2.1.2.2.1.7.1107787976 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.17301505 integer 1
+.1.3.6.1.2.1.2.2.1.8.17301506 integer 1
+.1.3.6.1.2.1.2.2.1.8.17301507 integer 1
+.1.3.6.1.2.1.2.2.1.8.17301508 integer 1
+.1.3.6.1.2.1.2.2.1.8.17301509 integer 2
+.1.3.6.1.2.1.2.2.1.8.17301510 integer 2
+.1.3.6.1.2.1.2.2.1.8.17301511 integer 2
+.1.3.6.1.2.1.2.2.1.8.17301512 integer 2
+.1.3.6.1.2.1.2.2.1.8.17301513 integer 2
+.1.3.6.1.2.1.2.2.1.8.17301514 integer 2
+.1.3.6.1.2.1.2.2.1.8.17301515 integer 2
+.1.3.6.1.2.1.2.2.1.8.17301516 integer 2
+.1.3.6.1.2.1.2.2.1.8.17301517 integer 2
+.1.3.6.1.2.1.2.2.1.8.17301518 integer 1
+.1.3.6.1.2.1.2.2.1.8.17301519 integer 1
+.1.3.6.1.2.1.2.2.1.8.17301520 integer 1
+.1.3.6.1.2.1.2.2.1.8.22020097 integer 2
+.1.3.6.1.2.1.2.2.1.8.22020106 integer 2
+.1.3.6.1.2.1.2.2.1.8.35127296 integer 1
+.1.3.6.1.2.1.2.2.1.8.1107787777 integer 1
+.1.3.6.1.2.1.2.2.1.8.1107787876 integer 1
+.1.3.6.1.2.1.2.2.1.8.1107787976 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string lo
+.1.3.6.1.2.1.31.1.1.1.1.17301505 string ethernet1/1/1
+.1.3.6.1.2.1.31.1.1.1.1.17301506 string ethernet1/1/2
+.1.3.6.1.2.1.31.1.1.1.1.17301507 string ethernet1/1/3
+.1.3.6.1.2.1.31.1.1.1.1.17301508 string ethernet1/1/4
+.1.3.6.1.2.1.31.1.1.1.1.17301509 string ethernet1/1/5
+.1.3.6.1.2.1.31.1.1.1.1.17301510 string ethernet1/1/6
+.1.3.6.1.2.1.31.1.1.1.1.17301511 string ethernet1/1/7
+.1.3.6.1.2.1.31.1.1.1.1.17301512 string ethernet1/1/8
+.1.3.6.1.2.1.31.1.1.1.1.17301513 string ethernet1/1/9
+.1.3.6.1.2.1.31.1.1.1.1.17301514 string ethernet1/1/10
+.1.3.6.1.2.1.31.1.1.1.1.17301515 string ethernet1/1/11
+.1.3.6.1.2.1.31.1.1.1.1.17301516 string ethernet1/1/12
+.1.3.6.1.2.1.31.1.1.1.1.17301517 string ethernet1/1/13
+.1.3.6.1.2.1.31.1.1.1.1.17301518 string ethernet1/1/14:1
+.1.3.6.1.2.1.31.1.1.1.1.17301519 string ethernet1/1/14:2
+.1.3.6.1.2.1.31.1.1.1.1.17301520 string ethernet1/1/14:3
+.1.3.6.1.2.1.31.1.1.1.1.22020097 string port-channel1
+.1.3.6.1.2.1.31.1.1.1.1.22020106 string port-channel10
+.1.3.6.1.2.1.31.1.1.1.1.35127296 string mgmt1/1/1
+.1.3.6.1.2.1.31.1.1.1.1.1107787777 string vlan1
+.1.3.6.1.2.1.31.1.1.1.1.1107787876 string vlan100
+.1.3.6.1.2.1.31.1.1.1.1.1107787976 string vlan200
+.1.3.6.1.2.1.31.1.1.1.15.1 gauge 0
+.1.3.6.1.2.1.31.1.1.1.15.17301505 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301506 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301507 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301508 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301509 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301510 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301511 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301512 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301513 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301514 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301515 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301516 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301517 gauge 10000
+.1.3.6.1.2.1.31.1.1.1.15.17301518 gauge 25000
+.1.3.6.1.2.1.31.1.1.1.15.17301519 gauge 25000
+.1.3.6.1.2.1.31.1.1.1.15.17301520 gauge 25000
+.1.3.6.1.2.1.31.1.1.1.15.22020097 gauge 20000
+.1.3.6.1.2.1.31.1.1.1.15.22020106 gauge 0
+.1.3.6.1.2.1.31.1.1.1.15.35127296 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.15.1107787777 gauge 0
+.1.3.6.1.2.1.31.1.1.1.15.1107787876 gauge 0
+.1.3.6.1.2.1.31.1.1.1.15.1107787976 gauge 0
+.1.3.6.1.2.1.31.1.1.1.18.17301518 string breakout lane 1
+.1.3.6.1.2.1.31.1.1.1.18.17301519 string breakout lane 2
+.1.3.6.1.2.1.31.1.1.1.18.17301520 string breakout lane 3
+.1.3.6.1.2.1.31.1.1.1.18.22020097 string uplink lag
+.1.3.6.1.2.1.31.1.1.1.18.35127296 string out of band
+EOF
+
+# switch-dell-01 LLDP — the neighbour table from GH #685.
+#
+# Two things about the remote rows matter, both from the reporter's own walk:
+#
+#   lldpRemEntry is indexed lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex, and the time marks
+#   here are large and hundreds of thousands of ticks apart — 31577700, 93300700, 123380800,
+#   127153800. Every other device here uses 0 or a small mark, so nothing else walks a first index
+#   sub-id of this size, and the local ports (570, 4, 568, 569) consequently arrive in an order
+#   that has nothing to do with the ports themselves.
+#
+#   lldpLocPortNum is a separate namespace from ifIndex: 4 for the management port and 555-570 for
+#   the front panel, against interfaces numbered in the millions. The three neighbours on port 14
+#   sit on its breakout lanes, which is the mapping the reporter published:
+#
+#     4   -> mgmt1/1/1        (a host advertising only its MAC — no sysName, no port description)
+#     568 -> ethernet1/1/14:1 -> EVILCORP
+#     569 -> ethernet1/1/14:2 -> VIRTUALPC
+#     570 -> ethernet1/1/14:3 -> TAMMIERENEW
+#
+# Three of the four advertise chassis subtype 7 (locally assigned) carrying a hostname rather than
+# a MAC, which is what the reporter's walk shows and what an end host running LLDP typically does.
+# The fourth is subtype 4 and sends six raw octets, so one device exercises both encodings.
+#
+# What this device does *not* stage is the walk falling short, which is the other half of #685: a
+# `pass` agent answers single-threaded, so a handler that stalls long enough to time the daemon out
+# blocks every later request behind it and the late answers arrive one request out of step for the
+# rest of the walk — the fixture would then fail whether or not the fix is in. The transport
+# retries are covered by unit test instead, the way `WalkCutShort` already is.
+cat > "$DATA_DIR/switch-dell-01-lldp.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 octet 14 18 77 aa bb 00
+.1.0.8802.1.1.2.1.3.3.0 string switch-dell-01
+.1.0.8802.1.1.2.1.3.4.0 string Dell EMC Networking OS10 Enterprise. Dell EMC Networking S4112T-ON. OS Version 10.4.3.4
+.1.0.8802.1.1.2.1.3.7.1.2.4 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.555 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.556 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.557 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.558 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.559 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.560 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.561 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.562 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.563 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.564 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.565 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.566 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.567 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.568 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.569 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.570 integer 5
+.1.0.8802.1.1.2.1.3.7.1.3.4 string mgmt1/1/1
+.1.0.8802.1.1.2.1.3.7.1.3.555 string ethernet1/1/1
+.1.0.8802.1.1.2.1.3.7.1.3.556 string ethernet1/1/2
+.1.0.8802.1.1.2.1.3.7.1.3.557 string ethernet1/1/3
+.1.0.8802.1.1.2.1.3.7.1.3.558 string ethernet1/1/4
+.1.0.8802.1.1.2.1.3.7.1.3.559 string ethernet1/1/5
+.1.0.8802.1.1.2.1.3.7.1.3.560 string ethernet1/1/6
+.1.0.8802.1.1.2.1.3.7.1.3.561 string ethernet1/1/7
+.1.0.8802.1.1.2.1.3.7.1.3.562 string ethernet1/1/8
+.1.0.8802.1.1.2.1.3.7.1.3.563 string ethernet1/1/9
+.1.0.8802.1.1.2.1.3.7.1.3.564 string ethernet1/1/10
+.1.0.8802.1.1.2.1.3.7.1.3.565 string ethernet1/1/11
+.1.0.8802.1.1.2.1.3.7.1.3.566 string ethernet1/1/12
+.1.0.8802.1.1.2.1.3.7.1.3.567 string ethernet1/1/13
+.1.0.8802.1.1.2.1.3.7.1.3.568 string ethernet1/1/14:1
+.1.0.8802.1.1.2.1.3.7.1.3.569 string ethernet1/1/14:2
+.1.0.8802.1.1.2.1.3.7.1.3.570 string ethernet1/1/14:3
+.1.0.8802.1.1.2.1.3.7.1.4.4 string mgmt1/1/1
+.1.0.8802.1.1.2.1.3.7.1.4.555 string ethernet1/1/1
+.1.0.8802.1.1.2.1.3.7.1.4.556 string ethernet1/1/2
+.1.0.8802.1.1.2.1.3.7.1.4.557 string ethernet1/1/3
+.1.0.8802.1.1.2.1.3.7.1.4.558 string ethernet1/1/4
+.1.0.8802.1.1.2.1.3.7.1.4.559 string ethernet1/1/5
+.1.0.8802.1.1.2.1.3.7.1.4.560 string ethernet1/1/6
+.1.0.8802.1.1.2.1.3.7.1.4.561 string ethernet1/1/7
+.1.0.8802.1.1.2.1.3.7.1.4.562 string ethernet1/1/8
+.1.0.8802.1.1.2.1.3.7.1.4.563 string ethernet1/1/9
+.1.0.8802.1.1.2.1.3.7.1.4.564 string ethernet1/1/10
+.1.0.8802.1.1.2.1.3.7.1.4.565 string ethernet1/1/11
+.1.0.8802.1.1.2.1.3.7.1.4.566 string ethernet1/1/12
+.1.0.8802.1.1.2.1.3.7.1.4.567 string ethernet1/1/13
+.1.0.8802.1.1.2.1.3.7.1.4.568 string ethernet1/1/14:1
+.1.0.8802.1.1.2.1.3.7.1.4.569 string ethernet1/1/14:2
+.1.0.8802.1.1.2.1.3.7.1.4.570 string ethernet1/1/14:3
+.1.0.8802.1.1.2.1.4.1.1.4.31577700.570.55 integer 7
+.1.0.8802.1.1.2.1.4.1.1.4.93300700.4.78 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.123380800.568.85 integer 7
+.1.0.8802.1.1.2.1.4.1.1.4.127153800.569.87 integer 7
+.1.0.8802.1.1.2.1.4.1.1.5.31577700.570.55 string TAMMIERENEW
+.1.0.8802.1.1.2.1.4.1.1.5.93300700.4.78 octet f6 6b d4 b4 b9 df
+.1.0.8802.1.1.2.1.4.1.1.5.123380800.568.85 string EVILCORP
+.1.0.8802.1.1.2.1.4.1.1.5.127153800.569.87 string VIRTUALPC
+.1.0.8802.1.1.2.1.4.1.1.6.31577700.570.55 integer 3
+.1.0.8802.1.1.2.1.4.1.1.6.93300700.4.78 integer 3
+.1.0.8802.1.1.2.1.4.1.1.6.123380800.568.85 integer 3
+.1.0.8802.1.1.2.1.4.1.1.6.127153800.569.87 integer 3
+.1.0.8802.1.1.2.1.4.1.1.7.31577700.570.55 octet 9c 6b 00 41 8d 21
+.1.0.8802.1.1.2.1.4.1.1.7.93300700.4.78 octet f6 6b d4 b4 b9 df
+.1.0.8802.1.1.2.1.4.1.1.7.123380800.568.85 octet 3c ec ef 40 12 aa
+.1.0.8802.1.1.2.1.4.1.1.7.127153800.569.87 octet 00 15 5d 01 64 0c
+.1.0.8802.1.1.2.1.4.1.1.8.31577700.570.55 string Realtek PCIe GbE Family Controller
+.1.0.8802.1.1.2.1.4.1.1.8.123380800.568.85 string Intel(R) Ethernet Controller X550
+.1.0.8802.1.1.2.1.4.1.1.8.127153800.569.87 string Hyper-V Virtual Ethernet Adapter
+.1.0.8802.1.1.2.1.4.1.1.9.31577700.570.55 string TAMMIERENEW
+.1.0.8802.1.1.2.1.4.1.1.9.123380800.568.85 string EVILCORP
+.1.0.8802.1.1.2.1.4.1.1.9.127153800.569.87 string VIRTUALPC
+.1.0.8802.1.1.2.1.4.1.1.10.31577700.570.55 string Windows 11 Pro 10.0.26100 x64
+.1.0.8802.1.1.2.1.4.1.1.10.123380800.568.85 string Ubuntu 24.04.1 LTS Linux 6.8.0-51-generic x86_64
+.1.0.8802.1.1.2.1.4.1.1.10.127153800.569.87 string Windows Server 2022 Datacenter 10.0.20348 x64
+EOF
+
 # ── 5. Write snmpd configs ───────────────────────────────────────────
 echo "Writing snmpd configs..."
 
@@ -2439,6 +2792,20 @@ pass -p 1 .1.3.6.1.2.1.4.22.1.1 /bin/bash $HS $D/switch-stuck-01-arp.txt
 pass -p 1 .1.3.6.1.2.1.4.22.1.2 /bin/bash $HS $D/switch-stuck-01-arp.txt
 pass -p 1 .1.3.6.1.2.1.4.22.1.3 /bin/bash $HS $D/switch-stuck-01-arp.txt
 pass -p 1 .1.3.6.1.2.1.4.22.1.4 /bin/bash $HS $D/switch-stuck-01-arp.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-dell-01.conf" << EOF
+agentAddress udp:${HOSTS[20]}:161
+rocommunity netdefault
+sysdescr Dell EMC Networking OS10 Enterprise. Dell EMC Networking S4112T-ON. OS Version 10.4.3.4
+syscontact netops@example.com
+sysname switch-dell-01
+syslocation Rack 4, breakout panel
+sysobjectid .1.3.6.1.4.1.674.11000.5000.100.2.1
+sysservices 2
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-dell-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-dell-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-dell-01-lldp.txt
 EOF
 
 # ── 6. Create systemd services ───────────────────────────────────────
