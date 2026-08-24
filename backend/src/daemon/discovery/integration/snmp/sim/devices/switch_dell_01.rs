@@ -22,7 +22,7 @@ pub fn device() -> SimDevice {
         ip: Ipv4Addr::new(192, 168, 7, 250),
         purpose: Purpose::Regression {
             issue: "#685",
-            defect: "OS10 breakout port names carry both anchor characters, and lldpLocPortNum is a separate namespace running 4 and 555-570",
+            defect: "OS10 breakout port names carry both anchor characters, and lldpLocPortNum is a separate namespace numbering the management port 4 and the front panel from 555",
         },
         credential: CredentialType::SnmpV2c { community: inline("netdefault") },
         system: SystemInfo {
@@ -72,24 +72,6 @@ pub fn if_table() -> IfTable {
         .name("ethernet1/1/1")
         .high_speed(),
         IfRow::port(
-            17301506,
-            "ethernet1/1/2",
-            Some("14:18:77:aa:bb:12".parse().unwrap()),
-        )
-        .mtu(1532)
-        .speed(10000000000)
-        .name("ethernet1/1/2")
-        .high_speed(),
-        IfRow::port(
-            17301507,
-            "ethernet1/1/3",
-            Some("14:18:77:aa:bb:13".parse().unwrap()),
-        )
-        .mtu(1532)
-        .speed(10000000000)
-        .name("ethernet1/1/3")
-        .high_speed(),
-        IfRow::port(
             17301508,
             "ethernet1/1/4",
             Some("14:18:77:aa:bb:14".parse().unwrap()),
@@ -98,96 +80,6 @@ pub fn if_table() -> IfTable {
         .speed(10000000000)
         .name("ethernet1/1/4")
         .high_speed(),
-        IfRow::port(
-            17301509,
-            "ethernet1/1/5",
-            Some("14:18:77:aa:bb:15".parse().unwrap()),
-        )
-        .mtu(1532)
-        .speed(10000000000)
-        .name("ethernet1/1/5")
-        .high_speed()
-        .oper_down(),
-        IfRow::port(
-            17301510,
-            "ethernet1/1/6",
-            Some("14:18:77:aa:bb:16".parse().unwrap()),
-        )
-        .mtu(1532)
-        .speed(10000000000)
-        .name("ethernet1/1/6")
-        .high_speed()
-        .oper_down(),
-        IfRow::port(
-            17301511,
-            "ethernet1/1/7",
-            Some("14:18:77:aa:bb:17".parse().unwrap()),
-        )
-        .mtu(1532)
-        .speed(10000000000)
-        .name("ethernet1/1/7")
-        .high_speed()
-        .oper_down(),
-        IfRow::port(
-            17301512,
-            "ethernet1/1/8",
-            Some("14:18:77:aa:bb:18".parse().unwrap()),
-        )
-        .mtu(1532)
-        .speed(10000000000)
-        .name("ethernet1/1/8")
-        .high_speed()
-        .oper_down(),
-        IfRow::port(
-            17301513,
-            "ethernet1/1/9",
-            Some("14:18:77:aa:bb:19".parse().unwrap()),
-        )
-        .mtu(1532)
-        .speed(10000000000)
-        .name("ethernet1/1/9")
-        .high_speed()
-        .oper_down(),
-        IfRow::port(
-            17301514,
-            "ethernet1/1/10",
-            Some("14:18:77:aa:bb:1a".parse().unwrap()),
-        )
-        .mtu(1532)
-        .speed(10000000000)
-        .name("ethernet1/1/10")
-        .high_speed()
-        .oper_down(),
-        IfRow::port(
-            17301515,
-            "ethernet1/1/11",
-            Some("14:18:77:aa:bb:1b".parse().unwrap()),
-        )
-        .mtu(1532)
-        .speed(10000000000)
-        .name("ethernet1/1/11")
-        .high_speed()
-        .oper_down(),
-        IfRow::port(
-            17301516,
-            "ethernet1/1/12",
-            Some("14:18:77:aa:bb:1c".parse().unwrap()),
-        )
-        .mtu(1532)
-        .speed(10000000000)
-        .name("ethernet1/1/12")
-        .high_speed()
-        .oper_down(),
-        IfRow::port(
-            17301517,
-            "ethernet1/1/13",
-            Some("14:18:77:aa:bb:1d".parse().unwrap()),
-        )
-        .mtu(1532)
-        .speed(10000000000)
-        .name("ethernet1/1/13")
-        .high_speed()
-        .oper_down(),
         IfRow::port(
             17301518,
             "ethernet1/1/14:1",
@@ -218,18 +110,6 @@ pub fn if_table() -> IfTable {
         .name("ethernet1/1/14:3")
         .high_speed()
         .alias("breakout lane 3"),
-        IfRow::virtual_if(22020097, "port-channel1", if_type::IEEE8023AD_LAG)
-            .mtu(1532)
-            .speed(20000000000)
-            .name("port-channel1")
-            .high_speed()
-            .alias("uplink lag")
-            .oper_down(),
-        IfRow::virtual_if(22020106, "port-channel10", if_type::IEEE8023AD_LAG)
-            .mtu(1532)
-            .name("port-channel10")
-            .high_speed()
-            .down(),
         IfRow::port(
             35127296,
             "mgmt1/1/1",
@@ -239,18 +119,6 @@ pub fn if_table() -> IfTable {
         .name("mgmt1/1/1")
         .high_speed()
         .alias("out of band"),
-        IfRow::virtual_if(1107787777, "vlan1", if_type::PROP_VIRTUAL)
-            .mtu(1532)
-            .name("vlan1")
-            .high_speed(),
-        IfRow::virtual_if(1107787876, "vlan100", if_type::PROP_VIRTUAL)
-            .mtu(1532)
-            .name("vlan100")
-            .high_speed(),
-        IfRow::virtual_if(1107787976, "vlan200", if_type::PROP_VIRTUAL)
-            .mtu(1532)
-            .name("vlan200")
-            .high_speed(),
     ])
     .declaring(IfNumber::Declares(52))
 }
@@ -275,65 +143,10 @@ pub fn lldp_table() -> LldpTable {
         )
         .desc("ethernet1/1/1"),
         LocalPort::new(
-            556,
-            Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/2".into())),
-        )
-        .desc("ethernet1/1/2"),
-        LocalPort::new(
-            557,
-            Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/3".into())),
-        )
-        .desc("ethernet1/1/3"),
-        LocalPort::new(
             558,
             Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/4".into())),
         )
         .desc("ethernet1/1/4"),
-        LocalPort::new(
-            559,
-            Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/5".into())),
-        )
-        .desc("ethernet1/1/5"),
-        LocalPort::new(
-            560,
-            Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/6".into())),
-        )
-        .desc("ethernet1/1/6"),
-        LocalPort::new(
-            561,
-            Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/7".into())),
-        )
-        .desc("ethernet1/1/7"),
-        LocalPort::new(
-            562,
-            Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/8".into())),
-        )
-        .desc("ethernet1/1/8"),
-        LocalPort::new(
-            563,
-            Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/9".into())),
-        )
-        .desc("ethernet1/1/9"),
-        LocalPort::new(
-            564,
-            Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/10".into())),
-        )
-        .desc("ethernet1/1/10"),
-        LocalPort::new(
-            565,
-            Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/11".into())),
-        )
-        .desc("ethernet1/1/11"),
-        LocalPort::new(
-            566,
-            Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/12".into())),
-        )
-        .desc("ethernet1/1/12"),
-        LocalPort::new(
-            567,
-            Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/13".into())),
-        )
-        .desc("ethernet1/1/13"),
         LocalPort::new(
             568,
             Advertised::octets(LldpPortId::InterfaceName("ethernet1/1/14:1".into())),
