@@ -127,3 +127,32 @@ pub fn ip_addr_table() -> IpAddrTable {
         ],
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// GH #663: an access point's NAT guest network was read as a Docker bridge.
+    ///
+    /// This is the only device serving its own `ipAddrTable`, which is also the only way it can
+    /// advertise a subnet the VM's kernel does not have. It is therefore the only device that
+    /// breaks *silently*: if the override loses its duplicate registration, the agent quietly
+    /// answers from the host's addresses instead and the fixture tests nothing.
+    #[tokio::test]
+    async fn it_advertises_a_guest_subnet_the_host_does_not_have() {
+        let scan = harness::scan("ap-wireless-01").await;
+
+        assert_eq!(scan.ip_addresses, 2, "the guest address and its own");
+        let guest = scan.interface(4);
+        assert_eq!(guest.if_name.as_deref(), Some("br-guest"));
+    }
+
+    /// A radio reports `0` in the 32-bit speed column and its real rate in `ifHighSpeed`, so the
+    /// two genuinely disagree here. Every other port in the lab derives one from the other; this
+    /// is the exception that proves the derivation is not being applied blindly.
+    #[tokio::test]
+    async fn a_radios_rate_comes_from_the_high_speed_column() {
+        let scan = harness::scan("ap-wireless-01").await;
+        assert_eq!(scan.interface(2).if_speed, Some(867_000_000));
+    }
+}

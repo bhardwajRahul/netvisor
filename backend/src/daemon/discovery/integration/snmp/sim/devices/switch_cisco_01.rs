@@ -157,3 +157,63 @@ pub fn vlan20_bridge_table() -> BridgeTable {
         FdbEntry::learned("00:50:56:9a:20:09".parse().unwrap(), 8),
     ])
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    use crate::daemon::discovery::integration::snmp::sim::device;
+    use crate::daemon::discovery::integration::snmp::{
+        query_bridge_fdb, query_bridge_port_mapping,
+    };
+
+    /// GH #686: a Catalyst with a full MAC-address table reported exactly one entry however it was
+    /// queried.
+    ///
+    /// IOS-XE partitions its forwarding database per VLAN and keeps almost nothing in the default
+    /// context, so a scan that cannot name a context reads the wrong table — and is told nothing
+    /// is wrong, because a walk that ends cleanly on a one-row table is a complete walk.
+    ///
+    /// **The comparison is the check, not either count.** An agent that ignores the context answers
+    /// both from the same table, which is the failure being guarded against; asserting only "the
+    /// context walk returns nine" would pass on one that ignores contexts entirely and happens to
+    /// hold nine rows.
+    #[tokio::test]
+    async fn the_two_contexts_answer_from_different_tables() {
+        let cisco = device("switch-cisco-01");
+        let ip = cisco.ip.into();
+
+        let default = harness::collect(&cisco).await.fdb;
+
+        let mut context = cisco.context_agent().expect("the vlan-20 back end");
+        let mapping = query_bridge_port_mapping(&mut context, ip).await.unwrap();
+        let scoped = query_bridge_fdb(&mut context, ip, &mapping).await.unwrap();
+
+        assert_eq!(default.records.len(), 1, "the reporter's symptom");
+        assert_eq!(
+            scoped.records.len(),
+            9,
+            "the table that was there all along"
+        );
+        assert_ne!(
+            default.records.len(),
+            scoped.records.len(),
+            "an agent answering both from the same table is the failure under test"
+        );
+        assert!(
+            default.complete,
+            "the one-row read is a *complete* walk, which is why it raised nothing"
+        );
+    }
+
+    /// Its `ifTable` and system MIB stay in the default context, as they do on the real switch.
+    /// That is why the daemon scopes only its bridge and VLAN walks to the credential's context: a
+    /// context-wide session would find no interfaces at all here.
+    #[tokio::test]
+    async fn its_interfaces_stay_in_the_default_context() {
+        let scan = harness::scan("switch-cisco-01").await;
+
+        assert_eq!(scan.if_table.entries.len(), 10);
+        assert!(scan.if_table.set_complete);
+    }
+}

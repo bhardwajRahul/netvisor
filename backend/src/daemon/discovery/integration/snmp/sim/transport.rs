@@ -77,6 +77,13 @@ pub struct SimAgent {
     files: Vec<ServedFile>,
     /// Ascending by subtree, which is the order snmpd walks its registrations in.
     registrations: Vec<Registration>,
+    /// The agent has no getbulk, because SNMPv1 has none.
+    ///
+    /// Not a knob: it follows from the device's credential. A v1 agent answers a getbulk with an
+    /// error, and the walk falls back to getnext — one varbind per round trip, for every column of
+    /// every table. That fallback is most of what GH #557 is about, and a transport that always
+    /// answered getbulk could not exercise it.
+    bulk_unsupported: bool,
 }
 
 impl SimAgent {
@@ -94,7 +101,14 @@ impl SimAgent {
         Self {
             files,
             registrations,
+            bulk_unsupported: false,
         }
+    }
+
+    /// An agent with no getbulk, as SNMPv1 has none.
+    pub fn without_getbulk(mut self) -> Self {
+        self.bulk_unsupported = true;
+        self
     }
 
     fn covers(registration: &Registration, oid: &[u64]) -> bool {
@@ -167,6 +181,9 @@ impl SnmpWalkTransport for SimAgent {
         from: &[u64],
         max_repetitions: u32,
     ) -> Result<WalkPage<'a>> {
+        if self.bulk_unsupported {
+            return Ok(WalkPage::BulkUnsupported);
+        }
         Ok(WalkPage::Varbinds(self.page(from, max_repetitions)))
     }
 

@@ -311,9 +311,38 @@ impl SimDevice {
         registrations
     }
 
+    /// Registrations for the LLDP subtree alone, against a single file.
+    ///
+    /// For serving one of the swappable variants: the deployed device does this by copying a
+    /// variant over `-lldp-active.txt`, and a test does it by handing the variant's rows to an
+    /// agent that serves only that subtree.
+    pub fn registrations_for_lldp_only(&self) -> Vec<Registration> {
+        vec![Registration {
+            subtree: oid_parts(lldp_oids::LLDP_MIB),
+            file: 0,
+            handler: Handler::Normal,
+        }]
+    }
+
     /// This device answering SNMP, for driving the real collection path against.
+    ///
+    /// Whether it offers getbulk follows from its credential rather than being set per device:
+    /// SNMPv1 has no getbulk, so the v1 agent forces every column through getnext.
     pub fn agent(&self) -> SimAgent {
-        SimAgent::new(&self.data_files(), self.registrations())
+        let agent = SimAgent::new(&self.data_files(), self.registrations());
+        match self.credential {
+            CredentialType::SnmpV1 { .. } => agent.without_getbulk(),
+            _ => agent,
+        }
+    }
+
+    /// The context back end answering SNMP, for the one device that has one.
+    pub fn context_agent(&self) -> Option<SimAgent> {
+        let files = self.context_files();
+        if files.is_empty() {
+            return None;
+        }
+        Some(SimAgent::new(&files, self.context_registrations()))
     }
 
     /// `ifNumber.0` as this device publishes it, or `None` where it serves no ifTable.

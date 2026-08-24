@@ -191,3 +191,65 @@ pub fn lldp_table() -> LldpTable {
 pub fn bridge_table() -> BridgeTable {
     BridgeTable::derived()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    use crate::daemon::discovery::integration::snmp::unique_interface_macs;
+
+    /// The Westermo WeOS report, August 2026, reconciled against the customer's own walk.
+    ///
+    /// `ifDescr` carries the media type in front of the name — `100-T eth9` — so a neighbour
+    /// advertising the bare port name matches `ifDescr` nowhere on this family. `ifName` *and*
+    /// `ifAlias` both hold the bare name, and this is the only fixture serving `ifAlias`: it is
+    /// what makes `eth9` resolvable at all.
+    #[tokio::test]
+    async fn only_if_name_and_if_alias_hold_the_bare_port_name() {
+        let scan = harness::scan("switch-macport-01").await;
+
+        let eth9 = scan.interface(11);
+        assert_eq!(eth9.if_descr.as_deref(), Some("100-T eth9"));
+        assert_eq!(eth9.if_name.as_deref(), Some("eth9"));
+        assert_eq!(eth9.if_alias.as_deref(), Some("eth9"));
+        assert!(
+            !eth9.if_descr.as_deref().unwrap().eq("eth9"),
+            "if ifDescr were the bare name this device would prove nothing"
+        );
+    }
+
+    /// Its physical ports each have a unique address while its six VLAN interfaces repeat the
+    /// chassis one. A MAC lookup that counted the virtual rows would find six matches and decline,
+    /// costing a port no physical interface ever contested.
+    #[tokio::test]
+    async fn its_physical_ports_are_individually_addressed() {
+        let scan = harness::scan("switch-macport-01").await;
+
+        assert_eq!(scan.if_table.entries.len(), 17);
+        let unique = unique_interface_macs(&scan.if_table.entries);
+        assert!(
+            unique.len() >= 10,
+            "each physical port must name itself: {} unique",
+            unique.len()
+        );
+    }
+
+    /// `lldpLocPortTable` is keyed 10-19, which are this device's own `ifIndex` values: the local
+    /// port table is the identity mapping. That is exactly why the remap fix changed nothing for
+    /// this customer, and the reason its original fixture — which modelled a separate namespace —
+    /// was disproved by the walk.
+    #[tokio::test]
+    async fn its_local_port_table_is_the_identity_mapping() {
+        let scan = harness::scan("switch-macport-01").await;
+
+        assert_eq!(scan.local_ports.len(), 10);
+        for port in scan.local_ports.keys() {
+            assert!(
+                (10..=19).contains(port),
+                "local port {port} is outside this device's ifIndex range"
+            );
+            assert!(scan.if_table.entries.iter().any(|e| e.if_index == *port));
+        }
+        assert_eq!(scan.neighbours.records.len(), 3);
+    }
+}

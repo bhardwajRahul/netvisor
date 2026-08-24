@@ -413,3 +413,63 @@ pub fn bridge_table() -> BridgeTable {
         FdbEntry::learned("14:18:77:aa:bb:13".parse().unwrap(), 12),
     ])
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// GH #685: a Dell PowerSwitch S4112T-ON running OS10, which discovered cleanly in every other
+    /// respect and showed no physical connections at all.
+    ///
+    /// `lldpLocPortNum` is a separate namespace from `ifIndex`, and not a small one: the management
+    /// port is 4 and the front panel runs 555-570, against ifIndex values in the millions. This is
+    /// the mapping the reporter published, and a neighbour on any other port is the bug, not a
+    /// near miss.
+    #[tokio::test]
+    async fn its_breakout_neighbours_land_on_the_ports_the_switch_names() {
+        let scan = harness::scan("switch-dell-01").await;
+
+        assert_eq!(scan.neighbours.records.len(), 4);
+        assert_eq!(scan.local_ports.len(), 17);
+
+        // Each neighbour reached a real interface rather than an index no interface holds.
+        for neighbour in &scan.neighbours.records {
+            let port = neighbour.local_port_index;
+            assert!(
+                scan.if_table.entries.iter().any(|e| e.if_index == port),
+                "a neighbour landed on {port}, which names no interface"
+            );
+        }
+        assert_eq!(scan.dropped_neighbours, 0);
+
+        // The three breakout lanes are distinct ports, so the three end hosts must not collapse
+        // onto one: taking the first match bound neighbours to a plausible-looking wrong port.
+        let mut ports: Vec<i32> = scan
+            .neighbours
+            .records
+            .iter()
+            .map(|n| n.local_port_index)
+            .collect();
+        ports.sort_unstable();
+        ports.dedup();
+        assert_eq!(ports.len(), 4, "four neighbours, four distinct local ports");
+    }
+
+    /// It declares 52 interfaces and serves 23, deliberately.
+    ///
+    /// Every other device agrees with itself, which demonstrates the count check staying quiet but
+    /// cannot demonstrate it firing — and a guard nobody has watched fire is a guard nobody knows
+    /// works. A scan must still record all 23: a device that misreports itself is still a device
+    /// to scan.
+    #[tokio::test]
+    async fn it_misreports_its_own_interface_count_on_purpose() {
+        let scan = harness::scan("switch-dell-01").await;
+
+        assert_eq!(scan.system.if_number, Some(52), "what it claims");
+        assert_eq!(scan.if_table.entries.len(), 23, "what it serves");
+        assert!(
+            scan.if_table.set_complete,
+            "the walk itself is complete — the contradiction is the device's, not the read's"
+        );
+    }
+}

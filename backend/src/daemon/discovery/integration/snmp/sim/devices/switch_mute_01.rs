@@ -60,3 +60,39 @@ fn tables() -> Tables {
         context_bridge: None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// Answers the credential and then serves nothing.
+    ///
+    /// That is the shape a host takes when SNMP "succeeds" and yields nothing, which used to read
+    /// to an operator as a clean scan. Before this device existed, no scan of the environment had
+    /// ever produced an incomplete-walk warning for any group, so that whole path went unexercised
+    /// while looking healthy.
+    ///
+    /// The suppressions matter as much as the emptiness: `ipAddrTable` and `ipNetToMediaTable`
+    /// cannot be turned off with snmpd's `-I` flag, so without registering them against an empty
+    /// file this device would report the host's own addresses and ARP cache and would not be mute.
+    #[tokio::test]
+    async fn it_answers_and_yields_absolutely_nothing() {
+        let scan = harness::scan("switch-mute-01").await;
+
+        assert!(scan.if_table.entries.is_empty());
+        assert!(scan.neighbours.records.is_empty());
+        assert!(scan.arp.records.is_empty(), "the ARP override must hold");
+        assert_eq!(scan.ip_addresses, 0, "the ipAddrTable override must hold");
+        assert!(scan.bridge_ports.is_empty());
+        assert!(scan.fdb.records.is_empty());
+    }
+
+    /// It still sets the datalink bit, so it claims to bridge while serving no bridge MIB. That
+    /// contradiction is deliberate and is the lab's only standing one.
+    #[tokio::test]
+    async fn it_claims_to_bridge_while_serving_no_bridge_table() {
+        let device = crate::daemon::discovery::integration::snmp::sim::device("switch-mute-01");
+        assert_eq!(device.system.sys_services, Some(2), "the datalink bit");
+        assert!(device.tables.bridge.is_empty());
+    }
+}

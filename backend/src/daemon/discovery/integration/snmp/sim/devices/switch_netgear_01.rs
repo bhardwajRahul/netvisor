@@ -120,3 +120,73 @@ pub fn lldp_table() -> LldpTable {
 pub fn bridge_table() -> BridgeTable {
     BridgeTable::derived()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// GH #664: a chassis MAC that is on no port and no IP.
+    ///
+    /// Its LLDP chassis id is `00:1a:2b:3c:4d:63` while its ports report `…:65/:66/:67`. The far
+    /// end can therefore only be found through `hosts.chassis_id`, recorded from this device's own
+    /// LLDP local identity — matching against interfaces and IPs alone yields nothing. This test
+    /// holds the *precondition*: that the chassis id really is on none of its ports. The
+    /// resolution itself needs a database and lives in `crate::tests::snmp_sim_resolution`.
+    #[tokio::test]
+    async fn its_chassis_id_is_on_none_of_its_own_ports() {
+        let scan = harness::scan("switch-netgear-01").await;
+
+        let chassis = "00:1a:2b:3c:4d:63";
+        for entry in &scan.if_table.entries {
+            assert_ne!(
+                entry.if_phys_address.map(|m| m.to_string().to_lowercase()),
+                Some(chassis.to_string()),
+                "ifIndex {} carries the chassis id, which removes the whole point of #664",
+                entry.if_index
+            );
+        }
+        assert!(
+            scan.if_table
+                .entries
+                .iter()
+                .any(|e| e.if_phys_address.is_some()),
+            "its ports must have addresses, or the MAC tier is untested rather than declining"
+        );
+    }
+
+    /// GH #649: its neighbour entries use port-ID subtype 7, locally assigned.
+    ///
+    /// `41` is `switch-aruba-01`'s `ifDescr`; `197` matches only its `ifIndex`, and that port is
+    /// labelled `A5`. Treating subtype 7 as unresolvable stops resolution at the host, and a
+    /// host-only neighbour draws no edge at all — so the far-end switch disappears from L2
+    /// Physical entirely rather than appearing with a link missing.
+    #[tokio::test]
+    async fn its_neighbours_advertise_locally_assigned_port_ids() {
+        use crate::server::snmp::resolution::lldp::LldpPortId;
+
+        let scan = harness::scan("switch-netgear-01").await;
+
+        assert_eq!(scan.neighbours.records.len(), 2);
+        let ids: Vec<LldpPortId> = scan
+            .neighbours
+            .records
+            .iter()
+            .map(|n| {
+                LldpPortId::from_snmp(
+                    n.remote_port_id_subtype.unwrap(),
+                    n.remote_port_id_bytes.as_ref().unwrap(),
+                )
+                .expect("a port id")
+            })
+            .collect();
+
+        assert!(
+            ids.contains(&LldpPortId::LocallyAssigned("41".into())),
+            "the ifDescr-shaped id: {ids:?}"
+        );
+        assert!(
+            ids.contains(&LldpPortId::LocallyAssigned("197".into())),
+            "the ifIndex-shaped id: {ids:?}"
+        );
+    }
+}

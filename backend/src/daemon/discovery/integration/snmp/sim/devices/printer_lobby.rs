@@ -66,3 +66,24 @@ pub fn if_table() -> IfTable {
             .alias("USB port"),
     ])
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// A control device: an endpoint. It has interfaces and nothing else — no neighbours, no
+    /// bridge — and a scan of it must still read as complete rather than as a device that came up
+    /// short.
+    #[tokio::test]
+    async fn an_endpoint_with_nothing_to_say_still_reads_as_a_complete_scan() {
+        let scan = harness::scan("printer-lobby").await;
+
+        assert_eq!(scan.if_table.entries.len(), 2);
+        assert!(scan.if_table.set_complete && scan.if_table.attributes_complete);
+        assert!(scan.neighbours.records.is_empty());
+        assert!(
+            scan.neighbours.complete,
+            "no neighbours is an answer, not a shortfall"
+        );
+    }
+}

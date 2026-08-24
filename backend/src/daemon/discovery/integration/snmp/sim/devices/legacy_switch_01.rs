@@ -116,3 +116,26 @@ pub fn bridge_table() -> BridgeTable {
             name: "default".into(),
         }])
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// GH #557: SNMPv1 has no getbulk.
+    ///
+    /// Its agent refuses the bulk request, so every column of every table has to come back through
+    /// getnext — one varbind per round trip. The join across three forwarding-table columns is the
+    /// sharpest test of that fallback: it only assembles if each column walked to its end
+    /// independently.
+    #[tokio::test]
+    async fn its_tables_assemble_over_getnext_alone() {
+        let scan = harness::scan("legacy-switch-01").await;
+
+        assert_eq!(scan.if_table.entries.len(), 2);
+        assert!(scan.if_table.set_complete && scan.if_table.attributes_complete);
+        assert_eq!(scan.fdb.records.len(), 1, "the join held over getnext");
+        assert!(scan.fdb.complete);
+        assert_eq!(scan.neighbours.records.len(), 1);
+        assert!(scan.neighbours.complete);
+    }
+}

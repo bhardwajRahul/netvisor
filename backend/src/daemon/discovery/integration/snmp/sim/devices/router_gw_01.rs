@@ -110,3 +110,30 @@ pub fn lldp_table() -> LldpTable {
         .sys_desc("Fortinet FortiGate 60F v7.2.6 build1517 (GA.F)"),
     ])
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    use crate::server::interfaces::r#impl::base::if_type;
+
+    /// A control device, and the one that carries a loopback.
+    ///
+    /// `lo0.0` answers `ifPhysAddress` with an *empty* value rather than omitting the column —
+    /// what an interface with no hardware address reports. It must read back as no address, not
+    /// as six zero bytes, or a lookup keyed on `00:00:00:00:00:00` would match every loopback in
+    /// the estate.
+    #[tokio::test]
+    async fn its_loopback_reports_no_hardware_address() {
+        let scan = harness::scan("router-gw-01").await;
+
+        let loopback = scan.interface(3);
+        assert_eq!(loopback.if_type, Some(if_type::SOFTWARE_LOOPBACK));
+        assert_eq!(
+            loopback.if_phys_address, None,
+            "an empty ifPhysAddress is not an address"
+        );
+        // ...while the real ports do carry one.
+        assert!(scan.interface(1).if_phys_address.is_some());
+    }
+}

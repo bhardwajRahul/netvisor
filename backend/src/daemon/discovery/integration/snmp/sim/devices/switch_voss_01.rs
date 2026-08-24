@@ -124,3 +124,31 @@ pub fn lldp_table() -> LldpTable {
 pub fn bridge_table() -> BridgeTable {
     BridgeTable::derived()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// The regression guard for the same fix.
+    ///
+    /// Extreme VOSS reports `lldpLocPortNum == ifIndex` and `lldpLocPortId` matching `ifName`
+    /// exactly, so it is correct on both old and new code. A remap that started rewriting indexes
+    /// it should have left alone would break here and nowhere else.
+    #[tokio::test]
+    async fn a_local_port_table_that_is_the_identity_moves_nothing() {
+        let scan = harness::scan("switch-voss-01").await;
+
+        assert_eq!(scan.local_ports.len(), 3);
+        assert_eq!(scan.neighbours.records.len(), 2);
+
+        for neighbour in &scan.neighbours.records {
+            let port = neighbour.local_port_index;
+            assert!(
+                scan.if_table.entries.iter().any(|e| e.if_index == port),
+                "the identity mapping moved a neighbour to {port}"
+            );
+        }
+        assert_eq!(scan.local_port_outcome.unmatched, 0);
+        assert_eq!(scan.dropped_neighbours, 0);
+    }
+}

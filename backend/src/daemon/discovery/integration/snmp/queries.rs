@@ -1289,9 +1289,13 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         missing_chassis,
         short_index,
         unexpected_subtype_type.is_some() || unexpected_value_type.is_some(),
-        !chassis_subtype_shortfall.complete
-            || !chassis_value_shortfall.complete
-            || subtype_keys != value_keys,
+        !chassis_subtype_shortfall.complete || !chassis_value_shortfall.complete,
+        // Only a *partial* disagreement is evidence of a stop. A column that listed nothing at all
+        // while its sibling listed rows, on a walk that ended cleanly, is a column the device does
+        // not implement — truncation means rows arrived and then stopped. Without that guard,
+        // firmware that simply omits `lldpRemChassisIdSubtype` is reported as a read worth
+        // retrying, which is the opposite of the advice its operator needs.
+        subtype_keys != value_keys && !subtype_keys.is_empty() && !value_keys.is_empty(),
     );
     if discarded > 0 {
         shortfall.complete = false;
@@ -1379,7 +1383,8 @@ fn dominant_discard_reason(
     missing_chassis: usize,
     short_index: usize,
     wrong_type: bool,
-    chassis_walk_cut_short: bool,
+    chassis_walk_truncated: bool,
+    chassis_columns_disagree: bool,
 ) -> Option<MalformedNeighbourReason> {
     if ghost_rows + missing_chassis + short_index == 0 {
         return None;
@@ -1388,23 +1393,33 @@ fn dominant_discard_reason(
     // stopped early lists none of the rows past the stop, so its casualties are indistinguishable
     // from rows the column never had — they land in `ghost_rows`, or in `missing_chassis` when the
     // sibling column did list them, and would otherwise be reported as a firmware defect no rescan
-    // can fix. That is the wrong advice for the case the comment above the filter calls the common
-    // one.
+    // can fix.
     //
-    // The caller supplies two kinds of evidence for it, because the walk's own completeness flag
-    // only sees the stops it recognises. An agent that skips a successor row ends the column on a
-    // clean `EndOfSubtree` — right request id, well-formed OID, nothing to retry on — and the only
-    // trace left is the two mandatory chassis columns having enumerated different rows.
-    if chassis_walk_cut_short {
+    // The evidence is ranked, because it is not equally good. A shortfall the walk recognised is
+    // decisive; a type we actually recorded is decisive about the firmware; two chassis columns
+    // enumerating different rows is only circumstantial, and is the sole trace an agent leaves
+    // when it skips a successor row.
+    // A column that reported a shortfall stopped for a reason the walk itself recognised, and
+    // that is the strongest evidence there is.
+    if chassis_walk_truncated {
+        return Some(MalformedNeighbourReason::WalkCutShort);
+    }
+    // A recorded type outranks the circumstantial signal below it. We saw what the agent put on
+    // the wire for that column, which a truncated read never gets to see — so a device answering
+    // `lldpRemChassisIdSubtype` with an OCTET STRING is telling us about its firmware, not about
+    // our read, and a rescan will produce the same answer forever.
+    if wrong_type {
+        return Some(MalformedNeighbourReason::UnexpectedType);
+    }
+    // Circumstantial: an agent that skips a successor row ends the column on a clean
+    // `EndOfSubtree` — right request id, well-formed OID, nothing to retry on — and the only trace
+    // left is the two mandatory chassis columns having enumerated different rows.
+    if chassis_columns_disagree {
         return Some(MalformedNeighbourReason::WalkCutShort);
     }
     // The read finished, so a row the chassis columns listed and left without a usable value is
-    // something the device did. The recorded type says whether it answered wrongly or not at all.
-    let missing_reason = if wrong_type {
-        MalformedNeighbourReason::UnexpectedType
-    } else {
-        MalformedNeighbourReason::IncompleteRecords
-    };
+    // something the device did.
+    let missing_reason = MalformedNeighbourReason::IncompleteRecords;
     [
         (missing_chassis, missing_reason),
         (ghost_rows, MalformedNeighbourReason::GhostRows),

@@ -180,3 +180,90 @@ pub fn cdp_table() -> CdpTable {
         remote_address: None,
     }])
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+
+    /// The baseline every other device's test leans on. `Gi0/1`-`Gi0/3` are named by
+    /// `switch-flaky-01`, `switch-dlink-01` and `switch-tplink-01`, and the far ends they resolve
+    /// to are these addresses — so if this device stops reporting them, three other tests are
+    /// proving something else.
+    ///
+    /// The port MACs are also read end to end here. They are six raw octets, and `value_to_mac`
+    /// accepts nothing else: sent as text they are silently dropped and every interface stores no
+    /// address while the walk still reports itself complete.
+    #[tokio::test]
+    async fn its_ports_carry_the_addresses_the_rest_of_the_lab_resolves_against() {
+        let scan = harness::scan("switch-core-01").await;
+
+        assert!(scan.if_table.set_complete && scan.if_table.attributes_complete);
+        assert_eq!(scan.if_table.entries.len(), 4);
+
+        for (if_index, name, mac) in [
+            (1, "Gi0/1", "00:1a:2b:00:10:01"),
+            (2, "Gi0/2", "00:1a:2b:00:10:02"),
+            (3, "Gi0/3", "00:1a:2b:00:10:03"),
+        ] {
+            let port = scan.interface(if_index);
+            assert_eq!(port.if_name.as_deref(), Some(name));
+            assert_eq!(
+                port.if_phys_address.map(|m| m.to_string().to_lowercase()),
+                Some(mac.to_string()),
+                "ifIndex {if_index} must store an address, not drop it as text"
+            );
+        }
+    }
+
+    /// GH #686's read half: the forwarding database is a join across three columns, and the daemon
+    /// keeps learned(3) and mgmt(5) while dropping self(4). Eight rows must yield seven entries —
+    /// a filter that stopped working shows up as a count too *high*, not as an empty table.
+    #[tokio::test]
+    async fn its_forwarding_table_drops_only_the_self_rows() {
+        let scan = harness::scan("switch-core-01").await;
+
+        assert_eq!(scan.fdb.records.len(), 7, "eight rows, one of them self(4)");
+        assert!(scan.fdb.complete);
+        assert!(
+            scan.fdb.records.iter().all(|entry| entry.status != 4),
+            "a self(4) row reached the collection"
+        );
+        // Every entry resolved its bridge port to a real ifIndex through dot1dBasePortIfIndex.
+        assert!(
+            scan.fdb
+                .records
+                .iter()
+                .all(|entry| entry.if_index.is_some())
+        );
+    }
+
+    /// Its neighbours are advertised with padded-ASCII chassis ids, which is the lab's most common
+    /// encoding and one `parse_mac_id` accepts by design.
+    #[tokio::test]
+    async fn its_neighbours_resolve_from_ascii_chassis_ids() {
+        let scan = harness::scan("switch-core-01").await;
+
+        assert_eq!(scan.neighbours.records.len(), 2);
+        assert!(scan.neighbours.complete);
+        assert_eq!(scan.neighbours.discarded, 0);
+
+        let access = scan.neighbour_named("switch-access-01");
+        assert_eq!(access.local_port_index, 1);
+        assert_eq!(
+            LldpChassisId::from_snmp(
+                access.remote_chassis_id_subtype.unwrap(),
+                access.remote_chassis_id_bytes.as_ref().unwrap()
+            ),
+            Some(LldpChassisId::MacAddress("00:1a:2b:00:11:00".into()))
+        );
+        assert_eq!(
+            LldpPortId::from_snmp(
+                access.remote_port_id_subtype.unwrap(),
+                access.remote_port_id_bytes.as_ref().unwrap()
+            ),
+            Some(LldpPortId::InterfaceName("Gi0/1".into()))
+        );
+    }
+}

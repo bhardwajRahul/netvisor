@@ -71,3 +71,40 @@ pub fn arp_table() -> ArpTable {
         ip_address: "10.40.50.1".parse().unwrap(),
     }])
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// The non-advancing agent the walk's retry-then-stop guard was written for.
+    ///
+    /// It answers every request for its ARP table with the same row, whatever was asked
+    /// (originally a Ubiquiti bridge FDB). Left unguarded the daemon re-requests the same page
+    /// until the entry cap or the integration timeout.
+    ///
+    /// It must report as a *shortfall* — a walk that did not finish — rather than as a device that
+    /// quietly has no ARP entries, which is the reading that costs an operator the evidence.
+    #[tokio::test]
+    async fn a_never_advancing_table_is_reported_short_rather_than_empty() {
+        let scan = harness::scan("switch-stuck-01").await;
+
+        assert!(
+            !scan.arp.complete,
+            "a table that never advances did not finish, and must not read as one that did"
+        );
+        assert!(
+            scan.arp.reason.is_some(),
+            "the shortfall must name a cause the operator can act on"
+        );
+    }
+
+    /// It has an ordinary `ifTable` so that it is a shortfall case rather than a mute one — the
+    /// two produce different warnings and must not be confusable.
+    #[tokio::test]
+    async fn the_rest_of_the_device_reads_normally() {
+        let scan = harness::scan("switch-stuck-01").await;
+
+        assert_eq!(scan.if_table.entries.len(), 2);
+        assert!(scan.if_table.set_complete && scan.if_table.attributes_complete);
+    }
+}

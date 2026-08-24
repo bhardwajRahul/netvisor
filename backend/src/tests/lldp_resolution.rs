@@ -11,6 +11,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use mac_address::MacAddress;
 use uuid::Uuid;
 
+use crate::server::hosts::r#impl::name::HostName;
 use crate::server::{
     hosts::r#impl::base::Host,
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase, if_type},
@@ -62,7 +63,7 @@ impl Lab {
 
     async fn host(&self, name: &str) -> Host {
         let mut h = host(&self.network_id);
-        h.base.name = name.to_string();
+        h.base.name = HostName::Manual(name.to_string());
         self.storage.hosts.create(&h).await.unwrap();
         h
     }
@@ -74,7 +75,7 @@ impl Lab {
         sys_name: Option<&str>,
     ) -> Host {
         let mut h = host(&self.network_id);
-        h.base.name = name.to_string();
+        h.base.name = HostName::Manual(name.to_string());
         h.base.chassis_id = chassis_id.map(str::to_string);
         h.base.sys_name = sys_name.map(str::to_string);
         self.storage.hosts.create(&h).await.unwrap();
