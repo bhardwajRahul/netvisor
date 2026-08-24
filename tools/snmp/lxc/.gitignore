@@ -1,0 +1,4 @@
+# The devices are generated from their typed definitions at deploy time, never committed —
+# so there is no second copy of a device that can drift from the struct that defines it.
+# Produced by `make snmp-fixtures`.
+generated/

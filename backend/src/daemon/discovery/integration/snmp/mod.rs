@@ -12,8 +12,12 @@ pub mod session;
 pub mod types;
 pub mod values;
 
+/// The simulated devices behind `tools/snmp/`. Test and generator only — see `sim::wire`.
+#[cfg(any(test, feature = "snmp-sim"))]
+pub mod sim;
+
 // Re-export commonly used items
-use queries::SnmpCollection;
+pub use queries::{IfTableWalk, SnmpCollection};
 pub use queries::{
     query_arp_table, query_bridge_fdb, query_bridge_port_mapping, query_cdp_neighbors,
     query_entity_physical, query_ip_addr_table, query_lldp_local, query_lldp_local_ports,
@@ -1078,7 +1082,7 @@ pub struct LocalPortOutcome {
 /// contributes nothing and the server has nothing to resolve. The identity path is counted too —
 /// returning zero there meant a device whose `lldpLocPortTable` was absent or unreadable dropped
 /// every neighbour while raising no warning at all.
-fn remap_lldp_local_ports(
+pub(crate) fn remap_lldp_local_ports(
     neighbors: &mut [LldpNeighbor],
     loc_ports: &HashMap<i32, LldpLocalPort>,
     if_entries: &[IfTableEntry],
@@ -1134,7 +1138,7 @@ fn remap_lldp_local_ports(
 /// dropped" cannot drift apart. The evidence line carries the far end's own identity as well as
 /// the local-port columns, because on the identity path there is no `lldpLocPortTable` row to
 /// describe and the neighbour's chassis is the only thing that names what was lost.
-fn count_dropped_neighbours(
+pub(crate) fn count_dropped_neighbours(
     neighbors: &[LldpNeighbor],
     loc_ports: &HashMap<i32, LldpLocalPort>,
     if_entries: &[IfTableEntry],
@@ -1206,7 +1210,7 @@ enum LocalPortEvidence {
 ///
 /// The all-zero address is dropped for the same reason: it is what firmware reports for an
 /// interface that has no hardware address, not an identity.
-fn unique_interface_macs(if_entries: &[IfTableEntry]) -> HashMap<MacAddress, i32> {
+pub(crate) fn unique_interface_macs(if_entries: &[IfTableEntry]) -> HashMap<MacAddress, i32> {
     let unset = MacAddress::new([0; 6]);
     let mut by_mac: HashMap<MacAddress, Option<i32>> = HashMap::new();
     for e in if_entries {

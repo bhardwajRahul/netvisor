@@ -454,6 +454,116 @@ pub fn canonical_mac(value: &str) -> Option<String> {
     (octets.len() == 6).then(|| format_mac(&octets))
 }
 
+/// The forms a MAC-valued LLDP identifier takes on the wire.
+///
+/// This is the inverse of the tolerance [`parse_mac_id`] already implements, named rather than
+/// implied. A `PhysAddress` is six raw octets, and [`Self::Octets`] is what real firmware sends —
+/// but two vendors in the field send the identifier as *text* instead, so the parser accepts that
+/// and something has to be able to produce it.
+///
+/// Naming the encoding is what stops the trap `SNMP-TEST-ENV.md` records as having "caught three
+/// fixtures so far": a MAC written as a string where octets are meant arrives as 17 ASCII bytes,
+/// [`crate::daemon::discovery::integration::snmp::values::value_to_mac`] correctly refuses to read
+/// it as an address, and the value is silently dropped while everything downstream still looks
+/// healthy. A caller that wants text now has to say so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MacEncoding {
+    /// Six raw octets — what a conforming agent sends, and the default everywhere.
+    #[default]
+    Octets,
+    /// `00:1a:2b:00:10:01` — zero-padded ASCII.
+    AsciiLower,
+    /// `00:1A:2B:00:10:00` — zero-padded ASCII, upper case. TP-Link's TL-SX3016F (GH #668).
+    AsciiUpper,
+    /// `0:1a:2b:0:10:0` — ASCII with unpadded octets, which is also net-snmp's own `%x` display
+    /// form. ExtremeXOS sends its chassis id this way.
+    AsciiAbbreviated,
+}
+
+impl MacEncoding {
+    /// Render a MAC as this encoding puts it on the wire.
+    pub fn encode(self, mac: &mac_address::MacAddress) -> Vec<u8> {
+        let bytes = mac.bytes();
+        match self {
+            Self::Octets => bytes.to_vec(),
+            Self::AsciiLower => format_mac(&bytes).into_bytes(),
+            Self::AsciiUpper => format_mac(&bytes).to_uppercase().into_bytes(),
+            Self::AsciiAbbreviated => bytes
+                .iter()
+                .map(|b| format!("{:x}", b))
+                .collect::<Vec<_>>()
+                .join(":")
+                .into_bytes(),
+        }
+    }
+
+    /// Render an identifier that [`parse_mac_id`] canonicalised back into wire bytes.
+    ///
+    /// Falls back to the value's own bytes when it is not a MAC at all. That case is reachable
+    /// only for a `MacAddress` variant holding a non-MAC, which the constructors do not produce;
+    /// emitting the text verbatim keeps a malformed value visible instead of turning it into six
+    /// arbitrary octets.
+    fn encode_identifier(self, value: &str) -> Vec<u8> {
+        match value.parse::<mac_address::MacAddress>() {
+            Ok(mac) => self.encode(&mac),
+            Err(_) => value.as_bytes().to_vec(),
+        }
+    }
+}
+
+/// Render an LLDP network address the way [`parse_network_address`] reads one: IANA address
+/// family byte, then the address octets.
+fn encode_network_address(addr: &IpAddr) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    match addr {
+        IpAddr::V4(v4) => {
+            bytes.push(1);
+            bytes.extend_from_slice(&v4.octets());
+        }
+        IpAddr::V6(v6) => {
+            bytes.push(2);
+            bytes.extend_from_slice(&v6.octets());
+        }
+    }
+    bytes
+}
+
+impl LldpChassisId {
+    /// The subtype and value bytes an agent advertising this identifier would send — the inverse
+    /// of [`Self::from_snmp`].
+    ///
+    /// The subtype comes from the variant, so a fixture cannot advertise subtype 4 carrying
+    /// something that is not an address, or subtype 7 carrying raw octets. `mac_encoding` is
+    /// consulted only by [`Self::MacAddress`]; every other variant is text by definition.
+    pub fn to_snmp(&self, mac_encoding: MacEncoding) -> (u8, Vec<u8>) {
+        match self {
+            Self::ChassisComponent(s) => (1, s.as_bytes().to_vec()),
+            Self::InterfaceAlias(s) => (2, s.as_bytes().to_vec()),
+            Self::PortComponent(s) => (3, s.as_bytes().to_vec()),
+            Self::MacAddress(s) => (4, mac_encoding.encode_identifier(s)),
+            Self::NetworkAddress(addr) => (5, encode_network_address(addr)),
+            Self::InterfaceName(s) => (6, s.as_bytes().to_vec()),
+            Self::LocallyAssigned(s) => (7, s.as_bytes().to_vec()),
+        }
+    }
+}
+
+impl LldpPortId {
+    /// The subtype and value bytes an agent advertising this identifier would send — the inverse
+    /// of [`Self::from_snmp`]. See [`LldpChassisId::to_snmp`]; the subtype numbering differs.
+    pub fn to_snmp(&self, mac_encoding: MacEncoding) -> (u8, Vec<u8>) {
+        match self {
+            Self::InterfaceAlias(s) => (1, s.as_bytes().to_vec()),
+            Self::PortComponent(s) => (2, s.as_bytes().to_vec()),
+            Self::MacAddress(s) => (3, mac_encoding.encode_identifier(s)),
+            Self::NetworkAddress(addr) => (4, encode_network_address(addr)),
+            Self::InterfaceName(s) => (5, s.as_bytes().to_vec()),
+            Self::AgentCircuitId(s) => (6, s.as_bytes().to_vec()),
+            Self::LocallyAssigned(s) => (7, s.as_bytes().to_vec()),
+        }
+    }
+}
+
 /// Format MAC address bytes as colon-separated hex string.
 fn format_mac(bytes: &[u8]) -> String {
     bytes
@@ -491,6 +601,93 @@ fn parse_network_address(value: &[u8]) -> Option<IpAddr> {
 
 // Re-export LldpResolver trait from resolver module for backward compatibility
 pub use super::resolver::LldpResolver;
+
+#[cfg(test)]
+mod wire_round_trip_tests {
+    use super::*;
+    use strum::VariantNames;
+
+    /// One value per variant. The length assertion below is what keeps this honest: a new
+    /// variant that nobody adds here fails the test rather than escaping the property.
+    fn chassis_variants() -> Vec<LldpChassisId> {
+        vec![
+            LldpChassisId::ChassisComponent("backplane-1".into()),
+            LldpChassisId::InterfaceAlias("uplink to core".into()),
+            LldpChassisId::PortComponent("port-7".into()),
+            LldpChassisId::MacAddress("00:1a:2b:3c:4d:5e".into()),
+            LldpChassisId::NetworkAddress("192.0.2.7".parse().unwrap()),
+            LldpChassisId::InterfaceName("GigabitEthernet0/1".into()),
+            LldpChassisId::LocallyAssigned("C230408".into()),
+        ]
+    }
+
+    fn port_variants() -> Vec<LldpPortId> {
+        vec![
+            LldpPortId::InterfaceAlias("Ring port to peer".into()),
+            LldpPortId::PortComponent("slot0-3".into()),
+            LldpPortId::MacAddress("00:07:7c:20:01:e3".into()),
+            LldpPortId::NetworkAddress("198.51.100.4".parse().unwrap()),
+            LldpPortId::InterfaceName("ethernet1/1/14:1".into()),
+            LldpPortId::AgentCircuitId("circuit-9".into()),
+            LldpPortId::LocallyAssigned("41".into()),
+        ]
+    }
+
+    /// The subtype is the variant, in both directions. Emitting through `to_snmp` and reading
+    /// back through `from_snmp` must land on the same identity for every variant — which is what
+    /// makes a fixture built from these enums unable to advertise a subtype that contradicts its
+    /// value.
+    #[test]
+    fn every_identifier_variant_survives_the_wire() {
+        assert_eq!(chassis_variants().len(), LldpChassisId::VARIANTS.len());
+        assert_eq!(port_variants().len(), LldpPortId::VARIANTS.len());
+
+        for id in chassis_variants() {
+            let (subtype, value) = id.to_snmp(MacEncoding::Octets);
+            assert_eq!(LldpChassisId::from_snmp(subtype, &value), Some(id));
+        }
+        for id in port_variants() {
+            let (subtype, value) = id.to_snmp(MacEncoding::Octets);
+            assert_eq!(LldpPortId::from_snmp(subtype, &value), Some(id));
+        }
+    }
+
+    /// All four encodings of one address reach one identity.
+    ///
+    /// This is the property the lab depends on: `switch-macport-01` is named by six raw octets on
+    /// its own device and by ASCII text from `switch-dlink-01`, and both have to resolve to the
+    /// same host. It is also the guard on the trap itself — a MAC sent as text is not a different
+    /// MAC, it is the same one, and anything that reads it as six arbitrary bytes fails here.
+    #[test]
+    fn every_mac_encoding_reads_back_as_the_same_address() {
+        let mac: mac_address::MacAddress = "00:ad:24:af:4e:00".parse().unwrap();
+        let expected = LldpChassisId::MacAddress("00:ad:24:af:4e:00".into());
+
+        for encoding in [
+            MacEncoding::Octets,
+            MacEncoding::AsciiLower,
+            MacEncoding::AsciiUpper,
+            MacEncoding::AsciiAbbreviated,
+        ] {
+            let (subtype, value) = expected.to_snmp(encoding);
+            assert_eq!(subtype, 4);
+            assert_eq!(
+                LldpChassisId::from_snmp(subtype, &value),
+                Some(expected.clone()),
+                "{encoding:?} did not read back as the same address"
+            );
+        }
+
+        // And the encodings really are distinct on the wire, or the check above proves nothing.
+        assert_eq!(MacEncoding::Octets.encode(&mac).len(), 6);
+        assert_eq!(MacEncoding::AsciiLower.encode(&mac), b"00:ad:24:af:4e:00");
+        assert_eq!(MacEncoding::AsciiUpper.encode(&mac), b"00:AD:24:AF:4E:00");
+        assert_eq!(
+            MacEncoding::AsciiAbbreviated.encode(&mac),
+            b"0:ad:24:af:4e:0"
+        );
+    }
+}
 
 #[cfg(test)]
 mod tests {
