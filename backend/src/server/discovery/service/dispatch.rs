@@ -464,12 +464,6 @@ impl DiscoveryService {
 
         if session.phase.is_terminal() {
             let is_rescan = session.discovery_type.rescan_target_host_id().is_some();
-            self.event_bus()
-                .publish(session.into_discovery_event())
-                .await?;
-
-            // If user cancelled session, but it finished before we could send cancellation, remove key so it doesn't cancel upcoming sessions
-            self.pull_cancellation_for_daemon(&session.daemon_id).await;
 
             // Create historical discovery record
             let network_name = match self.network_service.get_by_id(&session.network_id).await {
@@ -567,6 +561,25 @@ impl DiscoveryService {
                     )
                     .await?;
             }
+
+            // Only now the terminal phase event, because the row above is what its subscribers
+            // annotate.
+            //
+            // Post-scan work a daemon cannot do — neighbour resolution above all — is driven by
+            // this event and writes its findings onto the scan record. Published first, that work
+            // raced a row that did not exist yet and lost: `publish` only queues the event
+            // (`events/traits.rs`), so the debounced subscriber ran while this function was still
+            // doing the database round-trips above, found nothing to annotate, and returned
+            // quietly. On a small network it lost every time; on a large one, where resolution
+            // takes longer than those round-trips, it would have won — which is the kind of
+            // ordering bug that reproduces nowhere and rots forever. Creating the row first
+            // removes the race rather than narrowing it.
+            self.event_bus()
+                .publish(session.into_discovery_event())
+                .await?;
+
+            // If user cancelled session, but it finished before we could send cancellation, remove key so it doesn't cancel upcoming sessions
+            self.pull_cancellation_for_daemon(&session.daemon_id).await;
 
             // A rescan's parent exists only to carry the targets to the daemon.
             // Delete it now that the historical row (which the user actually sees)
