@@ -1151,8 +1151,8 @@ mod tests {
 
         assert_eq!(
             literals.len(),
-            5,
-            "expected the five sim credentials; found {} — did the script change shape?",
+            6,
+            "expected the six sim credentials; found {} — did the script change shape?",
             literals.len()
         );
 

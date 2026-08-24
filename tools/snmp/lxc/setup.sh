@@ -5,7 +5,7 @@ set -euo pipefail
 # SNMP Test Environment — Proxmox VM setup (self-contained)
 #
 # Paste this entire script into a Debian/Ubuntu VM terminal.
-# Creates 21 snmpd instances on secondary IPs, each simulating a
+# Creates 22 snmpd instances on secondary IPs, each simulating a
 # different network device with its own community string.
 #
 # Edit HOSTS/CIDR/IFACE below to match your network.
@@ -15,7 +15,7 @@ set -euo pipefail
 # simulator, not the product under test.
 # ══════════════════════════════════════════════════════════════════════
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245 192.168.7.246 192.168.7.247 192.168.7.248 192.168.7.249 192.168.7.250)
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245 192.168.7.246 192.168.7.247 192.168.7.248 192.168.7.249 192.168.7.250 192.168.7.251)
 CIDR="22"
 IFACE="eth0"
 
@@ -44,14 +44,30 @@ IFACE="eth0"
 # `macAddress(3)` and names the interface only in `lldpLocPortDesc`, with local port numbers
 # running backwards against the interfaces — so neither the port id nor arithmetic can place a
 # neighbour, and only the description or a per-port MAC can.
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c)
-SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01 switch-tplink-01 switch-unsorted-01 switch-macport-01 switch-mute-01 switch-stuck-01 switch-dell-01)
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v3)
+SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01 switch-netgear-01 switch-aruba-01 switch-omada-01 switch-flaky-01 switch-dlink-01 switch-tplink-01 switch-unsorted-01 switch-macport-01 switch-mute-01 switch-stuck-01 switch-dell-01 switch-cisco-01)
 
 # SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
 # AuthPriv with SHA-256 / AES-128 — the broadly-supported pure-Rust default.
 V3_USER="scanopyv3"
 V3_AUTH_PASS="authpass12345"
 V3_PRIV_PASS="privpass12345"
+
+# A second USM identity, for switch-cisco-01 (192.168.7.251) only.
+#
+# Deliberately not the one above. Every seeded credential is Broadcast-scoped to every network and
+# only one SNMP credential per host ever executes — the last mapping that authenticates wins — so
+# if the context-bearing credential and the plain one both answered here, which of them read the
+# device would be down to mapping order and the fixture would report nine FDB entries or one at
+# random. A user only this device accepts makes the winner deterministic.
+V3_CTX_USER="scanopyctx"
+V3_CTX_AUTH_PASS="ctxauthpass12345"
+V3_CTX_PRIV_PASS="ctxprivpass12345"
+
+# The back-end agent holding switch-cisco-01's VLAN 20 bridge tables. Loopback-only: it exists to
+# be proxied, never to be scanned.
+CTX_BACKEND_ADDR="127.0.0.1:16151"
+CTX_BACKEND_COMMUNITY="ctxinternal"
 
 CONF_DIR="/etc/snmp-test"
 DATA_DIR="$CONF_DIR/data"
@@ -87,7 +103,7 @@ done
 #
 # KNOWN CHAOS — read this before chasing a truncation warning.
 #
-# snmpd forks this script, which then forks awk, once per SNMP request. With 14
+# snmpd forks this script, which then forks awk, once per SNMP request. With 22
 # agents on one VM and ~17 column walks per host, a single scan is hundreds of
 # concurrent forks, and under that load the agents answer some requests with the
 # WRONG OID — one belonging to a request the daemon made earlier.
@@ -2460,6 +2476,175 @@ cat > "$DATA_DIR/switch-dell-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.10.127153800.569.87 string Windows Server 2022 Datacenter 10.0.20348 x64
 EOF
 
+# switch-cisco-01 IF-MIB — a Catalyst 3850 running IOS-XE, from GH #686.
+cat > "$DATA_DIR/switch-cisco-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.1.3 integer 3
+.1.3.6.1.2.1.2.2.1.1.4 integer 4
+.1.3.6.1.2.1.2.2.1.1.5 integer 5
+.1.3.6.1.2.1.2.2.1.1.6 integer 6
+.1.3.6.1.2.1.2.2.1.1.7 integer 7
+.1.3.6.1.2.1.2.2.1.1.8 integer 8
+.1.3.6.1.2.1.2.2.1.1.101 integer 101
+.1.3.6.1.2.1.2.2.1.1.120 integer 120
+.1.3.6.1.2.1.2.2.1.2.1 string GigabitEthernet1/0/1
+.1.3.6.1.2.1.2.2.1.2.2 string GigabitEthernet1/0/2
+.1.3.6.1.2.1.2.2.1.2.3 string GigabitEthernet1/0/3
+.1.3.6.1.2.1.2.2.1.2.4 string GigabitEthernet1/0/4
+.1.3.6.1.2.1.2.2.1.2.5 string GigabitEthernet1/0/5
+.1.3.6.1.2.1.2.2.1.2.6 string GigabitEthernet1/0/6
+.1.3.6.1.2.1.2.2.1.2.7 string GigabitEthernet1/0/7
+.1.3.6.1.2.1.2.2.1.2.8 string GigabitEthernet1/0/8
+.1.3.6.1.2.1.2.2.1.2.101 string Vlan1
+.1.3.6.1.2.1.2.2.1.2.120 string Vlan20
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.3.3 integer 6
+.1.3.6.1.2.1.2.2.1.3.4 integer 6
+.1.3.6.1.2.1.2.2.1.3.5 integer 6
+.1.3.6.1.2.1.2.2.1.3.6 integer 6
+.1.3.6.1.2.1.2.2.1.3.7 integer 6
+.1.3.6.1.2.1.2.2.1.3.8 integer 6
+.1.3.6.1.2.1.2.2.1.3.101 integer 53
+.1.3.6.1.2.1.2.2.1.3.120 integer 53
+.1.3.6.1.2.1.2.2.1.4.1 integer 1500
+.1.3.6.1.2.1.2.2.1.4.2 integer 1500
+.1.3.6.1.2.1.2.2.1.4.3 integer 1500
+.1.3.6.1.2.1.2.2.1.4.4 integer 1500
+.1.3.6.1.2.1.2.2.1.4.5 integer 1500
+.1.3.6.1.2.1.2.2.1.4.6 integer 1500
+.1.3.6.1.2.1.2.2.1.4.7 integer 1500
+.1.3.6.1.2.1.2.2.1.4.8 integer 1500
+.1.3.6.1.2.1.2.2.1.4.101 integer 1500
+.1.3.6.1.2.1.2.2.1.4.120 integer 1500
+.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.3 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.4 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.5 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.6 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.7 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.8 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.101 gauge 0
+.1.3.6.1.2.1.2.2.1.5.120 gauge 0
+.1.3.6.1.2.1.2.2.1.6.1 octet 00 1e 4a 7c 3b 01
+.1.3.6.1.2.1.2.2.1.6.2 octet 00 1e 4a 7c 3b 02
+.1.3.6.1.2.1.2.2.1.6.3 octet 00 1e 4a 7c 3b 03
+.1.3.6.1.2.1.2.2.1.6.4 octet 00 1e 4a 7c 3b 04
+.1.3.6.1.2.1.2.2.1.6.5 octet 00 1e 4a 7c 3b 05
+.1.3.6.1.2.1.2.2.1.6.6 octet 00 1e 4a 7c 3b 06
+.1.3.6.1.2.1.2.2.1.6.7 octet 00 1e 4a 7c 3b 07
+.1.3.6.1.2.1.2.2.1.6.8 octet 00 1e 4a 7c 3b 08
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.7.3 integer 1
+.1.3.6.1.2.1.2.2.1.7.4 integer 1
+.1.3.6.1.2.1.2.2.1.7.5 integer 1
+.1.3.6.1.2.1.2.2.1.7.6 integer 1
+.1.3.6.1.2.1.2.2.1.7.7 integer 1
+.1.3.6.1.2.1.2.2.1.7.8 integer 1
+.1.3.6.1.2.1.2.2.1.7.101 integer 1
+.1.3.6.1.2.1.2.2.1.7.120 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.3 integer 1
+.1.3.6.1.2.1.2.2.1.8.4 integer 1
+.1.3.6.1.2.1.2.2.1.8.5 integer 1
+.1.3.6.1.2.1.2.2.1.8.6 integer 1
+.1.3.6.1.2.1.2.2.1.8.7 integer 1
+.1.3.6.1.2.1.2.2.1.8.8 integer 1
+.1.3.6.1.2.1.2.2.1.8.101 integer 1
+.1.3.6.1.2.1.2.2.1.8.120 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string GigabitEthernet1/0/1
+.1.3.6.1.2.1.31.1.1.1.1.2 string GigabitEthernet1/0/2
+.1.3.6.1.2.1.31.1.1.1.1.3 string GigabitEthernet1/0/3
+.1.3.6.1.2.1.31.1.1.1.1.4 string GigabitEthernet1/0/4
+.1.3.6.1.2.1.31.1.1.1.1.5 string GigabitEthernet1/0/5
+.1.3.6.1.2.1.31.1.1.1.1.6 string GigabitEthernet1/0/6
+.1.3.6.1.2.1.31.1.1.1.1.7 string GigabitEthernet1/0/7
+.1.3.6.1.2.1.31.1.1.1.1.8 string GigabitEthernet1/0/8
+.1.3.6.1.2.1.31.1.1.1.1.101 string Vlan1
+.1.3.6.1.2.1.31.1.1.1.1.120 string Vlan20
+.1.3.6.1.2.1.31.1.1.1.15.1 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.15.2 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.15.3 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.15.4 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.15.5 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.15.6 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.15.7 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.15.8 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.15.101 gauge 0
+.1.3.6.1.2.1.31.1.1.1.15.120 gauge 0
+EOF
+
+# switch-cisco-01 bridge tables, default context — the near-empty one.
+#
+# This is the whole of what the reporter's switch returned however they asked for it: one learned
+# MAC, reported as `count=1 complete=true`. It is not a truncated read and never was. IOS-XE
+# partitions its forwarding database per VLAN and keeps almost nothing in the default context, so
+# a scan that cannot name a context is reading the wrong table and being told nothing is wrong.
+#
+# dot1dBasePortIfIndex is served here as well as in the VLAN context, because the daemon walks it
+# alongside whichever FDB it is reading and both have to resolve to the same ports.
+cat > "$DATA_DIR/switch-cisco-01-bridge.txt" << 'EOF'
+.1.3.6.1.2.1.17.1.4.1.2.1 integer 1
+.1.3.6.1.2.1.17.1.4.1.2.2 integer 2
+.1.3.6.1.2.1.17.1.4.1.2.3 integer 3
+.1.3.6.1.2.1.17.1.4.1.2.4 integer 4
+.1.3.6.1.2.1.17.1.4.1.2.5 integer 5
+.1.3.6.1.2.1.17.1.4.1.2.6 integer 6
+.1.3.6.1.2.1.17.1.4.1.2.7 integer 7
+.1.3.6.1.2.1.17.1.4.1.2.8 integer 8
+.1.3.6.1.2.1.17.4.3.1.1.0.80.86.154.20.1 octet 00 50 56 9a 14 01
+.1.3.6.1.2.1.17.4.3.1.2.0.80.86.154.20.1 integer 1
+.1.3.6.1.2.1.17.4.3.1.3.0.80.86.154.20.1 integer 3
+EOF
+
+# switch-cisco-01 bridge tables, `vlan-20` context — the nine entries.
+#
+# Served by a second snmpd on $CTX_BACKEND_ADDR that exists only to be proxied. `pass` takes no context
+# argument — it registers into the default context and nothing else — so a handler cannot be
+# scoped to a context directly, and `proxy -Cn` in front of a second agent is the only way stock
+# net-snmp serves different data per context.
+cat > "$DATA_DIR/switch-cisco-01-vlan20.txt" << 'EOF'
+.1.3.6.1.2.1.17.1.4.1.2.1 integer 1
+.1.3.6.1.2.1.17.1.4.1.2.2 integer 2
+.1.3.6.1.2.1.17.1.4.1.2.3 integer 3
+.1.3.6.1.2.1.17.1.4.1.2.4 integer 4
+.1.3.6.1.2.1.17.1.4.1.2.5 integer 5
+.1.3.6.1.2.1.17.1.4.1.2.6 integer 6
+.1.3.6.1.2.1.17.1.4.1.2.7 integer 7
+.1.3.6.1.2.1.17.1.4.1.2.8 integer 8
+.1.3.6.1.2.1.17.4.3.1.1.0.80.86.154.32.1 octet 00 50 56 9a 20 01
+.1.3.6.1.2.1.17.4.3.1.1.0.80.86.154.32.2 octet 00 50 56 9a 20 02
+.1.3.6.1.2.1.17.4.3.1.1.0.80.86.154.32.3 octet 00 50 56 9a 20 03
+.1.3.6.1.2.1.17.4.3.1.1.0.80.86.154.32.4 octet 00 50 56 9a 20 04
+.1.3.6.1.2.1.17.4.3.1.1.0.80.86.154.32.5 octet 00 50 56 9a 20 05
+.1.3.6.1.2.1.17.4.3.1.1.0.80.86.154.32.6 octet 00 50 56 9a 20 06
+.1.3.6.1.2.1.17.4.3.1.1.0.80.86.154.32.7 octet 00 50 56 9a 20 07
+.1.3.6.1.2.1.17.4.3.1.1.0.80.86.154.32.8 octet 00 50 56 9a 20 08
+.1.3.6.1.2.1.17.4.3.1.1.0.80.86.154.32.9 octet 00 50 56 9a 20 09
+.1.3.6.1.2.1.17.4.3.1.2.0.80.86.154.32.1 integer 1
+.1.3.6.1.2.1.17.4.3.1.2.0.80.86.154.32.2 integer 2
+.1.3.6.1.2.1.17.4.3.1.2.0.80.86.154.32.3 integer 2
+.1.3.6.1.2.1.17.4.3.1.2.0.80.86.154.32.4 integer 3
+.1.3.6.1.2.1.17.4.3.1.2.0.80.86.154.32.5 integer 4
+.1.3.6.1.2.1.17.4.3.1.2.0.80.86.154.32.6 integer 5
+.1.3.6.1.2.1.17.4.3.1.2.0.80.86.154.32.7 integer 6
+.1.3.6.1.2.1.17.4.3.1.2.0.80.86.154.32.8 integer 7
+.1.3.6.1.2.1.17.4.3.1.2.0.80.86.154.32.9 integer 8
+.1.3.6.1.2.1.17.4.3.1.3.0.80.86.154.32.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.80.86.154.32.2 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.80.86.154.32.3 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.80.86.154.32.4 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.80.86.154.32.5 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.80.86.154.32.6 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.80.86.154.32.7 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.80.86.154.32.8 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.80.86.154.32.9 integer 3
+EOF
+
 # ── 5. Write snmpd configs ───────────────────────────────────────────
 echo "Writing snmpd configs..."
 
@@ -2808,6 +2993,62 @@ pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-dell-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-dell-01-lldp.txt
 EOF
 
+# switch-cisco-01 — the SNMPv3 context fixture (GH #686).
+#
+# v3-only, and on its own USM user: see V3_CTX_USER above for why the winner has to be
+# deterministic. No rocommunity for any seeded community either, so no v2c credential can win here
+# — `netdefault@20` below is reachable from the command line and is not a seeded credential.
+#
+# Three things make this device the thing under test:
+#
+#   `proxy -Cn vlan-20` routes the whole BRIDGE-MIB subtree, under that context name only, to the
+#   back-end agent holding the nine-entry table. Ask without the context and you get the one-entry
+#   table below, which is exactly the reporter's symptom.
+#
+#   `rouser ... -V all vlan-20` is what lets the v3 user name that context at all. Without it the
+#   request is authorised for the default context and answered from the wrong table.
+#
+#   `com2sec -Cn vlan-20` maps the community `netdefault@20` onto the same context, which is how
+#   Cisco exposes per-VLAN bridge data to v2c. We send the community verbatim, so that form works
+#   today with no code at all — this is here so `snmp-verify` can prove it rather than assert it.
+#
+# ifTable, ifXTable and the system MIB stay in the default context, as they do on the real device.
+# That is why the daemon scopes only its bridge and VLAN walks to the credential's context: a
+# whole-session context would find none of them.
+mkdir -p "$CONF_DIR/state/switch-cisco-01"
+cat > "$CONF_DIR/snmpd-switch-cisco-01.conf" << EOF
+agentAddress udp:${HOSTS[21]}:161
+persistentDir $CONF_DIR/state/switch-cisco-01
+createUser $V3_CTX_USER SHA-256 "$V3_CTX_AUTH_PASS" AES "$V3_CTX_PRIV_PASS"
+rouser $V3_CTX_USER priv
+rouser $V3_CTX_USER priv -V all vlan-20
+com2sec -Cn vlan-20 v20sec default netdefault@20
+group v20group v2c v20sec
+view all included .1
+access v20group vlan-20 any noauth exact all none none
+sysdescr Cisco IOS Software [Fuji], Catalyst L3 Switch Software (CAT3K_CAA-UNIVERSALK9-M), Version 16.9.5
+syscontact netops@example.com
+sysname switch-cisco-01
+syslocation Server Room B, Rack 2
+sysobjectid .1.3.6.1.4.1.9.1.1745
+sysservices 6
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-cisco-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-cisco-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-cisco-01-bridge.txt
+proxy -Cn vlan-20 -v2c -c $CTX_BACKEND_COMMUNITY $CTX_BACKEND_ADDR .1.3.6.1.2.1.17
+EOF
+
+# The back end the proxy points at. Loopback-only and not in SYSNAMES: it has no macvlan, no IP on
+# the test subnet, and is never scanned or verified directly.
+cat > "$CONF_DIR/snmpd-switch-cisco-01-vlan20.conf" << EOF
+agentAddress udp:$CTX_BACKEND_ADDR
+rocommunity $CTX_BACKEND_COMMUNITY 127.0.0.1
+sysdescr switch-cisco-01 VLAN 20 bridge context
+sysname switch-cisco-01-vlan20
+sysservices 2
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-cisco-01-vlan20.txt
+EOF
+
 # ── 6. Create systemd services ───────────────────────────────────────
 echo "Creating systemd services..."
 for i in "${!SYSNAMES[@]}"; do
@@ -2827,6 +3068,26 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 done
+
+# switch-cisco-01's VLAN 20 back end, written by hand because it is not in SYSNAMES: it binds a
+# loopback port rather than a macvlan, has no entry in HOSTS, and must never be verified or
+# scanned as a device of its own. The front agent proxies to it, so it has to be up first —
+# `Before=` rather than `After=`, or the first scan after a deploy reads an unreachable proxy.
+cat > "/etc/systemd/system/snmpd-switch-cisco-01-vlan20.service" << EOF
+[Unit]
+Description=SNMP Test Agent — switch-cisco-01 VLAN 20 bridge context (${CTX_BACKEND_ADDR})
+After=network.target
+Before=snmpd-switch-cisco-01.service
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/snmpd -f -Lo -I -ifTable,-ifXTable -C -c ${CONF_DIR}/snmpd-switch-cisco-01-vlan20.conf
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 # ── 7. Persist macvlan interfaces ────────────────────────────────────
 if [ -d /etc/netplan ]; then
@@ -2866,6 +3127,10 @@ fi
 # ── 8. Start everything ──────────────────────────────────────────────
 echo "Starting SNMP agents..."
 systemctl daemon-reload
+# Ahead of the loop: the front agent proxies to it, and a proxy to a dead port answers nothing.
+systemctl enable snmpd-switch-cisco-01-vlan20 --quiet
+systemctl restart snmpd-switch-cisco-01-vlan20
+printf "  %-28s started\n" "snmpd-switch-cisco-01-vlan20"
 for name in "${SYSNAMES[@]}"; do
     systemctl enable "snmpd-${name}" --quiet
     systemctl restart "snmpd-${name}"
@@ -2883,6 +3148,12 @@ echo ""
 echo "Verifying service health..."
 sleep 1
 all_ok=true
+if systemctl is-active --quiet snmpd-switch-cisco-01-vlan20; then
+    printf "  \033[0;32m✓\033[0m %-18s %-20s %s (active)\n" "$CTX_BACKEND_ADDR" "cisco vlan-20 back end" "v2c"
+else
+    printf "  \033[0;31m✗\033[0m %-18s %-20s (not active — journalctl -u snmpd-switch-cisco-01-vlan20)\n" "$CTX_BACKEND_ADDR" "cisco vlan-20 back end"
+    all_ok=false
+fi
 for i in "${!HOSTS[@]}"; do
     name="${SYSNAMES[$i]}"
     ip="${HOSTS[$i]}"
