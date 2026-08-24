@@ -4,7 +4,10 @@ use uuid::Uuid;
 
 use crate::server::{
     bindings::r#impl::base::Binding,
-    hosts::r#impl::base::{Host, HostBase},
+    hosts::r#impl::{
+        base::{Host, HostBase},
+        name::HostNameSource,
+    },
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
     networks::r#impl::{Network, NetworkBase},
     ports::r#impl::base::{Port, PortType},
@@ -85,6 +88,9 @@ pub fn create_remote_host(
 
     let base = HostBase {
         name: "Mobile Device".to_string(),
+        // A deliberate label on a synthetic host, not something we derived — discovery must
+        // never rename these.
+        name_source: HostNameSource::Manual,
         hostname: None,
         network_id,
         tags: Vec::new(),
@@ -127,6 +133,9 @@ pub fn create_internet_connectivity_host(
 
     let base = HostBase {
         name: "Google.com".to_string(),
+        // A deliberate label on a synthetic host, not something we derived — discovery must
+        // never rename these.
+        name_source: HostNameSource::Manual,
         network_id,
         tags: Vec::new(),
         hostname: None,
@@ -170,6 +179,9 @@ pub fn create_public_dns_host(
 
     let base = HostBase {
         name: "Cloudflare DNS".to_string(),
+        // A deliberate label on a synthetic host, not something we derived — discovery must
+        // never rename these.
+        name_source: HostNameSource::Manual,
         hostname: None,
         network_id,
         description: None,
