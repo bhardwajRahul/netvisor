@@ -320,6 +320,107 @@ fn test_pdu_to_bytes_response() {
     assert_eq!(bytes, bytes2);
 }
 
+/// SCANOPY LOCAL PATCH tests — the contextName must reach the scoped PDU.
+///
+/// Upstream hard-codes it empty, and the existing `test_v3_pdu_to_bytes` below never looks
+/// inside the scoped PDU, so it passes either way and gives no baseline. These do look.
+#[cfg(feature = "v3")]
+mod context_name {
+    use super::*;
+    use crate::v3;
+
+    const CONTEXT: &[u8] = b"vlan-20";
+
+    /// The ASN.1 OCTET STRING the contextName should be encoded as: tag, length, bytes.
+    fn encoded(value: &[u8]) -> Vec<u8> {
+        let mut out = vec![0x04, u8::try_from(value.len()).unwrap()];
+        out.extend_from_slice(value);
+        out
+    }
+
+    fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+        haystack.windows(needle.len()).any(|w| w == needle)
+    }
+
+    fn security(auth: v3::Auth, context: &[u8]) -> v3::Security {
+        v3::Security::new(b"scanopyv3", b"authpass12345")
+            .with_auth_protocol(v3::AuthProtocol::Sha1)
+            .with_auth(auth)
+            .with_context_name(context)
+            .with_engine_id(&[0x80, 0x00, 0x00, 0x00, 0x01])
+            .unwrap()
+            .with_engine_boots_and_time(1, 100)
+    }
+
+    fn build(security: &v3::Security) -> pdu::Buf {
+        let mut buf = pdu::Buf::default();
+        pdu::build_get(
+            Version::V3,
+            b"",
+            12345,
+            &Oid::from(&[1, 3, 6, 1, 2, 1, 1, 1, 0]).unwrap(),
+            &mut buf,
+            Some(security),
+        )
+        .unwrap();
+        buf
+    }
+
+    /// AuthNoPriv writes the scoped PDU in the clear, so the context name is on the wire as-is.
+    #[test]
+    fn an_unencrypted_request_carries_the_context_name() {
+        let buf = build(&security(v3::Auth::AuthNoPriv, CONTEXT));
+
+        assert!(
+            contains(&buf, &encoded(CONTEXT)),
+            "contextName is absent from the scoped PDU: {:?}",
+            &buf[..]
+        );
+    }
+
+    /// AuthPriv encrypts the scoped PDU, so the only way to see the contextName is to decrypt it
+    /// again — which is what a device does, and the round trip is the point. `from_bytes_with_security`
+    /// leaves the plaintext in `Security::plain_buf`.
+    #[test]
+    fn an_encrypted_request_carries_the_context_name() {
+        let security = security(
+            v3::Auth::AuthPriv {
+                cipher: v3::Cipher::Aes128,
+                privacy_password: b"privpass12345".to_vec(),
+            },
+            CONTEXT,
+        );
+        let buf = build(&security);
+
+        assert!(
+            !contains(&buf, CONTEXT),
+            "the context name should be inside the encrypted scoped PDU, not in the clear"
+        );
+
+        let mut decoder = security.clone();
+        Pdu::from_bytes_with_security(&buf, Some(&mut decoder)).unwrap();
+
+        assert!(
+            contains(&decoder.plain_buf, &encoded(CONTEXT)),
+            "contextName is absent from the decrypted scoped PDU: {:?}",
+            decoder.plain_buf
+        );
+    }
+
+    /// A caller that sets no context still addresses the default one — the behaviour every
+    /// caller had before this existed, and what a device without contexts requires.
+    #[test]
+    fn no_context_name_still_sends_the_default_context() {
+        let buf = build(&security(v3::Auth::AuthNoPriv, b""));
+
+        assert!(
+            contains(&buf, &encoded(b"")),
+            "the empty default context must still be encoded: {:?}",
+            &buf[..]
+        );
+    }
+}
+
 #[test]
 #[cfg(feature = "v3")]
 fn test_v3_pdu_to_bytes() {

@@ -18,6 +18,8 @@ pub struct AsyncSession {
     version: Version,
     socket: UdpSocket,
     community: Vec<u8>,
+    /// SCANOPY LOCAL PATCH — see vendor/snmp2/README.md.
+    ///
     /// Incremented the moment an id is taken for a request, never after the response arrives.
     /// A request whose future is dropped mid-`recv` (the caller timed out) or that fails to decode
     /// must still burn its id: otherwise the next request reuses it, and the previous request's
@@ -180,6 +182,8 @@ impl AsyncSession {
         }
     }
 
+    /// SCANOPY LOCAL PATCH — see vendor/snmp2/README.md.
+    ///
     /// Discard any datagram left in the socket buffer by an earlier request.
     ///
     /// A request whose future is dropped mid-`recv` (the caller timed out) leaves its response

@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
 use tokio::time::timeout;
 
-use crate::server::credentials::r#impl::mapping::SnmpQueryCredential;
+use crate::server::credentials::r#impl::mapping::{SnmpQueryCredential, SnmpV3Params};
 use crate::server::credentials::r#impl::types::{
     SnmpV3AuthProtocol, SnmpV3PrivProtocol, SnmpVersion,
 };
@@ -76,21 +76,69 @@ fn starting_request_id() -> i32 {
 /// a session overflow the tokio worker thread stacks in debug builds — the daemon
 /// uses 4MB stacks, but `deep_scan_host`'s state machine (which includes SNMP query
 /// sub-futures) is large enough in debug mode to overflow.
+/// Which SNMPv3 context a session addresses.
+///
+/// Named at every call site rather than taken from the credential, because the two answers are
+/// not interchangeable and the wrong one is silent. A credential's context names where that
+/// device keeps its *bridge* data — Cisco IOS-XE partitions the forwarding database per VLAN and
+/// serves ifTable, LLDP and ARP from the default context regardless — and only one SNMP
+/// credential per host ever executes (`dispatch.rs` keys the winner by integration), so a context
+/// applied to the whole session would take every other walk with it and leave the switch with no
+/// interfaces at all. Non-v3 sessions ignore this: v1/v2c has no context field, and the
+/// equivalent on Cisco is the `community@vlan` form, which is part of the community string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnmpContext {
+    /// The default (empty) context, which is where every device serves its standard MIBs.
+    Default,
+    /// The context named on the credential, if it names one. Bridge and VLAN tables only.
+    FromCredential,
+}
+
+/// Whether this credential names a bridge context worth opening a second session for.
+///
+/// `None` for v1/v2c and for a v3 credential that leaves the field blank, which is the common
+/// case and must cost nothing — a second session means a second engine-discovery handshake.
+pub fn bridge_context(credential: &SnmpQueryCredential) -> Option<&str> {
+    credential
+        .v3
+        .as_ref()?
+        .context_name
+        .as_deref()
+        .filter(|name| !name.is_empty())
+}
+
+/// This is the last place a credential field can still reach the device, so both structs are
+/// destructured exhaustively under `#[deny(unused_variables)]` rather than read field-by-field.
+/// A field added to either one then fails to compile here as "missing field in pattern", and one
+/// that is bound but never put on the wire fails as an unused binding — which is exactly how
+/// `context_name` came to be stored, rendered as a form field and documented for three releases
+/// without ever being transmitted (GH #686). Skipping a field stays possible, but only by writing
+/// `field: _` with the reason beside it. Same guard as `ServiceFactory::all_services`.
+#[deny(unused_variables)]
 pub async fn create_session(
     ip: IpAddr,
     credential: &SnmpQueryCredential,
     port: u16,
+    context: SnmpContext,
 ) -> Result<Box<AsyncSession>> {
     let target = format!("{}:{}", ip, port);
 
-    match credential.version {
+    let SnmpQueryCredential {
+        version,
+        community,
+        v3,
+    } = credential;
+
+    match version {
         SnmpVersion::V1 | SnmpVersion::V2c => {
-            let is_v1 = matches!(credential.version, SnmpVersion::V1);
-            let community_secret = credential.community.resolve("community", "SNMP")?;
+            let is_v1 = matches!(version, SnmpVersion::V1);
+            // Verbatim on the wire, which is what makes Cisco's `community@vlan` indexing work:
+            // the VLAN is part of the string the device parses, not a field of our own.
+            let community_secret = community.resolve("community", "SNMP")?;
             let community = community_secret.expose_secret();
             tracing::debug!(
                 ip = %ip,
-                version = %credential.version,
+                version = %version,
                 community_len = community.len(),
                 "Creating SNMP community session"
             );
@@ -125,29 +173,45 @@ pub async fn create_session(
             }
         }
         SnmpVersion::V3 => {
-            let v3 = credential
-                .v3
+            let SnmpV3Params {
+                security_name,
+                auth_protocol,
+                auth_password,
+                priv_protocol,
+                priv_password,
+                context_name,
+            } = v3
                 .as_ref()
                 .ok_or_else(|| anyhow!("SNMPv3 credential missing USM parameters"))?;
-            let auth_pw = v3.auth_password.resolve("auth_password", "SNMPv3")?;
-            let priv_pw = v3.priv_password.resolve("priv_password", "SNMPv3")?;
+            let auth_pw = auth_password.resolve("auth_password", "SNMPv3")?;
+            let priv_pw = priv_password.resolve("priv_password", "SNMPv3")?;
 
-            // AuthPriv: both authentication and encryption. snmp2 0.5.0 only
-            // transmits the default (empty) context, so context_name is ignored
-            // on the wire here.
+            // The context name addresses a MIB view other than the default one. Cisco IOS-XE
+            // keeps its per-VLAN bridge FDB in one, so a switch read without it answers from a
+            // default context holding almost nothing — a full forwarding database that reads as
+            // a single row (GH #686). Applied only where the caller asked for it; see
+            // [`SnmpContext`] for why that is not the whole session.
+            let wire_context = match context {
+                SnmpContext::Default => "",
+                SnmpContext::FromCredential => context_name.as_deref().unwrap_or_default(),
+            };
+
+            // AuthPriv: both authentication and encryption.
             let security = snmp2::v3::Security::new(
-                v3.security_name.as_bytes(),
+                security_name.as_bytes(),
                 auth_pw.expose_secret().as_bytes(),
             )
-            .with_auth_protocol(v3.auth_protocol.into())
+            .with_auth_protocol((*auth_protocol).into())
             .with_auth(snmp2::v3::Auth::AuthPriv {
-                cipher: v3.priv_protocol.into(),
+                cipher: (*priv_protocol).into(),
                 privacy_password: priv_pw.expose_secret().as_bytes().to_vec(),
-            });
+            })
+            .with_context_name(wire_context.as_bytes());
 
             tracing::debug!(
                 ip = %ip,
-                security_name = %v3.security_name,
+                security_name = %security_name,
+                context = if wire_context.is_empty() { "(default)" } else { wire_context },
                 "Creating SNMPv3 session"
             );
 

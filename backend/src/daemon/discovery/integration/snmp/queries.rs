@@ -27,17 +27,29 @@ use super::values::{
 const BULK_MAX_REPETITIONS: u32 = 20;
 
 /// A single `getbulk` round-trip's non-error outcome. Transport failures (timeouts,
-/// session errors) are the `Err` arm of the returned `Result`; the one legitimate
-/// non-error signal is an agent that refuses getbulk, which the walk retries via getnext.
+/// session errors) are the `Err` arm of the returned `Result`; the legitimate non-error
+/// signals are an agent that refuses getbulk, which the walk retries via getnext, and one
+/// that says the page it was asked for will not fit, which the walk retries smaller.
 /// Varbinds borrow the session's response buffer (`snmp2::Value<'a>` holds `&'a [u8]`
 /// for octet strings), so a page is only valid while the session stays borrowed.
 pub type Varbinds<'a> = Vec<(Vec<u64>, Value<'a>)>;
+
+/// SNMP `tooBig(1)` — the response to this request would exceed what the agent can send.
+///
+/// RFC 3416 lets an agent answer an over-large getbulk this way instead of returning fewer
+/// varbinds, and it does so with an *empty* varbind list. `Pdu::validate` checks message type,
+/// request id and community and ignores `error-status` entirely, so without this the response
+/// arrived as a zero-varbind page and ended the column as [`WalkStop::EmptyResponse`] — a
+/// device answering "ask me for less" reported as one that had gone silent.
+const SNMP_ERR_TOO_BIG: u32 = 1;
 
 pub enum WalkPage<'a> {
     /// Decoded varbinds in wire order, OIDs as sub-id vectors.
     Varbinds(Varbinds<'a>),
     /// Agent rejected getbulk (e.g. SNMPv1) — retry from the same OID with getnext.
     BulkUnsupported,
+    /// Agent answered `tooBig` — retry from the same OID with fewer repetitions.
+    TooBig,
 }
 
 /// The two SNMP operations `walk_subtree` needs. Abstracting them keeps the walk loop
@@ -63,6 +75,7 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
     ) -> Result<WalkPage<'a>> {
         let oid = Oid::from(from).map_err(|_| anyhow::anyhow!("invalid walk OID"))?;
         match timeout(SNMP_TIMEOUT, self.getbulk(&[&oid], 0, max_repetitions)).await {
+            Ok(Ok(pdu)) if pdu.error_status == SNMP_ERR_TOO_BIG => Ok(WalkPage::TooBig),
             Ok(Ok(pdu)) => Ok(WalkPage::Varbinds(
                 pdu.varbinds.map(|(o, v)| (oid_to_vec(&o), v)).collect(),
             )),
@@ -102,6 +115,36 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
 /// device that is *persistently* answering out of step should be reported as truncated rather
 /// than have the scan spin on it.
 const MAX_DESYNC_RETRIES: u8 = 2;
+
+/// How many times one walk step will re-issue its request after getting no usable answer at all —
+/// a timeout, a session error, or a page with no varbinds on it.
+///
+/// SNMP runs over UDP and nothing beneath us retransmits: `AsyncSession::send_and_recv` is one
+/// `send` and one `recv`, bounded only by [`SNMP_TIMEOUT`]. `snmpwalk` defaults to `-r 5 -t 1`, so
+/// until this existed the daemon was strictly less tolerant than the command line operators use to
+/// prove a device is readable — a single dropped datagram in any one of the seven LLDP columns
+/// ended that column, which marks the whole neighbour set non-authoritative and leaves the switch
+/// looking as though it has no LLDP at all (GH #685).
+///
+/// Counted separately from [`MAX_DESYNC_RETRIES`] so a device suffering both faults cannot spend
+/// one budget on the other. Kept as small as the desync budget for the same reason: a device that
+/// has genuinely stopped answering should be reported, not spun on.
+const MAX_TRANSPORT_RETRIES: u8 = 2;
+
+/// Ask the agent for half as much next time, and give up on getbulk entirely once even a
+/// single-repetition page has not worked.
+///
+/// Halving rather than dropping straight to getnext because the difference is a whole table's
+/// worth of round trips: a 10000-entry FDB read one varbind at a time is the shape the walk
+/// timeout was raised for. This is what net-snmp does with `tooBig`, and it is why the reporter's
+/// `snmpbulkwalk` read a table our walk gave up on.
+fn shrink_page(max_reps: &mut u32, use_bulk: &mut bool) {
+    if *max_reps > 1 {
+        *max_reps = (*max_reps / 2).max(1);
+    } else {
+        *use_bulk = false;
+    }
+}
 
 /// Whether this error means the session read an answer to a question nobody is waiting for.
 ///
@@ -152,6 +195,11 @@ where
     let mut stop = WalkStop::EndOfSubtree;
     let mut stop_detail: Option<String> = None;
     let mut desync_retries = 0u8;
+    let mut transport_retries = 0u8;
+    // Repetitions asked for per getbulk round. Walk-local rather than the constant because it only
+    // ever shrinks: an agent that could not fit 20 varbinds will not fit them on the next page
+    // either, so re-escalating would just re-earn the same failure.
+    let mut max_reps = BULK_MAX_REPETITIONS;
     // Every in-subtree OID already handed to `on_entry`. This is what tells the two devices that
     // used to look identical apart: an OID below where we asked from is the GH #674 firmware bug
     // when it names a row we have not seen, and an agent going in circles when it does not.
@@ -169,15 +217,26 @@ where
         }
 
         let varbinds = if use_bulk {
-            match session
-                .walk_getbulk(&current_parts, BULK_MAX_REPETITIONS)
-                .await
-            {
+            match session.walk_getbulk(&current_parts, max_reps).await {
                 Ok(WalkPage::Varbinds(v)) => v,
                 Ok(WalkPage::BulkUnsupported) => {
                     // Agent rejected getbulk (e.g. v1) — retry from the same OID with
                     // getnext and stay on getnext for the rest of this walk.
                     use_bulk = false;
+                    continue 'walk;
+                }
+                Ok(WalkPage::TooBig) => {
+                    // The agent named its own remedy, so this is not a retry against a budget —
+                    // halving terminates on its own (20 → 10 → 5 → 2 → 1 → getnext) and each
+                    // round asks a strictly easier question than the one just refused.
+                    shrink_page(&mut max_reps, &mut use_bulk);
+                    debug!(
+                        ip = %ip,
+                        base = base_oid_str,
+                        max_repetitions = max_reps,
+                        getbulk = use_bulk,
+                        "Agent refused the page size; asking for less"
+                    );
                     continue 'walk;
                 }
                 Err(e) if is_desync(&e) && desync_retries < MAX_DESYNC_RETRIES => {
@@ -188,6 +247,24 @@ where
                         attempt = desync_retries,
                         error = %e,
                         "Re-issuing after reading a stale answer"
+                    );
+                    continue 'walk;
+                }
+                Err(e) if transport_retries < MAX_TRANSPORT_RETRIES => {
+                    transport_retries += 1;
+                    // Shrink as well as retry. A timeout on this path is as likely to be the
+                    // agent labouring over a large page as a lost datagram — the reporter's
+                    // switch answered getbulk at roughly nine times the per-varbind cost of
+                    // getnext — and a smaller page addresses both.
+                    shrink_page(&mut max_reps, &mut use_bulk);
+                    debug!(
+                        ip = %ip,
+                        base = base_oid_str,
+                        attempt = transport_retries,
+                        max_repetitions = max_reps,
+                        getbulk = use_bulk,
+                        error = %e,
+                        "Re-issuing after no answer"
                     );
                     continue 'walk;
                 }
@@ -211,6 +288,17 @@ where
                     );
                     continue 'walk;
                 }
+                Err(e) if transport_retries < MAX_TRANSPORT_RETRIES => {
+                    transport_retries += 1;
+                    debug!(
+                        ip = %ip,
+                        base = base_oid_str,
+                        attempt = transport_retries,
+                        error = %e,
+                        "Re-issuing after no answer"
+                    );
+                    continue 'walk;
+                }
                 Err(e) => {
                     stop = WalkStop::Transport;
                     stop_detail = Some(e.to_string());
@@ -219,9 +307,27 @@ where
             }
         };
 
-        // Empty response mid-walk is abnormal (getbulk) or an exhausted column
-        // (getnext) — treat as partial either way.
+        // Empty response mid-walk is abnormal (getbulk) or an exhausted column (getnext). Worth
+        // one more ask before giving up on the column: every other wrong-shaped answer here — a
+        // stale OID, a non-advancing OID, a request-id mismatch — is re-asked, and this one has
+        // the same causes. An agent that means it answers the same way again and the column ends
+        // as it did before.
         if varbinds.is_empty() {
+            if transport_retries < MAX_TRANSPORT_RETRIES {
+                transport_retries += 1;
+                if use_bulk {
+                    shrink_page(&mut max_reps, &mut use_bulk);
+                }
+                debug!(
+                    ip = %ip,
+                    base = base_oid_str,
+                    attempt = transport_retries,
+                    max_repetitions = max_reps,
+                    getbulk = use_bulk,
+                    "Re-issuing after an answer with no varbinds on it"
+                );
+                continue 'walk;
+            }
             stop = WalkStop::EmptyResponse;
             break;
         }
@@ -1748,6 +1854,13 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     // Step 2: Walk legacy dot1dTpFdbTable columns.
     let mut fdb_entries: HashMap<String, FdbBuilder> = HashMap::new();
 
+    // Every column answering "no such object" is a device with no bridge MIB *here* — which on a
+    // switch that partitions its forwarding database by VLAN means "not in this context", not
+    // "this switch forwards nothing". `unsupported` was hard-coded false, so a Catalyst read
+    // without its VLAN context reported a complete, empty, authoritative read of a table it had
+    // never been asked for, and the operator was told nothing at all (GH #686).
+    let mut all_columns_unsupported = true;
+
     let columns = [
         (oids::bridge::fdb_entry::DOT1D_TP_FDB_ADDRESS, "address"),
         (oids::bridge::fdb_entry::DOT1D_TP_FDB_PORT, "port"),
@@ -1756,7 +1869,7 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // OID suffix is a 6-octet MAC encoded as 6 sub-ids.
-        walk_column(
+        let stop = walk_column(
             session,
             ip,
             base_oid_str,
@@ -1780,6 +1893,9 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
             },
         )
         .await;
+        if !stop.is_unsupported() {
+            all_columns_unsupported = false;
+        }
     }
 
     // Step 3: Merge in VLAN-aware Q-BRIDGE dot1qTpFdbTable entries. Legacy rows
@@ -1789,12 +1905,17 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     if !qbridge.complete {
         shortfall.complete = false;
     }
+    if !qbridge.unsupported {
+        all_columns_unsupported = false;
+    }
     let qbridge = qbridge.records;
     for (key, builder) in qbridge {
         fdb_entries.entry(key).or_insert(builder);
     }
 
-    // Filter: keep learned (3) and self (5), resolve bridge port to ifIndex
+    // Filter: keep learned(3) and mgmt(5), resolve bridge port to ifIndex. Not self(4) — those
+    // are the bridge's own port addresses, which name no neighbour. (The old comment here read
+    // "self (5)"; 5 is mgmt, per the encoding documented on DOT1Q_TP_FDB_STATUS.)
     let result: Vec<BridgeFdbEntry> = fdb_entries
         .into_values()
         .filter_map(|e| {
@@ -1820,10 +1941,14 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
         "Bridge FDB walk finished"
     );
 
+    // Only when neither table was there to read. A device serving one row is reporting one row;
+    // a device serving neither table is not reporting at all.
+    let unsupported = all_columns_unsupported && result.is_empty();
+
     Ok(SnmpCollection {
         records: result,
         complete: shortfall.complete,
-        unsupported: false,
+        unsupported,
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,
@@ -1844,6 +1969,9 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
 ) -> Result<SnmpCollection<HashMap<String, FdbBuilder>>> {
     let mut entries: HashMap<String, FdbBuilder> = HashMap::new();
     let mut shortfall = Shortfall::default();
+    // Reported so the caller can tell a switch with no Q-BRIDGE MIB from one whose Q-BRIDGE
+    // table is genuinely empty. Hard-coding this false made the caller's own check dead.
+    let mut all_columns_unsupported = true;
 
     let columns = [
         (oids::bridge::q_fdb_entry::DOT1Q_TP_FDB_PORT, "port"),
@@ -1852,7 +1980,7 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // Q-BRIDGE index = dot1qFdbId (1 sub-id) + MAC (6 octets).
-        walk_column(
+        let stop = walk_column(
             session,
             ip,
             base_oid_str,
@@ -1881,12 +2009,17 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
             },
         )
         .await;
+        if !stop.is_unsupported() {
+            all_columns_unsupported = false;
+        }
     }
+
+    let entries_empty = entries.is_empty();
 
     Ok(SnmpCollection {
         records: entries,
         complete: shortfall.complete,
-        unsupported: false,
+        unsupported: all_columns_unsupported && entries_empty,
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,
@@ -2225,6 +2358,209 @@ mod walk_tests {
         async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
             Ok(self.next_page())
         }
+    }
+
+    /// One canned answer, so a test can put the shapes a live agent produces *between* good pages
+    /// rather than only at the end of them. [`MockTransport`] can only ever answer, which is why
+    /// the walk's behaviour after a bad answer went untested.
+    enum Answer {
+        /// Varbinds, in wire order. An empty one is the zero-varbind page an agent sends with
+        /// `tooBig` set — indistinguishable from a table that has ended, before this walk learned
+        /// to ask again.
+        Page(Vec<Vec<u64>>),
+        /// The agent said the page it was asked for will not fit.
+        TooBig,
+        /// Nothing came back: a timeout, or a datagram lost on the way. Nothing beneath the walk
+        /// retransmits, so this is one lost packet as the walk sees it.
+        NoAnswer,
+    }
+
+    /// Serves scripted answers and records the page size each getbulk asked for.
+    struct FlakyTransport {
+        answers: VecDeque<Answer>,
+        /// What to answer once the script runs out. `None` ends the walk by leaving the subtree.
+        tail: Option<Answer>,
+        /// `max_repetitions` per getbulk, in order, so a test can assert the walk asked for less
+        /// after being refused rather than repeating the request that failed.
+        asked: Vec<u32>,
+        /// Requests served, to catch a retry that turns into a spin.
+        requests: usize,
+    }
+
+    impl FlakyTransport {
+        fn new(answers: Vec<Answer>) -> Self {
+            Self {
+                answers: answers.into(),
+                tail: None,
+                asked: Vec::new(),
+                requests: 0,
+            }
+        }
+
+        /// Answers the script, then this for ever.
+        fn then_always(mut self, tail: Answer) -> Self {
+            self.tail = Some(tail);
+            self
+        }
+
+        fn answer(&mut self) -> Result<Varbinds<'static>, Answer> {
+            self.requests += 1;
+            let next = self
+                .answers
+                .pop_front()
+                .unwrap_or_else(|| match &self.tail {
+                    Some(Answer::TooBig) => Answer::TooBig,
+                    Some(Answer::NoAnswer) => Answer::NoAnswer,
+                    Some(Answer::Page(p)) => Answer::Page(p.clone()),
+                    // Out of the subtree and above everything served: the natural end of a column.
+                    None => Answer::Page(page(&["1.3.6.1.2.1.2.2.1.2.1"])),
+                });
+            match next {
+                Answer::Page(oids) => Ok(oids
+                    .into_iter()
+                    .map(|o| (o, Value::Integer(1)))
+                    .collect::<Varbinds<'static>>()),
+                other => Err(other),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SnmpWalkTransport for FlakyTransport {
+        async fn walk_getbulk<'a>(&'a mut self, _from: &[u64], max: u32) -> Result<WalkPage<'a>> {
+            self.asked.push(max);
+            match self.answer() {
+                Ok(v) => Ok(WalkPage::Varbinds(v)),
+                Err(Answer::TooBig) => Ok(WalkPage::TooBig),
+                Err(_) => Err(anyhow::anyhow!("getbulk timed out")),
+            }
+        }
+
+        async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
+            match self.answer() {
+                Ok(v) => Ok(v),
+                Err(_) => Err(anyhow::anyhow!("getnext timed out")),
+            }
+        }
+    }
+
+    /// An agent that refuses the page size has named its own remedy, and the walk has to take it.
+    ///
+    /// RFC 3416 lets an agent answer an over-large getbulk with `tooBig` and no varbinds rather
+    /// than with fewer varbinds, and `lldpRemSysDesc` — long free text, twenty rows to a page — is
+    /// the request that provokes it. The response carries error-status but a perfectly valid
+    /// request id and community, so it used to arrive as an empty page and end the column, which
+    /// takes the whole neighbour set with it (GH #685). net-snmp asks again for half as much,
+    /// which is why the reporter's `snmpbulkwalk` read a table this walk gave up on.
+    #[tokio::test]
+    async fn a_refused_page_size_is_asked_for_again_smaller() {
+        let mut session = FlakyTransport::new(vec![
+            Answer::TooBig,
+            Answer::Page(page(&[
+                "1.3.6.1.2.1.2.2.1.1.1",
+                "1.3.6.1.2.1.2.2.1.1.2",
+                "1.3.6.1.2.1.2.2.1.1.3",
+            ])),
+        ]);
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
+            .await
+            .unwrap();
+
+        assert!(
+            stop.is_complete(),
+            "an agent that asked for a smaller page has not stopped answering, but the walk \
+             reported {stop:?}"
+        );
+        assert_eq!(
+            seen, 3,
+            "every row behind the refused page must still be read"
+        );
+        assert!(
+            session.asked[1] < session.asked[0],
+            "the retry has to ask for less than the page that was refused, or it earns the same \
+             refusal: asked {:?}",
+            session.asked
+        );
+    }
+
+    /// SNMP is UDP and nothing beneath the walk retransmits, so one dropped datagram used to end
+    /// a column outright — and a column ending marks its whole group non-authoritative, so the
+    /// server keeps what it holds and a first-ever scan records nothing at all. `snmpwalk`
+    /// defaults to five retransmissions; the daemon has to be at least as tolerant as the tool
+    /// operators use to prove the device is readable.
+    #[tokio::test]
+    async fn one_lost_datagram_does_not_end_a_column() {
+        let mut session = FlakyTransport::new(vec![
+            Answer::Page(page(&["1.3.6.1.2.1.2.2.1.1.1"])),
+            Answer::NoAnswer,
+            Answer::Page(page(&["1.3.6.1.2.1.2.2.1.1.2"])),
+        ]);
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
+            .await
+            .unwrap();
+
+        assert!(
+            stop.is_complete(),
+            "a walk that lost one datagram and then got its answer is not a short read, but it \
+             reported {stop:?}"
+        );
+        assert_eq!(
+            seen, 2,
+            "the row behind the lost datagram must still be read"
+        );
+    }
+
+    /// The empty-page shape of the same fault: an answer with no varbinds on it, from an agent
+    /// that skipped a beat rather than one that has finished. Re-asked like every other
+    /// wrong-shaped answer the walk handles, instead of being the one that is taken at its word.
+    #[tokio::test]
+    async fn an_answer_with_no_varbinds_is_asked_again() {
+        let mut session = FlakyTransport::new(vec![
+            Answer::Page(page(&["1.3.6.1.2.1.2.2.1.1.1"])),
+            Answer::Page(Vec::new()),
+            Answer::Page(page(&["1.3.6.1.2.1.2.2.1.1.2"])),
+        ]);
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
+            .await
+            .unwrap();
+
+        assert!(
+            stop.is_complete(),
+            "an empty page followed by the rest of the table is not a short read, but the walk \
+             reported {stop:?}"
+        );
+        assert_eq!(seen, 2, "the row behind the empty page must still be read");
+    }
+
+    /// The other half of the retry: a device that has genuinely gone quiet must be reported as
+    /// such, promptly. Retrying for ever would turn one unreachable switch into the whole scan's
+    /// budget, which is the failure the desync retries are already bounded against.
+    #[tokio::test]
+    async fn a_device_that_stays_silent_is_still_reported_short() {
+        let mut session = FlakyTransport::new(vec![Answer::Page(page(&["1.3.6.1.2.1.2.2.1.1.1"]))])
+            .then_always(Answer::NoAnswer);
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
+            .await
+            .unwrap();
+
+        assert!(
+            !stop.is_complete(),
+            "a device that never answered again cannot have completed its table"
+        );
+        assert_eq!(seen, 1, "the one page it did answer is still collected");
+        assert!(
+            session.requests < 10,
+            "the walk must give up on a silent device rather than spin on it (made {} requests)",
+            session.requests
+        );
     }
 
     /// A device that keeps answering with the same in-subtree OID must not walk to the

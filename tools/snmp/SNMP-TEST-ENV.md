@@ -1,6 +1,6 @@
 # SNMP Test Environment
 
-20 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668 and repeats one MAC across every port; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short; `.246`/`.247` cover #674 and the Westermo local-port report; `.248`/`.249` are the two failure shapes the partial-failure reporting exists for.
+21 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668 and repeats one MAC across every port; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short; `.246`/`.247` cover #674 and the Westermo local-port report; `.248`/`.249` are the two failure shapes the partial-failure reporting exists for; `.250` is the Dell OS10 switch from #685, whose breakout-port names and 568+ local-port namespace decide which interface a neighbour lands on.
 
 | IP | Host | Version | Credential | Device |
 |---|---|---|---|---|
@@ -24,6 +24,7 @@
 | 192.168.7.247 | switch-macport-01 | v2c | community `netdefault` | Westermo WeOS, from the customer's walk (see below) |
 | 192.168.7.248 | switch-mute-01 | v2c | community `netdefault` | Answers the credential, serves nothing (see below) |
 | 192.168.7.249 | switch-stuck-01 | v2c | community `netdefault` | ARP table never advances (see below) |
+| 192.168.7.250 | switch-dell-01 | v2c | community `netdefault` | Dell PowerSwitch S4112T-ON, OS10 breakout ports (see below) |
 
 **LLDP local-port remap (`.238`/`.239`).** ExtremeXOS reports its `lldpRemTable` local-port index as an `lldpLocPortNum` (1..N) that is a **separate namespace from `ifIndex`** (switch-exos-01 uses ifIndex 1001+, ifName `1:N`), so neighbours only resolve if the daemon walks `lldpLocPortTable` (`1.0.8802.1.1.2.1.3.7`) and suffix-matches `lldpLocPortId` against `ifName`. Before the Issue 2 fix, switch-exos-01 yields **zero** LLDP neighbours. Extreme VOSS (switch-voss-01) reports local-port == ifIndex with `lldpLocPortId` matching `ifName` exactly, so it stays correct on both old and new code — the regression guard for the fix.
 
@@ -193,11 +194,37 @@ Note that `1/0/3` and `1/0/4` name the same far-end device on purpose. The pair 
 
 > **The NUL half of #668 is not reproducible here.** The same D-Links NUL-terminate their port ids (`lldpRemPortId` arrives as `31 00`, i.e. `"1\0"`), which used to fail the write of the entire host. net-snmp's `pass` protocol is line-based — the handler prints OID, type and value as three lines — so an embedded `0x00` cannot survive the transport and no data file can express it. That half is covered by unit tests instead: `value_to_string`, `LldpPortId::from_snmp`, and `PgText`/`PgJson` in `server/shared/storage/pg_value.rs`.
 
+**Dell OS10 breakout ports (`.250`).** A Dell PowerSwitch S4112T-ON running OS10 10.4.3.4, from #685, where a switch that discovers cleanly in every other respect showed **no physical connections at all**. Two properties of this device decide whether a neighbour reaches an interface, and nothing else in the lab has either.
+
+**The interface names carry both anchor characters.** Port 14 is broken out, so OS10 names its lanes `ethernet1/1/14:1`, `:2` and `:3` — a `/` *and* a `:` in one name — alongside `ethernet1/1/1`…`1/1/13` and `mgmt1/1/1`. The local-port suffix tier matches an id that ends at a `:` or `/` boundary, and on this device the bare id `1` ends at one in three places at once (`mgmt1/1/1`, `ethernet1/1/1`, `ethernet1/1/14:1`). Taking the first match bound neighbours to a plausible-looking wrong port with no warning; the tier now requires the boundary to name one interface, and an exact name in `lldpLocPortDesc` outranks a matching id fragment.
+
+**`lldpLocPortNum` is a separate namespace from `ifIndex`, and not a small one.** The management port is 4 and the front panel runs 555–570, against ifIndex values in the millions:
+
+```
+4   -> mgmt1/1/1
+568 -> ethernet1/1/14:1 -> EVILCORP
+569 -> ethernet1/1/14:2 -> VIRTUALPC
+570 -> ethernet1/1/14:3 -> TAMMIERENEW
+```
+
+That is the mapping the reporter published, and it is what a scan of `.250` has to reproduce exactly — a neighbour on any other port is the bug, not a near miss.
+
+The remote rows also carry **large, widely spaced `lldpRemTimeMark`s** (31577700, 93300700, 123380800, 127153800). Every other device here uses `0` or a small mark, so this is the only fixture that walks a first index sub-id of that size, and it is why the local ports arrive in an order unrelated to the ports themselves. Verify with:
+
+```bash
+snmpwalk -v2c -c netdefault 192.168.7.250 1.0.8802.1.1.2.1.4.1.1.5   # four neighbours, four time marks
+snmpwalk -v2c -c netdefault 192.168.7.250 1.0.8802.1.1.2.1.3.7.1.3   # the 4/555-570 port namespace
+```
+
+Three of the four neighbours are end hosts advertising chassis subtype 7 (locally assigned) carrying a hostname rather than a MAC, which is what the reporter's walk shows; the fourth, on `mgmt1/1/1`, is subtype 4 and sends six raw octets with no sysName and no port description at all.
+
+> **The walk falling short is not reproducible here**, and it is the other half of #685: the neighbour walk was being cut short by a timeout or an answer with no varbinds on it, which marks the whole neighbour set non-authoritative and discards it. Staging that needs an agent that fails to answer one request and then answers the next, and `pass` answers single-threaded — a handler that stalls past the daemon's 5s timeout blocks every later request behind it, so the late replies arrive one request out of step for the rest of the walk and the fixture would fail whether or not the fix is in. Covered by unit test instead, in `queries.rs::walk_tests`, the way `WalkCutShort` already is.
+
 ## Expect truncation warnings — the simulator races itself
 
 A scan of this environment normally reports several incomplete SNMP walks. **That is the simulator, not the product under test.**
 
-`snmpd` forks the `pass` handler — a bash script that then forks awk — once per SNMP request. With 14 agents on one VM and ~17 column walks per host, a single scan is hundreds of concurrent forks, and under that load the agents answer some requests with the *wrong* OID: one belonging to a request the daemon made earlier.
+`snmpd` forks the `pass` handler — a bash script that then forks awk — once per SNMP request. With 21 agents on one VM and ~17 column walks per host, a single scan is hundreds of concurrent forks, and under that load the agents answer some requests with the *wrong* OID: one belonging to a request the daemon made earlier.
 
 Measured 2026-07-27, walking all 12 v2c devices from a single client:
 

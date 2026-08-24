@@ -137,6 +137,25 @@ impl SnmpWalkGroup {
     fn discards_malformed_records(self) -> bool {
         matches!(self, Self::Lldp | Self::Cdp)
     }
+
+    /// Whether the rows a short read *did* return are thrown away rather than recorded.
+    ///
+    /// The four fields of `InterfaceDataComplete`. For these, `preserve_uncollected_data` restores
+    /// the stored value on every interface when the walk fell short, so a partial read contributes
+    /// nothing — deliberately, because an absent neighbour and an unread one look identical and
+    /// losing a chassis id drops the row out of L2 resolution for good. Everything else here is
+    /// recorded as far as it got: a half-read ARP cache still creates the hosts it named.
+    ///
+    /// The distinction is the difference between a warning that is reassuring and one that is
+    /// true. A device whose neighbour walk keeps falling short and has never once completed shows
+    /// no L2 links at all, however many neighbours each scan reads — and "previously discovered
+    /// values were kept" describes that as though nothing were lost (GH #685).
+    fn partial_read_is_discarded(self) -> bool {
+        matches!(
+            self,
+            Self::Lldp | Self::Cdp | Self::BridgeForwarding | Self::VlanMembership
+        )
+    }
 }
 
 /// LLDP neighbours whose local port could not be placed on an interface of the device.
@@ -531,28 +550,36 @@ pub fn render_incomplete_snmp_walks(records: &[IncompleteSnmpWalk]) -> Vec<Strin
     // contradicted themselves — "192.168.7.230 did not finish reporting VLAN membership or bridge
     // forwarding" immediately followed by "192.168.7.230 returned nothing at all", which reads as
     // two incompatible claims about the same walk. Keyed this way, each line makes one claim.
-    type Key = (bool, Option<ShortfallReason>, SnmpWalkGroup);
-    let mut devices_by_group: BTreeMap<Key, BTreeSet<IpAddr>> = BTreeMap::new();
+    // `partial_read_is_discarded` joins them for the same reason: it decides what the sentence
+    // claims happened to the rows that were read, so merging a group that keeps them with one
+    // that throws them away would make one of the two claims false.
+    /// What one line asserts, apart from which devices and groups it names: whether the walk
+    /// returned anything, whether the rows it returned were kept, and why it stopped.
+    type Claim = (bool, bool, Option<ShortfallReason>);
+    let mut devices_by_group: BTreeMap<(Claim, SnmpWalkGroup), BTreeSet<IpAddr>> = BTreeMap::new();
     for r in records {
+        let claim = (
+            r.returned_any,
+            r.group.partial_read_is_discarded(),
+            r.reason,
+        );
         devices_by_group
-            .entry((r.returned_any, r.reason, r.group))
+            .entry((claim, r.group))
             .or_default()
             .insert(r.ip);
     }
-    let mut groups_by_devices: BTreeMap<
-        (bool, Option<ShortfallReason>, BTreeSet<IpAddr>),
-        Vec<SnmpWalkGroup>,
-    > = BTreeMap::new();
-    for ((returned_any, reason, group), ips) in devices_by_group {
+    let mut groups_by_devices: BTreeMap<(Claim, BTreeSet<IpAddr>), Vec<SnmpWalkGroup>> =
+        BTreeMap::new();
+    for ((claim, group), ips) in devices_by_group {
         groups_by_devices
-            .entry((returned_any, reason, ips))
+            .entry((claim, ips))
             .or_default()
             .push(group);
     }
 
     groups_by_devices
         .iter()
-        .map(|((returned_any, reason, ips), groups)| {
+        .map(|(((returned_any, discarded, reason), ips), groups)| {
             let who = list_addresses_prose(ips);
             let labels: Vec<&str> = groups.iter().map(|g| g.label()).collect();
             let what = join_prose(&labels);
@@ -580,9 +607,20 @@ pub fn render_incomplete_snmp_walks(records: &[IncompleteSnmpWalk]) -> Vec<Strin
                      means the agent is under load. Previously discovered values were kept and \
                      refresh on the next complete scan."
                 ),
+                // Say that the rows this scan did read were thrown away. The old sentence promised
+                // only that nothing was overwritten, which reads as "no harm done" — and on a
+                // device whose walk has never once completed it is the whole harm: every scan
+                // reads neighbours, every scan discards them, and the operator is told their
+                // previously discovered values are safe while the device shows no links at all.
+                _ if *returned_any && *discarded => format!(
+                    "{who} did not finish reporting {what}, so what it did answer was not \
+                     recorded — a partial read cannot tell a value that has gone from one that was \
+                     not reached. Previously discovered values were kept, and refresh on the next \
+                     complete scan."
+                ),
                 _ if *returned_any => format!(
-                    "{who} did not finish reporting {what}, so previously discovered values were \
-                     kept rather than overwritten and refresh on the next complete scan."
+                    "{who} did not finish reporting {what}, so what it read was recorded and the \
+                     rest refreshes on the next complete scan."
                 ),
                 _ if groups.iter().all(|g| g.absence_means_unsupported()) => format!(
                     "{who} did not answer for {what}, which these switches commonly do not \
