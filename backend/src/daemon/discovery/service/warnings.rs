@@ -72,6 +72,18 @@ pub enum ShortfallReason {
     Unsupported,
 }
 
+impl ShortfallReason {
+    /// The read was cut off partway rather than finishing on a table this size.
+    ///
+    /// Distinguishes a device that answered everything asked of it from one that stopped
+    /// answering. Only the first can be said to have declined to serve rows or to have
+    /// miscounted itself; the second simply did not get that far, and a line claiming otherwise
+    /// contradicts the shortfall line reporting the same device.
+    fn read_was_cut_short(self) -> bool {
+        matches!(self, Self::NoAnswer | Self::Desynchronised)
+    }
+}
+
 /// Where a device's claim about itself came from.
 ///
 /// Named rather than folded into a sentence because the operator's next step depends on it: a
@@ -632,6 +644,13 @@ pub struct ContradictedClaim {
     pub claim: DeviceClaim,
     /// What the collection actually read.
     pub observed: usize,
+    /// Why the read came up short, when it did.
+    ///
+    /// Carried so the line can stop short of naming a cause the shortfall line has already
+    /// named differently. A device whose walk was cut off has not declined to serve anything and
+    /// is not misreporting itself, and saying so beside a line that says it stopped responding
+    /// leaves the reader to reconcile two accounts of one device.
+    pub reason: Option<ShortfallReason>,
 }
 
 /// How far below its own claim a device has to land before it is worth a line.
@@ -686,6 +705,7 @@ pub fn contradicted_claims(ip: IpAddr, outcome: SnmpCollectionOutcome) -> Vec<Co
             group,
             claim,
             observed: group_outcome.observed,
+            reason: group_outcome.reason,
         })
     })
     .collect()
@@ -699,25 +719,54 @@ pub fn contradicted_claims(ip: IpAddr, outcome: SnmpCollectionOutcome) -> Vec<Co
 pub fn render_contradicted_claims(records: &[ContradictedClaim]) -> Vec<String> {
     records
         .iter()
-        .map(|record| match record.claim {
-            DeviceClaim::Count { source, expected } => format!(
-                "{} reports {} as {}, but only {} could be read. The {} that were read are \
-                 recorded; the device may be misreporting its own count, or may be declining to \
-                 serve the rest of the table to this credential.",
-                record.ip,
-                source.label(),
-                expected,
-                record.observed,
-                record.observed,
-            ),
-            DeviceClaim::Implements { source } => format!(
-                "{} advertises {}, but returned no {} at all. A device that says it does this and \
-                 then reports none of it is usually restricting what the credential may see — an \
-                 SNMP view, or a VLAN context the query has to name.",
-                record.ip,
-                source.label(),
-                record.group.label(),
-            ),
+        .map(|record| {
+            // A read that stopped partway is already reported, with its cause, by the shortfall
+            // line for the same device. What that line cannot say is how much was missed, because
+            // only the device knows — so this one supplies the figure and stops there. Offering
+            // causes here as well produced two lines about one device giving different accounts of
+            // what happened, on every device the walk came up short on.
+            let cut_short = record
+                .reason
+                .is_some_and(ShortfallReason::read_was_cut_short);
+
+            match record.claim {
+                DeviceClaim::Count { source, expected } if cut_short => format!(
+                    "{} reports {} as {}, and the read ended at {} without finishing. That is how \
+                     much of the table is missing — the incomplete-walk line for this device says \
+                     why it ended. The {} that were read are recorded.",
+                    record.ip,
+                    source.label(),
+                    expected,
+                    record.observed,
+                    record.observed,
+                ),
+                DeviceClaim::Count { source, expected } => format!(
+                    "{} reports {} as {}, but only {} could be read. The {} that were read are \
+                     recorded; the device may be misreporting its own count, or may be declining \
+                     to serve the rest of the table to this credential.",
+                    record.ip,
+                    source.label(),
+                    expected,
+                    record.observed,
+                    record.observed,
+                ),
+                DeviceClaim::Implements { source } if cut_short => format!(
+                    "{} advertises {}, and the read of its {} ended without returning any. The \
+                     incomplete-walk line for this device says why it ended; what the device \
+                     advertises is why it is worth reading again rather than treating as empty.",
+                    record.ip,
+                    source.label(),
+                    record.group.label(),
+                ),
+                DeviceClaim::Implements { source } => format!(
+                    "{} advertises {}, but returned no {} at all. A device that says it does this \
+                     and then reports none of it is usually restricting what the credential may \
+                     see — an SNMP view, or a VLAN context the query has to name.",
+                    record.ip,
+                    source.label(),
+                    record.group.label(),
+                ),
+            }
         })
         .collect()
 }
@@ -1572,6 +1621,94 @@ mod tests {
         let msg = joined(&render_contradicted_claims(&claims));
         assert!(msg.contains("an LLDP chassis ID of its own"), "{msg}");
         assert!(msg.contains("LLDP neighbours"), "{msg}");
+    }
+
+    /// The defect this branch exists for, found by scanning the sim: three devices whose ifTable
+    /// walk was cut off by simulator load each got a line saying they "may be misreporting" their
+    /// count or "declining to serve" rows — beside a line already saying they stopped responding
+    /// partway. Two accounts of one device, and the more specific one was wrong.
+    ///
+    /// The figure is still worth stating: the shortfall line knows the read ended but not how much
+    /// of the table it missed, because only the device knows that.
+    #[test]
+    fn a_cut_short_read_states_the_figure_without_naming_a_cause() {
+        let outcome = SnmpCollectionOutcome {
+            interfaces: SnmpGroupOutcome {
+                complete: false,
+                observed: 14,
+                reason: Some(ShortfallReason::NoAnswer),
+                claim: Some(DeviceClaim::Count {
+                    source: ClaimSource::IfNumber,
+                    expected: 52,
+                }),
+            },
+            ..quiet_groups()
+        };
+
+        let msg = joined(&render_contradicted_claims(&contradicted_claims(
+            ip("192.168.7.250"),
+            outcome,
+        )));
+
+        // Both figures, which is the whole reason the line is emitted at all.
+        assert!(msg.contains("52"), "{msg}");
+        assert!(msg.contains("14"), "{msg}");
+        // Neither cause, because the walk stopping is what happened and is reported elsewhere.
+        assert!(!msg.contains("misreporting its own count"), "{msg}");
+        assert!(!msg.contains("declining"), "{msg}");
+    }
+
+    /// The other half of the same rule. A device that answered everything asked of it and still
+    /// came up short of its own count *has* either miscounted or withheld rows, and dropping that
+    /// from every line would cost the one case where naming a cause is the useful part.
+    #[test]
+    fn a_completed_short_read_still_names_what_it_could_mean() {
+        let outcome = SnmpCollectionOutcome {
+            interfaces: SnmpGroupOutcome {
+                complete: true,
+                observed: 1,
+                reason: None,
+                claim: Some(DeviceClaim::Count {
+                    source: ClaimSource::IfNumber,
+                    expected: 23,
+                }),
+            },
+            ..quiet_groups()
+        };
+
+        let msg = joined(&render_contradicted_claims(&contradicted_claims(
+            ip("192.168.200.151"),
+            outcome,
+        )));
+
+        assert!(msg.contains("misreporting its own count"), "{msg}");
+        assert!(msg.contains("declining"), "{msg}");
+    }
+
+    /// `Unsupported` is not a cut-short read: the agent answered, with `noSuchObject`. A device
+    /// that says it bridges and then says it has no bridge MIB really is restricting what the
+    /// credential sees, so that line keeps its cause — this is the GH #686 shape.
+    #[test]
+    fn an_unsupported_table_keeps_the_cause_a_cut_short_one_drops() {
+        let outcome = SnmpCollectionOutcome {
+            bridge_port_numbering: SnmpGroupOutcome {
+                complete: true,
+                observed: 0,
+                reason: Some(ShortfallReason::Unsupported),
+                claim: Some(DeviceClaim::Implements {
+                    source: ClaimSource::SysServicesBridgeBit,
+                }),
+            },
+            ..quiet_groups()
+        };
+
+        let msg = joined(&render_contradicted_claims(&contradicted_claims(
+            ip("192.168.7.248"),
+            outcome,
+        )));
+
+        assert!(msg.contains("VLAN context"), "{msg}");
+        assert!(!msg.contains("incomplete-walk line"), "{msg}");
     }
 
     /// A device that says nothing about itself can contradict nothing. Most groups on most
