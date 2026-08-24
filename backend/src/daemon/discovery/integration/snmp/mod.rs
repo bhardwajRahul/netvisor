@@ -21,7 +21,7 @@ pub use queries::{
     walk_if_table,
 };
 pub use session::SNMP_WALK_TIMEOUT;
-use session::{SNMP_PROBE_TIMEOUT, create_session};
+use session::{SNMP_PROBE_TIMEOUT, SnmpContext, bridge_context, create_session};
 pub use types::{
     ArpEntry, BridgeFdbEntry, CdpNeighbor, DeviceInventory, IfTableEntry, IpAddrEntry,
     LldpLocalInfo, LldpLocalPort, LldpNeighbor, PortVlanMembership, SystemInfo, VlanInfo,
@@ -229,7 +229,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Previously each of the ~12 queries opened its own session — and for v3 each
         // repeated the full engine-discovery handshake — so a single collection did
         // ~12 session setups. Reusing one session removes that per-query cost.
-        let mut session = match create_session(ip, credential, port).await {
+        let mut session = match create_session(ip, credential, port, SnmpContext::Default).await {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!(
@@ -478,6 +478,41 @@ impl DiscoveryIntegration for SnmpIntegration {
             "ENTITY-MIB inventory queried"
         );
 
+        // The bridge and VLAN tables, and only those, come from the credential's context when it
+        // names one. Cisco IOS-XE partitions its forwarding database per VLAN and keeps a
+        // near-empty one in the default context, which is how a switch with a full FDB reported a
+        // single entry (GH #686). Everything else — ifTable, LLDP, ARP, the system MIB — stays on
+        // the default-context session: those live there on every device, and only one SNMP
+        // credential per host ever executes, so moving the whole session into a bridge context
+        // would take the interfaces with it.
+        //
+        // A second session costs a second v3 engine-discovery handshake, so it is opened only
+        // when a context is actually configured. If it cannot be opened, the default-context
+        // session is used and the shortfall reporting says what it found, rather than the scan
+        // losing its bridge data outright.
+        let mut context_session = match bridge_context(credential) {
+            Some(name) => {
+                match create_session(ip, credential, port, SnmpContext::FromCredential).await {
+                    Ok(s) => {
+                        tracing::debug!(ip = %ip, context = name, "Opened bridge-context session");
+                        Some(s)
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            ip = %ip,
+                            context = name,
+                            error = %e,
+                            "Could not open the credential's bridge context; reading bridge and \
+                             VLAN tables from the default context instead"
+                        );
+                        None
+                    }
+                }
+            }
+            None => None,
+        };
+        let bridge_session = context_session.as_mut().unwrap_or(&mut session);
+
         // Walk dot1dBasePortIfIndex once and share it. Both the bridge FDB and per-port VLAN
         // membership are keyed by bridge port, and each used to walk this table for itself —
         // so a switch that answers the OID with silence rather than `noSuchObject` (the
@@ -486,7 +521,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let bridge_ports = query_or_default(
             ip,
             "bridge_port_mapping",
-            query_bridge_port_mapping(&mut session, ip),
+            query_bridge_port_mapping(bridge_session, ip),
         )
         .await;
         tracing::debug!(
@@ -500,11 +535,17 @@ impl DiscoveryIntegration for SnmpIntegration {
         let fdb = query_or_default(
             ip,
             "bridge_fdb",
-            query_bridge_fdb(&mut session, ip, &bridge_ports),
+            query_bridge_fdb(bridge_session, ip, &bridge_ports),
         )
         .await;
         let fdb_complete = fdb.complete;
         let fdb_reason = fdb.reason;
+        // Same distinction the LLDP walk draws, and for the same reason: a device that answers
+        // `noSuchObject` for both forwarding tables has said nothing about its MACs, so an empty
+        // result is not authority to clear the ones already stored. It reads as a clean, complete,
+        // empty table otherwise — which is how a Catalyst queried without its per-VLAN context
+        // came to overwrite a good forwarding database with almost nothing (GH #686).
+        let fdb_authoritative = fdb.complete && !fdb.unsupported;
         let bridge_fdb = fdb.records;
         let fdb_count = bridge_fdb.len();
         tracing::info!(
@@ -516,7 +557,7 @@ impl DiscoveryIntegration for SnmpIntegration {
 
         // Query VLAN table for VLAN names and persist as VLAN entities
         let vlan_table =
-            query_or_default(ip, "vlan_table", query_vlan_table(&mut session, ip)).await;
+            query_or_default(ip, "vlan_table", query_vlan_table(bridge_session, ip)).await;
         let vlan_names_outcome = SnmpGroupOutcome {
             complete: vlan_table.complete,
             returned_any: !vlan_table.records.is_empty(),
@@ -549,7 +590,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let port_vlan_membership = query_or_default(
             ip,
             "port_vlan_membership",
-            query_port_vlan_membership(&mut session, ip, &bridge_ports),
+            query_port_vlan_membership(bridge_session, ip, &bridge_ports),
         )
         .await;
         let vlan_membership_complete = port_vlan_membership.complete;
@@ -673,7 +714,7 @@ impl DiscoveryIntegration for SnmpIntegration {
             InterfaceDataComplete {
                 lldp: lldp_authoritative,
                 cdp: cdp_complete,
-                fdb: fdb_complete,
+                fdb: fdb_authoritative,
                 vlan_membership: vlan_membership_complete,
             },
         );
@@ -1370,7 +1411,7 @@ pub async fn poll_device(
 )> {
     debug!("Starting SNMP poll of {}", ip);
 
-    let mut session = create_session(ip, credential, port).await?;
+    let mut session = create_session(ip, credential, port, SnmpContext::Default).await?;
 
     let system_info = timeout(SNMP_WALK_TIMEOUT, query_system_info(&mut session, ip))
         .await

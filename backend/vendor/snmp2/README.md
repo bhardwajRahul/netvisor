@@ -11,9 +11,22 @@ Why vendored:
     ambiguous between `hmac::Mac::update` and `digest::DynDigest::update` (both
     traits are imported). Reported/upstreamed separately.
 
-Local patch:
+Local patches (all marked in-source with `SCANOPY LOCAL PATCH`):
   * src/v3.rs `calculate_hmac` — `mac.update(data)` → `Mac::update(&mut mac, data)`
-    (6 call sites, one per auth protocol). No other changes.
+    (6 call sites, one per auth protocol). The compile fix this copy exists for.
+  * src/asyncsession.rs — `drain_stale` before each send, and a request id burned
+    the moment it is taken rather than when the response arrives. A request whose
+    future was dropped mid-`recv` left the session permanently one answer behind,
+    which surfaced as truncated tables on busy agents.
+  * src/v3.rs — a `context_name` on `Security`, emitted as the scoped PDU's
+    contextName in both the encrypted and plaintext branches of `build`. Upstream
+    hard-codes it empty, so no caller could address a non-default context; Cisco
+    IOS-XE keeps its per-VLAN bridge FDB in one. `build_init` still sends the null
+    context, as engine discovery requires.
+
+The first is the only one that blocks compilation. The other two are behaviour
+upstream does not offer, so returning to crates.io means re-applying them or
+getting them upstreamed.
 
 Remove this vendored copy and return to a crates.io dependency once upstream
 publishes a release that compiles with `crypto-rust`.

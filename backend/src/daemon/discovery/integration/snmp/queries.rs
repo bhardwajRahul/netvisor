@@ -1832,6 +1832,13 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     // Step 2: Walk legacy dot1dTpFdbTable columns.
     let mut fdb_entries: HashMap<String, FdbBuilder> = HashMap::new();
 
+    // Every column answering "no such object" is a device with no bridge MIB *here* — which on a
+    // switch that partitions its forwarding database by VLAN means "not in this context", not
+    // "this switch forwards nothing". `unsupported` was hard-coded false, so a Catalyst read
+    // without its VLAN context reported a complete, empty, authoritative read of a table it had
+    // never been asked for, and the operator was told nothing at all (GH #686).
+    let mut all_columns_unsupported = true;
+
     let columns = [
         (oids::bridge::fdb_entry::DOT1D_TP_FDB_ADDRESS, "address"),
         (oids::bridge::fdb_entry::DOT1D_TP_FDB_PORT, "port"),
@@ -1840,7 +1847,7 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // OID suffix is a 6-octet MAC encoded as 6 sub-ids.
-        walk_column(
+        let stop = walk_column(
             session,
             ip,
             base_oid_str,
@@ -1864,6 +1871,9 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
             },
         )
         .await;
+        if !stop.is_unsupported() {
+            all_columns_unsupported = false;
+        }
     }
 
     // Step 3: Merge in VLAN-aware Q-BRIDGE dot1qTpFdbTable entries. Legacy rows
@@ -1873,12 +1883,17 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     if !qbridge.complete {
         shortfall.complete = false;
     }
+    if !qbridge.unsupported {
+        all_columns_unsupported = false;
+    }
     let qbridge = qbridge.records;
     for (key, builder) in qbridge {
         fdb_entries.entry(key).or_insert(builder);
     }
 
-    // Filter: keep learned (3) and self (5), resolve bridge port to ifIndex
+    // Filter: keep learned(3) and mgmt(5), resolve bridge port to ifIndex. Not self(4) — those
+    // are the bridge's own port addresses, which name no neighbour. (The old comment here read
+    // "self (5)"; 5 is mgmt, per the encoding documented on DOT1Q_TP_FDB_STATUS.)
     let result: Vec<BridgeFdbEntry> = fdb_entries
         .into_values()
         .filter_map(|e| {
@@ -1904,10 +1919,14 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
         "Bridge FDB walk finished"
     );
 
+    // Only when neither table was there to read. A device serving one row is reporting one row;
+    // a device serving neither table is not reporting at all.
+    let unsupported = all_columns_unsupported && result.is_empty();
+
     Ok(SnmpCollection {
         records: result,
         complete: shortfall.complete,
-        unsupported: false,
+        unsupported,
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,
@@ -1928,6 +1947,9 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
 ) -> Result<SnmpCollection<HashMap<String, FdbBuilder>>> {
     let mut entries: HashMap<String, FdbBuilder> = HashMap::new();
     let mut shortfall = Shortfall::default();
+    // Reported so the caller can tell a switch with no Q-BRIDGE MIB from one whose Q-BRIDGE
+    // table is genuinely empty. Hard-coding this false made the caller's own check dead.
+    let mut all_columns_unsupported = true;
 
     let columns = [
         (oids::bridge::q_fdb_entry::DOT1Q_TP_FDB_PORT, "port"),
@@ -1936,7 +1958,7 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // Q-BRIDGE index = dot1qFdbId (1 sub-id) + MAC (6 octets).
-        walk_column(
+        let stop = walk_column(
             session,
             ip,
             base_oid_str,
@@ -1965,12 +1987,17 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
             },
         )
         .await;
+        if !stop.is_unsupported() {
+            all_columns_unsupported = false;
+        }
     }
+
+    let entries_empty = entries.is_empty();
 
     Ok(SnmpCollection {
         records: entries,
         complete: shortfall.complete,
-        unsupported: false,
+        unsupported: all_columns_unsupported && entries_empty,
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,

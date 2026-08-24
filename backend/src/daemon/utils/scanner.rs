@@ -797,8 +797,14 @@ pub async fn try_snmp_with_credential_on_port(
         }
     };
 
+    // Liveness probe: the default context, because that is where sysDescr lives on every device.
+    // A credential naming a bridge context must not be judged unreachable because that context
+    // holds no system MIB.
     let mut session = match crate::daemon::discovery::integration::snmp::session::create_session(
-        ip, credential, port,
+        ip,
+        credential,
+        port,
+        crate::daemon::discovery::integration::snmp::session::SnmpContext::Default,
     )
     .await
     {

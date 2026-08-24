@@ -263,6 +263,13 @@ pub struct Security {
     pub(crate) key_extension_method: Option<KeyExtension>,
     pub(crate) authoritative_state: AuthoritativeState,
     pub(crate) plain_buf: Vec<u8>,
+    // SCANOPY LOCAL PATCH: the contextName sent in every outgoing scoped PDU. Upstream snmp2
+    // 0.5.0 hard-codes it empty, so a caller could not address a non-default context at all —
+    // Cisco IOS-XE keeps its per-VLAN bridge FDB in one, and it read as an empty table. Held on
+    // `Security` rather than on `Pdu` because `Pdu::to_bytes_with_security` rebuilds the scoped
+    // PDU from `Security` alone. Not part of key derivation, so it needs no `update_key`.
+    // See vendor/snmp2/README.md.
+    pub(crate) context_name: Vec<u8>,
 }
 
 impl Security {
@@ -275,6 +282,7 @@ impl Security {
             key_extension_method: None,
             authoritative_state: AuthoritativeState::default(),
             plain_buf: Vec::new(),
+            context_name: Vec::new(),
         }
     }
 
@@ -290,6 +298,15 @@ impl Security {
 
     pub fn with_key_extension_method(mut self, key_extension_method: KeyExtension) -> Self {
         self.key_extension_method = Some(key_extension_method);
+        self
+    }
+
+    /// SCANOPY LOCAL PATCH: set the contextName sent in outgoing scoped PDUs. Empty — the
+    /// default — addresses the default context, which is what every caller got before.
+    /// Engine discovery is unaffected: `build_init` sends the null context regardless, as
+    /// RFC 3414 §4 requires.
+    pub fn with_context_name(mut self, context_name: &[u8]) -> Self {
+        self.context_name = context_name.to_vec();
         self
     }
 
@@ -415,6 +432,12 @@ impl Security {
 
     pub fn engine_id(&self) -> &[u8] {
         &self.authoritative_state.engine_id
+    }
+
+    /// SCANOPY LOCAL PATCH: the contextName for outgoing scoped PDUs. See
+    /// [`Security::with_context_name`].
+    pub fn context_name(&self) -> &[u8] {
+        &self.context_name
     }
 
     pub fn engine_boots(&self) -> i64 {
@@ -1125,6 +1148,9 @@ pub(crate) fn build_init(req_id: i32, buf: &mut Buf) {
                 req.push_integer(0); // error status
                 req.push_integer(req_id.into());
             });
+            // contextName then contextEngineID, both null on purpose and not covered by the
+            // contextName patch above: engine discovery happens before the engine id is known,
+            // and RFC 3414 §4 requires this probe to carry the null context.
             pdu.push_octet_string(&[]);
             pdu.push_octet_string(&[]);
         });
@@ -1168,7 +1194,10 @@ pub(crate) fn build(
         let mut pdu_buf = Buf::default();
         pdu_buf.push_sequence(|buf| {
             pdu::build_inner(req_id, ident, values, max_repetitions, non_repeaters, buf);
-            buf.push_octet_string(&[]);
+            // SCANOPY LOCAL PATCH: contextName, was hard-coded empty upstream. The buffer is
+            // written backwards, so this must stay directly above contextEngineID — swapping
+            // the two transposes the fields on the wire with no error anywhere.
+            buf.push_octet_string(security.context_name());
             buf.push_octet_string(security.engine_id());
         });
         let (encrypted, salt) = security.encrypt(&pdu_buf)?;
@@ -1184,7 +1213,10 @@ pub(crate) fn build(
         } else {
             buf.push_sequence(|buf| {
                 pdu::build_inner(req_id, ident, values, max_repetitions, non_repeaters, buf);
-                buf.push_octet_string(&[]);
+                // SCANOPY LOCAL PATCH: contextName — the plaintext twin of the branch above.
+                // Both must carry it or an AuthNoPriv session addresses a different context
+                // from an AuthPriv one with the same credential.
+                buf.push_octet_string(security.context_name());
                 buf.push_octet_string(security.engine_id());
             });
         }

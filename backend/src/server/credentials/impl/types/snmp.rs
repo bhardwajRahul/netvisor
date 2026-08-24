@@ -166,8 +166,9 @@ pub struct SnmpV3Params {
     pub priv_protocol: SnmpV3PrivProtocol,
     /// Privacy passphrase.
     pub priv_password: ResolvableSecret,
-    /// Context name. snmp2 0.4.10 only transmits the default (empty) context;
-    /// stored and forwarded for forward-compatibility but not yet sent on the wire.
+    /// Context name, sent as the scoped PDU's contextName. Empty or unset addresses the default
+    /// context. Cisco IOS-XE keeps its per-VLAN bridge forwarding database in a named context,
+    /// so reading one without this returns the default context's near-empty table (GH #686).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_name: Option<String>,
 }
