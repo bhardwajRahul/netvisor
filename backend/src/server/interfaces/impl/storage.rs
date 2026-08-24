@@ -503,17 +503,20 @@ impl Snapshotable for Interface {
         }
     }
 
-    fn remap_own_clone_refs(&mut self, own_map: &std::collections::HashMap<Uuid, Uuid>) {
-        // LLDP/CDP `neighbor` pointing at another interface in this same clone
-        // batch → its closed copy. Without this, a snapshot interface's neighbor
-        // keeps a live id absent from the snapshot, and the topology read's
-        // `get_interface_by_id` lookup misses, dropping the PhysicalLink edge.
-        // A neighbor outside this snapshot (absent from `own_map`) is left as-is.
-        if let Some(Neighbor::Interface(live_id)) = self.base.neighbor
-            && let Some(closed) = own_map.get(&live_id)
-        {
-            self.base.neighbor = Some(Neighbor::Interface(*closed));
+    fn own_clone_ref(&self) -> Option<Uuid> {
+        // LLDP/CDP `neighbor` pointing at another interface. Its closed copy is
+        // what the snapshot's L2 view resolves against: leave a live id here and
+        // the topology read's `get_interface_by_id` lookup misses, dropping the
+        // PhysicalLink edge. `Neighbor::Host` is a different column, remapped in
+        // the per-row `remap_fks_for_clone` pass.
+        match self.base.neighbor {
+            Some(Neighbor::Interface(id)) => Some(id),
+            _ => None,
         }
+    }
+
+    fn set_own_clone_ref(&mut self, id: Uuid) {
+        self.base.neighbor = Some(Neighbor::Interface(id));
     }
 }
 
@@ -778,24 +781,30 @@ mod clone_remap_tests {
     }
 
     #[test]
-    fn remaps_interface_neighbor_self_reference_to_closed_copy() {
-        let live = Uuid::new_v4();
-        let closed = Uuid::new_v4();
-        let own_map = HashMap::from([(live, closed)]);
+    fn only_an_interface_neighbor_is_a_self_reference() {
+        // `Neighbor::Host` lives in a different column and is remapped by
+        // `remap_fks_for_clone` against the host map. Exposing it here too would
+        // send a host id through the interface self-reference pass, which would
+        // look it up in the wrong map.
+        let target = Uuid::new_v4();
 
-        let mut iface = iface_with(Some(Neighbor::Interface(live)));
-        iface.remap_own_clone_refs(&own_map);
-        assert_eq!(iface.base.neighbor, Some(Neighbor::Interface(closed)));
+        assert_eq!(
+            iface_with(Some(Neighbor::Interface(target))).own_clone_ref(),
+            Some(target)
+        );
+        assert_eq!(
+            iface_with(Some(Neighbor::Host(target))).own_clone_ref(),
+            None
+        );
+        assert_eq!(iface_with(None).own_clone_ref(), None);
     }
 
     #[test]
-    fn leaves_cross_snapshot_interface_neighbor_unchanged() {
-        // A neighbor pointing outside this clone batch (e.g. a cross-network
-        // LLDP link) is absent from the map and left as-is.
-        let outside = Uuid::new_v4();
-        let mut iface = iface_with(Some(Neighbor::Interface(outside)));
-        iface.remap_own_clone_refs(&HashMap::new());
-        assert_eq!(iface.base.neighbor, Some(Neighbor::Interface(outside)));
+    fn setting_the_self_reference_keeps_it_an_interface_neighbor() {
+        let closed = Uuid::new_v4();
+        let mut iface = iface_with(Some(Neighbor::Interface(Uuid::new_v4())));
+        iface.set_own_clone_ref(closed);
+        assert_eq!(iface.base.neighbor, Some(Neighbor::Interface(closed)));
     }
 
     #[test]
@@ -809,17 +818,5 @@ mod clone_remap_tests {
         let mut iface = iface_with(Some(Neighbor::Host(live)));
         iface.remap_fks_for_clone(&maps);
         assert_eq!(iface.base.neighbor, Some(Neighbor::Host(closed)));
-    }
-
-    #[test]
-    fn own_refs_is_noop_without_an_interface_neighbor() {
-        let mut iface = iface_with(None);
-        iface.remap_own_clone_refs(&HashMap::new());
-        assert_eq!(iface.base.neighbor, None);
-
-        let mut host_neighbor = iface_with(Some(Neighbor::Host(Uuid::new_v4())));
-        let before = host_neighbor.base.neighbor.clone();
-        host_neighbor.remap_own_clone_refs(&HashMap::from([(Uuid::new_v4(), Uuid::new_v4())]));
-        assert_eq!(host_neighbor.base.neighbor, before);
     }
 }
