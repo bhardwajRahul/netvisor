@@ -121,3 +121,26 @@ pub fn lldp_table() -> LldpTable {
 pub fn bridge_table() -> BridgeTable {
     BridgeTable::derived()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// GH #557's v3 half.
+    ///
+    /// The USM handshake is a session concern and cannot be reached through `SnmpWalkTransport`,
+    /// so what a unit test can hold is that this device's *data* is ordinary — the encrypted
+    /// session is covered by `make snmp-verify`, which authenticates against it for real. Keeping
+    /// this device's tables unremarkable is deliberate: if a v3 scan comes back short, the cause
+    /// is the session, not the fixture.
+    #[tokio::test]
+    async fn its_data_is_ordinary_so_a_short_v3_scan_means_the_session() {
+        let scan = harness::scan("secure-switch-01").await;
+
+        assert_eq!(scan.if_table.entries.len(), 3);
+        assert!(scan.if_table.set_complete && scan.if_table.attributes_complete);
+        assert_eq!(scan.neighbours.records.len(), 1);
+        assert!(scan.neighbours.complete);
+        assert_eq!(scan.bridge_ports.len(), 3);
+    }
+}

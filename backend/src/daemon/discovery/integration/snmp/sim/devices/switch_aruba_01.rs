@@ -126,3 +126,45 @@ pub fn lldp_table() -> LldpTable {
 pub fn bridge_table() -> BridgeTable {
     BridgeTable::derived()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// GH #649's far end.
+    ///
+    /// `switch-netgear-01` advertises two locally-assigned port ids pointing here — `41` and
+    /// `197` — and each has to reach a port by a *different* route, which is only true because
+    /// this device reports them the way it does: `41` is an `ifDescr`, while `197` is an `ifIndex`
+    /// whose port is labelled `A5` and so matches no name at all. Both shapes occur on real
+    /// Aruba/HP gear.
+    ///
+    /// If this device ever named port 197 `197`, the second neighbour would resolve by name and
+    /// the ifIndex route would go untested while everything still looked green.
+    #[tokio::test]
+    async fn it_reports_the_two_identifiers_netgear_names_it_by() {
+        let scan = harness::scan("switch-aruba-01").await;
+
+        let by_descr = scan.interface(41);
+        assert_eq!(by_descr.if_descr.as_deref(), Some("41"));
+
+        let by_index = scan.interface(197);
+        assert_eq!(
+            by_index.if_descr.as_deref(),
+            Some("A5"),
+            "port 197 must NOT be named 197, or the ifIndex route resolves by name instead"
+        );
+        assert_eq!(by_index.if_name.as_deref(), Some("A5"));
+    }
+
+    /// One of its ports is administratively up and operationally down. Nothing else in the lab is,
+    /// and a collection that silently normalised the two statuses would lose the distinction.
+    #[tokio::test]
+    async fn a_port_can_be_up_and_not_passing_traffic() {
+        let scan = harness::scan("switch-aruba-01").await;
+
+        let down = scan.interface(42);
+        assert_eq!(down.if_admin_status, Some(1), "admin up");
+        assert_eq!(down.if_oper_status, Some(2), "oper down");
+    }
+}

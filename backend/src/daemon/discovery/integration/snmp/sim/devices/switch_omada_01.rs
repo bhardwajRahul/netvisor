@@ -186,3 +186,46 @@ pub fn lldp_table() -> LldpTable {
 pub fn bridge_table() -> BridgeTable {
     BridgeTable::derived()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    use crate::daemon::discovery::integration::snmp::unique_interface_macs;
+
+    /// GH #614: 16 ports at ifIndex 49153+ with no `ifName`, all sharing the chassis address.
+    ///
+    /// All 17 interfaces must persist as distinct rows. Before the fix the 16 nameless ports
+    /// collapsed onto the management interface through the MAC tier — and note what that means
+    /// here: the tier only runs at all because these addresses are readable. Served as text they
+    /// would be dropped, and this device would pass while never reaching the code it documents.
+    #[tokio::test]
+    async fn every_nameless_port_survives_a_shared_chassis_address() {
+        let scan = harness::scan("switch-omada-01").await;
+
+        assert_eq!(scan.if_table.entries.len(), 17);
+        assert!(scan.if_table.set_complete);
+
+        // The addresses are read, not dropped — which is what puts the MAC tier under test.
+        assert!(
+            scan.if_table
+                .entries
+                .iter()
+                .all(|e| e.if_phys_address.is_some()),
+            "a shared address that is not stored cannot make anything ambiguous"
+        );
+
+        // ...and being shared, none of them identifies a port.
+        assert!(
+            unique_interface_macs(&scan.if_table.entries).is_empty(),
+            "one address on every port must name no port at all"
+        );
+
+        // Only the management interface has a name; the physical ports have none.
+        assert_eq!(
+            scan.interface(1).if_name.as_deref(),
+            Some("Vlan-interface1")
+        );
+        assert!(scan.interface(49153).if_name.is_none());
+    }
+}

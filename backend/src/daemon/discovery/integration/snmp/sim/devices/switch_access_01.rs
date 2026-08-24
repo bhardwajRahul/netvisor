@@ -127,3 +127,27 @@ pub fn lldp_table() -> LldpTable {
 pub fn bridge_table() -> BridgeTable {
     BridgeTable::derived()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// A control device: it exists to be a far end. `switch-core-01` advertises it on `Gi0/1` by
+    /// the chassis id below, so this is the assertion that keeps that test honest — if this
+    /// device stops reporting these values, the neighbour over there resolves through a fallback
+    /// tier and looks identical while proving nothing.
+    #[tokio::test]
+    async fn it_reports_the_identity_switch_core_01_names_it_by() {
+        let scan = harness::scan("switch-access-01").await;
+
+        assert_eq!(scan.if_table.entries.len(), 3);
+        assert!(scan.if_table.set_complete);
+        assert_eq!(scan.interface(1).if_name.as_deref(), Some("Gi0/1"));
+        assert_eq!(
+            scan.interface(1)
+                .if_phys_address
+                .map(|m| m.to_string().to_lowercase()),
+            Some("00:1a:2b:00:11:01".to_string())
+        );
+    }
+}

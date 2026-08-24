@@ -307,3 +307,39 @@ pub fn arp_table() -> ArpTable {
         },
     ])
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// GH #674: an ARP table served out of ascending OID order.
+    ///
+    /// The switch stores its table unsorted and iterates it positionally, so GETNEXT hands back
+    /// whatever row physically follows the one asked for. `snmpwalk` stops at "OID not
+    /// increasing"; `snmpbulkwalk -Cc` reads all 45 rows. The data is retrievable, and only a
+    /// client insisting every step ascend refuses it.
+    ///
+    /// Before the fix a scan collects 40 and reports the walk as desynchronised. The ARP entry is
+    /// a join across four columns, so a column that comes up short discards every row the others
+    /// read — which is how the reporter's switch logged `count=0` while answering hundreds of rows.
+    #[tokio::test]
+    async fn a_table_served_out_of_order_is_read_in_full() {
+        let scan = harness::scan("switch-unsorted-01").await;
+
+        assert_eq!(scan.arp.records.len(), 45, "40 is the pre-fix count");
+        assert!(
+            scan.arp.complete,
+            "a retrievable table must not report as desynchronised"
+        );
+    }
+
+    /// Its `ifTable` is deliberately ordinary, so an empty ARP table here is visibly a property of
+    /// that table rather than of the whole host.
+    #[tokio::test]
+    async fn its_interface_table_stays_ordinary() {
+        let scan = harness::scan("switch-unsorted-01").await;
+
+        assert_eq!(scan.if_table.entries.len(), 3);
+        assert!(scan.if_table.set_complete && scan.if_table.attributes_complete);
+    }
+}

@@ -109,3 +109,37 @@ pub fn lldp_table() -> LldpTable {
 pub fn bridge_table() -> BridgeTable {
     BridgeTable::derived()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// Issue 2, July 2026: ExtremeXOS numbers its `lldpRemTable` local ports 1..N, in a namespace
+    /// distinct from `ifIndex` — this switch's interfaces are at 1001+.
+    ///
+    /// The neighbours only reach an interface if the daemon walks `lldpLocPortTable` and matches
+    /// `lldpLocPortId` against `ifName`. Before that remap this device yields **zero** usable
+    /// neighbours: every one lands on an index no interface holds and is discarded whole.
+    #[tokio::test]
+    async fn its_neighbours_are_remapped_out_of_a_separate_port_namespace() {
+        let scan = harness::scan("switch-exos-01").await;
+
+        assert_eq!(scan.local_ports.len(), 3, "the remap needs this table");
+        assert_eq!(scan.neighbours.records.len(), 2);
+
+        // Every neighbour now sits on a real ifIndex rather than on its advertised port number.
+        let if_indexes: Vec<i32> = scan.if_table.entries.iter().map(|e| e.if_index).collect();
+        for neighbour in &scan.neighbours.records {
+            assert!(
+                if_indexes.contains(&neighbour.local_port_index),
+                "neighbour landed on {} which is no interface: {if_indexes:?}",
+                neighbour.local_port_index
+            );
+            assert!(
+                neighbour.local_port_index >= 1001,
+                "the advertised 1..N number survived the remap"
+            );
+        }
+        assert_eq!(scan.dropped_neighbours, 0);
+    }
+}

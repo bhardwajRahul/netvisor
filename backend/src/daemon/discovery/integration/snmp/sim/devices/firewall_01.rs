@@ -97,3 +97,22 @@ pub fn lldp_table() -> LldpTable {
         .sys_desc("Juniper Networks, Inc. JunOS 21.4R3-S5, MX204"),
     ])
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// A control device: a non-switch that still answers LLDP, so the neighbour path is exercised
+    /// on something that does not bridge.
+    #[tokio::test]
+    async fn it_advertises_a_neighbour_without_serving_a_bridge_table() {
+        let scan = harness::scan("firewall-01").await;
+
+        assert_eq!(scan.neighbours.records.len(), 1);
+        assert!(scan.neighbours.complete);
+        assert!(
+            scan.bridge_ports.is_empty(),
+            "a firewall reports no bridge ports"
+        );
+    }
+}

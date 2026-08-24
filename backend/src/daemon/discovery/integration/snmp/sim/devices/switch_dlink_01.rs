@@ -159,3 +159,74 @@ pub fn lldp_table() -> LldpTable {
 pub fn bridge_table() -> BridgeTable {
     BridgeTable::derived()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    use crate::daemon::discovery::integration::snmp::unique_interface_macs;
+    use crate::server::snmp::resolution::lldp::LldpPortId;
+
+    /// GH #668: four neighbour records, each needing a different route to its far end.
+    ///
+    /// The port ids are what this device is for, and each is a distinct shape the resolver has to
+    /// handle: a subtype-5 `interfaceName` carrying a bare port *number*, an id matching nothing
+    /// whose *description* matches instead, and two MAC port ids — one that identifies exactly one
+    /// far-end port and one that cannot.
+    #[tokio::test]
+    async fn its_four_port_ids_are_four_different_shapes() {
+        let scan = harness::scan("switch-dlink-01").await;
+
+        assert_eq!(scan.neighbours.records.len(), 4);
+        assert_eq!(scan.neighbours.discarded, 0);
+
+        let id_on = |port: i32| {
+            let neighbour = scan
+                .neighbours_on(port)
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| panic!("no neighbour on local port {port}"));
+            LldpPortId::from_snmp(
+                neighbour.remote_port_id_subtype.unwrap(),
+                neighbour.remote_port_id_bytes.as_ref().unwrap(),
+            )
+            .expect("a port id")
+        };
+
+        // Subtype 5 carrying a bare number. It used to get a name lookup and nothing else, so it
+        // resolved to the host and stopped — and a host-only neighbour draws no edge.
+        assert_eq!(id_on(1), LldpPortId::InterfaceName("2".into()));
+        // An id that matches nothing on the far end; only its description does.
+        assert_eq!(id_on(2), LldpPortId::InterfaceName("ethernet1/0/44".into()));
+        // Two MAC port ids, sent as six raw octets — the lab's only end-to-end coverage of
+        // `parse_mac_id`'s raw-octet branch, since every other LLDP fixture uses the ASCII form.
+        assert!(matches!(id_on(3), LldpPortId::MacAddress(_)));
+        assert!(matches!(id_on(4), LldpPortId::MacAddress(_)));
+    }
+
+    /// The third report from the same issue: every port answers with the chassis base address.
+    ///
+    /// The ifTable walk keys each `ifPhysAddress` off its own row, so it cannot copy one row's
+    /// value onto another — but a MAC that names three ports names none of them, and the lookups
+    /// that treated one as a port identifier picked whichever row came back first.
+    #[tokio::test]
+    async fn one_address_on_every_port_identifies_no_port() {
+        let scan = harness::scan("switch-dlink-01").await;
+
+        let addresses: Vec<String> = scan
+            .if_table
+            .entries
+            .iter()
+            .filter_map(|e| e.if_phys_address.map(|m| m.to_string().to_lowercase()))
+            .collect();
+        assert_eq!(addresses.len(), 4);
+        assert!(
+            addresses.iter().all(|mac| mac == "00:ad:24:af:4e:00"),
+            "the shared base address is the point: {addresses:?}"
+        );
+        assert!(
+            unique_interface_macs(&scan.if_table.entries).is_empty(),
+            "an address on every port must identify none of them"
+        );
+    }
+}

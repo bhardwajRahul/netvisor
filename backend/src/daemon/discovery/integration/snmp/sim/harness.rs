@@ -60,7 +60,21 @@ impl Collected {
             .collect()
     }
 
-    /// The single neighbour naming a far end, by its advertised system name.
+    /// Every neighbour naming a far end, by its advertised system name.
+    ///
+    /// Plural because a pair of devices can legitimately be cabled twice — `switch-aruba-01` and
+    /// `switch-netgear-01` are, on purpose, and that pair is half of what GH #664 and #649 are
+    /// about.
+    pub fn neighbours_named(&self, sys_name: &str) -> Vec<&LldpNeighbor> {
+        self.neighbours
+            .records
+            .iter()
+            .filter(|n| n.remote_sys_name.as_deref() == Some(sys_name))
+            .collect()
+    }
+
+    /// The single neighbour naming a far end. Panics if the far end is named more than once, which
+    /// is a real distinction: two links to one device is a different topology from one.
     pub fn neighbour_named(&self, sys_name: &str) -> &LldpNeighbor {
         let mut found = self
             .neighbours

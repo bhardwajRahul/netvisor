@@ -209,3 +209,58 @@ pub fn lldp_table() -> LldpTable {
 pub fn bridge_table() -> BridgeTable {
     BridgeTable::derived()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::daemon::discovery::integration::snmp::sim::harness;
+
+    /// GH #668: a neighbour table indexed without `lldpRemTimeMark`.
+    ///
+    /// The MIB indexes `lldpRemEntry` as `timeMark.localPort.remIndex`; this firmware omits the
+    /// time mark and indexes on the remaining two, so every row arrives one sub-id shorter than on
+    /// every other device here.
+    ///
+    /// This is the shape that made the device vanish *without evidence*. A parser requiring three
+    /// sub-ids built no record, so nothing reached the discard counters, the walk still reported
+    /// itself complete, and an empty result from a sixteen-port switch was then treated as the
+    /// device authoritatively reporting no neighbours — clearing links the server already held. It
+    /// was the only failure in this query that raised no warning of any kind.
+    #[tokio::test]
+    async fn a_two_element_neighbour_index_still_builds_records() {
+        let scan = harness::scan("switch-tplink-01").await;
+
+        assert_eq!(
+            scan.neighbours.records.len(),
+            5,
+            "a short index must build records, not silently build none"
+        );
+        assert!(scan.neighbours.complete);
+        assert_eq!(scan.neighbours.discarded, 0);
+
+        // Each sits on a local port the device actually has.
+        for neighbour in &scan.neighbours.records {
+            assert!(
+                (1..=5).contains(&neighbour.local_port_index),
+                "local port {} is outside 1/0/1-1/0/5",
+                neighbour.local_port_index
+            );
+        }
+    }
+
+    /// Its ports are known only by `ifDescr`: there is no ifXTable at all, which is what the
+    /// neighbour port ids over on `switch-dlink-01` have to be matched against.
+    #[tokio::test]
+    async fn it_serves_no_if_x_table_so_its_ports_are_known_only_by_description() {
+        let scan = harness::scan("switch-tplink-01").await;
+
+        assert_eq!(scan.if_table.entries.len(), 6);
+        assert!(
+            scan.if_table.entries.iter().all(|e| e.if_name.is_none()),
+            "an ifName here would hide what this device is for"
+        );
+        assert_eq!(
+            scan.interface(1).if_descr.as_deref(),
+            Some("ten-gigabitEthernet 1/0/1")
+        );
+    }
+}
