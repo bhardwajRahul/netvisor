@@ -23,12 +23,14 @@ LAB_ENV="$SCRIPT_DIR/lxc/generated/lab.env"
 
 # Sourced on demand rather than at startup, because `fixtures` and `deploy` are what create it.
 require_lab_env() {
+    [ "${LAB_ENV_LOADED:-}" = "1" ] && return
     if [ ! -f "$LAB_ENV" ]; then
         printf "${RED}✗${NC} %s is missing — run 'make snmp-fixtures' first.\n" "$LAB_ENV" >&2
         exit 1
     fi
     # shellcheck source=/dev/null
     . "$LAB_ENV"
+    LAB_ENV_LOADED=1
 }
 
 # SNMPv3 passphrases. The user names come from lab.env; these do not, because the verify path is
@@ -40,11 +42,20 @@ V3_CTX_AUTH_PASS="${V3_CTX_AUTH_PASS:-ctxauthpass12345}"
 V3_CTX_PRIV_PASS="${V3_CTX_PRIV_PASS:-ctxprivpass12345}"
 V3_USER="${V3_USER:-scanopyv3}"
 
-# Deploy target: the Proxmox VM that hosts the LXC agents, reached over SSH at
-# HOSTS[0] (its management IP doubles as switch-core-01's macvlan address). The
-# VM accepts publickey auth only, so the key is required. Override either with
-# SNMP_VM_HOST / SNMP_SSH_KEY.
-VM_HOST="${SNMP_VM_HOST:-${HOSTS[0]}}"
+# Deploy target: the Proxmox VM that hosts the LXC agents, reached over SSH at the first host in
+# the lab (its management IP doubles as switch-core-01's macvlan address). The VM accepts publickey
+# auth only, so the key is required. Override either with SNMP_VM_HOST / SNMP_SSH_KEY.
+#
+# Resolved lazily: the lab's addresses come from the generated lab.env, and `fixtures` is what
+# creates it, so this cannot be read at startup.
+vm_host() {
+    if [ -n "${SNMP_VM_HOST:-}" ]; then
+        echo "$SNMP_VM_HOST"
+        return
+    fi
+    require_lab_env
+    echo "${HOSTS[0]}"
+}
 SSH_KEY="${SNMP_SSH_KEY:-$HOME/.ssh/snmp-test-vm}"
 REMOTE_DIR="/root/snmp-test"
 
@@ -172,7 +183,9 @@ cmd_verify() {
         printf "  %-18s %-22s %-6s %s\n" "────────────────" "────────────────────" "─────" "────────────"
         for i in "${!HOSTS[@]}"; do
             local cred="${COMMUNITIES[$i]}"
-            [ "${VERSIONS[$i]}" = "v3" ] && cred="user=$V3_USER"
+            # The per-host USM identity, not a single global one: switch-cisco-01 is on its own
+            # user so that only one seeded credential can ever win against it.
+            [ "${VERSIONS[$i]}" = "v3" ] && cred="user=${V3_USERS[$i]:-$V3_USER}"
             printf "  %-18s %-22s %-6s %s\n" "${HOSTS[$i]}" "${SYSNAMES[$i]}" "${VERSIONS[$i]}" "$cred"
         done
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -223,9 +236,12 @@ cmd_deploy() {
         exit 1
     fi
     local ssh_opts=(-i "$SSH_KEY" -o ConnectTimeout=10)
+    local VM_HOST
+    VM_HOST="$(vm_host)"
 
     echo "Generating device definitions..."
     generate_fixtures
+    require_lab_env
 
     echo "Deploying SNMP test environment to root@${VM_HOST}..."
     echo "  → clearing ${REMOTE_DIR} (required — scp -r nests into an existing dir)"
