@@ -490,6 +490,11 @@ impl DiscoveryOps {
         if let Ok(records) = session.incomplete_snmp_walks.lock() {
             warnings.extend(warnings::render_incomplete_snmp_walks(&records));
         }
+        // Directly after the shortfalls, because on a device that produced both the two lines are
+        // halves of one story: why the read stopped, and what the device said was waiting.
+        if let Ok(records) = session.contradicted_claims.lock() {
+            warnings.extend(warnings::render_contradicted_claims(&records));
+        }
         if let Ok(records) = session.unresolved_lldp_ports.lock() {
             warnings.extend(warnings::render_unresolved_lldp_ports(&records));
         }
@@ -705,6 +710,22 @@ impl DiscoveryOps {
         }
         if let Ok(session) = self.get_session().await
             && let Ok(mut buffer) = session.incomplete_snmp_walks.lock()
+        {
+            buffer.extend(records);
+        }
+    }
+
+    /// Record the device's own figures that this host's collection contradicted.
+    ///
+    /// Kept apart from [`Self::record_snmp_shortfalls`] because the two answer different
+    /// questions and a device can warrant both: one says why the read stopped, the other says
+    /// what the device claimed was there to read.
+    pub async fn record_contradicted_claims(&self, records: Vec<warnings::ContradictedClaim>) {
+        if records.is_empty() {
+            return;
+        }
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.contradicted_claims.lock()
         {
             buffer.extend(records);
         }

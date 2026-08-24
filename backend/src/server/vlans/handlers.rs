@@ -215,13 +215,7 @@ pub async fn create_vlan(
         StorableFilter::<Vlan>::new_from_uuid_column("network_id", &vlan.base.network_id)
             .u16_column("vlan_number", vlan.base.vlan_number);
 
-    if state
-        .services
-        .vlan_service
-        .get_one(existing_filter)
-        .await?
-        .is_some()
-    {
+    if state.services.vlan_service.exists(existing_filter).await? {
         return Err(ApiError::conflict(&format!(
             "VLAN {} already exists in this network",
             vlan.base.vlan_number

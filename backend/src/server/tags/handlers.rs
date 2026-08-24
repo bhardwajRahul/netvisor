@@ -224,10 +224,10 @@ pub async fn create_tag(
     let name_filter =
         StorableFilter::<Tag>::new_from_org_id(&organization_id).name(tag.base.name.clone());
 
-    if let Some(existing_with_name) = state.services.tag_service.get_one(name_filter).await? {
+    if state.services.tag_service.exists(name_filter).await? {
         return Err(ApiError::conflict(&format!(
             "Tag names must be unique; a tag named \"{}\" already exists",
-            existing_with_name.base.name
+            tag.base.name
         )));
     }
 

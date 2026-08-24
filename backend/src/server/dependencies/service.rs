@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::server::shared::storage::traits::Unique;
+
 use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
@@ -101,21 +103,21 @@ impl CrudService<Dependency> for DependencyService {
         Ok(dependencies)
     }
 
-    async fn get_one(
+    async fn get_unique(
         &self,
         filter: StorableFilter<Dependency>,
-    ) -> Result<Option<Dependency>, anyhow::Error> {
-        let dependency = self.storage().get_one(filter).await?;
-        match dependency {
-            Some(mut d) => {
+    ) -> Result<Unique<Dependency>, anyhow::Error> {
+        match self.storage().get_unique(filter).await? {
+            Unique::One(mut d) => {
                 self.entity_tag_service.hydrate_tags(&mut d).await?;
                 d.base.members = self
                     .member_storage
                     .hydrate_members(&d.id, &d.base.members)
                     .await?;
-                Ok(Some(d))
+                Ok(Unique::One(d))
             }
-            None => Ok(None),
+            Unique::None => Ok(Unique::None),
+            Unique::Multiple => Ok(Unique::Multiple),
         }
     }
 

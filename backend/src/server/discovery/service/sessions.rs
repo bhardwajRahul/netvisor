@@ -261,7 +261,12 @@ impl DiscoveryService {
         }
 
         let filter = StorableFilter::<Discovery>::new_for_historical_session(session_id);
-        let Some(mut discovery) = self.discovery_storage.get_one(filter).await? else {
+        let Some(mut discovery) = self
+            .discovery_storage
+            .get_unique(filter)
+            .await?
+            .at_most_one()?
+        else {
             // A completed session always has a row — `handle_session_completion` writes it before
             // publishing the event that triggers this work. So this is either a scan whose record
             // retention has already pruned, or that ordering has regressed; both are worth saying

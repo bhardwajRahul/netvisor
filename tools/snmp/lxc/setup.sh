@@ -378,10 +378,56 @@ EOF
 # and ARP columns elsewhere in this file send real six-byte MACs. An earlier version
 # of this note claimed the transport could not carry them, and that is what led two
 # separate fixtures to encode MACs as `string` and silently test nothing.)
+# The forwarding database, and the first one in this lab. GH #686 reports a Catalyst answering
+# `dot1dTpFdbAddress` with nine rows to a raw walk and exactly one to a scan, and no fixture here
+# could reproduce it because no device served the table at all.
+#
+# The MAC is the *index* — six decimal sub-ids, one per octet — and the address column repeats it
+# as six raw bytes via `octet`. That repetition is the point: it is the only end-to-end coverage
+# of a binary MAC on a table the daemon joins across three columns, and it is what a `string`
+# encoding here would silently stop testing.
+#
+# Statuses are mixed deliberately. The daemon keeps learned(3) and mgmt(5) and drops self(4), so
+# a walk that read every row still yields seven entries rather than eight — a filter that stopped
+# working would show up as a count that is too high, not as an empty table.
+#
+# Far ends are real lab devices (`00:1a:2b:00:<device>:<port>`), so the entries resolve to hosts
+# rather than to nothing: switch-access-01 on port 1, router-gw-01 on port 2, and the rest of the
+# access-side devices on port 3.
 cat > "$DATA_DIR/switch-core-01-bridge.txt" << 'EOF'
 .1.3.6.1.2.1.17.1.4.1.2.1 integer 1
 .1.3.6.1.2.1.17.1.4.1.2.2 integer 2
 .1.3.6.1.2.1.17.1.4.1.2.3 integer 3
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.16.0 octet 00 1a 2b 00 10 00
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.16.1 octet 00 1a 2b 00 10 01
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.17.0 octet 00 1a 2b 00 11 00
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.17.1 octet 00 1a 2b 00 11 01
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.18.1 octet 00 1a 2b 00 12 01
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.19.1 octet 00 1a 2b 00 13 01
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.20.1 octet 00 1a 2b 00 14 01
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.21.1 octet 00 1a 2b 00 15 01
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.16.0 integer 0
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.16.1 integer 1
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.17.0 integer 1
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.17.1 integer 1
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.18.1 integer 2
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.19.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.20.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.21.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.16.0 integer 4
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.16.1 integer 5
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.17.0 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.17.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.18.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.19.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.20.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.21.1 integer 3
+.1.3.6.1.2.1.17.7.1.2.2.1.2.10.0.26.43.0.17.1 integer 1
+.1.3.6.1.2.1.17.7.1.2.2.1.2.10.0.26.43.0.18.1 integer 2
+.1.3.6.1.2.1.17.7.1.2.2.1.2.20.0.26.43.0.20.1 integer 3
+.1.3.6.1.2.1.17.7.1.2.2.1.3.10.0.26.43.0.17.1 integer 3
+.1.3.6.1.2.1.17.7.1.2.2.1.3.10.0.26.43.0.18.1 integer 3
+.1.3.6.1.2.1.17.7.1.2.2.1.3.20.0.26.43.0.20.1 integer 3
 .1.3.6.1.2.1.17.7.1.4.3.1.1.10 string DATA
 .1.3.6.1.2.1.17.7.1.4.3.1.1.20 string VOICE
 .1.3.6.1.2.1.17.7.1.4.5.1.1.1 integer 10
@@ -717,9 +763,20 @@ EOF
 # legacy-switch-01 BRIDGE — gives the v1-only device a non-ifTable table to walk,
 # so a scan exercises the getbulk -> getnext fallback (v1 rejects getbulk) across
 # more than just ifTable/LLDP.
+#
+# Its FDB is small and deliberately so: the point here is that the forwarding table is read
+# one varbind at a time over GETNEXT, which is the path a v1 device forces and the one where a
+# multi-column join has the most opportunities to fall out of step. A device whose FDB arrives
+# only under getbulk would look healthy on every other agent in this lab.
 cat > "$DATA_DIR/legacy-switch-01-bridge.txt" << 'EOF'
 .1.3.6.1.2.1.17.1.4.1.2.1 integer 1
 .1.3.6.1.2.1.17.1.4.1.2.2 integer 2
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.16.1 octet 00 1a 2b 00 10 01
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.22.1 octet 00 1a 2b 00 16 01
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.16.1 integer 1
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.22.1 integer 2
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.16.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.22.1 integer 4
 .1.3.6.1.2.1.17.7.1.4.3.1.1.1 string default
 EOF
 
@@ -2476,6 +2533,56 @@ cat > "$DATA_DIR/switch-dell-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.10.127153800.569.87 string Windows Server 2022 Datacenter 10.0.20348 x64
 EOF
 
+# switch-dell-01's bridge tables — the GH #686 shape on the GH #685 device.
+#
+# The reporter's Catalyst answers `dot1dTpFdbAddress` with nine rows to a raw walk and exactly
+# one to a scan. Nine rows here, so a walk that stops after the first is unmistakable in the
+# `count=` on the collection line rather than being a plausible number for a quiet switch.
+#
+# Bridge ports are numbered 1-12 against OS10's `ethernet1/1/N` ifIndexes (17301505+), which is
+# the mapping the FDB is keyed by — a device whose `dot1dBasePortIfIndex` and FDB disagree
+# resolves every entry to nothing, and that is worth being able to stage here.
+#
+# Far ends are the same lab devices switch-core-01 forwards to, so entries resolve to hosts
+# rather than to nothing, plus one entry per breakout lane on port 14 — the case that made this
+# device worth a fixture in the first place.
+cat > "$DATA_DIR/switch-dell-01-bridge.txt" << 'EOF'
+.1.3.6.1.2.1.17.1.4.1.2.1 integer 17301505
+.1.3.6.1.2.1.17.1.4.1.2.2 integer 17301506
+.1.3.6.1.2.1.17.1.4.1.2.3 integer 17301507
+.1.3.6.1.2.1.17.1.4.1.2.4 integer 17301508
+.1.3.6.1.2.1.17.1.4.1.2.10 integer 17301514
+.1.3.6.1.2.1.17.1.4.1.2.11 integer 17301515
+.1.3.6.1.2.1.17.1.4.1.2.12 integer 17301516
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.16.1 octet 00 1a 2b 00 10 01
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.17.1 octet 00 1a 2b 00 11 01
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.18.1 octet 00 1a 2b 00 12 01
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.19.1 octet 00 1a 2b 00 13 01
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.20.1 octet 00 1a 2b 00 14 01
+.1.3.6.1.2.1.17.4.3.1.1.0.26.43.0.21.1 octet 00 1a 2b 00 15 01
+.1.3.6.1.2.1.17.4.3.1.1.20.24.119.170.187.17 octet 14 18 77 aa bb 11
+.1.3.6.1.2.1.17.4.3.1.1.20.24.119.170.187.18 octet 14 18 77 aa bb 12
+.1.3.6.1.2.1.17.4.3.1.1.20.24.119.170.187.19 octet 14 18 77 aa bb 13
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.16.1 integer 1
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.17.1 integer 1
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.18.1 integer 2
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.19.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.20.1 integer 4
+.1.3.6.1.2.1.17.4.3.1.2.0.26.43.0.21.1 integer 4
+.1.3.6.1.2.1.17.4.3.1.2.20.24.119.170.187.17 integer 10
+.1.3.6.1.2.1.17.4.3.1.2.20.24.119.170.187.18 integer 11
+.1.3.6.1.2.1.17.4.3.1.2.20.24.119.170.187.19 integer 12
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.16.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.17.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.18.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.19.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.20.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.0.26.43.0.21.1 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.20.24.119.170.187.17 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.20.24.119.170.187.18 integer 3
+.1.3.6.1.2.1.17.4.3.1.3.20.24.119.170.187.19 integer 3
+EOF
+
 # switch-cisco-01 IF-MIB — a Catalyst 3850 running IOS-XE, from GH #686.
 cat > "$DATA_DIR/switch-cisco-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.2.2.1.1.1 integer 1
@@ -2662,6 +2769,7 @@ sysname switch-core-01
 syslocation Server Room A, Rack 1
 sysobjectid .1.3.6.1.4.1.9.1.1208
 sysservices 6
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-core-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-core-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-core-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-core-01-lldp.txt
@@ -2679,8 +2787,10 @@ sysname switch-access-01
 syslocation Floor 2, IDF B
 sysobjectid .1.3.6.1.4.1.9.1.516
 sysservices 6
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-access-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-access-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-access-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-access-01-bridge.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-access-01-lldp.txt
 EOF
 
@@ -2693,6 +2803,7 @@ sysname router-gw-01
 syslocation Server Room A, Rack 3
 sysobjectid .1.3.6.1.4.1.2636.1.1.1.2.29
 sysservices 76
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/router-gw-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/router-gw-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/router-gw-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/router-gw-01-lldp.txt
@@ -2707,6 +2818,7 @@ sysname firewall-01
 syslocation Server Room A, Rack 2
 sysobjectid .1.3.6.1.4.1.12356.101.1.1
 sysservices 76
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/firewall-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/firewall-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/firewall-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/firewall-01-lldp.txt
@@ -2721,6 +2833,7 @@ sysname printer-lobby
 syslocation Lobby, Reception Desk
 sysobjectid .1.3.6.1.4.1.11.2.3.9.1
 sysservices 72
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/printer-lobby-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/printer-lobby-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/printer-lobby-iftable.txt
 EOF
@@ -2748,8 +2861,10 @@ sysname ap-wireless-01
 syslocation Floor 3, Ceiling
 sysobjectid .1.3.6.1.4.1.41112.1.6.1
 sysservices 6
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/ap-wireless-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/ap-wireless-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/ap-wireless-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/ap-wireless-01-bridge.txt
 pass -p 1 .1.3.6.1.2.1.4.20.1.1 /bin/bash $H $D/ap-wireless-01-ipaddr.txt
 pass -p 1 .1.3.6.1.2.1.4.20.1.2 /bin/bash $H $D/ap-wireless-01-ipaddr.txt
 pass -p 1 .1.3.6.1.2.1.4.20.1.3 /bin/bash $H $D/ap-wireless-01-ipaddr.txt
@@ -2771,6 +2886,7 @@ sysname legacy-switch-01
 syslocation Closet 1, Legacy Rack
 sysobjectid .1.3.6.1.4.1.9.1.359
 sysservices 6
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/legacy-switch-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/legacy-switch-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/legacy-switch-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/legacy-switch-01-lldp.txt
@@ -2792,8 +2908,10 @@ sysname secure-switch-01
 syslocation Server Room A, Rack 4
 sysobjectid .1.3.6.1.4.1.2011.2.23.999
 sysservices 6
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/secure-switch-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/secure-switch-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/secure-switch-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/secure-switch-01-bridge.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/secure-switch-01-lldp.txt
 EOF
 
@@ -2806,8 +2924,10 @@ sysname switch-exos-01
 syslocation Floor 3, IDF C
 sysobjectid .1.3.6.1.4.1.1916.2.219
 sysservices 6
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-exos-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-exos-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-exos-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-exos-01-bridge.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-exos-01-lldp.txt
 EOF
 
@@ -2820,8 +2940,10 @@ sysname switch-voss-01
 syslocation Server Room A, Rack 5
 sysobjectid .1.3.6.1.4.1.2272.30
 sysservices 6
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-voss-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-voss-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-voss-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-voss-01-bridge.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-voss-01-lldp.txt
 EOF
 
@@ -2834,8 +2956,10 @@ sysname switch-netgear-01
 syslocation Floor 1, IDF A
 sysobjectid .1.3.6.1.4.1.4526.100.4.15
 sysservices 2
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-netgear-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-netgear-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-netgear-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-netgear-01-bridge.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-netgear-01-lldp.txt
 EOF
 
@@ -2848,8 +2972,10 @@ sysname switch-aruba-01
 syslocation Floor 1, IDF B
 sysobjectid .1.3.6.1.4.1.11.2.3.7.11.79
 sysservices 2
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-aruba-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-aruba-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-aruba-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-aruba-01-bridge.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-aruba-01-lldp.txt
 EOF
 
@@ -2864,8 +2990,10 @@ sysname switch
 syslocation Floor 2, Comms Cupboard
 sysobjectid .1.3.6.1.4.1.11863.6.96
 sysservices 2
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-omada-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-omada-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-omada-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-omada-01-bridge.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-omada-01-lldp.txt
 EOF
 
@@ -2878,8 +3006,10 @@ sysname switch-flaky-01
 syslocation Lab
 sysobjectid .1.3.6.1.4.1.99999.1
 sysservices 2
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-flaky-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-flaky-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-flaky-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-flaky-01-bridge.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-flaky-01-lldp-active.txt
 EOF
 
@@ -2892,8 +3022,10 @@ sysname switch-dlink-01
 syslocation Lab
 sysobjectid .1.3.6.1.4.1.171.10.76.28
 sysservices 2
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-dlink-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-dlink-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-dlink-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-dlink-01-bridge.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-dlink-01-lldp.txt
 EOF
 
@@ -2909,7 +3041,9 @@ sysname switch-tplink-01
 syslocation Lab
 sysobjectid .1.3.6.1.4.1.11863.5.1.1
 sysservices 2
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-tplink-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-tplink-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-tplink-01-bridge.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-tplink-01-lldp.txt
 EOF
 
@@ -2922,8 +3056,10 @@ sysname switch-unsorted-01
 syslocation Floor 1, camera room
 sysobjectid .1.3.6.1.4.1.99999.1.1
 sysservices 2
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-unsorted-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-unsorted-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-unsorted-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-unsorted-01-bridge.txt
 pass -p 1 .1.3.6.1.2.1.4.22.1.1 /bin/bash $HU $D/switch-unsorted-01-arp.txt
 pass -p 1 .1.3.6.1.2.1.4.22.1.2 /bin/bash $HU $D/switch-unsorted-01-arp.txt
 pass -p 1 .1.3.6.1.2.1.4.22.1.3 /bin/bash $HU $D/switch-unsorted-01-arp.txt
@@ -2939,8 +3075,10 @@ sysname switch-macport-01
 syslocation Substation B, DIN rail
 sysobjectid .1.3.6.1.4.1.16177.1.1
 sysservices 2
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-macport-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-macport-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-macport-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-macport-01-bridge.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-macport-01-lldp.txt
 EOF
 
@@ -2971,8 +3109,10 @@ sysname switch-stuck-01
 syslocation Rack 9, middle
 sysobjectid .1.3.6.1.4.1.99999.3.1
 sysservices 2
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-stuck-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-stuck-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-stuck-01-iftable.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-stuck-01-bridge.txt
 pass -p 1 .1.3.6.1.2.1.4.22.1.1 /bin/bash $HS $D/switch-stuck-01-arp.txt
 pass -p 1 .1.3.6.1.2.1.4.22.1.2 /bin/bash $HS $D/switch-stuck-01-arp.txt
 pass -p 1 .1.3.6.1.2.1.4.22.1.3 /bin/bash $HS $D/switch-stuck-01-arp.txt
@@ -2988,9 +3128,11 @@ sysname switch-dell-01
 syslocation Rack 4, breakout panel
 sysobjectid .1.3.6.1.4.1.674.11000.5000.100.2.1
 sysservices 2
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-dell-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-dell-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-dell-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-dell-01-lldp.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-dell-01-bridge.txt
 EOF
 
 # switch-cisco-01 — the SNMPv3 context fixture (GH #686).
@@ -3032,6 +3174,7 @@ sysname switch-cisco-01
 syslocation Server Room B, Rack 2
 sysobjectid .1.3.6.1.4.1.9.1.1745
 sysservices 6
+pass -p 1 .1.3.6.1.2.1.2.1 /bin/bash $H $D/switch-cisco-01-iftable.txt
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-cisco-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-cisco-01-iftable.txt
 pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-cisco-01-bridge.txt
@@ -3048,6 +3191,140 @@ sysname switch-cisco-01-vlan20
 sysservices 2
 pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-cisco-01-vlan20.txt
 EOF
+
+# ── 5b. Derive the counts each device publishes about itself ─────────
+#
+# `ifNumber` and `dot1dBaseNumPorts` are what a device claims to have, as opposed to what it
+# serves, and the daemon now compares the two: a switch declaring 48 bridge ports and answering
+# the table with none has contradicted itself, which reads very differently to an operator than
+# a walk that simply came up short.
+#
+# Computed from each fixture's own rows rather than hand-written, so editing an ifTable cannot
+# leave a stale count behind and turn every scan of that device into a false warning. The one
+# device that *should* disagree is overridden below, deliberately and in one place.
+#
+# Both scalars sort below every row already in their file (`.2.1.0` before `.2.2.*`, `.17.1.2.0`
+# before `.17.1.4.*`), so prepending keeps the file ascending — which the GETNEXT handler needs,
+# since it returns the first line numerically greater than the request.
+echo "Deriving self-reported counts..."
+
+# Give every switch the bridge-port numbering it claims to have.
+#
+# 15 of these fixtures set the `sysServices` datalink bit — they are modelled as switches — and
+# served no BRIDGE-MIB at all, because nobody had written one. The daemon now reads that pairing
+# as a device contradicting itself, and it is right to: on real hardware a managed switch that
+# declares layer 2 and answers `dot1dBasePortIfIndex` with `noSuchObject` is hiding its bridge
+# tables behind an SNMP view or a VLAN context, which is the GH #686 report.
+#
+# So the fixtures are the thing that was wrong, not the check. Bridge ports are numbered from
+# each device's own ethernetCsmacd(6) interfaces, in ifIndex order, which is what an unconfigured
+# managed switch reports. Devices that already have a hand-written bridge file keep it — theirs
+# encode a specific shape and must not be regenerated.
+for f in "$DATA_DIR"/*-iftable.txt; do
+    [ -e "$f" ] || continue
+    name=$(basename "$f" -iftable.txt)
+    bridge="$DATA_DIR/$name-bridge.txt"
+    [ -e "$bridge" ] && continue
+    # Only for devices whose config actually serves the subtree, which is exactly those whose
+    # `sysservices` sets the datalink bit. Reading that back from the config rather than keeping
+    # a second list here means the two cannot disagree.
+    grep -q '^pass \.1\.3\.6\.1\.2\.1\.17 ' "$CONF_DIR/snmpd-$name.conf" || continue
+    # ifType 6 is ethernetCsmacd; VLAN (53) and loopback (24) interfaces are not bridge ports.
+    physical=$(grep '^\.1\.3\.6\.1\.2\.1\.2\.2\.1\.3\..* integer 6$' "$f" \
+        | sed 's/^\.1\.3\.6\.1\.2\.1\.2\.2\.1\.3\.\([0-9]*\) .*/\1/' | sort -n)
+    [ -n "$physical" ] || continue
+    port=0
+    for if_index in $physical; do
+        port=$((port + 1))
+        echo ".1.3.6.1.2.1.17.1.4.1.2.$port integer $if_index"
+    done > "$bridge"
+done
+
+
+for f in "$DATA_DIR"/*-iftable.txt; do
+    [ -e "$f" ] || continue
+    count=$(grep -c '^\.1\.3\.6\.1\.2\.1\.2\.2\.1\.1\.' "$f" || true)
+    [ "$count" -gt 0 ] || continue
+    { echo ".1.3.6.1.2.1.2.1.0 integer $count"; cat "$f"; } > "$f.tmp" && mv "$f.tmp" "$f"
+done
+
+# Keyed on what a file *serves* rather than on its name: switch-cisco-01 answers the bridge MIB
+# from two files, one per SNMP context, and the VLAN-context one is no less a bridge table for
+# being called `-vlan20`. A device whose two contexts disagreed about how many ports it has would
+# be a fixture bug nobody could see.
+for f in "$DATA_DIR"/*.txt; do
+    [ -e "$f" ] || continue
+    count=$(grep -c '^\.1\.3\.6\.1\.2\.1\.17\.1\.4\.1\.2\.' "$f" || true)
+    [ "$count" -gt 0 ] || continue
+    # Prepending only keeps the file ascending while every row already in it sorts above the
+    # scalar, which holds for a bridge table (lowest row `.17.1.4.1.2.1`) and would not for a
+    # file that also carried, say, `.17.1.1`. Fail rather than silently corrupt the walk order.
+    if ! head -1 "$f" | grep -q '^\.1\.3\.6\.1\.2\.1\.17\.1\.4\.'; then
+        echo "ERROR: $f serves bridge ports but does not start at .1.3.6.1.2.1.17.1.4 —" >&2
+        echo "       prepending dot1dBaseNumPorts would break its OID ordering." >&2
+        exit 1
+    fi
+    { echo ".1.3.6.1.2.1.17.1.2.0 integer $count"; cat "$f"; } > "$f.tmp" && mv "$f.tmp" "$f"
+done
+
+# switch-dell-01 declares more interfaces than it serves, on purpose.
+#
+# Every other device here agrees with itself, which proves the check stays quiet but cannot show
+# it firing — and a guard nobody has watched fire is a guard nobody knows works. This is the
+# GH #685 device, whose report is a switch discovering cleanly in every other respect, so the
+# contradiction belongs on it: 52 declared against the 23 its ifTable serves.
+dell="$DATA_DIR/switch-dell-01-iftable.txt"
+{ echo ".1.3.6.1.2.1.2.1.0 integer 52"; tail -n +2 "$dell"; } > "$dell.tmp" && mv "$dell.tmp" "$dell"
+
+# ── 5c. Check the fixture set hangs together ─────────────────────────
+#
+# A device with data files and no config, or a config naming a data file nobody wrote, provisions
+# without complaint and then answers from net-snmp's built-in MIBs instead. That reads as a device
+# behaving oddly rather than as a lab that was never assembled, and it is exactly the silent pass
+# this whole environment exists to stop being fooled by — so fail the deploy here instead.
+echo "Checking fixture coherence..."
+coherence_errors=0
+fixture_error() { echo "  ERROR: $*" >&2; coherence_errors=$((coherence_errors + 1)); }
+
+for name in "${SYSNAMES[@]}"; do
+    [ -f "$CONF_DIR/snmpd-$name.conf" ] \
+        || fixture_error "$name is in SYSNAMES but has no snmpd-$name.conf"
+done
+
+# A data file nobody serves, and a config naming a file nobody wrote — the two halves of the same
+# typo. Scoped to ifTables, the one file every simulated device has and no variant spares exist for
+# (switch-flaky-01 keeps unserved `-lldp-*` files on purpose, to be swapped in by hand).
+for f in "$DATA_DIR"/*-iftable.txt; do
+    [ -e "$f" ] || continue
+    name=$(basename "$f" -iftable.txt)
+    [ -f "$CONF_DIR/snmpd-$name.conf" ] \
+        || fixture_error "$(basename "$f") exists but no device serves it"
+done
+for conf in "$CONF_DIR"/snmpd-*.conf; do
+    [ -e "$conf" ] || continue
+    # Command substitution rather than a pipe into `while`: a pipeline's loop runs in a subshell,
+    # so every error it counted would be discarded and the check would pass silently.
+    for ref in $(grep -oE "$DATA_DIR/[a-z0-9._-]+\.txt" "$conf" | sort -u); do
+        [ -f "$ref" ] \
+            || fixture_error "$(basename "$conf") serves missing $(basename "$ref")"
+    done
+done
+
+# Every device serving an ifTable must also register ifNumber. Without the `pass -p 1`, the scalar
+# sits in the data file unserved while mibII/interfaces answers from the VM's own kernel state, and
+# the device reports a count contradiction on every scan for a fault it does not have.
+for conf in "$CONF_DIR"/snmpd-*.conf; do
+    [ -e "$conf" ] || continue
+    grep -q "\-iftable\.txt" "$conf" || continue
+    grep -qE '^pass -p 1 \.1\.3\.6\.1\.2\.1\.2\.1 ' "$conf" \
+        || fixture_error "$(basename "$conf") serves an ifTable but does not register ifNumber"
+done
+
+if [ "$coherence_errors" -gt 0 ]; then
+    echo "Fixture set is incoherent ($coherence_errors problem(s)) — not deploying." >&2
+    exit 1
+fi
+echo "  fixture set is coherent"
 
 # ── 6. Create systemd services ───────────────────────────────────────
 echo "Creating systemd services..."

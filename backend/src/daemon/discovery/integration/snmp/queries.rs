@@ -9,10 +9,12 @@ use std::net::IpAddr;
 use tokio::time::timeout;
 use tracing::{debug, trace, warn};
 
-use crate::daemon::discovery::service::warnings::{MalformedNeighbourReason, ShortfallReason};
+use crate::daemon::discovery::service::warnings::{
+    ClaimSource, DeviceClaim, MalformedNeighbourReason, ShortfallReason,
+};
 use crate::server::snmp::resolution::lldp::canonical_mac;
 
-use super::oids::{self, oid_to_vec, parse_oid};
+use super::oids::{self, oid_to_vec};
 use super::session::{MAX_WALK_ENTRIES, SNMP_TIMEOUT};
 use super::types::{
     ArpEntry, BridgeFdbEntry, CdpNeighbor, DeviceInventory, IfTableEntry, IpAddrEntry,
@@ -52,10 +54,14 @@ pub enum WalkPage<'a> {
     TooBig,
 }
 
-/// The two SNMP operations `walk_subtree` needs. Abstracting them keeps the walk loop
+/// The SNMP operations the query layer needs. Abstracting them keeps the walk loop
 /// transport-agnostic so its termination logic is unit-testable without a live UDP
 /// socket. Two implementors only: `Box<AsyncSession>` in production (below) and a
 /// canned-page mock under `#[cfg(test)]`.
+///
+/// The `Send` supertrait is load-bearing beyond spawning: it is what lets [`Self::get_scalar`]
+/// carry a default body, because `async_trait` adds an implicit `Self: Send` bound to any
+/// provided `&mut self` method. Removing it would make every test fake prove `Send` by hand.
 #[async_trait::async_trait]
 pub trait SnmpWalkTransport: Send {
     async fn walk_getbulk<'a>(
@@ -64,6 +70,43 @@ pub trait SnmpWalkTransport: Send {
         max_repetitions: u32,
     ) -> Result<WalkPage<'a>>;
     async fn walk_getnext<'a>(&'a mut self, from: &[u64]) -> Result<Varbinds<'a>>;
+
+    /// Read one scalar instance, e.g. `sysName.0`.
+    ///
+    /// `Ok(None)` is "the agent has nothing at that OID" — a `noSuchObject`, a `noSuchInstance`,
+    /// an empty varbind list, or a next-OID that is not the one asked for. `Err` is the transport.
+    /// The three are collapsed because every caller already treats them identically; if a scalar
+    /// ever needs "unimplemented" told apart from "absent", this should return
+    /// `Some(Value::NoSuchObject)` rather than grow a third arm.
+    ///
+    /// The default body exists so the whole fake-transport suite gains scalar support without
+    /// edits: `query_system_info` and `query_lldp_local` took `&mut Box<AsyncSession>` concretely
+    /// and so were the only two SNMP queries with no test and no way to reach them from a fake.
+    /// Production overrides it with a real GET.
+    async fn get_scalar<'a>(&'a mut self, oid: &[u64]) -> Result<Option<Value<'a>>> {
+        // GETNEXT from the OID with its last sub-id removed is a GET expressed in the operations
+        // every transport already has: `sysName` is the immediate lexicographic predecessor of
+        // `sysName.0` — nothing can sort strictly between `P` and `P.0` — so an agent's first
+        // varbind for it is that instance when it exists and something else when it does not.
+        // Requiring an exact OID match is what stops "something else" (the next column, the next
+        // MIB object) being read as the scalar; that mis-read is silent and lands one device's
+        // identity on another.
+        let Some((_, parent)) = oid.split_last() else {
+            return Ok(None);
+        };
+        Ok(self
+            .walk_getnext(parent)
+            .await?
+            .into_iter()
+            .find(|(resp, _)| resp.as_slice() == oid)
+            .map(|(_, value)| value)
+            .filter(|value| {
+                !matches!(
+                    value,
+                    Value::NoSuchObject | Value::NoSuchInstance | Value::EndOfMibView
+                )
+            }))
+    }
 }
 
 #[async_trait::async_trait]
@@ -98,6 +141,29 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
             Ok(Ok(pdu)) => Ok(pdu.varbinds.map(|(o, v)| (oid_to_vec(&o), v)).collect()),
             Ok(Err(e)) => Err(anyhow::Error::new(e).context("getnext failed")),
             Err(_) => Err(anyhow::anyhow!("getnext timed out")),
+        }
+    }
+
+    /// A real GET rather than the trait's GETNEXT emulation: it is what the device is asked in
+    /// production, and on an agent whose scalar is absent it says so instead of handing back
+    /// whatever object happens to sort next. The two filters match the default body exactly, so
+    /// a fake and a live session cannot disagree about what "nothing there" looks like.
+    async fn get_scalar<'a>(&'a mut self, oid: &[u64]) -> Result<Option<Value<'a>>> {
+        let requested = Oid::from(oid).map_err(|_| anyhow::anyhow!("invalid scalar OID"))?;
+        match timeout(SNMP_TIMEOUT, self.get(&requested)).await {
+            Ok(Ok(mut response)) => Ok(response
+                .varbinds
+                .next()
+                .filter(|(resp, _)| oid_to_vec(resp) == oid)
+                .map(|(_, value)| value)
+                .filter(|value| {
+                    !matches!(
+                        value,
+                        Value::NoSuchObject | Value::NoSuchInstance | Value::EndOfMibView
+                    )
+                })),
+            Ok(Err(e)) => Err(anyhow::Error::new(e).context("get failed")),
+            Err(_) => Err(anyhow::anyhow!("get timed out")),
         }
     }
 }
@@ -183,11 +249,7 @@ where
     T: SnmpWalkTransport,
     F: FnMut(&[u64], &Value),
 {
-    let base_parts: Vec<u64> = base_oid_str
-        .split('.')
-        .filter(|s| !s.is_empty())
-        .filter_map(|s| s.parse().ok())
-        .collect();
+    let base_parts: Vec<u64> = oids::oid_parts(base_oid_str);
 
     let mut current_parts = base_parts.clone();
     let mut count = 0usize;
@@ -474,9 +536,14 @@ where
     Ok(stop)
 }
 
-/// Query system MIB information from a device
-pub async fn query_system_info(
-    session: &mut Box<snmp2::AsyncSession>,
+/// Query system MIB information from a device.
+///
+/// `sysServices` and `ifNumber` are read here alongside the descriptive scalars because they are
+/// what the device claims about itself: the bridge bit in the first says it switches, and the
+/// second says how many interfaces to expect. Both are compared against what the walks actually
+/// return, so a device that short-changes a collection can be reported rather than believed.
+pub async fn query_system_info<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
 ) -> Result<SystemInfo> {
     let mut info = SystemInfo::default();
@@ -489,37 +556,31 @@ pub async fn query_system_info(
         (oids::system::SYS_LOCATION, "sysLocation"),
         (oids::system::SYS_CONTACT, "sysContact"),
         (oids::system::SYS_UPTIME, "sysUpTime"),
+        (oids::system::SYS_SERVICES, "sysServices"),
+        (oids::if_mib::IF_NUMBER, "ifNumber"),
     ];
 
     for (oid_str, name) in oids_to_query {
-        let oid = match parse_oid(oid_str) {
-            Ok(o) => o,
-            Err(e) => {
-                warn!("Failed to parse OID {}: {}", oid_str, e);
-                continue;
-            }
-        };
-
-        match timeout(SNMP_TIMEOUT, session.get(&oid)).await {
-            Ok(Ok(mut response)) => {
-                if let Some((resp_oid, value)) = response.varbinds.next() {
-                    trace!("SNMP {} from {}: {:?} = {:?}", name, ip, resp_oid, value);
-                    match name {
-                        "sysDescr" => info.sys_descr = value_to_string(&value),
-                        "sysObjectID" => info.sys_object_id = value_to_string(&value),
-                        "sysName" => info.sys_name = value_to_string(&value),
-                        "sysLocation" => info.sys_location = value_to_string(&value),
-                        "sysContact" => info.sys_contact = value_to_string(&value),
-                        "sysUpTime" => info.sys_uptime = value_to_u64(&value),
-                        _ => {}
-                    }
+        match session.get_scalar(&oids::oid_parts(oid_str)).await {
+            Ok(Some(value)) => {
+                trace!("SNMP {} from {}: {:?}", name, ip, value);
+                match name {
+                    "sysDescr" => info.sys_descr = value_to_string(&value),
+                    "sysObjectID" => info.sys_object_id = value_to_string(&value),
+                    "sysName" => info.sys_name = value_to_string(&value),
+                    "sysLocation" => info.sys_location = value_to_string(&value),
+                    "sysContact" => info.sys_contact = value_to_string(&value),
+                    "sysUpTime" => info.sys_uptime = value_to_u64(&value),
+                    "sysServices" => info.sys_services = value_to_i32(&value),
+                    "ifNumber" => info.if_number = value_to_i32(&value),
+                    _ => {}
                 }
             }
-            Ok(Err(e)) => {
-                debug!("SNMP GET {} failed from {}: {:?}", name, ip, e);
+            Ok(None) => {
+                debug!("SNMP GET {} returned nothing from {}", name, ip);
             }
-            Err(_) => {
-                debug!("SNMP GET {} timeout from {}", name, ip);
+            Err(e) => {
+                debug!("SNMP GET {} failed from {}: {}", name, ip, e);
             }
         }
     }
@@ -572,6 +633,16 @@ pub struct SnmpCollection<T> {
     /// Set by both neighbour tables: LLDP discards a record with no chassis ID, CDP one with no
     /// device id, for the same reason in both cases.
     pub discarded: usize,
+    /// What the device led us to expect here, when it published anything.
+    ///
+    /// The rest of this struct describes the read from the inside — how far it got, why it
+    /// stopped, what it threw away. This is the one field sourced from the device rather than
+    /// from us, and it is what lets a scan say "the device told us to expect 23 and we read 1"
+    /// instead of only "we did not finish".
+    ///
+    /// `None` wherever nothing was published, which is most groups: the claim is only as good as
+    /// the scalar behind it, and inventing one would be worse than staying quiet.
+    pub claim: Option<DeviceClaim>,
     /// What accounts for most of `discarded`, or `None` when nothing was discarded.
     ///
     /// The count alone cannot say whether a rescan will help, and the warning built from it
@@ -594,6 +665,7 @@ impl<T: Default> SnmpCollection<T> {
             reason: None,
             discarded: 0,
             discard_reason: None,
+            claim: None,
         }
     }
 }
@@ -612,6 +684,7 @@ impl<T> SnmpCollection<T> {
             reason: shortfall.reason,
             discarded: 0,
             discard_reason: None,
+            claim: None,
         }
     }
 }
@@ -624,6 +697,7 @@ impl<T: Default> Default for SnmpCollection<T> {
             unsupported: false,
             discarded: 0,
             discard_reason: None,
+            claim: None,
             // `query_or_default` produces this when a whole query timed out or errored, and it
             // genuinely cannot say more — the future was dropped before it could report.
             reason: Some(ShortfallReason::NoAnswer),
@@ -1258,6 +1332,9 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         complete: shortfall.complete,
         unsupported,
         reason: shortfall.reason,
+        // The LLDP/CDP claim is the device's own local identity, which is read later in the
+        // collection than this walk, so the caller attaches it.
+        claim: None,
     })
 }
 
@@ -1590,6 +1667,9 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
         complete: shortfall.complete,
         unsupported,
         reason: shortfall.reason,
+        // The LLDP/CDP claim is the device's own local identity, which is read later in the
+        // collection than this walk, so the caller attaches it.
+        claim: None,
     })
 }
 
@@ -1794,6 +1874,23 @@ pub async fn query_bridge_port_mapping<T: SnmpWalkTransport>(
 ) -> Result<SnmpCollection<HashMap<i32, i32>>> {
     let mut port_to_if_index: HashMap<i32, i32> = HashMap::new();
     let mut shortfall = Shortfall::default();
+
+    // Asked before the walk so the device's own figure survives a walk that returns nothing —
+    // which is the case worth reporting. A switch declaring 48 bridge ports and then answering
+    // this table with silence has contradicted itself, and that reads very differently to an
+    // operator than the bare "does not implement SNMP bridge-port numbering" it produces today.
+    let claim = session
+        .get_scalar(&oids::oid_parts(oids::bridge::DOT1D_BASE_NUM_PORTS))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|value| value_to_i32(&value))
+        .filter(|ports| *ports > 0)
+        .map(|ports| DeviceClaim::Count {
+            source: ClaimSource::Dot1dBaseNumPorts,
+            expected: ports as usize,
+        });
+
     // OID suffix is the bridge port number; value is the ifIndex.
     walk_column(
         session,
@@ -1817,6 +1914,7 @@ pub async fn query_bridge_port_mapping<T: SnmpWalkTransport>(
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,
+        claim,
     })
 }
 
@@ -1952,6 +2050,7 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,
+        claim: None,
     })
 }
 
@@ -2023,52 +2122,46 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,
+        claim: None,
     })
 }
 
 /// Query local LLDP chassis ID (scalar GETs, not walks).
 /// Returns the device's own LLDP identity.
-pub async fn query_lldp_local(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn query_lldp_local<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
 ) -> Result<Option<LldpLocalInfo>> {
     // GET lldpLocChassisIdSubtype
-    let subtype_oid = parse_oid(oids::lldp::local::LLDP_LOC_CHASSIS_ID_SUBTYPE)?;
-    let subtype = match timeout(SNMP_TIMEOUT, session.get(&subtype_oid)).await {
-        Ok(Ok(mut response)) => response
-            .varbinds
-            .next()
-            .and_then(|(_, value)| value_to_i32(&value))
+    let subtype = match session
+        .get_scalar(&oids::oid_parts(
+            oids::lldp::local::LLDP_LOC_CHASSIS_ID_SUBTYPE,
+        ))
+        .await
+    {
+        Ok(value) => value
+            .and_then(|value| value_to_i32(&value))
             .map(|v| v as u8),
-        Ok(Err(e)) => {
+        Err(e) => {
             debug!(
-                "LLDP local chassis ID subtype GET failed from {}: {:?}",
+                "LLDP local chassis ID subtype GET failed from {}: {}",
                 ip, e
             );
-            None
-        }
-        Err(_) => {
-            debug!("LLDP local chassis ID subtype GET timeout from {}", ip);
             None
         }
     };
 
     // GET lldpLocChassisId
-    let chassis_oid = parse_oid(oids::lldp::local::LLDP_LOC_CHASSIS_ID)?;
-    let chassis_bytes = match timeout(SNMP_TIMEOUT, session.get(&chassis_oid)).await {
-        Ok(Ok(mut response)) => response.varbinds.next().and_then(|(_, value)| {
-            if let Value::OctetString(bytes) = &value {
-                Some(bytes.to_vec())
-            } else {
-                None
-            }
+    let chassis_bytes = match session
+        .get_scalar(&oids::oid_parts(oids::lldp::local::LLDP_LOC_CHASSIS_ID))
+        .await
+    {
+        Ok(value) => value.and_then(|value| match value {
+            Value::OctetString(bytes) => Some(bytes.to_vec()),
+            _ => None,
         }),
-        Ok(Err(e)) => {
-            debug!("LLDP local chassis ID GET failed from {}: {:?}", ip, e);
-            None
-        }
-        Err(_) => {
-            debug!("LLDP local chassis ID GET timeout from {}", ip);
+        Err(e) => {
+            debug!("LLDP local chassis ID GET failed from {}: {}", ip, e);
             None
         }
     };
@@ -2185,6 +2278,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
             reason: shortfall.reason,
             discarded: 0,
             discard_reason: None,
+            claim: None,
         });
     }
 
@@ -2294,6 +2388,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,
+        claim: None,
     })
 }
 
@@ -3618,6 +3713,73 @@ mod if_table_tests {
             "a table walked past is implemented and empty, not absent"
         );
         assert!(lldp.complete);
+    }
+
+    /// `get_scalar`'s default body is a GETNEXT from the OID with its last sub-id removed, which
+    /// works because nothing sorts strictly between `P` and `P.0`. Proving it against a fake
+    /// agent is what makes the whole system group testable: `query_system_info` took a concrete
+    /// `Box<AsyncSession>` and could not be reached without a live socket.
+    #[tokio::test]
+    async fn a_scalar_is_read_through_the_walk_transport() {
+        let mut agent = FakeAgent::new(&[
+            ("1.3.6.1.2.1.1.5.0", Canned::Str("switch-core-01")),
+            ("1.3.6.1.2.1.1.7.0", Canned::Int(6)),
+            ("1.3.6.1.2.1.2.1.0", Canned::Int(23)),
+        ]);
+
+        let info = query_system_info(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(info.sys_name.as_deref(), Some("switch-core-01"));
+        assert_eq!(info.if_number, Some(23));
+        // sysServices 6 = bits 2 and 3: this device bridges and routes.
+        assert_eq!(info.sys_services, Some(6));
+    }
+
+    /// The exact-match rule. Asking for a scalar the agent does not hold must read as absent —
+    /// never as whatever object happens to sort next, which on this agent is a different scalar
+    /// entirely. That mis-read is silent and would put one device's figure on another.
+    #[tokio::test]
+    async fn an_absent_scalar_does_not_return_the_next_object() {
+        // No sysServices and no ifNumber; sysName sits above both and would be returned by a
+        // GETNEXT that did not check which OID came back.
+        let mut agent = FakeAgent::new(&[("1.3.6.1.2.1.1.5.0", Canned::Str("switch-mute-01"))]);
+
+        let info = query_system_info(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(info.sys_name.as_deref(), Some("switch-mute-01"));
+        assert_eq!(info.sys_services, None, "sysServices is not implemented");
+        assert_eq!(info.if_number, None, "ifNumber is not implemented");
+    }
+
+    /// A device that publishes no `dot1dBaseNumPorts` makes no claim, and the collection must
+    /// carry `None` rather than a zero that would read as "it said it has no ports".
+    #[tokio::test]
+    async fn a_bridge_that_publishes_no_port_count_makes_no_claim() {
+        let mut agent = FakeAgent::new(&[("1.3.6.1.2.1.17.1.4.1.2.1", Canned::Int(1))]);
+
+        let bridge = query_bridge_port_mapping(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(bridge.records.len(), 1);
+        assert!(bridge.claim.is_none());
+    }
+
+    /// The claim has to survive a walk that returns nothing, because that is the case worth
+    /// reporting: a switch declaring 48 bridge ports and then serving none of the table has
+    /// contradicted itself, and reading the scalar after the walk would lose exactly that.
+    #[tokio::test]
+    async fn a_declared_port_count_survives_an_empty_bridge_walk() {
+        let mut agent = FakeAgent::new(&[("1.3.6.1.2.1.17.1.2.0", Canned::Int(48))]);
+
+        let bridge = query_bridge_port_mapping(&mut agent, ip()).await.unwrap();
+
+        assert!(bridge.records.is_empty());
+        assert_eq!(
+            bridge.claim,
+            Some(DeviceClaim::Count {
+                source: ClaimSource::Dot1dBaseNumPorts,
+                expected: 48,
+            })
+        );
     }
 
     /// `lldpLocPortId` under subtype 3 is the port's MAC, sent either as six raw octets or —

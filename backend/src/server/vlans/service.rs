@@ -5,7 +5,7 @@ use crate::server::{
         storage::{
             filter::StorableFilter,
             generic::GenericPostgresStorage,
-            traits::{PaginatedResult, Storable, Storage},
+            traits::{PaginatedResult, Storable, Storage, Unique},
         },
         types::entities::EntitySource,
     },
@@ -83,16 +83,20 @@ impl CrudService<Vlan> for VlanService {
         Ok(vlans)
     }
 
-    async fn get_one(&self, filter: StorableFilter<Vlan>) -> Result<Option<Vlan>, anyhow::Error> {
-        match self.storage().get_one(filter).await? {
-            Some(mut vlan) => {
+    async fn get_unique(
+        &self,
+        filter: StorableFilter<Vlan>,
+    ) -> Result<Unique<Vlan>, anyhow::Error> {
+        match self.storage().get_unique(filter).await? {
+            Unique::One(mut vlan) => {
                 vlan.base.subnet_ids = self
                     .subnet_vlan_storage
                     .get_subnet_ids_for_vlan(&vlan.id)
                     .await?;
-                Ok(Some(vlan))
+                Ok(Unique::One(vlan))
             }
-            None => Ok(None),
+            Unique::None => Ok(Unique::None),
+            Unique::Multiple => Ok(Unique::Multiple),
         }
     }
 
@@ -150,7 +154,7 @@ impl VlanService {
             .u16_column("vlan_number", vlan_number)
             .live();
 
-        if let Some(existing) = self.storage.get_one(filter).await? {
+        if let Some(existing) = self.storage.get_unique(filter).await?.at_most_one()? {
             if existing.base.name != name {
                 let mut updated = existing.clone();
                 updated.base.name = name;

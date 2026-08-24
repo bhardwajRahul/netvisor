@@ -7,8 +7,8 @@ use std::{
 };
 
 use crate::daemon::discovery::service::warnings::{
-    CredentialIssue, IncompleteInterfaceWalk, IncompleteSnmpWalk, MalformedNeighbours,
-    SnmpCollectedNothing, UnresolvedLldpPorts, VlanRecordingFailed,
+    ContradictedClaim, CredentialIssue, IncompleteInterfaceWalk, IncompleteSnmpWalk,
+    MalformedNeighbours, SnmpCollectedNothing, UnresolvedLldpPorts, VlanRecordingFailed,
 };
 use crate::daemon::discovery::types::base::DiscoverySessionInfo;
 use crate::daemon::{
@@ -148,6 +148,9 @@ pub struct DiscoverySession {
     /// Per-host SNMP walks that could not be read in full. See
     /// [`crate::daemon::discovery::service::warnings`].
     pub(super) incomplete_snmp_walks: Arc<std::sync::Mutex<Vec<IncompleteSnmpWalk>>>,
+    /// Devices whose own published figures disagree with what the collection read. Not a
+    /// shortfall — a shortfall says why we stopped, this says what the device said was there.
+    pub(super) contradicted_claims: Arc<std::sync::Mutex<Vec<ContradictedClaim>>>,
     /// Per-host ifTable walks that could not be read in full. Separate from the above because
     /// a truncated interface set and a truncated attribute column mean different things.
     pub(super) incomplete_interface_walks: Arc<std::sync::Mutex<Vec<IncompleteInterfaceWalk>>>,
@@ -179,6 +182,7 @@ impl DiscoverySession {
             progress_range_end: Arc::new(AtomicU8::new(100)),
             warnings: Arc::new(std::sync::Mutex::new(Vec::new())),
             incomplete_snmp_walks: Arc::new(std::sync::Mutex::new(Vec::new())),
+            contradicted_claims: Arc::new(std::sync::Mutex::new(Vec::new())),
             incomplete_interface_walks: Arc::new(std::sync::Mutex::new(Vec::new())),
             unresolved_lldp_ports: Arc::new(std::sync::Mutex::new(Vec::new())),
             malformed_neighbours: Arc::new(std::sync::Mutex::new(Vec::new())),

@@ -244,6 +244,135 @@ snmpwalk -v2c -c 'netdefault@20' 192.168.7.251 1.3.6.1.2.1.17.4.3.1.1
 
 **ifTable, ifXTable and the system MIB stay in the default context**, as they do on the real switch. That is why the daemon scopes only its bridge and VLAN walks to the credential's context rather than the whole session — a context-wide session would find no interfaces at all here, which is the regression that shape would have introduced.
 
+## Self-reported counts — what a device claims vs what it serves
+
+The daemon compares a device's own published figures against what a collection actually read, so a
+scan can say *"the device told us to expect 23 and we read 1"* rather than only *"we did not
+finish"*. Three of those figures come from this lab:
+
+| Figure | OID | Where it comes from |
+|---|---|---|
+| `ifNumber` | `.1.3.6.1.2.1.2.1.0` | derived from each fixture's own `ifIndex` rows |
+| `dot1dBaseNumPorts` | `.1.3.6.1.2.1.17.1.2.0` | derived from each fixture's own `dot1dBasePortIfIndex` rows |
+| `sysServices` datalink bit | `.1.3.6.1.2.1.1.7.0` | the `sysservices` line already in each config |
+
+**The first two are derived at deploy time, in section 5b of `lxc/setup.sh` — do not hand-write
+them.** A count written by hand goes stale the moment someone adds a port, and a stale count turns
+every scan of that device into a warning about a device that is fine. Editing an ifTable is enough;
+the scalar follows.
+
+`dot1dBaseNumPorts` is keyed on what a file *serves* rather than on its name, so switch-cisco-01
+gets it in both of its contexts — a device whose two contexts disagreed about how many ports it has
+would be a fixture bug nobody could see. Adding a `pass` for a new bridge file is enough.
+
+**Section 5c then refuses to deploy an incoherent set.** A data file no config serves, a config
+naming a file nobody wrote, a name in `SYSNAMES` with no config, or an ifTable served without its
+`ifNumber` registration — each provisions quietly and then answers from net-snmp's built-in MIBs,
+which reads as a device behaving oddly rather than as a lab that was never assembled. The last of
+those is not hypothetical: it is what an ifNumber-less device does to the count check, reporting a
+contradiction on every scan for a fault it does not have.
+
+`ifNumber` is registered with `pass -p 1` because `mibII/interfaces` owns the scalar and would
+otherwise answer it from the VM's own kernel state — the container's interface count, against a
+fixture's 24 rows, on every device. Confirm what owns a subtree with
+`snmpd -Dregister_mib -C -c <conf>`.
+
+**switch-dell-01 declares 52 interfaces and serves 23, deliberately.** Every other device here
+agrees with itself, which demonstrates the check staying quiet but cannot demonstrate it firing —
+and a guard nobody has watched fire is a guard nobody knows works. This is the GH #685 device, whose
+report is a switch that discovers cleanly in every other respect, so the contradiction belongs on
+it. A scan of `.250` must produce a warning naming **both** numbers and must still record all 23
+interfaces: a device that misreports itself is still a device to scan.
+
+> **switch-mute-01 (`.248`) also reports a bridge contradiction, and should.** It sets the datalink
+> bit and answers nothing at all, so it has no bridge MIB to serve. That is what the device is for;
+> the line is correct, and it is the only standing one in the lab.
+
+## Bridge forwarding tables (`dot1dTpFdb` / `dot1qTpFdb`) — #686
+
+Four devices serve a forwarding database. Before August 2026 none did, which is why **GH #686 — a
+bridge-FDB defect — had no fixture that could reproduce it**.
+
+| Device | Rows | What it covers |
+|---|---:|---|
+| switch-core-01 (`.230`) | 8 | mixed statuses, plus a `dot1qTpFdb` overlay on the same MACs |
+| switch-dell-01 (`.250`) | 9 | a full table on a device whose ifIndexes are OS10 breakout lanes |
+| legacy-switch-01 (`.236`) | 2 | the same join over **getnext**, which v1 forces |
+| switch-cisco-01 (`.251`) | 1 / 9 | the reported device itself — see *Per-VLAN bridge context* above |
+
+`.251` is the fixture #686 is actually about, and the section above is the one to read for it: its
+count depends on which SNMP context you ask in, which is the half of the report the other three
+cannot express. They cover the read — the three-column join, the status filter, the encoding, the
+getnext path — on devices that answer the same way however you ask.
+
+Three properties decide whether these are worth anything:
+
+- **The MAC is the index** — six decimal sub-ids, one per octet — and the address column repeats it
+  as six raw bytes via `octet`. That repetition is the only end-to-end coverage of a binary MAC on a
+  table the daemon joins across three columns, and it is exactly what a `string` encoding here would
+  silently stop testing.
+- **Statuses are mixed.** The daemon keeps learned(3) and mgmt(5) and drops self(4), so
+  switch-core-01's eight rows yield seven entries. A filter that stopped working shows up as a count
+  that is too *high*, not as an empty table.
+- **switch-core-01's `dot1qTpFdb` rows repeat MACs its `dot1dTpFdb` already lists**, in VLANs 10 and
+  20. The daemon keys both on the MAC alone so one address learned in several VLANs collapses to one
+  entry; if that collapse broke, the count would double rather than the table appearing empty.
+
+> **What these three cover, and what `.251` covers.** A passing scan on switch-core-01,
+> switch-dell-01 or legacy-switch-01 says the daemon reads a forwarding table correctly: the join
+> holds across three columns, the status filter drops self(4), binary MACs survive, and the getnext
+> path works. It says nothing about #686, whose switch returned a *complete, correct, one-row*
+> table because the scan was asking in the wrong context. That half is `.251`'s, and the check
+> there is the comparison between contexts rather than any single count.
+
+## Turning a customer walk into a fixture
+
+Every device in this lab is hand-transcribed from a real walk, and the two failures worth avoiding
+are both recorded above: modelling a premise the device does not have (`.247`, whose original
+`lldpLocPortNum` namespace the customer's walk disproved), and inventing a far end that happens to
+resolve anyway (`.240`'s made-up chassis MAC, which passed while testing nothing).
+
+Ask the reporter for these subtrees, with `-On` so OIDs arrive numeric:
+
+```bash
+snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.1        # system, incl. sysServices
+snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.2        # ifNumber + ifTable
+snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.31.1.1   # ifXTable
+snmpwalk -On -v2c -c <community> <ip> 1.0.8802.1.1.2       # LLDP, local and remote
+snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.17       # bridge: ports, FDB, VLANs
+```
+
+**On anything that partitions its bridge tables per VLAN — any Catalyst, and most switches that
+index a community — ask for `1.3.6.1.2.1.17` a second time naming a context**, and record both. A
+single bridge walk cannot tell a device with an empty table apart from one that keeps its table
+somewhere the walk did not look, and that ambiguity is the whole of #686:
+
+```bash
+snmpwalk -On -v3 -l authPriv -u <user> -a SHA -A <pass> -x AES -X <pass> \
+  -n <context> <ip> 1.3.6.1.2.1.17
+snmpwalk -On -v2c -c '<community>@<vlan>' <ip> 1.3.6.1.2.1.17    # the v2c form of the same thing
+```
+
+Then, transcribing into `lxc/setup.sh`:
+
+1. **Rewrite identifiers consistently** — same value, same replacement, everywhere. MACs, the
+   management address and neighbour hostnames all carry customer information, and all of them are
+   what resolution keys on. Rewriting them per-occurrence instead of per-value breaks the
+   cross-table joins that make the fixture worth having.
+2. **`octet` for anything that is bytes on the wire, `string` only for text.** `snmpwalk` renders
+   an OCTET STRING as `Hex-STRING` or `STRING` depending on content, not on type; copying that
+   choice through sends a 17-byte ASCII MAC where six raw octets belong. This has caught three
+   fixtures so far.
+3. **Keep each data file ascending by OID.** The GETNEXT handler returns the first line numerically
+   greater than the request, so an out-of-order row silently ends the walk early. The one exception
+   is `switch-unsorted-01`, which is unsorted on purpose and uses the positional handler.
+4. **Do not write `ifNumber` or `dot1dBaseNumPorts`** — section 5b derives both.
+5. **Confirm every far end exists.** Check the neighbour's `chassis_id`, `if_name` and `if_index`
+   against already-scanned data before adding it. A neighbour that resolves through a fallback tier
+   looks identical to one that resolves properly, and only the second is evidence.
+6. **Record what the fixture is for**, in a comment above the file, naming the issue. A fixture
+   whose purpose is not written down is one nobody dares change and nobody can verify.
+
 ## Expect truncation warnings — the simulator races itself
 
 A scan of this environment normally reports several incomplete SNMP walks. **That is the simulator, not the product under test.**
@@ -296,7 +425,10 @@ To rebuild it: a macvlan on the parent interface, a conf file with `agentAddress
 **What a scan exercises (session-reuse + getbulk).** Every device is scanned with a single reused SNMP session across all ~11 queries (one v3 engine discovery instead of ~12), and each table is walked with `getbulk` (v1 falls back to `getnext`). To make the getbulk walks land on real data for the subtrees stock `snmpd` does **not** implement:
 - **switch-core-01** additionally serves BRIDGE-MIB / Q-BRIDGE (`dot1dBasePortIfIndex`, `dot1qVlanStaticName` → VLANs "DATA"/"VOICE", `dot1qPvid`), ENTITY-MIB (chassis inventory) and CDP (a `router-gw-01` neighbour) — exercising those getbulk walks end-to-end.
 - **legacy-switch-01 (v1-only)** additionally serves a small bridge table, so the **getbulk → getnext fallback** is exercised on a non-ifTable walk, not just ifTable/LLDP.
-- `ipAddrTable` and `ipNetToMedia` (ARP) are answered by snmpd's built-in IP module, so those walks run on every device already. (net-snmp `pass` can't emit binary MAC octet-strings, so FDB/ARP MAC *rows* aren't simulated — the daemon still walks those subtrees and terminates cleanly.)
+- **Every device whose `sysServices` sets the datalink bit serves `dot1dBasePortIfIndex`**, generated from its own ethernetCsmacd interfaces (see *Self-reported counts* below). A switch that says it bridges and answers the bridge MIB with `noSuchObject` is a device contradicting itself, which the daemon now reports — so a fixture in that state is a false positive waiting to happen, not a neutral omission.
+- `ipAddrTable` and `ipNetToMedia` (ARP) are answered by snmpd's built-in IP module, so those walks run on every device already. **ARP MAC rows are therefore not simulated** — that subtree cannot be displaced (see the `.4.20` note below), so the addresses come from the VM's kernel and no `PhysAddress` fixture can reach them.
+
+> **Bridge FDB rows are simulated, and were not until August 2026.** An earlier revision of this document said `pass` could not carry binary MACs and that FDB *and* ARP rows were therefore out of reach. That is true of ARP, for the registration reason above, and was never true of the FDB: `pass` emits binary through type `octet`, which is how every `ifPhysAddress` and LLDP chassis id here already sends six raw bytes. The consequence of believing otherwise is GH #686 — a bridge-FDB defect reported against a lab with no FDB row in it, on a table nothing here had ever walked with data behind it.
 - **ap-wireless-01** is the one exception: it serves its own `ipAddrTable` so it can advertise a second subnet (see below).
 
 **Access-point guest subnet (`.235`) — #663.** The built-in IP module answers `ipAddrTable` from the VM's real kernel state, so every other agent only ever reports addresses inside the scanned `192.168.4.0/22`. `ap-wireless-01` overrides it and serves the table from `ap-wireless-01-ipaddr.txt`, advertising **172.30.10.1/24 on ifIndex 4**, whose `ifName` is **`br-guest`** — the built-in NAT guest network of a real access point.

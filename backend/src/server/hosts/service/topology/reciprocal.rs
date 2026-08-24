@@ -93,9 +93,7 @@ impl HostService {
                             )
                             .await
                     } else if let Some(ref device_id) = interface.base.cdp_device_id {
-                        IdentityResolution::found(
-                            resolver.find_host_by_sys_name(device_id, network_id).await,
-                        )
+                        resolver.find_host_by_sys_name(device_id, network_id).await
                     } else {
                         IdentityResolution::NoStrategy
                     }
@@ -156,7 +154,12 @@ impl HostService {
         }
 
         let bound_filter = StorableFilter::<Interface>::new_from_entity_ids(&[bound_id]).live();
-        let Some(bound) = self.interface_service.get_one(bound_filter).await? else {
+        let Some(bound) = self
+            .interface_service
+            .get_unique(bound_filter)
+            .await?
+            .at_most_one()?
+        else {
             return Ok(PortBinding::Stands);
         };
         let Some(mac) = bound.base.mac_address else {

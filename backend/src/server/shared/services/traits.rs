@@ -16,7 +16,7 @@ use crate::server::{
             child::ChildStorableEntity,
             filter::StorableFilter,
             generic::GenericPostgresStorage,
-            traits::{Entity, PaginatedResult, Storage},
+            traits::{Entity, PaginatedResult, Storage, Unique},
         },
     },
     tags::entity_tags::EntityTagService,
@@ -217,13 +217,28 @@ where
         self.storage().count(filter).await
     }
 
-    /// Get one entity with filter
-    async fn get_one(&self, filter: StorableFilter<T>) -> Result<Option<T>, anyhow::Error> {
-        if let Some(mut entity) = self.storage().get_one(filter).await? {
-            self.hydrate_tags(&mut entity).await?;
-            Ok(Some(entity))
-        } else {
-            Ok(None)
+    /// Whether any row matches.
+    ///
+    /// For guards that ask "does this exist" rather than "which one is it" — deleting a host with
+    /// a daemon on it, rejecting a duplicate. Distinct from [`Self::get_unique`] on purpose: an
+    /// existence check has nothing to say about uniqueness, and answering it with a lookup that
+    /// treats several matches as an error turns a clear "delete the daemon first" into an
+    /// internal error on exactly the data that most needs the guard.
+    async fn exists(&self, filter: StorableFilter<T>) -> Result<bool, anyhow::Error> {
+        self.storage().exists(filter).await
+    }
+
+    /// Fetch the one entity a filter identifies, with its tags hydrated.
+    ///
+    /// See [`Storage::get_unique`] for why this returns [`Unique`] rather than `Option`.
+    async fn get_unique(&self, filter: StorableFilter<T>) -> Result<Unique<T>, anyhow::Error> {
+        match self.storage().get_unique(filter).await? {
+            Unique::One(mut entity) => {
+                self.hydrate_tags(&mut entity).await?;
+                Ok(Unique::One(entity))
+            }
+            Unique::None => Ok(Unique::None),
+            Unique::Multiple => Ok(Unique::Multiple),
         }
     }
 
