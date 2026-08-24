@@ -371,24 +371,37 @@ pub fn device(name: &str) -> SimDevice {
 mod tests {
     use super::*;
 
-    /// The lab is the lab: 22 devices on 192.168.7.230-251, each on its own address.
+    /// Each device has its own address and its own name, and lives in the lab's subnet.
     ///
-    /// A property rather than a list — it fails when two devices collide or one goes missing,
-    /// and not when a device is legitimately renamed.
+    /// Properties rather than a count. Adding a device is the documented workflow, so a test that
+    /// pinned the size would fail on every legitimate addition and teach people to edit it without
+    /// reading it — while still not catching the mistakes that matter. These do: two devices on one
+    /// address collide on the VM's macvlan and only one answers, and an address outside the lab's
+    /// range is provisioned and then never scanned.
     #[test]
-    fn every_device_has_its_own_address() {
+    fn every_device_has_its_own_address_and_name() {
         let lab = lab();
-        assert_eq!(lab.len(), 22);
+        assert!(lab.len() >= 22, "the lab lost devices: {}", lab.len());
 
         let mut addresses: Vec<Ipv4Addr> = lab.iter().map(|d| d.ip).collect();
         addresses.sort();
         addresses.dedup();
-        assert_eq!(addresses.len(), 22, "two devices share an address");
+        assert_eq!(addresses.len(), lab.len(), "two devices share an address");
 
         let mut names: Vec<&str> = lab.iter().map(|d| d.name).collect();
         names.sort();
         names.dedup();
-        assert_eq!(names.len(), 22, "two devices share a name");
+        assert_eq!(names.len(), lab.len(), "two devices share a name");
+
+        for device in &lab {
+            let octets = device.ip.octets();
+            assert!(
+                octets[..3] == [192, 168, 7] && octets[3] >= 230,
+                "{} is at {}, outside the lab's range",
+                device.name,
+                device.ip
+            );
+        }
     }
 
     /// Every file a device serves is served by a registration, and every registration names a

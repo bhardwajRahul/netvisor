@@ -243,7 +243,22 @@ mod tests {
         let scan = harness::scan("switch-dell-01").await;
 
         assert_eq!(scan.neighbours.records.len(), 4);
-        assert_eq!(scan.local_ports.len(), 17);
+
+        // The names that make this device the case it is: a bare `1` ends at a `/` or `:`
+        // boundary in three places at once, so the suffix tier has to require the boundary to
+        // name exactly one interface rather than taking the first match.
+        let names: Vec<&str> = scan
+            .local_ports
+            .values()
+            .filter_map(|port| port.port_id.as_deref())
+            .collect();
+        for required in ["mgmt1/1/1", "ethernet1/1/1", "ethernet1/1/14:1"] {
+            assert!(
+                names.contains(&required),
+                "{required} is what makes the boundary ambiguous; without it this device is an \
+                 ordinary switch: {names:?}"
+            );
+        }
 
         // Each neighbour reached a real interface rather than an index no interface holds.
         for neighbour in &scan.neighbours.records {
@@ -278,11 +293,23 @@ mod tests {
     async fn it_misreports_its_own_interface_count_on_purpose() {
         let scan = harness::scan("switch-dell-01").await;
 
-        assert_eq!(scan.system.if_number, Some(52), "what it claims");
-        assert_eq!(scan.if_table.entries.len(), 23, "what it serves");
+        let claimed = scan.system.if_number.expect("it publishes a count") as usize;
+        let served = scan.if_table.entries.len();
+
+        // The contradiction, not the two numbers. Trimming this fixture to the ports it exists to
+        // prove is a legitimate edit and must not fail a test about the count check.
+        assert!(
+            claimed > served,
+            "this device must claim more than it serves, or the count check cannot be watched \
+             firing: claims {claimed}, serves {served}"
+        );
         assert!(
             scan.if_table.set_complete,
             "the walk itself is complete — the contradiction is the device's, not the read's"
+        );
+        assert!(
+            served > 0,
+            "a device that misreports itself is still a device to scan"
         );
     }
 }
