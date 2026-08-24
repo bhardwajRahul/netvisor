@@ -443,6 +443,45 @@ type NeighborKind = components['schemas']['Neighbor']['type'];
 /** Every neighbour discriminant, plus the un-resolved case the column expresses as NULL. */
 const NEIGHBOR_KINDS = ['Interface', 'Host'] as const satisfies readonly NeighborKind[];
 
+/** The payload summaries, and the payload they were taken from.
+ *
+ * Held because sampling happens on the throttled viewport path — twice a second while someone
+ * pans — and these two walks are O(edges + interfaces) with no cap. At the scale this diagnostic
+ * exists to explain, that is ~15k interfaces and thousands of edges rescanned per pan frame: the
+ * same cost `CULLABILITY_SAMPLE_LIMIT` exists to avoid, and worse, because it would be paid on
+ * every sample rather than sampled down.
+ *
+ * Memoised on payload identity rather than capped, because unlike the cullability walk this one
+ * reads a value that cannot change between refetches — the payload is one object, replaced
+ * wholesale when new data arrives. So the exact figure stays available at no recurring cost.
+ */
+let payloadSummary: {
+	payload: DiagnosablePayload;
+	edgesByType: Record<string, number>;
+	interfaceNeighborKinds: ViewerSample['interfaceNeighborKinds'];
+} | null = null;
+
+/** Edge-type and neighbour-kind counts for a payload, computed once per payload. */
+export function summarisePayload(payload: DiagnosablePayload | null): {
+	edgesByType: Record<string, number>;
+	interfaceNeighborKinds: ViewerSample['interfaceNeighborKinds'];
+} {
+	if (!payload) {
+		return { edgesByType: {}, interfaceNeighborKinds: { Interface: 0, Host: 0, none: 0 } };
+	}
+	if (payloadSummary?.payload !== payload) {
+		payloadSummary = {
+			payload,
+			edgesByType: summariseEdgeTypes(payload),
+			interfaceNeighborKinds: summariseNeighborKinds(payload)
+		};
+	}
+	return {
+		edgesByType: payloadSummary.edgesByType,
+		interfaceNeighborKinds: payloadSummary.interfaceNeighborKinds
+	};
+}
+
 /** Payload edge counts keyed by `edge_type`. The type is a tagged union on the wire, so its
  *  discriminant is read from either the bare string or the `type` tag. */
 function summariseEdgeTypes(payload: DiagnosablePayload | null): Record<string, number> {
@@ -507,7 +546,7 @@ function readPane(container: HTMLElement | null): { el: HTMLElement | null; rect
  */
 export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 	noteHeapSample();
-	const payload = inputs.payload();
+	const { edgesByType, interfaceNeighborKinds } = summarisePayload(inputs.payload());
 	const root: ParentNode = inputs.container ?? document;
 	const { el: pane, rect: paneRect } = readPane(inputs.container);
 	const viewport = root.querySelector('.svelte-flow__viewport') as HTMLElement | null;
@@ -615,8 +654,8 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 			level: get(collapseLevel) ?? null,
 			collapsedContainers: get(collapsedContainers).size
 		},
-		edgesByType: summariseEdgeTypes(payload),
-		interfaceNeighborKinds: summariseNeighborKinds(payload),
+		edgesByType,
+		interfaceNeighborKinds,
 		blank
 	};
 }
@@ -812,6 +851,7 @@ export function installDiagnostics(read: () => Omit<SampleInputs, 'trigger'>): v
 
 /** Test seam — the ring buffer is module state and specs need a clean one. */
 export function resetDiagnostics(): void {
+	payloadSummary = null;
 	history.length = 0;
 	previousBlank = null;
 	firstBlankCapture = null;
