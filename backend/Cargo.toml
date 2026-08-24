@@ -21,6 +21,11 @@ name = "generate-fixtures"
 path = "src/bin/generate-fixtures.rs"
 
 [[bin]]
+name = "generate-snmp-fixtures"
+path = "src/bin/generate-snmp-fixtures.rs"
+required-features = ["snmp-sim"]
+
+[[bin]]
 name = "license"
 path = "src/bin/license.rs"
 
@@ -248,6 +253,10 @@ jsonschema = "0.29"
 
 [features]
 generate-fixtures = []
+# Compile the SNMP simulator's device definitions (`snmp::sim`) into the lib so the fixture
+# generator binary can read them. Always on under `cfg(test)`; off for the shipped binaries,
+# which have no use for fixture data.
+snmp-sim = []
 # Compile the built UI (`ui/build`) into the server binary, for the standalone
 # release artifact. Off by default: the folder only exists after a UI build, so
 # an unconditional embed would break `cargo build` for anyone who hasn't run

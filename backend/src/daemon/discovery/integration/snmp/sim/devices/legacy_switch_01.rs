@@ -1,0 +1,118 @@
+use std::net::Ipv4Addr;
+
+use crate::daemon::discovery::integration::snmp::sim::lldp::{
+    Advertised, LldpTable, RemoteNeighbour,
+};
+use crate::daemon::discovery::integration::snmp::sim::mibs::{
+    ArpTable, BridgeTable, CdpTable, EntityTable, FdbEntry, FdbStatus, IpAddrTable,
+};
+use crate::daemon::discovery::integration::snmp::sim::tables::{IfRow, IfTable};
+use crate::daemon::discovery::integration::snmp::sim::transport::Handler;
+use crate::daemon::discovery::integration::snmp::sim::wire::MacEncoding;
+use crate::daemon::discovery::integration::snmp::sim::{Purpose, SimDevice, Tables};
+use crate::daemon::discovery::integration::snmp::types::{SystemInfo, VlanInfo};
+use crate::server::credentials::r#impl::types::CredentialType;
+use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+
+use super::inline;
+
+pub fn device() -> SimDevice {
+    SimDevice {
+        name: "legacy-switch-01",
+        ip: Ipv4Addr::new(192, 168, 7, 236),
+        purpose: Purpose::Regression {
+            issue: "#557",
+            defect: "SNMPv1 has no getbulk, so every table must come back over getnext",
+        },
+        credential: CredentialType::SnmpV1 {
+            community: inline("legacyv1"),
+        },
+        system: SystemInfo {
+            sys_descr: Some("Cisco IOS Software, C2950 Software, Version 12.1(22)EA14".into()),
+            sys_object_id: Some("1.3.6.1.4.1.9.1.359".into()),
+            sys_name: Some("legacy-switch-01".into()),
+            sys_location: Some("Closet 1, Legacy Rack".into()),
+            sys_contact: Some("netops@example.com".into()),
+            sys_services: Some(6),
+            sys_uptime: None,
+            // Published from the ifTable at emission, never stored.
+            if_number: None,
+        },
+        tables: tables(),
+        arp_handler: Handler::Normal,
+        suppresses: Vec::new(),
+    }
+}
+
+fn tables() -> Tables {
+    Tables {
+        if_table: Some(if_table()),
+        lldp: Some(lldp_table()),
+        bridge: bridge_table(),
+        arp: ArpTable::default(),
+        ip_addr: IpAddrTable::default(),
+        entity: EntityTable::default(),
+        cdp: CdpTable::default(),
+        lldp_variants: Vec::new(),
+        context_bridge: None,
+    }
+}
+
+pub fn if_table() -> IfTable {
+    IfTable::new(vec![
+        IfRow::port(
+            1,
+            "FastEthernet0/1",
+            Some("00:1a:2b:00:16:01".parse().unwrap()),
+        )
+        .speed(100000000)
+        .name("Fa0/1")
+        .high_speed()
+        .alias("Uplink to switch-access-01"),
+        IfRow::port(
+            2,
+            "FastEthernet0/2",
+            Some("00:1a:2b:00:16:02".parse().unwrap()),
+        )
+        .speed(100000000)
+        .name("Fa0/2")
+        .high_speed()
+        .alias("Access port"),
+    ])
+}
+
+pub fn lldp_table() -> LldpTable {
+    LldpTable::new(
+        Advertised::text(
+            LldpChassisId::MacAddress("00:1a:2b:00:16:00".into()),
+            MacEncoding::AsciiLower,
+        ),
+        "legacy-switch-01",
+    )
+    .sys_desc("Cisco IOS Software, C2950 Software, Version 12.1(22)EA14")
+    .neighbours(vec![
+        RemoteNeighbour::new(
+            1,
+            Advertised::text(
+                LldpChassisId::MacAddress("00:1a:2b:00:11:00".into()),
+                MacEncoding::AsciiLower,
+            ),
+            Advertised::octets(LldpPortId::InterfaceName("Gi0/2".into())),
+        )
+        .port_desc("GigabitEthernet0/2")
+        .sys_name("switch-access-01")
+        .sys_desc("Cisco IOS Software, C3750 Software (C3750-IPSERVICESK9-M), Version 15.0(2)SE11"),
+    ])
+}
+
+pub fn bridge_table() -> BridgeTable {
+    BridgeTable::derived()
+        .fdb(vec![
+            FdbEntry::learned("00:1a:2b:00:10:01".parse().unwrap(), 1),
+            FdbEntry::learned("00:1a:2b:00:16:01".parse().unwrap(), 2).status(FdbStatus::Self_),
+        ])
+        .vlans(vec![VlanInfo {
+            vlan_id: 1,
+            name: "default".into(),
+        }])
+}

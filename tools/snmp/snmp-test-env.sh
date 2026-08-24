@@ -9,24 +9,36 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SNMPGET="${SNMPGET:-/opt/homebrew/opt/net-snmp/bin/snmpget}"
 SNMPWALK="${SNMPWALK:-/opt/homebrew/opt/net-snmp/bin/snmpwalk}"
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245 192.168.7.246 192.168.7.247 192.168.7.248 192.168.7.249 192.168.7.250 192.168.7.251)
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v3)
-COMMUNITIES=(netdefault netdefault secret42 secret42 public netdefault legacyv1 - netdefault netdefault netdefault netdefault public netdefault netdefault netdefault netdefault netdefault netdefault netdefault netdefault -)
-SYSNAMES=("switch-core-01" "switch-access-01" "router-gw-01" "firewall-01" "printer-lobby" "ap-wireless-01" "legacy-switch-01" "secure-switch-01" "switch-exos-01" "switch-voss-01" "switch-netgear-01" "switch-aruba-01" "switch" "switch-flaky-01" "switch-dlink-01" "switch-tplink-01" "switch-unsorted-01" "switch-macport-01" "switch-mute-01" "switch-stuck-01" "switch-dell-01" "switch-cisco-01")
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
 
-# SNMPv3 USM credentials for secure-switch-01 (must match lxc/setup.sh).
-V3_USER="${V3_USER:-scanopyv3}"
+# The device list — addresses, versions, communities, sysNames, unit names and per-host v3 users —
+# is generated from the typed definitions in
+# backend/src/daemon/discovery/integration/snmp/sim/ and written to lxc/generated/lab.env by
+# `make snmp-fixtures`. It used to be repeated here by hand, where it could disagree with the
+# agents it was verifying.
+LAB_ENV="$SCRIPT_DIR/lxc/generated/lab.env"
+
+# Sourced on demand rather than at startup, because `fixtures` and `deploy` are what create it.
+require_lab_env() {
+    if [ ! -f "$LAB_ENV" ]; then
+        printf "${RED}✗${NC} %s is missing — run 'make snmp-fixtures' first.\n" "$LAB_ENV" >&2
+        exit 1
+    fi
+    # shellcheck source=/dev/null
+    . "$LAB_ENV"
+}
+
+# SNMPv3 passphrases. The user names come from lab.env; these do not, because the verify path is
+# the one consumer that needs the secret rather than the identity.
 V3_AUTH_PASS="${V3_AUTH_PASS:-authpass12345}"
 V3_PRIV_PASS="${V3_PRIV_PASS:-privpass12345}"
-
-# switch-cisco-01 is on its own USM identity so that only one seeded credential can win against it
-# — see the comment beside V3_CTX_USER in lxc/setup.sh. Must match that file.
 V3_CTX_USER="${V3_CTX_USER:-scanopyctx}"
 V3_CTX_AUTH_PASS="${V3_CTX_AUTH_PASS:-ctxauthpass12345}"
 V3_CTX_PRIV_PASS="${V3_CTX_PRIV_PASS:-ctxprivpass12345}"
-
-# Per-host USM user, for the hosts whose version is v3. Empty means V3_USER.
-V3_USERS=("" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "$V3_CTX_USER")
+V3_USER="${V3_USER:-scanopyv3}"
 
 # Deploy target: the Proxmox VM that hosts the LXC agents, reached over SSH at
 # HOSTS[0] (its management IP doubles as switch-core-01's macvlan address). The
@@ -35,11 +47,6 @@ V3_USERS=("" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "$V3_CT
 VM_HOST="${SNMP_VM_HOST:-${HOSTS[0]}}"
 SSH_KEY="${SNMP_SSH_KEY:-$HOME/.ssh/snmp-test-vm}"
 REMOTE_DIR="/root/snmp-test"
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m'
 
 # ap-wireless-01 advertises 172.30.10.1/24 on a `br-` prefixed interface — the
 # #663 fixture, where an access point's NAT guest network was misclassified as a
@@ -111,6 +118,7 @@ verify_vlan_context_fixture() {
 }
 
 cmd_verify() {
+    require_lab_env
     echo "Verifying SNMP test hosts..."
     echo ""
     local all_ok=true
@@ -175,6 +183,7 @@ cmd_verify() {
 }
 
 cmd_status() {
+    require_lab_env
     echo "SNMP Test Environment Status"
     echo "=============================="
     echo ""
@@ -196,6 +205,16 @@ cmd_status() {
 # setup.sh keeps running the stale copy — a silent failure that looks like a
 # broken fixture. Deploy does not verify; run `snmp-verify` afterwards (the
 # `make snmp-deploy` target chains them).
+# Render the devices from their typed definitions into lxc/generated/. Nothing under there is
+# committed: the deployment generates it and ships what it generated, so there is no second copy
+# of a device that can drift from the struct that defines it.
+generate_fixtures() {
+    local out="$SCRIPT_DIR/lxc/generated"
+    rm -rf "$out"
+    (cd "$SCRIPT_DIR/../../backend" &&
+        cargo run --quiet --bin generate-snmp-fixtures --features snmp-sim -- "$out")
+}
+
 cmd_deploy() {
     if [ ! -f "$SSH_KEY" ]; then
         printf "${RED}✗${NC} SSH key not found: %s\n" "$SSH_KEY"
@@ -204,6 +223,9 @@ cmd_deploy() {
         exit 1
     fi
     local ssh_opts=(-i "$SSH_KEY" -o ConnectTimeout=10)
+
+    echo "Generating device definitions..."
+    generate_fixtures
 
     echo "Deploying SNMP test environment to root@${VM_HOST}..."
     echo "  → clearing ${REMOTE_DIR} (required — scp -r nests into an existing dir)"
@@ -217,6 +239,9 @@ cmd_deploy() {
 }
 
 case "${1:-}" in
+    fixtures)
+        generate_fixtures
+        ;;
     deploy)
         cmd_deploy
         ;;
@@ -227,9 +252,10 @@ case "${1:-}" in
         cmd_status
         ;;
     *)
-        echo "Usage: $0 {deploy|verify|status}"
+        echo "Usage: $0 {fixtures|deploy|verify|status}"
         echo ""
-        echo "  deploy — Copy tools/snmp to the VM and rebuild every agent (needs SSH key)"
+        echo "  fixtures — Generate lxc/generated/ from the typed device definitions"
+        echo "  deploy — Generate, copy tools/snmp to the VM, and rebuild every agent (needs SSH key)"
         echo "  verify — Query each SNMP host and check sysName"
         echo "  status — Ping each host to check reachability"
         exit 1

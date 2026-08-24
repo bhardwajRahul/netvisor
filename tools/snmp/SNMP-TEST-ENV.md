@@ -1,5 +1,11 @@
 # SNMP Test Environment
 
+> **Where the devices live.** Every device is a typed Rust value in
+> `backend/src/daemon/discovery/integration/snmp/sim/devices/`, and `lxc/setup.sh` is now only the
+> host harness — interfaces, the three `pass` handlers, systemd units. `make snmp-deploy` generates
+> the data files and agent configs from those definitions and ships what it generated, so there is
+> no committed artifact that can drift. To add or change a device, see **Adding a device** below.
+
 22 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668 and repeats one MAC across every port; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short; `.246`/`.247` cover #674 and the Westermo local-port report; `.248`/`.249` are the two failure shapes the partial-failure reporting exists for; `.250` is the Dell OS10 switch from #685, whose breakout-port names and 568+ local-port namespace decide which interface a neighbour lands on; `.251` is the Cisco from #686 and the only device here that serves different data per SNMPv3 context.
 
 | IP | Host | Version | Credential | Device |
@@ -256,26 +262,27 @@ finish"*. Three of those figures come from this lab:
 | `dot1dBaseNumPorts` | `.1.3.6.1.2.1.17.1.2.0` | derived from each fixture's own `dot1dBasePortIfIndex` rows |
 | `sysServices` datalink bit | `.1.3.6.1.2.1.1.7.0` | the `sysservices` line already in each config |
 
-**The first two are derived at deploy time, in section 5b of `lxc/setup.sh` — do not hand-write
-them.** A count written by hand goes stale the moment someone adds a port, and a stale count turns
-every scan of that device into a warning about a device that is fine. Editing an ifTable is enough;
-the scalar follows.
+**The first two are derived from the device's own rows**, by `IfTable::declared_count` and
+`BridgeTable::declared_port_count`. Editing an ifTable is enough; the scalars follow, and there is
+no second figure to forget. `switch-dell-01` is the one device that overrides `ifNumber`, in one
+place and with the reason on the field.
 
-`dot1dBaseNumPorts` is keyed on what a file *serves* rather than on its name, so switch-cisco-01
-gets it in both of its contexts — a device whose two contexts disagreed about how many ports it has
-would be a fixture bug nobody could see. Adding a `pass` for a new bridge file is enough.
+`dot1dBaseNumPorts` follows whatever bridge table it belongs to, so switch-cisco-01 gets one in
+each of its contexts — a device whose two contexts disagreed about how many ports it has would be a
+fixture bug nobody could see.
 
-**Section 5c then refuses to deploy an incoherent set.** A data file no config serves, a config
-naming a file nobody wrote, a name in `SYSNAMES` with no config, or an ifTable served without its
-`ifNumber` registration — each provisions quietly and then answers from net-snmp's built-in MIBs,
-which reads as a device behaving oddly rather than as a lab that was never assembled. The last of
-those is not hypothetical: it is what an ifNumber-less device does to the count check, reporting a
-contradiction on every scan for a fault it does not have.
+**None of those sets can be assembled any more.** A data file no config serves, a config naming a
+file nobody wrote, a device with no config, or an ifTable served without its `ifNumber`
+registration each used to provision quietly and then answer from net-snmp's built-in MIBs — a
+device behaving oddly rather than a lab that was never assembled. Registrations are now derived
+from the tables a device holds, so there is nothing left to disagree; the unit tests named in
+*Adding a device* hold the line.
 
 `ifNumber` is registered with `pass -p 1` because `mibII/interfaces` owns the scalar and would
 otherwise answer it from the VM's own kernel state — the container's interface count, against a
-fixture's 24 rows, on every device. Confirm what owns a subtree with
-`snmpd -Dregister_mib -C -c <conf>`.
+fixture's 24 rows, on every device. The generator derives that priority from the subtree
+(`needs_priority`), as it does for `ipAddrTable` and `ipNetToMediaTable`, which the IP module owns
+for the same reason. Confirm what owns a subtree with `snmpd -Dregister_mib -C -c <conf>`.
 
 **switch-dell-01 declares 52 interfaces and serves 23, deliberately.** Every other device here
 agrees with itself, which demonstrates the check staying quiet but cannot demonstrate it firing —
@@ -325,53 +332,80 @@ Three properties decide whether these are worth anything:
 > table because the scan was asking in the wrong context. That half is `.251`'s, and the check
 > there is the comparison between contexts rather than any single count.
 
-## Turning a customer walk into a fixture
+## Adding a device
 
-Every device in this lab is hand-transcribed from a real walk, and the two failures worth avoiding
-are both recorded above: modelling a premise the device does not have (`.247`, whose original
-`lldpLocPortNum` namespace the customer's walk disproved), and inventing a far end that happens to
-resolve anyway (`.240`'s made-up chassis MAC, which passed while testing nothing).
+Every device is defined once, as a typed Rust value, in
+`backend/src/daemon/discovery/integration/snmp/sim/devices/`. The deployment generates its data
+files and its agent config from that definition — there is no second copy to keep in step, and
+`lxc/setup.sh` no longer describes any device.
 
-Ask the reporter for these subtrees, with `-On` so OIDs arrive numeric:
+**The workflow for a new regression is: add a struct, write the test that fails, fix the code.**
 
-```bash
-snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.1        # system, incl. sysServices
-snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.2        # ifNumber + ifTable
-snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.31.1.1   # ifXTable
-snmpwalk -On -v2c -c <community> <ip> 1.0.8802.1.1.2       # LLDP, local and remote
-snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.17       # bridge: ports, FDB, VLANs
-```
+1. **Ask the reporter for the subtrees below**, with `-On` so OIDs arrive numeric. On anything that
+   partitions its bridge tables per VLAN — any Catalyst, and most switches that index a community —
+   ask for `1.3.6.1.2.1.17` a second time naming a context, and record both. A single bridge walk
+   cannot tell a device with an empty table apart from one that keeps its table somewhere the walk
+   did not look, and that ambiguity is the whole of #686.
 
-**On anything that partitions its bridge tables per VLAN — any Catalyst, and most switches that
-index a community — ask for `1.3.6.1.2.1.17` a second time naming a context**, and record both. A
-single bridge walk cannot tell a device with an empty table apart from one that keeps its table
-somewhere the walk did not look, and that ambiguity is the whole of #686:
+   ```bash
+   snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.1        # system, incl. sysServices
+   snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.2        # ifNumber + ifTable
+   snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.31.1.1   # ifXTable
+   snmpwalk -On -v2c -c <community> <ip> 1.0.8802.1.1.2       # LLDP, local and remote
+   snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.17       # bridge: ports, FDB, VLANs
+   snmpwalk -On -v3 -l authPriv -u <user> -a SHA -A <pass> -x AES -X <pass> \
+     -n <context> <ip> 1.3.6.1.2.1.17                         # and again, naming a context
+   ```
 
-```bash
-snmpwalk -On -v3 -l authPriv -u <user> -a SHA -A <pass> -x AES -X <pass> \
-  -n <context> <ip> 1.3.6.1.2.1.17
-snmpwalk -On -v2c -c '<community>@<vlan>' <ip> 1.3.6.1.2.1.17    # the v2c form of the same thing
-```
+2. **Write the device.** Copy the nearest existing module in `sim/devices/`, give it a `Purpose`
+   naming the issue and what breaks without it, and add it to `all()` in `sim/devices/mod.rs`.
+   `Purpose` is required: a device with no established defect must say `Purpose::Control`.
 
-Then, transcribing into `lxc/setup.sh`:
-
-1. **Rewrite identifiers consistently** — same value, same replacement, everywhere. MACs, the
+   **Rewrite identifiers consistently** — same value, same replacement, everywhere. MACs, the
    management address and neighbour hostnames all carry customer information, and all of them are
    what resolution keys on. Rewriting them per-occurrence instead of per-value breaks the
-   cross-table joins that make the fixture worth having.
-2. **`octet` for anything that is bytes on the wire, `string` only for text.** `snmpwalk` renders
-   an OCTET STRING as `Hex-STRING` or `STRING` depending on content, not on type; copying that
-   choice through sends a 17-byte ASCII MAC where six raw octets belong. This has caught three
-   fixtures so far.
-3. **Keep each data file ascending by OID.** The GETNEXT handler returns the first line numerically
-   greater than the request, so an out-of-order row silently ends the walk early. The one exception
-   is `switch-unsorted-01`, which is unsorted on purpose and uses the positional handler.
-4. **Do not write `ifNumber` or `dot1dBaseNumPorts`** — section 5b derives both.
-5. **Confirm every far end exists.** Check the neighbour's `chassis_id`, `if_name` and `if_index`
-   against already-scanned data before adding it. A neighbour that resolves through a fallback tier
-   looks identical to one that resolves properly, and only the second is evidence.
-6. **Record what the fixture is for**, in a comment above the file, naming the issue. A fixture
-   whose purpose is not written down is one nobody dares change and nobody can verify.
+   cross-table joins that make the fixture worth having. **Never commit a captured walk.**
+
+3. **Write the test that fails**, beside the device, driving the real collection path:
+
+   ```rust
+   let scan = harness::scan("switch-new-01").await;
+   assert_eq!(scan.arp.records.len(), 45, "GH #674: a strict walk stops at 40");
+   ```
+
+   Assert the **outcome the issue was about**, never that the fixture equals itself. `harness::scan`
+   runs the daemon's own queries in the order `execute` uses and hands back what they read.
+
+4. **Fix the code**, and watch the test go green.
+
+5. `make snmp-deploy`, then `make snmp-verify`.
+
+### What you no longer have to remember
+
+These were review instructions in this document. They are now properties of the model, and the
+listed unit tests fail if one is broken:
+
+| Was | Now |
+|---|---|
+| "Keep each data file ascending by OID" | Derived by `DataFile::render`. `every_file_ascends_except_the_one_that_must_not` |
+| "Do not write `ifNumber` or `dot1dBaseNumPorts`" | Derived from the rows. `adding_a_port_moves_the_declared_count_with_it` |
+| "Send a MAC with `octet`, never `string`" | A MAC is a `MacAddress`; the encoding is `MacEncoding` and must be named. `port_macs_are_octets_unless_the_device_says_otherwise` |
+| "A data file no config serves / a config naming a file nobody wrote" | Registrations are derived from the tables held. `every_served_file_has_a_registration_and_vice_versa` |
+| "An ifTable served without its `ifNumber` registration" | Derived. `a_device_serving_an_if_table_registers_its_own_count` |
+| "Record what the fixture is for" | `Purpose` is a required field |
+
+Two things the type system cannot check, and that still need care:
+
+- **Confirm every far end exists.** Check the neighbour's `chassis_id`, `if_name` and `if_index`
+  against the device it points at before adding it. A neighbour that resolves through a fallback
+  tier looks identical to one that resolves properly, and only the second is evidence. An earlier
+  revision of `.240` used a made-up chassis MAC and a port `switch-core-01` does not have; both
+  still appeared to work, so the profile passed without exercising what it documents.
+- **`ifPhysAddress` is octets; an LLDP identifier may legitimately be either.** `value_to_mac`
+  accepts only six raw bytes, so a port MAC sent as text is silently dropped. `parse_mac_id`
+  accepts both, deliberately, because real firmware sends both — `switch-dlink-01` sends raw
+  octets, `switch-tplink-01` uppercase ASCII, and `switch-exos-01`'s own chassis id is left
+  *abbreviated* as the standing guard on the unpadded form. Do not "tidy" those.
 
 ## Expect truncation warnings — the simulator races itself
 
