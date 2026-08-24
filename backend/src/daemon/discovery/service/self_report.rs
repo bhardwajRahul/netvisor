@@ -123,7 +123,7 @@ impl DiscoveryRunner {
         host_base.apply_name(
             hostname
                 .map(HostName::Hostname)
-                .unwrap_or_else(|| HostName::from_ip(local_ip)),
+                .unwrap_or_else(|| HostName::Ip(local_ip)),
         );
 
         let mut host = Host::new(host_base);

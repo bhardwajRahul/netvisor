@@ -23,6 +23,7 @@ use crate::server::{
 };
 
 use super::{host, network, organization, subnet, test_services};
+use crate::server::hosts::r#impl::name::HostName;
 
 /// Everything a resolution test needs: a network with hosts and interfaces in it, and a resolver
 /// pointed at the same database.
@@ -62,7 +63,7 @@ impl Lab {
 
     async fn host(&self, name: &str) -> Host {
         let mut h = host(&self.network_id);
-        h.base.name = name.to_string();
+        h.base.name = HostName::Manual(name.to_string());
         self.storage.hosts.create(&h).await.unwrap();
         h
     }
@@ -74,7 +75,7 @@ impl Lab {
         sys_name: Option<&str>,
     ) -> Host {
         let mut h = host(&self.network_id);
-        h.base.name = name.to_string();
+        h.base.name = HostName::Manual(name.to_string());
         h.base.chassis_id = chassis_id.map(str::to_string);
         h.base.sys_name = sys_name.map(str::to_string);
         self.storage.hosts.create(&h).await.unwrap();
