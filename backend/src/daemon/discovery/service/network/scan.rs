@@ -576,7 +576,7 @@ impl NetworkScan {
                                         source: EntitySource::Discovery,
                                         ..Default::default()
                                     });
-                                    host.base.apply_name(HostName::from_ip(ip));
+                                    host.base.apply_name(HostName::Ip(ip));
                                     let host_id = host.id;
                                     let ip_address = IPAddress::new(IPAddressBase {
                                         network_id: early_subnet.base.network_id,

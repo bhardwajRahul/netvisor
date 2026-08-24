@@ -163,7 +163,7 @@ async fn a_controller_name_replaces_an_address_derived_one() {
 
     let scanned = submit(
         &services,
-        submission(network_id, HostName::from_ip(DEVICE_IP), None),
+        submission(network_id, HostName::Ip(DEVICE_IP), None),
     )
     .await;
     assert_eq!(scanned.name, DEVICE_IP.to_string());
@@ -255,7 +255,7 @@ async fn saving_an_unrelated_field_does_not_freeze_a_derived_name() {
 
     let discovered = submit(
         &services,
-        submission(network_id, HostName::from_ip(DEVICE_IP), None),
+        submission(network_id, HostName::Ip(DEVICE_IP), None),
     )
     .await;
 
@@ -352,7 +352,7 @@ async fn a_daemon_that_sends_no_rank_still_upgrades_an_address_to_its_hostname()
 
     submit(
         &services,
-        submission(network_id, HostName::from_ip(DEVICE_IP), None),
+        submission(network_id, HostName::Ip(DEVICE_IP), None),
     )
     .await;
 
@@ -378,7 +378,7 @@ async fn an_address_derived_name_follows_the_host_to_a_new_address() {
 
     let first = submit(
         &services,
-        submission_at(network_id, DEVICE_IP, HostName::from_ip(DEVICE_IP), None),
+        submission_at(network_id, DEVICE_IP, HostName::Ip(DEVICE_IP), None),
     )
     .await;
     assert_eq!(first.name, "192.168.1.20");
@@ -386,7 +386,7 @@ async fn an_address_derived_name_follows_the_host_to_a_new_address() {
     let moved_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 21));
     let moved = submit(
         &services,
-        submission_at(network_id, moved_ip, HostName::from_ip(moved_ip), None),
+        submission_at(network_id, moved_ip, HostName::Ip(moved_ip), None),
     )
     .await;
 

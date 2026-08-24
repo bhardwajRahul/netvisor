@@ -1226,7 +1226,7 @@ impl DiscoveryOps {
         // Rungs the scan itself can reach. `host_naming_fallback` decides which of the two
         // bottom rungs the user prefers when there is no hostname; an integration that knows a
         // human-assigned name outranks all of them and applies later, during `execute()`.
-        let ip_name = HostName::from_ip(ip_address.base.ip_address);
+        let ip_name = HostName::Ip(ip_address.base.ip_address);
         let candidate = match (hostname, best_service_name, host_naming_fallback) {
             (Some(hostname), _, _) => HostName::Hostname(hostname),
             (None, _, HostNamingFallback::Ip) => ip_name,

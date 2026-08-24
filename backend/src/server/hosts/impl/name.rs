@@ -15,7 +15,6 @@
 use std::borrow::Cow;
 use std::fmt::{self, Display};
 use std::net::IpAddr;
-use std::ops::Deref;
 
 use serde::de::{IgnoredAny, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
@@ -52,8 +51,9 @@ pub enum HostName {
     /// A name whose provenance we do not know: a payload from a daemon predating this release, or
     /// a row predating the column. Above nothing, below everything we can attribute.
     Unspecified(String),
-    /// The host's own IP address, used because nothing better was known.
-    Ip(String),
+    /// The host's own IP address, used because nothing better was known. Typed, so an `Ip`-ranked
+    /// name cannot be anything but an address.
+    Ip(IpAddr),
     /// The name of the best non-generic service detected on the host.
     DetectedService(String),
     /// Reverse DNS, a hostname the host reported, or SNMP sysName.
@@ -72,26 +72,23 @@ impl Default for HostNameSource {
 }
 
 impl HostName {
-    /// The host's IP address — the bottom rung that still carries a name.
-    pub fn from_ip(ip: IpAddr) -> Self {
-        Self::Ip(ip.to_string())
-    }
-
     /// Which rung produced this name.
     pub fn source(&self) -> HostNameSource {
         self.into()
     }
 
     /// The name itself. Empty for [`HostName::Unnamed`], the only variant carrying no value.
-    pub fn value(&self) -> &str {
+    ///
+    /// Borrowed for every variant but [`HostName::Ip`], which formats its address on demand.
+    pub fn value(&self) -> Cow<'_, str> {
         match self {
-            Self::Unnamed => "",
+            Self::Unnamed => Cow::Borrowed(""),
+            Self::Ip(ip) => Cow::Owned(ip.to_string()),
             Self::Unspecified(v)
-            | Self::Ip(v)
             | Self::DetectedService(v)
             | Self::Hostname(v)
             | Self::Integration(v)
-            | Self::Manual(v) => v,
+            | Self::Manual(v) => Cow::Borrowed(v),
         }
     }
 
@@ -108,12 +105,17 @@ impl HostName {
         if self.source() <= ceiling {
             return self;
         }
-        let value = self.value().to_string();
+        let value = self.value().into_owned();
         Self::from_parts(value, ceiling)
     }
 
     /// Rebuild from a stored or received `(name, name_source)` pair. A blank value collapses to
     /// `Unnamed` whatever rung was claimed for it — a rung with no name means nothing.
+    ///
+    /// An `Ip` rung whose value is not actually an address degrades to `Unspecified` rather than
+    /// asserting something false. That is a live case, not a hypothetical: the backfill classifies
+    /// by regex, and `^[0-9]{1,3}(\.[0-9]{1,3}){3}$` happily matches `999.999.999.999`. Such a row
+    /// self-heals the next time it is written.
     pub(crate) fn from_parts(value: String, source: HostNameSource) -> Self {
         if value.trim().is_empty() {
             return Self::Unnamed;
@@ -121,7 +123,10 @@ impl HostName {
         match source {
             HostNameSource::Unnamed => Self::Unnamed,
             HostNameSource::Unspecified => Self::Unspecified(value),
-            HostNameSource::Ip => Self::Ip(value),
+            HostNameSource::Ip => match value.parse::<IpAddr>() {
+                Ok(ip) => Self::Ip(ip),
+                Err(_) => Self::Unspecified(value),
+            },
             HostNameSource::DetectedService => Self::DetectedService(value),
             HostNameSource::Hostname => Self::Hostname(value),
             HostNameSource::Integration => Self::Integration(value),
@@ -130,22 +135,9 @@ impl HostName {
     }
 }
 
-impl Deref for HostName {
-    type Target = str;
-    fn deref(&self) -> &str {
-        self.value()
-    }
-}
-
-impl AsRef<str> for HostName {
-    fn as_ref(&self) -> &str {
-        self.value()
-    }
-}
-
 impl Display for HostName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.value())
+        f.write_str(self.value().as_ref())
     }
 }
 
@@ -188,7 +180,7 @@ impl PartialEq<HostName> for String {
 impl Serialize for HostName {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut state = serializer.serialize_struct("HostName", 2)?;
-        state.serialize_field("name", self.value())?;
+        state.serialize_field("name", self.value().as_ref())?;
         state.serialize_field("name_source", &self.source())?;
         state.end()
     }
@@ -293,6 +285,19 @@ mod tests {
         let parsed: HostName =
             serde_json::from_str(r#"{"name":"","name_source":"Integration"}"#).unwrap();
         assert_eq!(parsed, HostName::Unnamed);
+    }
+
+    #[test]
+    fn an_ip_rung_whose_value_is_not_an_address_degrades_instead_of_lying() {
+        // The backfill classifies by regex, and `999.999.999.999` matches its IPv4 pattern. The
+        // row must not come back claiming to be an address — it should drop to the rung that
+        // means "we cannot attribute this", where a real name can still displace it.
+        let degraded = HostName::from_parts("999.999.999.999".to_string(), HostNameSource::Ip);
+        assert_eq!(degraded.source(), HostNameSource::Unspecified);
+        assert_eq!(degraded.value(), "999.999.999.999");
+
+        let genuine = HostName::from_parts("192.168.1.20".to_string(), HostNameSource::Ip);
+        assert_eq!(genuine, HostName::Ip("192.168.1.20".parse().unwrap()));
     }
 
     #[test]

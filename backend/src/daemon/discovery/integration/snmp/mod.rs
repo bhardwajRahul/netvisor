@@ -1018,9 +1018,7 @@ impl DiscoveryIntegration for SnmpIntegration {
                 // An ARP entry carries an address and nothing else. Naming the host after it
                 // beats the blank label these used to render as, and sits at the bottom of the
                 // ladder so anything that later learns a real name replaces it.
-                arp_host
-                    .base
-                    .apply_name(HostName::from_ip(arp_entry.ip_address));
+                arp_host.base.apply_name(HostName::Ip(arp_entry.ip_address));
 
                 tracing::info!(
                     ip = %arp_entry.ip_address,
