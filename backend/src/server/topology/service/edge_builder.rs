@@ -720,6 +720,7 @@ mod tests {
     use super::*;
     use crate::server::bindings::r#impl::base::Binding;
     use crate::server::hosts::r#impl::base::{Host, HostBase};
+    use crate::server::hosts::r#impl::name::HostName;
     use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
     use crate::server::services::r#impl::base::{Service, ServiceBase};
     use crate::server::services::r#impl::virtualization::{
@@ -841,7 +842,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: "docker-host".to_string(),
+                name: HostName::Manual("docker-host".to_string()),
                 network_id,
                 ..Default::default()
             },
@@ -966,7 +967,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: "docker-host".to_string(),
+                name: HostName::Manual("docker-host".to_string()),
                 network_id,
                 ..Default::default()
             },
@@ -1055,7 +1056,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: "docker-host".to_string(),
+                name: HostName::Manual("docker-host".to_string()),
                 network_id,
                 ..Default::default()
             },
@@ -1122,7 +1123,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: "docker-host".to_string(),
+                name: HostName::Manual("docker-host".to_string()),
                 network_id,
                 ..Default::default()
             },
@@ -1219,7 +1220,7 @@ mod tests {
             id: host_id,
             base: HostBase {
                 network_id,
-                name: "docker-host".to_string(),
+                name: HostName::Manual("docker-host".to_string()),
                 ..Default::default()
             },
             ..Default::default()
@@ -1324,7 +1325,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: "docker-host".to_string(),
+                name: HostName::Manual("docker-host".to_string()),
                 network_id,
                 ..Default::default()
             },

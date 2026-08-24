@@ -448,7 +448,10 @@ impl HostService {
             .get_all(StorableFilter::<Host>::new_from_entity_ids(&host_ids))
             .await
         {
-            Ok(hosts) => hosts.into_iter().map(|h| (h.id, h.base.name)).collect(),
+            Ok(hosts) => hosts
+                .into_iter()
+                .map(|h| (h.id, h.base.name.to_string()))
+                .collect(),
             // The identifiers below are the point of the lines; losing a host's name makes them
             // harder to read, not useless.
             Err(e) => {

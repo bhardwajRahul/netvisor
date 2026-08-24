@@ -294,7 +294,7 @@ mod discovery_tracked_stamping_tests {
 
     fn fresh_host() -> Host {
         Host::new(HostBase {
-            name: "test".to_string(),
+            name: crate::server::hosts::r#impl::name::HostName::Manual("test".to_string()),
             network_id: Uuid::new_v4(),
             ..Default::default()
         })

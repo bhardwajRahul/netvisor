@@ -35,7 +35,7 @@ use crate::{
         hosts::r#impl::{
             api::{DiscoveryHostRequest, HostResponse},
             base::{Host, HostBase},
-            name::{HostName, HostNameSource},
+            name::HostName,
             virtualization::HostVirtualization,
         },
         interfaces::r#impl::base::{Interface, InterfaceDataComplete},
@@ -305,9 +305,9 @@ impl HostData {
     /// detected service, and loses to a name a controller or a person supplied.
     pub fn with_hostname_fallback(&mut self, hostname: String) -> &mut Self {
         if self.host.base.hostname.is_none() {
-            if let Some(candidate) = HostName::from_hostname(hostname.clone()) {
-                self.host.base.apply_name(candidate);
-            }
+            self.host
+                .base
+                .apply_name(HostName::Hostname(hostname.clone()));
             self.host.base.hostname = Some(hostname);
         }
         self
@@ -1169,8 +1169,7 @@ impl DiscoveryOps {
         let gateway_ips = session.gateway_ips.clone();
 
         let mut host = Host::new(HostBase {
-            name: "Unknown Device".to_string(),
-            name_source: HostNameSource::default(),
+            name: HostName::default(),
             hostname: hostname.clone(),
             tags: Vec::new(),
             network_id,
@@ -1208,10 +1207,10 @@ impl DiscoveryOps {
         // human-assigned name outranks all of them and applies later, during `execute()`.
         let ip_name = HostName::from_ip(ip_address.base.ip_address);
         let candidate = match (hostname, best_service_name, host_naming_fallback) {
-            (Some(hostname), _, _) => HostName::from_hostname(hostname).unwrap_or(ip_name),
+            (Some(hostname), _, _) => HostName::Hostname(hostname),
             (None, _, HostNamingFallback::Ip) => ip_name,
             (None, Some(service), HostNamingFallback::BestService) => {
-                HostName::from_service(service).unwrap_or(ip_name)
+                HostName::DetectedService(service)
             }
             (None, None, HostNamingFallback::BestService) => ip_name,
         };

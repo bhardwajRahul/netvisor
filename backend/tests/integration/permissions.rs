@@ -87,7 +87,7 @@ async fn test_cannot_read_host_on_other_network(
 
     // Create a host directly in the database on the other network
     let host = Host::new(HostBase {
-        name: "Secret Host".to_string(),
+        name: scanopy::server::hosts::r#impl::name::HostName::Manual("Secret Host".to_string()),
         network_id: other_network_id,
         source: EntitySource::System,
         ..Default::default()

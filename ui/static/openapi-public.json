@@ -20505,167 +20505,181 @@
         }
       },
       "HostBase": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/HostName",
+            "description": "The host's name, together with the rung of the naming ladder that produced it.\n\nSerialises as the two flat keys `name` and `name_source`, so the wire format is a bare\nstring exactly as it has always been. Assign only through [`HostBase::apply_name`]."
+          },
+          {
+            "type": "object",
+            "required": [
+              "network_id",
+              "hostname",
+              "description",
+              "source",
+              "virtualization_metadata",
+              "virtualization_service_id",
+              "hidden",
+              "tags",
+              "credential_assignments"
+            ],
+            "properties": {
+              "chassis_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "LLDP lldpLocChassisId - globally unique device identifier for deduplication"
+              },
+              "credential_assignments": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CredentialAssignment"
+                },
+                "description": "Credential assignments for this host (hydrated from junction table)."
+              },
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Free-text notes about the host."
+              },
+              "hidden": {
+                "type": "boolean",
+                "description": "Whether the host is hidden from topology views."
+              },
+              "hostname": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Hostname as resolved or reported by the host."
+              },
+              "management_url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uri",
+                "description": "URL for device management interface (manual or discovered)"
+              },
+              "manufacturer": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalMfgName - hardware manufacturer"
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalModelName - hardware model"
+              },
+              "network_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The network this entity belongs to."
+              },
+              "serial_number": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalSerialNum - hardware serial number"
+              },
+              "source": {
+                "$ref": "#/components/schemas/EntitySource",
+                "description": "How this host came to be known — discovered, imported, or created by hand."
+              },
+              "sys_contact": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysContact.0 - admin contact info"
+              },
+              "sys_descr": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysDescr.0 - full system description"
+              },
+              "sys_location": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysLocation.0 - physical location"
+              },
+              "sys_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysName.0 - administratively-assigned hostname"
+              },
+              "sys_object_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysObjectID.0 - vendor OID for device identification"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "description": "Tags assigned to this entity."
+              },
+              "virtualization_metadata": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/HostVirtualization",
+                    "description": "How the host is virtualized, when it is a VM or container guest."
+                  }
+                ]
+              },
+              "virtualization_service_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "The service doing the virtualizing — the hypervisor this VM runs on.\n\nIts own column with a foreign key rather than a field inside\n[`HostVirtualization`]: a reference that no longer resolves now fails the write instead of\nsurviving as a value nothing matches, and `ON DELETE SET NULL` clears it when the\nhypervisor service goes away (GH #650)."
+              }
+            }
+          }
+        ],
+        "description": "Base data for a Host entity (stored in database).\nChild entities (ip_addresses, ports, services) are stored in their own tables\nand queried by `host_id`. They are NOT stored on the host."
+      },
+      "HostName": {
         "type": "object",
-        "description": "Base data for a Host entity (stored in database).\nChild entities (ip_addresses, ports, services) are stored in their own tables\nand queried by `host_id`. They are NOT stored on the host.",
         "required": [
-          "name",
-          "network_id",
-          "hostname",
-          "description",
-          "source",
-          "virtualization_metadata",
-          "virtualization_service_id",
-          "hidden",
-          "tags",
-          "credential_assignments"
+          "name"
         ],
         "properties": {
-          "chassis_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "LLDP lldpLocChassisId - globally unique device identifier for deduplication"
-          },
-          "credential_assignments": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CredentialAssignment"
-            },
-            "description": "Credential assignments for this host (hydrated from junction table)."
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Free-text notes about the host."
-          },
-          "hidden": {
-            "type": "boolean",
-            "description": "Whether the host is hidden from topology views."
-          },
-          "hostname": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Hostname as resolved or reported by the host."
-          },
-          "management_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uri",
-            "description": "URL for device management interface (manual or discovered)"
-          },
-          "manufacturer": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "ENTITY-MIB entPhysicalMfgName - hardware manufacturer"
-          },
-          "model": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "ENTITY-MIB entPhysicalModelName - hardware model"
-          },
           "name": {
             "type": "string",
-            "description": "Human-facing name for the host.\n\nAlways the best name known. Which rung of the naming ladder it came from is recorded\nseparately in `name_source`, and only `apply_name` may write either."
+            "description": "Human-facing name for the host."
           },
           "name_source": {
-            "$ref": "#/components/schemas/HostNameSource",
-            "description": "Which rung of the naming ladder produced `name`: an address, a detected service, a\nhostname, an integration's device name, or a person typing it. Read-only over the API."
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The network this entity belongs to."
-          },
-          "serial_number": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "ENTITY-MIB entPhysicalSerialNum - hardware serial number"
-          },
-          "source": {
-            "$ref": "#/components/schemas/EntitySource",
-            "description": "How this host came to be known — discovered, imported, or created by hand."
-          },
-          "sys_contact": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP sysContact.0 - admin contact info"
-          },
-          "sys_descr": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP sysDescr.0 - full system description"
-          },
-          "sys_location": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP sysLocation.0 - physical location"
-          },
-          "sys_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP sysName.0 - administratively-assigned hostname"
-          },
-          "sys_object_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP sysObjectID.0 - vendor OID for device identification"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Tags assigned to this entity."
-          },
-          "virtualization_metadata": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/HostVirtualization",
-                "description": "How the host is virtualized, when it is a VM or container guest."
-              }
-            ]
-          },
-          "virtualization_service_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "The service doing the virtualizing — the hypervisor this VM runs on.\n\nIts own column with a foreign key rather than a field inside\n[`HostVirtualization`]: a reference that no longer resolves now fails the write instead of\nsurviving as a value nothing matches, and `ON DELETE SET NULL` clears it when the\nhypervisor service goes away (GH #650)."
+            "$ref": "#/components/schemas/HostNameSource"
           }
         }
       },
       "HostNameSource": {
         "type": "string",
-        "description": "Which rung of the naming ladder produced a host's display name, weakest first.\n\nDeclaration order is the precedence order — `Ord` is derived from it, and that derive is the\nwhole enforcement mechanism: a rung inserted at its rank propagates to every comparison, so\nthere is no per-call-site precedence to keep in sync.\n\nPersisted as bare text (`Manual`, `Integration`, …) via `Display`/`FromStr`.",
         "enum": [
+          "Unnamed",
           "Unspecified",
           "Ip",
           "DetectedService",

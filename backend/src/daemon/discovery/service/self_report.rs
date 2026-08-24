@@ -14,7 +14,7 @@ use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::utils::base::DaemonUtils;
 use crate::server::bindings::r#impl::base::Binding;
 use crate::server::hosts::r#impl::base::{Host, HostBase};
-use crate::server::hosts::r#impl::name::{HostName, HostNameSource};
+use crate::server::hosts::r#impl::name::HostName;
 use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 use crate::server::ip_addresses::r#impl::base::{ALL_IP_ADDRESSES_IP, IPAddress};
 use crate::server::ports::r#impl::base::Port;
@@ -97,8 +97,7 @@ impl DiscoveryRunner {
         let hostname = utils.get_own_hostname();
 
         let mut host_base = HostBase {
-            name: String::new(),
-            name_source: HostNameSource::default(),
+            name: HostName::default(),
             hostname: hostname.clone(),
             network_id,
             description: Some("Scanopy daemon".to_string()),
@@ -123,7 +122,7 @@ impl DiscoveryRunner {
         // The daemon's own host: its hostname if the OS reports one, otherwise its address.
         host_base.apply_name(
             hostname
-                .and_then(HostName::from_hostname)
+                .map(HostName::Hostname)
                 .unwrap_or_else(|| HostName::from_ip(local_ip)),
         );
 

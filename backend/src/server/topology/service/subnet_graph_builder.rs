@@ -110,7 +110,9 @@ impl SubnetGraphBuilder {
         subnet_type: &SubnetType,
     ) -> Option<String> {
         let host_interfaces = ctx.get_ip_addresses_for_host(host.id);
-        let host_has_name = host.base.name != "Unknown Device" && !host.base.name.is_empty();
+        // The "Unknown Device" seed this used to also test for is gone: `build_host_from_scan`
+        // now starts a host at `HostName::Unnamed` and every branch applies a real rung.
+        let host_has_name = !host.base.name.is_blank();
 
         // P1: container-bridge interfaces — always show "<Runtime> @", never VM header
         if let Some(runtime) = subnet_type.container_runtime_label() {
@@ -134,7 +136,7 @@ impl SubnetGraphBuilder {
         // P2: Virtualized hosts — show the VM's own hostname
         // (VM status is indicated via colored text in the frontend)
         if ctx.get_host_is_virtualized_by(&host.id).is_some() && host_has_name {
-            return Some(host.base.name.clone());
+            return Some(host.base.name.to_string());
         }
 
         // P3: Show host if it differs from the first service name + isn't shown via interface edges
@@ -159,7 +161,7 @@ impl SubnetGraphBuilder {
             && host_has_name
             && ip_addresses_with_node.len() < 2
         {
-            return Some(host.base.name.clone());
+            return Some(host.base.name.to_string());
         }
 
         None
@@ -465,6 +467,7 @@ impl SubnetGraphBuilder {
 mod tests {
     use super::*;
     use crate::server::hosts::r#impl::base::{Host, HostBase};
+    use crate::server::hosts::r#impl::name::HostName;
     use crate::server::services::r#impl::base::{Service, ServiceBase};
     use crate::server::services::r#impl::categories::ServiceCategory;
     use crate::server::services::r#impl::definitions::ServiceDefinition;
@@ -501,7 +504,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: name.to_string(),
+                name: HostName::Manual(name.to_string()),
                 tags,
                 ..Default::default()
             },

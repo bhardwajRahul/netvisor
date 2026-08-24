@@ -127,7 +127,7 @@ impl HostService {
         // means "a person typed this into Scanopy", which nothing running on a daemon can know;
         // clamping here is what makes that unforgeable over the wire, rather than trusting every
         // integration author not to claim it.
-        let claimed = host.base.name_source;
+        let claimed = host.base.name.source();
         if host.base.clamp_name_source(HostNameSource::Integration) {
             tracing::warn!(
                 host_name = %host.base.name,

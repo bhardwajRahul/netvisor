@@ -54,7 +54,7 @@ macro_rules! harness {
 
 /// One controller-reported device, as the daemon submits it: an address on a known subnet and a
 /// name carrying the rung it came from.
-fn submission(network_id: Uuid, name: Option<HostName>, hostname: Option<&str>) -> Submission {
+fn submission(network_id: Uuid, name: HostName, hostname: Option<&str>) -> Submission {
     submission_at(network_id, DEVICE_IP, name, hostname)
 }
 
@@ -62,7 +62,7 @@ fn submission(network_id: Uuid, name: Option<HostName>, hostname: Option<&str>) 
 fn submission_at(
     network_id: Uuid,
     device_ip: IpAddr,
-    name: Option<HostName>,
+    name: HostName,
     hostname: Option<&str>,
 ) -> Submission {
     let mut host = Host::new(HostBase {
@@ -71,9 +71,7 @@ fn submission_at(
         hostname: hostname.map(str::to_string),
         ..Default::default()
     });
-    if let Some(name) = name {
-        host.base.apply_name(name);
-    }
+    host.base.apply_name(name);
 
     let subnet = Subnet::new(SubnetBase {
         name: "lan".to_string(),
@@ -165,14 +163,18 @@ async fn a_controller_name_replaces_an_address_derived_one() {
 
     let scanned = submit(
         &services,
-        submission(network_id, Some(HostName::from_ip(DEVICE_IP)), None),
+        submission(network_id, HostName::from_ip(DEVICE_IP), None),
     )
     .await;
     assert_eq!(scanned.name, DEVICE_IP.to_string());
 
     let synced = submit(
         &services,
-        submission(network_id, HostName::from_integration("Core Switch"), None),
+        submission(
+            network_id,
+            HostName::Integration("Core Switch".to_string()),
+            None,
+        ),
     )
     .await;
 
@@ -191,7 +193,7 @@ async fn a_controller_rename_propagates_on_the_next_sync() {
         &services,
         submission(
             network_id,
-            HostName::from_integration("Floor 1 Switch"),
+            HostName::Integration("Floor 1 Switch".to_string()),
             None,
         ),
     )
@@ -201,7 +203,7 @@ async fn a_controller_rename_propagates_on_the_next_sync() {
         &services,
         submission(
             network_id,
-            HostName::from_integration("Floor 2 Switch"),
+            HostName::Integration("Floor 2 Switch".to_string()),
             None,
         ),
     )
@@ -217,7 +219,11 @@ async fn a_hand_typed_name_survives_repeated_discovery() {
 
     let discovered = submit(
         &services,
-        submission(network_id, HostName::from_integration("Core Switch"), None),
+        submission(
+            network_id,
+            HostName::Integration("Core Switch".to_string()),
+            None,
+        ),
     )
     .await;
 
@@ -228,7 +234,7 @@ async fn a_hand_typed_name_survives_repeated_discovery() {
         &services,
         submission(
             network_id,
-            HostName::from_integration("Core Switch Renamed Upstream"),
+            HostName::Integration("Core Switch Renamed Upstream".to_string()),
             Some("switch.lan"),
         ),
     )
@@ -249,7 +255,7 @@ async fn saving_an_unrelated_field_does_not_freeze_a_derived_name() {
 
     let discovered = submit(
         &services,
-        submission(network_id, Some(HostName::from_ip(DEVICE_IP)), None),
+        submission(network_id, HostName::from_ip(DEVICE_IP), None),
     )
     .await;
 
@@ -265,7 +271,7 @@ async fn saving_an_unrelated_field_does_not_freeze_a_derived_name() {
         &services,
         submission(
             network_id,
-            HostName::from_integration("Meeting Room AP"),
+            HostName::Integration("Meeting Room AP".to_string()),
             None,
         ),
     )
@@ -279,15 +285,23 @@ async fn saving_an_unrelated_field_does_not_freeze_a_derived_name() {
 async fn a_daemon_cannot_claim_a_name_was_typed_by_a_person() {
     harness!(services, network_id, _container);
 
-    let mut forged = submission(network_id, HostName::from_integration("Impostor"), None);
-    forged.host.base.name_source = HostNameSource::Manual;
+    let mut forged = submission(
+        network_id,
+        HostName::Integration("Impostor".to_string()),
+        None,
+    );
+    forged.host.base.name = HostName::Manual("Impostor".to_string());
 
     let created = submit(&services, forged).await;
     assert_eq!(created.name_source, HostNameSource::Integration);
 
     let resynced = submit(
         &services,
-        submission(network_id, HostName::from_integration("Real Name"), None),
+        submission(
+            network_id,
+            HostName::Integration("Real Name".to_string()),
+            None,
+        ),
     )
     .await;
     assert_eq!(
@@ -306,7 +320,7 @@ async fn reverse_dns_does_not_displace_a_controller_name() {
         &services,
         submission(
             network_id,
-            HostName::from_integration("Meeting Room AP"),
+            HostName::Integration("Meeting Room AP".to_string()),
             None,
         ),
     )
@@ -316,7 +330,7 @@ async fn reverse_dns_does_not_displace_a_controller_name() {
         &services,
         submission(
             network_id,
-            HostName::from_hostname("unifi-a1b2c3.lan"),
+            HostName::Hostname("unifi-a1b2c3.lan".to_string()),
             Some("unifi-a1b2c3.lan"),
         ),
     )
@@ -330,7 +344,7 @@ async fn reverse_dns_does_not_displace_a_controller_name() {
     );
 }
 
-/// The pre-0.18 daemon case: no rank on the wire. Its name must not displace anything, but the
+/// The pre-0.17.12 daemon case: no rank on the wire. Its name must not displace anything, but the
 /// hostname it reports must still upgrade an address-derived name, exactly as it did before.
 #[tokio::test]
 async fn a_daemon_that_sends_no_rank_still_upgrades_an_address_to_its_hostname() {
@@ -338,13 +352,12 @@ async fn a_daemon_that_sends_no_rank_still_upgrades_an_address_to_its_hostname()
 
     submit(
         &services,
-        submission(network_id, Some(HostName::from_ip(DEVICE_IP)), None),
+        submission(network_id, HostName::from_ip(DEVICE_IP), None),
     )
     .await;
 
-    let mut legacy = submission(network_id, None, Some("nas.lan"));
-    legacy.host.base.name = "nas.lan".to_string();
-    legacy.host.base.name_source = HostNameSource::Unspecified;
+    let mut legacy = submission(network_id, HostName::Unnamed, Some("nas.lan"));
+    legacy.host.base.name = HostName::Unspecified("nas.lan".to_string());
 
     let upgraded = submit(&services, legacy).await;
     assert_eq!(upgraded.name, "nas.lan");
@@ -365,12 +378,7 @@ async fn an_address_derived_name_follows_the_host_to_a_new_address() {
 
     let first = submit(
         &services,
-        submission_at(
-            network_id,
-            DEVICE_IP,
-            Some(HostName::from_ip(DEVICE_IP)),
-            None,
-        ),
+        submission_at(network_id, DEVICE_IP, HostName::from_ip(DEVICE_IP), None),
     )
     .await;
     assert_eq!(first.name, "192.168.1.20");
@@ -378,12 +386,7 @@ async fn an_address_derived_name_follows_the_host_to_a_new_address() {
     let moved_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 21));
     let moved = submit(
         &services,
-        submission_at(
-            network_id,
-            moved_ip,
-            Some(HostName::from_ip(moved_ip)),
-            None,
-        ),
+        submission_at(network_id, moved_ip, HostName::from_ip(moved_ip), None),
     )
     .await;
 

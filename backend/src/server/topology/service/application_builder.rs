@@ -357,6 +357,7 @@ impl ViewBuilder for ApplicationBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::hosts::r#impl::name::HostName;
     use crate::server::{
         bindings::r#impl::base::{Binding, BindingBase, BindingType},
         dependencies::r#impl::base::{Dependency, DependencyBase, DependencyMembers},
@@ -741,7 +742,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: "host-a".to_string(),
+                name: HostName::Manual("host-a".to_string()),
                 tags: vec![app_tag_a_id],
                 ..Default::default()
             },
@@ -752,7 +753,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: "host-b".to_string(),
+                name: HostName::Manual("host-b".to_string()),
                 tags: vec![app_tag_b_id],
                 ..Default::default()
             },
@@ -893,7 +894,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: "host-a".to_string(),
+                name: HostName::Manual("host-a".to_string()),
                 tags: vec![app_tag_a_id, monitoring_tag_id],
                 ..Default::default()
             },
@@ -904,7 +905,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: "host-b".to_string(),
+                name: HostName::Manual("host-b".to_string()),
                 tags: vec![app_tag_b_id, monitoring_tag_id],
                 ..Default::default()
             },

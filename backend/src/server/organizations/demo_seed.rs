@@ -336,7 +336,7 @@ pub(crate) async fn insert_demo_data(
 
         let host_id_to_name: HashMap<Uuid, String> = all_hosts
             .iter()
-            .map(|h| (h.id, h.base.name.clone()))
+            .map(|h| (h.id, h.base.name.to_string()))
             .collect();
 
         let mut if_entry_lookup: HashMap<(String, i32), Uuid> = HashMap::new();

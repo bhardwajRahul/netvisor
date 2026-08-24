@@ -391,6 +391,7 @@ mod tests {
     use crate::server::{
         hosts::r#impl::{
             base::{Host, HostBase},
+            name::HostName,
             name::HostNameSource,
         },
         shared::types::entities::EntitySource,
@@ -403,8 +404,7 @@ mod tests {
         // Push a host
         let host = DiscoveryHostRequest {
             host: Host::new(HostBase {
-                name: "test-host".to_string(),
-                name_source: HostNameSource::default(),
+                name: HostName::Manual("test-host".to_string()),
                 hostname: None,
                 tags: vec![],
                 network_id: Uuid::new_v4(),
@@ -459,8 +459,7 @@ mod tests {
                 tokio::spawn(async move {
                     let host = DiscoveryHostRequest {
                         host: Host::new(HostBase {
-                            name: format!("host-{}", i),
-                            name_source: HostNameSource::default(),
+                            name: HostName::Manual(format!("host-{}", i)),
                             hostname: None,
                             tags: vec![],
                             network_id: Uuid::new_v4(),
@@ -814,8 +813,7 @@ mod tests {
         // First push: host with 2 ip_addresses
         let host1 = DiscoveryHostRequest {
             host: Host::new(HostBase {
-                name: "daemon-host".to_string(),
-                name_source: HostNameSource::default(),
+                name: HostName::Manual("daemon-host".to_string()),
                 hostname: None,
                 tags: vec![],
                 network_id,
@@ -909,8 +907,7 @@ mod tests {
         // Second push: same host_id with 1 different interface and 1 different service
         let host2 = DiscoveryHostRequest {
             host: Host::new(HostBase {
-                name: "daemon-host".to_string(),
-                name_source: HostNameSource::default(),
+                name: HostName::Manual("daemon-host".to_string()),
                 hostname: None,
                 tags: vec![],
                 network_id,
@@ -1109,8 +1106,7 @@ mod tests {
 
         let host_req = DiscoveryHostRequest {
             host: Host::new(HostBase {
-                name: "test-host".to_string(),
-                name_source: HostNameSource::default(),
+                name: HostName::Manual("test-host".to_string()),
                 hostname: None,
                 tags: vec![],
                 network_id,

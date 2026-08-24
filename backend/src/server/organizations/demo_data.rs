@@ -28,7 +28,7 @@ use crate::server::{
     },
     hosts::r#impl::{
         base::{Host, HostBase},
-        name::HostNameSource,
+        name::HostName,
         virtualization::{HostVirtualization, ProxmoxVirtualization},
     },
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
@@ -883,8 +883,7 @@ fn create_host(
         created_at: now,
         updated_at: now,
         base: HostBase {
-            name: name.to_string(),
-            name_source: HostNameSource::Manual,
+            name: HostName::Manual(name.to_string()),
             network_id: network.id,
             hostname: hostname.map(String::from),
             description: description.map(String::from),
@@ -928,7 +927,7 @@ fn with_snmp(
     host.base.sys_contact = sys_contact.map(String::from);
     host.base.chassis_id = chassis_id.map(String::from);
     // SNMP sysName conventionally mirrors the device hostname.
-    host.base.sys_name = Some(host.base.name.clone());
+    host.base.sys_name = Some(host.base.name.to_string());
     host.base.manufacturer = manufacturer.map(str::to_string);
     host.base.model = model.map(str::to_string);
     host.base.serial_number = serial_number.map(str::to_string);
@@ -1862,8 +1861,7 @@ fn generate_hosts_and_services(
             created_at: now,
             updated_at: now,
             base: HostBase {
-                name: "docker-prod01".to_string(),
-                name_source: HostNameSource::Manual,
+                name: HostName::Manual("docker-prod01".to_string()),
                 network_id: hq.id,
                 hostname: Some("docker-prod01.acme.local".to_string()),
                 description: Some("Production Docker host".to_string()),
@@ -2984,8 +2982,7 @@ fn generate_hosts_and_services(
             created_at: now,
             updated_at: now,
             base: HostBase {
-                name: "dc-docker01".to_string(),
-                name_source: HostNameSource::Manual,
+                name: HostName::Manual("dc-docker01".to_string()),
                 network_id: dc.id,
                 hostname: Some("docker01.dc.acme.io".to_string()),
                 description: Some("Data center Docker host".to_string()),

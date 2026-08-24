@@ -7,7 +7,8 @@
 -- shape, so a name derived from a detected service was indistinguishable from a hand-typed one
 -- and froze forever, and a name a controller holds ("Core Switch") had no rung to occupy at all.
 -- `name_source` records which rung of the ladder produced `name`, and the merge compares ranks
--- instead of guessing from the string.
+-- instead of guessing from the string. It is the discriminant of the `HostName` enum, so the
+-- values here are that enum's variant names.
 --
 -- Additive and prod-safe: ADD COLUMN with a constant default is metadata-only (no rewrite).
 -- `Manual` is the default on purpose — it is the top of the ladder, so any row the backfill below
@@ -43,7 +44,7 @@ BEGIN
         UPDATE hosts h
            SET name_source = CASE
                 -- No name at all: the state the UniFi-imported devices in #680 are in.
-                WHEN h.name = '' THEN 'Unspecified'
+                WHEN h.name = '' THEN 'Unnamed'
                 -- An IPv4 or IPv6 literal, i.e. the bottom rung of the ladder.
                 WHEN h.name ~ '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' THEN 'Ip'
                 WHEN h.name ~ '^[0-9A-Fa-f:]+$' AND h.name LIKE '%:%' THEN 'Ip'
