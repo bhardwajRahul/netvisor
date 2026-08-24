@@ -1,6 +1,6 @@
 # SNMP Test Environment
 
-21 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668 and repeats one MAC across every port; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short; `.246`/`.247` cover #674 and the Westermo local-port report; `.248`/`.249` are the two failure shapes the partial-failure reporting exists for; `.250` is the Dell OS10 switch from #685, whose breakout-port names and 568+ local-port namespace decide which interface a neighbour lands on.
+22 simulated network devices running on a Proxmox VM, each on port 161. Most speak SNMPv2c; `.236`/`.237` are version-locked to exercise the SNMPv1 and SNMPv3 paths (#557); `.238`/`.239` are Extreme switches that exercise the LLDP local-port remap (Issue 2, July 2026); `.240`–`.242` reproduce the L2-topology failures from #664, #649 and #614; `.243` serves a deliberately malformed neighbour record; `.244` serves the port-id shapes from #668 and repeats one MAC across every port; `.245` serves that report's last device, whose neighbour table is indexed one sub-id short; `.246`/`.247` cover #674 and the Westermo local-port report; `.248`/`.249` are the two failure shapes the partial-failure reporting exists for; `.250` is the Dell OS10 switch from #685, whose breakout-port names and 568+ local-port namespace decide which interface a neighbour lands on; `.251` is the Cisco from #686 and the only device here that serves different data per SNMPv3 context.
 
 | IP | Host | Version | Credential | Device |
 |---|---|---|---|---|
@@ -25,6 +25,7 @@
 | 192.168.7.248 | switch-mute-01 | v2c | community `netdefault` | Answers the credential, serves nothing (see below) |
 | 192.168.7.249 | switch-stuck-01 | v2c | community `netdefault` | ARP table never advances (see below) |
 | 192.168.7.250 | switch-dell-01 | v2c | community `netdefault` | Dell PowerSwitch S4112T-ON, OS10 breakout ports (see below) |
+| 192.168.7.251 | switch-cisco-01 | **v3 only** | user `scanopyctx`, context `vlan-20` | Cisco Catalyst 3850, per-VLAN bridge context (see below) |
 
 **LLDP local-port remap (`.238`/`.239`).** ExtremeXOS reports its `lldpRemTable` local-port index as an `lldpLocPortNum` (1..N) that is a **separate namespace from `ifIndex`** (switch-exos-01 uses ifIndex 1001+, ifName `1:N`), so neighbours only resolve if the daemon walks `lldpLocPortTable` (`1.0.8802.1.1.2.1.3.7`) and suffix-matches `lldpLocPortId` against `ifName`. Before the Issue 2 fix, switch-exos-01 yields **zero** LLDP neighbours. Extreme VOSS (switch-voss-01) reports local-port == ifIndex with `lldpLocPortId` matching `ifName` exactly, so it stays correct on both old and new code — the regression guard for the fix.
 
@@ -220,6 +221,29 @@ Three of the four neighbours are end hosts advertising chassis subtype 7 (locall
 
 > **The walk falling short is not reproducible here**, and it is the other half of #685: the neighbour walk was being cut short by a timeout or an answer with no varbinds on it, which marks the whole neighbour set non-authoritative and discards it. Staging that needs an agent that fails to answer one request and then answers the next, and `pass` answers single-threaded — a handler that stalls past the daemon's 5s timeout blocks every later request behind it, so the late replies arrive one request out of step for the rest of the walk and the fixture would fail whether or not the fix is in. Covered by unit test instead, in `queries.rs::walk_tests`, the way `WalkCutShort` already is.
 
+**Per-VLAN bridge context (`.251`).** A Catalyst 3850 running IOS-XE, from #686, where a switch with a full MAC-address table reported exactly one entry however it was queried. IOS-XE partitions its forwarding database per VLAN and keeps almost nothing in the default context, so a scan that cannot name a context reads the wrong table — and is told nothing is wrong, because a walk that ends cleanly on a one-row table is a complete walk.
+
+This is the only device here whose answer depends on **which context you ask in**:
+
+```bash
+# default context — one entry, the reporter's symptom
+snmpwalk -v3 -l authPriv -u scanopyctx -a SHA-256 -A ctxauthpass12345 -x AES -X ctxprivpass12345 \
+  192.168.7.251 1.3.6.1.2.1.17.4.3.1.1
+# vlan-20 context — nine
+snmpwalk -v3 -l authPriv -u scanopyctx -a SHA-256 -A ctxauthpass12345 -x AES -X ctxprivpass12345 \
+  -n vlan-20 192.168.7.251 1.3.6.1.2.1.17.4.3.1.1
+# the same nine, through Cisco's v2c community indexing
+snmpwalk -v2c -c 'netdefault@20' 192.168.7.251 1.3.6.1.2.1.17.4.3.1.1
+```
+
+`make snmp-verify` runs all three and compares them. The comparison is the check, not any one count: an agent that ignores `-n` answers both from the same table, which is the failure being guarded against, and asserting only "the context walk returns nine" would pass on one that ignores contexts entirely and happens to hold nine rows.
+
+**It is two agents.** `pass` takes no context argument — it registers into the default context and nothing else — so a handler cannot be scoped to a context directly. `proxy -Cn vlan-20` in front of a second snmpd on `127.0.0.1:16151` is the only way stock net-snmp serves different data per context. That back end has no macvlan, no entry in `HOSTS` and no place in `SYSNAMES`; its unit is written by hand and ordered `Before=` the front agent, since a proxy to a dead port answers nothing while the front agent still looks healthy. A context walk returning **0** rather than 9 is that failure — check `systemctl status snmpd-switch-cisco-01-vlan20` first.
+
+**It is on its own USM user (`scanopyctx`), and that is load-bearing.** Every seeded credential is Broadcast-scoped to every network, and only one SNMP credential per host ever executes — the last mapping that authenticates wins. If both the context-bearing credential and the plain `scanopyv3` one answered here, a scan would report nine FDB entries or one depending on mapping order. For the same reason it serves no seeded community: `netdefault@20` is reachable from the command line and is deliberately not a credential, so no v2c mapping can win against this device.
+
+**ifTable, ifXTable and the system MIB stay in the default context**, as they do on the real switch. That is why the daemon scopes only its bridge and VLAN walks to the credential's context rather than the whole session — a context-wide session would find no interfaces at all here, which is the regression that shape would have introduced.
+
 ## Self-reported counts — what a device claims vs what it serves
 
 The daemon compares a device's own published figures against what a collection actually read, so a
@@ -236,6 +260,17 @@ finish"*. Three of those figures come from this lab:
 them.** A count written by hand goes stale the moment someone adds a port, and a stale count turns
 every scan of that device into a warning about a device that is fine. Editing an ifTable is enough;
 the scalar follows.
+
+`dot1dBaseNumPorts` is keyed on what a file *serves* rather than on its name, so switch-cisco-01
+gets it in both of its contexts — a device whose two contexts disagreed about how many ports it has
+would be a fixture bug nobody could see. Adding a `pass` for a new bridge file is enough.
+
+**Section 5c then refuses to deploy an incoherent set.** A data file no config serves, a config
+naming a file nobody wrote, a name in `SYSNAMES` with no config, or an ifTable served without its
+`ifNumber` registration — each provisions quietly and then answers from net-snmp's built-in MIBs,
+which reads as a device behaving oddly rather than as a lab that was never assembled. The last of
+those is not hypothetical: it is what an ifNumber-less device does to the count check, reporting a
+contradiction on every scan for a fault it does not have.
 
 `ifNumber` is registered with `pass -p 1` because `mibII/interfaces` owns the scalar and would
 otherwise answer it from the VM's own kernel state — the container's interface count, against a
@@ -255,14 +290,20 @@ interfaces: a device that misreports itself is still a device to scan.
 
 ## Bridge forwarding tables (`dot1dTpFdb` / `dot1qTpFdb`) — #686
 
-Three devices serve a forwarding database. Before August 2026 none did, which is why **GH #686 — a
+Four devices serve a forwarding database. Before August 2026 none did, which is why **GH #686 — a
 bridge-FDB defect — had no fixture that could reproduce it**.
 
 | Device | Rows | What it covers |
 |---|---:|---|
 | switch-core-01 (`.230`) | 8 | mixed statuses, plus a `dot1qTpFdb` overlay on the same MACs |
-| switch-dell-01 (`.250`) | 9 | the reported shape: nine rows to a raw walk, one to a scan |
+| switch-dell-01 (`.250`) | 9 | a full table on a device whose ifIndexes are OS10 breakout lanes |
 | legacy-switch-01 (`.236`) | 2 | the same join over **getnext**, which v1 forces |
+| switch-cisco-01 (`.251`) | 1 / 9 | the reported device itself — see *Per-VLAN bridge context* above |
+
+`.251` is the fixture #686 is actually about, and the section above is the one to read for it: its
+count depends on which SNMP context you ask in, which is the half of the report the other three
+cannot express. They cover the read — the three-column join, the status filter, the encoding, the
+getnext path — on devices that answer the same way however you ask.
 
 Three properties decide whether these are worth anything:
 
@@ -277,11 +318,12 @@ Three properties decide whether these are worth anything:
   20. The daemon keys both on the MAC alone so one address learned in several VLANs collapses to one
   entry; if that collapse broke, the count would double rather than the table appearing empty.
 
-> **What this does not cover.** #686 reports `count=1` from three credentials including an SNMPv3
-> one naming an explicit VLAN context, and getting the same answer from two different VLAN contexts
-> is itself evidence that **context targeting may not be taking effect** — an axis this lab does not
-> model at all. These fixtures exercise the walk and the join. Do not read a passing scan here as
-> the issue being closed.
+> **What these three cover, and what `.251` covers.** A passing scan on switch-core-01,
+> switch-dell-01 or legacy-switch-01 says the daemon reads a forwarding table correctly: the join
+> holds across three columns, the status filter drops self(4), binary MACs survive, and the getnext
+> path works. It says nothing about #686, whose switch returned a *complete, correct, one-row*
+> table because the scan was asking in the wrong context. That half is `.251`'s, and the check
+> there is the comparison between contexts rather than any single count.
 
 ## Turning a customer walk into a fixture
 
@@ -298,6 +340,17 @@ snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.2        # ifNumber + ifTable
 snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.31.1.1   # ifXTable
 snmpwalk -On -v2c -c <community> <ip> 1.0.8802.1.1.2       # LLDP, local and remote
 snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.17       # bridge: ports, FDB, VLANs
+```
+
+**On anything that partitions its bridge tables per VLAN — any Catalyst, and most switches that
+index a community — ask for `1.3.6.1.2.1.17` a second time naming a context**, and record both. A
+single bridge walk cannot tell a device with an empty table apart from one that keeps its table
+somewhere the walk did not look, and that ambiguity is the whole of #686:
+
+```bash
+snmpwalk -On -v3 -l authPriv -u <user> -a SHA -A <pass> -x AES -X <pass> \
+  -n <context> <ip> 1.3.6.1.2.1.17
+snmpwalk -On -v2c -c '<community>@<vlan>' <ip> 1.3.6.1.2.1.17    # the v2c form of the same thing
 ```
 
 Then, transcribing into `lxc/setup.sh`:
@@ -324,7 +377,7 @@ Then, transcribing into `lxc/setup.sh`:
 
 A scan of this environment normally reports several incomplete SNMP walks. **That is the simulator, not the product under test.**
 
-`snmpd` forks the `pass` handler — a bash script that then forks awk — once per SNMP request. With 21 agents on one VM and ~17 column walks per host, a single scan is hundreds of concurrent forks, and under that load the agents answer some requests with the *wrong* OID: one belonging to a request the daemon made earlier.
+`snmpd` forks the `pass` handler — a bash script that then forks awk — once per SNMP request. With 22 agents on one VM and ~17 column walks per host, a single scan is hundreds of concurrent forks, and under that load the agents answer some requests with the *wrong* OID: one belonging to a request the daemon made earlier.
 
 Measured 2026-07-27, walking all 12 v2c devices from a single client:
 

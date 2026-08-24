@@ -1,22 +1,32 @@
 #!/bin/bash
 set -euo pipefail
 
-# SNMP Test Environment — manages 21 snmpd instances on a Proxmox LXC
-# Subnet: 192.168.4.0/22 (hosts at 192.168.7.230–250)
+# SNMP Test Environment — manages 22 snmpd instances on a Proxmox LXC
+# Subnet: 192.168.4.0/22 (hosts at 192.168.7.230–251)
 # Usage: tools/snmp/snmp-test-env.sh deploy|verify|status
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SNMPGET="${SNMPGET:-/opt/homebrew/opt/net-snmp/bin/snmpget}"
+SNMPWALK="${SNMPWALK:-/opt/homebrew/opt/net-snmp/bin/snmpwalk}"
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245 192.168.7.246 192.168.7.247 192.168.7.248 192.168.7.249 192.168.7.250)
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c)
-COMMUNITIES=(netdefault netdefault secret42 secret42 public netdefault legacyv1 - netdefault netdefault netdefault netdefault public netdefault netdefault netdefault netdefault netdefault netdefault netdefault netdefault)
-SYSNAMES=("switch-core-01" "switch-access-01" "router-gw-01" "firewall-01" "printer-lobby" "ap-wireless-01" "legacy-switch-01" "secure-switch-01" "switch-exos-01" "switch-voss-01" "switch-netgear-01" "switch-aruba-01" "switch" "switch-flaky-01" "switch-dlink-01" "switch-tplink-01" "switch-unsorted-01" "switch-macport-01" "switch-mute-01" "switch-stuck-01" "switch-dell-01")
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239 192.168.7.240 192.168.7.241 192.168.7.242 192.168.7.243 192.168.7.244 192.168.7.245 192.168.7.246 192.168.7.247 192.168.7.248 192.168.7.249 192.168.7.250 192.168.7.251)
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v2c v3)
+COMMUNITIES=(netdefault netdefault secret42 secret42 public netdefault legacyv1 - netdefault netdefault netdefault netdefault public netdefault netdefault netdefault netdefault netdefault netdefault netdefault netdefault -)
+SYSNAMES=("switch-core-01" "switch-access-01" "router-gw-01" "firewall-01" "printer-lobby" "ap-wireless-01" "legacy-switch-01" "secure-switch-01" "switch-exos-01" "switch-voss-01" "switch-netgear-01" "switch-aruba-01" "switch" "switch-flaky-01" "switch-dlink-01" "switch-tplink-01" "switch-unsorted-01" "switch-macport-01" "switch-mute-01" "switch-stuck-01" "switch-dell-01" "switch-cisco-01")
 
 # SNMPv3 USM credentials for secure-switch-01 (must match lxc/setup.sh).
 V3_USER="${V3_USER:-scanopyv3}"
 V3_AUTH_PASS="${V3_AUTH_PASS:-authpass12345}"
 V3_PRIV_PASS="${V3_PRIV_PASS:-privpass12345}"
+
+# switch-cisco-01 is on its own USM identity so that only one seeded credential can win against it
+# — see the comment beside V3_CTX_USER in lxc/setup.sh. Must match that file.
+V3_CTX_USER="${V3_CTX_USER:-scanopyctx}"
+V3_CTX_AUTH_PASS="${V3_CTX_AUTH_PASS:-ctxauthpass12345}"
+V3_CTX_PRIV_PASS="${V3_CTX_PRIV_PASS:-ctxprivpass12345}"
+
+# Per-host USM user, for the hosts whose version is v3. Empty means V3_USER.
+V3_USERS=("" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "$V3_CTX_USER")
 
 # Deploy target: the Proxmox VM that hosts the LXC agents, reached over SSH at
 # HOSTS[0] (its management IP doubles as switch-core-01's macvlan address). The
@@ -63,6 +73,43 @@ verify_guest_subnet_fixture() {
     return 1
 }
 
+# switch-cisco-01 serves a different bridge forwarding database in its `vlan-20` context than in
+# the default one — the GH #686 fixture, where a Catalyst's per-VLAN FDB was unreachable because
+# the credential's context name was never put on the wire.
+#
+# The check is the comparison, not either count on its own. A context-unaware agent answers both
+# requests from the same table and they come back equal, which is exactly the failure being
+# guarded against; asserting only "the vlan-20 walk returns nine" would pass on an agent that
+# ignores `-n` entirely and happens to hold nine rows. `proxy -Cn` is also the one directive here
+# that silently degrades: if the back-end agent is down the proxy answers nothing, the context walk
+# returns zero rows, and the front agent still looks perfectly healthy.
+#
+# Both v3 (context name) and v2c (Cisco's `community@vlan` indexing) reach the same back end, so
+# one device covers both halves of the report.
+verify_vlan_context_fixture() {
+    local host="${HOSTS[21]}" fdb=".1.3.6.1.2.1.17.4.3.1.1"
+
+    local v3_default v3_context v2c_context
+    v3_default=$("$SNMPWALK" -v3 -l authPriv -u "$V3_CTX_USER" -a SHA-256 -A "$V3_CTX_AUTH_PASS" \
+        -x AES -X "$V3_CTX_PRIV_PASS" -t 2 -r 1 "$host" "$fdb" 2>/dev/null | grep -c . || echo 0)
+    v3_context=$("$SNMPWALK" -v3 -l authPriv -u "$V3_CTX_USER" -a SHA-256 -A "$V3_CTX_AUTH_PASS" \
+        -x AES -X "$V3_CTX_PRIV_PASS" -n vlan-20 -t 2 -r 1 "$host" "$fdb" 2>/dev/null | grep -c . || echo 0)
+    v2c_context=$("$SNMPWALK" -v2c -c "netdefault@20" -t 2 -r 1 "$host" "$fdb" 2>/dev/null | grep -c . || echo 0)
+
+    if [ "$v3_default" = "1" ] && [ "$v3_context" = "9" ] && [ "$v2c_context" = "9" ]; then
+        printf "  ${GREEN}✓${NC} %-18s  %-20s  default=1 vlan-20=9 (v3 and community@vlan, #686)\n" \
+            "$host" "vlan-context"
+        return 0
+    fi
+
+    printf "  ${RED}✗${NC} %-18s  %-20s  default=%s v3ctx=%s v2cctx=%s\n" \
+        "$host" "vlan-context" "$v3_default" "$v3_context" "$v2c_context"
+    printf "      expected default=1 v3ctx=9 v2cctx=9\n"
+    printf "      a context walk of 0 usually means the proxied back end is down:\n"
+    printf "      ssh root@%s 'systemctl status snmpd-switch-cisco-01-vlan20'\n" "${HOSTS[0]}"
+    return 1
+}
+
 cmd_verify() {
     echo "Verifying SNMP test hosts..."
     echo ""
@@ -80,8 +127,13 @@ cmd_verify() {
                 detail="v1 community=$community"
                 ;;
             v3)
-                result=$("$SNMPGET" -v3 -l authPriv -u "$V3_USER" -a SHA-256 -A "$V3_AUTH_PASS" -x AES -X "$V3_PRIV_PASS" -t 2 -r 1 "$host" sysName.0 2>/dev/null | sed 's/.*= STRING: //' || echo "FAILED")
-                detail="v3 user=$V3_USER"
+                local user="${V3_USERS[$i]:-$V3_USER}" apass="$V3_AUTH_PASS" ppass="$V3_PRIV_PASS"
+                if [ "$user" = "$V3_CTX_USER" ]; then
+                    apass="$V3_CTX_AUTH_PASS"
+                    ppass="$V3_CTX_PRIV_PASS"
+                fi
+                result=$("$SNMPGET" -v3 -l authPriv -u "$user" -a SHA-256 -A "$apass" -x AES -X "$ppass" -t 2 -r 1 "$host" sysName.0 2>/dev/null | sed 's/.*= STRING: //' || echo "FAILED")
+                detail="v3 user=$user"
                 ;;
             *)
                 result=$("$SNMPGET" -v2c -c "$community" -t 2 -r 1 "$host" sysName.0 2>/dev/null | sed 's/.*= STRING: //' || echo "FAILED")
@@ -99,6 +151,7 @@ cmd_verify() {
 
     echo ""
     verify_guest_subnet_fixture || all_ok=false
+    verify_vlan_context_fixture || all_ok=false
 
     echo ""
     if $all_ok; then

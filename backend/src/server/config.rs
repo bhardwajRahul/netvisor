@@ -568,12 +568,13 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
             stripe_publishable_key: state.config.stripe_key.clone(),
             discount_save_offer_available: std::env::var("STRIPE_SAVE_OFFER_COUPON_ID").is_ok(),
             has_integrated_daemon: state.config.integrated_daemon_url.is_some(),
-            has_email_service: state.config.email_log_dir.is_some()
-                || state.config.brevo_api_key.is_some()
-                || (state.config.smtp_password.is_some()
-                    && state.config.smtp_username.is_some()
-                    && state.config.smtp_email.is_some()
-                    && state.config.smtp_relay.is_some()),
+            // Whether a transport was actually built, not whether it looks configured.
+            // Re-deriving this from config duplicated the selection rules in
+            // `ServiceFactory` and could disagree with them: a bad relay hostname or an
+            // unparseable sender leaves `email_service` as `None` while every variable is
+            // present, and the UI would go on offering password reset and email invites
+            // that silently do nothing.
+            has_email_service: state.services.email_service.is_some(),
             public_url: state.config.public_url.clone(),
             has_email_opt_in: state.config.brevo_api_key.is_some(),
             posthog_key: state.config.posthog_key.clone(),
