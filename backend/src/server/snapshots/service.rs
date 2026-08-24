@@ -443,17 +443,77 @@ fn remap_virtualization_service_id<T: VirtualizationServiceRef>(
     false
 }
 
-/// Rewrite each just-cloned interface's `neighbor` reference from its live id to
-/// the closed-copy id, using the interface and host maps. Runs after the full
-/// `FkMaps::interfaces` exists (interfaces self-reference via
-/// `Neighbor::Interface`, so this can't happen in the per-row clone pass).
+/// How many unpreserved references [`report_unpreserved_self_refs`] names before
+/// eliding the rest. Same cap the LLDP resolver's `report_unresolved` uses: a
+/// list that simply stops reads as though that was all of them.
+const MAX_LISTED_UNPRESERVED: usize = 10;
+
+/// Rewrite the closed rows' self-references from live ids to their closed
+/// copies, using `mapping` (live → closed for this type).
 ///
-/// Without this, a snapshot's `Neighbor::Interface(live_id)` points at a live
-/// interface whose closed copy has a different id, so the topology read's
-/// `get_interface_by_id` lookup misses and no `PhysicalLink` edge is drawn.
-/// Cross-network neighbors (absent from the maps) are left as-is. Re-reads by
-/// `snapshot_id`; `update_many_in_tx` leaves the raw-stamped `snapshot_id` and
-/// SCD2 columns intact (they aren't in `to_params`).
+/// Returns the rows that changed — the only ones worth writing back — and the
+/// `(closed row id, live reference)` pairs whose target has no closed copy in
+/// this snapshot, so the caller can report them. Pure, so the pass structure is
+/// testable without a database.
+fn remap_self_refs<T: Snapshotable>(
+    closed: &mut [T],
+    mapping: &HashMap<Uuid, Uuid>,
+) -> (Vec<T>, Vec<(Uuid, Uuid)>) {
+    let mut remapped = Vec::new();
+    let mut unpreserved = Vec::new();
+
+    for row in closed.iter_mut() {
+        let Some(live_ref) = row.own_clone_ref() else {
+            continue;
+        };
+        match mapping.get(&live_ref) {
+            Some(closed_ref) => {
+                row.set_own_clone_ref(*closed_ref);
+                remapped.push(row.clone());
+            }
+            // No closed copy in this snapshot — a neighbour on another network,
+            // say. The live id stays, which is the only value that satisfies the
+            // FK, but the snapshot's L2 read cannot resolve it and drops the
+            // edge. Reported rather than left to be inferred from a link that
+            // silently isn't drawn.
+            None => unpreserved.push((row.id_value(), live_ref)),
+        }
+    }
+
+    (remapped, unpreserved)
+}
+
+/// Name the self-references this snapshot could not preserve.
+fn report_unpreserved_self_refs<T: Snapshotable>(snapshot_id: Uuid, unpreserved: &[(Uuid, Uuid)]) {
+    if unpreserved.is_empty() {
+        return;
+    }
+
+    let listed: Vec<String> = unpreserved
+        .iter()
+        .take(MAX_LISTED_UNPRESERVED)
+        .map(|(row_id, live_ref)| format!("{row_id}→{live_ref}"))
+        .collect();
+    let elided = unpreserved.len().saturating_sub(listed.len());
+
+    tracing::warn!(
+        snapshot_id = %snapshot_id,
+        entity = T::table_name(),
+        count = unpreserved.len(),
+        elided,
+        references = %listed.join(", "),
+        "Snapshot could not preserve every self-reference: the target has no closed copy in this \
+         snapshot, so the captured row keeps a live id the snapshot read path cannot resolve. For \
+         interfaces this is an L2 link that will be missing from the snapshot's topology.",
+    );
+}
+
+/// Close-and-clone every live row matching `filter`: insert a closed copy of
+/// each, stamp it with `snapshot_id`, rewrite the copies' self-references to
+/// point at each other, and advance the live rows' `valid_from`.
+///
+/// Returns the live-id → closed-id map so downstream child types can remap their
+/// own FK columns through [`FkMaps`].
 async fn close_and_clone_for<T>(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     filter: StorableFilter<T>,
@@ -484,14 +544,11 @@ where
         closed.push(copy);
     }
 
-    // Second pass: now that every row of this type has a closed id, rewrite
-    // self-references (e.g. an interface's `neighbor` pointing at another
-    // interface) to their closed copies before the bulk insert. Default no-op
-    // for types without self-references.
-    for copy in &mut closed {
-        copy.remap_own_clone_refs(&mapping);
-    }
-
+    // Inserted carrying their *original* self-references, which point at live
+    // rows that already exist. `create_many_in_tx` splits the batch into one
+    // statement per `MAX_BIND_PARAMS / cols_per_row` rows and the FK is
+    // `NOT DEFERRABLE`, so a closed id written here dangles whenever its target
+    // lands in a later chunk (GH #687). They are rewritten below instead.
     GenericPostgresStorage::<T>::create_many_in_tx(&closed, tx).await?;
 
     // Stamp snapshot_id on the just-inserted closed rows. Single parameterized
@@ -507,6 +564,14 @@ where
         .bind(&closed_ids)
         .execute(&mut **tx)
         .await?;
+
+    // Every closed row of this type is now in the table, so a reference to any
+    // of them satisfies the FK regardless of which insert chunk it landed in.
+    // `snapshot_id` isn't in `to_params`, so `update_many_in_tx` leaves the
+    // stamp above and the SCD2 columns intact.
+    let (remapped, unpreserved) = remap_self_refs(&mut closed, &mapping);
+    GenericPostgresStorage::<T>::update_many_in_tx(&remapped, tx).await?;
+    report_unpreserved_self_refs::<T>(snapshot_id, &unpreserved);
 
     let advanced_live: Vec<T> = live
         .into_iter()
@@ -585,5 +650,75 @@ mod virtualization_remap_tests {
         let mut host = host_with(None);
         assert!(!remap_virtualization_service_id(&mut host, &services));
         assert_eq!(host.virtualization_service_id(), None);
+    }
+}
+
+#[cfg(test)]
+mod self_ref_remap_tests {
+    use super::*;
+    use crate::server::interfaces::r#impl::base::{Interface, InterfaceBase, Neighbor};
+
+    fn iface(id: Uuid, neighbor: Option<Uuid>) -> Interface {
+        Interface {
+            id,
+            base: InterfaceBase {
+                neighbor: neighbor.map(Neighbor::Interface),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    /// The shape GH #687 fails on. Two interfaces that name each other are a
+    /// cycle, so no insert order can satisfy the FK across a chunk boundary —
+    /// the reference has to be written after both rows exist. Both directions
+    /// must be remapped, and both rows must come back to be written.
+    #[test]
+    fn a_reciprocal_pair_is_remapped_in_both_directions() {
+        let (live_a, live_b) = (Uuid::new_v4(), Uuid::new_v4());
+        let (closed_a, closed_b) = (Uuid::new_v4(), Uuid::new_v4());
+        let mapping = HashMap::from([(live_a, closed_a), (live_b, closed_b)]);
+
+        let mut closed = vec![iface(closed_a, Some(live_b)), iface(closed_b, Some(live_a))];
+        let (remapped, unpreserved) = remap_self_refs(&mut closed, &mapping);
+
+        assert_eq!(remapped.len(), 2);
+        assert!(unpreserved.is_empty());
+        assert_eq!(closed[0].own_clone_ref(), Some(closed_b));
+        assert_eq!(closed[1].own_clone_ref(), Some(closed_a));
+    }
+
+    /// A neighbour with no closed copy keeps the only value that satisfies the
+    /// FK — its live id — and is reported. Dropping the reference to make the
+    /// write succeed would render the snapshot's L2 view short an edge with
+    /// nothing anywhere saying so.
+    #[test]
+    fn a_reference_with_no_closed_copy_is_reported_not_dropped() {
+        let (row_id, outside) = (Uuid::new_v4(), Uuid::new_v4());
+
+        let mut closed = vec![iface(row_id, Some(outside))];
+        let (remapped, unpreserved) = remap_self_refs(&mut closed, &HashMap::new());
+
+        assert!(remapped.is_empty(), "nothing to write back");
+        assert_eq!(unpreserved, vec![(row_id, outside)]);
+        assert_eq!(
+            closed[0].own_clone_ref(),
+            Some(outside),
+            "the live reference must survive: it is the only id that exists"
+        );
+    }
+
+    /// Only the rows that actually changed are written back, so the pass costs
+    /// an UPDATE per link rather than per cloned row.
+    #[test]
+    fn rows_without_a_self_reference_are_not_written_back() {
+        let (live, closed_id) = (Uuid::new_v4(), Uuid::new_v4());
+        let mapping = HashMap::from([(live, closed_id)]);
+
+        let mut closed = vec![iface(Uuid::new_v4(), None), iface(closed_id, Some(live))];
+        let (remapped, unpreserved) = remap_self_refs(&mut closed, &mapping);
+
+        assert_eq!(remapped.len(), 1);
+        assert!(unpreserved.is_empty());
     }
 }
