@@ -55,6 +55,16 @@ macro_rules! harness {
 /// One controller-reported device, as the daemon submits it: an address on a known subnet and a
 /// name carrying the rung it came from.
 fn submission(network_id: Uuid, name: Option<HostName>, hostname: Option<&str>) -> Submission {
+    submission_at(network_id, DEVICE_IP, name, hostname)
+}
+
+/// The same, at an explicit address — for the case where a host's DHCP lease moves.
+fn submission_at(
+    network_id: Uuid,
+    device_ip: IpAddr,
+    name: Option<HostName>,
+    hostname: Option<&str>,
+) -> Submission {
     let mut host = Host::new(HostBase {
         network_id,
         source: EntitySource::Discovery,
@@ -78,7 +88,7 @@ fn submission(network_id: Uuid, name: Option<HostName>, hostname: Option<&str>) 
         network_id,
         host_id: host.id,
         subnet_id: subnet.id,
-        ip_address: DEVICE_IP,
+        ip_address: device_ip,
         mac_address: DEVICE_MAC.parse().ok(),
         name: None,
         position: 0,
@@ -339,4 +349,48 @@ async fn a_daemon_that_sends_no_rank_still_upgrades_an_address_to_its_hostname()
     let upgraded = submit(&services, legacy).await;
     assert_eq!(upgraded.name, "nas.lan");
     assert_eq!(upgraded.name_source, HostNameSource::Hostname);
+}
+
+/// A host matched by its MAC across a lease change adopts its new address as its name.
+///
+/// Distinct from the controller-rename case above: dedup resolves on the MAC rather than the
+/// address, and the name that has to move is the address itself. Note this covers the *server*
+/// half only — it asserts that an `Ip`-ranked candidate for a new address refreshes an
+/// `Ip`-ranked name. The daemon-side half (the early ARP/ping stub declaring that rung at all,
+/// `network/scan.rs`) sits inside the scan loop and is verified by rescanning the sim env, not
+/// here.
+#[tokio::test]
+async fn an_address_derived_name_follows_the_host_to_a_new_address() {
+    harness!(services, network_id, _container);
+
+    let first = submit(
+        &services,
+        submission_at(
+            network_id,
+            DEVICE_IP,
+            Some(HostName::from_ip(DEVICE_IP)),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(first.name, "192.168.1.20");
+
+    let moved_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 21));
+    let moved = submit(
+        &services,
+        submission_at(
+            network_id,
+            moved_ip,
+            Some(HostName::from_ip(moved_ip)),
+            None,
+        ),
+    )
+    .await;
+
+    assert_eq!(moved.id, first.id, "the same host, matched on its MAC");
+    assert_eq!(
+        moved.name, "192.168.1.21",
+        "an address-derived name must follow the address it was derived from"
+    );
+    assert_eq!(moved.name_source, HostNameSource::Ip);
 }
