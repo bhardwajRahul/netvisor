@@ -51,6 +51,52 @@ pub struct PaginatedResult<T> {
     pub total_count: u64,
 }
 
+/// The outcome of a lookup that expected to identify at most one row.
+///
+/// The third case is the point. `Option` has no way to say "the identifier you gave me does not
+/// identify anything" as distinct from "nothing matched", so every lookup on a non-unique column
+/// silently answered the first question with the second — see [`Storage::get_unique`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unique<T> {
+    /// Exactly one row matched.
+    One(T),
+    /// Nothing matched.
+    None,
+    /// More than one row matched, so the filter does not identify a row.
+    ///
+    /// Deliberately carries no rows. Handing back candidates invites picking one, which is the
+    /// behaviour this type exists to prevent.
+    Multiple,
+}
+
+impl<T> Unique<T> {
+    /// For a filter on a genuinely unique key — an id, an email, an API key.
+    ///
+    /// `Multiple` means a uniqueness assumption is broken, usually a constraint that was never
+    /// added. That is worth an error rather than a silently chosen row: the caller asked for
+    /// *the* user with this email, and there is no such thing.
+    pub fn at_most_one(self) -> Result<Option<T>, anyhow::Error> {
+        match self {
+            Self::One(entity) => Ok(Some(entity)),
+            Self::None => Ok(None),
+            Self::Multiple => Err(anyhow::anyhow!(
+                "expected at most one row, found several; a uniqueness assumption is broken"
+            )),
+        }
+    }
+
+    /// The row, if the filter identified exactly one.
+    ///
+    /// For callers that treat "no match" and "ambiguous" alike. Prefer matching on the variants
+    /// where the difference is worth reporting.
+    pub fn found(self) -> Option<T> {
+        match self {
+            Self::One(entity) => Some(entity),
+            Self::None | Self::Multiple => None,
+        }
+    }
+}
+
 #[async_trait]
 pub trait Storage<T: Storable>: Send + Sync {
     async fn create(&self, entity: &T) -> Result<T, anyhow::Error>;
@@ -68,7 +114,28 @@ pub trait Storage<T: Storable>: Send + Sync {
         filter: StorableFilter<T>,
         order_by: &str,
     ) -> Result<PaginatedResult<T>, anyhow::Error>;
-    async fn get_one(&self, filter: StorableFilter<T>) -> Result<Option<T>, anyhow::Error>;
+    /// Fetch a row the filter is expected to identify uniquely.
+    ///
+    /// Replaced `get_one`, which was `fetch_optional` with no `ORDER BY` and no `LIMIT`: on a
+    /// filter matching several rows it returned whichever one Postgres happened to emit first,
+    /// indistinguishable from a genuine single match. That cost us a link drawn to an arbitrary
+    /// port on switches repeating one MAC across every port (GH #668), and a lookup landing on an
+    /// SCD2 snapshot copy instead of the live row.
+    ///
+    /// Returning [`Unique`] rather than `Option` is what makes the hazard unwriteable: a caller
+    /// filtering on a non-unique column has to say what several matches mean, and a caller on a
+    /// unique key says so out loud with [`Unique::at_most_one`].
+    async fn get_unique(&self, filter: StorableFilter<T>) -> Result<Unique<T>, anyhow::Error>;
+    /// Whether any row matches.
+    ///
+    /// For guards that ask "does this exist" rather than "which one is it". Deliberately not
+    /// [`Self::get_unique`]: an existence check has nothing to say about uniqueness, and
+    /// answering it with a lookup that treats several matches as an error turns a clear
+    /// "delete the daemon first" into an internal error on exactly the data that needs the guard.
+    async fn exists(&self, filter: StorableFilter<T>) -> Result<bool, anyhow::Error> {
+        Ok(self.count(filter).await? > 0)
+    }
+
     /// Count rows matching the filter (`SELECT COUNT(*)`), without fetching them.
     /// For internal count-only needs (dashboards, limit checks) — avoids the
     /// row fetch + tag hydration that `get_paginated`/`get_all` do.
@@ -625,5 +692,33 @@ impl SqlValue {
             Self::dispatch_kind(kind, &mut out);
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Unique;
+
+    /// The contract every unique-key caller relies on. `Multiple` means the uniqueness the
+    /// lookup assumed is broken — a constraint that was never added, or a filter on the wrong
+    /// column — and collapsing it to `None` would silently restore the class of defect this
+    /// type replaced, across every site that spells `.at_most_one()?`.
+    #[test]
+    fn at_most_one_reports_an_error_rather_than_choosing() {
+        assert_eq!(Unique::One(7).at_most_one().unwrap(), Some(7));
+        assert_eq!(Unique::<i32>::None.at_most_one().unwrap(), None);
+        assert!(
+            Unique::<i32>::Multiple.at_most_one().is_err(),
+            "several rows for a unique key must fail loudly, not pick one"
+        );
+    }
+
+    /// `found` is for callers that act the same way on "nothing matched" and "the identifier
+    /// does not identify" — it must never hand back a row it could not prove unique.
+    #[test]
+    fn found_yields_nothing_when_the_filter_did_not_identify_a_row() {
+        assert_eq!(Unique::One(7).found(), Some(7));
+        assert_eq!(Unique::<i32>::None.found(), None);
+        assert_eq!(Unique::<i32>::Multiple.found(), None);
     }
 }

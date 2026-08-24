@@ -156,7 +156,12 @@ impl HostService {
         }
 
         let bound_filter = StorableFilter::<Interface>::new_from_entity_ids(&[bound_id]).live();
-        let Some(bound) = self.interface_service.get_one(bound_filter).await? else {
+        let Some(bound) = self
+            .interface_service
+            .get_unique(bound_filter)
+            .await?
+            .at_most_one()?
+        else {
             return Ok(PortBinding::Stands);
         };
         let Some(mac) = bound.base.mac_address else {

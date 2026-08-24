@@ -1139,13 +1139,7 @@ pub async fn delete_host(
 ) -> ApiResult<Json<ApiResponse<()>>> {
     // Pre-validation: Can't delete a host with an associated daemon
     let daemon_filter = StorableFilter::<Daemon>::new_from_host_ids(&[id]);
-    if state
-        .services
-        .daemon_service
-        .get_one(daemon_filter)
-        .await?
-        .is_some()
-    {
+    if state.services.daemon_service.exists(daemon_filter).await? {
         return Err(ApiError::coded(
             StatusCode::CONFLICT,
             ErrorCode::EntityDeleteForbidden {

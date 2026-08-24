@@ -13,7 +13,7 @@ use crate::server::{
             types::AuthOperation,
         },
         services::traits::CrudService,
-        storage::filter::StorableFilter,
+        storage::{filter::StorableFilter, traits::Unique},
         types::api::ApiError,
     },
     users::r#impl::{base::User, permissions::UserOrgPermissions},
@@ -592,10 +592,22 @@ impl AuthenticatedEntity {
                     let key_lookup = app_state
                         .services
                         .daemon_api_key_service
-                        .get_one(api_key_filter)
+                        .get_unique(api_key_filter)
                         .await;
                     let found_key = match key_lookup {
-                        Ok(found) => found,
+                        Ok(Unique::One(key)) => Some(key),
+                        Ok(Unique::None) => None,
+                        // Two rows for one hashed key means the uniqueness this lookup assumes
+                        // is broken. Refusing to authenticate is the only safe reading — the
+                        // request presented a credential that identifies no single daemon — and
+                        // it is loud, because silently taking one of them would hand a caller
+                        // whichever network the database returned first.
+                        Ok(Unique::Multiple) => {
+                            tracing::error!("Daemon api key hash matched more than one key");
+                            return Err(AuthError(ApiError::internal_error(
+                                "Daemon API key lookup failed",
+                            )));
+                        }
                         Err(e) => {
                             tracing::error!(error = %e, "Daemon api key lookup failed");
                             return Err(AuthError(ApiError::internal_error(

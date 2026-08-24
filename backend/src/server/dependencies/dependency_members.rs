@@ -374,8 +374,9 @@ impl DependencyMemberStorage {
                 for (position, binding_id) in binding_ids.iter().enumerate() {
                     let filter = StorableFilter::<Binding>::new_from_entity_id(binding_id);
                     let binding = binding_storage
-                        .get_one(filter)
+                        .get_unique(filter)
                         .await?
+                        .at_most_one()?
                         .ok_or_else(|| anyhow::anyhow!("Binding {} not found", binding_id))?;
                     let record = DependencyMemberRecord::new(DependencyMemberRecordBase::new(
                         *dependency_id,

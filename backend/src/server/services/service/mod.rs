@@ -1,6 +1,6 @@
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
-use crate::server::shared::storage::traits::{PaginatedResult, Storable};
+use crate::server::shared::storage::traits::{PaginatedResult, Storable, Unique};
 use crate::server::tags::entity_tags::EntityTagService;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
@@ -100,18 +100,18 @@ impl CrudService<Service> for ServiceService {
         Ok(services)
     }
 
-    async fn get_one(
+    async fn get_unique(
         &self,
         filter: StorableFilter<Service>,
-    ) -> Result<Option<Service>, anyhow::Error> {
-        let service = self.storage().get_one(filter).await?;
-        match service {
-            Some(mut s) => {
+    ) -> Result<Unique<Service>, anyhow::Error> {
+        match self.storage().get_unique(filter).await? {
+            Unique::One(mut s) => {
                 s.base.bindings = self.binding_service.get_for_parent(&s.id).await?;
                 self.hydrate_tags(&mut s).await?;
-                Ok(Some(s))
+                Ok(Unique::One(s))
             }
-            None => Ok(None),
+            Unique::None => Ok(Unique::None),
+            Unique::Multiple => Ok(Unique::Multiple),
         }
     }
 

@@ -300,8 +300,9 @@ async fn validate_dependency_members(state: &AppState, dependency: &Dependency) 
                 let binding = state
                     .services
                     .binding_service
-                    .get_one(binding_filter)
+                    .get_unique(binding_filter)
                     .await?
+                    .at_most_one()?
                     .ok_or_else(|| {
                         ApiError::bad_request(&format!("Binding {} not found", binding_id))
                     })?;

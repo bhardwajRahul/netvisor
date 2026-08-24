@@ -3,7 +3,7 @@ use crate::server::shared::{
         filter::StorableFilter,
         lock::{LockError, LockKey, SessionLockGuard},
         pg_value::{Bound, PgJson, PgText},
-        traits::{PaginatedResult, SqlValue, Storable, Storage},
+        traits::{PaginatedResult, SqlValue, Storable, Storage, Unique},
     },
     types::api::ValidationError,
 };
@@ -633,13 +633,28 @@ where
 
     async fn get_by_id(&self, id: &Uuid) -> Result<Option<T>, anyhow::Error> {
         let id_filter = StorableFilter::<T>::new_from_entity_id(id);
-        self.get_one(id_filter).await
+        // The primary key, so `Multiple` cannot happen — and if it somehow does, the database is
+        // in a state worth an error rather than a coin flip.
+        self.get_unique(id_filter).await?.at_most_one()
     }
 
-    async fn get_one(&self, filter: StorableFilter<T>) -> Result<Option<T>, anyhow::Error> {
+    async fn get_unique(&self, filter: StorableFilter<T>) -> Result<Unique<T>, anyhow::Error> {
+        let join_clause = filter.to_join_clause();
+        let select = if filter.has_joins() {
+            format!("{}.*", T::table_name())
+        } else {
+            "*".to_string()
+        };
+
+        // `LIMIT 2` is the whole mechanism: enough to prove a second row exists, never more than
+        // needed to say so. It also makes this strictly cheaper than the unbounded scan it
+        // replaces, and removes any need for an `ORDER BY` — the only row it ever returns is one
+        // it has already proven unique, so there is nothing left for an ordering to pick between.
         let query_str = format!(
-            "SELECT * FROM {} {}",
+            "SELECT {} FROM {} {} {} LIMIT 2",
+            select,
             T::table_name(),
+            join_clause,
             filter.to_where_clause()
         );
 
@@ -649,11 +664,15 @@ where
             query = Self::bind_value(query, value)?;
         }
 
-        let row = query.fetch_optional(&self.pool).await?;
+        let mut rows = query.fetch_all(&self.pool).await?;
 
-        let result = row.map(|r| T::from_row(&r)).transpose()?;
-
-        Ok(result)
+        if rows.len() > 1 {
+            return Ok(Unique::Multiple);
+        }
+        match rows.pop() {
+            Some(row) => Ok(Unique::One(T::from_row(&row)?)),
+            None => Ok(Unique::None),
+        }
     }
 
     async fn get_all(&self, filter: StorableFilter<T>) -> Result<Vec<T>, anyhow::Error> {

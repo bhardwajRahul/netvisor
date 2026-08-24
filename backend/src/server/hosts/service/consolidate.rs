@@ -235,7 +235,7 @@ impl HostService {
 
         let daemon_filter = StorableFilter::<Daemon>::new_from_host_ids(&[other_host.id]);
 
-        if self.daemon_service.get_one(daemon_filter).await?.is_some() {
+        if self.daemon_service.exists(daemon_filter).await? {
             return Err(ValidationError::new(
                 "Can't consolidate a host that has a daemon associated with it. \
                  Consolidate the other host into the host with the daemon instead.",

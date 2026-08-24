@@ -24,9 +24,8 @@ impl HostService {
         // Can't delete host with daemon
         if self
             .daemon_service
-            .get_one(StorableFilter::<Daemon>::new_from_host_ids(&[*id]))
+            .exists(StorableFilter::<Daemon>::new_from_host_ids(&[*id]))
             .await?
-            .is_some()
         {
             return Err(ValidationError::new(
                 "Can't delete a host with an associated daemon. Delete the daemon first.",

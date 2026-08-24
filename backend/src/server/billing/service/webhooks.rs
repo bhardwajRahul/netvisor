@@ -586,7 +586,12 @@ impl BillingService {
         payment_method_id: String,
     ) -> Result<(), Error> {
         let filter = StorableFilter::<Organization>::new_with_stripe_customer_id(&customer_id);
-        let Some(organization) = self.organization_service.get_one(filter).await? else {
+        let Some(organization) = self
+            .organization_service
+            .get_unique(filter)
+            .await?
+            .at_most_one()?
+        else {
             tracing::debug!(
                 stripe_customer_id = %customer_id,
                 "No organization found for payment_method.attached — ignoring"
@@ -620,7 +625,12 @@ impl BillingService {
 
     async fn handle_payment_method_detached(&self, customer_id: String) -> Result<(), Error> {
         let filter = StorableFilter::<Organization>::new_with_stripe_customer_id(&customer_id);
-        let Some(organization) = self.organization_service.get_one(filter).await? else {
+        let Some(organization) = self
+            .organization_service
+            .get_unique(filter)
+            .await?
+            .at_most_one()?
+        else {
             tracing::debug!(
                 stripe_customer_id = %customer_id,
                 "No organization found for payment_method.detached — ignoring"

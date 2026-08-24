@@ -54,11 +54,11 @@ impl CrudService<User> for UserService {
 
     /// Create a new user
     async fn create(&self, user: User, authentication: AuthenticatedEntity) -> Result<User, Error> {
-        let existing_user = self
+        let email_taken = self
             .user_storage
-            .get_one(StorableFilter::<User>::new_from_email(&user.base.email))
+            .exists(StorableFilter::<User>::new_from_email(&user.base.email))
             .await?;
-        if existing_user.is_some() {
+        if email_taken {
             return Err(anyhow::anyhow!(
                 "User with email {} already exists",
                 user.base.email
@@ -119,15 +119,19 @@ impl UserService {
 
     pub async fn get_user_by_oidc(&self, oidc_subject: &str) -> Result<Option<User>> {
         let oidc_filter = StorableFilter::<User>::new_from_oidc_subject(oidc_subject.to_string());
-        self.user_storage.get_one(oidc_filter).await
+        self.user_storage
+            .get_unique(oidc_filter)
+            .await?
+            .at_most_one()
     }
 
     /// Look up a user by their email address. Used by the email send pipeline
     /// to resolve the recipient's pause preferences.
     pub async fn get_by_email(&self, email: &EmailAddress) -> Result<Option<User>> {
         self.user_storage
-            .get_one(StorableFilter::<User>::new_from_email(email))
-            .await
+            .get_unique(StorableFilter::<User>::new_from_email(email))
+            .await?
+            .at_most_one()
     }
 
     pub async fn get_organization_owners(&self, organization_id: &Uuid) -> Result<Vec<User>> {

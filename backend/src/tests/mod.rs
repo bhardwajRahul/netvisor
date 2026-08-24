@@ -41,6 +41,7 @@ pub mod demo_data_seeding;
 pub mod dependencies;
 pub mod host_create_with_children;
 pub mod host_naming;
+pub mod lldp_resolution;
 
 pub const DAEMON_CONFIG_FIXTURE: &str = "src/tests/daemon_config.json";
 pub const SERVER_DB_FIXTURE: &str = "src/tests/scanopy.sql";
