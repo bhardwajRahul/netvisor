@@ -76,7 +76,7 @@ pub fn topology_to_mermaid(nodes: &[Node], edges: &[Edge], data: &TopologyData) 
                 {
                     let host_name = hosts
                         .get(host_id)
-                        .map(|h| h.base.name.as_str())
+                        .map(|h| h.base.name.value())
                         .unwrap_or("Unknown Host");
 
                     let ip = ip_address_id
@@ -221,7 +221,7 @@ pub fn topology_to_confluence(nodes: &[Node], edges: &[Edge], data: &TopologyDat
     let hosts_map: HashMap<Uuid, &str> = data
         .hosts
         .iter()
-        .map(|h| (h.id, h.base.name.as_str()))
+        .map(|h| (h.id, h.base.name.value()))
         .collect();
     let nodes_map: HashMap<Uuid, _> = nodes.iter().map(|n| (n.id, n)).collect();
 

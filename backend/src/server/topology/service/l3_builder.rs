@@ -63,6 +63,7 @@ impl ViewBuilder for L3Builder {
 mod tests {
     use super::*;
     use crate::server::hosts::r#impl::base::{Host, HostBase};
+    use crate::server::hosts::r#impl::name::HostName;
     use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
     use crate::server::services::r#impl::base::{Service, ServiceBase};
     use crate::server::services::r#impl::categories::ServiceCategory;
@@ -113,7 +114,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: "test-host".to_string(),
+                name: HostName::Manual("test-host".to_string()),
                 network_id,
                 tags: vec![], // NO host tags
                 ..Default::default()
@@ -237,7 +238,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: "bridge-host".to_string(),
+                name: HostName::Manual("bridge-host".to_string()),
                 network_id,
                 ..Default::default()
             },
@@ -367,7 +368,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: name.to_string(),
+                name: HostName::Manual(name.to_string()),
                 network_id,
                 ..Default::default()
             },

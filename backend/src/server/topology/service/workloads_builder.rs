@@ -122,7 +122,7 @@ impl ViewBuilder for WorkloadsBuilder {
                 },
                 position: Default::default(),
                 size: Default::default(),
-                header: Some(host.base.name.clone()),
+                header: Some(host.base.name.to_string()),
             });
         }
 
@@ -146,7 +146,7 @@ impl ViewBuilder for WorkloadsBuilder {
                     vm_host_id,
                     ElementEntityType::Host {},
                 );
-                node.header = Some(vm_host.base.name.clone());
+                node.header = Some(vm_host.base.name.to_string());
                 nodes.push(node);
             }
         }
@@ -629,6 +629,7 @@ mod tests {
     use crate::server::{
         hosts::r#impl::{
             base::{Host, HostBase},
+            name::HostName,
             virtualization::{HostVirtualization, ProxmoxVirtualization},
         },
         services::r#impl::{
@@ -730,7 +731,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: name.to_string(),
+                name: HostName::Manual(name.to_string()),
                 ..Default::default()
             },
             ..Default::default()
@@ -743,7 +744,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: name.to_string(),
+                name: HostName::Manual(name.to_string()),
                 virtualization_metadata: Some(HostVirtualization::Proxmox(ProxmoxVirtualization {
                     vm_name: Some(name.to_string()),
                     vm_id: None,

@@ -676,7 +676,7 @@ fn host_summary(h: &Host) -> HostSummary {
         .hostname
         .clone()
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| h.base.name.clone());
+        .unwrap_or_else(|| h.base.name.to_string());
     HostSummary { id: h.id, label }
 }
 

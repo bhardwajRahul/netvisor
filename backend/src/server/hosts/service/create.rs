@@ -128,8 +128,7 @@ impl HostService {
         // Create host base with SNMP fields. The name is applied below rather than assigned
         // here: a person typed it, and that is the top of the ladder.
         let mut host_base = HostBase {
-            name: String::new(),
-            name_source: HostNameSource::default(),
+            name: HostName::default(),
             network_id,
             hostname,
             description,
@@ -150,9 +149,7 @@ impl HostService {
             serial_number: None,
             credential_assignments,
         };
-        if let Some(candidate) = HostName::manual(name.clone()) {
-            host_base.apply_name(candidate);
-        }
+        host_base.apply_name(HostName::Manual(name.clone()));
         let host = Host::new(host_base);
 
         // Build ip_addresses with client-provided IDs

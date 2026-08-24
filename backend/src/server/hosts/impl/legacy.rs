@@ -360,10 +360,9 @@ impl LegacyHostWithServicesRequest {
             last_discovery_id: None,
             first_discovery_id: None,
             base: crate::server::hosts::r#impl::base::HostBase {
-                name: host.name,
-                // A legacy daemon says nothing about where the name came from, so it enters at
-                // the bottom of the ladder and cannot displace a better-attributed one.
-                name_source: crate::server::hosts::r#impl::name::HostNameSource::Unspecified,
+                // A legacy daemon says nothing about where the name came from, so it enters
+                // at the bottom of the ladder and cannot displace a better-attributed one.
+                name: crate::server::hosts::r#impl::name::HostName::Unspecified(host.name),
                 network_id: host.network_id,
                 hostname: host.hostname,
                 description: host.description,

@@ -70,7 +70,6 @@ impl HostService {
                 // Carried over, then reconciled below — the request alone cannot say whether a
                 // person renamed the host or merely saved some other field.
                 name: existing.base.name.clone(),
-                name_source: existing.base.name_source,
                 network_id,
                 source: existing.base.source,
                 hostname,
@@ -99,10 +98,8 @@ impl HostService {
         // whole object, so stamping `Manual` on every save would freeze a derived name — a host
         // named after its detected service could then never adopt its controller's name because
         // someone once toggled "hidden".
-        if name != updated_host.base.name
-            && let Some(candidate) = HostName::manual(name)
-        {
-            updated_host.base.apply_name(candidate);
+        if updated_host.base.name != name {
+            updated_host.base.apply_name(HostName::Manual(name));
         }
 
         if let Some(org_id) = authentication.organization_id() {

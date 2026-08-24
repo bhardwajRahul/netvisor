@@ -1,3 +1,4 @@
+use crate::server::hosts::r#impl::name::HostName;
 use crate::server::{
     config::{AppState, ServerConfig},
     daemons::r#impl::base::{Daemon, DaemonBase, DaemonMode},
@@ -90,7 +91,7 @@ pub fn network(organization_id: &Uuid) -> Network {
 
 pub fn host(network_id: &Uuid) -> Host {
     Host::new(HostBase {
-        name: "Test Host".to_string(),
+        name: HostName::Manual("Test Host".to_string()),
         hostname: Some("test.local".to_string()),
         network_id: *network_id,
         description: None,

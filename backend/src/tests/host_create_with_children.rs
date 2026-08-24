@@ -33,6 +33,7 @@ use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
 use crate::server::subnets::r#impl::types::SubnetType;
 
 use super::{organization, test_services};
+use crate::server::hosts::r#impl::name::HostName;
 
 const BRIDGE_CIDR: &str = "172.28.0.0/16";
 const LAN_CIDR: &str = "192.168.1.0/24";
@@ -54,7 +55,7 @@ struct Submission {
 impl Submission {
     fn container_host(network_id: Uuid) -> Self {
         let host = Host::new(HostBase {
-            name: "docker-host".to_string(),
+            name: HostName::Manual("docker-host".to_string()),
             hostname: Some("docker-host.local".to_string()),
             network_id,
             source: EntitySource::Discovery,

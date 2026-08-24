@@ -11,7 +11,7 @@ use crate::server::{
     credentials::r#impl::types::CredentialAssignment,
     hosts::r#impl::{
         base::{Host, HostBase},
-        name::HostNameSource,
+        name::{HostName, HostNameSource},
         virtualization::HostVirtualization,
     },
     interfaces::r#impl::base::{
@@ -849,8 +849,7 @@ impl HostResponse {
             last_discovery_id: None,
             first_discovery_id: None,
             base: HostBase {
-                name: name.clone(),
-                name_source: *name_source,
+                name: HostName::from_parts(name.clone(), *name_source),
                 network_id: *network_id,
                 hostname: hostname.clone(),
                 description: description.clone(),
@@ -905,7 +904,6 @@ impl HostResponse {
         // If a field is added to HostBase, this will fail to compile
         let crate::server::hosts::r#impl::base::HostBase {
             name,
-            name_source,
             network_id,
             hostname,
             description,
@@ -932,8 +930,8 @@ impl HostResponse {
             created_at,
             updated_at,
             last_seen_at,
-            name,
-            name_source,
+            name_source: name.source(),
+            name: name.value().to_string(),
             network_id,
             hostname,
             description,
