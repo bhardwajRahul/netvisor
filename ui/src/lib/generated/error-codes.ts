@@ -54,6 +54,8 @@ export const ERROR_CODES = {
 	share_token_invalid: 'Access token is invalid or expired',
 	invite_already_accepted: 'This invite has already been accepted',
 	invite_email_mismatch: "Invite email doesn't match your account",
+	email_delivery_failed:
+		"Scanopy could not send this email. Ask an administrator to check the server logs for the mail server's response.",
 	discovery_historical_read_only: 'Historical discovery cannot be modified via API',
 	discovery_subnet_network_mismatch: "Subnet '{subnet}' is on a different network",
 	discovery_session_not_found: "Discovery session '{id}' not found",
@@ -134,6 +136,7 @@ export interface ErrorParams {
 	share_token_invalid: Record<string, never>;
 	invite_already_accepted: Record<string, never>;
 	invite_email_mismatch: Record<string, never>;
+	email_delivery_failed: Record<string, never>;
 	discovery_historical_read_only: Record<string, never>;
 	discovery_subnet_network_mismatch: { subnet: string | number };
 	discovery_session_not_found: { id: string | number };

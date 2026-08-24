@@ -41,6 +41,13 @@ services:
     image: ghcr.io/scanopy/scanopy/server:latest
     ports:
       - "60072:60072"
+    # Pass a .env alongside this file straight through to the server. Compose otherwise
+    # reads .env only to interpolate ${...} here, so settings that have no line below --
+    # every SCANOPY_SMTP_* variable among them -- would never reach the container.
+    # Optional: `docker compose up` works with no .env present.
+    env_file:
+      - path: .env
+        required: false
     environment:
       SCANOPY_LOG_LEVEL: ${SCANOPY_LOG_LEVEL:-info}
       SCANOPY_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/scanopy

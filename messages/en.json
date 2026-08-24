@@ -932,6 +932,7 @@
 	"errors_discovery_historical_read_only": "Historical discovery cannot be modified via API",
 	"errors_discovery_session_not_found": "Discovery session '{id}' not found",
 	"errors_discovery_subnet_network_mismatch": "Subnet '{subnet}' is on a different network",
+	"errors_email_delivery_failed": "Scanopy could not send this email. Ask an administrator to check the server logs for the mail server's response.",
 	"errors_entity_access_denied": "You don't have access to this {entity}",
 	"errors_entity_already_exists": "{entity} '{name}' already exists",
 	"errors_entity_delete_forbidden": "Cannot delete this {entity}: {reason}",

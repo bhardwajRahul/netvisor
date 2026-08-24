@@ -320,6 +320,14 @@ impl ServiceFactory {
                 deployment_type,
             )))
         } else if let Some(ref brevo_api_key) = config.brevo_api_key {
+            // Brevo outranks SMTP. An operator who has both configured would otherwise
+            // never learn that their SMTP settings are being ignored.
+            if config.smtp_relay.is_some() {
+                tracing::warn!(
+                    "SCANOPY_BREVO_API_KEY is set and takes precedence: the SCANOPY_SMTP_* \
+                     settings will be ignored"
+                );
+            }
             let brevo_provider = BrevoEmailProvider::new(brevo_api_key.clone());
             Some(Arc::new(EmailService::new(
                 Box::new(brevo_provider),
@@ -332,40 +340,64 @@ impl ServiceFactory {
                 public_url,
                 deployment_type,
             )))
-        } else if let (
-            Some(smtp_username),
-            Some(smtp_password),
-            Some(smtp_email),
-            Some(smtp_relay),
-        ) = (
-            config.smtp_username,
-            config.smtp_password,
-            config.smtp_email,
-            config.smtp_relay,
-        ) {
-            if let Ok(smtp_provider) = SmtpEmailProvider::new(
-                smtp_username,
-                smtp_password,
-                smtp_email,
-                smtp_relay,
-                config.smtp_port,
-            ) {
-                Some(Arc::new(EmailService::new(
-                    Box::new(smtp_provider),
-                    user_service.clone(),
-                    organization_service.clone(),
-                    host_service.clone(),
-                    network_service.clone(),
-                    service_service.clone(),
-                    daemon_service.clone(),
-                    public_url,
-                    deployment_type,
-                )))
-            } else {
-                None
-            }
         } else {
-            None
+            // SMTP needs all four values. Every way this can fail used to be silent: the
+            // server booted normally, reported itself healthy, and never sent a single
+            // email. Say which variables are missing, and say when the transport itself
+            // could not be built.
+            match (
+                config.smtp_username,
+                config.smtp_password,
+                config.smtp_email,
+                config.smtp_relay,
+            ) {
+                (Some(username), Some(password), Some(email), Some(relay)) => {
+                    match SmtpEmailProvider::new(username, password, email, relay, config.smtp_port)
+                    {
+                        Ok(smtp_provider) => Some(Arc::new(EmailService::new(
+                            Box::new(smtp_provider),
+                            user_service.clone(),
+                            organization_service.clone(),
+                            host_service.clone(),
+                            network_service.clone(),
+                            service_service.clone(),
+                            daemon_service.clone(),
+                            public_url,
+                            deployment_type,
+                        ))),
+                        Err(e) => {
+                            tracing::error!(
+                                error = %e,
+                                "SMTP is configured but the transport could not be built: \
+                                 email is disabled"
+                            );
+                            None
+                        }
+                    }
+                }
+                (username, password, email, relay) => {
+                    let missing: Vec<&str> = [
+                        ("SCANOPY_SMTP_USERNAME", username.is_none()),
+                        ("SCANOPY_SMTP_PASSWORD", password.is_none()),
+                        ("SCANOPY_SMTP_EMAIL", email.is_none()),
+                        ("SCANOPY_SMTP_RELAY", relay.is_none()),
+                    ]
+                    .into_iter()
+                    .filter_map(|(name, absent)| absent.then_some(name))
+                    .collect();
+
+                    // All four absent is the ordinary "no email configured" case and
+                    // stays quiet. Anything less is a half-finished setup.
+                    if missing.len() < 4 {
+                        tracing::warn!(
+                            missing = ?missing,
+                            "SMTP is partially configured: email is disabled until every \
+                             variable is set"
+                        );
+                    }
+                    None
+                }
+            }
         };
 
         let billing_service = if let Some(stripe_secret) = config.stripe_secret

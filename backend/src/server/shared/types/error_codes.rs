@@ -148,6 +148,12 @@ pub enum ErrorCode {
     /// Invite email doesn't match user's account
     InviteEmailMismatch,
 
+    // === Email ===
+    /// The configured mail server refused the message. Deliberately says nothing about
+    /// why: the mail server's reply names the relay host and carries provider
+    /// diagnostics, which belong in the server log and not in front of an end user.
+    EmailDeliveryFailed,
+
     // === Discovery ===
     /// Historical discovery cannot be modified via API
     DiscoveryHistoricalReadOnly,
@@ -300,6 +306,12 @@ impl ErrorCode {
             Self::InviteAlreadyAccepted => "This invite has already been accepted",
             Self::InviteEmailMismatch => "Invite email doesn't match your account",
 
+            // Email
+            Self::EmailDeliveryFailed => {
+                "Scanopy could not send this email. Ask an administrator to check the server \
+                 logs for the mail server's response."
+            }
+
             // Discovery
             Self::DiscoveryHistoricalReadOnly => "Historical discovery cannot be modified via API",
             Self::DiscoverySubnetNetworkMismatch { .. } => {
@@ -392,6 +404,7 @@ impl ErrorCode {
             | Self::ShareTokenInvalid
             | Self::InviteAlreadyAccepted
             | Self::InviteEmailMismatch
+            | Self::EmailDeliveryFailed
             | Self::DiscoveryHistoricalReadOnly
             | Self::DaemonNetworkMismatch
             | Self::DaemonIdentityMismatch

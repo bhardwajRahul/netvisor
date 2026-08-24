@@ -437,10 +437,12 @@ async fn email_install_command(
         .as_ref()
         .ok_or_else(|| ApiError::bad_request("Email service is not configured"))?;
 
+    // `?` rather than a formatted `internal_error`: the latter put the mail server's raw
+    // reply — relay hostname and provider diagnostics included — into the response body,
+    // where the client's error middleware showed it to the user in a toast.
     email_service
         .send_install_command_email(email, &request.install_command, request.os.into())
-        .await
-        .map_err(|e| ApiError::internal_error(&format!("Failed to send email: {e}")))?;
+        .await?;
 
     Ok(Json(ApiResponse::success(())))
 }
