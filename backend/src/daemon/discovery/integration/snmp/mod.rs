@@ -66,9 +66,9 @@ use super::{
 };
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::{
-    AttemptOutcome, IncompleteInterfaceWalk, MalformedNeighbours, SnmpCollectedNothing,
-    SnmpCollectionOutcome, SnmpGroupOutcome, SnmpWalkGroup, UnresolvedLldpPorts,
-    snmp_walk_shortfalls,
+    AttemptOutcome, ClaimSource, DeviceClaim, IncompleteInterfaceWalk, MalformedNeighbours,
+    SnmpCollectedNothing, SnmpCollectionOutcome, SnmpGroupOutcome, SnmpWalkGroup,
+    UnresolvedLldpPorts, contradicted_claims, snmp_walk_shortfalls,
 };
 
 /// Handle returned by a successful SNMP probe — carries the working credential and port.
@@ -305,6 +305,33 @@ impl DiscoveryIntegration for SnmpIntegration {
         // possible data loss sends operators hunting for interfaces that were never absent.
         // Rendered to one line per run at finalize — one paragraph per device drowns the
         // notification on any real network.
+        // What the device said to expect, kept beside what was read so the two can be compared
+        // once every walk has run. Read from the system group, which is why they are held here
+        // rather than derived at the comparison site.
+        //
+        // `ifNumber` is only a claim worth checking when the device published a positive figure:
+        // agents that do not implement it answer nothing, and one reporting zero interfaces while
+        // serving none has not contradicted itself.
+        let if_number_claim = system_info
+            .as_ref()
+            .and_then(|info| info.if_number)
+            .filter(|count| *count > 0)
+            .map(|count| DeviceClaim::Count {
+                source: ClaimSource::IfNumber,
+                expected: count as usize,
+            });
+        // Bit 2 of sysServices is the datalink layer: a device that sets it says it bridges.
+        // Weaker than `dot1dBaseNumPorts` because it carries no count, so it can only ever catch
+        // a bridge table that came back completely empty.
+        let bridge_bit_claim = system_info
+            .as_ref()
+            .and_then(|info| info.sys_services)
+            .is_some_and(|services| services & 0x02 != 0)
+            .then_some(DeviceClaim::Implements {
+                source: ClaimSource::SysServicesBridgeBit,
+            });
+        let if_set_complete = if_table.set_complete;
+
         let walk_fell_short = !if_table.set_complete || !if_table.attributes_complete;
         if !snmp_if_entries.is_empty() && walk_fell_short {
             ctx.ops
@@ -411,8 +438,9 @@ impl DiscoveryIntegration for SnmpIntegration {
         };
         let lldp_local_ports_outcome = SnmpGroupOutcome {
             complete: lldp_local_ports.complete,
-            returned_any: !lldp_local_ports.records.is_empty(),
+            observed: lldp_local_ports.records.len(),
             reason: lldp_local_ports.reason,
+            claim: lldp_local_ports.claim,
         };
         let lldp_local_ports = lldp_local_ports.records;
         let local_ports =
@@ -441,8 +469,9 @@ impl DiscoveryIntegration for SnmpIntegration {
             query_or_default(ip, "ip_addr_table", query_ip_addr_table(&mut session, ip)).await;
         let ip_addresses_outcome = SnmpGroupOutcome {
             complete: ip_addr_table.complete,
-            returned_any: !ip_addr_table.records.is_empty(),
+            observed: ip_addr_table.records.len(),
             reason: ip_addr_table.reason,
+            claim: ip_addr_table.claim,
         };
         let ip_addr_table = ip_addr_table.records;
 
@@ -450,8 +479,9 @@ impl DiscoveryIntegration for SnmpIntegration {
         let arp = query_or_default(ip, "arp", query_arp_table(&mut session, ip)).await;
         let arp_outcome = SnmpGroupOutcome {
             complete: arp.complete,
-            returned_any: !arp.records.is_empty(),
+            observed: arp.records.len(),
             reason: arp.reason,
+            claim: arp.claim,
         };
         let arp_entries = arp.records;
         let arp_count = arp_entries.len();
@@ -467,8 +497,9 @@ impl DiscoveryIntegration for SnmpIntegration {
             query_or_default(ip, "entity_mib", query_entity_physical(&mut session, ip)).await;
         let device_inventory_outcome = SnmpGroupOutcome {
             complete: device_inventory.complete,
-            returned_any: device_inventory.records.is_some(),
+            observed: usize::from(device_inventory.records.is_some()),
             reason: device_inventory.reason,
+            claim: device_inventory.claim,
         };
         let device_inventory = device_inventory.records;
         let has_entity_inventory = device_inventory.is_some();
@@ -560,8 +591,9 @@ impl DiscoveryIntegration for SnmpIntegration {
             query_or_default(ip, "vlan_table", query_vlan_table(bridge_session, ip)).await;
         let vlan_names_outcome = SnmpGroupOutcome {
             complete: vlan_table.complete,
-            returned_any: !vlan_table.records.is_empty(),
+            observed: vlan_table.records.len(),
             reason: vlan_table.reason,
+            claim: vlan_table.claim,
         };
         let vlan_table = vlan_table.records;
         let vlan_number_to_uuid: std::collections::HashMap<u16, Uuid> = if !vlan_table.is_empty() {
@@ -731,42 +763,65 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Which groups are worth reporting — and which are merely downstream of a failure
         // already being reported — is `snmp_walk_shortfalls`'s call, so it can be tested
         // without a live agent.
-        let incomplete = snmp_walk_shortfalls(
-            ip,
-            SnmpCollectionOutcome {
-                lldp: SnmpGroupOutcome {
-                    complete: lldp_complete,
-                    returned_any: lldp_count > 0,
-                    reason: lldp_reason,
-                },
-                cdp: SnmpGroupOutcome {
-                    complete: cdp_complete,
-                    returned_any: cdp_count > 0,
-                    reason: cdp_reason,
-                },
-                bridge_port_numbering: SnmpGroupOutcome {
-                    complete: bridge_ports.complete,
-                    returned_any: !bridge_ports.records.is_empty(),
-                    reason: bridge_ports.reason,
-                },
-                bridge_forwarding: SnmpGroupOutcome {
-                    complete: fdb_complete,
-                    returned_any: fdb_count > 0,
-                    reason: fdb_reason,
-                },
-                vlan_membership: SnmpGroupOutcome {
-                    complete: vlan_membership_complete,
-                    returned_any: !port_vlan_membership.is_empty(),
-                    reason: vlan_membership_reason,
-                },
-                arp_table: arp_outcome,
-                device_inventory: device_inventory_outcome,
-                ip_addresses: ip_addresses_outcome,
-                lldp_local_ports: lldp_local_ports_outcome,
-                vlan_names: vlan_names_outcome,
+        let collection_outcome = SnmpCollectionOutcome {
+            lldp: SnmpGroupOutcome {
+                complete: lldp_complete,
+                observed: lldp_count,
+                reason: lldp_reason,
+                // A device that answered `lldpLocChassisId` runs an LLDP agent, so an empty
+                // neighbour table from it is worth a second look — #685 is precisely that pair.
+                claim: lldp_local.as_ref().map(|_| DeviceClaim::Implements {
+                    source: ClaimSource::LldpLocalIdentity,
+                }),
             },
-        );
+            cdp: SnmpGroupOutcome {
+                complete: cdp_complete,
+                observed: cdp_count,
+                reason: cdp_reason,
+                claim: None,
+            },
+            interfaces: SnmpGroupOutcome {
+                complete: if_set_complete,
+                observed: snmp_if_entries.len(),
+                reason: None,
+                claim: if_number_claim,
+            },
+            bridge_port_numbering: SnmpGroupOutcome {
+                complete: bridge_ports.complete,
+                observed: bridge_ports.records.len(),
+                reason: bridge_ports.reason,
+                claim: bridge_ports.claim.or(bridge_bit_claim),
+            },
+            bridge_forwarding: SnmpGroupOutcome {
+                complete: fdb_complete,
+                observed: fdb_count,
+                reason: fdb_reason,
+                claim: None,
+            },
+            vlan_membership: SnmpGroupOutcome {
+                complete: vlan_membership_complete,
+                observed: port_vlan_membership.len(),
+                reason: vlan_membership_reason,
+                claim: None,
+            },
+            arp_table: arp_outcome,
+            device_inventory: device_inventory_outcome,
+            ip_addresses: ip_addresses_outcome,
+            lldp_local_ports: lldp_local_ports_outcome,
+            vlan_names: vlan_names_outcome,
+        };
+
+        let incomplete = snmp_walk_shortfalls(ip, collection_outcome);
         ctx.ops.record_snmp_shortfalls(incomplete).await;
+
+        // Separate from the shortfalls above, and emitted alongside them rather than instead of
+        // them: a shortfall says why *we* stopped reading, a contradiction says what the *device*
+        // said was there. A device that misreports its own count still scans — everything read is
+        // already recorded by this point, and nothing here can fail a collection.
+        let contradicted = contradicted_claims(ip, collection_outcome);
+        if !contradicted.is_empty() {
+            ctx.ops.record_contradicted_claims(contradicted).await;
+        }
 
         // A device that answered the credential and then produced nothing from any table.
         //

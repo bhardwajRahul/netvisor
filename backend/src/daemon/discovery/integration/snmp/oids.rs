@@ -24,6 +24,20 @@ pub fn oid_to_vec(oid: &Oid) -> Vec<u64> {
     oid.iter().map(|iter| iter.collect()).unwrap_or_default()
 }
 
+/// Split a dotted OID string into sub-ids.
+///
+/// Unlike [`parse_oid`] this cannot fail: non-numeric components are dropped. Every caller passes
+/// a constant from this module, so a malformed OID is a bug in this file rather than something a
+/// device can provoke — and a walk that starts from a shorter base reads as a truncated column,
+/// which is visible, where a panic mid-collection is not.
+pub fn oid_parts(oid_str: &str) -> Vec<u64> {
+    oid_str
+        .split('.')
+        .filter(|s| !s.is_empty())
+        .filter_map(|s| s.parse().ok())
+        .collect()
+}
+
 /// System MIB OIDs (RFC 3418)
 pub mod system {
     /// sysDescr.0 - Full textual description of the entity
@@ -53,7 +67,11 @@ pub mod if_mib {
     /// ifTable - Interface table
     pub const IF_TABLE: &str = "1.3.6.1.2.1.2.2";
 
-    /// ifNumber.0 - Number of network ip_addresses
+    /// ifNumber.0 - How many interfaces the device says it has.
+    ///
+    /// Read as the expected row count for the ifTable walk: a device claiming 23 and answering
+    /// with 1 has short-changed the collection, and saying so is the only way an operator learns
+    /// that from a scan that otherwise reports itself complete.
     pub const IF_NUMBER: &str = "1.3.6.1.2.1.2.1.0";
 
     /// ifEntry - Entry in interface table
@@ -291,6 +309,14 @@ pub mod bridge {
 
     /// dot1dBasePortIfIndex - bridge port to ifIndex mapping
     pub const DOT1D_BASE_PORT_IF_INDEX: &str = "1.3.6.1.2.1.17.1.4.1.2";
+
+    /// dot1dBaseNumPorts.0 - How many bridge ports the device says it controls.
+    ///
+    /// The bridge MIB's analogue of `ifNumber`, and the sharper of the two signals that a switch
+    /// is not giving up its bridge tables: a device declaring 48 ports and answering the port
+    /// mapping with none has contradicted itself, whereas the `sysServices` bridge bit alone only
+    /// says it is a bridge.
+    pub const DOT1D_BASE_NUM_PORTS: &str = "1.3.6.1.2.1.17.1.2.0";
 
     /// dot1dTpFdbEntry columns
     pub mod fdb_entry {
