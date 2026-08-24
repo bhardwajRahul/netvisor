@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
 use crate::daemon::discovery::integration::snmp::sim::lldp::{
-    Advertised, LldpTable, LocalPort, RemoteNeighbour,
+    Advertised, LldpTable, RemoteNeighbour,
 };
 use crate::daemon::discovery::integration::snmp::sim::mibs::{
     ArpTable, BridgeTable, CdpTable, EntityTable, IpAddrTable,
@@ -156,72 +156,21 @@ pub fn lldp_table() -> LldpTable {
         "switch",
     )
     .sys_desc("TP-Link Omada TL-SG3216")
-    .local_ports(vec![
-        LocalPort::new(
-            1,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/1".into())),
-        ),
-        LocalPort::new(
-            2,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/2".into())),
-        ),
-        LocalPort::new(
-            3,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/3".into())),
-        ),
-        LocalPort::new(
-            4,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/4".into())),
-        ),
-        LocalPort::new(
-            5,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/5".into())),
-        ),
-        LocalPort::new(
-            6,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/6".into())),
-        ),
-        LocalPort::new(
-            7,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/7".into())),
-        ),
-        LocalPort::new(
-            8,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/8".into())),
-        ),
-        LocalPort::new(
-            9,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/9".into())),
-        ),
-        LocalPort::new(
-            10,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/10".into())),
-        ),
-        LocalPort::new(
-            11,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/11".into())),
-        ),
-        LocalPort::new(
-            12,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/12".into())),
-        ),
-        LocalPort::new(
-            13,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/13".into())),
-        ),
-        LocalPort::new(
-            14,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/14".into())),
-        ),
-        LocalPort::new(
-            15,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/15".into())),
-        ),
-        LocalPort::new(
-            16,
-            Advertised::octets(LldpPortId::InterfaceName("gigabitEthernet 1/0/16".into())),
-        ),
-    ])
+    // TEMPORARY — REVERT AFTER THE SCAN.
+    //
+    // `lldpLocPortTable` deliberately withheld to exercise the empty-table identity path in
+    // `remap_lldp_local_ports`. This device numbers its LLDP ports 1..16 against ifIndex
+    // 49153..49168, so with no local-port table to translate through, its neighbour keeps
+    // lldpLocPortNum 5 — an index no interface holds — and is discarded whole. That is the one
+    // drop path `dropped-neighbour-raises-a-scan-warning` still has no evidence for: the
+    // tier-failure path is already covered by .239/.250, but the identity path returned 0 and
+    // warned about nothing until this branch, and nothing in the environment reproduces it.
+    //
+    // Its own regression (#614, 17 interfaces persisting despite one shared MAC and no ifName)
+    // is unaffected — that is an ifTable property and no assertion about it moves.
+    //
+    // Restoring this restores the reciprocal pair with switch-dlink-01, which
+    // `reciprocal-pair-draws-solid-link` depends on. Do not leave this in.
     .neighbours(vec![
         RemoteNeighbour::new(
             5,
