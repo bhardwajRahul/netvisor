@@ -402,6 +402,7 @@ impl HostService {
             ports_resolved_reciprocal = stats.ports_resolved_reciprocal,
             host_no_strategy = stats.host_no_strategy,
             host_not_found = stats.host_not_found,
+            host_ambiguous = stats.host_ambiguous,
             port_no_strategy = stats.port_no_strategy,
             port_not_found = stats.port_not_found,
             port_ambiguous = stats.port_ambiguous,
@@ -467,10 +468,12 @@ impl HostService {
                 _ => continue,
             };
 
-            // Try to find host by MAC
-            let host_id = match resolver.find_host_by_mac(mac, network_id).await {
-                Some(id) => id,
-                None => continue,
+            // Try to find host by MAC. A MAC on more than one device names none of them, so an
+            // ambiguous verdict leaves the row unresolved rather than picking a side.
+            let IdentityResolution::Resolved(host_id) =
+                resolver.find_host_by_mac(mac, network_id).await
+            else {
+                continue;
             };
 
             // Try full resolution (specific port). A far end that repeats one MAC across its ports

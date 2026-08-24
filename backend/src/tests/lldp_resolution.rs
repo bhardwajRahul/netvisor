@@ -164,7 +164,7 @@ async fn a_host_resolves_by_the_mac_on_one_of_its_addresses() {
         lab.resolver
             .find_host_by_mac("00:1a:2b:00:10:01", lab.network_id)
             .await,
-        Some(switch.id)
+        IdentityResolution::Resolved(switch.id)
     );
 }
 
@@ -190,7 +190,7 @@ async fn many_ports_sharing_one_mac_still_resolve_to_their_single_host() {
         lab.resolver
             .find_host_by_mac("00:ad:24:af:4e:00", lab.network_id)
             .await,
-        Some(switch.id),
+        IdentityResolution::Resolved(switch.id),
         "one MAC on many ports of one switch is still that switch"
     );
 }
@@ -209,7 +209,8 @@ async fn one_mac_across_two_hosts_resolves_to_neither() {
         lab.resolver
             .find_host_by_mac("00:ad:24:af:4e:00", lab.network_id)
             .await,
-        None
+        IdentityResolution::Ambiguous,
+        "one MAC on two devices names neither, and says so"
     );
 }
 
@@ -224,13 +225,13 @@ async fn a_host_resolves_by_its_ip_and_an_unknown_ip_resolves_to_nothing() {
         .resolver
         .find_host_by_ip(&IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20)), lab.network_id)
         .await;
-    assert_eq!(found, Some(switch.id));
+    assert_eq!(found, IdentityResolution::Resolved(switch.id));
 
     let missing = lab
         .resolver
         .find_host_by_ip(&IpAddr::V4(Ipv4Addr::new(192, 168, 1, 99)), lab.network_id)
         .await;
-    assert_eq!(missing, None);
+    assert_eq!(missing, IdentityResolution::NotFound);
 }
 
 #[tokio::test]
@@ -243,7 +244,7 @@ async fn a_host_resolves_by_an_interface_description() {
         lab.resolver
             .find_host_by_if_name("GigabitEthernet0/1", lab.network_id)
             .await,
-        Some(switch.id)
+        IdentityResolution::Resolved(switch.id)
     );
 }
 
@@ -260,7 +261,7 @@ async fn a_chassis_id_resolves_only_when_it_names_one_host() {
         lab.resolver
             .find_host_by_chassis_id("00:1a:2b:00:11:00", lab.network_id)
             .await,
-        Some(netgear.id)
+        IdentityResolution::Resolved(netgear.id)
     );
 
     lab.host_with("netgear-clone", Some("00:1a:2b:00:11:00"), None)
@@ -269,8 +270,8 @@ async fn a_chassis_id_resolves_only_when_it_names_one_host() {
         lab.resolver
             .find_host_by_chassis_id("00:1a:2b:00:11:00", lab.network_id)
             .await,
-        None,
-        "a chassis id on two hosts identifies neither"
+        IdentityResolution::Ambiguous,
+        "a chassis id on two hosts identifies neither, and reports why"
     );
 }
 
@@ -284,7 +285,7 @@ async fn a_sys_name_resolves_only_when_it_names_one_host() {
         lab.resolver
             .find_host_by_sys_name("core-switch", lab.network_id)
             .await,
-        Some(sw.id)
+        IdentityResolution::Resolved(sw.id)
     );
 
     lab.host_with("sw-2", None, Some("core-switch")).await;
@@ -292,7 +293,7 @@ async fn a_sys_name_resolves_only_when_it_names_one_host() {
         lab.resolver
             .find_host_by_sys_name("core-switch", lab.network_id)
             .await,
-        None
+        IdentityResolution::Ambiguous
     );
 }
 
@@ -314,13 +315,13 @@ async fn host_lookups_do_not_cross_a_network_boundary() {
         lab.resolver
             .find_host_by_mac("00:1a:2b:00:10:05", other_network)
             .await,
-        None
+        IdentityResolution::NotFound
     );
     assert_eq!(
         lab.resolver
             .find_host_by_ip(&IpAddr::V4(Ipv4Addr::new(192, 168, 1, 30)), other_network)
             .await,
-        None
+        IdentityResolution::NotFound
     );
 }
 
@@ -598,7 +599,7 @@ async fn a_closed_snapshot_copy_does_not_contest_its_own_live_row() {
         lab.resolver
             .find_host_by_if_name("GigabitEthernet0/1", lab.network_id)
             .await,
-        Some(switch.id)
+        IdentityResolution::Resolved(switch.id)
     );
 }
 

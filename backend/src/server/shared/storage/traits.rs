@@ -85,6 +85,19 @@ impl<T> Unique<T> {
         }
     }
 
+    /// Apply `f` to the row, if there was exactly one.
+    ///
+    /// Lets a caller project a row onto the field it actually wanted — usually an id — without
+    /// unwrapping to `Option` and losing the distinction between "nothing matched" and "the
+    /// identifier does not identify".
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Unique<U> {
+        match self {
+            Self::One(entity) => Unique::One(f(entity)),
+            Self::None => Unique::None,
+            Self::Multiple => Unique::Multiple,
+        }
+    }
+
     /// The row, if the filter identified exactly one.
     ///
     /// For callers that treat "no match" and "ambiguous" alike. Prefer matching on the variants

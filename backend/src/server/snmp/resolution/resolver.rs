@@ -54,19 +54,23 @@ pub trait LldpResolver: Send + Sync {
     /// Many interfaces on one host may legitimately carry the MAC — that is one host, and it
     /// resolves. Two *different* hosts carrying it is a duplicate this cannot choose between, and
     /// resolves to nothing so the caller's later tiers get their turn.
-    async fn find_host_by_mac(&self, mac: &str, network_id: Uuid) -> Option<Uuid>;
+    async fn find_host_by_mac(&self, mac: &str, network_id: Uuid) -> IdentityResolution;
 
     /// Find host by IP address (via ip_addresses table).
-    async fn find_host_by_ip(&self, ip: &IpAddr, network_id: Uuid) -> Option<Uuid>;
+    async fn find_host_by_ip(&self, ip: &IpAddr, network_id: Uuid) -> IdentityResolution;
 
     /// Find host by interface name (via interfaces.if_descr).
-    async fn find_host_by_if_name(&self, name: &str, network_id: Uuid) -> Option<Uuid>;
+    async fn find_host_by_if_name(&self, name: &str, network_id: Uuid) -> IdentityResolution;
 
     /// Find host by chassis_id field on hosts table.
     ///
     /// Resolves only when exactly one host carries the identifier — see
     /// [`LldpResolver::find_host_by_sys_name`] for why the count matters.
-    async fn find_host_by_chassis_id(&self, chassis_id: &str, network_id: Uuid) -> Option<Uuid>;
+    async fn find_host_by_chassis_id(
+        &self,
+        chassis_id: &str,
+        network_id: Uuid,
+    ) -> IdentityResolution;
 
     /// Find host by sys_name field on hosts table.
     ///
@@ -74,7 +78,7 @@ pub trait LldpResolver: Send + Sync {
     /// operator-assigned and frequently left at a vendor default ("switch", "MikroTik"), so a
     /// first-match lookup would attach links to an arbitrary one of several identically named
     /// devices. Ambiguity is reported as "unresolved", not as a guess.
-    async fn find_host_by_sys_name(&self, sys_name: &str, network_id: Uuid) -> Option<Uuid>;
+    async fn find_host_by_sys_name(&self, sys_name: &str, network_id: Uuid) -> IdentityResolution;
 
     /// Find the one interface on `host_id` carrying this MAC.
     ///
@@ -121,15 +125,17 @@ impl LldpResolverImpl {
 
 #[async_trait]
 impl LldpResolver for LldpResolverImpl {
-    async fn find_host_by_mac(&self, mac: &str, network_id: Uuid) -> Option<Uuid> {
-        let mac_addr: mac_address::MacAddress = mac.parse().ok()?;
+    async fn find_host_by_mac(&self, mac: &str, network_id: Uuid) -> IdentityResolution {
+        let Ok(mac_addr) = mac.parse::<mac_address::MacAddress>() else {
+            return IdentityResolution::NotFound;
+        };
 
         // Primary: Interface MAC (populated from ARP or SNMP ipAddrTable enrichment)
         let filter = StorableFilter::<IPAddress>::new_from_network_ids(&[network_id])
             .mac_address(&mac_addr)
             .live();
         if let Ok(Unique::One(ip_address)) = self.ip_address_service.get_unique(filter).await {
-            return Some(ip_address.base.host_id);
+            return IdentityResolution::Resolved(ip_address.base.host_id);
         }
 
         // Fallback: Interface MAC (from SNMP ifPhysAddress, always present for SNMP hosts).
@@ -140,64 +146,66 @@ impl LldpResolver for LldpResolverImpl {
         let filter = StorableFilter::<Interface>::new_from_network_ids(&[network_id])
             .mac_address(&mac_addr)
             .live();
-        let entries = self.interface_service.get_all(filter).await.ok()?;
+        let Ok(entries) = self.interface_service.get_all(filter).await else {
+            return IdentityResolution::NotFound;
+        };
         let host_ids: HashSet<Uuid> = entries.iter().map(|e| e.base.host_id).collect();
 
-        only_match(host_ids.into_iter().collect())
+        match host_ids.len() {
+            0 => IdentityResolution::NotFound,
+            1 => IdentityResolution::Resolved(host_ids.into_iter().next().unwrap_or_default()),
+            _ => IdentityResolution::Ambiguous,
+        }
     }
 
-    async fn find_host_by_ip(&self, ip: &IpAddr, network_id: Uuid) -> Option<Uuid> {
+    async fn find_host_by_ip(&self, ip: &IpAddr, network_id: Uuid) -> IdentityResolution {
         let filter = StorableFilter::<IPAddress>::new_from_network_ids(&[network_id])
             .ip_address(*ip)
             .live();
-        let ip_address = self
-            .ip_address_service
-            .get_unique(filter)
-            .await
-            .ok()?
-            .found()?;
+        let Ok(found) = self.ip_address_service.get_unique(filter).await else {
+            return IdentityResolution::NotFound;
+        };
 
-        Some(ip_address.base.host_id)
+        IdentityResolution::from_unique(found.map(|ip| ip.base.host_id))
     }
 
-    async fn find_host_by_if_name(&self, name: &str, network_id: Uuid) -> Option<Uuid> {
+    async fn find_host_by_if_name(&self, name: &str, network_id: Uuid) -> IdentityResolution {
         let filter = StorableFilter::<Interface>::new_from_network_ids(&[network_id])
             .if_descr(name)
             .live();
-        let entry = self
-            .interface_service
-            .get_unique(filter)
-            .await
-            .ok()?
-            .found()?;
+        let Ok(found) = self.interface_service.get_unique(filter).await else {
+            return IdentityResolution::NotFound;
+        };
 
-        Some(entry.base.host_id)
+        IdentityResolution::from_unique(found.map(|entry| entry.base.host_id))
     }
 
-    async fn find_host_by_chassis_id(&self, chassis_id: &str, network_id: Uuid) -> Option<Uuid> {
+    async fn find_host_by_chassis_id(
+        &self,
+        chassis_id: &str,
+        network_id: Uuid,
+    ) -> IdentityResolution {
         let filter = StorableFilter::<Host>::new_from_network_ids(&[network_id])
             .chassis_id(chassis_id)
             .live();
 
-        self.host_storage
-            .get_unique(filter)
-            .await
-            .ok()?
-            .found()
-            .map(|host| host.id)
+        let Ok(found) = self.host_storage.get_unique(filter).await else {
+            return IdentityResolution::NotFound;
+        };
+
+        IdentityResolution::from_unique(found.map(|host| host.id))
     }
 
-    async fn find_host_by_sys_name(&self, sys_name: &str, network_id: Uuid) -> Option<Uuid> {
+    async fn find_host_by_sys_name(&self, sys_name: &str, network_id: Uuid) -> IdentityResolution {
         let filter = StorableFilter::<Host>::new_from_network_ids(&[network_id])
             .sys_name(sys_name)
             .live();
 
-        self.host_storage
-            .get_unique(filter)
-            .await
-            .ok()?
-            .found()
-            .map(|host| host.id)
+        let Ok(found) = self.host_storage.get_unique(filter).await else {
+            return IdentityResolution::NotFound;
+        };
+
+        IdentityResolution::from_unique(found.map(|host| host.id))
     }
 
     async fn find_if_entry_by_mac(&self, mac: &str, host_id: Uuid) -> IdentityResolution {
@@ -314,19 +322,5 @@ impl LldpResolver for LldpResolverImpl {
             .found()?;
 
         Some(entry.id)
-    }
-}
-
-/// The single element of `matches`, or `None` when there were zero or more than one.
-///
-/// The column lookups get this from [`Unique`] now. What remains is the one case the database
-/// cannot answer: several *rows* collapsing to one *host*. A switch reporting its chassis MAC on
-/// all 48 ports is 48 interfaces and one device, and that device is the answer — only rows
-/// spanning more than one host are genuinely ambiguous, so the dedup has to happen before the
-/// single-match rule rather than inside the query.
-fn only_match<T>(mut matches: Vec<T>) -> Option<T> {
-    match matches.len() {
-        1 => matches.pop(),
-        _ => None,
     }
 }

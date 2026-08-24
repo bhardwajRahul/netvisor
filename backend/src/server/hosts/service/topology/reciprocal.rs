@@ -93,9 +93,7 @@ impl HostService {
                             )
                             .await
                     } else if let Some(ref device_id) = interface.base.cdp_device_id {
-                        IdentityResolution::found(
-                            resolver.find_host_by_sys_name(device_id, network_id).await,
-                        )
+                        resolver.find_host_by_sys_name(device_id, network_id).await
                     } else {
                         IdentityResolution::NoStrategy
                     }
