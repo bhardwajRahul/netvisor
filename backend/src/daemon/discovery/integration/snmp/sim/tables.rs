@@ -152,7 +152,7 @@ pub enum IfNumber {
     #[default]
     Derived,
     /// A device that misreports itself on purpose, so the daemon's count check can be watched
-    /// firing rather than only staying quiet. `switch-dell-01` declares 52 and serves 23 (GH #685).
+    /// firing rather than only staying quiet. `switch-dell-01` declares 52 and serves 7 (GH #685).
     Declares(i32),
 }
 
