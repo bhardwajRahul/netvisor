@@ -869,10 +869,22 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     let mut chassis_subtype_shortfall = Shortfall::default();
     let mut chassis_value_shortfall = Shortfall::default();
 
-    // Keys the chassis columns actually listed. A key present in `neighbors` but absent here was
-    // conjured by a later column alone — a ghost row, not a truncated read. `walk_if_table` has
-    // the same guard in `known_if_indexes`; this table had none.
-    let mut chassis_keys: HashSet<(i32, i32)> = HashSet::new();
+    // Keys each chassis column listed, kept apart rather than merged.
+    //
+    // Their union answers the ghost-row question: a key present in `neighbors` but in neither of
+    // these was conjured by a later column alone, not lost to a truncated read. (`walk_if_table`
+    // has the same guard in `known_if_indexes`; this table had none.)
+    //
+    // Their *disagreement* answers a second question the walk cannot. Both columns are mandatory
+    // per IEEE 802.1AB, so a row one lists and the other does not means one read came up short —
+    // whether the agent skipped a successor or the walk stopped early. That distinction is
+    // invisible at the transport: a response that skips a row carries the right request id and a
+    // well-formed OID, and is byte-for-byte a legitimate end-of-column. Judging it by OID position
+    // instead is the assumption GH #674 had to remove before unsorted firmware could be read at
+    // all. Which rows each column enumerated is evidence of a different kind, and it is already
+    // here for the asking.
+    let mut subtype_keys: HashSet<(i32, i32)> = HashSet::new();
+    let mut value_keys: HashSet<(i32, i32)> = HashSet::new();
 
     // Values rejected for being the wrong ASN.1 type, by the type the agent actually sent. A
     // count says something went wrong; the type says what, and the two point at different
@@ -969,7 +981,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
                         });
                 match column_name {
                     "remChassisIdSubtype" => {
-                        chassis_keys.insert((local_port, rem_index));
+                        subtype_keys.insert((local_port, rem_index));
                         match value_to_i32(value) {
                             Some(v) => neighbor.remote_chassis_id_subtype = Some(v as u8),
                             // Not a silent discard any more. An agent answering the subtype with
@@ -981,7 +993,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
                         }
                     }
                     "remChassisId" => {
-                        chassis_keys.insert((local_port, rem_index));
+                        value_keys.insert((local_port, rem_index));
                         match value {
                             Value::OctetString(bytes) => {
                                 neighbor.remote_chassis_id_bytes = Some(bytes.to_vec());
@@ -1072,7 +1084,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
             if has_subtype && has_value {
                 return true;
             }
-            if !chassis_keys.contains(key) {
+            if !subtype_keys.contains(key) && !value_keys.contains(key) {
                 // Neither chassis column ever listed this (localPortNum, remIndex). A later
                 // column invented it, so there was never a chassis ID to lose.
                 ghost_rows += 1;
@@ -1097,7 +1109,9 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         missing_chassis,
         short_index,
         unexpected_subtype_type.is_some() || unexpected_value_type.is_some(),
-        !chassis_subtype_shortfall.complete || !chassis_value_shortfall.complete,
+        !chassis_subtype_shortfall.complete
+            || !chassis_value_shortfall.complete
+            || subtype_keys != value_keys,
     );
     if discarded > 0 {
         shortfall.complete = false;
@@ -1112,6 +1126,9 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
             unexpected_value_type,
             subtype_walk = ?chassis_subtype_shortfall.reason,
             value_walk = ?chassis_value_shortfall.reason,
+            // Non-zero with both walks reporting clean is the shape that has no other tell: one
+            // column simply listed rows the other did not.
+            chassis_column_gap = subtype_keys.symmetric_difference(&value_keys).count(),
             reason = ?discard_reason,
             "LLDP neighbours missing the mandatory chassis ID; discarding them and marking the \
              walk partial"
@@ -1186,10 +1203,15 @@ fn dominant_discard_reason(
     }
     // Truncation overrides the counts rather than competing with them. A chassis column that
     // stopped early lists none of the rows past the stop, so its casualties are indistinguishable
-    // from rows the column never had — they land in `ghost_rows` and would otherwise be reported
-    // as a firmware defect no rescan can fix. That is the wrong advice for the case the comment
-    // above the filter calls the common one, and truncation is the only positive evidence
-    // available to tell them apart.
+    // from rows the column never had — they land in `ghost_rows`, or in `missing_chassis` when the
+    // sibling column did list them, and would otherwise be reported as a firmware defect no rescan
+    // can fix. That is the wrong advice for the case the comment above the filter calls the common
+    // one.
+    //
+    // The caller supplies two kinds of evidence for it, because the walk's own completeness flag
+    // only sees the stops it recognises. An agent that skips a successor row ends the column on a
+    // clean `EndOfSubtree` — right request id, well-formed OID, nothing to retry on — and the only
+    // trace left is the two mandatory chassis columns having enumerated different rows.
     if chassis_walk_cut_short {
         return Some(MalformedNeighbourReason::WalkCutShort);
     }
@@ -2866,6 +2888,87 @@ mod if_table_tests {
         assert_eq!(
             chassis,
             Some(LldpChassisId::MacAddress("00:ad:24:89:cc:f0".to_string()))
+        );
+    }
+
+    /// The two chassis columns disagreeing about which rows exist is evidence that one read came
+    /// up short — evidence the walk's own completeness flag cannot supply.
+    ///
+    /// The `lldpRemChassisId` column lists three neighbours; `lldpRemChassisIdSubtype` lists only
+    /// the first two. Both walks end cleanly, because a response that skips a successor is
+    /// byte-for-byte identical to the end of a column: same request id, well-formed, an OID that
+    /// simply moved further than it should have. Nothing at the transport can tell the two apart,
+    /// and no OID-position rule should try — that is exactly the assumption GH #674 removed so
+    /// unsorted firmware could be read at all.
+    ///
+    /// What *is* available is the two columns naming different row sets. For a table whose
+    /// identifying columns are both mandatory, that means one of them stopped early, and a rescan
+    /// is the remedy. Reported as `IncompleteRecords` it told the operator the opposite — that the
+    /// device served the row without an identifier and retrying would change nothing.
+    #[tokio::test]
+    async fn chassis_columns_listing_different_rows_are_a_short_read_not_a_malformed_record() {
+        let mut agent = FakeAgent::new(&[
+            // Subtype column stops after two rows.
+            ("1.0.8802.1.1.2.1.4.1.1.4.100.11.1", Canned::Int(7)),
+            ("1.0.8802.1.1.2.1.4.1.1.4.500.19.2", Canned::Int(4)),
+            // Value column lists all three.
+            ("1.0.8802.1.1.2.1.4.1.1.5.100.11.1", Canned::Str("C230408")),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.500.19.2",
+                Canned::Bytes(&[0xf0, 0x64, 0x26, 0xb3, 0x84, 0x00]),
+            ),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.1400.16.3",
+                Canned::Bytes(&[0x78, 0x8c, 0x77, 0xe5, 0x92, 0x7d]),
+            ),
+            ("1.0.8802.1.1.2.1.4.1.1.9.500.19.2", Canned::Str("VSAFC11")),
+        ]);
+
+        let walk = query_lldp_neighbors(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(walk.records.len(), 2, "the two complete rows still resolve");
+        assert_eq!(walk.discarded, 1);
+        assert_eq!(
+            walk.discard_reason,
+            Some(MalformedNeighbourReason::WalkCutShort),
+            "one column listed a row the other never did, so the read came up short"
+        );
+        assert!(
+            !walk.complete,
+            "a lost neighbour must not let the server prune what it already holds"
+        );
+    }
+
+    /// The floor under the change above: a row *both* columns listed, whose subtype never arrived,
+    /// is still the device's doing and still not worth a rescan. Without this the new signal could
+    /// relabel every genuine firmware defect as a transient short read.
+    #[tokio::test]
+    async fn a_row_both_chassis_columns_listed_stays_a_malformed_record() {
+        let mut agent = FakeAgent::new(&[
+            ("1.0.8802.1.1.2.1.4.1.1.4.100.11.1", Canned::Int(4)),
+            // Listed by the subtype column, but the value is a type that column cannot hold, so
+            // the row is keyed by both and still unusable.
+            (
+                "1.0.8802.1.1.2.1.4.1.1.4.500.19.2",
+                Canned::Str("not-an-int"),
+            ),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.100.11.1",
+                Canned::Bytes(&[0x00, 0x11, 0xb4, 0x8c, 0x02, 0xe0]),
+            ),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.500.19.2",
+                Canned::Bytes(&[0xf0, 0x64, 0x26, 0xb3, 0x84, 0x00]),
+            ),
+        ]);
+
+        let walk = query_lldp_neighbors(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(walk.discarded, 1);
+        assert_ne!(
+            walk.discard_reason,
+            Some(MalformedNeighbourReason::WalkCutShort),
+            "both columns listed the row, so nothing came up short — a rescan is not the remedy"
         );
     }
 
