@@ -169,7 +169,7 @@ impl CredentialType {
                     secret: true,
                     optional: false,
                     help_text: Some(
-                        "Custom SNMP community string. The default 'public' community is always tried automatically during scans.",
+                        "Custom SNMP community string. The default 'public' community is always tried automatically during scans. On Cisco switches, append '@' and a VLAN id — for example 'readonly@20' — to read that VLAN's MAC-address table, which the plain community does not return.",
                     ),
                     options: None,
                     default_value: None,
@@ -258,7 +258,7 @@ impl CredentialType {
                     secret: false,
                     optional: true,
                     help_text: Some(
-                        "Optional SNMPv3 context name. Leave blank for the default context (used by interface and LLDP data).",
+                        "Optional SNMPv3 context name, applied to bridge and VLAN queries only. Cisco and some other vendors keep a separate MAC-address table per VLAN in a named context; naming it here reads that table instead of the near-empty default one. Interface, LLDP and ARP data always come from the default context.",
                     ),
                     options: None,
                     default_value: None,

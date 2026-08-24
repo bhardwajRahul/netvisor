@@ -1,7 +1,7 @@
 -- Seed the SNMP credentials needed to scan the SNMP simulation environment.
 --
--- The sim env (tools/snmp/SNMP-TEST-ENV.md) deliberately spreads its 21 devices across five
--- different credentials — three v2c communities, one v1-only, one v3 USM user — so that a scan
+-- The sim env (tools/snmp/SNMP-TEST-ENV.md) deliberately spreads its 22 devices across six
+-- different credentials — three v2c communities, one v1-only, two v3 USM users — so that a scan
 -- exercises credential selection, the v1/v2c/v3 negotiation paths, and the "try the next
 -- credential" fallback rather than one community answering everything.
 --
@@ -44,7 +44,18 @@ INSERT INTO seed_snmp_credentials (name, credential_type) VALUES
        "auth_protocol":"Sha256",
        "auth_password":{"mode":"Inline","value":"authpass12345"},
        "priv_protocol":"Aes128",
-       "priv_password":{"mode":"Inline","value":"privpass12345"}}');
+       "priv_password":{"mode":"Inline","value":"privpass12345"}}'),
+    -- .251 switch-cisco-01 — the SNMPv3 context fixture. Its own USM user on purpose: only one
+    -- SNMP credential per host ever executes, so a device that answered both this and the
+    -- credential above would report nine bridge FDB entries or one depending on mapping order.
+    ('SNMP sim — scanopyctx vlan-20 (v3 AuthPriv)',
+     '{"type":"SnmpV3",
+       "security_name":"scanopyctx",
+       "auth_protocol":"Sha256",
+       "auth_password":{"mode":"Inline","value":"ctxauthpass12345"},
+       "priv_protocol":"Aes128",
+       "priv_password":{"mode":"Inline","value":"ctxprivpass12345"},
+       "context_name":"vlan-20"}');
 
 -- One credential per (organization owning a network, credential). md5(...)::uuid gives a stable
 -- id per organization, so two organizations each get their own copy rather than fighting over one
