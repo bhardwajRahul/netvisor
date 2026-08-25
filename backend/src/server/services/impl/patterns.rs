@@ -155,6 +155,9 @@ impl MatchConfidence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ClientProbe {
     Docker,
+    /// A completed gNMI `Get` against the device. A gRPC listener accepts a TCP connect whatever
+    /// it serves, so the completed call is the only evidence that the target is a gNMI endpoint.
+    Gnmi,
     Podman,
     Snmp,
     UnifiController,
