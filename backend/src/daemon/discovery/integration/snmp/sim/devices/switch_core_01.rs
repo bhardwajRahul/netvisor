@@ -4,7 +4,7 @@ use crate::daemon::discovery::integration::snmp::sim::lldp::{
     Advertised, LldpTable, RemoteNeighbour,
 };
 use crate::daemon::discovery::integration::snmp::sim::mibs::{
-    ArpTable, BridgeTable, CdpTable, EntityTable, FdbEntry, FdbStatus, IpAddrTable,
+    BridgeTable, CdpTable, EntityTable, FdbEntry, FdbStatus,
 };
 use crate::daemon::discovery::integration::snmp::sim::tables::{IfRow, IfTable};
 use crate::daemon::discovery::integration::snmp::sim::transport::Handler;
@@ -53,12 +53,9 @@ fn tables() -> Tables {
         if_table: Some(if_table()),
         lldp: Some(lldp_table()),
         bridge: bridge_table(),
-        arp: ArpTable::default(),
-        ip_addr: IpAddrTable::default(),
         entity: entity_table(),
         cdp: cdp_table(),
-        lldp_variants: Vec::new(),
-        context_bridge: None,
+        ..Default::default()
     }
 }
 

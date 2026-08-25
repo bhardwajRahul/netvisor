@@ -3,9 +3,7 @@ use std::net::Ipv4Addr;
 use crate::daemon::discovery::integration::snmp::sim::lldp::{
     Advertised, ChassisDefect, LldpTable, RemoteNeighbour,
 };
-use crate::daemon::discovery::integration::snmp::sim::mibs::{
-    ArpTable, BridgeTable, CdpTable, EntityTable, IpAddrTable,
-};
+use crate::daemon::discovery::integration::snmp::sim::mibs::BridgeTable;
 use crate::daemon::discovery::integration::snmp::sim::tables::{IfRow, IfTable};
 use crate::daemon::discovery::integration::snmp::sim::transport::Handler;
 use crate::daemon::discovery::integration::snmp::sim::wire::MacEncoding;
@@ -49,10 +47,6 @@ fn tables() -> Tables {
         if_table: Some(if_table()),
         lldp: Some(lldp_complete()),
         bridge: bridge_table(),
-        arp: ArpTable::default(),
-        ip_addr: IpAddrTable::default(),
-        entity: EntityTable::default(),
-        cdp: CdpTable::default(),
         lldp_variants: vec![
             ("badsubtype", lldp_badsubtype()),
             ("complete", lldp_complete()),
@@ -60,7 +54,7 @@ fn tables() -> Tables {
             ("nochassis", lldp_nochassis()),
             ("nosubtype", lldp_nosubtype()),
         ],
-        context_bridge: None,
+        ..Default::default()
     }
 }
 
