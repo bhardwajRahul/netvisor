@@ -60,7 +60,7 @@
 		common_networks,
 		common_notApplicable,
 		common_noEntityYet,
-		common_scope
+		common_targets
 	} from '$lib/paraglide/messages';
 
 	let { isReadOnly = false }: TabProps = $props();
@@ -368,7 +368,7 @@
 			},
 			{
 				key: 'target',
-				label: common_scope(),
+				label: common_targets(),
 				type: 'array',
 				searchable: true,
 				filterable: true,
@@ -381,12 +381,12 @@
 					return meta?.targets ?? [];
 				},
 				display: {
-					// Off by default: scope is a property of the credential *type*, so it repeats
+					// Off by default: the target set is a property of the credential *type*, so it repeats
 					// down the column for every credential of the same type and earns its width
 					// only when someone is actually sorting or filtering by it. Still filterable
 					// and groupable, and still shown on the cards.
 					hiddenByDefault: true,
-					// Same chip props the card uses, so a scope reads identically in
+					// Same chip props the card uses, so a target reads identically in
 					// both views rather than falling back to undifferentiated grey.
 					getItems: (item: Credential) => {
 						const meta = credentialTypes.getMetadata(getCredentialTypeId(item));

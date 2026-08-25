@@ -29,15 +29,15 @@
 	import {
 		common_credentialDemoReadOnly,
 		credentials_addInterfaces,
-		credentials_ipScopeAllDefault,
-		credentials_ipScopeLabel,
-		credentials_ipScopePlaceholder,
+		credentials_ipTargetAllDefault,
+		credentials_ipTargetLabel,
+		credentials_ipTargetPlaceholder,
 		credentials_noCredentialSelected,
 		credentials_selectCredentialSubtitle,
 		credentials_selectToAddPlaceholder,
 		hosts_credentialOverrideHelp,
 		hosts_credentialOverrideHelpLinkText,
-		hosts_credentialScopeSubtitle,
+		hosts_credentialTargetSubtitle,
 		hosts_snmp_credentialOverride,
 		hosts_snmp_noOverrides,
 		daemons_credentialWizardNetworkCredentials
@@ -226,11 +226,11 @@
 		<svelte:fragment slot="config" let:selectedItem let:selectedIndex>
 			{#if selectedItem && formData.ip_addresses.length > 0}
 				<div class="space-y-4">
-					<ConfigHeader title={selectedItem.name} subtitle={hosts_credentialScopeSubtitle()} />
+					<ConfigHeader title={selectedItem.name} subtitle={hosts_credentialTargetSubtitle()} />
 					<ListManager
-						label={credentials_ipScopeLabel()}
-						emptyMessage={credentials_ipScopeAllDefault()}
-						placeholder={credentials_ipScopePlaceholder()}
+						label={credentials_ipTargetLabel()}
+						emptyMessage={credentials_ipTargetAllDefault()}
+						placeholder={credentials_ipTargetPlaceholder()}
 						allowReorder={false}
 						options={formData.ip_addresses}
 						items={getScopedInterfaces(selectedIndex)}

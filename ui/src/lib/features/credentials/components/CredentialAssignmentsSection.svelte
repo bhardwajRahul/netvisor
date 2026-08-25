@@ -30,9 +30,9 @@
 		credentials_assignHostPlaceholder,
 		credentials_assignDaemonHostLabel,
 		credentials_assignDaemonHostEmpty,
-		credentials_ipScopeAllDefault,
-		credentials_ipScopeLabel,
-		credentials_ipScopePlaceholder
+		credentials_ipTargetAllDefault,
+		credentials_ipTargetLabel,
+		credentials_ipTargetPlaceholder
 	} from '$lib/paraglide/messages';
 
 	type CredentialHostAssignment = components['schemas']['CredentialHostAssignment'];
@@ -231,9 +231,9 @@
 						class="mt-2 w-full border-t border-gray-200 pt-3 dark:border-gray-700"
 					>
 						<ListManager
-							label={credentials_ipScopeLabel()}
-							emptyMessage={credentials_ipScopeAllDefault()}
-							placeholder={credentials_ipScopePlaceholder()}
+							label={credentials_ipTargetLabel()}
+							emptyMessage={credentials_ipTargetAllDefault()}
+							placeholder={credentials_ipTargetPlaceholder()}
 							allowReorder={false}
 							options={hostIps}
 							items={getScopedInterfaces(item.id)}
