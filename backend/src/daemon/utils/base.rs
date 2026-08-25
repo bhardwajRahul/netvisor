@@ -116,33 +116,31 @@ fn filtered_own_nics(interface_filter: &[String]) -> Vec<pnet::datalink::Network
 
 /// One of this host's NICs, as an `Interface` row.
 ///
-/// `if_type` is a best effort: `pnet` reports flags, not an IANAifType. Loopback and
-/// point-to-point are recoverable from flags; a bridge or a VLAN sub-interface is not, and is
-/// typed `ethernetCsmaCd` like any other NIC. That errs towards a spurious port in the L2 view
-/// rather than a missing one, and an SNMP walk of the same host — which does report real ifTypes —
-/// supersedes these rows anyway.
+/// **Nothing here is typed as a physical port, deliberately.** `pnet` reports flags, not an
+/// IANAifType, and the flags do not separate a real NIC from a virtual one: on a Mac, `en0` and
+/// each of `en1`-`en6`, `bridge0`, `awdl0`, `llw0`, `ap1` and `anpi0/1/3` all report `8863`
+/// (`UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST`) — identical. Typing them `ethernetCsmaCd` put
+/// fifteen ports on the daemon host in the L2 view, of which one was real. Linux is milder but the
+/// same shape (`veth` pairs, bond members, VLAN sub-interfaces).
+///
+/// So loopback and point-to-point are recorded honestly from the flags, and everything else is
+/// `propVirtual` — an admission that we do not know. It costs nothing the rows exist for:
+/// `find_host_by_mac`'s interface tier applies no `if_type` filter, so a chassis MAC still resolves
+/// to this host. It only stops them being drawn, and `l2_builder` draws any interface that has a
+/// resolved neighbour regardless of type — so a NIC lights up exactly when something authoritative
+/// says it is cabled.
 fn nic_to_interface(
     nic: &pnet::datalink::NetworkInterface,
     network_id: Uuid,
     host_id: Uuid,
-    ip_addresses: &[IPAddress],
 ) -> Interface {
     let if_type = if nic.is_loopback() {
         if_type::SOFTWARE_LOOPBACK
     } else if nic.is_point_to_point() {
         if_type::TUNNEL
     } else {
-        if_type::ETHERNET_CSMA_CD
+        if_type::PROP_VIRTUAL
     };
-
-    // An address this NIC carries, so the interface and the address row it belongs to are joined
-    // the same way an SNMP-collected interface is. `get_own_interfaces` names each address after
-    // the NIC it came from, which is the only key the two share. A NIC bearing no address Scanopy
-    // recorded still gets a row — that is the case this exists for.
-    let ip_address_id = ip_addresses
-        .iter()
-        .find(|a| a.base.name.as_deref() == Some(nic.name.as_str()))
-        .map(|a| a.id);
 
     Interface::new(InterfaceBase {
         host_id,
@@ -160,7 +158,16 @@ fn nic_to_interface(
             IfOperStatus::Down
         },
         mac_address: nic_mac(nic),
-        ip_address_id,
+        // Never set from here, exactly as the SNMP path doesn't (`snmp/mod.rs`). The ids the
+        // daemon mints for its own `IPAddress` rows do not survive submission — the server matches
+        // incoming addresses to the rows it already holds and keeps *their* ids. It builds an
+        // `ip_address_id_remap` for precisely this (`hosts/service/create.rs`), but applies it to
+        // credential assignments and bindings only, never to interfaces. Pointing at a minted id
+        // therefore violates `interfaces_ip_address_id_fkey` and fails the whole submission, which
+        // took self-report down with it: the phase never returned `Ok`, so `has_self_reported` was
+        // never set, so every later scan retried self-report and the daemon-host interface phase
+        // was never reached at all.
+        ip_address_id: None,
         neighbor: None,
         neighbor_seen_at: None,
         lldp_chassis_id: None,
@@ -351,11 +358,10 @@ pub trait DaemonUtils {
         network_id: Uuid,
         host_id: Uuid,
         interface_filter: &[String],
-        ip_addresses: &[IPAddress],
     ) -> Vec<Interface> {
         filtered_own_nics(interface_filter)
             .into_iter()
-            .map(|nic| nic_to_interface(&nic, network_id, host_id, ip_addresses))
+            .map(|nic| nic_to_interface(&nic, network_id, host_id))
             .collect()
     }
 
@@ -775,6 +781,7 @@ mod tests {
     // on Windows — where this file still has to compile.
     const IFF_UP: u32 = 0x1;
     const IFF_LOOPBACK: u32 = 0x8;
+    const IFF_POINTOPOINT: u32 = 0x10;
 
     fn make_nic(name: &str, index: u32, mac: Option<[u8; 6]>, flags: u32) -> NetworkInterface {
         NetworkInterface {
@@ -799,38 +806,42 @@ mod tests {
         let mac = [0x02, 0x42, 0xac, 0x11, 0x00, 0x02];
         let nic = make_nic("ens1f0np0", 7, Some(mac), IFF_UP);
 
-        let entry = nic_to_interface(&nic, Uuid::new_v4(), Uuid::new_v4(), &[]);
+        let entry = nic_to_interface(&nic, Uuid::new_v4(), Uuid::new_v4());
 
         assert_eq!(entry.base.mac_address, Some(MacAddress::new(mac)));
-        assert_eq!(entry.base.ip_address_id, None);
         assert_eq!(entry.base.if_index, 7);
         assert_eq!(entry.base.if_name.as_deref(), Some("ens1f0np0"));
     }
 
-    /// An ordinary NIC is drawn in the L2 view; loopback is not.
+    /// No NIC is claimed to be a physical port, because the flags cannot tell us.
     ///
-    /// Asserted against `EXCLUDED_IF_TYPES` itself rather than against the numbers, so this keeps
-    /// meaning what it says if the exclusion list changes.
+    /// A Mac reports `8863` for its real `en0` and for `bridge0`, `awdl0`, `ap1` and the
+    /// `anpi`/Thunderbolt interfaces alike; asserting `ethernetCsmaCd` off the back of that put
+    /// fifteen ports on the daemon host in L2, of which one was real. Asserted against
+    /// `EXCLUDED_IF_TYPES` rather than the numbers, so it keeps meaning what it says if the list
+    /// changes. Whether a NIC is *drawn* is `l2_builder`'s call, and it draws any interface that
+    /// has a resolved neighbour whatever its type.
     #[test]
-    fn an_ordinary_nic_is_drawable_in_l2_and_loopback_is_not() {
+    fn no_nic_is_typed_as_a_physical_port() {
         let network_id = Uuid::new_v4();
         let host_id = Uuid::new_v4();
 
-        let eth = nic_to_interface(
-            &make_nic("eno1", 2, Some([0, 1, 2, 3, 4, 5]), IFF_UP),
-            network_id,
-            host_id,
-            &[],
-        );
-        let lo = nic_to_interface(
-            &make_nic("lo", 1, None, IFF_UP | IFF_LOOPBACK),
-            network_id,
-            host_id,
-            &[],
-        );
-
-        assert!(!if_type::EXCLUDED_IF_TYPES.contains(&eth.base.if_type));
-        assert!(if_type::EXCLUDED_IF_TYPES.contains(&lo.base.if_type));
+        for (name, flags) in [
+            ("eno1", IFF_UP),
+            ("lo", IFF_UP | IFF_LOOPBACK),
+            ("utun4", IFF_UP | IFF_POINTOPOINT),
+        ] {
+            let entry = nic_to_interface(
+                &make_nic(name, 2, Some([0, 1, 2, 3, 4, 5]), flags),
+                network_id,
+                host_id,
+            );
+            assert!(
+                if_type::EXCLUDED_IF_TYPES.contains(&entry.base.if_type),
+                "{name} was typed {} — the daemon cannot know a NIC is a physical port",
+                entry.base.if_type
+            );
+        }
     }
 
     #[test]
