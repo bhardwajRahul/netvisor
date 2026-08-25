@@ -61,12 +61,7 @@ impl DiscoveryRunner {
             })
             .collect();
 
-        let interfaces = utils.own_nics_as_interfaces(
-            network_id,
-            self.host_id,
-            &interface_filter,
-            &ip_addresses,
-        );
+        let interfaces = utils.own_nics_as_interfaces(network_id, self.host_id, &interface_filter);
 
         Ok((ip_addresses, interfaces))
     }
