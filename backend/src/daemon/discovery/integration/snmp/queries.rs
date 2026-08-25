@@ -1108,43 +1108,16 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     let mut all_columns_unsupported = true;
 
     for (base_oid_str, column_name) in columns {
-        // lldpRemEntry index: timeMark.localPortNum.remIndex
         let stop = walk_column(
             session,
             ip,
             base_oid_str,
             &mut shortfall,
             |suffix, value| {
-                // `lldpRemEntry` is indexed lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex, and
-                // not every firmware serves all three. A TP-Link TL-SX3016F omits the time mark
-                // and indexes on the remaining two, confirmed by snmpwalk against the reporter's
-                // switch (GH #668):
-                //
-                //   iso.0.8802.1.1.2.1.4.1.1.4.1.1 = INTEGER: 4
-                //   iso.0.8802.1.1.2.1.4.1.1.5.1.1 = STRING: "00:AD:24:89:CC:F0"
-                //
-                // — three well-formed neighbours on local ports 1, 3 and 5, each remIndex 1.
-                //
-                // Read the pair off the end instead of assuming the time mark is there: the local
-                // port and remote index are the final two sub-ids under either layout, so a
-                // conformant three-element index parses exactly as before.
-                //
-                // The old `suffix.len() < 3` guard did not merely mis-parse these rows, it made
-                // the device disappear without trace: no record was created, so nothing reached
-                // the discard counters below, `complete` stayed true, and an empty result from a
-                // switch with sixteen ports was then treated as authoritative — overwriting the
-                // LLDP data the server held with NULL. It was the only failure here that produced
-                // no warning of any kind.
-                let Some((&rem_index, head)) = suffix.split_last() else {
+                let Some((local_port, rem_index)) = split_lldp_rem_index(suffix) else {
                     short_index += 1;
                     return;
                 };
-                let Some(&local_port) = head.last() else {
-                    short_index += 1;
-                    return;
-                };
-                let local_port = local_port as i32;
-                let rem_index = rem_index as i32;
                 let neighbor =
                     neighbors
                         .entry((local_port, rem_index))
@@ -1340,6 +1313,45 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         // collection than this walk, so the caller attaches it.
         claim: None,
     })
+}
+
+/// Split an `lldpRemEntry` OID index into `(lldpRemLocalPortNum, lldpRemIndex)`.
+///
+/// The index is `timeMark.localPortNum.remIndex`, and not every firmware serves all three. A
+/// TP-Link TL-SX3016F omits the time mark and indexes on the remaining two, confirmed by snmpwalk
+/// against the reporter's switch (GH #668):
+///
+/// ```text
+///   iso.0.8802.1.1.2.1.4.1.1.4.1.1 = INTEGER: 4
+///   iso.0.8802.1.1.2.1.4.1.1.5.1.1 = STRING: "00:AD:24:89:CC:F0"
+/// ```
+///
+/// — three well-formed neighbours on local ports 1, 3 and 5, each remIndex 1.
+///
+/// So the pair is read off the *end* rather than from a fixed offset: the local port and remote
+/// index are the final two sub-ids under either layout, and a conformant three-element index
+/// parses exactly as before.
+///
+/// The old `suffix.len() < 3` guard did not merely mis-parse these rows, it made the device
+/// disappear without trace: no record was created, so nothing reached the discard counters,
+/// `complete` stayed true, and an empty result from a switch with sixteen ports was then treated
+/// as authoritative — overwriting the LLDP data the server held with NULL. It was the only
+/// failure in this walk that produced no warning of any kind.
+///
+/// **Reading from the end is what makes this table-specific, and it does not generalise.**
+/// `lldpV2RemEntry` (LLDP-V2-MIB, `1.3.111.2.802.1.1.13`) is indexed
+/// `timeMark.localIfIndex.localDestMACAddress.remIndex` — four sub-ids, because
+/// `LldpV2DestAddressTableIndex` is an `Unsigned32(1..4096)` row pointer into
+/// `lldpV2DestAddressTable`, a single sub-id and not six octets of MAC. Passed a V2 suffix this
+/// function returns `(destAddressIndex, remIndex)`, so every neighbour on the device collapses
+/// onto the destination-address index — in practice 1, the nearest-bridge group address — and all
+/// but one is discarded as a duplicate, silently, in exactly the way described above. A V2 walk
+/// needs its own splitter that reads from the front and requires all four sub-ids; it must also
+/// skip `remap_lldp_local_ports`, since `lldpV2RemLocalIfIndex` is already an ifIndex.
+fn split_lldp_rem_index(suffix: &[u64]) -> Option<(i32, i32)> {
+    let (&rem_index, head) = suffix.split_last()?;
+    let &local_port = head.last()?;
+    Some((local_port as i32, rem_index as i32))
 }
 
 /// Split an `lldpRemManAddrTable` OID index into its neighbour key and management address.
@@ -3278,6 +3290,24 @@ mod if_table_tests {
     /// as authoritative and cleared the LLDP data the server held. It was the only failure in this
     /// query that produced no warning at all, which is why the device appeared in none of the
     /// reporter's scan warnings while every other problem device did.
+    /// The neighbour key is the last two sub-ids whatever precedes them, and a suffix too short to
+    /// hold both is rejected rather than half-read.
+    ///
+    /// The rejection arm is the one that matters: it is what routes a malformed row to
+    /// `short_index` and into the operator warning, instead of building a neighbour keyed on a
+    /// port the device never named. The four-sub-id case stands in for `lldpV2RemEntry`, which
+    /// this splitter is not for — it parses without complaint and yields the destination-address
+    /// index in place of the local port, which is why a V2 walk needs its own front-relative
+    /// splitter rather than this one.
+    #[test]
+    fn the_neighbour_key_is_the_last_two_sub_ids() {
+        assert_eq!(split_lldp_rem_index(&[0, 3, 7]), Some((3, 7)));
+        assert_eq!(split_lldp_rem_index(&[3, 7]), Some((3, 7)));
+        assert_eq!(split_lldp_rem_index(&[7]), None);
+        assert_eq!(split_lldp_rem_index(&[]), None);
+        assert_eq!(split_lldp_rem_index(&[0, 10009, 1, 6]), Some((1, 6)));
+    }
+
     #[tokio::test]
     async fn a_neighbour_table_indexed_without_a_time_mark_is_read() {
         let mut agent = FakeAgent::new(&[
