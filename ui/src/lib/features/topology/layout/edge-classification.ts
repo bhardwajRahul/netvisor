@@ -141,11 +141,19 @@ export function getDefaultHiddenEdgeTypes(view: TopologyView): EdgeTypeDiscrimin
  * Judged on the *older* of the two ends: evidence disappearing from either side is what leaves
  * the link unsupported, and the end that went quiet is the one worth naming in the tooltip.
  * `null` for anything but a `PhysicalLink`, and for one whose endpoints are not in hand.
+ *
+ * `interfaces` must come from the rendered topology, not from `queryKeys.interfaces.all` — that
+ * cache is written only by the hosts query, so on the topology route it is empty and every link
+ * silently read as current. Networks still come from the query cache, which is where
+ * `currentElementRenderContext` reads them for the node pills.
  */
-export function getLinkEvidenceTag(edge: TopologyEdge, entityTypeLabel?: string): TagProps | null {
+export function getLinkEvidenceTag(
+	edge: TopologyEdge,
+	interfaces: Interface[],
+	entityTypeLabel?: string
+): TagProps | null {
 	if (edge.edge_type !== 'PhysicalLink') return null;
 
-	const interfaces = queryClient.getQueryData<Interface[]>(queryKeys.interfaces.all) ?? [];
 	const networks = queryClient.getQueryData<Network[]>(queryKeys.networks.all) ?? [];
 	const stale = [edge.source_entity_id, edge.target_entity_id]
 		.map((id) => interfaces.find((i) => i.id === id))
