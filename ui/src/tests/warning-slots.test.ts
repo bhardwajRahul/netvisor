@@ -130,6 +130,33 @@ describe('discovery warning rendering', () => {
 		expect(rendered[1]).toContain('authentication failure');
 	});
 
+	it('survives a scan whose hosts have since been deleted', () => {
+		// Host names are resolved live, but a historical record outlives the hosts it names. With
+		// no name to show, omitting the segment can leave the arrow with nothing on one side —
+		// "-> TAMMIERENEW", or "1/1 -> via InterfaceName(…)" — which reads as a rendering fault
+		// rather than as missing data.
+		const noNames = () => undefined;
+
+		for (const code of [
+			'LldpNeighbourNotFound',
+			'LldpNeighbourAmbiguous',
+			'LldpPortNoStrategy',
+			'LldpPortNotFound',
+			'LldpPortAmbiguous'
+		]) {
+			// The worst case: no host name *and* a device that reported no interface description.
+			const w = { ...sample(code), if_descr: '' } as unknown as DiscoveryWarning;
+			const [line] = renderWarnings([w], noNames);
+
+			expect(line, `${code} left a dangling arrow`).not.toMatch(/(^|[,:.] |\band )+->/);
+			expect(line, `${code} left a trailing arrow`).not.toMatch(/->\s*$/);
+			expect(line, `${code} leaked a host id`).not.toMatch(
+				/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/
+			);
+			expect(line).not.toMatch(/\{\w+\}/);
+		}
+	});
+
 	it('renders a legacy string warning as its own text', () => {
 		const legacy = {
 			code: 'Unknown',
