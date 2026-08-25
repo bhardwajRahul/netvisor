@@ -1,6 +1,8 @@
 use crate::daemon::runtime::state::DaemonStatus;
 use crate::daemon::shared::config::{DaemonArgs, parse_integration_target_tokens};
-use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Viewer};
+use crate::server::auth::middleware::permissions::{
+    And, Authorized, IsDaemon, IsUser, Member, Viewer,
+};
 use crate::server::credentials::r#impl::mapping::IntegrationTarget;
 use crate::server::daemons::r#impl::api::{
     DaemonDiscoveryRequest, DaemonHeartbeatPayload, ProvisionDaemonRequest,
@@ -407,6 +409,11 @@ pub struct EmailInstallCommandRequest {
 }
 
 /// Email the install command to the authenticated user's email address.
+///
+/// Session-only, and `IsUser` says so at the extractor rather than in the body. "The current user"
+/// has no answer for an automation identity: a user API key carries `user_id` but no address, so
+/// this endpoint could never serve one. An API key that wants the command reads it directly from
+/// `GET /api/v1/daemons/{id}/install-command`.
 #[utoipa::path(
     post,
     path = "/email-install-command",
@@ -417,19 +424,24 @@ pub struct EmailInstallCommandRequest {
     responses(
         (status = 200, description = "Email sent", body = EmptyApiResponse),
         (status = 400, description = "Email service not configured", body = ApiErrorResponse),
+        (status = 403, description = "User session required", body = ApiErrorResponse),
     ),
-    security(("user_api_key" = []), ("session" = []))
+    security(("session" = []))
 )]
 async fn email_install_command(
     State(state): State<Arc<AppState>>,
-    auth: Authorized<Member>,
+    auth: Authorized<And<Member, IsUser>>,
     Json(request): Json<EmailInstallCommandRequest>,
 ) -> ApiResult<Json<EmptyApiResponse>> {
+    // Unreachable: `IsUser` has already rejected every variant that lacks an address, and the
+    // `User` variant's email is a plain `EmailAddress`, not an `Option`. Kept as a fallback that
+    // returns the same error the extractor would, so a future widening of the extractor fails
+    // honestly instead of claiming the account has no email.
     let email = auth
         .entity
         .email()
         .cloned()
-        .ok_or_else(|| ApiError::bad_request("No email associated with this account"))?;
+        .ok_or_else(ApiError::user_required)?;
 
     let email_service = state
         .services

@@ -45,6 +45,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     request_body = CreateInviteRequest,
     responses(
         (status = 200, description = "Invite created", body = ApiResponse<Invite>),
+        (status = 400, description = "Recipient named but the caller has no address to send from", body = ApiErrorResponse),
         (status = 403, description = "Cannot create invite with higher permissions", body = ApiErrorResponse),
     ),
      security(("user_api_key" = []), ("session" = []))
@@ -69,6 +70,15 @@ async fn create_invite(
         AuthenticatedEntity::ApiKey { permissions, .. } => (*permissions, None),
         _ => return Err(ApiError::forbidden("User or API key required")),
     };
+
+    // A link-only invite needs no sender, but an API key has no address to send *from* — and the
+    // send below is guarded on `from_email`, so naming a recipient would create the invite, return
+    // 200, and never deliver anything. Refuse before the invite exists.
+    if request.send_to.is_some() && from_email.is_none() {
+        return Err(ApiError::bad_request(
+            "Sending an invite email requires a user session. Omit send_to to create a link-only invite.",
+        ));
+    }
 
     if request.permissions > permissions {
         return Err(ApiError::forbidden(

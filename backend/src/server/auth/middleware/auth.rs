@@ -270,7 +270,10 @@ impl AuthenticatedEntity {
         self.network_ids().contains(network_id)
     }
 
-    /// Get the email address if this is a User or ApiKey
+    /// Get the email address if this is a User.
+    ///
+    /// Every other variant returns `None`. `ApiKey` carries `user_id` but no address of its own, so
+    /// a caller that needs the key owner's email must look the user up rather than expect it here.
     pub fn email(&self) -> Option<&EmailAddress> {
         match self {
             AuthenticatedEntity::User { email, .. } => Some(email),

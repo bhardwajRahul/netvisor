@@ -797,6 +797,11 @@ export function hydrateHostToFormData(
 		sys_contact: host.sys_contact ?? null,
 		management_url: host.management_url ?? null,
 		chassis_id: host.chassis_id ?? null,
+		sys_name: host.sys_name ?? null,
+		// Hardware identity from host
+		manufacturer: host.manufacturer ?? null,
+		model: host.model ?? null,
+		serial_number: host.serial_number ?? null,
 		credential_assignments: host.credential_assignments ?? []
 	};
 }
@@ -837,6 +842,11 @@ export function createEmptyHostFormData(defaultNetworkId?: string): HostFormData
 		sys_contact: null,
 		management_url: null,
 		chassis_id: null,
+		sys_name: null,
+		// Hardware identity (populated by discovery)
+		manufacturer: null,
+		model: null,
+		serial_number: null,
 		credential_assignments: [],
 		interfaces: []
 	};
