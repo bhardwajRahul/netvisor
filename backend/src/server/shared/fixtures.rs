@@ -9,6 +9,7 @@ use crate::server::billing::plans::get_website_fixture_plans;
 use crate::server::billing::types::base::{BillingPlan, CancelReason, PlanStatus, SaveOffer};
 use crate::server::billing::types::features::Feature;
 use crate::server::credentials::r#impl::integrations::all_integrations;
+use crate::server::credentials::r#impl::mapping::CredentialQueryPayloadDiscriminants;
 use crate::server::credentials::r#impl::types::CredentialTypeDiscriminants;
 use crate::server::dependencies::r#impl::types::DependencyType;
 use crate::server::discovery::r#impl::scan_settings::ScanSettings;
@@ -103,6 +104,18 @@ pub fn generate_ui_data_fixtures(output_dir: &Path) {
 
     let claim_sources: Vec<TypeMetadata> = ClaimSource::iter().map(|c| c.to_metadata()).collect();
     write_fixture(&claim_sources, output_dir, "claim-sources.json");
+
+    // Keyed by `CredentialQueryPayloadDiscriminants`, which is what a coded warning carries.
+    // Neither `integrations.json` (keyed by display name) nor `credential-types.json` (keyed by
+    // `CredentialType`) can resolve those eight values.
+    let discovery_integrations: Vec<TypeMetadata> = CredentialQueryPayloadDiscriminants::iter()
+        .map(|i| i.to_metadata())
+        .collect();
+    write_fixture(
+        &discovery_integrations,
+        output_dir,
+        "discovery-integrations.json",
+    );
 
     let malformed_neighbour_consequences: Vec<TypeMetadata> = MalformedNeighbourConsequence::iter()
         .map(|c| c.to_metadata())

@@ -73,9 +73,9 @@ impl DiscoveryWarningCode {
             }
 
             Self::CredentialTargetNotScanned | Self::CredentialTargetNotResponding => {
-                &["credentials", "addresses"]
+                &["credential", "address"]
             }
-            Self::CredentialGateClosed => &["credentials", "addresses", "ports"],
+            Self::CredentialGateClosed => &["credential", "address", "ports"],
             Self::CredentialRejected
             | Self::CredentialMalformed
             | Self::CredentialTlsFailed
@@ -83,7 +83,7 @@ impl DiscoveryWarningCode {
             | Self::CredentialCollectionFailed
             | Self::CredentialCollectionTimedOut
             | Self::CredentialUnreachable
-            | Self::CredentialTimedOut => &["credentials", "addresses", "detail"],
+            | Self::CredentialTimedOut => &["credential", "address", "detail"],
 
             Self::ScanTimeLimitWithEstimate => &["hours", "hosts_not_scanned", "minutes_remaining"],
             Self::ScanTimeLimit => &["hours", "hosts_not_scanned"],
@@ -295,37 +295,37 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
                 "The VLANs reported by {addresses} could not be saved, so VLAN membership is missing from their interfaces. The devices answered correctly — this is a failure recording the result, and the daemon log has the underlying error."
             }
             Self::CredentialTargetNotScanned => {
-                "{credentials} for {addresses} was never contacted because its address is not on any subnet this scan covers — add the subnet to the discovery, or move the credential to a host inside it."
+                "The {credential} credential for {address} was never contacted because its address is not on any subnet this scan covers — add the subnet to the discovery, or move the credential to a host inside it."
             }
             Self::CredentialTargetNotResponding => {
-                "{credentials} for {addresses} was not tried because nothing answered at that address during the scan — check the address is right and the host is online."
+                "The {credential} credential for {address} was not tried because nothing answered at that address during the scan — check the address is right and the host is online."
             }
             Self::CredentialGateClosed => {
-                "{credentials} for {addresses} was not tried because port {ports} was not open on it — check the port configured on the credential."
+                "The {credential} credential for {address} was not tried because port {ports} was not open on it — check the port configured on the credential."
             }
             Self::CredentialRejected => {
-                "{credentials} for {addresses} was refused — check the username, password or community string. ({detail})"
+                "The {credential} credential for {address} was refused — check the username, password or community string. ({detail})"
             }
             Self::CredentialMalformed => {
-                "{credentials} for {addresses} is incomplete and could not be used — re-enter it. ({detail})"
+                "The {credential} credential for {address} is incomplete and could not be used — re-enter it. ({detail})"
             }
             Self::CredentialTlsFailed => {
-                "{credentials} for {addresses} could not negotiate TLS — if the appliance serves a self-signed certificate, turn on \"accept invalid certificates\" in the daemon's scan settings. ({detail})"
+                "The {credential} credential for {address} could not negotiate TLS — if the appliance serves a self-signed certificate, turn on \"accept invalid certificates\" in the daemon's scan settings. ({detail})"
             }
             Self::CredentialNotThisService => {
-                "{credentials} for {addresses} reached something that is not the expected service — check the port on the credential. ({detail})"
+                "The {credential} credential for {address} reached something that is not the expected service — check the port on the credential. ({detail})"
             }
             Self::CredentialCollectionFailed => {
-                "{credentials} for {addresses} authenticated and then failed while collecting, so this host's data is missing rather than out of date. ({detail})"
+                "The {credential} credential for {address} authenticated and then failed while collecting, so this host's data is missing rather than out of date. ({detail})"
             }
             Self::CredentialCollectionTimedOut => {
-                "{credentials} for {addresses} authenticated and then ran out of time before it finished collecting — rescan this host on its own, or narrow what the scan covers. ({detail})"
+                "The {credential} credential for {address} authenticated and then ran out of time before it finished collecting — rescan this host on its own, or narrow what the scan covers. ({detail})"
             }
             Self::CredentialUnreachable => {
-                "{credentials} for {addresses} could not be reached at that address — check the address, port and that the service is listening. ({detail})"
+                "The {credential} credential for {address} could not be reached at that address — check the address, port and that the service is listening. ({detail})"
             }
             Self::CredentialTimedOut => {
-                "{credentials} for {addresses} timed out before anything answered — check the address and port, and that the service is listening rather than dropping the connection. ({detail})"
+                "The {credential} credential for {address} timed out before anything answered — check the address and port, and that the service is listening rather than dropping the connection. ({detail})"
             }
             Self::ScanTimeLimitWithEstimate => {
                 "Scan hit its time limit ({hours}h) — {hosts_not_scanned} host(s) not scanned (~{minutes_remaining} min of estimated work remaining). Raise Max Discovery Duration or rescan."
