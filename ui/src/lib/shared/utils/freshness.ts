@@ -31,7 +31,8 @@ import {
 	common_lastSeenAgo,
 	common_never,
 	common_stale,
-	common_staleWithDate
+	common_staleWithDate,
+	topology_neighborLastReportedAgo
 } from '$lib/paraglide/messages';
 
 /** Derived from the backend enum — never hand-maintain this union. */
@@ -105,14 +106,38 @@ export function neighborEvidenceFreshness(
 /**
  * The freshness subject of the *adjacency* a row records, for the functions above.
  *
- * Shaping it as a `FreshnessSubject` rather than adding a parallel tag/label pair is the point:
- * `getFreshnessTag` and `lastSeenLabel` then produce exactly the pill and the wording a stale
- * host already gets, so a link and an entity can never read differently.
+ * Shaping it as a `FreshnessSubject` is the point: `entityFreshness` and `getFreshnessTag` then
+ * apply exactly the rule and render exactly the pill a stale host gets, so a link and an entity
+ * can never disagree about what stale means or look different when they say it.
  */
 export function neighborEvidenceSubject(iface: {
 	neighbor_seen_at?: string | null;
 }): FreshnessSubject {
 	return { last_seen_at: iface.neighbor_seen_at ?? undefined };
+}
+
+/**
+ * "Neighbor last reported 3d ago", the wording for an adjacency rather than an entity.
+ *
+ * Deliberately not `lastSeenLabel`: on a link, "last seen" reads as a claim about the port, which
+ * is the exact confusion this column exists to end. The port was seen minutes ago; it is the
+ * neighbour report that stopped arriving.
+ */
+export function neighborEvidenceLabel(iface: { neighbor_seen_at?: string | null }): string {
+	if (!iface.neighbor_seen_at) return common_never();
+	return topology_neighborLastReportedAgo({ time: formatRelativeTime(iface.neighbor_seen_at) });
+}
+
+/**
+ * The stale pill for an adjacency: the shared amber tag, re-titled to name the neighbour report
+ * as its subject.
+ */
+export function neighborEvidenceTag(
+	iface: { neighbor_seen_at?: string | null },
+	network: Network | undefined
+): TagProps | null {
+	const tag = getFreshnessTag(neighborEvidenceSubject(iface), network);
+	return tag && { ...tag, title: neighborEvidenceLabel(iface) };
 }
 
 /**

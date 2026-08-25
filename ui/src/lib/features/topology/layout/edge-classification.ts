@@ -7,11 +7,7 @@ import {
 	type EdgeTypeMetadata
 } from '$lib/shared/stores/metadata';
 import { queryClient, queryKeys } from '$lib/api/query-client';
-import {
-	getFreshnessTag,
-	neighborEvidenceFreshness,
-	neighborEvidenceSubject
-} from '$lib/shared/utils/freshness';
+import { neighborEvidenceFreshness, neighborEvidenceTag } from '$lib/shared/utils/freshness';
 import type { TagProps } from '$lib/shared/components/data/types';
 
 type EdgeTypeDiscriminants = components['schemas']['EdgeTypeDiscriminants'];
@@ -135,8 +131,8 @@ export function getDefaultHiddenEdgeTypes(view: TopologyView): EdgeTypeDiscrimin
  * L2 topology. The consequence is that a link whose evidence has completely disappeared keeps
  * being drawn solid and port-precise while both endpoints stay Current, because their
  * `last_seen_at` only ever answered "was this port observed". `neighbor_seen_at` is the
- * adjacency's own subject; this reads it, on the same window and through the same
- * `getFreshnessTag` a stale host uses, so the two surfaces cannot read differently.
+ * adjacency's own subject; this reads it, on the same window and through the same amber pill a
+ * stale host gets, titled to name the neighbour report rather than the port.
  *
  * Judged on the *older* of the two ends: evidence disappearing from either side is what leaves
  * the link unsupported, and the end that went quiet is the one worth naming in the tooltip.
@@ -149,8 +145,7 @@ export function getDefaultHiddenEdgeTypes(view: TopologyView): EdgeTypeDiscrimin
  */
 export function getLinkEvidenceTag(
 	edge: TopologyEdge,
-	interfaces: Interface[],
-	entityTypeLabel?: string
+	interfaces: Interface[]
 ): TagProps | null {
 	if (edge.edge_type !== 'PhysicalLink') return null;
 
@@ -170,9 +165,8 @@ export function getLinkEvidenceTag(
 	const oldest = stale.reduce((a, b) =>
 		(a.neighbor_seen_at ?? '') <= (b.neighbor_seen_at ?? '') ? a : b
 	);
-	return getFreshnessTag(
-		neighborEvidenceSubject(oldest),
-		networks.find((n) => n.id === oldest.network_id),
-		{ entityTypeLabel }
+	return neighborEvidenceTag(
+		oldest,
+		networks.find((n) => n.id === oldest.network_id)
 	);
 }

@@ -5,14 +5,14 @@
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import type { RenderableTopology } from '$lib/features/topology/types/base';
-	import { common_lastSeen, common_source, common_target } from '$lib/paraglide/messages';
-	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { edgeTypes } from '$lib/shared/stores/metadata';
 	import {
-		getFreshnessTag,
-		lastSeenLabel,
-		neighborEvidenceSubject
-	} from '$lib/shared/utils/freshness';
+		common_source,
+		common_target,
+		topology_neighborEvidence
+	} from '$lib/paraglide/messages';
+	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import { neighborEvidenceTag } from '$lib/shared/utils/freshness';
+	import { formatRelativeTime } from '$lib/shared/utils/formatting';
 
 	let {
 		sourceEntityId,
@@ -44,10 +44,12 @@
 		targetInterface ? topology?.hosts.find((h) => h.id === targetInterface.host_id) : null
 	);
 
-	// When the adjacency itself was last evidenced, as opposed to when its ports were last
-	// observed — the two diverge the moment a neighbour record stops arriving, and the ports go on
-	// being seen every scan. Shown whether or not it is stale, so the timestamp is reachable here
-	// even where the edge label (and its chip) was stripped.
+	// When the adjacency itself was last reported, as opposed to when its ports were last observed
+	// — the two diverge the moment a neighbour record stops arriving, and the ports go on being
+	// seen every scan. Labelled "Neighbor report" rather than "Last seen" for exactly that reason:
+	// on a link, "last seen" reads as a claim about the port, which is the confusion this row
+	// exists to end. Shown whether or not it is stale, so the timestamp is reachable here even
+	// where the edge label (and its chip) was stripped.
 	const networksQuery = useNetworksQuery();
 	let evidenceEndpoint = $derived(
 		[sourceInterface, targetInterface]
@@ -58,11 +60,7 @@
 		(networksQuery.data ?? []).find((n) => n.id === evidenceEndpoint?.network_id)
 	);
 	let evidenceTag = $derived(
-		evidenceEndpoint
-			? getFreshnessTag(neighborEvidenceSubject(evidenceEndpoint), evidenceNetwork, {
-					entityTypeLabel: edgeTypes.getName('PhysicalLink')
-				})
-			: null
+		evidenceEndpoint ? neighborEvidenceTag(evidenceEndpoint, evidenceNetwork) : null
 	);
 </script>
 
@@ -73,10 +71,10 @@
 		</div>
 	{/if}
 
-	{#if evidenceEndpoint}
+	{#if evidenceEndpoint?.neighbor_seen_at}
 		<div class="flex items-center gap-2 text-sm">
-			<span class="text-secondary font-medium">{common_lastSeen()}</span>
-			<span>{lastSeenLabel(neighborEvidenceSubject(evidenceEndpoint))}</span>
+			<span class="text-secondary font-medium">{topology_neighborEvidence()}</span>
+			<span>{formatRelativeTime(evidenceEndpoint.neighbor_seen_at)}</span>
 			{#if evidenceTag}
 				<Tag {...evidenceTag} pill />
 			{/if}
