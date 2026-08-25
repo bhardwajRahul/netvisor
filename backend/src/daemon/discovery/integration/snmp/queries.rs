@@ -1309,6 +1309,12 @@ pub async fn query_lldp_neighbors_for<T: SnmpWalkTransport>(
     })
 }
 
+/// Reads `(local port, remote index, [family, addr…])` out of a management-address table index.
+///
+/// The address lives in the OID index rather than a column value, which is why this returns bytes
+/// rather than a parsed address — `parse_lldp_mgmt_addr` does that part.
+type ManAddrIndexSplitter = fn(&[u64]) -> Option<(i32, i32, Vec<u8>)>;
+
 /// Which LLDP MIB a neighbour walk is reading.
 ///
 /// The classic LLDP-MIB (`1.0.8802.1.1.2`) is not the only one in the field: some NOSes implement
@@ -1329,8 +1335,8 @@ pub struct LldpMibProfile {
     pub split_rem_index: fn(&[u64]) -> Option<(i32, i32)>,
     /// The accessible column of the separate management-address table, walked for its *index*.
     pub man_addr_column: &'static str,
-    /// Read `(local port, remote index, [family, addr…])` out of that table's index.
-    pub split_man_addr_index: fn(&[u64]) -> Option<(i32, i32, Vec<u8>)>,
+    /// Read the neighbour key and address bytes out of that table's index.
+    pub split_man_addr_index: ManAddrIndexSplitter,
 }
 
 /// The classic LLDP-MIB, `1.0.8802.1.1.2`.
