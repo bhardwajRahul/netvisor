@@ -83,6 +83,39 @@ export function entityFreshness(
 }
 
 /**
+ * How fresh the *evidence for a link* is, judged on the interface at one of its ends.
+ *
+ * An interface's own `last_seen_at` answers "was this port observed", which a port keeps
+ * satisfying long after its neighbour record stops arriving — so a link whose evidence has
+ * completely disappeared reads Current on both endpoints. `neighbor_seen_at` is the adjacency's
+ * own subject, and it is judged here by exactly the rule and window above rather than a second
+ * one: same `effective_stale_after_hours`, same vocabulary.
+ *
+ * `null`/absent `neighbor_seen_at` means no scan has ever carried evidence for this row — unknown,
+ * never stale. `entityFreshness` already answers `current` for an absent timestamp, so rows
+ * predating the column are safe without a special case here.
+ */
+export function neighborEvidenceFreshness(
+	iface: { neighbor_seen_at?: string | null },
+	network: Network | undefined
+): EntityFreshness {
+	return entityFreshness(neighborEvidenceSubject(iface), network);
+}
+
+/**
+ * The freshness subject of the *adjacency* a row records, for the functions above.
+ *
+ * Shaping it as a `FreshnessSubject` rather than adding a parallel tag/label pair is the point:
+ * `getFreshnessTag` and `lastSeenLabel` then produce exactly the pill and the wording a stale
+ * host already gets, so a link and an entity can never read differently.
+ */
+export function neighborEvidenceSubject(iface: {
+	neighbor_seen_at?: string | null;
+}): FreshnessSubject {
+	return { last_seen_at: iface.neighbor_seen_at ?? undefined };
+}
+
+/**
  * Status tag for an entity card, or `null` when there is nothing to say.
  *
  * Amber rather than red, matching `getDaemonStatusTag`'s split: red means

@@ -6,8 +6,17 @@ import {
 	type EdgeSelectionScope,
 	type EdgeTypeMetadata
 } from '$lib/shared/stores/metadata';
+import { queryClient, queryKeys } from '$lib/api/query-client';
+import {
+	getFreshnessTag,
+	neighborEvidenceFreshness,
+	neighborEvidenceSubject
+} from '$lib/shared/utils/freshness';
+import type { TagProps } from '$lib/shared/components/data/types';
 
 type EdgeTypeDiscriminants = components['schemas']['EdgeTypeDiscriminants'];
+type Interface = components['schemas']['Interface'];
+type Network = components['schemas']['Network'];
 type EdgeViewConfig = components['schemas']['EdgeViewConfig'];
 type TopologyView = components['schemas']['TopologyView'];
 
@@ -116,4 +125,46 @@ export function getDefaultHiddenEdgeTypes(view: TopologyView): EdgeTypeDiscrimin
 	return Object.entries(meta.edge_view_configs)
 		.filter(([, c]) => c.type === 'active' && c.default_visibility === 'hidden')
 		.map(([id]) => id as EdgeTypeDiscriminants);
+}
+
+/**
+ * The staleness pill for a physical link, or `null` when there is nothing to say.
+ *
+ * A `PhysicalLink` is drawn from `interfaces.neighbor`, which the server preserves across a scan
+ * that read nothing (GH #649) — correctly, since one failed walk must not tear down a network's
+ * L2 topology. The consequence is that a link whose evidence has completely disappeared keeps
+ * being drawn solid and port-precise while both endpoints stay Current, because their
+ * `last_seen_at` only ever answered "was this port observed". `neighbor_seen_at` is the
+ * adjacency's own subject; this reads it, on the same window and through the same
+ * `getFreshnessTag` a stale host uses, so the two surfaces cannot read differently.
+ *
+ * Judged on the *older* of the two ends: evidence disappearing from either side is what leaves
+ * the link unsupported, and the end that went quiet is the one worth naming in the tooltip.
+ * `null` for anything but a `PhysicalLink`, and for one whose endpoints are not in hand.
+ */
+export function getLinkEvidenceTag(edge: TopologyEdge, entityTypeLabel?: string): TagProps | null {
+	if (edge.edge_type !== 'PhysicalLink') return null;
+
+	const interfaces = queryClient.getQueryData<Interface[]>(queryKeys.interfaces.all) ?? [];
+	const networks = queryClient.getQueryData<Network[]>(queryKeys.networks.all) ?? [];
+	const stale = [edge.source_entity_id, edge.target_entity_id]
+		.map((id) => interfaces.find((i) => i.id === id))
+		.filter((i): i is Interface => i !== undefined)
+		.filter(
+			(i) =>
+				neighborEvidenceFreshness(
+					i,
+					networks.find((n) => n.id === i.network_id)
+				) === 'stale'
+		);
+	if (stale.length === 0) return null;
+
+	const oldest = stale.reduce((a, b) =>
+		(a.neighbor_seen_at ?? '') <= (b.neighbor_seen_at ?? '') ? a : b
+	);
+	return getFreshnessTag(
+		neighborEvidenceSubject(oldest),
+		networks.find((n) => n.id === oldest.network_id),
+		{ entityTypeLabel }
+	);
 }

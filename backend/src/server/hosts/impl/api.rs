@@ -568,6 +568,7 @@ impl InterfaceInput {
                 ip_address_id: self.ip_address_id,
                 // Neighbor resolution fields - not set from API, resolved server-side
                 neighbor: None,
+                neighbor_seen_at: None,
                 lldp_chassis_id: None,
                 lldp_port_id: None,
                 lldp_sys_name: None,

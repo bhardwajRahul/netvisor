@@ -112,6 +112,7 @@ impl Storable for Interface {
                     mac_address,
                     ip_address_id,
                     neighbor,
+                    neighbor_seen_at,
                     lldp_chassis_id,
                     lldp_port_id,
                     lldp_sys_name,
@@ -151,6 +152,7 @@ impl Storable for Interface {
             "ip_address_id",
             "neighbor_interface_id",
             "neighbor_host_id",
+            "neighbor_seen_at",
             "lldp_chassis_id",
             "lldp_port_id",
             "lldp_sys_name",
@@ -190,6 +192,7 @@ impl Storable for Interface {
             SqlValue::OptionalUuid(ip_address_id),
             SqlValue::OptionalUuid(neighbor_interface_id),
             SqlValue::OptionalUuid(neighbor_host_id),
+            SqlValue::OptionTimestamp(neighbor_seen_at),
             SqlValue::OptionalLldpChassisId(lldp_chassis_id),
             SqlValue::OptionalLldpPortId(lldp_port_id),
             SqlValue::OptionalString(lldp_sys_name),
@@ -289,6 +292,7 @@ impl Storable for Interface {
                 mac_address,
                 ip_address_id: row.get("ip_address_id"),
                 neighbor,
+                neighbor_seen_at: row.get("neighbor_seen_at"),
                 lldp_chassis_id,
                 lldp_port_id,
                 lldp_sys_name: row.get("lldp_sys_name"),
@@ -436,6 +440,13 @@ impl Entity for Interface {
         // refetch and only restores fully-resolved ports). See GH #649.
         if existing.base.neighbor.is_some() && self.base.neighbor.is_none() {
             self.base.neighbor = existing.base.neighbor.clone();
+        }
+        // Server-owned in the same way, and set on the discovery path by
+        // `stamp_neighbor_evidence` before this runs — so this only ever guards the generic CRUD
+        // update, where an incoming payload that omits the field would otherwise erase the last
+        // scan that saw a neighbour and make a long-stale link read as never-evidenced.
+        if self.base.neighbor_seen_at.is_none() {
+            self.base.neighbor_seen_at = existing.base.neighbor_seen_at;
         }
     }
 }

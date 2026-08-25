@@ -287,8 +287,8 @@ mod tests {
     ///
     /// Every other device agrees with itself, which demonstrates the count check staying quiet but
     /// cannot demonstrate it firing — and a guard nobody has watched fire is a guard nobody knows
-    /// works. A scan must still record all 23: a device that misreports itself is still a device
-    /// to scan.
+    /// works. A scan must still record every row it serves: a device that misreports itself is
+    /// still a device to scan.
     #[tokio::test]
     async fn it_misreports_its_own_interface_count_on_purpose() {
         let scan = harness::scan("switch-dell-01").await;
