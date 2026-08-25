@@ -2,6 +2,9 @@
 //! and integration tests.
 
 use crate::daemon::discovery::types::base::DiscoveryPhase;
+use crate::daemon::discovery::types::warnings::{
+    ClaimSource, DiscoveryWarningCode, MalformedNeighbourConsequence, SnmpWalkGroup,
+};
 use crate::server::billing::plans::get_website_fixture_plans;
 use crate::server::billing::types::base::{BillingPlan, CancelReason, PlanStatus, SaveOffer};
 use crate::server::billing::types::features::Feature;
@@ -85,6 +88,30 @@ pub fn generate_ui_data_fixtures(output_dir: &Path) {
     let discovery_phases: Vec<TypeMetadata> =
         DiscoveryPhase::iter().map(|p| p.to_metadata()).collect();
     write_fixture(&discovery_phases, output_dir, "discovery-phases.json");
+
+    // Scan warnings: the code carries the sentence template, and the three enums after it carry
+    // the values that fill its slots. All four have to reach the UI, or the English the codes
+    // replaced simply moves one level down and crosses the wire as a slot value instead.
+    let warning_codes: Vec<TypeMetadata> = DiscoveryWarningCode::iter()
+        .map(|c| c.to_metadata())
+        .collect();
+    write_fixture(&warning_codes, output_dir, "warning-codes.json");
+
+    let snmp_walk_groups: Vec<TypeMetadata> =
+        SnmpWalkGroup::iter().map(|g| g.to_metadata()).collect();
+    write_fixture(&snmp_walk_groups, output_dir, "snmp-walk-groups.json");
+
+    let claim_sources: Vec<TypeMetadata> = ClaimSource::iter().map(|c| c.to_metadata()).collect();
+    write_fixture(&claim_sources, output_dir, "claim-sources.json");
+
+    let malformed_neighbour_consequences: Vec<TypeMetadata> = MalformedNeighbourConsequence::iter()
+        .map(|c| c.to_metadata())
+        .collect();
+    write_fixture(
+        &malformed_neighbour_consequences,
+        output_dir,
+        "malformed-neighbour-consequences.json",
+    );
 
     let permissions: Vec<TypeMetadata> = UserOrgPermissions::iter()
         .map(|p| p.to_metadata())

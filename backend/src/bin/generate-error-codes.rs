@@ -4,6 +4,7 @@
 //! Or via: make generate-error-codes
 
 use scanopy::server::shared::types::error_codes::ErrorCode;
+use scanopy::server::shared::types::metadata::extract_slots;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -17,7 +18,7 @@ fn main() {
         .map(|code| ErrorCodeInfo {
             code: code.code().to_string(),
             message: code.default_message().to_string(),
-            params: extract_param_names(code.default_message()),
+            params: extract_slots(code.default_message()),
         })
         .collect();
 
@@ -49,31 +50,6 @@ struct ErrorCodeInfo {
     code: String,
     message: String,
     params: Vec<String>,
-}
-
-/// Extract parameter names from a message template.
-/// e.g., "Field '{field}' is required" -> ["field"]
-fn extract_param_names(message: &str) -> Vec<String> {
-    let mut params = Vec::new();
-    let mut chars = message.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if c == '{' {
-            let mut param_name = String::new();
-            while let Some(&next) = chars.peek() {
-                if next == '}' {
-                    chars.next();
-                    break;
-                }
-                param_name.push(chars.next().unwrap());
-            }
-            if !param_name.is_empty() {
-                params.push(param_name);
-            }
-        }
-    }
-
-    params
 }
 
 fn generate_typescript(codes: &[ErrorCodeInfo]) -> String {
@@ -128,16 +104,26 @@ fn generate_messages_json(codes: &[ErrorCodeInfo]) -> String {
 mod tests {
     use super::*;
 
+    /// Every error code's declared parameters have to be the ones its template interpolates,
+    /// because the generated `ErrorParams` type is what callers are checked against — a template
+    /// slot with no parameter compiles fine and renders a hole at runtime.
     #[test]
-    fn test_extract_param_names() {
-        assert_eq!(
-            extract_param_names("Field '{field}' is required"),
-            vec!["field"]
-        );
-        assert_eq!(
-            extract_param_names("{entity} with ID '{id}' not found"),
-            vec!["entity", "id"]
-        );
-        assert_eq!(extract_param_names("No params here"), Vec::<String>::new());
+    fn every_error_message_declares_the_parameters_it_interpolates() {
+        for code in ErrorCode::iter() {
+            let in_template = extract_slots(code.default_message());
+            let supplied: Vec<String> = code
+                .params()
+                .map(|p| p.keys().cloned().collect())
+                .unwrap_or_default();
+
+            for slot in &in_template {
+                assert!(
+                    supplied.contains(slot),
+                    "{} interpolates {{{}}} but params() does not supply it",
+                    code.code(),
+                    slot
+                );
+            }
+        }
     }
 }

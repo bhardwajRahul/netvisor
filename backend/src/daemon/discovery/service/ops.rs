@@ -22,6 +22,7 @@ use crate::{
                 DiscoveryCriticalError, DiscoveryPhase, DiscoverySessionInfo,
                 DiscoverySessionUpdate,
             },
+            types::warnings::DiscoveryWarning,
         },
         shared::{api_client::DaemonApiClient, config::ConfigStore},
     },
@@ -620,44 +621,44 @@ impl DiscoveryOps {
             .last_progress
             .load(std::sync::atomic::Ordering::Relaxed);
 
-        // Non-fatal warnings accumulated during the run (e.g. hit the time limit), plus one
-        // rendered line for each kind that fires per host — see
-        // `crate::daemon::discovery::service::warnings` for why those are aggregated here rather
-        // than pushed as they occur.
+        // Non-fatal findings accumulated during the run (e.g. hit the time limit), plus one coded
+        // warning per occurrence for each kind that fires per host — see
+        // `crate::daemon::discovery::service::warnings` for why those are recorded typed and coded
+        // here rather than pushed as sentences when they happen.
         let mut warnings = session
             .warnings
             .lock()
             .map(|w| w.clone())
             .unwrap_or_default();
 
-        // Each renderer returns one entry per distinct problem rather than a paragraph, so the
-        // wire format stays a list the UI can render as bullets.
         if let Ok(records) = session.incomplete_interface_walks.lock() {
-            warnings.extend(warnings::render_incomplete_interface_walks(&records));
+            warnings.extend(warnings::warn_incomplete_interface_walks(&records));
         }
         if let Ok(records) = session.incomplete_snmp_walks.lock() {
-            warnings.extend(warnings::render_incomplete_snmp_walks(&records));
+            warnings.extend(warnings::warn_incomplete_snmp_walks(&records));
         }
-        // Directly after the shortfalls, because on a device that produced both the two lines are
-        // halves of one story: why the read stopped, and what the device said was waiting.
+        // Directly after the shortfalls, because on a device that produced both the two warnings
+        // are halves of one story: why the read stopped, and what the device said was waiting.
         if let Ok(records) = session.contradicted_claims.lock() {
-            warnings.extend(warnings::render_contradicted_claims(&records));
+            warnings.extend(warnings::warn_contradicted_claims(&records));
         }
         if let Ok(records) = session.unresolved_lldp_ports.lock() {
-            warnings.extend(warnings::render_unresolved_lldp_ports(&records));
+            warnings.extend(warnings::warn_unresolved_lldp_ports(&records));
         }
         if let Ok(records) = session.malformed_neighbours.lock() {
-            warnings.extend(warnings::render_malformed_neighbours(&records));
+            warnings.extend(warnings::warn_malformed_neighbours(&records));
         }
         if let Ok(records) = session.snmp_collected_nothing.lock() {
-            warnings.extend(warnings::render_snmp_collected_nothing(&records));
+            warnings.extend(warnings::warn_snmp_collected_nothing(&records));
         }
         if let Ok(records) = session.vlan_recording_failures.lock() {
-            warnings.extend(warnings::render_vlan_recording_failures(&records));
+            warnings.extend(warnings::warn_vlan_recording_failures(&records));
         }
         if let Ok(issues) = session.credential_issues.lock() {
-            warnings.extend(warnings::render_credential_issues(&issues));
+            warnings.extend(warnings::warn_credential_issues(&issues));
         }
+
+        truncate_warnings(&mut warnings);
 
         // Build the terminal update based on result
         let terminal_update = match &discovery_result {
@@ -834,13 +835,14 @@ impl DiscoveryOps {
     /// lives in [`warnings::issue_for_attempt`] so both callers share it.
     pub async fn record_attempt_failure(
         &self,
-        label: &'static str,
+        integration: CredentialQueryPayloadDiscriminants,
         ip: std::net::IpAddr,
         outcome: warnings::AttemptOutcome,
         message: String,
         user_assigned: bool,
     ) {
-        let Some(issue) = warnings::issue_for_attempt(label, ip, outcome, message, user_assigned)
+        let Some(issue) =
+            warnings::issue_for_attempt(integration, ip, outcome, message, user_assigned)
         else {
             return;
         };
@@ -1682,4 +1684,28 @@ mod tests {
         // wait is imposed on the first request after an idle period.
         assert!(slot >= before);
     }
+}
+
+/// How many coded warnings one run's scan record holds.
+///
+/// One warning per occurrence is what makes them countable and gives each address its own
+/// diagnostic, but it also turns an O(codes) payload into an O(codes x devices) one — an
+/// LLDP-heavy network can produce thousands, all of which land in a single JSONB column. Well
+/// above the ten the UI lists per code, so nothing an operator reads is affected.
+const MAX_WARNINGS: usize = 500;
+
+/// Cap the warning list, saying how much was left out.
+///
+/// The alternative is a payload that grows without bound or a list that simply stops, and a list
+/// that stops reads as though that was all of them — the rule the whole warnings module is built
+/// on. `WarningsTruncated` is emitted in place of the tail so the count survives.
+fn truncate_warnings(warnings: &mut Vec<DiscoveryWarning>) {
+    if warnings.len() <= MAX_WARNINGS {
+        return;
+    }
+    let elided = warnings.len() - MAX_WARNINGS;
+    warnings.truncate(MAX_WARNINGS);
+    warnings.push(DiscoveryWarning::WarningsTruncated {
+        elided: u32::try_from(elided).unwrap_or(u32::MAX),
+    });
 }

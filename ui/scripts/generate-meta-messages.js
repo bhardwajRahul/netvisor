@@ -58,7 +58,20 @@ export const COVERED_FIXTURES = [
 	{ file: 'ports.json', key: 'ports', kind: 'typeMetadata' },
 	{ file: 'cancel-reasons.json', key: 'cancel_reasons', kind: 'typeMetadata' },
 	{ file: 'save-offers.json', key: 'save_offers', kind: 'typeMetadata' },
-	{ file: 'plan-statuses.json', key: 'plan_statuses', kind: 'typeMetadata' }
+	{ file: 'plan-statuses.json', key: 'plan_statuses', kind: 'typeMetadata' },
+	// Scan warnings. Descriptions here are templates with `{named}` slots, unlike every other
+	// entry above: the values are copied through verbatim, paraglide compiles them into functions
+	// that take an inputs object, and `metaDescriptionWith` in src/lib/i18n/metadata.ts is what
+	// calls them with one. The slot names come from the same `metadata.slots` the backend test
+	// checks the template against.
+	{ file: 'warning-codes.json', key: 'warning_codes', kind: 'typeMetadata' },
+	{ file: 'snmp-walk-groups.json', key: 'snmp_walk_groups', kind: 'typeMetadata' },
+	{ file: 'claim-sources.json', key: 'claim_sources', kind: 'typeMetadata' },
+	{
+		file: 'malformed-neighbour-consequences.json',
+		key: 'malformed_neighbour_consequences',
+		kind: 'typeMetadata'
+	}
 ];
 
 /**

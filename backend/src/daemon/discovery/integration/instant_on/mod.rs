@@ -187,7 +187,7 @@ impl DiscoveryIntegration for InstantOnIntegration {
                     tracing::warn!(site = %site_id, error = %e, "Could not read Instant On site");
                     ctx.ops
                         .record_attempt_failure(
-                            ctx.credential.discovery_label(),
+                            ctx.credential.into(),
                             ctx.ip,
                             AttemptOutcome::CollectionFailed,
                             format!(
@@ -209,7 +209,7 @@ impl DiscoveryIntegration for InstantOnIntegration {
         if !anchor_matched {
             ctx.ops
                 .record_attempt_failure(
-                    ctx.credential.discovery_label(),
+                    ctx.credential.into(),
                     ctx.ip,
                     AttemptOutcome::CollectionFailed,
                     "this host is not in any Instant On site this account manages — assign the \
@@ -337,7 +337,7 @@ impl InstantOnIntegration {
             );
             ctx.ops
                 .record_attempt_failure(
-                    ctx.credential.discovery_label(),
+                    ctx.credential.into(),
                     ctx.ip,
                     AttemptOutcome::CollectionFailed,
                     format!(

@@ -559,7 +559,7 @@ fn surviving_collection(
 async fn report_shortfall(ctx: &IntegrationContext<'_>, shortfall: &CollectionShortfall) {
     ctx.ops
         .record_attempt_failure(
-            ctx.credential.discovery_label(),
+            ctx.credential.into(),
             ctx.ip,
             AttemptOutcome::CollectionTimedOut,
             format!(

@@ -4,13 +4,17 @@
 //! `scanopy_entity_events_total{entity_type, operation}`; non-entity events
 //! go to `scanopy_events_total{category, operation}`. Two metrics, two
 //! cardinalities — entity dimensions stay separate from event categories.
+//!
+//! Discovery scan warnings get a third, `scanopy_discovery_warnings_total{code, integration}`,
+//! because neither label fits the two above: the question an operator asks of a warning is which
+//! failure mode and whose integration, not which entity changed.
 
 use anyhow::Error;
 use async_trait::async_trait;
 use strum::IntoDiscriminant;
 
 use crate::{
-    daemon::discovery::types::base::DiscoveryPhase,
+    daemon::discovery::types::{base::DiscoveryPhase, warnings::DiscoveryWarningCode},
     server::{
         metrics::service::MetricsService,
         shared::events::{
@@ -42,6 +46,25 @@ fn record_event(category: &str, operation: impl std::fmt::Display) {
         "scanopy_events_total",
         "category" => category.to_string(),
         "operation" => operation.to_string(),
+    )
+    .increment(1);
+}
+
+/// Per-code, per-integration counter for discovery scan warnings.
+///
+/// **One increment per warning, and a warning is one occurrence** — a failure mode affecting twelve
+/// devices increments by twelve, because the counter measures how much of the estate is affected
+/// and that is what an operator sizing the problem is asking. "How many scans saw this at all" is a
+/// different question, answered by the distinct-session count in the analytics events rather than
+/// by collapsing this one.
+///
+/// Both labels are bounded discriminants: ~42 codes against 8 integrations plus `none`. Nothing an
+/// occurrence carries — no address, no host id, no library diagnostic — reaches a label.
+fn record_discovery_warning(code: DiscoveryWarningCode, integration: Option<impl ToString>) {
+    metrics::counter!(
+        "scanopy_discovery_warnings_total",
+        "code" => code.to_string(),
+        "integration" => integration.map(|i| i.to_string()).unwrap_or_else(|| "none".to_string()),
     )
     .increment(1);
 }
@@ -139,3 +162,25 @@ impl Subscriber<DiscoveryPhase> for MetricsService {
     }
 }
 inventory::submit!(SubscriberRegistration::new::<MetricsService, DiscoveryPhase>());
+
+#[async_trait]
+impl Subscriber<DiscoveryWarningCode> for MetricsService {
+    /// Every code, including `Unknown`. An allowlist here would mean a new code silently missing
+    /// from the metric, and `Unknown` in particular has to be counted: it is what an old daemon's
+    /// bare-string warnings land as, and dropping those would leave a hole in the numbers exactly
+    /// while a fleet is upgrading.
+    fn filter(&self) -> EventFilter<DiscoveryWarningCode> {
+        EventFilter::all()
+    }
+
+    async fn handle(&self, events: Vec<Event<DiscoveryWarningCode>>) -> Result<(), Error> {
+        for event in events {
+            record_discovery_warning(event.operation, event.scope.integration);
+        }
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    MetricsService,
+    DiscoveryWarningCode,
+>());

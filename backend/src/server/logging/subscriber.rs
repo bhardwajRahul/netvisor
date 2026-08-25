@@ -11,7 +11,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 
 use crate::{
-    daemon::discovery::types::base::DiscoveryPhase,
+    daemon::discovery::types::{base::DiscoveryPhase, warnings::DiscoveryWarningCode},
     server::{
         logging::service::LoggingService,
         shared::events::{
@@ -160,3 +160,27 @@ impl Subscriber<DiscoveryPhase> for LoggingService {
     }
 }
 inventory::submit!(SubscriberRegistration::new::<LoggingService, DiscoveryPhase>());
+
+#[async_trait]
+impl Subscriber<DiscoveryWarningCode> for LoggingService {
+    fn filter(&self) -> EventFilter<DiscoveryWarningCode> {
+        EventFilter::all()
+    }
+
+    /// One line per warning, at `Warn`, with the occurrence's own evidence in it.
+    ///
+    /// This is what replaced the hand-written `tracing::warn!` calls the LLDP resolver used to
+    /// carry: those said the same thing as the warning beside them, and the per-neighbour detail
+    /// they added was visible only to whoever had container access. Now the detail is on the
+    /// warning itself, so the log and the scan record say the same thing from one source.
+    async fn handle(&self, events: Vec<Event<DiscoveryWarningCode>>) -> Result<(), Error> {
+        for event in events {
+            log_event(&event, event.flags.suppress_logs);
+        }
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    LoggingService,
+    DiscoveryWarningCode,
+>());
