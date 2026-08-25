@@ -12,7 +12,7 @@ use tracing::{debug, trace, warn};
 use crate::daemon::discovery::service::warnings::{
     ClaimSource, DeviceClaim, MalformedNeighbourReason, ShortfallReason,
 };
-use crate::server::snmp::resolution::lldp::canonical_mac;
+use crate::server::lldp::canonical_mac;
 
 use super::oids::{self, oid_to_vec};
 use super::session::{MAX_WALK_ENTRIES, SNMP_TIMEOUT};
@@ -2727,7 +2727,7 @@ mod walk_tests {
 #[cfg(test)]
 mod if_table_tests {
     use super::*;
-    use crate::server::snmp::resolution::lldp::LldpChassisId;
+    use crate::server::lldp::LldpChassisId;
 
     const IF_INDEX: &str = "1.3.6.1.2.1.2.2.1.1";
     const IF_DESCR: &str = "1.3.6.1.2.1.2.2.1.2";

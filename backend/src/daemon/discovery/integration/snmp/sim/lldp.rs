@@ -15,7 +15,7 @@
 
 use super::wire::{MacEncoding, PassValue, Row};
 use crate::daemon::discovery::integration::snmp::oids::lldp;
-use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+use crate::server::lldp::{LldpChassisId, LldpPortId};
 
 /// An identifier together with how the agent puts it on the wire.
 ///

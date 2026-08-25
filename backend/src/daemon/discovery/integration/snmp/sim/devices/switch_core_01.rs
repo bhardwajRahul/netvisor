@@ -15,7 +15,7 @@ use crate::daemon::discovery::integration::snmp::types::{
 };
 use crate::server::credentials::r#impl::types::CredentialType;
 use crate::server::interfaces::r#impl::base::if_type;
-use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+use crate::server::lldp::{LldpChassisId, LldpPortId};
 
 use super::inline;
 
@@ -185,7 +185,7 @@ pub fn cdp_table() -> CdpTable {
 mod tests {
     use crate::daemon::discovery::integration::snmp::sim::harness;
 
-    use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+    use crate::server::lldp::{LldpChassisId, LldpPortId};
 
     /// The baseline every other device's test leans on. `Gi0/1`-`Gi0/3` are named by
     /// `switch-flaky-01`, `switch-dlink-01` and `switch-tplink-01`, and the far ends they resolve

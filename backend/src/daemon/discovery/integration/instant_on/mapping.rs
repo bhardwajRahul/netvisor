@@ -30,7 +30,7 @@ use crate::server::interfaces::r#impl::base::{
     IfAdminStatus, IfOperStatus, Interface, InterfaceBase,
 };
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
-use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId, canonical_mac};
+use crate::server::lldp::{LldpChassisId, LldpPortId, canonical_mac};
 use crate::server::subnets::r#impl::base::Subnet;
 
 use super::types::{InstantOnClient, InstantOnDevice, InstantOnPort};

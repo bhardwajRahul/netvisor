@@ -12,7 +12,7 @@ use crate::daemon::discovery::integration::snmp::sim::wire::MacEncoding;
 use crate::daemon::discovery::integration::snmp::sim::{Purpose, SimDevice, Tables};
 use crate::daemon::discovery::integration::snmp::types::SystemInfo;
 use crate::server::credentials::r#impl::types::CredentialType;
-use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+use crate::server::lldp::{LldpChassisId, LldpPortId};
 
 use super::inline;
 

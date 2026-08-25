@@ -240,7 +240,7 @@ mod tests {
     use crate::server::{
         hosts::r#impl::base::{Host, HostBase},
         interfaces::r#impl::base::{Interface, InterfaceBase, Neighbor},
-        snmp::resolution::lldp::LldpChassisId,
+        lldp::LldpChassisId,
         topology::{
             service::context::TopologyContext,
             types::{

@@ -59,10 +59,10 @@ use crate::{
             IfAdminStatus, IfOperStatus, Interface, InterfaceBase, InterfaceDataComplete, if_type,
         },
         ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
+        lldp::{LldpChassisId, LldpPortId},
         ports::r#impl::base::PortType,
         services::r#impl::patterns::ClientProbe,
         shared::types::entities::EntitySource,
-        snmp::resolution::lldp::{LldpChassisId, LldpPortId},
         subnets::r#impl::base::Subnet,
     },
 };
@@ -1280,7 +1280,7 @@ fn resolve_lldp_local_port(
             return None;
         }
         // Exact match against ifName / ifDescr / ifAlias (VOSS: "1/1" == ifName "1/1"). ifAlias is
-        // included to match the server's ladder in `snmp::resolution::resolver`, which added it
+        // included to match the server's ladder in `server::lldp::resolver`, which added it
         // for Westermo WeOS — the daemon holding a narrower rule than the server meant the two
         // could place the same neighbour on different ports.
         if_entries

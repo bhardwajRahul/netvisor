@@ -12,7 +12,7 @@ use crate::daemon::discovery::integration::snmp::sim::wire::MacEncoding;
 use crate::daemon::discovery::integration::snmp::sim::{Purpose, SimDevice, Tables};
 use crate::daemon::discovery::integration::snmp::types::SystemInfo;
 use crate::server::credentials::r#impl::types::CredentialType;
-use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+use crate::server::lldp::{LldpChassisId, LldpPortId};
 
 use super::inline;
 
@@ -165,7 +165,7 @@ mod tests {
     use crate::daemon::discovery::integration::snmp::sim::harness;
 
     use crate::daemon::discovery::integration::snmp::unique_interface_macs;
-    use crate::server::snmp::resolution::lldp::LldpPortId;
+    use crate::server::lldp::LldpPortId;
 
     /// GH #668: four neighbour records, each needing a different route to its far end.
     ///

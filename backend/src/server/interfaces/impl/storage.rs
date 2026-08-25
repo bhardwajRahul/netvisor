@@ -220,7 +220,7 @@ impl Storable for Interface {
     }
 
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error> {
-        use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+        use crate::server::lldp::{LldpChassisId, LldpPortId};
 
         let admin_status_raw: i32 = row.get("admin_status");
         let oper_status_raw: i32 = row.get("oper_status");
@@ -679,7 +679,7 @@ mod preserve_uncollected_tests {
     use crate::server::interfaces::r#impl::base::{
         Interface, InterfaceBase, InterfaceDataComplete,
     };
-    use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+    use crate::server::lldp::{LldpChassisId, LldpPortId};
 
     fn with_lldp(chassis: Option<&str>) -> Interface {
         let mut base = InterfaceBase::default();

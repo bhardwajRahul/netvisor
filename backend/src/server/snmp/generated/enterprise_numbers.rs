@@ -55,7 +55,7 @@ static ENTERPRISE_NUMBERS: phf::Map<u32, &'static str> = phf_map! {
 ///
 /// # Example
 /// ```
-/// use scanopy::server::snmp::resolution::generated::get_enterprise_name;
+/// use scanopy::server::snmp::generated::get_enterprise_name;
 ///
 /// assert_eq!(get_enterprise_name(9), Some("ciscoSystems"));
 /// assert_eq!(get_enterprise_name(311), Some("Microsoft"));
@@ -71,7 +71,7 @@ pub fn get_enterprise_name(enterprise_number: u32) -> Option<&'static str> {
 ///
 /// # Example
 /// ```
-/// use scanopy::server::snmp::resolution::generated::extract_enterprise_number;
+/// use scanopy::server::snmp::generated::extract_enterprise_number;
 ///
 /// assert_eq!(extract_enterprise_number("1.3.6.1.4.1.9.1.1"), Some(9)); // Cisco
 /// assert_eq!(extract_enterprise_number("1.3.6.1.4.1.2011.2.23"), Some(2011)); // Huawei

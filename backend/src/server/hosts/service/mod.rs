@@ -18,6 +18,7 @@ use crate::server::{
         service::InterfaceService,
     },
     ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},
+    lldp::{IdentityResolution, LldpResolver, resolver::LldpResolverImpl},
     networks::service::NetworkService,
     ports::{r#impl::base::Port, service::PortService},
     services::{
@@ -39,10 +40,6 @@ use crate::server::{
             api::ValidationError,
             entities::{EntitySource, EntitySourceDiscriminants},
         },
-    },
-    snmp::resolution::{
-        lldp::{IdentityResolution, LldpResolver},
-        resolver::LldpResolverImpl,
     },
     subnets::{r#impl::base::Subnet, service::SubnetService},
     tags::entity_tags::EntityTagService,

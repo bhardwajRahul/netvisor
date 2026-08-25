@@ -14,7 +14,7 @@ use crate::daemon::discovery::integration::snmp::types::SystemInfo;
 use crate::server::credentials::r#impl::types::{
     CredentialType, SnmpV3AuthProtocol, SnmpV3PrivProtocol,
 };
-use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+use crate::server::lldp::{LldpChassisId, LldpPortId};
 
 use super::inline;
 

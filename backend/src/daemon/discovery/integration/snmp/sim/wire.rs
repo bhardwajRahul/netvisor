@@ -105,7 +105,7 @@ impl PassValue {
     }
 }
 
-pub use crate::server::snmp::resolution::lldp::MacEncoding;
+pub use crate::server::lldp::MacEncoding;
 
 /// One instance: a fully-qualified OID and its value.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -2,7 +2,7 @@
 //!
 //! These run against Postgres rather than an in-memory inventory on purpose. Both defects this
 //! file guards against were *SQL semantics* defects — a lookup with no `ORDER BY` and no `LIMIT`
-//! returning an arbitrary row — and the fake inventory in `snmp::resolution::lldp`'s tests
+//! returning an arbitrary row — and the fake inventory in `server::lldp`'s tests
 //! re-implements those semantics in Rust, so it cannot fail the way the database did. A resolver
 //! test that never touches a query plan proves the resolver agrees with itself.
 
@@ -16,11 +16,11 @@ use crate::server::{
     hosts::r#impl::base::Host,
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase, if_type},
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
-    shared::storage::traits::Storage,
-    snmp::resolution::{
-        lldp::IdentityResolution,
+    lldp::{
+        IdentityResolution,
         resolver::{LldpResolver, LldpResolverImpl},
     },
+    shared::storage::traits::Storage,
 };
 
 use super::{host, network, organization, subnet, test_services};

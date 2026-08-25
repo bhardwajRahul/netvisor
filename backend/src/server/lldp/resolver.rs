@@ -23,8 +23,9 @@ use crate::server::{
             traits::{Storage, Unique},
         },
     },
-    snmp::resolution::lldp::IdentityResolution,
 };
+
+use super::IdentityResolution;
 
 /// Trait for LLDP resolution database lookups.
 ///
