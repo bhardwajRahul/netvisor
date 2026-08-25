@@ -99,6 +99,15 @@
     "DiscoveryWithMatch",
     "Unknown"
   ],
+  "HostNameSource": [
+    "Unnamed",
+    "Unspecified",
+    "Ip",
+    "DetectedService",
+    "Hostname",
+    "Integration",
+    "Manual"
+  ],
   "HostVirtualization": [
     "Proxmox",
     "VCenter",
