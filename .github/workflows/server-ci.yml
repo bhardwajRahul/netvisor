@@ -64,7 +64,7 @@ jobs:
       # A stub is enough for the derive to generate, which keeps the module inside clippy's reach;
       # building the real UI here would cost minutes to lint a handful of lines.
       - name: Stub the embedded UI directory
-        run: mkdir -p ui/build && [ -f ui/build/index.html ] || echo '<!doctype html>' > ui/build/index.html
+        run: mkdir -p ../ui/build && { [ -f ../ui/build/index.html ] || echo '<!doctype html>' > ../ui/build/index.html; }
 
       - name: Clippy server
         run: cargo clippy --bin server --all-features -- -D warnings

@@ -51,6 +51,15 @@ jobs:
       - name: Check formatting
         run: cargo fmt -- --check
       
+      # `--all-features` turns on `embed-ui`, whose `#[derive(Embed)]` reads `ui/build` at compile
+      # time. The daemon bin links the same lib, and `src/lib.rs` declares `pub mod server`
+      # unconditionally, so this job compiles the embed too. That directory is a UI build artefact,
+      # gitignored and never built here, and a missing folder makes the derive emit no impl at all —
+      # so the module fails to compile with "no function or associated item named `get`" rather than
+      # anything to do with the code. A stub is enough for the derive to generate.
+      - name: Stub the embedded UI directory
+        run: mkdir -p ../ui/build && { [ -f ../ui/build/index.html ] || echo '<!doctype html>' > ../ui/build/index.html; }
+
       - name: Clippy daemon
         run: cargo clippy --bin daemon --all-features -- -D warnings
       
