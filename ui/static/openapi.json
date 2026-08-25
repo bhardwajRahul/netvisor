@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.11\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.11\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.11)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.12\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.12\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.12)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -4043,6 +4043,7 @@
           "Daemons"
         ],
         "summary": "Email install command to current user",
+        "description": "Session-only, and `IsUser` says so at the extractor rather than in the body. \"The current user\"\nhas no answer for an automation identity: a user API key carries `user_id` but no address, so\nthis endpoint could never serve one. An API key that wants the command reads it directly from\n`GET /api/v1/daemons/{id}/install-command`.",
         "operationId": "email_install_command",
         "requestBody": {
           "content": {
@@ -4074,12 +4075,19 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "User session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
-          {
-            "user_api_key": []
-          },
           {
             "session": []
           }
@@ -7731,6 +7739,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_Invite"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Recipient named but the caller has no address to send from",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
                 }
               }
             }
@@ -14265,12 +14283,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.11"
+            "example": "0.17.12"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.11"
+          "server_version": "0.17.12"
         }
       },
       "ApiResponse": {
@@ -14400,19 +14418,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-08-24T23:53:28.526832Z",
+              "created_at": "2026-08-25T22:05:35.421764Z",
               "first_discovery_id": null,
-              "id": "08a407f2-deb2-4da2-94a2-0cccc9cbb0c7",
+              "id": "2ea2fc46-ee8c-4ba9-92dd-772e83f51503",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-24T23:53:28.526832Z",
+              "last_seen_at": "2026-08-25T22:05:35.421764Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-24T23:53:28.526832Z",
-              "valid_from": "2026-08-24T23:53:28.526832Z",
+              "updated_at": "2026-08-25T22:05:35.421764Z",
+              "valid_from": "2026-08-25T22:05:35.421764Z",
               "valid_to": null
             }
           },
@@ -15409,9 +15427,9 @@
               "warnings": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/DiscoveryWarning"
                 },
-                "description": "Non-fatal warnings for a completed run (e.g. the scan hit its time limit\nand left hosts un-scanned). Unlike `error`, these do not mark the run failed."
+                "description": "Non-fatal findings from a completed run — one per occurrence, each carrying the code that\nidentifies it and the detail that fills the sentence. Unlike `error`, these do not mark the\nrun failed.\n\nRead through [`deserialize_warnings`] rather than the derived impl, which is what keeps\nhistorical records and pre-coded daemons rendering: both send bare strings here, and both\nland as `Unknown` carrying that text instead of failing the whole payload."
               }
             }
           },
@@ -15526,6 +15544,22 @@
                 ],
                 "description": "Link to the host's own management interface."
               },
+              "manufacturer": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above.",
+                "readOnly": true
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above.",
+                "readOnly": true
+              },
               "name": {
                 "type": "string",
                 "description": "Human-facing name for the host."
@@ -15545,6 +15579,14 @@
                   "$ref": "#/components/schemas/Port"
                 },
                 "description": "Open ports on this host."
+              },
+              "serial_number": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above.",
+                "readOnly": true
               },
               "services": {
                 "type": "array",
@@ -15577,6 +15619,14 @@
                   "null"
                 ],
                 "description": "SNMP sysLocation — physical location as configured on the device."
+              },
+              "sys_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it\nfrom the device, so neither create nor update accepts it.",
+                "readOnly": true
               },
               "sys_object_id": {
                 "type": [
@@ -15708,19 +15758,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-08-24T23:53:28.511375Z",
+                      "created_at": "2026-08-25T22:05:35.390833Z",
                       "first_discovery_id": null,
-                      "id": "bba6bda6-86e2-4980-b7b6-b36a5752ca41",
+                      "id": "bbc11a48-25c6-4596-b1ef-080c726c584f",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-08-24T23:53:28.511375Z",
+                      "last_seen_at": "2026-08-25T22:05:35.390833Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-08-24T23:53:28.511375Z",
-                      "valid_from": "2026-08-24T23:53:28.511375Z",
+                      "updated_at": "2026-08-25T22:05:35.390833Z",
+                      "valid_from": "2026-08-25T22:05:35.390833Z",
                       "valid_to": null
                     }
                   ],
@@ -15734,7 +15784,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Amazon Echo",
+                  "service_definition": "Google Home",
                   "source": {
                     "type": "Manual"
                   },
@@ -16937,19 +16987,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-08-24T23:53:28.521705Z",
+                  "created_at": "2026-08-25T22:05:35.414502Z",
                   "first_discovery_id": null,
-                  "id": "0cd838b8-3dbb-4564-87c2-b97f4556da11",
+                  "id": "b3c4c4d2-bfdd-4870-97ba-48714bcbd50b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-24T23:53:28.521705Z",
+                  "last_seen_at": "2026-08-25T22:05:35.414502Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-24T23:53:28.521705Z",
-                  "valid_from": "2026-08-24T23:53:28.521705Z",
+                  "updated_at": "2026-08-25T22:05:35.414502Z",
+                  "valid_from": "2026-08-25T22:05:35.414502Z",
                   "valid_to": null
                 }
               ],
@@ -16963,7 +17013,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Amazon Echo",
+              "service_definition": "Google Home",
               "source": {
                 "type": "Manual"
               },
@@ -18368,9 +18418,9 @@
                 "warnings": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "$ref": "#/components/schemas/DiscoveryWarning"
                   },
-                  "description": "Non-fatal warnings for a completed run (e.g. the scan hit its time limit\nand left hosts un-scanned). Unlike `error`, these do not mark the run failed."
+                  "description": "Non-fatal findings from a completed run — one per occurrence, each carrying the code that\nidentifies it and the detail that fills the sentence. Unlike `error`, these do not mark the\nrun failed.\n\nRead through [`deserialize_warnings`] rather than the derived impl, which is what keeps\nhistorical records and pre-coded daemons rendering: both send bare strings here, and both\nland as `Unknown` carrying that text instead of failing the whole payload."
                 }
               }
             },
@@ -19023,19 +19073,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-08-24T23:53:28.511640Z",
+          "created_at": "2026-08-25T22:05:35.391147Z",
           "first_discovery_id": null,
-          "id": "33c885a5-feb6-4a17-9479-4fba4402705c",
+          "id": "917782d5-c989-410d-b9db-da93a003fcb3",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-08-24T23:53:28.511640Z",
+          "last_seen_at": "2026-08-25T22:05:35.391147Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-08-24T23:53:28.511640Z",
-          "valid_from": "2026-08-24T23:53:28.511640Z",
+          "updated_at": "2026-08-25T22:05:35.391147Z",
+          "valid_from": "2026-08-25T22:05:35.391147Z",
           "valid_to": null
         }
       },
@@ -19378,6 +19428,16 @@
           }
         }
       },
+      "ClaimSource": {
+        "type": "string",
+        "description": "Where a device's claim about itself came from.\n\nNamed rather than folded into a sentence because the operator's next step depends on it: a\nwrong `ifNumber` is a firmware bug to report upstream, while a set bridge bit over an empty\nbridge table is usually a missing SNMP view or VLAN context on their side.",
+        "enum": [
+          "IfNumber",
+          "SysServicesBridgeBit",
+          "LldpLocalIdentity",
+          "Dot1dBaseNumPorts"
+        ]
+      },
       "Color": {
         "type": "string",
         "enum": [
@@ -19673,7 +19733,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Amazon Echo",
+              "service_definition": "Google Home",
               "tags": [],
               "virtualization_metadata": null,
               "virtualization_service_id": null
@@ -19871,6 +19931,30 @@
           }
         }
       },
+      "CredentialAttempt": {
+        "type": "object",
+        "description": "One credential's attempt against one address, and what the client library said about it.",
+        "required": [
+          "address",
+          "integration",
+          "detail"
+        ],
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The library's own diagnostic — free text, so it can only ever be displayed. It is the one\nthing the code cannot supersede: the code says which failure mode, this says what actually\ncame back (\"connection refused (os error 111)\"), and it is now attributable to this one\naddress rather than being the first message of a whole batch."
+          },
+          "integration": {
+            "$ref": "#/components/schemas/CredentialQueryPayloadDiscriminants"
+          }
+        }
+      },
       "CredentialBase": {
         "type": "object",
         "required": [
@@ -19952,6 +20036,19 @@
           "created_at",
           "name",
           "updated_at"
+        ]
+      },
+      "CredentialQueryPayloadDiscriminants": {
+        "type": "string",
+        "enum": [
+          "Snmp",
+          "DockerProxy",
+          "DockerSocket",
+          "PodmanProxy",
+          "PodmanSocket",
+          "UnifiController",
+          "InstantOn",
+          "Unknown"
         ]
       },
       "CredentialStability": {
@@ -21740,11 +21837,1051 @@
           "warnings": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/DiscoveryWarning"
             },
-            "description": "Non-fatal warnings for a completed run (e.g. the scan hit its time limit\nand left hosts un-scanned). Unlike `error`, these do not mark the run failed."
+            "description": "Non-fatal findings from a completed run — one per occurrence, each carrying the code that\nidentifies it and the detail that fills the sentence. Unlike `error`, these do not mark the\nrun failed.\n\nRead through [`deserialize_warnings`] rather than the derived impl, which is what keeps\nhistorical records and pre-coded daemons rendering: both send bare strings here, and both\nland as `Unknown` carrying that text instead of failing the whole payload."
           }
         }
+      },
+      "DiscoveryWarning": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "The interface *set* was cut short, so interfaces are genuinely missing.",
+            "required": [
+              "address",
+              "collected",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "InterfaceSetCutShort"
+                ]
+              },
+              "collected": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The set was complete and only the attribute columns fell short, so nothing is missing —\nsome descriptions or speeds are just blank. Kept apart from the above because reporting\nthis as possible data loss sends people hunting for interfaces that were never absent.",
+            "required": [
+              "address",
+              "collected",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "InterfaceDetailsCutShort"
+                ]
+              },
+              "collected": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Stopped at our own entry cap. The device is fine and larger than we read.",
+            "required": [
+              "address",
+              "group",
+              "limit",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "SnmpWalkEntryCap"
+                ]
+              },
+              "group": {
+                "$ref": "#/components/schemas/SnmpWalkGroup"
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The device does not implement this MIB. Not a fault, and no later scan will change it.",
+            "required": [
+              "address",
+              "group",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "SnmpWalkUnsupported"
+                ]
+              },
+              "group": {
+                "$ref": "#/components/schemas/SnmpWalkGroup"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The agent answered out of step with what was asked — stale or non-advancing responses.",
+            "required": [
+              "address",
+              "group",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "SnmpWalkDesynchronised"
+                ]
+              },
+              "group": {
+                "$ref": "#/components/schemas/SnmpWalkGroup"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A partial read whose rows are thrown away rather than recorded, so the device contributes\nnothing for this group however much it answered.",
+            "required": [
+              "address",
+              "group",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "SnmpWalkPartialDiscarded"
+                ]
+              },
+              "group": {
+                "$ref": "#/components/schemas/SnmpWalkGroup"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A partial read whose rows were recorded as far as they got.",
+            "required": [
+              "address",
+              "group",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "SnmpWalkPartialRecorded"
+                ]
+              },
+              "group": {
+                "$ref": "#/components/schemas/SnmpWalkGroup"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Nothing came back for the root of the bridge MIB, which switches commonly do not implement.",
+            "required": [
+              "address",
+              "group",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "SnmpWalkBridgeMibAbsent"
+                ]
+              },
+              "group": {
+                "$ref": "#/components/schemas/SnmpWalkGroup"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Nothing came back at all, and the device stopped answering rather than reporting empty.",
+            "required": [
+              "address",
+              "group",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "SnmpWalkNoAnswer"
+                ]
+              },
+              "group": {
+                "$ref": "#/components/schemas/SnmpWalkGroup"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The device published a count, and the read ended before reaching it.",
+            "required": [
+              "address",
+              "group",
+              "source",
+              "expected",
+              "observed",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "ClaimedCountReadCutShort"
+                ]
+              },
+              "expected": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "group": {
+                "$ref": "#/components/schemas/SnmpWalkGroup"
+              },
+              "observed": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "source": {
+                "$ref": "#/components/schemas/ClaimSource"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The device published a count, the read finished, and it came up short anyway.",
+            "required": [
+              "address",
+              "group",
+              "source",
+              "expected",
+              "observed",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "ClaimedCountUnderRead"
+                ]
+              },
+              "expected": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "group": {
+                "$ref": "#/components/schemas/SnmpWalkGroup"
+              },
+              "observed": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "source": {
+                "$ref": "#/components/schemas/ClaimSource"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The device declared the capability, and the read ended without returning any.",
+            "required": [
+              "address",
+              "group",
+              "source",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "ClaimedCapabilityReadCutShort"
+                ]
+              },
+              "group": {
+                "$ref": "#/components/schemas/SnmpWalkGroup"
+              },
+              "source": {
+                "$ref": "#/components/schemas/ClaimSource"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The device declared the capability, the read finished, and it returned none.",
+            "required": [
+              "address",
+              "group",
+              "source",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "ClaimedCapabilityEmpty"
+                ]
+              },
+              "group": {
+                "$ref": "#/components/schemas/SnmpWalkGroup"
+              },
+              "source": {
+                "$ref": "#/components/schemas/ClaimSource"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Neighbours whose local port matched no interface, so they were discarded entirely.",
+            "required": [
+              "address",
+              "dropped",
+              "total",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "LldpLocalPortDropped"
+                ]
+              },
+              "dropped": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Neighbours whose local port could not be identified but did match an interface number, so\nthey are drawn against a port that may be the wrong one.",
+            "required": [
+              "address",
+              "misplaced",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "LldpLocalPortMisplaced"
+                ]
+              },
+              "misplaced": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MalformedNeighbours",
+                "description": "The column carrying the identifier stopped early, so a rescan may recover these."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "MalformedNeighboursWalkCutShort"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The column carrying the identifier stopped early, so a rescan may recover these."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MalformedNeighbours",
+                "description": "Rows that never appeared in the identifying column at all."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "MalformedNeighboursGhostRows"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Rows that never appeared in the identifying column at all."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MalformedNeighbours",
+                "description": "Neighbours listed and then never given an identifier."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "MalformedNeighboursIncompleteRecords"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Neighbours listed and then never given an identifier."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MalformedNeighbours",
+                "description": "The identifying column held a value of a type it cannot hold."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "MalformedNeighboursUnexpectedType"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The identifying column held a value of a type it cannot hold."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MalformedNeighbours",
+                "description": "The record's position in the neighbour table could not be read."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "MalformedNeighboursUnreadableIndex"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The record's position in the neighbour table could not be read."
+          },
+          {
+            "type": "object",
+            "description": "SNMP answered and every table came back empty.",
+            "required": [
+              "address",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "SnmpCollectedNothing"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The device answered correctly and persisting its VLANs failed.",
+            "required": [
+              "address",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "VlanRecordingFailed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The credential's address is not on any subnet this scan covers.",
+            "required": [
+              "address",
+              "integration",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "CredentialTargetNotScanned"
+                ]
+              },
+              "integration": {
+                "$ref": "#/components/schemas/CredentialQueryPayloadDiscriminants"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Nothing answered at the credential's address during the scan.",
+            "required": [
+              "address",
+              "integration",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "CredentialTargetNotResponding"
+                ]
+              },
+              "integration": {
+                "$ref": "#/components/schemas/CredentialQueryPayloadDiscriminants"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The port the credential needs was not open, so it was never tried.",
+            "required": [
+              "address",
+              "integration",
+              "ports",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "CredentialGateClosed"
+                ]
+              },
+              "integration": {
+                "$ref": "#/components/schemas/CredentialQueryPayloadDiscriminants"
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CredentialAttempt",
+                "description": "The credential was refused."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "CredentialRejected"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The credential was refused."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CredentialAttempt",
+                "description": "The credential is incomplete and could not be used."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "CredentialMalformed"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The credential is incomplete and could not be used."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CredentialAttempt",
+                "description": "TLS could not be negotiated."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "CredentialTlsFailed"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "TLS could not be negotiated."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CredentialAttempt",
+                "description": "Something answered that is not the expected service."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "CredentialNotThisService"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Something answered that is not the expected service."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CredentialAttempt",
+                "description": "Authenticated, then failed while collecting."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "CredentialCollectionFailed"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Authenticated, then failed while collecting."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CredentialAttempt",
+                "description": "Authenticated, then ran out of time while collecting."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "CredentialCollectionTimedOut"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Authenticated, then ran out of time while collecting."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CredentialAttempt",
+                "description": "Nothing was reachable at the address."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "CredentialUnreachable"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Nothing was reachable at the address."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CredentialAttempt",
+                "description": "The attempt timed out before anything answered."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "CredentialTimedOut"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The attempt timed out before anything answered."
+          },
+          {
+            "type": "object",
+            "description": "The run hit its global time limit, with an estimate of the work left.",
+            "required": [
+              "hours",
+              "hosts_not_scanned",
+              "minutes_remaining",
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "ScanTimeLimitWithEstimate"
+                ]
+              },
+              "hosts_not_scanned": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "hours": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "minutes_remaining": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The run hit its global time limit, with no usable estimate.",
+            "required": [
+              "hours",
+              "hosts_not_scanned",
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "ScanTimeLimit"
+                ]
+              },
+              "hosts_not_scanned": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "hours": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UnmatchedNeighbour",
+                "description": "The advertised identifier matches no host on this network."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "LldpNeighbourNotFound"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The advertised identifier matches no host on this network."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UnmatchedNeighbour",
+                "description": "The advertised identifier matches several hosts, so none can be picked."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "LldpNeighbourAmbiguous"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The advertised identifier matches several hosts, so none can be picked."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UnresolvedPort",
+                "description": "The far end resolved, and its port id is of a subtype there is no lookup for."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "LldpPortNoStrategy"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The far end resolved, and its port id is of a subtype there is no lookup for."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UnresolvedPort",
+                "description": "The far end resolved, and none of its ports matches the advertised port id."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "LldpPortNotFound"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The far end resolved, and none of its ports matches the advertised port id."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UnresolvedPort",
+                "description": "The far end resolved, and several of its ports match, so it identifies none."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "LldpPortAmbiguous"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "The far end resolved, and several of its ports match, so it identifies none."
+          },
+          {
+            "type": "object",
+            "description": "The run produced more warnings than the scan record holds. Emitted rather than dropping\nthe tail silently — a list that simply stops reads as though that was all of them.",
+            "required": [
+              "elided",
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "WarningsTruncated"
+                ]
+              },
+              "elided": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A warning this binary does not recognise: a bare string from a historical record or a\npre-coded daemon, or a code from a newer one. Carries the original text so scan history\nkeeps rendering; the code itself is what reaches the metric, never `detail`.",
+            "required": [
+              "detail",
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "Unknown"
+                ]
+              },
+              "detail": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "A single non-fatal finding from one discovery run, about one device, neighbour, or the scan\nitself.\n\nSerialized with the code as the tag, so the generated TypeScript is a discriminated union the\nUI can switch on exhaustively. The derived `Deserialize` reads that shape; the leniency that\nkeeps historical records and pre-coded daemons working lives in [`deserialize_warnings`],\nwhich is applied at the one field that holds these."
       },
       "DockerInstall": {
         "type": "object",
@@ -23050,6 +24187,22 @@
             ],
             "description": "Link to the host's own management interface."
           },
+          "manufacturer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above.",
+            "readOnly": true
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above.",
+            "readOnly": true
+          },
           "name": {
             "type": "string",
             "description": "Human-facing name for the host."
@@ -23069,6 +24222,14 @@
               "$ref": "#/components/schemas/Port"
             },
             "description": "Open ports on this host."
+          },
+          "serial_number": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above.",
+            "readOnly": true
           },
           "services": {
             "type": "array",
@@ -23101,6 +24262,14 @@
               "null"
             ],
             "description": "SNMP sysLocation — physical location as configured on the device."
+          },
+          "sys_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it\nfrom the device, so neither create nor update accepts it.",
+            "readOnly": true
           },
           "sys_object_id": {
             "type": [
@@ -23232,19 +24401,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-08-24T23:53:28.511075Z",
+                  "created_at": "2026-08-25T22:05:35.390444Z",
                   "first_discovery_id": null,
-                  "id": "cf5715ea-bb22-402b-b1e9-ce07963f985a",
+                  "id": "6ef8015e-ce2f-4678-87c6-3590b0267165",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-24T23:53:28.511075Z",
+                  "last_seen_at": "2026-08-25T22:05:35.390444Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-24T23:53:28.511075Z",
-                  "valid_from": "2026-08-24T23:53:28.511075Z",
+                  "updated_at": "2026-08-25T22:05:35.390444Z",
+                  "valid_from": "2026-08-25T22:05:35.390444Z",
                   "valid_to": null
                 }
               ],
@@ -23258,7 +24427,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Amazon Echo",
+              "service_definition": "Google Home",
               "source": {
                 "type": "Manual"
               },
@@ -24789,6 +25958,47 @@
           }
         }
       },
+      "MalformedNeighbourConsequence": {
+        "type": "string",
+        "description": "What discarding a device's malformed neighbour records cost it.\n\nA slot value rather than two codes per reason: losing every link and losing some of them is a\ndifference in severity, not in failure mode, and the metric asks about mode. Splitting it into\ncodes would double the enum to say something the operator reads in one clause.",
+        "enum": [
+          "AllLinksLost",
+          "SomeLinksLost"
+        ]
+      },
+      "MalformedNeighbours": {
+        "type": "object",
+        "description": "Neighbour records discarded for want of the identifier that matches the far end.",
+        "required": [
+          "address",
+          "group",
+          "discarded",
+          "kept",
+          "consequence"
+        ],
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "consequence": {
+            "$ref": "#/components/schemas/MalformedNeighbourConsequence"
+          },
+          "discarded": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "group": {
+            "$ref": "#/components/schemas/SnmpWalkGroup"
+          },
+          "kept": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Records that survived, which is what decides whether this cost the device some of its\ntopology or all of it.",
+            "minimum": 0
+          }
+        }
+      },
       "MatchConfidence": {
         "type": "string",
         "enum": [
@@ -25592,7 +26802,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.11"
+            "example": "0.17.12"
           }
         },
         "example": {
@@ -25603,7 +26813,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.11"
+          "server_version": "0.17.12"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -26041,6 +27251,22 @@
                   ],
                   "description": "Link to the host's own management interface."
                 },
+                "manufacturer": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above.",
+                  "readOnly": true
+                },
+                "model": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above.",
+                  "readOnly": true
+                },
                 "name": {
                   "type": "string",
                   "description": "Human-facing name for the host."
@@ -26060,6 +27286,14 @@
                     "$ref": "#/components/schemas/Port"
                   },
                   "description": "Open ports on this host."
+                },
+                "serial_number": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above.",
+                  "readOnly": true
                 },
                 "services": {
                   "type": "array",
@@ -26092,6 +27326,14 @@
                     "null"
                   ],
                   "description": "SNMP sysLocation — physical location as configured on the device."
+                },
+                "sys_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it\nfrom the device, so neither create nor update accepts it.",
+                  "readOnly": true
                 },
                 "sys_object_id": {
                   "type": [
@@ -26223,19 +27465,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-08-24T23:53:28.504747Z",
+                        "created_at": "2026-08-25T22:05:35.378698Z",
                         "first_discovery_id": null,
-                        "id": "78fd9db8-6720-40fe-a4c8-8f0d44c09c20",
+                        "id": "2ae40422-d08b-41db-b8ad-1103c27ee552",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-08-24T23:53:28.504747Z",
+                        "last_seen_at": "2026-08-25T22:05:35.378698Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-08-24T23:53:28.504747Z",
-                        "valid_from": "2026-08-24T23:53:28.504747Z",
+                        "updated_at": "2026-08-25T22:05:35.378698Z",
+                        "valid_from": "2026-08-25T22:05:35.378698Z",
                         "valid_to": null
                       }
                     ],
@@ -26249,7 +27491,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Amazon Echo",
+                    "service_definition": "Google Home",
                     "source": {
                       "type": "Manual"
                     },
@@ -26385,19 +27627,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-08-24T23:53:28.520758Z",
+                    "created_at": "2026-08-25T22:05:35.413199Z",
                     "first_discovery_id": null,
-                    "id": "3fccabe0-639d-46de-b79a-f2dc7a99ef5f",
+                    "id": "7e399d64-a7f4-4244-99aa-6d9ae56ffc38",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-08-24T23:53:28.520758Z",
+                    "last_seen_at": "2026-08-25T22:05:35.413199Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-08-24T23:53:28.520758Z",
-                    "valid_from": "2026-08-24T23:53:28.520758Z",
+                    "updated_at": "2026-08-25T22:05:35.413199Z",
+                    "valid_from": "2026-08-25T22:05:35.413199Z",
                     "valid_to": null
                   }
                 ],
@@ -26411,7 +27653,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Amazon Echo",
+                "service_definition": "Google Home",
                 "source": {
                   "type": "Manual"
                 },
@@ -28389,19 +29631,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-08-24T23:53:28.511580Z",
+              "created_at": "2026-08-25T22:05:35.391052Z",
               "first_discovery_id": null,
-              "id": "8ee4a127-e56b-483a-80d4-64200a1e52f8",
+              "id": "22a0a107-efcf-47f6-8b25-f0734015b517",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-24T23:53:28.511580Z",
+              "last_seen_at": "2026-08-25T22:05:35.391052Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-24T23:53:28.511580Z",
-              "valid_from": "2026-08-24T23:53:28.511580Z",
+              "updated_at": "2026-08-25T22:05:35.391052Z",
+              "valid_from": "2026-08-25T22:05:35.391052Z",
               "valid_to": null
             }
           ],
@@ -28415,7 +29657,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Amazon Echo",
+          "service_definition": "Google Home",
           "source": {
             "type": "Manual"
           },
@@ -28980,6 +30222,23 @@
         "enum": [
           "Aes128",
           "Aes256"
+        ]
+      },
+      "SnmpWalkGroup": {
+        "type": "string",
+        "description": "An SNMP data group a walk may come up short on.\n\nAn enum rather than a free string so the code derivation below is exhaustive: every group has\nto declare which consequence sentence describes it, and a new one cannot be added without\nchoosing.",
+        "enum": [
+          "Lldp",
+          "Cdp",
+          "Interfaces",
+          "BridgePortNumbering",
+          "BridgeForwarding",
+          "VlanMembership",
+          "ArpTable",
+          "DeviceInventory",
+          "IpAddresses",
+          "LldpLocalPorts",
+          "VlanNames"
         ]
       },
       "Subnet": {
@@ -29613,7 +30872,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "6a4b748d-bdd7-4df5-9a12-76c97f1517df",
+                  "id": "ed91b0a7-a4aa-4d13-ac46-7391a1ee671f",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -29623,23 +30882,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "b247842f-02d5-479f-ad97-6e46fe411d31",
+                  "id": "41f1b5e0-b0ca-428a-9678-00dab0be9101",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "e74084c5-5dc0-4cab-9947-2d816a290922",
+                  "id": "fdb43ba1-1ab9-43ae-abc5-893485681291",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "8cad1720-76c4-429f-b85e-0524e1508224",
+                  "id": "ec52c714-75f5-4780-9003-3ec8bfe99637",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "b247842f-02d5-479f-ad97-6e46fe411d31",
+                  "id": "41f1b5e0-b0ca-428a-9678-00dab0be9101",
                   "rule": "ByHost"
                 }
               ]
@@ -29669,19 +30928,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "3cfc4105-2f24-4b94-8727-6dcb2117e1cc",
+                "id": "9813531e-b5ef-4067-bf63-687a6496913f",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "f8d15480-7d52-4715-8d78-f1269f2e469c",
+                "id": "db481467-a1d3-4496-b159-d4c08345ac91",
                 "rule": "ByVLAN"
               },
               {
-                "id": "3aada207-5f33-489b-82ba-c58e1a6fff43",
+                "id": "e25e521b-0cfc-476b-91f8-c755cc010f69",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "c541b65a-2342-4cfd-9903-378dd7e9e585",
+                "id": "a35605ab-d9e1-439b-8e18-06c350dbfeee",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -29699,7 +30958,7 @@
                 }
               },
               {
-                "id": "33dd2396-3ad0-41c8-a953-237713940a31",
+                "id": "07342dd6-9bbb-4fe6-9889-23746abb6c5d",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -29708,15 +30967,15 @@
                 }
               },
               {
-                "id": "b39c15ef-0983-4a0e-bddd-278aad8e7c0c",
+                "id": "6adc6471-c148-4a48-aa19-ebd951421ba7",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "67c761b7-f0a4-49b6-8577-cf0c1cf5b2e1",
+                "id": "2f28b9f4-49d6-40cb-9745-5a45f1f0ace0",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "bf17a683-ac9f-45fc-9c40-b0453a2d2c30",
+                "id": "53e9f36d-50e5-487f-a976-8228e8399341",
                 "rule": "ByStack"
               }
             ]
@@ -29893,6 +31152,76 @@
       "TupleUnit": {
         "type": "object",
         "description": "No payload. Present only so the envelope keeps its shape."
+      },
+      "UnmatchedNeighbour": {
+        "type": "object",
+        "description": "A neighbour advertised by a local interface whose far end could not be placed on a host.",
+        "required": [
+          "host_id",
+          "if_descr",
+          "identifier",
+          "sys_name"
+        ],
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The local device that saw the neighbour, not the far end — the far end is what could not\nbe identified."
+          },
+          "identifier": {
+            "type": "string",
+            "description": "The chassis ID (LLDP) or device id (CDP) that did not identify one host."
+          },
+          "if_descr": {
+            "type": "string"
+          },
+          "sys_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UnresolvedPort": {
+        "type": "object",
+        "description": "A neighbour whose far-end host resolved but whose far-end *port* did not.",
+        "required": [
+          "host_id",
+          "if_descr",
+          "remote_host_id",
+          "port_id",
+          "port_desc"
+        ],
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The local device that saw the neighbour, and the port it saw it on."
+          },
+          "if_descr": {
+            "type": "string"
+          },
+          "port_desc": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`lldpRemPortDesc`, the last-resort tier. Present because \"the id failed and the description\nwas empty\" and \"both were tried and neither matched\" call for different fixes."
+          },
+          "port_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The advertised port id in `Debug` form, which carries subtype and value together\n(`MacAddress(\"00:ad:24:af:4e:00\")`, `InterfaceName(\"2\")`). Both halves are needed: the\nsubtype says which tier ran and the value says what it looked for."
+          },
+          "remote_host_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The far-end device, already resolved — this is what makes it distinct from\n[`UnmatchedNeighbour`]."
+          }
+        }
       },
       "UpdateHostRequest": {
         "type": "object",

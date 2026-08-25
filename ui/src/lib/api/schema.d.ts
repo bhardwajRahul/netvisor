@@ -1144,7 +1144,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Email install command to current user */
+        /**
+         * Email install command to current user
+         * @description Session-only, and `IsUser` says so at the extractor rather than in the body. "The current user"
+         *     has no answer for an automation identity: a user API key carries `user_id` but no address, so
+         *     this endpoint could never serve one. An API key that wants the command reads it directly from
+         *     `GET /api/v1/daemons/{id}/install-command`.
+         */
         post: operations["email_install_command"];
         delete?: never;
         options?: never;
@@ -3147,7 +3153,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.11"
+         *       "server_version": "0.17.12"
          *     }
          */
         ApiMeta: {
@@ -3158,7 +3164,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.11
+             * @example 0.17.12
              */
             server_version: string;
         };
@@ -3176,19 +3182,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-08-24T23:53:28.526832Z",
+             *       "created_at": "2026-08-25T22:05:35.421764Z",
              *       "first_discovery_id": null,
-             *       "id": "08a407f2-deb2-4da2-94a2-0cccc9cbb0c7",
+             *       "id": "2ea2fc46-ee8c-4ba9-92dd-772e83f51503",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-08-24T23:53:28.526832Z",
+             *       "last_seen_at": "2026-08-25T22:05:35.421764Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-08-24T23:53:28.526832Z",
-             *       "valid_from": "2026-08-24T23:53:28.526832Z",
+             *       "updated_at": "2026-08-25T22:05:35.421764Z",
+             *       "valid_from": "2026-08-25T22:05:35.421764Z",
              *       "valid_to": null
              *     }
              */
@@ -3692,10 +3698,15 @@ export interface components {
                  */
                 started_at?: string | null;
                 /**
-                 * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
-                 *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
+                 * @description Non-fatal findings from a completed run — one per occurrence, each carrying the code that
+                 *     identifies it and the detail that fills the sentence. Unlike `error`, these do not mark the
+                 *     run failed.
+                 *
+                 *     Read through [`deserialize_warnings`] rather than the derived impl, which is what keeps
+                 *     historical records and pre-coded daemons rendering: both send bare strings here, and both
+                 *     land as `Unknown` carrying that text instead of failing the whole payload.
                  */
-                warnings?: string[];
+                warnings?: components["schemas"]["DiscoveryWarning"][];
             };
             /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
@@ -3798,19 +3809,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-08-24T23:53:28.511375Z",
+             *               "created_at": "2026-08-25T22:05:35.390833Z",
              *               "first_discovery_id": null,
-             *               "id": "bba6bda6-86e2-4980-b7b6-b36a5752ca41",
+             *               "id": "bbc11a48-25c6-4596-b1ef-080c726c584f",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-08-24T23:53:28.511375Z",
+             *               "last_seen_at": "2026-08-25T22:05:35.390833Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-08-24T23:53:28.511375Z",
-             *               "valid_from": "2026-08-24T23:53:28.511375Z",
+             *               "updated_at": "2026-08-25T22:05:35.390833Z",
+             *               "valid_from": "2026-08-25T22:05:35.390833Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3824,7 +3835,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Amazon Echo",
+             *           "service_definition": "Google Home",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3879,6 +3890,10 @@ export interface components {
                 last_seen_at: string;
                 /** @description Link to the host's own management interface. */
                 management_url?: string | null;
+                /** @description ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above. */
+                readonly manufacturer?: string | null;
+                /** @description ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above. */
+                readonly model?: string | null;
                 /** @description Human-facing name for the host. */
                 name: string;
                 /**
@@ -3893,6 +3908,8 @@ export interface components {
                 network_id: string;
                 /** @description Open ports on this host. */
                 ports: components["schemas"]["Port"][];
+                /** @description ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above. */
+                readonly serial_number?: string | null;
                 /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
                 /** @description How this host came to be known — discovered, imported, or created by hand. */
@@ -3903,6 +3920,11 @@ export interface components {
                 sys_descr?: string | null;
                 /** @description SNMP sysLocation — physical location as configured on the device. */
                 sys_location?: string | null;
+                /**
+                 * @description SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it
+                 *     from the device, so neither create nor update accepts it.
+                 */
+                readonly sys_name?: string | null;
                 /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
                 sys_object_id?: string | null;
                 /** @description Tags assigned to this entity. */
@@ -4481,19 +4503,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-08-24T23:53:28.521705Z",
+             *           "created_at": "2026-08-25T22:05:35.414502Z",
              *           "first_discovery_id": null,
-             *           "id": "0cd838b8-3dbb-4564-87c2-b97f4556da11",
+             *           "id": "b3c4c4d2-bfdd-4870-97ba-48714bcbd50b",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-08-24T23:53:28.521705Z",
+             *           "last_seen_at": "2026-08-25T22:05:35.414502Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-08-24T23:53:28.521705Z",
-             *           "valid_from": "2026-08-24T23:53:28.521705Z",
+             *           "updated_at": "2026-08-25T22:05:35.414502Z",
+             *           "valid_from": "2026-08-25T22:05:35.414502Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4507,7 +4529,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Amazon Echo",
+             *       "service_definition": "Google Home",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -5128,10 +5150,15 @@ export interface components {
                  */
                 started_at?: string | null;
                 /**
-                 * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
-                 *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
+                 * @description Non-fatal findings from a completed run — one per occurrence, each carrying the code that
+                 *     identifies it and the detail that fills the sentence. Unlike `error`, these do not mark the
+                 *     run failed.
+                 *
+                 *     Read through [`deserialize_warnings`] rather than the derived impl, which is what keeps
+                 *     historical records and pre-coded daemons rendering: both send bare strings here, and both
+                 *     land as `Unknown` carrying that text instead of failing the whole payload.
                  */
-                warnings?: string[];
+                warnings?: components["schemas"]["DiscoveryWarning"][];
             }[];
             /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
@@ -5310,19 +5337,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-08-24T23:53:28.511640Z",
+         *       "created_at": "2026-08-25T22:05:35.391147Z",
          *       "first_discovery_id": null,
-         *       "id": "33c885a5-feb6-4a17-9479-4fba4402705c",
+         *       "id": "917782d5-c989-410d-b9db-da93a003fcb3",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-08-24T23:53:28.511640Z",
+         *       "last_seen_at": "2026-08-25T22:05:35.391147Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-08-24T23:53:28.511640Z",
-         *       "valid_from": "2026-08-24T23:53:28.511640Z",
+         *       "updated_at": "2026-08-25T22:05:35.391147Z",
+         *       "valid_from": "2026-08-25T22:05:35.391147Z",
          *       "valid_to": null
          *     }
          */
@@ -5536,6 +5563,15 @@ export interface components {
              */
             email: string;
         };
+        /**
+         * @description Where a device's claim about itself came from.
+         *
+         *     Named rather than folded into a sentence because the operator's next step depends on it: a
+         *     wrong `ifNumber` is a firmware bug to report upstream, while a set bridge bit over an empty
+         *     bridge table is usually a missing SNMP view or VLAN context on their side.
+         * @enum {string}
+         */
+        ClaimSource: "IfNumber" | "SysServicesBridgeBit" | "LldpLocalIdentity" | "Dot1dBaseNumPorts";
         /** @enum {string} */
         Color: "Pink" | "Rose" | "Red" | "Amber" | "Orange" | "Green" | "Emerald" | "Teal" | "Cyan" | "Blue" | "Indigo" | "Purple" | "Fuchsia" | "Violet" | "Sky" | "Gray" | "Lime" | "Yellow";
         /** @enum {string} */
@@ -5615,7 +5651,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Amazon Echo",
+         *           "service_definition": "Google Home",
          *           "tags": [],
          *           "virtualization_metadata": null,
          *           "virtualization_service_id": null
@@ -5756,6 +5792,18 @@ export interface components {
             /** @description Interface IDs to limit this credential to. None = all host ip_addresses. */
             ip_address_ids: string[] | null;
         };
+        /** @description One credential's attempt against one address, and what the client library said about it. */
+        CredentialAttempt: {
+            address: string;
+            /**
+             * @description The library's own diagnostic — free text, so it can only ever be displayed. It is the one
+             *     thing the code cannot supersede: the code says which failure mode, this says what actually
+             *     came back ("connection refused (os error 111)"), and it is now attributable to this one
+             *     address rather than being the first message of a whole batch.
+             */
+            detail: string | null;
+            integration: components["schemas"]["CredentialQueryPayloadDiscriminants"];
+        };
         CredentialBase: {
             /**
              * @description Networks this credential is assigned to (Broadcast scope).
@@ -5795,6 +5843,8 @@ export interface components {
         };
         /** @enum {string} */
         CredentialOrderField: "created_at" | "name" | "updated_at";
+        /** @enum {string} */
+        CredentialQueryPayloadDiscriminants: "Snmp" | "DockerProxy" | "DockerSocket" | "PodmanProxy" | "PodmanSocket" | "UnifiController" | "InstantOn" | "Unknown";
         /**
          * @description Release maturity of a credential type's integration.
          *
@@ -6630,10 +6680,223 @@ export interface components {
              */
             started_at?: string | null;
             /**
-             * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
-             *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
+             * @description Non-fatal findings from a completed run — one per occurrence, each carrying the code that
+             *     identifies it and the detail that fills the sentence. Unlike `error`, these do not mark the
+             *     run failed.
+             *
+             *     Read through [`deserialize_warnings`] rather than the derived impl, which is what keeps
+             *     historical records and pre-coded daemons rendering: both send bare strings here, and both
+             *     land as `Unknown` carrying that text instead of failing the whole payload.
              */
-            warnings?: string[];
+            warnings?: components["schemas"]["DiscoveryWarning"][];
+        };
+        /**
+         * @description A single non-fatal finding from one discovery run, about one device, neighbour, or the scan
+         *     itself.
+         *
+         *     Serialized with the code as the tag, so the generated TypeScript is a discriminated union the
+         *     UI can switch on exhaustively. The derived `Deserialize` reads that shape; the leniency that
+         *     keeps historical records and pre-coded daemons working lives in [`deserialize_warnings`],
+         *     which is applied at the one field that holds these.
+         */
+        DiscoveryWarning: {
+            address: string;
+            /** @enum {string} */
+            code: "InterfaceSetCutShort";
+            /** Format: int32 */
+            collected: number;
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "InterfaceDetailsCutShort";
+            /** Format: int32 */
+            collected: number;
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkEntryCap";
+            group: components["schemas"]["SnmpWalkGroup"];
+            /** Format: int32 */
+            limit: number;
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkUnsupported";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkDesynchronised";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkPartialDiscarded";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkPartialRecorded";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkBridgeMibAbsent";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkNoAnswer";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "ClaimedCountReadCutShort";
+            /** Format: int32 */
+            expected: number;
+            group: components["schemas"]["SnmpWalkGroup"];
+            /** Format: int32 */
+            observed: number;
+            source: components["schemas"]["ClaimSource"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "ClaimedCountUnderRead";
+            /** Format: int32 */
+            expected: number;
+            group: components["schemas"]["SnmpWalkGroup"];
+            /** Format: int32 */
+            observed: number;
+            source: components["schemas"]["ClaimSource"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "ClaimedCapabilityReadCutShort";
+            group: components["schemas"]["SnmpWalkGroup"];
+            source: components["schemas"]["ClaimSource"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "ClaimedCapabilityEmpty";
+            group: components["schemas"]["SnmpWalkGroup"];
+            source: components["schemas"]["ClaimSource"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "LldpLocalPortDropped";
+            /** Format: int32 */
+            dropped: number;
+            /** Format: int32 */
+            total: number;
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "LldpLocalPortMisplaced";
+            /** Format: int32 */
+            misplaced: number;
+        } | (components["schemas"]["MalformedNeighbours"] & {
+            /** @enum {string} */
+            code: "MalformedNeighboursWalkCutShort";
+        }) | (components["schemas"]["MalformedNeighbours"] & {
+            /** @enum {string} */
+            code: "MalformedNeighboursGhostRows";
+        }) | (components["schemas"]["MalformedNeighbours"] & {
+            /** @enum {string} */
+            code: "MalformedNeighboursIncompleteRecords";
+        }) | (components["schemas"]["MalformedNeighbours"] & {
+            /** @enum {string} */
+            code: "MalformedNeighboursUnexpectedType";
+        }) | (components["schemas"]["MalformedNeighbours"] & {
+            /** @enum {string} */
+            code: "MalformedNeighboursUnreadableIndex";
+        }) | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpCollectedNothing";
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "VlanRecordingFailed";
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "CredentialTargetNotScanned";
+            integration: components["schemas"]["CredentialQueryPayloadDiscriminants"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "CredentialTargetNotResponding";
+            integration: components["schemas"]["CredentialQueryPayloadDiscriminants"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "CredentialGateClosed";
+            integration: components["schemas"]["CredentialQueryPayloadDiscriminants"];
+            ports: number[];
+        } | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialRejected";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialMalformed";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialTlsFailed";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialNotThisService";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialCollectionFailed";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialCollectionTimedOut";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialUnreachable";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialTimedOut";
+        }) | {
+            /** @enum {string} */
+            code: "ScanTimeLimitWithEstimate";
+            /** Format: int32 */
+            hosts_not_scanned: number;
+            /** Format: int32 */
+            hours: number;
+            /** Format: int32 */
+            minutes_remaining: number;
+        } | {
+            /** @enum {string} */
+            code: "ScanTimeLimit";
+            /** Format: int32 */
+            hosts_not_scanned: number;
+            /** Format: int32 */
+            hours: number;
+        } | (components["schemas"]["UnmatchedNeighbour"] & {
+            /** @enum {string} */
+            code: "LldpNeighbourNotFound";
+        }) | (components["schemas"]["UnmatchedNeighbour"] & {
+            /** @enum {string} */
+            code: "LldpNeighbourAmbiguous";
+        }) | (components["schemas"]["UnresolvedPort"] & {
+            /** @enum {string} */
+            code: "LldpPortNoStrategy";
+        }) | (components["schemas"]["UnresolvedPort"] & {
+            /** @enum {string} */
+            code: "LldpPortNotFound";
+        }) | (components["schemas"]["UnresolvedPort"] & {
+            /** @enum {string} */
+            code: "LldpPortAmbiguous";
+        }) | {
+            /** @enum {string} */
+            code: "WarningsTruncated";
+            /** Format: int32 */
+            elided: number;
+        } | {
+            /** @enum {string} */
+            code: "Unknown";
+            detail: string;
         };
         /** @description The docker install method. */
         DockerInstall: {
@@ -7254,19 +7517,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-08-24T23:53:28.511075Z",
+         *               "created_at": "2026-08-25T22:05:35.390444Z",
          *               "first_discovery_id": null,
-         *               "id": "cf5715ea-bb22-402b-b1e9-ce07963f985a",
+         *               "id": "6ef8015e-ce2f-4678-87c6-3590b0267165",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-08-24T23:53:28.511075Z",
+         *               "last_seen_at": "2026-08-25T22:05:35.390444Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-08-24T23:53:28.511075Z",
-         *               "valid_from": "2026-08-24T23:53:28.511075Z",
+         *               "updated_at": "2026-08-25T22:05:35.390444Z",
+         *               "valid_from": "2026-08-25T22:05:35.390444Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -7280,7 +7543,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Amazon Echo",
+         *           "service_definition": "Google Home",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -7335,6 +7598,10 @@ export interface components {
             last_seen_at: string;
             /** @description Link to the host's own management interface. */
             management_url?: string | null;
+            /** @description ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above. */
+            readonly manufacturer?: string | null;
+            /** @description ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above. */
+            readonly model?: string | null;
             /** @description Human-facing name for the host. */
             name: string;
             /**
@@ -7349,6 +7616,8 @@ export interface components {
             network_id: string;
             /** @description Open ports on this host. */
             ports: components["schemas"]["Port"][];
+            /** @description ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above. */
+            readonly serial_number?: string | null;
             /** @description Services running on this host. */
             services: components["schemas"]["Service"][];
             /** @description How this host came to be known — discovered, imported, or created by hand. */
@@ -7359,6 +7628,11 @@ export interface components {
             sys_descr?: string | null;
             /** @description SNMP sysLocation — physical location as configured on the device. */
             sys_location?: string | null;
+            /**
+             * @description SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it
+             *     from the device, so neither create nor update accepts it.
+             */
+            readonly sys_name?: string | null;
             /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
             sys_object_id?: string | null;
             /** @description Tags assigned to this entity. */
@@ -8058,6 +8332,29 @@ export interface components {
              */
             password: string;
         };
+        /**
+         * @description What discarding a device's malformed neighbour records cost it.
+         *
+         *     A slot value rather than two codes per reason: losing every link and losing some of them is a
+         *     difference in severity, not in failure mode, and the metric asks about mode. Splitting it into
+         *     codes would double the enum to say something the operator reads in one clause.
+         * @enum {string}
+         */
+        MalformedNeighbourConsequence: "AllLinksLost" | "SomeLinksLost";
+        /** @description Neighbour records discarded for want of the identifier that matches the far end. */
+        MalformedNeighbours: {
+            address: string;
+            consequence: components["schemas"]["MalformedNeighbourConsequence"];
+            /** Format: int32 */
+            discarded: number;
+            group: components["schemas"]["SnmpWalkGroup"];
+            /**
+             * Format: int32
+             * @description Records that survived, which is what decides whether this cost the device some of its
+             *     topology or all of it.
+             */
+            kept: number;
+        };
         /** @enum {string} */
         MatchConfidence: "NotApplicable" | "Low" | "Medium" | "High" | "Certain";
         MatchDetails: {
@@ -8421,7 +8718,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.11"
+         *       "server_version": "0.17.12"
          *     }
          */
         PaginatedApiMeta: {
@@ -8434,7 +8731,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.11
+             * @example 0.17.12
              */
             server_version: string;
         };
@@ -8626,6 +8923,10 @@ export interface components {
                 last_seen_at: string;
                 /** @description Link to the host's own management interface. */
                 management_url?: string | null;
+                /** @description ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above. */
+                readonly manufacturer?: string | null;
+                /** @description ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above. */
+                readonly model?: string | null;
                 /** @description Human-facing name for the host. */
                 name: string;
                 /**
@@ -8640,6 +8941,8 @@ export interface components {
                 network_id: string;
                 /** @description Open ports on this host. */
                 ports: components["schemas"]["Port"][];
+                /** @description ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above. */
+                readonly serial_number?: string | null;
                 /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
                 /** @description How this host came to be known — discovered, imported, or created by hand. */
@@ -8650,6 +8953,11 @@ export interface components {
                 sys_descr?: string | null;
                 /** @description SNMP sysLocation — physical location as configured on the device. */
                 sys_location?: string | null;
+                /**
+                 * @description SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it
+                 *     from the device, so neither create nor update accepts it.
+                 */
+                readonly sys_name?: string | null;
                 /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
                 sys_object_id?: string | null;
                 /** @description Tags assigned to this entity. */
@@ -9717,19 +10025,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-08-24T23:53:28.511580Z",
+         *           "created_at": "2026-08-25T22:05:35.391052Z",
          *           "first_discovery_id": null,
-         *           "id": "8ee4a127-e56b-483a-80d4-64200a1e52f8",
+         *           "id": "22a0a107-efcf-47f6-8b25-f0734015b517",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-08-24T23:53:28.511580Z",
+         *           "last_seen_at": "2026-08-25T22:05:35.391052Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-08-24T23:53:28.511580Z",
-         *           "valid_from": "2026-08-24T23:53:28.511580Z",
+         *           "updated_at": "2026-08-25T22:05:35.391052Z",
+         *           "valid_from": "2026-08-25T22:05:35.391052Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -9743,7 +10051,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Amazon Echo",
+         *       "service_definition": "Google Home",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -10056,6 +10364,15 @@ export interface components {
          * @enum {string}
          */
         SnmpV3PrivProtocol: "Aes128" | "Aes256";
+        /**
+         * @description An SNMP data group a walk may come up short on.
+         *
+         *     An enum rather than a free string so the code derivation below is exhaustive: every group has
+         *     to declare which consequence sentence describes it, and a new one cannot be added without
+         *     choosing.
+         * @enum {string}
+         */
+        SnmpWalkGroup: "Lldp" | "Cdp" | "Interfaces" | "BridgePortNumbering" | "BridgeForwarding" | "VlanMembership" | "ArpTable" | "DeviceInventory" | "IpAddresses" | "LldpLocalPorts" | "VlanNames";
         /**
          * @example {
          *       "cidr": "192.168.1.0/24",
@@ -10377,7 +10694,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "6a4b748d-bdd7-4df5-9a12-76c97f1517df",
+             *           "id": "ed91b0a7-a4aa-4d13-ac46-7391a1ee671f",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -10387,23 +10704,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "b247842f-02d5-479f-ad97-6e46fe411d31",
+             *           "id": "41f1b5e0-b0ca-428a-9678-00dab0be9101",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "e74084c5-5dc0-4cab-9947-2d816a290922",
+             *           "id": "fdb43ba1-1ab9-43ae-abc5-893485681291",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "8cad1720-76c4-429f-b85e-0524e1508224",
+             *           "id": "ec52c714-75f5-4780-9003-3ec8bfe99637",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "b247842f-02d5-479f-ad97-6e46fe411d31",
+             *           "id": "41f1b5e0-b0ca-428a-9678-00dab0be9101",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -10416,19 +10733,19 @@ export interface components {
              * @description Rules deciding how entities are placed and inlined within containers.
              * @default [
              *       {
-             *         "id": "3cfc4105-2f24-4b94-8727-6dcb2117e1cc",
+             *         "id": "9813531e-b5ef-4067-bf63-687a6496913f",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "f8d15480-7d52-4715-8d78-f1269f2e469c",
+             *         "id": "db481467-a1d3-4496-b159-d4c08345ac91",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "3aada207-5f33-489b-82ba-c58e1a6fff43",
+             *         "id": "e25e521b-0cfc-476b-91f8-c755cc010f69",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "c541b65a-2342-4cfd-9903-378dd7e9e585",
+             *         "id": "a35605ab-d9e1-439b-8e18-06c350dbfeee",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -10446,7 +10763,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "33dd2396-3ad0-41c8-a953-237713940a31",
+             *         "id": "07342dd6-9bbb-4fe6-9889-23746abb6c5d",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -10455,15 +10772,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "b39c15ef-0983-4a0e-bddd-278aad8e7c0c",
+             *         "id": "6adc6471-c148-4a48-aa19-ebd951421ba7",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "67c761b7-f0a4-49b6-8577-cf0c1cf5b2e1",
+             *         "id": "2f28b9f4-49d6-40cb-9745-5a45f1f0ace0",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "bf17a683-ac9f-45fc-9c40-b0453a2d2c30",
+             *         "id": "53e9f36d-50e5-487f-a976-8228e8399341",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -10547,6 +10864,45 @@ export interface components {
         TransportProtocol: "Udp" | "Tcp";
         /** @description No payload. Present only so the envelope keeps its shape. */
         TupleUnit: Record<string, never>;
+        /** @description A neighbour advertised by a local interface whose far end could not be placed on a host. */
+        UnmatchedNeighbour: {
+            /**
+             * Format: uuid
+             * @description The local device that saw the neighbour, not the far end — the far end is what could not
+             *     be identified.
+             */
+            host_id: string;
+            /** @description The chassis ID (LLDP) or device id (CDP) that did not identify one host. */
+            identifier: string;
+            if_descr: string;
+            sys_name: string | null;
+        };
+        /** @description A neighbour whose far-end host resolved but whose far-end *port* did not. */
+        UnresolvedPort: {
+            /**
+             * Format: uuid
+             * @description The local device that saw the neighbour, and the port it saw it on.
+             */
+            host_id: string;
+            if_descr: string;
+            /**
+             * @description `lldpRemPortDesc`, the last-resort tier. Present because "the id failed and the description
+             *     was empty" and "both were tried and neither matched" call for different fixes.
+             */
+            port_desc: string | null;
+            /**
+             * @description The advertised port id in `Debug` form, which carries subtype and value together
+             *     (`MacAddress("00:ad:24:af:4e:00")`, `InterfaceName("2")`). Both halves are needed: the
+             *     subtype says which tier ran and the value says what it looked for.
+             */
+            port_id: string | null;
+            /**
+             * Format: uuid
+             * @description The far-end device, already resolved — this is what makes it distinct from
+             *     [`UnmatchedNeighbour`].
+             */
+            remote_host_id: string;
+        };
         /**
          * @description Request type for updating a host with its children.
          *     Uses the same input types as CreateHostRequest.
@@ -13375,6 +13731,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
+            /** @description User session required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
         };
     };
     export_daemons_csv: {
@@ -15136,6 +15501,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_Invite"];
+                };
+            };
+            /** @description Recipient named but the caller has no address to send from */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
             /** @description Cannot create invite with higher permissions */
