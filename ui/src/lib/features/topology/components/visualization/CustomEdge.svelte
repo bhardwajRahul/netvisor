@@ -73,13 +73,7 @@
 	// device-level in L2, opacity is the search/filter channel), so staleness gets its own mark
 	// rather than overloading one of theirs.
 	const linkEvidenceTag = $derived(
-		edgeData
-			? getLinkEvidenceTag(
-					edgeData,
-					topology?.interfaces ?? [],
-					edgeTypes.getName(edgeData.edge_type)
-				)
-			: null
+		edgeData ? getLinkEvidenceTag(edgeData, topology?.interfaces ?? []) : null
 	);
 
 	// Get dependency reactively - updates when dependencies store changes
