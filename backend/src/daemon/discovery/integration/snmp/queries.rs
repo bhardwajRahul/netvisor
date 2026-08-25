@@ -1035,6 +1035,22 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     session: &mut T,
     ip: IpAddr,
 ) -> Result<SnmpCollection<Vec<LldpNeighbor>>> {
+    query_lldp_neighbors_for(session, ip, &CLASSIC_LLDP_MIB).await
+}
+
+/// The neighbour walk, against whichever LLDP MIB `mib` names.
+///
+/// Everything here except the three fields of [`LldpMibProfile`] is MIB-agnostic — the shortfall
+/// accumulators, the chassis-column key sets and their disagreement test, the ghost-row
+/// classification, the wrong-type reporting, the short-index counter and
+/// [`dominant_discard_reason`] are all about *how a walk failed*, not which OIDs it walked. That
+/// machinery is the accumulated answer to GH #668, #674, #649 and #685, and a second MIB must
+/// reuse it rather than grow a second copy that drifts.
+pub async fn query_lldp_neighbors_for<T: SnmpWalkTransport>(
+    session: &mut T,
+    ip: IpAddr,
+    mib: &LldpMibProfile,
+) -> Result<SnmpCollection<Vec<LldpNeighbor>>> {
     let mut neighbors: HashMap<(i32, i32), LldpNeighbor> = HashMap::new();
     let mut shortfall = Shortfall::default();
 
@@ -1074,34 +1090,12 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
 
     // Rows whose OID index carried too few sub-identifiers to key at all. Counted rather than
     // skipped: this used to be a bare `return` and it is how an entire switch went missing in
-    // silence (see the index comment below).
+    // silence (see `split_lldp_rem_index`).
     let mut short_index = 0usize;
 
-    // LLDP remote table uses a complex index: lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex
-    // We'll walk the columns and extract the local port from the OID
-
-    let columns = [
-        (
-            oids::lldp::remote::entry::LLDP_REM_CHASSIS_ID_SUBTYPE,
-            "remChassisIdSubtype",
-        ),
-        (
-            oids::lldp::remote::entry::LLDP_REM_CHASSIS_ID,
-            "remChassisId",
-        ),
-        (
-            oids::lldp::remote::entry::LLDP_REM_PORT_ID_SUBTYPE,
-            "remPortIdSubtype",
-        ),
-        (oids::lldp::remote::entry::LLDP_REM_PORT_ID, "remPortId"),
-        (oids::lldp::remote::entry::LLDP_REM_PORT_DESC, "remPortDesc"),
-        (oids::lldp::remote::entry::LLDP_REM_SYS_NAME, "remSysName"),
-        (oids::lldp::remote::entry::LLDP_REM_SYS_DESC, "remSysDesc"),
-        // NOTE: lldpRemManAddr is intentionally NOT walked here. It lives in the
-        // separate lldpRemManAddrTable whose index carries extra trailing sub-ids
-        // (addrSubtype.addrLen.addr), so the 3-element index parse below does not
-        // apply. It is resolved by walk_lldp_rem_man_addr() after this loop.
-    ];
+    // Which columns to walk, and how to read a neighbour key out of a row's index, are the whole
+    // of what varies between LLDP MIB revisions — see [`LldpMibProfile`].
+    let columns = mib.remote_columns;
 
     // Every column answering "no such object" is how an agent says it has no LLDP-MIB, as
     // opposed to walking past the end of a table it implements but has no neighbours in.
@@ -1114,7 +1108,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
             base_oid_str,
             &mut shortfall,
             |suffix, value| {
-                let Some((local_port, rem_index)) = split_lldp_rem_index(suffix) else {
+                let Some((local_port, rem_index)) = (mib.split_rem_index)(suffix) else {
                     short_index += 1;
                     return;
                 };
@@ -1186,7 +1180,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     // Its index is timeMark.localPortNum.remIndex.addrSubtype.addrLen.addr, so the
     // address lives in the OID *index*, not the column value. We walk an accessible
     // column (lldpRemManAddrIfSubtype) and reconstruct the address from the index.
-    let man_base_oid_str = oids::lldp::remote::entry::LLDP_REM_MAN_ADDR_IF_SUBTYPE;
+    let man_base_oid_str = mib.man_addr_column;
     // Management address is optional enrichment; ignore walk errors (keeps the
     // neighbours already collected above).
     // Management address is optional enrichment, so it gets its own accumulator and its outcome
@@ -1198,7 +1192,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         man_base_oid_str,
         &mut mgmt,
         |suffix, _value| {
-            if let Some((local_port, rem_index, buf)) = split_lldp_man_addr_index(suffix)
+            if let Some((local_port, rem_index, buf)) = (mib.split_man_addr_index)(suffix)
                 && let Some(addr) = parse_lldp_mgmt_addr(&buf)
                 && let Some(neighbor) = neighbors.get_mut(&(local_port, rem_index))
             {
@@ -1314,6 +1308,58 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         claim: None,
     })
 }
+
+/// Which LLDP MIB a neighbour walk is reading.
+///
+/// The classic LLDP-MIB (`1.0.8802.1.1.2`) is not the only one in the field: some NOSes implement
+/// only the 802.1AB-2009 LLDP-V2-MIB (`1.3.111.2.802.1.1.13`), and a device that serves one and not
+/// the other contributes no L2 edges at all. The two differ in exactly three ways — which columns
+/// to walk, how to read a neighbour key out of a row's index, and where the management address
+/// lives — so they are named here rather than duplicating [`query_lldp_neighbors_for`], whose bulk
+/// is failure diagnosis that neither MIB gets to have its own version of.
+///
+/// The subtype enumerations are *identical* between the two revisions, so nothing downstream of
+/// the walk — `LldpChassisId`, `LldpPortId`, `from_snmp`, the stored JSONB — varies by profile.
+pub struct LldpMibProfile {
+    /// The seven remote-table columns, each with the short name used in warnings. Note the column
+    /// numbers are not shared between revisions: `lldpV2RemEntry` inserts `lldpV2RemLocalIfIndex`
+    /// as column 2, so every V2 remote column sits one above its classic counterpart.
+    pub remote_columns: [(&'static str, &'static str); 7],
+    /// Read `(local port, remote index)` out of the sub-ids following a remote column's OID.
+    pub split_rem_index: fn(&[u64]) -> Option<(i32, i32)>,
+    /// The accessible column of the separate management-address table, walked for its *index*.
+    pub man_addr_column: &'static str,
+    /// Read `(local port, remote index, [family, addr…])` out of that table's index.
+    pub split_man_addr_index: fn(&[u64]) -> Option<(i32, i32, Vec<u8>)>,
+}
+
+/// The classic LLDP-MIB, `1.0.8802.1.1.2`.
+pub static CLASSIC_LLDP_MIB: LldpMibProfile = LldpMibProfile {
+    remote_columns: [
+        (
+            oids::lldp::remote::entry::LLDP_REM_CHASSIS_ID_SUBTYPE,
+            "remChassisIdSubtype",
+        ),
+        (
+            oids::lldp::remote::entry::LLDP_REM_CHASSIS_ID,
+            "remChassisId",
+        ),
+        (
+            oids::lldp::remote::entry::LLDP_REM_PORT_ID_SUBTYPE,
+            "remPortIdSubtype",
+        ),
+        (oids::lldp::remote::entry::LLDP_REM_PORT_ID, "remPortId"),
+        (oids::lldp::remote::entry::LLDP_REM_PORT_DESC, "remPortDesc"),
+        (oids::lldp::remote::entry::LLDP_REM_SYS_NAME, "remSysName"),
+        (oids::lldp::remote::entry::LLDP_REM_SYS_DESC, "remSysDesc"),
+    ],
+    split_rem_index: split_lldp_rem_index,
+    // `lldpRemManAddr` is deliberately not among the columns above: it lives in the separate
+    // `lldpRemManAddrTable`, whose index carries extra trailing sub-ids, so the neighbour-key
+    // splitter does not apply to it.
+    man_addr_column: oids::lldp::remote::entry::LLDP_REM_MAN_ADDR_IF_SUBTYPE,
+    split_man_addr_index: split_lldp_man_addr_index,
+};
 
 /// Split an `lldpRemEntry` OID index into `(lldpRemLocalPortNum, lldpRemIndex)`.
 ///
