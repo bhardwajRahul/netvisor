@@ -150,13 +150,26 @@ impl Accumulator {
                     host.txt
                         .extend(txt.iter().map(|(k, v)| (k.clone(), v.clone())));
                 }
-                // A device answering for several services offers the same name each time, so
-                // first-wins is stable rather than arbitrary. TXT outranks the instance label
-                // because it is what the owner typed, not what the vendor generated.
-                let name = txt
-                    .and_then(friendly_name_from_txt)
-                    .or_else(|| first_label(instance));
+                // TXT outranks the instance label because it is what the owner typed, not what the
+                // vendor generated.
+                //
+                // The fallback to the instance label is under investigation: a live scan named an
+                // iPhone "Spotify Group Session [612Gq]", because `_spotify-connect._tcp` names a
+                // *session* rather than the device and sorted first. TEMPORARY diagnostic, to
+                // establish which service type and which path supplies each name on real hardware
+                // before the rule is narrowed — REMOVE once that is known.
+                let from_txt = txt.and_then(friendly_name_from_txt);
+                let name = from_txt.clone().or_else(|| first_label(instance));
                 if let Some(name) = name {
+                    tracing::debug!(
+                        address = %address,
+                        instance = %instance,
+                        services = %services.iter().cloned().collect::<Vec<_>>().join(","),
+                        source = if from_txt.is_some() { "txt" } else { "instance-label" },
+                        candidate = %name,
+                        accepted = host.instance_name.is_none(),
+                        "mDNS name candidate"
+                    );
                     host.instance_name.get_or_insert(name);
                 }
             }

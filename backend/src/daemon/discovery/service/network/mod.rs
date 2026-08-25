@@ -7,6 +7,8 @@ mod subnets;
 
 use std::collections::HashSet;
 use std::net::IpAddr;
+
+use cidr::IpCidr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::time::Duration;
@@ -213,6 +215,25 @@ impl LivenessEvidence {
     }
 }
 
+/// Whether `addr` can be a host address within `cidr`.
+///
+/// Exists because ICMP treats a subnet's network and broadcast addresses very differently from the
+/// way ARP does. Nothing owns the network address, so nothing ARP-replies for it and the ARP sweep
+/// was free to enumerate it. An echo request to the same address is answered by *many* hosts at
+/// once — a live /22 returns a burst of duplicate replies — which both invents a host at an address
+/// nothing occupies and makes one packet provoke a reply from the whole segment. That is the
+/// opposite of what the rest of this scanner is built for: `arp_rate_pps` defaults to 50 precisely
+/// to stay friendly to switch ARP-policing.
+///
+/// A /31 or /32 has no network or broadcast address to exclude — RFC 3021 point-to-point links use
+/// both addresses as hosts, and a single-host rescan targets a /32 — so those pass everything.
+pub(super) fn is_host_address(cidr: &IpCidr, addr: IpAddr) -> bool {
+    if cidr.network_length() >= 31 {
+        return true;
+    }
+    addr != cidr.first_address() && addr != cidr.last_address()
+}
+
 /// TCP ports the liveness check probes before committing to a deep scan of an address that
 /// produced no ARP reply.
 ///
@@ -295,8 +316,8 @@ pub(super) struct DeepScanParams<'a> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DispatchedAddresses, LivenessEvidence, MacAddress, integration_cost_for_ip,
-        liveness_probe_ports,
+        DispatchedAddresses, IpCidr, LivenessEvidence, MacAddress, integration_cost_for_ip,
+        is_host_address, liveness_probe_ports,
     };
     use crate::server::credentials::r#impl::mapping::{
         ContainerSocketQueryCredential, CredentialMapping, CredentialQueryPayload,
@@ -311,6 +332,32 @@ mod tests {
 
     fn mac() -> MacAddress {
         MacAddress::new([0, 1, 2, 3, 4, 5])
+    }
+
+    /// The live failure this came from: the ping sweep enumerated `192.168.4.0`, the network
+    /// address of a `/22`, and the segment answered it as a broadcast — several hosts replying to
+    /// one request, and a host record created at an address nothing occupies.
+    ///
+    /// The `/31` and `/32` cases are the reason this is a function rather than a blanket
+    /// "skip first and last": a point-to-point link uses both of its addresses as hosts, and a
+    /// single-host rescan targets a `/32`, so excluding those would make the sweep skip the only
+    /// address it was asked about.
+    #[test]
+    fn only_addresses_a_host_can_occupy_are_swept() {
+        let lan: IpCidr = "192.168.4.0/22".parse().unwrap();
+        assert!(!is_host_address(&lan, ip("192.168.4.0")), "network address");
+        assert!(
+            !is_host_address(&lan, ip("192.168.7.255")),
+            "broadcast address"
+        );
+        assert!(is_host_address(&lan, ip("192.168.4.29")));
+
+        let point_to_point: IpCidr = "10.0.0.0/31".parse().unwrap();
+        assert!(is_host_address(&point_to_point, ip("10.0.0.0")));
+        assert!(is_host_address(&point_to_point, ip("10.0.0.1")));
+
+        let single: IpCidr = "10.0.0.7/32".parse().unwrap();
+        assert!(is_host_address(&single, ip("10.0.0.7")));
     }
 
     /// The failure this guards against: the host channel spawns a deep scan per message and has
