@@ -5693,7 +5693,7 @@ dependencies = [
 
 [[package]]
 name = "scanopy-server"
-version = "0.17.11"
+version = "0.17.12"
 dependencies = [
  "anstyle-query",
  "anyhow",
