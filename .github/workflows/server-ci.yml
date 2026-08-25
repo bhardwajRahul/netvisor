@@ -57,6 +57,15 @@ jobs:
       - name: Check formatting
         run: cargo fmt -- --check
       
+      # `--all-features` turns on `embed-ui`, whose `#[derive(Embed)]` reads `ui/build` at compile
+      # time. That directory is a UI build artefact, gitignored and never built by this job, and a
+      # missing folder makes the derive emit no impl at all — so the module fails to compile with
+      # "no function or associated item named `get`" rather than anything to do with the code.
+      # A stub is enough for the derive to generate, which keeps the module inside clippy's reach;
+      # building the real UI here would cost minutes to lint a handful of lines.
+      - name: Stub the embedded UI directory
+        run: mkdir -p ui/build && [ -f ui/build/index.html ] || echo '<!doctype html>' > ui/build/index.html
+
       - name: Clippy server
         run: cargo clippy --bin server --all-features -- -D warnings
       

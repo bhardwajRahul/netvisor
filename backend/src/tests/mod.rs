@@ -58,7 +58,36 @@ pub async fn setup_test_db() -> (PgPool, String, ContainerAsync<GenericImage>) {
 
     let container = postgres_image.start().await.unwrap();
 
-    let port = container.get_host_port_ipv4(5432).await.unwrap();
+    // `PortNotExposed` here means the container was gone by the time its port map was read —
+    // a stopped container reports no bindings at all, which is indistinguishable from one that
+    // never published the port. It shows up as an intermittent failure of whichever test drew the
+    // short straw, with nothing in the message saying which container or why it died.
+    //
+    // The wait strategy above is not the cause: the postgres image logs its ready line once per
+    // stream — the temporary `initdb` server on stdout, the real server on stderr — so waiting on
+    // stderr already waits for the real one. Whatever stops the container happens after that.
+    //
+    // So report what the container had to say rather than unwrapping. If this fires again, the
+    // exit code and its own logs are what identify the cause, and they are gone the moment the
+    // process exits.
+    let port = match container.get_host_port_ipv4(5432).await {
+        Ok(port) => port,
+        Err(e) => {
+            let running = container.is_running().await;
+            let exit_code = container.exit_code().await;
+            let logs = container
+                .stderr_to_vec()
+                .await
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+                .unwrap_or_else(|e| format!("<could not read logs: {e}>"));
+            panic!(
+                "could not read the test database's mapped port: {e}\n\
+                 container {} running={running:?} exit_code={exit_code:?}\n\
+                 container stderr:\n{logs}",
+                container.id()
+            );
+        }
+    };
 
     let database_url = format!(
         "postgresql://postgres:password@localhost:{}/scanopy_test",
