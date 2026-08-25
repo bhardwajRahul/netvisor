@@ -200,6 +200,11 @@ impl DiscoveryRunner {
             } else if let Err(e) = self.service.config_store.set_has_self_reported().await {
                 tracing::warn!(error = %e, "Failed to persist self-report flag");
             }
+        } else if let Err(e) = self
+            .run_daemon_host_interfaces_phase(ops, created_subnets, cancel)
+            .await
+        {
+            tracing::error!(error = %e, "Daemon-host interface phase failed, continuing");
         }
 
         // Run localhost integrations (generic — any integration with localhost credential)
@@ -325,6 +330,8 @@ impl DiscoveryRunner {
             client_responses: &probe_results.client_responses,
             // The daemon's own host, probed locally.
             managed_device: &None,
+            // Probed locally over loopback; multicast browsing does not apply.
+            dns_sd: &None,
         };
 
         let mut host_data = match ops

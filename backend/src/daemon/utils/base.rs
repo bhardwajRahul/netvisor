@@ -1,4 +1,7 @@
 use crate::daemon::discovery::integration::container::ContainerRuntime;
+use crate::server::interfaces::r#impl::base::{
+    IfAdminStatus, IfOperStatus, Interface, InterfaceBase, if_type,
+};
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::subnets::r#impl::types::SubnetType;
@@ -61,6 +64,136 @@ async fn negotiate_container_api_version(client: Docker) -> Docker {
 
 pub const SCAN_TIMEOUT: Duration = Duration::from_millis(800);
 
+/// The daemon host's own NICs, after the `--interfaces` filter and the container-bridge skip.
+///
+/// Shared by `get_own_interfaces` (which keeps the addresses) and `own_nics_as_interfaces` (which
+/// keeps the ports), so the two can never disagree about which NICs belong to this host.
+fn filtered_own_nics(interface_filter: &[String]) -> Vec<pnet::datalink::NetworkInterface> {
+    let all_interfaces = pnet::datalink::interfaces();
+
+    let selected: Vec<_> = if interface_filter.is_empty() {
+        all_interfaces
+    } else {
+        let filtered: Vec<_> = all_interfaces
+            .into_iter()
+            .filter(|iface| interface_filter.iter().any(|f| f == &iface.name))
+            .collect();
+
+        if filtered.is_empty() {
+            tracing::warn!(
+                filter = ?interface_filter,
+                "No ip_addresses matched the filter. Check --ip_address argument."
+            );
+        } else {
+            tracing::debug!(
+                filter = ?interface_filter,
+                matched = filtered.len(),
+                "Filtered ip_addresses by --ip_addresses argument"
+            );
+        }
+
+        filtered
+    };
+
+    selected
+        .into_iter()
+        // Container bridges on this host belong to the container integration,
+        // which types them from the runtime API. Skip them here so an
+        // unreachable runtime can't leave them to be created and scanned as
+        // ordinary subnets (and so the heartbeat never reports them at all).
+        .filter(|iface| {
+            let reserved = ContainerRuntime::reserves_host_interface_name(&iface.name);
+            if reserved {
+                tracing::debug!(
+                    interface = %iface.name,
+                    "Skipping container-runtime bridge interface"
+                );
+            }
+            !reserved
+        })
+        .collect()
+}
+
+/// One of this host's NICs, as an `Interface` row.
+///
+/// **Nothing here is typed as a physical port, deliberately.** `pnet` reports flags, not an
+/// IANAifType, and the flags do not separate a real NIC from a virtual one: on a Mac, `en0` and
+/// each of `en1`-`en6`, `bridge0`, `awdl0`, `llw0`, `ap1` and `anpi0/1/3` all report `8863`
+/// (`UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST`) — identical. Typing them `ethernetCsmaCd` put
+/// fifteen ports on the daemon host in the L2 view, of which one was real. Linux is milder but the
+/// same shape (`veth` pairs, bond members, VLAN sub-interfaces).
+///
+/// So loopback and point-to-point are recorded honestly from the flags, and everything else is
+/// `propVirtual` — an admission that we do not know. It costs nothing the rows exist for:
+/// `find_host_by_mac`'s interface tier applies no `if_type` filter, so a chassis MAC still resolves
+/// to this host. It only stops them being drawn, and `l2_builder` draws any interface that has a
+/// resolved neighbour regardless of type — so a NIC lights up exactly when something authoritative
+/// says it is cabled.
+fn nic_to_interface(
+    nic: &pnet::datalink::NetworkInterface,
+    network_id: Uuid,
+    host_id: Uuid,
+) -> Interface {
+    let if_type = if nic.is_loopback() {
+        if_type::SOFTWARE_LOOPBACK
+    } else if nic.is_point_to_point() {
+        if_type::TUNNEL
+    } else {
+        if_type::PROP_VIRTUAL
+    };
+
+    Interface::new(InterfaceBase {
+        host_id,
+        network_id,
+        if_index: nic.index as i32,
+        if_descr: nic.name.clone(),
+        if_name: Some(nic.name.clone()),
+        if_alias: None,
+        if_type,
+        speed_bps: None,
+        admin_status: IfAdminStatus::Up,
+        oper_status: if nic.is_up() {
+            IfOperStatus::Up
+        } else {
+            IfOperStatus::Down
+        },
+        mac_address: nic_mac(nic),
+        // Never set from here, exactly as the SNMP path doesn't (`snmp/mod.rs`). The ids the
+        // daemon mints for its own `IPAddress` rows do not survive submission — the server matches
+        // incoming addresses to the rows it already holds and keeps *their* ids. It builds an
+        // `ip_address_id_remap` for precisely this (`hosts/service/create.rs`), but applies it to
+        // credential assignments and bindings only, never to interfaces. Pointing at a minted id
+        // therefore violates `interfaces_ip_address_id_fkey` and fails the whole submission, which
+        // took self-report down with it: the phase never returned `Ok`, so `has_self_reported` was
+        // never set, so every later scan retried self-report and the daemon-host interface phase
+        // was never reached at all.
+        ip_address_id: None,
+        neighbor: None,
+        neighbor_seen_at: None,
+        lldp_chassis_id: None,
+        lldp_port_id: None,
+        lldp_sys_name: None,
+        lldp_port_desc: None,
+        lldp_mgmt_addr: None,
+        lldp_sys_desc: None,
+        cdp_device_id: None,
+        cdp_port_id: None,
+        cdp_platform: None,
+        cdp_address: None,
+        fdb_macs: None,
+        native_vlan_id: None,
+        vlan_ids: None,
+    })
+}
+
+/// A NIC's MAC, or `None` for the all-zero placeholder several platforms report.
+fn nic_mac(iface: &pnet::datalink::NetworkInterface) -> Option<MacAddress> {
+    match iface.mac {
+        Some(mac) if !mac.octets().iter().all(|o| *o == 0) => Some(MacAddress::new(mac.octets())),
+        _ => None,
+    }
+}
+
 /// Cross-platform system utilities trait
 #[async_trait]
 pub trait DaemonUtils {
@@ -110,32 +243,7 @@ pub trait DaemonUtils {
         ),
         Error,
     > {
-        let all_interfaces = pnet::datalink::interfaces();
-
-        // Apply interface filter if specified
-        let ip_addresses: Vec<_> = if interface_filter.is_empty() {
-            all_interfaces
-        } else {
-            let filtered: Vec<_> = all_interfaces
-                .into_iter()
-                .filter(|iface| interface_filter.iter().any(|f| f == &iface.name))
-                .collect();
-
-            if filtered.is_empty() {
-                tracing::warn!(
-                    filter = ?interface_filter,
-                    "No ip_addresses matched the filter. Check --ip_address argument."
-                );
-            } else {
-                tracing::debug!(
-                    filter = ?interface_filter,
-                    matched = filtered.len(),
-                    "Filtered ip_addresses by --ip_addresses argument"
-                );
-            }
-
-            filtered
-        };
+        let ip_addresses = filtered_own_nics(interface_filter);
 
         tracing::debug!(
             interface_count = ip_addresses.len(),
@@ -161,25 +269,7 @@ pub trait DaemonUtils {
 
         for ip_address in ip_addresses.into_iter() {
             let name = ip_address.name.clone();
-
-            // Container bridges on this host belong to the container integration,
-            // which types them from the runtime API. Skip them here so an
-            // unreachable runtime can't leave them to be created and scanned as
-            // ordinary subnets (and so the heartbeat never reports them at all).
-            if ContainerRuntime::reserves_host_interface_name(&name) {
-                tracing::debug!(
-                    interface = %name,
-                    "Skipping container-runtime bridge interface"
-                );
-                continue;
-            }
-
-            let mac_address = match ip_address.mac {
-                Some(mac) if !mac.octets().iter().all(|o| *o == 0) => {
-                    Some(MacAddress::new(mac.octets()))
-                }
-                _ => None,
-            };
+            let mac_address = nic_mac(&ip_address);
 
             for ip in ip_address.ips.iter() {
                 // APIPA (169.254.x.x) is defined as exactly /16 by RFC 3927.
@@ -249,6 +339,30 @@ pub trait DaemonUtils {
         let subnets: Vec<Subnet> = subnet_map.into_values().collect();
 
         Ok((ip_addresses, subnets, cidr_to_mac))
+    }
+
+    /// The daemon host's own NICs as `Interface` rows, linked to the addresses they carry.
+    ///
+    /// The daemon host had none until now. Nothing else creates them: only the SNMP, UniFi and
+    /// Instant On integrations build `InterfaceBase`, and none of those looks at the machine the
+    /// daemon runs on. That absence is what breaks L2 resolution for the daemon host — a switch's
+    /// `lldpRemChassisId` for a Linux server is lldpd's *primary* MAC, which need not belong to
+    /// any NIC that carries an address Scanopy recorded, so `find_host_by_mac` falls through the
+    /// `ip_addresses` tier and finds nothing on the `interfaces` tier to fall through *to*. That
+    /// tier matches on MAC alone, with no `if_type` filter and collapsing to distinct hosts, so
+    /// one row per NIC is enough for whichever MAC lldpd picked to name this host.
+    ///
+    /// See `nic_to_interface` for how a NIC is typed.
+    fn own_nics_as_interfaces(
+        &self,
+        network_id: Uuid,
+        host_id: Uuid,
+        interface_filter: &[String],
+    ) -> Vec<Interface> {
+        filtered_own_nics(interface_filter)
+            .into_iter()
+            .map(|nic| nic_to_interface(&nic, network_id, host_id))
+            .collect()
     }
 
     async fn new_docker_client(
@@ -607,6 +721,7 @@ mod tests {
     use crate::server::shared::storage::traits::Storable;
     use crate::server::shared::types::entities::EntitySource;
     use crate::server::subnets::r#impl::base::SubnetBase;
+    use pnet::datalink::NetworkInterface;
     use std::str::FromStr;
 
     fn make_subnet(cidr: &str, subnet_type: SubnetType) -> Subnet {
@@ -659,6 +774,74 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].base.subnet_type, SubnetType::DockerBridge);
         assert_eq!(result[0].base.virtualization_service_id, Some(service_id));
+    }
+
+    // The classic `IFF_*` bits, which is what pnet puts in `NetworkInterface::flags` on every
+    // platform it supports. Spelled out rather than taken from `libc`, which does not define them
+    // on Windows — where this file still has to compile.
+    const IFF_UP: u32 = 0x1;
+    const IFF_LOOPBACK: u32 = 0x8;
+    const IFF_POINTOPOINT: u32 = 0x10;
+
+    fn make_nic(name: &str, index: u32, mac: Option<[u8; 6]>, flags: u32) -> NetworkInterface {
+        NetworkInterface {
+            name: name.to_string(),
+            description: String::new(),
+            index,
+            mac: mac.map(|o| pnet::util::MacAddr::new(o[0], o[1], o[2], o[3], o[4], o[5])),
+            ips: Vec::new(),
+            flags,
+        }
+    }
+
+    /// A NIC that carries no address Scanopy recorded still becomes an interface row.
+    ///
+    /// This is the whole point of collecting them. lldpd elects one of the host's MACs as its
+    /// chassis id and a switch advertises that MAC back; on a multi-NIC server the elected NIC is
+    /// often not one whose address falls in a scanned subnet, so it has no `ip_addresses` row to
+    /// be found through. Dropping address-less NICs would leave exactly that MAC unfindable and
+    /// the neighbour record unresolved — the bug this exists to close.
+    #[test]
+    fn a_nic_with_no_recorded_address_still_yields_a_row_carrying_its_mac() {
+        let mac = [0x02, 0x42, 0xac, 0x11, 0x00, 0x02];
+        let nic = make_nic("ens1f0np0", 7, Some(mac), IFF_UP);
+
+        let entry = nic_to_interface(&nic, Uuid::new_v4(), Uuid::new_v4());
+
+        assert_eq!(entry.base.mac_address, Some(MacAddress::new(mac)));
+        assert_eq!(entry.base.if_index, 7);
+        assert_eq!(entry.base.if_name.as_deref(), Some("ens1f0np0"));
+    }
+
+    /// No NIC is claimed to be a physical port, because the flags cannot tell us.
+    ///
+    /// A Mac reports `8863` for its real `en0` and for `bridge0`, `awdl0`, `ap1` and the
+    /// `anpi`/Thunderbolt interfaces alike; asserting `ethernetCsmaCd` off the back of that put
+    /// fifteen ports on the daemon host in L2, of which one was real. Asserted against
+    /// `EXCLUDED_IF_TYPES` rather than the numbers, so it keeps meaning what it says if the list
+    /// changes. Whether a NIC is *drawn* is `l2_builder`'s call, and it draws any interface that
+    /// has a resolved neighbour whatever its type.
+    #[test]
+    fn no_nic_is_typed_as_a_physical_port() {
+        let network_id = Uuid::new_v4();
+        let host_id = Uuid::new_v4();
+
+        for (name, flags) in [
+            ("eno1", IFF_UP),
+            ("lo", IFF_UP | IFF_LOOPBACK),
+            ("utun4", IFF_UP | IFF_POINTOPOINT),
+        ] {
+            let entry = nic_to_interface(
+                &make_nic(name, 2, Some([0, 1, 2, 3, 4, 5]), flags),
+                network_id,
+                host_id,
+            );
+            assert!(
+                if_type::EXCLUDED_IF_TYPES.contains(&entry.base.if_type),
+                "{name} was typed {} — the daemon cannot know a NIC is a physical port",
+                entry.base.if_type
+            );
+        }
     }
 
     #[test]

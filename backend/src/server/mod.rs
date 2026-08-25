@@ -17,6 +17,7 @@ pub mod interfaces;
 pub mod invites;
 pub mod ip_addresses;
 pub mod license;
+pub mod lldp;
 pub mod logging;
 pub mod metrics;
 pub mod networks;

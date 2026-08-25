@@ -59,17 +59,17 @@ use crate::{
             IfAdminStatus, IfOperStatus, Interface, InterfaceBase, InterfaceDataComplete, if_type,
         },
         ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
+        lldp::{LldpChassisId, LldpPortId},
         ports::r#impl::base::PortType,
         services::r#impl::patterns::ClientProbe,
         shared::types::entities::EntitySource,
-        snmp::resolution::lldp::{LldpChassisId, LldpPortId},
         subnets::r#impl::base::Subnet,
     },
 };
 
 use super::{
     Checkpoint, Completeness, DiscoveryIntegration, IntegrationContext, IntegrationFailure,
-    ProbeContext, ProbeFailure, ProbeSuccess,
+    InterfaceViewScope, ProbeContext, ProbeFailure, ProbeSuccess,
 };
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::{
@@ -126,6 +126,11 @@ pub struct SnmpIntegration;
 
 #[async_trait]
 impl DiscoveryIntegration for SnmpIntegration {
+    /// An ifTable walk is the device's own account of every interface it has.
+    fn interface_view_scope(&self) -> InterfaceViewScope {
+        InterfaceViewScope::FullIfTable
+    }
+
     fn credential_type(&self) -> CredentialQueryPayloadDiscriminants {
         CredentialQueryPayloadDiscriminants::Snmp
     }
@@ -294,7 +299,8 @@ impl DiscoveryIntegration for SnmpIntegration {
         // whether every attribute column also finished (#649).
         let network_id = host_data.host.base.network_id;
         let no_vlan_uuids = std::collections::HashMap::new();
-        host_data.replace_interfaces(
+        host_data.contribute_interfaces(
+            ctx.interface_source,
             snmp_if_entries
                 .iter()
                 .map(|entry| {
@@ -727,7 +733,8 @@ impl DiscoveryIntegration for SnmpIntegration {
         // --- Convert SNMP ifTable entries to Interface entities ---
         // Replaces (not appends to) the bare set persisted right after the ifTable walk, now that
         // the neighbour/FDB/VLAN queries have supplied the enrichment those bare entries lacked.
-        host_data.replace_interfaces(
+        host_data.contribute_interfaces(
+            ctx.interface_source,
             snmp_if_entries
                 .iter()
                 .map(|entry| {
@@ -1280,7 +1287,7 @@ fn resolve_lldp_local_port(
             return None;
         }
         // Exact match against ifName / ifDescr / ifAlias (VOSS: "1/1" == ifName "1/1"). ifAlias is
-        // included to match the server's ladder in `snmp::resolution::resolver`, which added it
+        // included to match the server's ladder in `server::lldp::resolver`, which added it
         // for Westermo WeOS — the daemon holding a narrower rule than the server meant the two
         // could place the same neighbour on different ports.
         if_entries

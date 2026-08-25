@@ -2,7 +2,7 @@ use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::definitions::{ServiceDefinitionFactory, create_service};
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
-use crate::server::services::r#impl::patterns::{Pattern, Vendor};
+use crate::server::services::r#impl::patterns::{DnsSdServiceType, Pattern, Vendor};
 
 #[derive(Default, Clone, Eq, PartialEq, Hash)]
 pub struct ChromecastDevice;
@@ -21,10 +21,20 @@ impl ServiceDefinition for ChromecastDevice {
     }
 
     fn discovery_pattern(&self) -> Pattern<'_> {
+        // The OUI is shared with every other Google device, and the port pair with Google Home,
+        // so the mDNS arm is what actually separates a Chromecast from a speaker — it is the
+        // service type only a Cast receiver advertises. Kept as an alternative rather than a
+        // requirement so a Chromecast on a routed subnet, where multicast never reaches, is still
+        // found by its ports.
         Pattern::AllOf(vec![
             Pattern::MacVendor(Vendor::GOOGLE),
-            Pattern::Port(PortType::new_tcp(8008)),
-            Pattern::Port(PortType::new_tcp(8009)),
+            Pattern::AnyOf(vec![
+                Pattern::DnsSd(DnsSdServiceType::GOOGLE_CAST, None),
+                Pattern::AllOf(vec![
+                    Pattern::Port(PortType::new_tcp(8008)),
+                    Pattern::Port(PortType::new_tcp(8009)),
+                ]),
+            ]),
         ])
     }
 

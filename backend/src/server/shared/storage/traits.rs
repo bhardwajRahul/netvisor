@@ -1,16 +1,21 @@
 use std::net::IpAddr;
 
+use crate::daemon::discovery::types::warnings::{
+    ClaimSource, DiscoveryWarningCode, MalformedNeighbourConsequence, SnmpWalkGroup,
+};
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::bindings::r#impl::base::Binding;
-use crate::server::credentials::r#impl::mapping::{IntegrationTarget, Target};
+use crate::server::credentials::r#impl::mapping::{
+    CredentialQueryPayloadDiscriminants, IntegrationTarget, Target,
+};
 use crate::server::credentials::r#impl::types::CredentialType;
 use crate::server::dependencies::r#impl::base::Dependency;
+use crate::server::lldp::{LldpChassisId, LldpPortId};
 use crate::server::services::r#impl::base::Service;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::entity_metadata::EntityCategory;
 use crate::server::shared::events::types::{BillingOperation, OnboardingOperationDiscriminants};
 use crate::server::shares::r#impl::base::ShareOptions;
-use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::tags::r#impl::base::Tag;
 use crate::server::topology::types::views::TopologyView;
@@ -482,6 +487,29 @@ impl<T: DbEnumContributor> DbEnumContributor for Vec<T> {
 }
 
 // Trait object: no enumerable variants. Dynamic dispatch through
+/// `RunType` is the one composite whose nested enums are reachable nowhere else.
+///
+/// `RunType::Historical` boxes a whole `DiscoveryUpdatePayload`, and that payload's `warnings` are
+/// coded — so the warning code and the three enums that fill its slots are all persisted JSONB
+/// values that `strum::VariantNames` on `RunType` alone cannot see. This is the delegation the
+/// note above the empty impls calls for: without it, adding a warning code would slip past both
+/// coexistence gates while being written to the database.
+impl DbEnumContributor for RunType {
+    fn contribute(out: &mut std::collections::BTreeMap<&'static str, Vec<String>>) {
+        let variants: Vec<String> = <RunType as ::strum::VariantNames>::VARIANTS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        out.insert(db_enum_key_for::<RunType>(), variants);
+
+        DiscoveryWarningCode::contribute(out);
+        SnmpWalkGroup::contribute(out);
+        ClaimSource::contribute(out);
+        MalformedNeighbourConsequence::contribute(out);
+        CredentialQueryPayloadDiscriminants::contribute(out);
+    }
+}
+
 // ServiceDefinition covers service metadata (Docker, nginx, etc.), not
 // DB-persisted discriminants — out of scope for this catalog.
 impl DbEnumContributor for Box<dyn ServiceDefinition> {
@@ -520,12 +548,23 @@ impl_db_enum_contributor_empty!(
 // crate — we can't add derives to it. Treated as empty below (Stripe SDK
 // version bumps are explicit and coordinated with server deploys, so the
 // coexistence-window risk is negligible in practice).
+// The enums that ride inside a discovery session's coded warnings. Not reachable through any
+// `SqlValue` variant of their own — they are nested inside `RunType::Historical` — so `RunType`'s
+// contributor below delegates to them explicitly. Without that the coexistence gate would pass
+// while the current binary was writing warning codes the previous release cannot read.
+impl_db_enum_contributor_via_variant_names!(
+    DiscoveryWarningCode,
+    SnmpWalkGroup,
+    ClaimSource,
+    MalformedNeighbourConsequence,
+    CredentialQueryPayloadDiscriminants,
+);
+
 impl_db_enum_contributor_via_variant_names!(
     EntitySource,
     HostNameSource,
     HostVirtualization,
     ServiceVirtualization,
-    RunType,
     DiscoveryType,
     BillingPlan,
     EdgeStyle,
@@ -613,7 +652,7 @@ impl SqlValue {
         kind: SqlValueDiscriminants,
         out: &mut std::collections::BTreeMap<&'static str, Vec<String>>,
     ) {
-        use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+        use crate::server::lldp::{LldpChassisId, LldpPortId};
         use ShareOptions;
         use TopologyView;
         use Vlan;

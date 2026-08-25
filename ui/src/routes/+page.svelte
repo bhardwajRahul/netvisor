@@ -245,9 +245,18 @@
 			min-w-0: a flex child defaults to min-width:auto, so it cannot shrink
 			below its content. Without it a wide table stretches main, then the flex
 			row, and the whole page scrolls sideways instead of the table alone.
+
+			relative: this is the scroll container, but nothing here was positioned, so
+			it was the containing block for nothing. Absolutely positioned descendants
+			resolved against the initial containing block instead and kept their static
+			position — for a 59-row host table, `sr-only` spans a thousand pixels below
+			the fold. Out of main's overflow, they extended the *document*, so the whole
+			page scrolled and main slid out of view: scroll down and the table was gone.
+			`relative` makes main their containing block, so its own overflow contains
+			them and only main scrolls.
 		-->
 		<main
-			class="min-w-0 flex-1 overflow-auto transition-all duration-300"
+			class="relative min-w-0 flex-1 overflow-auto transition-all duration-300"
 			class:ml-16={sidebarCollapsed}
 			class:ml-48={!sidebarCollapsed}
 		>
@@ -271,10 +280,23 @@
 				<LicenseExpiringBanner intendedExpiry={configQuery.data.license_intended_expiry} />
 			{/if}
 			<div class="p-4 [&_.sticky]:sticky [&_.sticky]:top-0">
-				<!-- Programmatically render all tabs based on sidebar config -->
+				<!--
+					Programmatically render all tabs based on sidebar config.
+
+					`relative` on the collapsed wrappers is load-bearing, not decoration.
+					`overflow: hidden` only clips descendants whose containing block is the
+					clipper or inside it, and a static box is the containing block for
+					nothing absolutely positioned. Tailwind's `sr-only` is `position:
+					absolute`, so every empty-value span `FieldValue` renders escaped the
+					clip, resolved against the nearest positioned ancestor, and kept its
+					static position deep inside the hidden tab's table — leaving `main` with
+					~2200px of scrollable nothing under a short table. `relative` makes the
+					zero-height wrapper the containing block, so those spans are clipped
+					with everything else.
+				-->
 				{#each allTabs as tab (tab.id)}
 					{#if tab.subTabIds && tab.subTabDefs}
-						<div class={!tab.subTabIds.includes(activeTab) ? 'h-0 overflow-hidden' : ''}>
+						<div class={!tab.subTabIds.includes(activeTab) ? 'relative h-0 overflow-hidden' : ''}>
 							<ContentSubTabs
 								tabs={tab.subTabDefs}
 								bind:activeTab
@@ -283,7 +305,7 @@
 							/>
 						</div>
 					{:else}
-						<div class={activeTab !== tab.id ? 'h-0 overflow-hidden' : ''}>
+						<div class={activeTab !== tab.id ? 'relative h-0 overflow-hidden' : ''}>
 							<tab.component isReadOnly={tab.isReadOnly} isActive={activeTab === tab.id} />
 						</div>
 					{/if}

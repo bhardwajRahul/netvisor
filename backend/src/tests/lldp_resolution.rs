@@ -2,7 +2,7 @@
 //!
 //! These run against Postgres rather than an in-memory inventory on purpose. Both defects this
 //! file guards against were *SQL semantics* defects — a lookup with no `ORDER BY` and no `LIMIT`
-//! returning an arbitrary row — and the fake inventory in `snmp::resolution::lldp`'s tests
+//! returning an arbitrary row — and the fake inventory in `server::lldp`'s tests
 //! re-implements those semantics in Rust, so it cannot fail the way the database did. A resolver
 //! test that never touches a query plan proves the resolver agrees with itself.
 
@@ -16,11 +16,11 @@ use crate::server::{
     hosts::r#impl::base::Host,
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase, if_type},
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
-    shared::storage::traits::Storage,
-    snmp::resolution::{
-        lldp::IdentityResolution,
+    lldp::{
+        IdentityResolution,
         resolver::{LldpResolver, LldpResolverImpl},
     },
+    shared::storage::traits::Storage,
 };
 
 use super::{host, network, organization, subnet, test_services};
@@ -193,6 +193,43 @@ async fn many_ports_sharing_one_mac_still_resolve_to_their_single_host() {
             .await,
         IdentityResolution::Resolved(switch.id),
         "one MAC on many ports of one switch is still that switch"
+    );
+}
+
+/// A daemon host's own NICs resolve it, even though none of them claims to be a physical port.
+///
+/// This is the shape the daemon reports for the machine it runs on: interface rows carrying MACs,
+/// typed `propVirtual` because `pnet` gives flags rather than an IANAifType and cannot tell a real
+/// NIC from a bridge, and — for the NIC that matters — no address row at all, because lldpd elects
+/// a chassis MAC that need not belong to any NIC on a scanned subnet.
+///
+/// Both halves are load-bearing and neither is obvious. If `find_host_by_mac` ever grew an
+/// `if_type` filter the way `find_if_entry_by_mac` has one, typing these rows `propVirtual` would
+/// silently stop the daemon host resolving, and the only symptom would be a switch's neighbour
+/// record going quietly unmatched again.
+#[tokio::test]
+async fn a_virtually_typed_nic_with_no_address_still_resolves_its_host() {
+    let lab = Lab::new().await;
+    let server = lab.host("netlab-server").await;
+
+    // Exactly what `nic_to_interface` emits: propVirtual, MAC present, no IP row anywhere.
+    lab.interface(
+        server.id,
+        4,
+        "ens1f0np0",
+        Some("ens1f0np0"),
+        None,
+        Some("c2:2c:ad:55:9f:ee"),
+        if_type::PROP_VIRTUAL,
+    )
+    .await;
+
+    assert_eq!(
+        lab.resolver
+            .find_host_by_mac("c2:2c:ad:55:9f:ee", lab.network_id)
+            .await,
+        IdentityResolution::Resolved(server.id),
+        "a chassis MAC on a propVirtual NIC must still name the host it belongs to"
     );
 }
 

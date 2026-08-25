@@ -31,6 +31,19 @@ pub struct HostCsvRow {
     pub network_id: Uuid,
     pub source: String,
     pub hidden: bool,
+    // Everything the device reported about itself. Field order is column order — headers are
+    // derived from these names — so the two timestamps stay last, as they are on every other
+    // CsvRow.
+    pub sys_descr: Option<String>,
+    pub sys_object_id: Option<String>,
+    pub sys_location: Option<String>,
+    pub sys_contact: Option<String>,
+    pub management_url: Option<String>,
+    pub chassis_id: Option<String>,
+    pub sys_name: Option<String>,
+    pub manufacturer: Option<String>,
+    pub model: Option<String>,
+    pub serial_number: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -276,6 +289,16 @@ impl Entity for Host {
             network_id: self.base.network_id,
             source: format!("{:?}", self.base.source),
             hidden: self.base.hidden,
+            sys_descr: self.base.sys_descr.clone(),
+            sys_object_id: self.base.sys_object_id.clone(),
+            sys_location: self.base.sys_location.clone(),
+            sys_contact: self.base.sys_contact.clone(),
+            management_url: self.base.management_url.clone(),
+            chassis_id: self.base.chassis_id.clone(),
+            sys_name: self.base.sys_name.clone(),
+            manufacturer: self.base.manufacturer.clone(),
+            model: self.base.model.clone(),
+            serial_number: self.base.serial_number.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
         }

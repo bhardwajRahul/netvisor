@@ -7,6 +7,7 @@ use strum_macros::EnumDiscriminants;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::daemon::discovery::types::warnings::DiscoveryWarning;
 use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::shared::types::metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider};
 use crate::server::shared::types::{Color, Icon};
@@ -178,7 +179,7 @@ pub struct DiscoverySessionUpdate {
     pub error: Option<String>,
     /// Non-fatal warnings for a completed run (e.g. hit the time limit with hosts
     /// left un-scanned). Distinct from `error`, which marks the run as failed.
-    pub warnings: Vec<String>,
+    pub warnings: Vec<DiscoveryWarning>,
     pub finished_at: Option<DateTime<Utc>>,
 }
 

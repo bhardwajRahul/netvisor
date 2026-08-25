@@ -352,6 +352,7 @@ files and its agent config from that definition — there is no second copy to k
    snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.2        # ifNumber + ifTable
    snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.31.1.1   # ifXTable
    snmpwalk -On -v2c -c <community> <ip> 1.0.8802.1.1.2       # LLDP, local and remote
+   snmpwalk -On -v2c -c <community> <ip> 1.3.111.2.802.1.1.13 # LLDP-V2, for anything serving it
    snmpwalk -On -v2c -c <community> <ip> 1.3.6.1.2.1.17       # bridge: ports, FDB, VLANs
    snmpwalk -On -v3 -l authPriv -u <user> -a SHA -A <pass> -x AES -X <pass> \
      -n <context> <ip> 1.3.6.1.2.1.17                         # and again, naming a context

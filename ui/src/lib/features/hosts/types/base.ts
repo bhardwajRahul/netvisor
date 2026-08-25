@@ -57,6 +57,12 @@ export interface HostFormData {
 	sys_contact: string | null;
 	management_url: string | null;
 	chassis_id: string | null;
+	sys_name: string | null;
+
+	// Hardware identity (ENTITY-MIB or a controller integration, read-only in UI)
+	manufacturer: string | null;
+	model: string | null;
+	serial_number: string | null;
 
 	// Credential assignments (user-editable, from junction table)
 	credential_assignments: CredentialAssignment[];

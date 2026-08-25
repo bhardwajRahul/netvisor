@@ -40,10 +40,13 @@
 		common_ipAddresses,
 		common_lastSeen,
 		common_confirmBulkDelete,
+		common_manufacturer,
+		common_model,
 		common_name,
 		common_network,
 		common_noEntityYet,
 		common_rescan,
+		common_serialNumber,
 		common_service,
 		common_services,
 		common_tags,
@@ -398,6 +401,28 @@
 					label: common_description(),
 					type: 'string',
 					searchable: true,
+					display: { hiddenByDefault: true }
+				},
+				// Hardware identity, off by default: populated only for hosts a credentialed scan
+				// reached. Neither searchable nor filterable — host search predicates and the
+				// filter query params cover none of these columns, and a control the server
+				// disagrees with is worse than no control.
+				{
+					key: 'manufacturer',
+					label: common_manufacturer(),
+					type: 'string',
+					display: { hiddenByDefault: true }
+				},
+				{
+					key: 'model',
+					label: common_model(),
+					type: 'string',
+					display: { hiddenByDefault: true }
+				},
+				{
+					key: 'serial_number',
+					label: common_serialNumber(),
+					type: 'string',
 					display: { hiddenByDefault: true }
 				},
 				{

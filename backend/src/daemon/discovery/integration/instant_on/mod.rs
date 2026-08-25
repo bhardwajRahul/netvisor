@@ -47,7 +47,8 @@ use crate::server::services::r#impl::patterns::{ClientProbe, ManagedDevice};
 use super::controller::{self, MappedClient};
 use super::{
     Checkpoint, CollectionShortfall, Completeness, DiscoveryIntegration, IntegrationContext,
-    IntegrationFailure, ProbeContext, ProbeFailure, ProbeSuccess,
+    IntegrationFailure, InterfaceSource, InterfaceViewScope, ProbeContext, ProbeFailure,
+    ProbeSuccess,
 };
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::AttemptOutcome;
@@ -63,6 +64,11 @@ pub struct InstantOnIntegration;
 
 #[async_trait]
 impl DiscoveryIntegration for InstantOnIntegration {
+    /// The portal reports switch ports and AP uplinks, not a device's whole ifTable.
+    fn interface_view_scope(&self) -> InterfaceViewScope {
+        InterfaceViewScope::PhysicalPortsOnly
+    }
+
     fn credential_type(&self) -> CredentialQueryPayloadDiscriminants {
         CredentialQueryPayloadDiscriminants::InstantOn
     }
@@ -164,7 +170,7 @@ impl DiscoveryIntegration for InstantOnIntegration {
                         // second one.
                         if device.ip == ctx.ip {
                             anchor_matched = true;
-                            enrich_scanned_host(host_data, &device);
+                            enrich_scanned_host(host_data, ctx.interface_source, &device);
                             continue;
                         }
                         match create_device_host(ctx, &subnets, device).await {
@@ -181,7 +187,7 @@ impl DiscoveryIntegration for InstantOnIntegration {
                     tracing::warn!(site = %site_id, error = %e, "Could not read Instant On site");
                     ctx.ops
                         .record_attempt_failure(
-                            ctx.credential.discovery_label(),
+                            ctx.credential.into(),
                             ctx.ip,
                             AttemptOutcome::CollectionFailed,
                             format!(
@@ -203,7 +209,7 @@ impl DiscoveryIntegration for InstantOnIntegration {
         if !anchor_matched {
             ctx.ops
                 .record_attempt_failure(
-                    ctx.credential.discovery_label(),
+                    ctx.credential.into(),
                     ctx.ip,
                     AttemptOutcome::CollectionFailed,
                     "this host is not in any Instant On site this account manages — assign the \
@@ -331,7 +337,7 @@ impl InstantOnIntegration {
             );
             ctx.ops
                 .record_attempt_failure(
-                    ctx.credential.discovery_label(),
+                    ctx.credential.into(),
                     ctx.ip,
                     AttemptOutcome::CollectionFailed,
                     format!(
@@ -362,20 +368,21 @@ fn collect_subnets(
 }
 
 /// Fold the portal's own device record into the host being scanned.
-fn enrich_scanned_host(host_data: &mut HostData, device: &mapping::MappedDevice) {
+///
+/// `HostData` is shared across every integration for this IP, and these ports are merged with
+/// whatever else collected the same host rather than replacing it — `PhysicalPortsOnly` says an
+/// SNMP ifTable outranks this view port for port, and a port only the portal knows about is still
+/// added. That matters less on an Instant On switch, where SNMP being unavailable is the reason
+/// this integration exists, than on an anchor host that is some other reachable device.
+fn enrich_scanned_host(
+    host_data: &mut HostData,
+    source: InterfaceSource,
+    device: &mapping::MappedDevice,
+) {
     device.identity.enrich(host_data);
 
-    // `HostData` is shared across every integration for this IP. If SNMP already walked the
-    // ifTable its view is strictly richer, and overwriting it would also discard SNMP's honest
-    // partial-collection flags. Unlikely on an Instant On switch — SNMP being unavailable is the
-    // reason this integration exists — but the anchor may be some other reachable device.
-    if !host_data.interfaces.is_empty() {
-        tracing::debug!(
-            "Interfaces already collected for this host; skipping Instant On interface mapping"
-        );
-        return;
-    }
-    host_data.replace_interfaces(
+    host_data.contribute_interfaces(
+        source,
         device.interfaces.clone(),
         interfaces_complete(),
         interface_data_complete(),
@@ -424,6 +431,8 @@ async fn create_device_host(
             virtualization_service_id: None,
             client_responses: &client_responses,
             managed_device: &managed_device,
+            // Reported by a controller, not swept over multicast.
+            dns_sd: &None,
         },
         &[],
         &daemon_id,

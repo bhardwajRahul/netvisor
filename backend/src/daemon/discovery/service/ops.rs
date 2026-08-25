@@ -3,7 +3,7 @@
 //! `DiscoveryOps` provides entity creation, service matching, and progress reporting
 //! without requiring `DiscoveryRunner` or its associated traits.
 
-use std::{net::IpAddr, sync::Arc, time::Duration};
+use std::{collections::HashSet, net::IpAddr, sync::Arc, time::Duration};
 
 use anyhow::{Error, anyhow};
 use backon::{ExponentialBuilder, Retryable};
@@ -22,11 +22,14 @@ use crate::{
                 DiscoveryCriticalError, DiscoveryPhase, DiscoverySessionInfo,
                 DiscoverySessionUpdate,
             },
+            types::warnings::DiscoveryWarning,
         },
         shared::{api_client::DaemonApiClient, config::ConfigStore},
     },
     server::{
-        credentials::r#impl::types::CredentialAssignment,
+        credentials::r#impl::{
+            mapping::CredentialQueryPayloadDiscriminants, types::CredentialAssignment,
+        },
         daemons::r#impl::{
             api::{DaemonDiscoveryRequest, DiscoveryUpdatePayload},
             base::DaemonMode,
@@ -38,7 +41,10 @@ use crate::{
             name::HostName,
             virtualization::HostVirtualization,
         },
-        interfaces::r#impl::base::{Interface, InterfaceDataComplete},
+        interfaces::{
+            r#impl::base::{Interface, InterfaceDataComplete},
+            service::match_existing_interface,
+        },
         ip_addresses::r#impl::base::IPAddress,
         ports::r#impl::base::{Port, PortType},
         services::{
@@ -60,6 +66,7 @@ use crate::{
 };
 
 use super::base::DaemonDiscoveryService;
+use crate::daemon::discovery::integration::{InterfaceSource, InterfaceViewScope};
 
 /// Default number of retries for entity creation during discovery.
 const ENTITY_CREATION_MAX_RETRIES: usize = 5;
@@ -115,6 +122,22 @@ pub struct HostData {
     /// full. A group read only partially must not overwrite what the server already holds — an
     /// empty result from a cut-short walk is indistinguishable from a device reporting nothing.
     pub interface_data_complete: InterfaceDataComplete,
+    /// Every integration that has contributed interfaces to this host in this scan, newest last.
+    ///
+    /// Kept so a contributor can revise its own set without disturbing anyone else's, and so the
+    /// merged completeness can be derived from who actually survived rather than from whoever
+    /// wrote last. Not sent to the server — `interfaces`, `interfaces_complete` and
+    /// `interface_data_complete` are the merged result.
+    contributions: Vec<InterfaceContribution>,
+}
+
+/// One integration's interface set, as offered.
+#[derive(Clone)]
+struct InterfaceContribution {
+    source: InterfaceSource,
+    interfaces: Vec<Interface>,
+    interfaces_complete: bool,
+    data_complete: InterfaceDataComplete,
 }
 
 impl HostData {
@@ -135,6 +158,7 @@ impl HostData {
             subnets,
             interfaces_complete: true,
             interface_data_complete: InterfaceDataComplete::default(),
+            contributions: Vec::new(),
         }
     }
 
@@ -248,36 +272,161 @@ impl HostData {
         self
     }
 
-    pub fn add_if_entry(&mut self, ie: Interface) -> &mut Self {
-        self.interfaces.push(ie);
-        self
-    }
-
-    /// Replace the whole interface set, saying in the same breath how complete it is.
+    /// Offer an interface set on behalf of one integration, merged with what others already gave.
     ///
-    /// SNMP collection persists a bare interface set as soon as the ifTable walk finishes —
-    /// before the slower neighbour/FDB/VLAN queries — so that a query that hangs or times out
-    /// can't leave the host with zero interfaces. It then swaps in the enriched set once those
-    /// queries return. Replacing rather than appending keeps the second pass from doubling the
-    /// interface list.
+    /// Several integrations can collect one host in a single scan against this one `HostData`.
+    /// This used to be `replace_interfaces`, a plain setter, so the last writer won and the only
+    /// brake was a hand-written `if !host_data.interfaces.is_empty()` in the two controller
+    /// integrations — order-dependent, untested, and reading "richer" as "non-empty".
     ///
-    /// The completeness travels *with* the interfaces because it is the same fact, and splitting
-    /// them was a live data-loss bug: SNMP wrote its early interface set at one point and set
-    /// `interface_data_complete` several hundred lines later, so a timeout in between shipped the
-    /// interfaces with the all-`true` default. Server-side a group marked complete is
-    /// authoritative in both directions, so `preserve_uncollected_data` cleared the LLDP/CDP/FDB/
-    /// VLAN columns — and an interface that loses its chassis id drops out of L2 resolution for
-    /// good. Passing them together means no write can omit the half that protects the other.
-    pub fn replace_interfaces(
+    /// **Nothing offered here is ever discarded.** Picking a winner is not safe even between two
+    /// `FullIfTable` collectors: a device can answer SNMP with a thin or empty ifTable while
+    /// answering gNMI with the real one, and with network-wide credentials which of them is asked
+    /// first is arbitrary. So sets are unioned, and scope only decides which row wins where two
+    /// contributors describe the *same* interface.
+    ///
+    /// Rules:
+    /// - A contributor replaces its own previous offer. SNMP persists a bare interface set at a
+    ///   checkpoint and swaps in the enriched one later; that is a revision, not a second opinion.
+    /// - Interfaces are matched the way the server matches them — `if_name`, then `if_index`,
+    ///   then a unique MAC — so the daemon cannot decide two rows are one interface where the
+    ///   server would not, or the reverse.
+    /// - Where two contributors describe one interface, the wider scope wins the whole row; on
+    ///   equal scope the earlier contributor keeps it. Arbitrary, but bounded to one row.
+    /// - Anything only a narrower contributor has is added.
+    ///
+    /// Completeness is then derived, never inherited: see `merge_contributions`.
+    pub fn contribute_interfaces(
         &mut self,
+        source: InterfaceSource,
         interfaces: Vec<Interface>,
         interfaces_complete: bool,
         data_complete: InterfaceDataComplete,
     ) -> &mut Self {
-        self.interfaces = interfaces;
-        self.interfaces_complete = interfaces_complete;
-        self.interface_data_complete = data_complete;
+        let offer = InterfaceContribution {
+            source,
+            interfaces,
+            interfaces_complete,
+            data_complete,
+        };
+
+        match self
+            .contributions
+            .iter_mut()
+            .find(|c| c.source.credential == source.credential)
+        {
+            Some(existing) => *existing = offer,
+            None => {
+                // Two collectors of equal reach on one host is a configuration to tell someone
+                // about — an SNMP and a gNMI credential both broadcast over the network, say.
+                // The merge below does not need it resolved, so this is a log line and not a
+                // scan warning; it becomes worth promoting when a second `FullIfTable`
+                // integration exists to trigger it.
+                if let Some(peer) = self.contributions.iter().find(|c| {
+                    c.source.scope == source.scope
+                        && source.scope != InterfaceViewScope::NoInterfaces
+                }) {
+                    tracing::warn!(
+                        host = %self.host.id,
+                        first = ?peer.source.credential,
+                        second = ?source.credential,
+                        scope = ?source.scope,
+                        "Two integrations of equal interface reach collected one host; their \
+                         interface sets are merged, but only one of them needs to be configured"
+                    );
+                }
+                self.contributions.push(offer);
+            }
+        }
+
+        self.merge_contributions();
         self
+    }
+
+    /// Fold every contribution into the interface set and the two completeness verdicts.
+    ///
+    /// The verdicts are the half that keeps merging safe, and both are deliberately pessimistic:
+    ///
+    /// - `interfaces_complete` — the flag that authorises the server to delete interfaces it holds
+    ///   and no longer sees — is true only if a `FullIfTable` contributor said its own walk
+    ///   finished *and* nobody else added a row beyond it. A row from outside the ifTable view is
+    ///   proof the ifTable view was not the whole host, and pruning against it would delete the
+    ///   very rows that proved it.
+    /// - Each `InterfaceDataComplete` group is authoritative only if every contributor holding a
+    ///   surviving row read that group in full. A contributor that never looks at CDP must not
+    ///   lend its silence the authority to clear a CDP column somebody else collected.
+    ///
+    /// In the ordinary case — a controller's physical ports being a subset of an SNMP ifTable —
+    /// nothing is added and both verdicts come out exactly as the ifTable contributor stated them.
+    fn merge_contributions(&mut self) {
+        let mut order: Vec<&InterfaceContribution> = self.contributions.iter().collect();
+        // Widest view first, ties in arrival order, so the first writer of any row is the one
+        // whose description of it stands.
+        order.sort_by(|a, b| b.source.scope.cmp(&a.source.scope));
+
+        let mut merged: Vec<Interface> = Vec::new();
+        // Which contribution supplied each surviving row, positionally.
+        let mut owners: Vec<InterfaceSource> = Vec::new();
+
+        for contribution in &order {
+            // Scoped to one contribution: two of *its* rows must not collapse onto one merged row
+            // (the server's own #614 guard), but every merged row is a candidate again for the
+            // next contributor.
+            let mut claimed: HashSet<Uuid> = HashSet::new();
+            for entry in &contribution.interfaces {
+                if let Some(id) = match_existing_interface(entry, &merged, &claimed) {
+                    // A wider view already described this interface, or an equal one got here
+                    // first. Either way the row that stands is the one already in.
+                    claimed.insert(id);
+                    continue;
+                }
+                claimed.insert(entry.id);
+                merged.push(entry.clone());
+                owners.push(contribution.source);
+            }
+        }
+
+        // Authority to delete belongs to an ifTable view, and only while it is the whole story: a
+        // surviving row from a narrower contributor is proof that it was not.
+        self.interfaces_complete = match order
+            .iter()
+            .find(|c| c.source.scope == InterfaceViewScope::FullIfTable)
+        {
+            Some(c) => {
+                c.interfaces_complete
+                    && !owners
+                        .iter()
+                        .any(|o| o.scope != InterfaceViewScope::FullIfTable)
+            }
+            None => false,
+        };
+
+        let surviving: HashSet<CredentialQueryPayloadDiscriminants> =
+            owners.iter().map(|o| o.credential).collect();
+        self.interface_data_complete = order
+            .iter()
+            .filter(|c| surviving.contains(&c.source.credential))
+            .fold(InterfaceDataComplete::default(), |acc, c| {
+                InterfaceDataComplete {
+                    lldp: acc.lldp && c.data_complete.lldp,
+                    cdp: acc.cdp && c.data_complete.cdp,
+                    fdb: acc.fdb && c.data_complete.fdb,
+                    vlan_membership: acc.vlan_membership && c.data_complete.vlan_membership,
+                }
+            });
+
+        self.interfaces = merged;
+    }
+
+    /// Every integration that has offered interfaces for this host, widest view first.
+    ///
+    /// The dispatch layer reads this to warn when two collectors of equal reach are pointed at one
+    /// host — a configuration to tell the operator about, not a conflict to resolve here.
+    pub fn interface_contributors(&self) -> Vec<InterfaceSource> {
+        let mut sources: Vec<InterfaceSource> =
+            self.contributions.iter().map(|c| c.source).collect();
+        sources.sort_by(|a, b| b.scope.cmp(&a.scope));
+        sources
     }
 
     /// Offer a subnet, ignoring one already present.
@@ -472,44 +621,44 @@ impl DiscoveryOps {
             .last_progress
             .load(std::sync::atomic::Ordering::Relaxed);
 
-        // Non-fatal warnings accumulated during the run (e.g. hit the time limit), plus one
-        // rendered line for each kind that fires per host — see
-        // `crate::daemon::discovery::service::warnings` for why those are aggregated here rather
-        // than pushed as they occur.
+        // Non-fatal findings accumulated during the run (e.g. hit the time limit), plus one coded
+        // warning per occurrence for each kind that fires per host — see
+        // `crate::daemon::discovery::service::warnings` for why those are recorded typed and coded
+        // here rather than pushed as sentences when they happen.
         let mut warnings = session
             .warnings
             .lock()
             .map(|w| w.clone())
             .unwrap_or_default();
 
-        // Each renderer returns one entry per distinct problem rather than a paragraph, so the
-        // wire format stays a list the UI can render as bullets.
         if let Ok(records) = session.incomplete_interface_walks.lock() {
-            warnings.extend(warnings::render_incomplete_interface_walks(&records));
+            warnings.extend(warnings::warn_incomplete_interface_walks(&records));
         }
         if let Ok(records) = session.incomplete_snmp_walks.lock() {
-            warnings.extend(warnings::render_incomplete_snmp_walks(&records));
+            warnings.extend(warnings::warn_incomplete_snmp_walks(&records));
         }
-        // Directly after the shortfalls, because on a device that produced both the two lines are
-        // halves of one story: why the read stopped, and what the device said was waiting.
+        // Directly after the shortfalls, because on a device that produced both the two warnings
+        // are halves of one story: why the read stopped, and what the device said was waiting.
         if let Ok(records) = session.contradicted_claims.lock() {
-            warnings.extend(warnings::render_contradicted_claims(&records));
+            warnings.extend(warnings::warn_contradicted_claims(&records));
         }
         if let Ok(records) = session.unresolved_lldp_ports.lock() {
-            warnings.extend(warnings::render_unresolved_lldp_ports(&records));
+            warnings.extend(warnings::warn_unresolved_lldp_ports(&records));
         }
         if let Ok(records) = session.malformed_neighbours.lock() {
-            warnings.extend(warnings::render_malformed_neighbours(&records));
+            warnings.extend(warnings::warn_malformed_neighbours(&records));
         }
         if let Ok(records) = session.snmp_collected_nothing.lock() {
-            warnings.extend(warnings::render_snmp_collected_nothing(&records));
+            warnings.extend(warnings::warn_snmp_collected_nothing(&records));
         }
         if let Ok(records) = session.vlan_recording_failures.lock() {
-            warnings.extend(warnings::render_vlan_recording_failures(&records));
+            warnings.extend(warnings::warn_vlan_recording_failures(&records));
         }
         if let Ok(issues) = session.credential_issues.lock() {
-            warnings.extend(warnings::render_credential_issues(&issues));
+            warnings.extend(warnings::warn_credential_issues(&issues));
         }
+
+        truncate_warnings(&mut warnings);
 
         // Build the terminal update based on result
         let terminal_update = match &discovery_result {
@@ -686,13 +835,14 @@ impl DiscoveryOps {
     /// lives in [`warnings::issue_for_attempt`] so both callers share it.
     pub async fn record_attempt_failure(
         &self,
-        label: &'static str,
+        integration: CredentialQueryPayloadDiscriminants,
         ip: std::net::IpAddr,
         outcome: warnings::AttemptOutcome,
         message: String,
         user_assigned: bool,
     ) {
-        let Some(issue) = warnings::issue_for_attempt(label, ip, outcome, message, user_assigned)
+        let Some(issue) =
+            warnings::issue_for_attempt(integration, ip, outcome, message, user_assigned)
         else {
             return;
         };
@@ -1237,6 +1387,16 @@ impl DiscoveryOps {
         };
         host.base.apply_name(candidate);
 
+        // A DNS-SD instance name is what the owner typed during setup — "Living Room TV" rather
+        // than "chromecast-a1b2c3" — so it outranks everything the scan can derive and applies
+        // after them. `apply_name` compares rungs, so this is a no-op against a name a person
+        // typed into Scanopy or one an integration read back out of a controller.
+        if let Some(dns_sd) = params.dns_sd
+            && let Some(instance_name) = &dns_sd.instance_name
+        {
+            host.base.apply_name(HostName::DnsSd(instance_name.clone()));
+        }
+
         tracing::info!(
             ip = %ip_address.base.ip_address,
             host_name = %host.base.name,
@@ -1268,6 +1428,189 @@ mod tests {
     use super::*;
     use tokio::sync::Mutex;
     use tokio::time::Instant;
+
+    fn empty_host_data() -> HostData {
+        use crate::server::hosts::r#impl::base::{Host, HostBase};
+        HostData::new(
+            Host::new(HostBase::default()),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        )
+    }
+
+    fn port(name: &str, if_index: i32) -> Interface {
+        use crate::server::interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, InterfaceBase};
+        Interface::new(InterfaceBase {
+            host_id: Uuid::new_v4(),
+            network_id: Uuid::new_v4(),
+            if_index,
+            if_descr: name.to_string(),
+            if_name: Some(name.to_string()),
+            if_alias: None,
+            if_type: 6,
+            speed_bps: None,
+            admin_status: IfAdminStatus::Up,
+            oper_status: IfOperStatus::Up,
+            mac_address: None,
+            ip_address_id: None,
+            neighbor: None,
+            neighbor_seen_at: None,
+            lldp_chassis_id: None,
+            lldp_port_id: None,
+            lldp_sys_name: None,
+            lldp_port_desc: None,
+            lldp_mgmt_addr: None,
+            lldp_sys_desc: None,
+            cdp_device_id: None,
+            cdp_port_id: None,
+            cdp_platform: None,
+            cdp_address: None,
+            fdb_macs: None,
+            native_vlan_id: None,
+            vlan_ids: None,
+        })
+    }
+
+    fn source(
+        credential: CredentialQueryPayloadDiscriminants,
+        scope: InterfaceViewScope,
+    ) -> InterfaceSource {
+        InterfaceSource { credential, scope }
+    }
+
+    const SNMP: CredentialQueryPayloadDiscriminants = CredentialQueryPayloadDiscriminants::Snmp;
+    const UNIFI: CredentialQueryPayloadDiscriminants =
+        CredentialQueryPayloadDiscriminants::UnifiController;
+
+    /// SNMP persists a bare interface set at its checkpoint and swaps in the enriched one once the
+    /// neighbour and FDB queries return. That is one contributor revising itself, so the second
+    /// offer replaces the first rather than being merged into a doubled list.
+    #[test]
+    fn a_contributor_revising_its_own_set_replaces_it() {
+        let mut host_data = empty_host_data();
+        let full = source(SNMP, InterfaceViewScope::FullIfTable);
+
+        host_data.contribute_interfaces(
+            full,
+            vec![port("Gi0/1", 1), port("Gi0/2", 2)],
+            true,
+            InterfaceDataComplete::none(),
+        );
+        host_data.contribute_interfaces(
+            full,
+            vec![port("Gi0/1", 1), port("Gi0/2", 2), port("Vlan1", 100)],
+            true,
+            InterfaceDataComplete::default(),
+        );
+
+        assert_eq!(host_data.interfaces.len(), 3);
+        assert!(host_data.interfaces_complete);
+        assert!(host_data.interface_data_complete.lldp);
+    }
+
+    /// A controller's ports being a subset of the ifTable is the ordinary case, and it must cost
+    /// nothing: the ifTable rows stand, no row is duplicated, and both completeness verdicts come
+    /// out exactly as the ifTable contributor stated them — including its authority to prune.
+    #[test]
+    fn a_subset_of_physical_ports_merges_without_weakening_the_if_table() {
+        let mut host_data = empty_host_data();
+
+        host_data.contribute_interfaces(
+            source(SNMP, InterfaceViewScope::FullIfTable),
+            vec![port("Gi0/1", 1), port("Gi0/2", 2), port("Vlan1", 100)],
+            true,
+            InterfaceDataComplete::default(),
+        );
+        host_data.contribute_interfaces(
+            source(UNIFI, InterfaceViewScope::PhysicalPortsOnly),
+            vec![port("Gi0/1", 1), port("Gi0/2", 2)],
+            false,
+            InterfaceDataComplete {
+                lldp: true,
+                cdp: false,
+                fdb: true,
+                vlan_membership: false,
+            },
+        );
+
+        assert_eq!(host_data.interfaces.len(), 3);
+        assert!(host_data.interfaces_complete);
+        assert!(host_data.interface_data_complete.cdp);
+    }
+
+    /// A port only the narrower view has is added — and its presence is itself the proof that the
+    /// ifTable was not the whole host, so the set stops being authority to delete.
+    #[test]
+    fn a_port_only_the_narrower_view_has_is_added_and_costs_the_prune() {
+        let mut host_data = empty_host_data();
+
+        host_data.contribute_interfaces(
+            source(SNMP, InterfaceViewScope::FullIfTable),
+            vec![port("Gi0/1", 1)],
+            true,
+            InterfaceDataComplete::default(),
+        );
+        host_data.contribute_interfaces(
+            source(UNIFI, InterfaceViewScope::PhysicalPortsOnly),
+            vec![port("Gi0/1", 1), port("Gi0/9", 9)],
+            false,
+            InterfaceDataComplete {
+                lldp: true,
+                cdp: false,
+                fdb: true,
+                vlan_membership: false,
+            },
+        );
+
+        assert_eq!(host_data.interfaces.len(), 2);
+        assert!(!host_data.interfaces_complete);
+        // The added row came from a contributor that never reads CDP, so nothing here may clear a
+        // CDP column the SNMP walk populated.
+        assert!(!host_data.interface_data_complete.cdp);
+    }
+
+    /// The case this replaced a hand-written guard for: two contributors of equal reach where one
+    /// is thin. A device can answer SNMP with an almost-empty ifTable and gNMI with the real one,
+    /// and network-wide credentials make the order arbitrary — so neither order may lose rows.
+    #[test]
+    fn a_thin_view_never_erases_a_rich_one_in_either_order() {
+        let rich = vec![port("eth1", 1), port("eth2", 2), port("eth3", 3)];
+        let thin = vec![port("eth1", 1)];
+
+        let mut rich_first = empty_host_data();
+        rich_first.contribute_interfaces(
+            source(SNMP, InterfaceViewScope::FullIfTable),
+            rich.clone(),
+            true,
+            InterfaceDataComplete::default(),
+        );
+        rich_first.contribute_interfaces(
+            source(UNIFI, InterfaceViewScope::FullIfTable),
+            thin.clone(),
+            true,
+            InterfaceDataComplete::default(),
+        );
+
+        let mut thin_first = empty_host_data();
+        thin_first.contribute_interfaces(
+            source(UNIFI, InterfaceViewScope::FullIfTable),
+            thin,
+            true,
+            InterfaceDataComplete::default(),
+        );
+        thin_first.contribute_interfaces(
+            source(SNMP, InterfaceViewScope::FullIfTable),
+            rich,
+            true,
+            InterfaceDataComplete::default(),
+        );
+
+        assert_eq!(rich_first.interfaces.len(), 3);
+        assert_eq!(thin_first.interfaces.len(), 3);
+    }
 
     /// GH #650. `container::execute` runs several times against one host — once per Docker and
     /// Podman socket/proxy credential type, and again for the network sweep after the
@@ -1341,4 +1684,28 @@ mod tests {
         // wait is imposed on the first request after an idle period.
         assert!(slot >= before);
     }
+}
+
+/// How many coded warnings one run's scan record holds.
+///
+/// One warning per occurrence is what makes them countable and gives each address its own
+/// diagnostic, but it also turns an O(codes) payload into an O(codes x devices) one — an
+/// LLDP-heavy network can produce thousands, all of which land in a single JSONB column. Well
+/// above the ten the UI lists per code, so nothing an operator reads is affected.
+const MAX_WARNINGS: usize = 500;
+
+/// Cap the warning list, saying how much was left out.
+///
+/// The alternative is a payload that grows without bound or a list that simply stops, and a list
+/// that stops reads as though that was all of them — the rule the whole warnings module is built
+/// on. `WarningsTruncated` is emitted in place of the tail so the count survives.
+fn truncate_warnings(warnings: &mut Vec<DiscoveryWarning>) {
+    if warnings.len() <= MAX_WARNINGS {
+        return;
+    }
+    let elided = warnings.len() - MAX_WARNINGS;
+    warnings.truncate(MAX_WARNINGS);
+    warnings.push(DiscoveryWarning::WarningsTruncated {
+        elided: u32::try_from(elided).unwrap_or(u32::MAX),
+    });
 }

@@ -1,8 +1,6 @@
 use std::net::Ipv4Addr;
 
-use crate::daemon::discovery::integration::snmp::sim::mibs::{
-    ArpTable, BridgeTable, CdpTable, EntityTable, IpAddrTable,
-};
+use crate::daemon::discovery::integration::snmp::sim::mibs::{ArpTable, BridgeTable};
 use crate::daemon::discovery::integration::snmp::sim::tables::{IfRow, IfTable};
 use crate::daemon::discovery::integration::snmp::sim::transport::Handler;
 use crate::daemon::discovery::integration::snmp::sim::{Purpose, SimDevice, Tables};
@@ -42,14 +40,9 @@ pub fn device() -> SimDevice {
 fn tables() -> Tables {
     Tables {
         if_table: Some(if_table()),
-        lldp: None,
         bridge: bridge_table(),
         arp: arp_table(),
-        ip_addr: IpAddrTable::default(),
-        entity: EntityTable::default(),
-        cdp: CdpTable::default(),
-        lldp_variants: Vec::new(),
-        context_bridge: None,
+        ..Default::default()
     }
 }
 

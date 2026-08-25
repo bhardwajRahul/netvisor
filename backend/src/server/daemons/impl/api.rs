@@ -1,6 +1,7 @@
 use crate::{
-    daemon::discovery::types::base::{
-        DiscoveryPhase, DiscoverySessionInfo, DiscoverySessionUpdate,
+    daemon::discovery::types::{
+        base::{DiscoveryPhase, DiscoverySessionInfo, DiscoverySessionUpdate},
+        warnings::{DiscoveryWarning, deserialize_warnings},
     },
     server::{
         auth::middleware::auth::AuthenticatedEntity,
@@ -203,10 +204,15 @@ pub struct DiscoveryUpdatePayload {
     pub progress: u8,
     /// Failure message, when the run did not complete.
     pub error: Option<String>,
-    /// Non-fatal warnings for a completed run (e.g. the scan hit its time limit
-    /// and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
-    #[serde(default)]
-    pub warnings: Vec<String>,
+    /// Non-fatal findings from a completed run — one per occurrence, each carrying the code that
+    /// identifies it and the detail that fills the sentence. Unlike `error`, these do not mark the
+    /// run failed.
+    ///
+    /// Read through [`deserialize_warnings`] rather than the derived impl, which is what keeps
+    /// historical records and pre-coded daemons rendering: both send bare strings here, and both
+    /// land as `Unknown` carrying that text instead of failing the whole payload.
+    #[serde(default, deserialize_with = "deserialize_warnings")]
+    pub warnings: Vec<DiscoveryWarning>,
     /// When the run started.
     pub started_at: Option<DateTime<Utc>>,
     /// When the run finished. `null` while it is still going.

@@ -24,8 +24,8 @@ use crate::server::hosts::r#impl::{
 };
 use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
+use crate::server::lldp::canonical_mac;
 use crate::server::shared::types::entities::EntitySource;
-use crate::server::snmp::resolution::lldp::canonical_mac;
 use crate::server::subnets::r#impl::base::Subnet;
 
 /// The identity fields a controller reports for one device or client.

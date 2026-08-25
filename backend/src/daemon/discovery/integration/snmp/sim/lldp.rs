@@ -15,7 +15,94 @@
 
 use super::wire::{MacEncoding, PassValue, Row};
 use crate::daemon::discovery::integration::snmp::oids::lldp;
-use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+use crate::server::lldp::{LldpChassisId, LldpPortId};
+
+/// Which LLDP MIB a simulated table serves.
+///
+/// The classic LLDP-MIB is not the only one devices implement: some NOSes ship only the
+/// 802.1AB-2009 LLDP-V2-MIB, rooted elsewhere, with the remote columns shifted by one and a
+/// four-sub-id row index. A device that serves one and not the other is a real failure shape, so
+/// the lab has to be able to describe it — which means the OIDs and the index layout are values
+/// here rather than constants baked into `wire_rows`.
+///
+/// Only [`CLASSIC`] exists today. A second one is a table of constants plus an index composer;
+/// nothing else in the simulator needs to know it arrived — `data_files` and `registrations`
+/// derive the filename and the served subtree from `root`/`file_suffix`, and `SimAgent` serves
+/// whatever it is registered for.
+#[derive(Debug)]
+pub struct SimLldpMib {
+    /// Subtree the agent registers, and the whole of what a walk of this MIB can reach.
+    pub root: &'static str,
+    /// Distinguishes this MIB's data file from another's on the same device.
+    pub file_suffix: &'static str,
+    pub local: SimLldpLocalColumns,
+    pub remote: SimLldpRemoteColumns,
+    /// The index sub-ids a remote row is keyed by.
+    pub rem_suffix: fn(&RemoteNeighbour) -> Vec<u64>,
+}
+
+/// `lldpLocalSystemData` columns. The scalars must carry their own trailing `.0`: `Row::scalar`
+/// appends nothing, so a constant without it is served at the object OID and no walk finds it.
+#[derive(Debug)]
+pub struct SimLldpLocalColumns {
+    pub chassis_id_subtype: &'static str,
+    pub chassis_id: &'static str,
+    pub sys_name: &'static str,
+    pub sys_desc: &'static str,
+    pub port_id_subtype: &'static str,
+    pub port_id: &'static str,
+    pub port_desc: &'static str,
+}
+
+/// `lldpRemEntry` columns. Column *numbers* are not shared between MIB revisions.
+#[derive(Debug)]
+pub struct SimLldpRemoteColumns {
+    pub chassis_id_subtype: &'static str,
+    pub chassis_id: &'static str,
+    pub port_id_subtype: &'static str,
+    pub port_id: &'static str,
+    pub port_desc: &'static str,
+    pub sys_name: &'static str,
+    pub sys_desc: &'static str,
+}
+
+/// The classic LLDP-MIB, `1.0.8802.1.1.2`.
+pub static CLASSIC: SimLldpMib = SimLldpMib {
+    root: lldp::LLDP_MIB,
+    file_suffix: "lldp",
+    local: SimLldpLocalColumns {
+        chassis_id_subtype: lldp::local::LLDP_LOC_CHASSIS_ID_SUBTYPE,
+        chassis_id: lldp::local::LLDP_LOC_CHASSIS_ID,
+        sys_name: lldp::local::LLDP_LOC_SYS_NAME,
+        sys_desc: lldp::local::LLDP_LOC_SYS_DESC,
+        port_id_subtype: lldp::local::LLDP_LOC_PORT_ID_SUBTYPE,
+        port_id: lldp::local::LLDP_LOC_PORT_ID,
+        port_desc: lldp::local::LLDP_LOC_PORT_DESC,
+    },
+    remote: SimLldpRemoteColumns {
+        chassis_id_subtype: lldp::remote::entry::LLDP_REM_CHASSIS_ID_SUBTYPE,
+        chassis_id: lldp::remote::entry::LLDP_REM_CHASSIS_ID,
+        port_id_subtype: lldp::remote::entry::LLDP_REM_PORT_ID_SUBTYPE,
+        port_id: lldp::remote::entry::LLDP_REM_PORT_ID,
+        port_desc: lldp::remote::entry::LLDP_REM_PORT_DESC,
+        sys_name: lldp::remote::entry::LLDP_REM_SYS_NAME,
+        sys_desc: lldp::remote::entry::LLDP_REM_SYS_DESC,
+    },
+    rem_suffix: classic_rem_suffix,
+};
+
+/// `lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex` — three sub-ids, or two where the firmware
+/// omits the time mark (GH #668).
+fn classic_rem_suffix(neighbour: &RemoteNeighbour) -> Vec<u64> {
+    match neighbour.time_mark {
+        TimeMark::At(mark) => vec![
+            mark as u64,
+            neighbour.local_port as u64,
+            neighbour.index as u64,
+        ],
+        TimeMark::Omitted => vec![neighbour.local_port as u64, neighbour.index as u64],
+    }
+}
 
 /// An identifier together with how the agent puts it on the wire.
 ///
@@ -139,17 +226,8 @@ impl RemoteNeighbour {
         self
     }
 
-    /// The index sub-ids this row is keyed by — three normally, two where the firmware omits the
-    /// time mark.
-    fn suffix(&self) -> Vec<u64> {
-        match self.time_mark {
-            TimeMark::At(mark) => vec![mark as u64, self.local_port as u64, self.index as u64],
-            TimeMark::Omitted => vec![self.local_port as u64, self.index as u64],
-        }
-    }
-
-    fn wire_rows(&self) -> Vec<Row> {
-        let suffix = self.suffix();
+    fn wire_rows(&self, mib: &SimLldpMib) -> Vec<Row> {
+        let suffix = (mib.rem_suffix)(self);
         let mut rows = Vec::new();
 
         if let Some(chassis) = &self.chassis {
@@ -159,7 +237,7 @@ impl RemoteNeighbour {
                 Some(ChassisDefect::NoChassisColumns) => {}
                 Some(ChassisDefect::NoSubtype) => {
                     rows.push(Row::at(
-                        lldp::remote::entry::LLDP_REM_CHASSIS_ID,
+                        mib.remote.chassis_id,
                         &suffix,
                         chassis_value(&chassis.id, value),
                     ));
@@ -171,7 +249,7 @@ impl RemoteNeighbour {
                         PassValue::Str(text.to_string()),
                     ));
                     rows.push(Row::at(
-                        lldp::remote::entry::LLDP_REM_CHASSIS_ID,
+                        mib.remote.chassis_id,
                         &suffix,
                         chassis_value(&chassis.id, value),
                     ));
@@ -183,7 +261,7 @@ impl RemoteNeighbour {
                         PassValue::Integer(subtype as i64),
                     ));
                     rows.push(Row::at(
-                        lldp::remote::entry::LLDP_REM_CHASSIS_ID,
+                        mib.remote.chassis_id,
                         &suffix,
                         chassis_value(&chassis.id, value),
                     ));
@@ -194,20 +272,20 @@ impl RemoteNeighbour {
         if let Some(port) = &self.port {
             let (subtype, value) = port.id.to_snmp(port.encoding);
             rows.push(Row::at(
-                lldp::remote::entry::LLDP_REM_PORT_ID_SUBTYPE,
+                mib.remote.port_id_subtype,
                 &suffix,
                 PassValue::Integer(subtype as i64),
             ));
             rows.push(Row::at(
-                lldp::remote::entry::LLDP_REM_PORT_ID,
+                mib.remote.port_id,
                 &suffix,
                 port_value(&port.id, value),
             ));
         }
         for (base, text) in [
-            (lldp::remote::entry::LLDP_REM_PORT_DESC, &self.port_desc),
-            (lldp::remote::entry::LLDP_REM_SYS_NAME, &self.sys_name),
-            (lldp::remote::entry::LLDP_REM_SYS_DESC, &self.sys_desc),
+            (mib.remote.port_desc, &self.port_desc),
+            (mib.remote.sys_name, &self.sys_name),
+            (mib.remote.sys_desc, &self.sys_desc),
         ] {
             if let Some(text) = text {
                 rows.push(Row::at(base, &suffix, PassValue::Str(text.clone())));
@@ -274,6 +352,8 @@ impl LocalPort {
 /// A device's whole LLDP MIB: who it says it is, its local ports, and its neighbours.
 #[derive(Debug, Clone)]
 pub struct LldpTable {
+    /// Which MIB this table is served under. `new` picks the classic one; `in_mib` names another.
+    pub mib: &'static SimLldpMib,
     pub chassis: Advertised<LldpChassisId>,
     pub sys_name: String,
     pub sys_desc: Option<String>,
@@ -284,12 +364,19 @@ pub struct LldpTable {
 impl LldpTable {
     pub fn new(chassis: Advertised<LldpChassisId>, sys_name: &str) -> Self {
         Self {
+            mib: &CLASSIC,
             chassis,
             sys_name: sys_name.to_string(),
             sys_desc: None,
             local_ports: Vec::new(),
             neighbours: Vec::new(),
         }
+    }
+
+    /// Serve this table under a MIB other than the classic one.
+    pub fn in_mib(mut self, mib: &'static SimLldpMib) -> Self {
+        self.mib = mib;
+        self
     }
 
     pub fn sys_desc(mut self, desc: &str) -> Self {
@@ -311,21 +398,21 @@ impl LldpTable {
         let (subtype, value) = self.chassis.id.to_snmp(self.chassis.encoding);
         let mut rows = vec![
             Row::scalar(
-                lldp::local::LLDP_LOC_CHASSIS_ID_SUBTYPE,
+                self.mib.local.chassis_id_subtype,
                 PassValue::Integer(subtype as i64),
             ),
             Row::scalar(
-                lldp::local::LLDP_LOC_CHASSIS_ID,
+                self.mib.local.chassis_id,
                 chassis_value(&self.chassis.id, value),
             ),
             Row::scalar(
-                lldp::local::LLDP_LOC_SYS_NAME,
+                self.mib.local.sys_name,
                 PassValue::Str(self.sys_name.clone()),
             ),
         ];
         if let Some(desc) = &self.sys_desc {
             rows.push(Row::scalar(
-                lldp::local::LLDP_LOC_SYS_DESC,
+                self.mib.local.sys_desc,
                 PassValue::Str(desc.clone()),
             ));
         }
@@ -334,25 +421,25 @@ impl LldpTable {
             let suffix = [port.num as u64];
             let (subtype, value) = port.id.id.to_snmp(port.id.encoding);
             rows.push(Row::at(
-                lldp::local::LLDP_LOC_PORT_ID_SUBTYPE,
+                self.mib.local.port_id_subtype,
                 &suffix,
                 PassValue::Integer(subtype as i64),
             ));
             rows.push(Row::at(
-                lldp::local::LLDP_LOC_PORT_ID,
+                self.mib.local.port_id,
                 &suffix,
                 port_value(&port.id.id, value),
             ));
             if let Some(desc) = &port.desc {
                 rows.push(Row::at(
-                    lldp::local::LLDP_LOC_PORT_DESC,
+                    self.mib.local.port_desc,
                     &suffix,
                     PassValue::Str(desc.clone()),
                 ));
             }
         }
 
-        rows.extend(self.neighbours.iter().flat_map(RemoteNeighbour::wire_rows));
+        rows.extend(self.neighbours.iter().flat_map(|n| n.wire_rows(self.mib)));
         rows
     }
 }
@@ -381,13 +468,50 @@ mod tests {
             .collect()
     }
 
+    /// A table serves the OIDs its own MIB names, so the classic descriptor is what makes the
+    /// classic rows classic — not a constant reached for inside `wire_rows`.
+    ///
+    /// Asserted through the roots rather than by restating each column, so this fails when a
+    /// table stops being served where a walk of that MIB would look, and not when a column is
+    /// legitimately renamed.
+    #[test]
+    fn a_table_serves_the_oids_its_own_mib_names() {
+        let rows = LldpTable::new(
+            Advertised::octets(LldpChassisId::MacAddress("00:11:22:33:44:55".into())),
+            "switch-somewhere",
+        )
+        .local_ports(vec![LocalPort::new(
+            1,
+            Advertised::text(
+                LldpPortId::InterfaceName("Gi0/1".into()),
+                MacEncoding::AsciiLower,
+            ),
+        )])
+        .neighbours(vec![RemoteNeighbour::new(
+            1,
+            Advertised::octets(LldpChassisId::MacAddress("00:aa:bb:cc:dd:ee".into())),
+            Advertised::text(
+                LldpPortId::InterfaceName("Gi0/2".into()),
+                MacEncoding::AsciiLower,
+            ),
+        )])
+        .wire_rows();
+
+        assert!(!rows.is_empty());
+        let root = crate::daemon::discovery::integration::snmp::oids::oid_parts(CLASSIC.root);
+        assert!(
+            rows.iter().all(|row| row.oid.starts_with(&root)),
+            "every row must fall under the MIB the table names"
+        );
+    }
+
     /// The MIB's three-part index. Every device but one.
     #[test]
     fn a_neighbour_is_keyed_by_time_mark_port_and_index() {
         let rows = RemoteNeighbour::new(2, chassis(), port())
             .time_mark(TimeMark::At(31577700))
             .index(3)
-            .wire_rows();
+            .wire_rows(&CLASSIC);
         assert_eq!(
             suffixes(&rows, lldp::remote::entry::LLDP_REM_CHASSIS_ID),
             vec![vec![31577700, 2, 3]]
@@ -401,7 +525,7 @@ mod tests {
     fn a_neighbour_indexed_without_a_time_mark_is_one_sub_id_shorter() {
         let rows = RemoteNeighbour::new(1, chassis(), port())
             .time_mark(TimeMark::Omitted)
-            .wire_rows();
+            .wire_rows(&CLASSIC);
         assert_eq!(
             suffixes(&rows, lldp::remote::entry::LLDP_REM_CHASSIS_ID),
             vec![vec![1, 1]]
@@ -415,7 +539,7 @@ mod tests {
         let rows = RemoteNeighbour::new(2, chassis(), port())
             .defect(ChassisDefect::NoChassisColumns)
             .sys_name("switch-core-01")
-            .wire_rows();
+            .wire_rows(&CLASSIC);
 
         assert!(suffixes(&rows, lldp::remote::entry::LLDP_REM_CHASSIS_ID).is_empty());
         assert!(suffixes(&rows, lldp::remote::entry::LLDP_REM_CHASSIS_ID_SUBTYPE).is_empty());
@@ -433,7 +557,7 @@ mod tests {
     fn a_wrong_typed_subtype_is_served_as_a_string() {
         let rows = RemoteNeighbour::new(1, chassis(), port())
             .defect(ChassisDefect::SubtypeWrongType("macAddress"))
-            .wire_rows();
+            .wire_rows(&CLASSIC);
         let subtype = rows
             .iter()
             .find(|row| {

@@ -319,11 +319,14 @@ pub mod client;
 
 // IoT
 pub mod amazon_echo;
+pub mod apple_tv;
 pub mod bacnet;
 pub mod camera;
 pub mod chromecast;
 pub mod frigate;
 pub mod google_home;
+pub mod homekit_accessory;
+pub mod homepod;
 pub mod iot;
 pub mod nest_protect;
 pub mod nest_thermostat;
@@ -336,6 +339,7 @@ pub mod tuyasmart;
 pub mod wiz;
 
 // Printer
+pub mod airprint_printer;
 pub mod cups;
 pub mod hp_printer;
 pub mod jetdirect;

@@ -59,9 +59,14 @@
 		</nav>
 	{/if}
 
-	<!-- Sub-tab content -->
+	<!--
+		Sub-tab content. `relative` on the collapsed wrapper is required for the same
+		reason as the tab wrappers in `routes/+page.svelte` — without a containing
+		block, absolutely positioned descendants (`sr-only` spans) escape
+		`overflow: hidden` and add scroll height to `main`.
+	-->
 	{#each tabs as tab (tab.id)}
-		<div class={activeTab !== tab.id ? 'h-0 overflow-hidden' : ''}>
+		<div class={activeTab !== tab.id ? 'relative h-0 overflow-hidden' : ''}>
 			<tab.component {isReadOnly} isActive={activeTab === tab.id} />
 		</div>
 	{/each}
