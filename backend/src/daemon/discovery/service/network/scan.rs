@@ -39,7 +39,7 @@ use super::{
     DeepScanParams, DiscoveredHostData, FULL_SCAN_COST_CS, LATE_ARRIVAL_GRACE_PERIOD,
     LIGHT_SCAN_COST_CS, MAX_PROGRESS_REPORT_INTERVAL, NetworkScan, PROGRESS_ARP_PHASE,
     PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE, RESPONSIVENESS_COST_CS,
-    integration_cost_for_ip,
+    integration_cost_for_ip, liveness_probe_ports,
 };
 
 impl NetworkScan {
@@ -1064,11 +1064,9 @@ impl NetworkScan {
         // This avoids full 65k port scans on hosts that aren't online.
         let mut responsiveness_ports: HashSet<u16> = HashSet::new();
         if mac.is_none() {
-            let discovery_ports: Vec<u16> = Service::all_discovery_ports()
-                .iter()
-                .filter(|p| p.is_tcp())
-                .map(|p| p.number())
-                .collect();
+            // Every port the deep scan would look at, so this check can only skip an address
+            // nothing we were going to probe answers on. See `liveness_probe_ports`.
+            let discovery_ports: Vec<u16> = liveness_probe_ports(light_scan_ports);
 
             tracing::debug!(
                 ip = %ip,

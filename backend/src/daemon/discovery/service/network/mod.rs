@@ -161,6 +161,35 @@ pub(super) fn integration_cost_for_ip(
         .sum()
 }
 
+/// TCP ports the liveness check probes before committing to a deep scan of an address that
+/// produced no ARP reply.
+///
+/// This must be a superset of every port the deep scan would go on to look at, or the check
+/// rejects hosts the very next step would have identified. It previously read
+/// [`Service::all_discovery_ports`] directly, which by construction excludes any port that only
+/// appears in a `Pattern::Endpoint` or `Pattern::Header` — see `Pattern::ports`, which returns
+/// nothing for those so the port-scan phase doesn't connect to a port the endpoint probe is about
+/// to open anyway. Correct for the port-scan phase, wrong here: it left out 443, 8080, 3000, 5000,
+/// 8443, 9000 and ~48 others, so an HTTPS-only host — or a Home Assistant on 8123 — was declared
+/// unresponsive and dropped (GH #678). A full 65k scan didn't help either, since it runs behind
+/// this check.
+///
+/// So the set is assembled from what the scan itself would probe:
+/// - `light_scan_ports`, which already carries the discovery ports, any credential-required ports,
+///   and on a rescan the target host's own recorded ports (see [`NetworkScan::new`]) — the last of
+///   which is why a rescan of a known host no longer disagrees with what that host is known to run.
+/// - [`Service::endpoint_only_ports`], the ports the deep scan folds back in for endpoint probing.
+pub(super) fn liveness_probe_ports(light_scan_ports: &HashSet<u16>) -> Vec<u16> {
+    let mut ports: HashSet<u16> = light_scan_ports.clone();
+    ports.extend(
+        Service::endpoint_only_ports()
+            .iter()
+            .filter(|p| p.is_tcp())
+            .map(|p| p.number()),
+    );
+    ports.into_iter().collect()
+}
+
 pub(super) struct DeepScanParams<'a> {
     ip: IpAddr,
     subnet: &'a Subnet,
@@ -187,11 +216,44 @@ pub(super) struct DeepScanParams<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::integration_cost_for_ip;
+    use super::{integration_cost_for_ip, liveness_probe_ports};
     use crate::server::credentials::r#impl::mapping::{
         ContainerSocketQueryCredential, CredentialMapping, CredentialQueryPayload,
     };
+    use crate::server::services::r#impl::base::Service;
+    use std::collections::HashSet;
     use std::net::{IpAddr, Ipv4Addr};
+
+    /// The invariant the liveness check violated (GH #678): it probed
+    /// `Service::all_discovery_ports()`, which excludes every port reachable only through a
+    /// `Pattern::Endpoint`/`Pattern::Header`. The deep scan folds those back in, so the check was
+    /// rejecting addresses the next step would have identified — an HTTPS-only host, or a Home
+    /// Assistant on 8123, never got scanned.
+    ///
+    /// Asserted as a set relationship rather than against named ports so it tracks the service
+    /// definitions instead of restating them: adding, moving or retiring a definition can't break
+    /// it, but reintroducing the omission can.
+    #[test]
+    fn the_liveness_check_probes_every_port_the_scan_would() {
+        // Two addresses no service definition claims, standing in for the ports a credential or a
+        // rescan target contributes — those reach the check only via `light_scan_ports`.
+        let light: HashSet<u16> = HashSet::from([45001, 45002]);
+        let probed: HashSet<u16> = liveness_probe_ports(&light).into_iter().collect();
+
+        for port in &light {
+            assert!(
+                probed.contains(port),
+                "port {port} is in the scan's port set but not the liveness check's"
+            );
+        }
+        for port in Service::endpoint_only_ports().iter().filter(|p| p.is_tcp()) {
+            assert!(
+                probed.contains(&port.number()),
+                "endpoint-only port {} is probed by the deep scan but not the liveness check",
+                port.number()
+            );
+        }
+    }
 
     fn snmp_mapping() -> CredentialMapping<CredentialQueryPayload> {
         CredentialMapping {
