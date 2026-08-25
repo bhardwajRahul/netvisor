@@ -41,7 +41,7 @@ use super::{
     DeepScanParams, DiscoveredHostData, DispatchedAddresses, FULL_SCAN_COST_CS,
     LATE_ARRIVAL_GRACE_PERIOD, LIGHT_SCAN_COST_CS, LivenessEvidence, MAX_PROGRESS_REPORT_INTERVAL,
     NetworkScan, PROGRESS_ARP_PHASE, PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE,
-    RESPONSIVENESS_COST_CS, integration_cost_for_ip, liveness_probe_ports,
+    RESPONSIVENESS_COST_CS, integration_cost_for_ip, is_host_address, liveness_probe_ports,
 };
 
 impl NetworkScan {
@@ -226,6 +226,13 @@ impl NetworkScan {
             for subnet in &scanned_subnets {
                 for addr in subnet.base.cidr.iter().map(|a| a.address()) {
                     if !is_targeted(&addr) {
+                        continue;
+                    }
+                    // The network and broadcast addresses are skipped here and nowhere else: ARP
+                    // enumerates them harmlessly because nothing owns them and nothing replies,
+                    // while an echo request to the same address is answered by every responder on
+                    // the segment at once. See `is_host_address`.
+                    if !is_host_address(&subnet.base.cidr, addr) {
                         continue;
                     }
                     if let IpAddr::V4(ipv4) = addr {
