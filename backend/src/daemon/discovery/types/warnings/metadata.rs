@@ -256,10 +256,10 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
                 "{addresses} returned no {groups} data at all — the device stopped answering rather than reporting that it has none. Previously discovered values were kept rather than overwritten and refresh on the next complete scan."
             }
             Self::ClaimedCountReadCutShort => {
-                "{address} reports {source} as {expected}, and the read ended at {observed} without finishing. That is how much of the table is missing — the incomplete-walk line for this device says why it ended. The {observed} that were read are recorded."
+                "{address} reports {source} as {expected}, and the read ended at {observed} without finishing. That is how much of the table is missing — the incomplete-walk line for this device says why it ended. What was read is recorded."
             }
             Self::ClaimedCountUnderRead => {
-                "{address} reports {source} as {expected}, but only {observed} could be read. The {observed} that were read are recorded; the device may be misreporting its own count, or may be declining to serve the rest of the table to this credential."
+                "{address} reports {source} as {expected}, but only {observed} could be read. What was read is recorded; the device may be misreporting its own count, or may be declining to serve the rest of the table to this credential."
             }
             Self::ClaimedCapabilityReadCutShort => {
                 "{address} advertises {source}, and the read of its {group} ended without returning any. The incomplete-walk line for this device says why it ended; what the device advertises is why it is worth reading again rather than treating as empty."
@@ -268,25 +268,25 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
                 "{address} advertises {source}, but returned no {group} at all. A device that says it does this and then reports none of it is usually restricting what the credential may see — an SNMP view, or a VLAN context the query has to name."
             }
             Self::LldpLocalPortDropped => {
-                "{addresses} reported {dropped} of {total} LLDP neighbours on a local port that matches no interface on the device, so they are discarded and draw no links — those devices will look as though they have no LLDP neighbours. This usually means the switch numbers its LLDP ports separately from its interfaces, or did not answer for its LLDP port table."
+                "{addresses} reported LLDP neighbours on a local port that matches no interface on the device ({dropped} of {total}), so they are discarded and draw no links — those devices will look as though they have no LLDP neighbours. This usually means the switch numbers its LLDP ports separately from its interfaces, or did not answer for its LLDP port table."
             }
             Self::LldpLocalPortMisplaced => {
-                "{addresses} reported {misplaced} LLDP neighbours whose local port could not be identified but does match an interface number, so they are drawn against a port that may not be the right one."
+                "{addresses} reported LLDP neighbours whose local port could not be identified but does match an interface number ({misplaced} in total), so they are drawn against a port that may not be the right one."
             }
             Self::MalformedNeighboursWalkCutShort => {
-                "{addresses} reported {discarded} neighbour records without the identifier needed to match the far end, so {consequence}. The read of the column identifying the far end stopped before its end, so these records may come back on the next complete scan."
+                "{addresses} reported neighbour records without the identifier needed to match the far end ({discarded} in total), so {consequence}. The read of the column identifying the far end stopped before its end, so these records may come back on the next complete scan."
             }
             Self::MalformedNeighboursGhostRows => {
-                "{addresses} reported {discarded} neighbour records without the identifier needed to match the far end, so {consequence}. The rows appeared only in the columns describing each neighbour, never in the one identifying it, so there was no identifier to lose. Rescanning will not change this."
+                "{addresses} reported neighbour records without the identifier needed to match the far end ({discarded} in total), so {consequence}. The rows appeared only in the columns describing each neighbour, never in the one identifying it, so there was no identifier to lose. Rescanning will not change this."
             }
             Self::MalformedNeighboursIncompleteRecords => {
-                "{addresses} reported {discarded} neighbour records without the identifier needed to match the far end, so {consequence}. These neighbours were listed and then no identifier was supplied for them. The read finished, so rescanning will not change this."
+                "{addresses} reported neighbour records without the identifier needed to match the far end ({discarded} in total), so {consequence}. These neighbours were listed and then no identifier was supplied for them. The read finished, so rescanning will not change this."
             }
             Self::MalformedNeighboursUnexpectedType => {
-                "{addresses} reported {discarded} neighbour records without the identifier needed to match the far end, so {consequence}. The identifying column came back with a value of a type it cannot hold. Rescanning will not change this."
+                "{addresses} reported neighbour records without the identifier needed to match the far end ({discarded} in total), so {consequence}. The identifying column came back with a value of a type it cannot hold. Rescanning will not change this."
             }
             Self::MalformedNeighboursUnreadableIndex => {
-                "{addresses} reported {discarded} neighbour records without the identifier needed to match the far end, so {consequence}. Their position in the neighbour table could not be read, so they could not be tied to a local port. Rescanning will not change this."
+                "{addresses} reported neighbour records without the identifier needed to match the far end ({discarded} in total), so {consequence}. Their position in the neighbour table could not be read, so they could not be tied to a local port. Rescanning will not change this."
             }
             Self::SnmpCollectedNothing => {
                 "{addresses} answered SNMP but returned no interfaces, neighbours, addresses or forwarding data at all. The credential is working, so this is either a device that implements nothing beyond its system description, or one whose tables could not be read — the daemon log records which for each table."
@@ -334,19 +334,19 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
                 "Scan hit its time limit ({hours}h) — {hosts_not_scanned} host(s) not scanned. Raise Max Discovery Duration or rescan."
             }
             Self::LldpNeighbourNotFound => {
-                "{count} LLDP/CDP neighbours identify devices this network has not discovered, so they draw no links. This is expected where the far end is an endpoint or unmanaged device; a device that should have been scanned means the identifier it advertises is not one this network holds. {examples}"
+                "LLDP/CDP neighbours name devices this network has not discovered ({count} in total), so they draw no links. This is expected where the far end is an endpoint or unmanaged device; a device that should have been scanned means the identifier it advertises is not one this network holds. {examples}"
             }
             Self::LldpNeighbourAmbiguous => {
-                "{count} LLDP/CDP neighbours advertise an identifier that several hosts on this network hold, so none of them can be picked and no link is drawn. This is usually duplicate records for one device rather than a device that was missed. {examples}"
+                "LLDP/CDP neighbours advertise an identifier that several hosts on this network hold ({count} in total), so none of them can be picked and no link is drawn. This is usually duplicate records for one device rather than a device that was missed. {examples}"
             }
             Self::LldpPortNoStrategy => {
-                "{count} LLDP/CDP neighbours resolved to a device but advertise a port id of a subtype there is no lookup for, so Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
+                "LLDP/CDP neighbours resolved to a device but advertise a port id of a subtype there is no lookup for ({count} in total), so Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
             }
             Self::LldpPortNotFound => {
-                "{count} LLDP/CDP neighbours resolved to a device but no port on it matches the advertised port id, so Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
+                "LLDP/CDP neighbours resolved to a device but no port on it matches the advertised port id ({count} in total), so Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
             }
             Self::LldpPortAmbiguous => {
-                "{count} LLDP/CDP neighbours resolved to a device but several of its ports match the advertised port id, so it identifies none and Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
+                "LLDP/CDP neighbours resolved to a device but several of its ports match the advertised port id ({count} in total), so it identifies none and Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
             }
             Self::WarningsTruncated => {
                 "{elided} further warnings from this scan were not recorded, because it produced more than the scan record holds. Narrow what the scan covers to see the rest."

@@ -49,13 +49,24 @@
 	// TanStack Query for subnets
 	const subnetsQuery = useSubnetsQuery();
 	let subnetsData = $derived(subnetsQuery.data ?? []);
-	// Only a rescan names a target host, and we only need that one host's name —
-	// fetch it by id rather than downloading every host with its nested entities.
-	let rescanTargetIds = $derived(
-		payload.discovery_type.type === 'Rescan' ? [payload.discovery_type.target_host_id] : []
-	);
-	const hostsQuery = useHostsByIds(() => rescanTargetIds);
+	// A rescan names a target host, and the LLDP/CDP warnings name the devices that saw an
+	// unplaceable neighbour — both by id. Fetched by id rather than downloading every host with its
+	// nested entities, and as one set so the warnings do not need a query of their own.
+	let neededHostIds = $derived([
+		...new Set([
+			...(payload.discovery_type.type === 'Rescan' ? [payload.discovery_type.target_host_id] : []),
+			...(payload.warnings ?? []).flatMap((w) => [
+				...('host_id' in w ? [w.host_id] : []),
+				...('remote_host_id' in w ? [w.remote_host_id] : [])
+			])
+		])
+	]);
+	const hostsQuery = useHostsByIds(() => neededHostIds);
 	let hostsData = $derived(hostsQuery.data ?? []);
+	// Named rather than numbered: "which of my switches saw this" is the first thing an operator
+	// needs from an unresolved-neighbour warning. Unresolved ids render without the segment.
+	let hostNameById = $derived((id: string) => hostsData.find((h) => h.id === id)?.name);
+	let warningLines = $derived(renderWarnings(payload.warnings ?? [], hostNameById));
 
 	let duration = $derived(
 		payload.started_at && payload.finished_at
@@ -124,10 +135,7 @@
 <div class="space-y-4">
 	<!-- Status Banner -->
 	{#if payload.phase === 'Complete' && payload.warnings && payload.warnings.length > 0}
-		<InlineWarning
-			title={discovery_completedWithWarnings()}
-			items={renderWarnings(payload.warnings)}
-		/>
+		<InlineWarning title={discovery_completedWithWarnings()} items={warningLines} />
 	{:else if payload.phase === 'Complete'}
 		<InlineSuccess title={payload.phase} />
 	{:else if payload.phase === 'Failed'}
