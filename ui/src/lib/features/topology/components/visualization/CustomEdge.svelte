@@ -14,7 +14,12 @@
 	import { createColorHelper, type Color } from '$lib/shared/utils/styling';
 	import type { TopologyEdge, RenderableTopology } from '../../types/base';
 	import { isExporting, hoveredEdgeType } from '../../interactions';
-	import { isDottedEdge, isOverlayEdge } from '../../layout/edge-classification';
+	import {
+		getLinkEvidenceTag,
+		isDottedEdge,
+		isOverlayEdge
+	} from '../../layout/edge-classification';
+	import Tag from '$lib/shared/components/data/Tag.svelte';
 
 	let {
 		id,
@@ -61,6 +66,15 @@
 		(anyEdgeData?.isEndpointSearchHidden as boolean) ?? false
 	);
 	const edgeTypeMetadata = $derived(edgeData ? edgeTypes.getMetadata(edgeData.edge_type) : null);
+
+	// Whether the evidence for this link has gone stale while both its ports carry on being
+	// scanned. Additive — an amber chip beside the label, matching the ruling the stale pill on a
+	// node already follows: stroke, dash and opacity are all spoken for (dashed means
+	// device-level in L2, opacity is the search/filter channel), so staleness gets its own mark
+	// rather than overloading one of theirs.
+	const linkEvidenceTag = $derived(
+		edgeData ? getLinkEvidenceTag(edgeData, edgeTypes.getName(edgeData.edge_type)) : null
+	);
 
 	// Get dependency reactively - updates when dependencies store changes
 	let group = $derived.by(() => {
@@ -373,14 +387,17 @@
 			class={useMultiColorDash ? 'dashed-overlay' : ''}
 		/>
 
-		{#if !isBundle && label}
+		<!-- A stale link keeps the label card even where the label itself was stripped (an edge
+		     wholly inside one container drops it), or the one link that has stopped being
+		     evidenced would be the one carrying no mark. -->
+		{#if !isBundle && (label || linkEvidenceTag)}
 			<EdgeLabel
 				x={labelX + labelOffsetX}
 				y={labelY + labelOffsetY}
 				style="background: none; pointer-events: none;"
 			>
 				<div
-					class="card text-secondary nopan"
+					class="card text-secondary nopan flex items-center gap-2"
 					style="font-size: 12px; font-weight: 500; padding: 0.5rem 0.75rem; border-color: var(--color-border); cursor: {isDragging
 						? 'grabbing'
 						: 'grab'}; pointer-events: auto; opacity: {labelOpacity}; transition: opacity 0.2s ease-in-out;"
@@ -391,7 +408,10 @@
 					ondrag={onDrag}
 					ondragend={onDragEnd}
 				>
-					{label}
+					{#if label}{label}{/if}
+					{#if linkEvidenceTag}
+						<Tag {...linkEvidenceTag} pill nativeTooltip />
+					{/if}
 				</div>
 			</EdgeLabel>
 		{/if}

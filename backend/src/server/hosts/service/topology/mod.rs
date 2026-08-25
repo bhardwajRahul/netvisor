@@ -180,10 +180,25 @@ impl HostService {
             self.storage.clone(),
         );
 
+        // The instant before which neighbour evidence counts as stale, from the network's own
+        // window — the same helper the `?stale=` list filter uses, so a link and a host cannot
+        // disagree about what stale means. A network that no longer exists yields no cutoff, and
+        // the fallback makes every row read current: an orphaned FK must never tear bindings down.
+        let evidence_cutoff = self
+            .network_service
+            .stale_cutoffs(&[network_id])
+            .await?
+            .into_iter()
+            .find(|(id, _)| *id == network_id)
+            .map(|(_, cutoff)| cutoff)
+            .unwrap_or(DateTime::<Utc>::MIN_UTC);
+
         // Who names whom, and which of those pairs are unambiguous in both directions. Computed
         // before anything is written, because it is the authority both for the reciprocal tier
         // below and for deciding whether an existing MAC-matched binding still stands.
-        let mut adjacency = self.build_neighbor_adjacency(network_id, &resolver).await?;
+        let mut adjacency = self
+            .build_neighbor_adjacency(network_id, &resolver, evidence_cutoff)
+            .await?;
         let reciprocal = std::mem::take(&mut adjacency.reciprocal);
         let host_of = std::mem::take(&mut adjacency.host_of);
 

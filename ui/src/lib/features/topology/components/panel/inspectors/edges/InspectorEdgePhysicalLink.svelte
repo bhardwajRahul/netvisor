@@ -5,7 +5,14 @@
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import type { RenderableTopology } from '$lib/features/topology/types/base';
-	import { common_source, common_target } from '$lib/paraglide/messages';
+	import { common_lastSeen, common_source, common_target } from '$lib/paraglide/messages';
+	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import { edgeTypes } from '$lib/shared/stores/metadata';
+	import {
+		getFreshnessTag,
+		lastSeenLabel,
+		neighborEvidenceSubject
+	} from '$lib/shared/utils/freshness';
 
 	let {
 		sourceEntityId,
@@ -36,12 +43,43 @@
 	let targetHost = $derived(
 		targetInterface ? topology?.hosts.find((h) => h.id === targetInterface.host_id) : null
 	);
+
+	// When the adjacency itself was last evidenced, as opposed to when its ports were last
+	// observed — the two diverge the moment a neighbour record stops arriving, and the ports go on
+	// being seen every scan. Shown whether or not it is stale, so the timestamp is reachable here
+	// even where the edge label (and its chip) was stripped.
+	const networksQuery = useNetworksQuery();
+	let evidenceEndpoint = $derived(
+		[sourceInterface, targetInterface]
+			.filter((i) => i?.neighbor_seen_at)
+			.sort((a, b) => (a!.neighbor_seen_at! < b!.neighbor_seen_at! ? -1 : 1))[0]
+	);
+	let evidenceNetwork = $derived(
+		(networksQuery.data ?? []).find((n) => n.id === evidenceEndpoint?.network_id)
+	);
+	let evidenceTag = $derived(
+		evidenceEndpoint
+			? getFreshnessTag(neighborEvidenceSubject(evidenceEndpoint), evidenceNetwork, {
+					entityTypeLabel: edgeTypes.getName('PhysicalLink')
+				})
+			: null
+	);
 </script>
 
 <div class="space-y-3">
 	{#if protocol}
 		<div class="flex items-center gap-2">
 			<Tag label={protocol} color={protocol == 'CDP' ? 'Blue' : 'Green'} />
+		</div>
+	{/if}
+
+	{#if evidenceEndpoint}
+		<div class="flex items-center gap-2 text-sm">
+			<span class="text-secondary font-medium">{common_lastSeen()}</span>
+			<span>{lastSeenLabel(neighborEvidenceSubject(evidenceEndpoint))}</span>
+			{#if evidenceTag}
+				<Tag {...evidenceTag} pill />
+			{/if}
 		</div>
 	{/if}
 

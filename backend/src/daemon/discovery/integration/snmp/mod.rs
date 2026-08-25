@@ -1429,6 +1429,8 @@ fn convert_snmp_if_entry(
         mac_address: entry.if_phys_address, // MAC from SNMP ifPhysAddress
         ip_address_id: None,                // Linked server-side via MAC matching
         neighbor: None,                     // Resolved server-side from LLDP/CDP data
+        // Stamped server-side from the evidence carried in this payload, on ingest.
+        neighbor_seen_at: None,
         // LLDP raw data
         lldp_chassis_id,
         lldp_port_id,

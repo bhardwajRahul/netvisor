@@ -215,6 +215,12 @@ impl InterfaceService {
 
         let existing = self.find_matching_existing(&entry, claimed).await?;
 
+        // Before either preserve step: `entry` still holds exactly what this scan carried, and
+        // `preserve_uncollected_data` below may put the *previous* scan's neighbour identifiers
+        // back on it. Stamping after that would call a link freshly evidenced every scan while its
+        // neighbour walk has in fact been failing for a month.
+        entry.stamp_neighbor_evidence(existing.as_ref());
+
         if let Some(existing_entry) = existing {
             let mut updated = entry;
             updated.id = existing_entry.id;

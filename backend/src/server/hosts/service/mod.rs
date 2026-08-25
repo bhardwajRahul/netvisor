@@ -18,6 +18,7 @@ use crate::server::{
         service::InterfaceService,
     },
     ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},
+    networks::service::NetworkService,
     ports::{r#impl::base::Port, service::PortService},
     services::{
         r#impl::{base::Service, definitions::ServiceDefinitionExt},
@@ -78,6 +79,9 @@ pub struct HostService {
     credential_service: Arc<CredentialService>,
     subnet_service: Arc<SubnetService>,
     vlan_service: Arc<VlanService>,
+    /// Reads the network's staleness window, which is what decides whether a link's neighbour
+    /// evidence still counts. Via the service, never the storage layer.
+    network_service: Arc<NetworkService>,
     event_bus: Arc<EventBus>,
     entity_tag_service: Arc<EntityTagService>,
 }

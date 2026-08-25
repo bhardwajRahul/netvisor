@@ -14400,19 +14400,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-08-16T21:33:14.598482Z",
+              "created_at": "2026-08-24T23:53:28.526832Z",
               "first_discovery_id": null,
-              "id": "20d57f9d-e757-4d0c-84b7-ded864bc3129",
+              "id": "08a407f2-deb2-4da2-94a2-0cccc9cbb0c7",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-16T21:33:14.598482Z",
+              "last_seen_at": "2026-08-24T23:53:28.526832Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-16T21:33:14.598482Z",
-              "valid_from": "2026-08-16T21:33:14.598482Z",
+              "updated_at": "2026-08-24T23:53:28.526832Z",
+              "valid_from": "2026-08-24T23:53:28.526832Z",
               "valid_to": null
             }
           },
@@ -15653,6 +15653,7 @@
                   "lldp_sys_name": null,
                   "mac_address": "DE:AD:BE:EF:CA:FE",
                   "neighbor": null,
+                  "neighbor_seen_at": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "oper_status": "Up",
                   "speed_bps": 1000000000,
@@ -15707,19 +15708,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-08-16T21:33:14.574414Z",
+                      "created_at": "2026-08-24T23:53:28.511375Z",
                       "first_discovery_id": null,
-                      "id": "b7f912ee-2ae4-4fb7-b7da-d04c5b3e1571",
+                      "id": "bba6bda6-86e2-4980-b7b6-b36a5752ca41",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-08-16T21:33:14.574414Z",
+                      "last_seen_at": "2026-08-24T23:53:28.511375Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-08-16T21:33:14.574414Z",
-                      "valid_from": "2026-08-16T21:33:14.574414Z",
+                      "updated_at": "2026-08-24T23:53:28.511375Z",
+                      "valid_from": "2026-08-24T23:53:28.511375Z",
                       "valid_to": null
                     }
                   ],
@@ -15733,7 +15734,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Google Home",
+                  "service_definition": "Amazon Echo",
                   "source": {
                     "type": "Manual"
                   },
@@ -16936,19 +16937,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-08-16T21:33:14.590050Z",
+                  "created_at": "2026-08-24T23:53:28.521705Z",
                   "first_discovery_id": null,
-                  "id": "e42af11d-e271-4c92-882c-6804441dad7b",
+                  "id": "0cd838b8-3dbb-4564-87c2-b97f4556da11",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-16T21:33:14.590050Z",
+                  "last_seen_at": "2026-08-24T23:53:28.521705Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-16T21:33:14.590050Z",
-                  "valid_from": "2026-08-16T21:33:14.590050Z",
+                  "updated_at": "2026-08-24T23:53:28.521705Z",
+                  "valid_from": "2026-08-24T23:53:28.521705Z",
                   "valid_to": null
                 }
               ],
@@ -16962,7 +16963,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Google Home",
+              "service_definition": "Amazon Echo",
               "source": {
                 "type": "Manual"
               },
@@ -19022,19 +19023,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-08-16T21:33:14.574839Z",
+          "created_at": "2026-08-24T23:53:28.511640Z",
           "first_discovery_id": null,
-          "id": "24c9a034-f9be-447a-84ce-80592117e2e3",
+          "id": "33c885a5-feb6-4a17-9479-4fba4402705c",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-08-16T21:33:14.574839Z",
+          "last_seen_at": "2026-08-24T23:53:28.511640Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-08-16T21:33:14.574839Z",
-          "valid_from": "2026-08-16T21:33:14.574839Z",
+          "updated_at": "2026-08-24T23:53:28.511640Z",
+          "valid_from": "2026-08-24T23:53:28.511640Z",
           "valid_to": null
         }
       },
@@ -19672,7 +19673,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Google Home",
+              "service_definition": "Amazon Echo",
               "tags": [],
               "virtualization_metadata": null,
               "virtualization_service_id": null
@@ -23175,6 +23176,7 @@
               "lldp_sys_name": null,
               "mac_address": "DE:AD:BE:EF:CA:FE",
               "neighbor": null,
+              "neighbor_seen_at": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "oper_status": "Up",
               "speed_bps": 1000000000,
@@ -23229,19 +23231,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-08-16T21:33:14.573951Z",
+                  "created_at": "2026-08-24T23:53:28.511075Z",
                   "first_discovery_id": null,
-                  "id": "da3406ff-3ee7-4560-a62b-a43be8ffd82d",
+                  "id": "cf5715ea-bb22-402b-b1e9-ce07963f985a",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-16T21:33:14.573951Z",
+                  "last_seen_at": "2026-08-24T23:53:28.511075Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-16T21:33:14.573951Z",
-                  "valid_from": "2026-08-16T21:33:14.573951Z",
+                  "updated_at": "2026-08-24T23:53:28.511075Z",
+                  "valid_from": "2026-08-24T23:53:28.511075Z",
                   "valid_to": null
                 }
               ],
@@ -23255,7 +23257,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Google Home",
+              "service_definition": "Amazon Echo",
               "source": {
                 "type": "Manual"
               },
@@ -24188,6 +24190,15 @@
                 "description": "Resolved neighbor connection (mutually exclusive: either Interface or Host)"
               }
             ]
+          },
+          "neighbor_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a scan last carried evidence that something is adjacent to this port.\n\nThe freshness subject for the *link*, as `last_seen_at` is for the port. A port keeps\nappearing in the ifTable long after its neighbour record stops arriving, so `last_seen_at`\ncannot tell a live adjacency from one whose evidence has vanished. Judged against the same\n`Network::stale_cutoff` as every other freshness verdict.\n\n`None` means no scan has ever carried evidence for this row, and reads as *unknown* —\nnever as stale. Server-owned: stamped on the discovery ingest path, never sent by a daemon.",
+            "readOnly": true
           },
           "network_id": {
             "type": "string",
@@ -26156,6 +26167,7 @@
                     "lldp_sys_name": null,
                     "mac_address": "DE:AD:BE:EF:CA:FE",
                     "neighbor": null,
+                    "neighbor_seen_at": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "oper_status": "Up",
                     "speed_bps": 1000000000,
@@ -26210,19 +26222,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-08-16T21:33:14.563709Z",
+                        "created_at": "2026-08-24T23:53:28.504747Z",
                         "first_discovery_id": null,
-                        "id": "2158a7fe-c67e-476f-b264-735bd49ba6d9",
+                        "id": "78fd9db8-6720-40fe-a4c8-8f0d44c09c20",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-08-16T21:33:14.563709Z",
+                        "last_seen_at": "2026-08-24T23:53:28.504747Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-08-16T21:33:14.563709Z",
-                        "valid_from": "2026-08-16T21:33:14.563709Z",
+                        "updated_at": "2026-08-24T23:53:28.504747Z",
+                        "valid_from": "2026-08-24T23:53:28.504747Z",
                         "valid_to": null
                       }
                     ],
@@ -26236,7 +26248,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Google Home",
+                    "service_definition": "Amazon Echo",
                     "source": {
                       "type": "Manual"
                     },
@@ -26372,19 +26384,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-08-16T21:33:14.587943Z",
+                    "created_at": "2026-08-24T23:53:28.520758Z",
                     "first_discovery_id": null,
-                    "id": "e90e1cc5-4e86-4994-9bbd-c0f8cca24a0c",
+                    "id": "3fccabe0-639d-46de-b79a-f2dc7a99ef5f",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-08-16T21:33:14.587943Z",
+                    "last_seen_at": "2026-08-24T23:53:28.520758Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-08-16T21:33:14.587943Z",
-                    "valid_from": "2026-08-16T21:33:14.587943Z",
+                    "updated_at": "2026-08-24T23:53:28.520758Z",
+                    "valid_from": "2026-08-24T23:53:28.520758Z",
                     "valid_to": null
                   }
                 ],
@@ -26398,7 +26410,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Google Home",
+                "service_definition": "Amazon Echo",
                 "source": {
                   "type": "Manual"
                 },
@@ -28376,19 +28388,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-08-16T21:33:14.574753Z",
+              "created_at": "2026-08-24T23:53:28.511580Z",
               "first_discovery_id": null,
-              "id": "3bd18329-1797-44d6-87cf-33cefba030ed",
+              "id": "8ee4a127-e56b-483a-80d4-64200a1e52f8",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-16T21:33:14.574753Z",
+              "last_seen_at": "2026-08-24T23:53:28.511580Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-16T21:33:14.574753Z",
-              "valid_from": "2026-08-16T21:33:14.574753Z",
+              "updated_at": "2026-08-24T23:53:28.511580Z",
+              "valid_from": "2026-08-24T23:53:28.511580Z",
               "valid_to": null
             }
           ],
@@ -28402,7 +28414,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Google Home",
+          "service_definition": "Amazon Echo",
           "source": {
             "type": "Manual"
           },
@@ -29600,7 +29612,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "3b10e2e3-054c-403b-af4a-6322942754d0",
+                  "id": "6a4b748d-bdd7-4df5-9a12-76c97f1517df",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -29610,23 +29622,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "87cc9a7d-a263-4c9b-89d3-e66b96bb8569",
+                  "id": "b247842f-02d5-479f-ad97-6e46fe411d31",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "282f9ae4-79ad-4642-abeb-95183b4e90be",
+                  "id": "e74084c5-5dc0-4cab-9947-2d816a290922",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "329551de-fd2e-4dcc-98db-d35f343f1fb1",
+                  "id": "8cad1720-76c4-429f-b85e-0524e1508224",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "87cc9a7d-a263-4c9b-89d3-e66b96bb8569",
+                  "id": "b247842f-02d5-479f-ad97-6e46fe411d31",
                   "rule": "ByHost"
                 }
               ]
@@ -29656,19 +29668,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "73aaadcf-2b1a-42e8-9f90-4a58968e3dda",
+                "id": "3cfc4105-2f24-4b94-8727-6dcb2117e1cc",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "134bf26c-33e4-4620-81c0-864d767284fe",
+                "id": "f8d15480-7d52-4715-8d78-f1269f2e469c",
                 "rule": "ByVLAN"
               },
               {
-                "id": "b57181b5-941f-499d-a975-e2345e2e3b05",
+                "id": "3aada207-5f33-489b-82ba-c58e1a6fff43",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "cce27a35-11b2-4f9b-8eb8-5203e861c4f7",
+                "id": "c541b65a-2342-4cfd-9903-378dd7e9e585",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -29686,7 +29698,7 @@
                 }
               },
               {
-                "id": "3720a046-9112-4694-8541-c9a67fef19d2",
+                "id": "33dd2396-3ad0-41c8-a953-237713940a31",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -29695,15 +29707,15 @@
                 }
               },
               {
-                "id": "0c512b2e-3e03-4c0a-b2ae-b7043b847243",
+                "id": "b39c15ef-0983-4a0e-bddd-278aad8e7c0c",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "2e1a1c48-7da7-4e05-a9be-f939515b72ec",
+                "id": "67c761b7-f0a4-49b6-8577-cf0c1cf5b2e1",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "17425e24-f87d-4a2e-aa82-c9f5ac051c37",
+                "id": "bf17a683-ac9f-45fc-9c40-b0453a2d2c30",
                 "rule": "ByStack"
               }
             ]

@@ -444,6 +444,7 @@ pub fn interface() -> Interface {
             mac_address: Some(MacAddress::new([0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE])),
             ip_address_id: Some(ids::INTERFACE),
             neighbor: None,
+            neighbor_seen_at: None,
             lldp_chassis_id: None,
             lldp_port_id: None,
             lldp_sys_name: None,

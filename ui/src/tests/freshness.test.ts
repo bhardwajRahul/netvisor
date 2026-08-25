@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { entityFreshness } from '$lib/shared/utils/freshness';
+import { entityFreshness, neighborEvidenceFreshness } from '$lib/shared/utils/freshness';
 import type { Network } from '$lib/features/networks/types';
 import type { components } from '$lib/api/schema';
 
@@ -111,5 +111,41 @@ describe('no parent inheritance in the UI', () => {
 		expect(entityFreshness(freshChild, net)).toBe('current');
 		// The host being stale is irrelevant to the child's own verdict.
 		expect(entityFreshness(entity(100), net)).toBe('stale');
+	});
+});
+
+// A link's freshness subject is the adjacency, not the port. The port keeps appearing in the
+// ifTable long after its neighbour record stops arriving, so `last_seen_at` cannot tell a live
+// link from one whose evidence has completely disappeared.
+describe('neighborEvidenceFreshness', () => {
+	it('calls a link stale while both its ports are still being scanned', () => {
+		freezeClock();
+		const net = network(24);
+		// The reproduction: the port is observed every scan, but nothing has said anything is
+		// attached to it in a week.
+		const port = {
+			...entity(0.2),
+			neighbor_seen_at: new Date(NOW - 24 * 7 * HOUR_MS).toISOString()
+		};
+
+		expect(entityFreshness(port, net)).toBe('current');
+		expect(neighborEvidenceFreshness(port, net)).toBe('stale');
+	});
+
+	it('reads a port that has never carried evidence as unknown rather than stale', () => {
+		freezeClock();
+		const net = network(24);
+
+		// Every row predating the column arrives this way, and none of them may be flagged.
+		expect(neighborEvidenceFreshness({ neighbor_seen_at: null }, net)).toBe('current');
+		expect(neighborEvidenceFreshness({}, net)).toBe('current');
+	});
+
+	it('judges the adjacency on the same window as everything else on the network', () => {
+		freezeClock();
+		const port = { neighbor_seen_at: new Date(NOW - 2 * HOUR_MS).toISOString() };
+
+		expect(neighborEvidenceFreshness(port, network(1))).toBe('stale');
+		expect(neighborEvidenceFreshness(port, network(24 * 30))).toBe('current');
 	});
 });
