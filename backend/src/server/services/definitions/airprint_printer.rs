@@ -26,8 +26,8 @@ impl ServiceDefinition for AirPrintPrinter {
     /// keep their higher-confidence claim; this covers everything else that advertises IPP.
     fn discovery_pattern(&self) -> Pattern<'_> {
         Pattern::AnyOf(vec![
-            Pattern::DnsSdService(DnsSdServiceType::IPP),
-            Pattern::DnsSdService(DnsSdServiceType::PDL_DATASTREAM),
+            Pattern::DnsSd(DnsSdServiceType::IPP, None),
+            Pattern::DnsSd(DnsSdServiceType::PDL_DATASTREAM, None),
         ])
     }
 

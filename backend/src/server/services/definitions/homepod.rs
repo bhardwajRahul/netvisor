@@ -17,18 +17,17 @@ impl ServiceDefinition for HomePod {
         ServiceCategory::Media
     }
 
-    /// AirPlay plus RAOP — AirPlay's audio half — and deliberately *not* `_companion-link._tcp`,
-    /// which is how this stays distinct from [`super::apple_tv::AppleTv`]. An Apple TV advertises
-    /// AirPlay and RAOP as well, so without the negative arm the two definitions would both match
-    /// every Apple media device on the link.
+    /// Matched on the AirPlay TXT `model`, which reads `AudioAccessory5,1` and similar.
+    ///
+    /// An earlier version asked for `_airplay._tcp` and `_raop._tcp` with no
+    /// `_companion-link._tcp`, reasoning only about how to tell a HomePod from an Apple TV. A live
+    /// scan then labelled two Sonos speakers HomePods: every AirPlay 2 speaker advertises exactly
+    /// that combination, and the definition had no way to say *whose* speaker it was. The Sonos
+    /// announces `model=Five` and `manufacturer=Sonos` in the same TXT record that a HomePod uses
+    /// to announce itself, so matching the model is both narrower and simpler than the three
+    /// service-type arms it replaces.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::AllOf(vec![
-            Pattern::DnsSdService(DnsSdServiceType::AIRPLAY),
-            Pattern::DnsSdService(DnsSdServiceType::RAOP),
-            Pattern::Not(Box::new(Pattern::DnsSdService(
-                DnsSdServiceType::COMPANION_LINK,
-            ))),
-        ])
+        Pattern::DnsSd(DnsSdServiceType::AIRPLAY, Some(("model", "AudioAccessory")))
     }
 
     fn logo_url(&self) -> &'static str {

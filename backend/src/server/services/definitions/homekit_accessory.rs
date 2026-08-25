@@ -21,14 +21,15 @@ impl ServiceDefinition for HomeKitAccessory {
     /// HAP runs on an ephemeral port the accessory picks and only announces over mDNS — so this
     /// whole population was previously invisible to a port-scan-driven discovery.
     ///
-    /// Generic on purpose: the accessory's TXT `ci=` category would narrow it to a lock or a
-    /// sensor, but a pattern cannot read TXT values yet, so one definition covering the protocol
-    /// beats guessing. Excludes the Apple hubs, which advertise HAP as well but are their own
-    /// devices.
+    /// Generic on purpose: the accessory's TXT `ci=` category would narrow this to a lock or a
+    /// sensor, and `Pattern::DnsSd` can now read it, but the category is a number whose meaning is
+    /// defined by Apple's accessory profiles — worth splitting only against real devices to check
+    /// against, which is how the Apple TV and HomePod definitions had to be corrected. Excludes
+    /// the Apple hubs, which advertise HAP as well but are their own devices.
     fn discovery_pattern(&self) -> Pattern<'_> {
         Pattern::AllOf(vec![
-            Pattern::DnsSdService(DnsSdServiceType::HOMEKIT),
-            Pattern::Not(Box::new(Pattern::DnsSdService(DnsSdServiceType::AIRPLAY))),
+            Pattern::DnsSd(DnsSdServiceType::HOMEKIT, None),
+            Pattern::Not(Box::new(Pattern::DnsSd(DnsSdServiceType::AIRPLAY, None))),
         ])
     }
 

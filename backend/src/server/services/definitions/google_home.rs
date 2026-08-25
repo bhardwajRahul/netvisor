@@ -35,7 +35,7 @@ impl ServiceDefinition for GoogleHome {
                     Pattern::Port(PortType::new_tcp(8008)),
                     Pattern::Port(PortType::new_tcp(8009)),
                 ]),
-                Pattern::DnsSdService(DnsSdServiceType::GOOGLE_CAST),
+                Pattern::DnsSd(DnsSdServiceType::GOOGLE_CAST, None),
             ]),
         ])
     }
