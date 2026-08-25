@@ -14,7 +14,13 @@
 	import { createColorHelper, type Color } from '$lib/shared/utils/styling';
 	import type { TopologyEdge, RenderableTopology } from '../../types/base';
 	import { isExporting, hoveredEdgeType } from '../../interactions';
-	import { isDottedEdge, isOverlayEdge } from '../../layout/edge-classification';
+	import {
+		getLinkEvidenceTag,
+		isDottedEdge,
+		isOverlayEdge
+	} from '../../layout/edge-classification';
+	import Tag from '$lib/shared/components/data/Tag.svelte';
+	import { ELEMENT_TEXT_WIDTH_PX } from '../../pipeline/build-flow-nodes';
 
 	let {
 		id,
@@ -45,6 +51,30 @@
 
 	const edgeData = $derived(data as TopologyEdge | undefined);
 
+	/**
+	 * Half of what a name gets on an element card — an edge label carries two of them plus a
+	 * separator, where a card carries one.
+	 *
+	 * Truncating by width rather than character count is what makes this match the card: both use
+	 * the same CSS ellipsis at the same 12px, so a name that fits on a card fits here in the same
+	 * proportion regardless of how wide its glyphs are.
+	 */
+	const ENDPOINT_MAX_WIDTH_PX = ELEMENT_TEXT_WIDTH_PX / 2;
+
+	/**
+	 * The two endpoint names in a `a ↔ b` label, or `null` for any other shape.
+	 *
+	 * Both endpoint-naming edge types build their label this way — `PhysicalLink` from two
+	 * interface names, `NeighborLink` from two host names — and either half can be long on its own.
+	 * Splitting lets each side truncate independently, so the separator survives even when both
+	 * ends are cut; a single truncation across the whole string loses it and with it the only clue
+	 * that the label names two things.
+	 */
+	let labelEndpoints = $derived.by((): [string, string] | null => {
+		const parts = label?.split(' ↔ ');
+		return parts?.length === 2 ? [parts[0], parts[1]] : null;
+	});
+
 	// Bundle detection
 	const anyEdgeData = $derived(data as Record<string, unknown> | undefined);
 	let isBundle = $derived(!!anyEdgeData?.isBundle);
@@ -61,6 +91,15 @@
 		(anyEdgeData?.isEndpointSearchHidden as boolean) ?? false
 	);
 	const edgeTypeMetadata = $derived(edgeData ? edgeTypes.getMetadata(edgeData.edge_type) : null);
+
+	// Whether the evidence for this link has gone stale while both its ports carry on being
+	// scanned. Additive — an amber chip beside the label, matching the ruling the stale pill on a
+	// node already follows: stroke, dash and opacity are all spoken for (dashed means
+	// device-level in L2, opacity is the search/filter channel), so staleness gets its own mark
+	// rather than overloading one of theirs.
+	const linkEvidenceTag = $derived(
+		edgeData ? getLinkEvidenceTag(edgeData, topology?.interfaces ?? []) : null
+	);
 
 	// Get dependency reactively - updates when dependencies store changes
 	let group = $derived.by(() => {
@@ -373,14 +412,17 @@
 			class={useMultiColorDash ? 'dashed-overlay' : ''}
 		/>
 
-		{#if !isBundle && label}
+		<!-- A stale link keeps the label card even where the label itself was stripped (an edge
+		     wholly inside one container drops it), or the one link that has stopped being
+		     evidenced would be the one carrying no mark. -->
+		{#if !isBundle && (label || linkEvidenceTag)}
 			<EdgeLabel
 				x={labelX + labelOffsetX}
 				y={labelY + labelOffsetY}
 				style="background: none; pointer-events: none;"
 			>
 				<div
-					class="card text-secondary nopan"
+					class="card text-secondary nopan flex items-center gap-2"
 					style="font-size: 12px; font-weight: 500; padding: 0.5rem 0.75rem; border-color: var(--color-border); cursor: {isDragging
 						? 'grabbing'
 						: 'grab'}; pointer-events: auto; opacity: {labelOpacity}; transition: opacity 0.2s ease-in-out;"
@@ -391,7 +433,20 @@
 					ondrag={onDrag}
 					ondragend={onDragEnd}
 				>
-					{label}
+					{#if labelEndpoints}
+						<span class="flex min-w-0 items-center gap-1" title={label}>
+							<span class="truncate" style="max-width: {ENDPOINT_MAX_WIDTH_PX}px;"
+								>{labelEndpoints[0]}</span
+							>
+							<span class="flex-shrink-0">↔</span>
+							<span class="truncate" style="max-width: {ENDPOINT_MAX_WIDTH_PX}px;"
+								>{labelEndpoints[1]}</span
+							>
+						</span>
+					{:else if label}{label}{/if}
+					{#if linkEvidenceTag}
+						<Tag {...linkEvidenceTag} pill nativeTooltip />
+					{/if}
 				</div>
 			</EdgeLabel>
 		{/if}

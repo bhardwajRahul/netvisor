@@ -24,16 +24,13 @@ import type { Color } from '$lib/shared/utils/styling';
 import type { TagProps } from '$lib/shared/components/data/types';
 import {
 	common_beta,
-	common_network,
 	common_testing,
 	common_unknown,
 	credentials_betaTooltip,
 	credentials_unofficialApi,
 	credentials_unofficialApiTooltip,
 	credentials_targetNetworkTooltip,
-	credentials_targetDaemonHost,
 	credentials_targetDaemonHostTooltip,
-	credentials_targetHost,
 	credentials_targetHostTooltip,
 	snmp_adminStatusDown,
 	snmp_adminStatusUp,
@@ -127,31 +124,36 @@ export function getOperStatusLabels(): Record<IfOperStatus, string> {
  * Single source of truth for target display properties (color, label, tooltip).
  * Targets are the unified replacement for scope models.
  *
- * A scope chip, coloured by the entity it actually reaches.
+ * A scope chip, drawn as the entity it actually reaches.
  *
- * Each scope names a real entity, so it borrows that entity's colour rather
- * than an arbitrary one: a network scope reads as a network, a daemon-host
- * scope as a daemon, and a remote-host scope as a host. That way a scope means
- * the same colour here as the thing it points at does everywhere else.
+ * Each scope names a real entity, so it borrows that entity's colour *and* icon rather than an
+ * arbitrary one: a network scope reads as a network, a daemon-host scope as a daemon, and a
+ * remote-host scope as a host. That way a scope means the same thing here as the thing it points
+ * at does everywhere else.
+ *
+ * Carries no label, so the chip renders as the icon alone. A type commonly has two or three of
+ * these, and spelled out they crowd out the tags that vary — beta and unofficial-API — which are
+ * the ones a reader has to notice. The name lives in `title` instead, which both explains the
+ * scope on hover and keeps it searchable in the type dropdown.
  */
 export function getTargetTagProps(target: string): TagProps {
 	if (target === 'Network') {
 		return {
-			label: common_network(),
 			color: entities.getColorHelper('Network').color,
+			icon: entities.getIconComponent('Network'),
 			title: credentials_targetNetworkTooltip()
 		};
 	}
 	if (target === 'DaemonHost') {
 		return {
-			label: credentials_targetDaemonHost(),
 			color: entities.getColorHelper('Daemon').color,
+			icon: entities.getIconComponent('Daemon'),
 			title: credentials_targetDaemonHostTooltip()
 		};
 	}
 	return {
-		label: credentials_targetHost(),
 		color: entities.getColorHelper('Host').color,
+		icon: entities.getIconComponent('Host'),
 		title: credentials_targetHostTooltip()
 	};
 }

@@ -1,6 +1,6 @@
 [package]
 name = "scanopy-server"
-version = "0.17.11"
+version = "0.17.12"
 edition = "2024"
 description = "Scanopy HTTP API server"
 
@@ -19,6 +19,11 @@ path = "src/bin/generate-error-codes.rs"
 [[bin]]
 name = "generate-fixtures"
 path = "src/bin/generate-fixtures.rs"
+
+[[bin]]
+name = "generate-snmp-fixtures"
+path = "src/bin/generate-snmp-fixtures.rs"
+required-features = ["snmp-sim"]
 
 [[bin]]
 name = "license"
@@ -53,6 +58,14 @@ tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "net", "time
 
 # === Database ===
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "ipnetwork", "mac_address"] }
+
+# === Embedded assets ===
+# Migrations are always embedded; the built UI only under `embed-ui`.
+# `debug-embed` keeps debug builds reading from the compiled-in copy rather
+# than from disk, so tests and dev exercise the same path production does.
+# (Content types for embedded UI files come from `mime_guess`, already a
+# dependency further down.)
+rust-embed = { version = "8.7", features = ["debug-embed"] }
 
 # === Serialization ===
 serde = { version = "1.0", features = ["derive"] }
@@ -240,3 +253,12 @@ jsonschema = "0.29"
 
 [features]
 generate-fixtures = []
+# Compile the SNMP simulator's device definitions (`snmp::sim`) into the lib so the fixture
+# generator binary can read them. Always on under `cfg(test)`; off for the shipped binaries,
+# which have no use for fixture data.
+snmp-sim = []
+# Compile the built UI (`ui/build`) into the server binary, for the standalone
+# release artifact. Off by default: the folder only exists after a UI build, so
+# an unconditional embed would break `cargo build` for anyone who hasn't run
+# one. The Docker image leaves this off and keeps serving /app/static.
+embed-ui = []

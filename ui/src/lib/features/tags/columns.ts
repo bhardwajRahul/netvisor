@@ -1,4 +1,4 @@
-import type { CardFieldItem } from '$lib/shared/components/data/types';
+import type { LabelledCardFieldItem } from '$lib/shared/components/data/types';
 import { concepts } from '$lib/shared/stores/metadata';
 import type { Tag } from './types/base';
 
@@ -10,7 +10,7 @@ import type { Tag } from './types/base';
  * filter all describe a tag the same way, and no component has to open a tags
  * query of its own just to render a label.
  */
-export function tagItems(tagIds: string[], tags: Tag[]): CardFieldItem[] {
+export function tagItems(tagIds: string[], tags: Tag[]): LabelledCardFieldItem[] {
 	return tagIds
 		.map((id) => tags.find((tag) => tag.id === id))
 		.filter((tag): tag is Tag => Boolean(tag))

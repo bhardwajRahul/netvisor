@@ -31,7 +31,8 @@ import {
 	common_lastSeenAgo,
 	common_never,
 	common_stale,
-	common_staleWithDate
+	common_staleWithDate,
+	topology_neighborLastReportedAgo
 } from '$lib/paraglide/messages';
 
 /** Derived from the backend enum — never hand-maintain this union. */
@@ -80,6 +81,63 @@ export function entityFreshness(
 	if (!windowHours || !entity.last_seen_at || !isDiscoveryManaged(entity.source)) return 'current';
 	const cutoff = Date.now() - windowHours * 60 * 60 * 1000;
 	return new Date(entity.last_seen_at).getTime() < cutoff ? 'stale' : 'current';
+}
+
+/**
+ * How fresh the *evidence for a link* is, judged on the interface at one of its ends.
+ *
+ * An interface's own `last_seen_at` answers "was this port observed", which a port keeps
+ * satisfying long after its neighbour record stops arriving — so a link whose evidence has
+ * completely disappeared reads Current on both endpoints. `neighbor_seen_at` is the adjacency's
+ * own subject, and it is judged here by exactly the rule and window above rather than a second
+ * one: same `effective_stale_after_hours`, same vocabulary.
+ *
+ * `null`/absent `neighbor_seen_at` means no scan has ever carried evidence for this row — unknown,
+ * never stale. `entityFreshness` already answers `current` for an absent timestamp, so rows
+ * predating the column are safe without a special case here.
+ */
+export function neighborEvidenceFreshness(
+	iface: { neighbor_seen_at?: string | null },
+	network: Network | undefined
+): EntityFreshness {
+	return entityFreshness(neighborEvidenceSubject(iface), network);
+}
+
+/**
+ * The freshness subject of the *adjacency* a row records, for the functions above.
+ *
+ * Shaping it as a `FreshnessSubject` is the point: `entityFreshness` and `getFreshnessTag` then
+ * apply exactly the rule and render exactly the pill a stale host gets, so a link and an entity
+ * can never disagree about what stale means or look different when they say it.
+ */
+export function neighborEvidenceSubject(iface: {
+	neighbor_seen_at?: string | null;
+}): FreshnessSubject {
+	return { last_seen_at: iface.neighbor_seen_at ?? undefined };
+}
+
+/**
+ * "Neighbor last reported 3d ago", the wording for an adjacency rather than an entity.
+ *
+ * Deliberately not `lastSeenLabel`: on a link, "last seen" reads as a claim about the port, which
+ * is the exact confusion this column exists to end. The port was seen minutes ago; it is the
+ * neighbour report that stopped arriving.
+ */
+export function neighborEvidenceLabel(iface: { neighbor_seen_at?: string | null }): string {
+	if (!iface.neighbor_seen_at) return common_never();
+	return topology_neighborLastReportedAgo({ time: formatRelativeTime(iface.neighbor_seen_at) });
+}
+
+/**
+ * The stale pill for an adjacency: the shared amber tag, re-titled to name the neighbour report
+ * as its subject.
+ */
+export function neighborEvidenceTag(
+	iface: { neighbor_seen_at?: string | null },
+	network: Network | undefined
+): TagProps | null {
+	const tag = getFreshnessTag(neighborEvidenceSubject(iface), network);
+	return tag && { ...tag, title: neighborEvidenceLabel(iface) };
 }
 
 /**

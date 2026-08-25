@@ -18,6 +18,7 @@ use crate::server::{
     hosts::r#impl::{
         api::{DiscoveryHostRequest, HostResponse},
         base::{Host, HostBase},
+        name::HostName,
     },
     subnets::r#impl::base::Subnet,
 };
@@ -566,12 +567,16 @@ impl NetworkScan {
                                 let early_config_store = ops.config_store.clone();
                                 let early_api_client = ops.api_client.clone();
                                 let early_handle = tokio::spawn(async move {
-                                    let host = Host::new(HostBase {
-                                        name: ip.to_string(),
+                                    // Through the ladder, not by assigning `name`: a stub that
+                                    // does not declare its rung enters as `Unspecified` and can
+                                    // never refresh the address-derived name it wrote last scan,
+                                    // so a host whose DHCP lease moved keeps showing the old one.
+                                    let mut host = Host::new(HostBase {
                                         network_id: early_subnet.base.network_id,
                                         source: EntitySource::Discovery,
                                         ..Default::default()
                                     });
+                                    host.base.apply_name(HostName::Ip(ip));
                                     let host_id = host.id;
                                     let ip_address = IPAddress::new(IPAddressBase {
                                         network_id: early_subnet.base.network_id,

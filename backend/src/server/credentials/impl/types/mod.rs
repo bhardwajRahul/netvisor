@@ -1132,28 +1132,30 @@ mod tests {
         }
     }
 
-    /// The SNMP-sim seed script (`backend/scripts/seed-snmp-credentials.sql`, run by
-    /// `make snmp-seed-credentials`) writes `credential_type` JSONB straight into the table,
-    /// bypassing the API and therefore bypassing serde. Nothing else checks that what it writes
-    /// is a shape the server can read back — a rename or a retagged field would leave rows that
-    /// only fail at credential-load time, as a hand-written credential with a bare `community`
-    /// string already did in the field (GH #611). Parsing the literals out of the script keeps
-    /// this honest: the assertion is against the file the seed actually runs, not a copy of it.
+    /// The SNMP-sim seed SQL (`make snmp-seed-credentials`) writes `credential_type` JSONB
+    /// straight into the table, bypassing the API and therefore bypassing serde on the way in.
+    ///
+    /// It is generated from this very enum, so the *shape* is safe by construction — but the
+    /// generator re-writes the secret fields by hand, because a plain serialize redacts them and
+    /// would seed credentials that authenticate against nothing. That hand-patching is what this
+    /// checks: the literals it emits must still read back as a `CredentialType`. A hand-written
+    /// credential carrying a bare `community` string already failed at credential-load time once
+    /// (GH #611), and that is the failure this keeps out.
     #[test]
     fn seeded_snmp_credential_json_deserializes() {
-        let sql = include_str!("../../../../../scripts/seed-snmp-credentials.sql");
+        use crate::daemon::discovery::integration::snmp::sim::{emit, lab};
 
-        // The JSONB literals are the single-quoted strings that open with `{"type":`.
+        let sql = emit::credentials_sql(&lab());
+
+        // The JSONB literals are the single-quoted strings holding an object.
         let literals: Vec<&str> = sql
             .split('\'')
-            .filter(|chunk| chunk.trim_start().starts_with("{\"type\":"))
+            .filter(|chunk| chunk.trim_start().starts_with('{'))
             .collect();
 
-        assert_eq!(
-            literals.len(),
-            5,
-            "expected the five sim credentials; found {} — did the script change shape?",
-            literals.len()
+        assert!(
+            !literals.is_empty(),
+            "the seed emitted no credential JSON at all"
         );
 
         let mut seen = std::collections::HashSet::new();
@@ -1161,6 +1163,10 @@ mod tests {
             let parsed: CredentialType = serde_json::from_str(literal).unwrap_or_else(|e| {
                 panic!("seeded credential is not a CredentialType: {e}\n{literal}")
             });
+            assert!(
+                !format!("{literal}").contains("REDACTED"),
+                "a redacted secret would seed a credential that authenticates against nothing"
+            );
             seen.insert(CredentialTypeDiscriminants::from(&parsed));
         }
 
@@ -1173,7 +1179,7 @@ mod tests {
         ] {
             assert!(
                 seen.contains(&expected),
-                "sim seed no longer covers {expected:?}"
+                "the sim lost its {expected:?} credential"
             );
         }
     }

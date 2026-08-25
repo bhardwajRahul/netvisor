@@ -471,8 +471,9 @@ impl AuthService {
 
         let user = self
             .user_service
-            .get_one(StorableFilter::<User>::new_from_email(&request.email))
-            .await?;
+            .get_unique(StorableFilter::<User>::new_from_email(&request.email))
+            .await?
+            .at_most_one()?;
 
         // Always run a password verification, against the real hash when
         // present and the dummy hash otherwise, before deciding success.
@@ -548,8 +549,9 @@ impl AuthService {
     ) -> Result<()> {
         let mut user = match self
             .user_service
-            .get_one(StorableFilter::<User>::new_from_email(email))
+            .get_unique(StorableFilter::<User>::new_from_email(email))
             .await?
+            .at_most_one()?
         {
             Some(user) => user,
             None => {
@@ -600,8 +602,9 @@ impl AuthService {
         // Find user by password reset token
         let mut user = self
             .user_service
-            .get_one(StorableFilter::<User>::new_from_password_reset_token(token))
+            .get_unique(StorableFilter::<User>::new_from_password_reset_token(token))
             .await?
+            .at_most_one()?
             .ok_or_else(|| anyhow!("Invalid or expired password reset token"))?;
 
         // Check if token is expired
@@ -776,10 +779,11 @@ impl AuthService {
         // Find user by verification token
         let mut user = self
             .user_service
-            .get_one(StorableFilter::<User>::new_from_email_verification_token(
+            .get_unique(StorableFilter::<User>::new_from_email_verification_token(
                 token,
             ))
             .await?
+            .at_most_one()?
             .ok_or_else(|| anyhow!("Invalid verification token"))?;
 
         // Check if token is expired
@@ -873,8 +877,9 @@ impl AuthService {
         // Find user
         let mut user = self
             .user_service
-            .get_one(StorableFilter::<User>::new_from_email(email))
+            .get_unique(StorableFilter::<User>::new_from_email(email))
             .await?
+            .at_most_one()?
             .ok_or_else(|| anyhow!("User not found"))?;
 
         // Check if already verified

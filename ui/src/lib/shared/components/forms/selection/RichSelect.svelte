@@ -128,7 +128,9 @@
 			const label = displayComponent.getLabel(option, context).toLowerCase();
 			const description = displayComponent.getDescription?.(option, context)?.toLowerCase() || '';
 			const tags = displayComponent.getTags?.(option, context) ?? [];
-			const tagLabels = tags.map((tag) => tag.label.toLowerCase()).join(' ');
+			// Fall back to the tooltip for a tag drawn as an icon alone: it has no visible text, but
+			// its name is still what someone types to find it.
+			const tagLabels = tags.map((tag) => (tag.label ?? tag.title ?? '').toLowerCase()).join(' ');
 
 			return (
 				label.includes(searchTerm) ||

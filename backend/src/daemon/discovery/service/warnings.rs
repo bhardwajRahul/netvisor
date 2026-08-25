@@ -72,6 +72,68 @@ pub enum ShortfallReason {
     Unsupported,
 }
 
+impl ShortfallReason {
+    /// The read was cut off partway rather than finishing on a table this size.
+    ///
+    /// Distinguishes a device that answered everything asked of it from one that stopped
+    /// answering. Only the first can be said to have declined to serve rows or to have
+    /// miscounted itself; the second simply did not get that far, and a line claiming otherwise
+    /// contradicts the shortfall line reporting the same device.
+    fn read_was_cut_short(self) -> bool {
+        matches!(self, Self::NoAnswer | Self::Desynchronised)
+    }
+}
+
+/// Where a device's claim about itself came from.
+///
+/// Named rather than folded into a sentence because the operator's next step depends on it: a
+/// wrong `ifNumber` is a firmware bug to report upstream, while a set bridge bit over an empty
+/// bridge table is usually a missing SNMP view or VLAN context on their side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ClaimSource {
+    /// `ifNumber.0` — how many interfaces the device says it has.
+    IfNumber,
+    /// `sysServices.0` bit 2 — the device says it operates at the datalink layer.
+    SysServicesBridgeBit,
+    /// The device answered `lldpLocChassisId`, so it runs an LLDP agent.
+    LldpLocalIdentity,
+    /// `dot1dBaseNumPorts.0` — how many bridge ports the device says it controls.
+    Dot1dBaseNumPorts,
+}
+
+impl ClaimSource {
+    /// How the device stated it, as the subject of "the device reports …".
+    fn label(self) -> &'static str {
+        match self {
+            Self::IfNumber => "its ifNumber",
+            Self::SysServicesBridgeBit => "its sysServices bridge bit",
+            Self::LldpLocalIdentity => "an LLDP chassis ID of its own",
+            Self::Dot1dBaseNumPorts => "its dot1dBaseNumPorts",
+        }
+    }
+}
+
+/// What a device led us to expect, so a collection can report being short-changed.
+///
+/// The reporting surface is otherwise entirely self-referential: it can say a walk did not finish,
+/// that we hit our own cap, or that rows were discarded, but never that the device itself said
+/// there was more. These are the inputs that make the second kind of statement possible, and both
+/// were already declared in `oids.rs` and never read.
+///
+/// A claim is evidence, never a verdict. Devices misreport their own counts, so a contradiction
+/// is a warning and the scan keeps everything it read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceClaim {
+    /// The device published a row count for this group.
+    Count {
+        source: ClaimSource,
+        expected: usize,
+    },
+    /// The device declared the capability without publishing a count, so the only contradiction
+    /// it can produce is having read nothing at all.
+    Implements { source: ClaimSource },
+}
+
 /// An SNMP data group a walk may come up short on.
 ///
 /// An enum rather than a free string so the renderer below is exhaustive: every group has to
@@ -81,6 +143,19 @@ pub enum ShortfallReason {
 pub enum SnmpWalkGroup {
     Lldp,
     Cdp,
+    /// `ifTable`/`ifXTable` — the device's own interfaces.
+    ///
+    /// Carried here so the interface count can be checked against `ifNumber`, **not** so it can be
+    /// reported as a short walk: interface shortfalls have their own record
+    /// ([`IncompleteInterfaceWalk`]) and their own prose, because a truncated interface *set*
+    /// means something different to an operator than a truncated table.
+    ///
+    /// That separation is structural rather than a rule to remember. [`SnmpCollectionOutcome`] is
+    /// a struct of named fields and has no interface field, so [`snmp_walk_shortfalls`] has
+    /// nothing to build an `Interfaces` shortfall from. Adding one would mean adding the field
+    /// *and* the array entry, at which point a device would be told twice that its interfaces
+    /// came up short, in two different vocabularies.
+    Interfaces,
     /// `dot1dBasePortIfIndex` — the bridge-port numbering both groups below are keyed by.
     BridgePortNumbering,
     BridgeForwarding,
@@ -105,6 +180,7 @@ impl SnmpWalkGroup {
         match self {
             Self::Lldp => "LLDP neighbours",
             Self::Cdp => "CDP neighbours",
+            Self::Interfaces => "interfaces",
             Self::BridgePortNumbering => "SNMP bridge-port numbering",
             Self::BridgeForwarding => "bridge forwarding",
             Self::VlanMembership => "VLAN membership",
@@ -136,6 +212,25 @@ impl SnmpWalkGroup {
     /// discards, so for every other group an incomplete result is always a short read.
     fn discards_malformed_records(self) -> bool {
         matches!(self, Self::Lldp | Self::Cdp)
+    }
+
+    /// Whether the rows a short read *did* return are thrown away rather than recorded.
+    ///
+    /// The four fields of `InterfaceDataComplete`. For these, `preserve_uncollected_data` restores
+    /// the stored value on every interface when the walk fell short, so a partial read contributes
+    /// nothing — deliberately, because an absent neighbour and an unread one look identical and
+    /// losing a chassis id drops the row out of L2 resolution for good. Everything else here is
+    /// recorded as far as it got: a half-read ARP cache still creates the hosts it named.
+    ///
+    /// The distinction is the difference between a warning that is reassuring and one that is
+    /// true. A device whose neighbour walk keeps falling short and has never once completed shows
+    /// no L2 links at all, however many neighbours each scan reads — and "previously discovered
+    /// values were kept" describes that as though nothing were lost (GH #685).
+    fn partial_read_is_discarded(self) -> bool {
+        matches!(
+            self,
+            Self::Lldp | Self::Cdp | Self::BridgeForwarding | Self::VlanMembership
+        )
     }
 }
 
@@ -414,16 +509,28 @@ pub struct IncompleteSnmpWalk {
 
 /// What one host's SNMP collection managed to read, per group.
 ///
-/// `complete` mirrors [`SnmpCollection::complete`] on the daemon side; `returned_any` is whether
-/// that group produced any records at all.
+/// `complete` mirrors [`SnmpCollection::complete`] on the daemon side; `observed` is how many
+/// records the group produced, and `claim` is what the device said to expect before we read it.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SnmpGroupOutcome {
     pub complete: bool,
-    pub returned_any: bool,
+    /// How many records this group actually produced.
+    ///
+    /// A count rather than the "did it return anything" flag it replaced, because the flag could
+    /// only ever support the second half of a comparison the device had already made. Both
+    /// consumers now read from one field, so they cannot drift.
+    pub observed: usize,
     pub reason: Option<ShortfallReason>,
+    /// What the device led us to expect here, when it said anything at all.
+    pub claim: Option<DeviceClaim>,
 }
 
 impl SnmpGroupOutcome {
+    /// Whether the group produced anything, which is all the shortfall prose needs to know.
+    fn returned_any(&self) -> bool {
+        self.observed > 0
+    }
+
     /// The *read* fell short — as opposed to the read finishing and some of its rows being
     /// discarded as unusable.
     ///
@@ -451,6 +558,12 @@ impl SnmpGroupOutcome {
 pub struct SnmpCollectionOutcome {
     pub lldp: SnmpGroupOutcome,
     pub cdp: SnmpGroupOutcome,
+    /// Present so the interface count can be checked against the device's own `ifNumber`.
+    ///
+    /// Deliberately absent from [`snmp_walk_shortfalls`]'s array: a short interface walk is
+    /// reported by [`IncompleteInterfaceWalk`], and adding it here too would tell one operator
+    /// the same thing twice in two vocabularies. See [`SnmpWalkGroup::Interfaces`].
+    pub interfaces: SnmpGroupOutcome,
     pub bridge_port_numbering: SnmpGroupOutcome,
     pub bridge_forwarding: SnmpGroupOutcome,
     pub vlan_membership: SnmpGroupOutcome,
@@ -507,10 +620,155 @@ pub fn snmp_walk_shortfalls(ip: IpAddr, outcome: SnmpCollectionOutcome) -> Vec<I
     .map(|(group, outcome, _)| IncompleteSnmpWalk {
         ip,
         group,
-        returned_any: outcome.returned_any,
+        returned_any: outcome.returned_any(),
         reason: outcome.reason,
     })
     .collect()
+}
+
+// ============================================================================
+// Contradicted device claims
+// ============================================================================
+
+/// A device published a figure about itself and the collection read something else.
+///
+/// Kept apart from [`IncompleteSnmpWalk`] because the two state different facts and a device can
+/// warrant both at once: a shortfall says why *we* stopped reading, a contradiction says what the
+/// *device* said was there. #685 is exactly the pair — a bare "did not finish reporting LLDP
+/// neighbours" on a switch that answers with an LLDP chassis ID of its own, where the shortfall
+/// alone reads as a transient and the contradiction is what makes it worth chasing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContradictedClaim {
+    pub ip: IpAddr,
+    pub group: SnmpWalkGroup,
+    pub claim: DeviceClaim,
+    /// What the collection actually read.
+    pub observed: usize,
+    /// Why the read came up short, when it did.
+    ///
+    /// Carried so the line can stop short of naming a cause the shortfall line has already
+    /// named differently. A device whose walk was cut off has not declined to serve anything and
+    /// is not misreporting itself, and saying so beside a line that says it stopped responding
+    /// leaves the reader to reconcile two accounts of one device.
+    pub reason: Option<ShortfallReason>,
+}
+
+/// How far below its own claim a device has to land before it is worth a line.
+///
+/// Not strict inequality. Devices legitimately miscount by a small margin — an interface appearing
+/// or going away between the scalar and the walk, a count that includes something the table does
+/// not — and a warning that fires on a device off by one is a warning operators learn to skip.
+/// Half is far enough below any rounding explanation to mean something went wrong, and the two
+/// figures are always named so nobody has to take the threshold on trust.
+const CLAIM_SHORTFALL_RATIO: usize = 2;
+
+/// The claims this host contradicted, if any.
+///
+/// A pure function of the outcome so the policy is testable without a live agent, matching
+/// [`snmp_walk_shortfalls`] next door.
+///
+/// Deliberately independent of both `complete` and `unsupported`. A contradiction is a fact about
+/// the device's own statements, and suppressing it whenever the walk fell short would silence it
+/// in precisely the cases it exists for: #685's device reports a shortfall, and a switch whose
+/// bridge MIB answers `noSuchObject` while its `sysServices` bridge bit is set currently renders
+/// as the benign "does not implement SNMP bridge-port numbering" rather than as a device
+/// disagreeing with itself.
+pub fn contradicted_claims(ip: IpAddr, outcome: SnmpCollectionOutcome) -> Vec<ContradictedClaim> {
+    [
+        (SnmpWalkGroup::Interfaces, outcome.interfaces),
+        (SnmpWalkGroup::Lldp, outcome.lldp),
+        (
+            SnmpWalkGroup::BridgePortNumbering,
+            outcome.bridge_port_numbering,
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(group, group_outcome)| {
+        let claim = group_outcome.claim?;
+
+        // Our own cap is not the device's claim. A switch with more MAC entries than one scan
+        // reads has not contradicted anything, and `EntryCap` already says so in its own line.
+        if matches!(group_outcome.reason, Some(ShortfallReason::EntryCap { .. })) {
+            return None;
+        }
+
+        let contradicted = match claim {
+            DeviceClaim::Count { expected, .. } => {
+                group_outcome.observed * CLAIM_SHORTFALL_RATIO <= expected
+                    && group_outcome.observed < expected
+            }
+            DeviceClaim::Implements { .. } => !group_outcome.returned_any(),
+        };
+
+        contradicted.then_some(ContradictedClaim {
+            ip,
+            group,
+            claim,
+            observed: group_outcome.observed,
+            reason: group_outcome.reason,
+        })
+    })
+    .collect()
+}
+
+/// One line per device and claim, or empty if nothing was contradicted.
+///
+/// Not collapsed across devices the way [`render_incomplete_snmp_walks`] collapses: the numbers
+/// are the substance of the sentence, and two switches disagreeing with themselves by different
+/// amounts have nothing to share but the shape of the complaint.
+pub fn render_contradicted_claims(records: &[ContradictedClaim]) -> Vec<String> {
+    records
+        .iter()
+        .map(|record| {
+            // A read that stopped partway is already reported, with its cause, by the shortfall
+            // line for the same device. What that line cannot say is how much was missed, because
+            // only the device knows — so this one supplies the figure and stops there. Offering
+            // causes here as well produced two lines about one device giving different accounts of
+            // what happened, on every device the walk came up short on.
+            let cut_short = record
+                .reason
+                .is_some_and(ShortfallReason::read_was_cut_short);
+
+            match record.claim {
+                DeviceClaim::Count { source, expected } if cut_short => format!(
+                    "{} reports {} as {}, and the read ended at {} without finishing. That is how \
+                     much of the table is missing — the incomplete-walk line for this device says \
+                     why it ended. The {} that were read are recorded.",
+                    record.ip,
+                    source.label(),
+                    expected,
+                    record.observed,
+                    record.observed,
+                ),
+                DeviceClaim::Count { source, expected } => format!(
+                    "{} reports {} as {}, but only {} could be read. The {} that were read are \
+                     recorded; the device may be misreporting its own count, or may be declining \
+                     to serve the rest of the table to this credential.",
+                    record.ip,
+                    source.label(),
+                    expected,
+                    record.observed,
+                    record.observed,
+                ),
+                DeviceClaim::Implements { source } if cut_short => format!(
+                    "{} advertises {}, and the read of its {} ended without returning any. The \
+                     incomplete-walk line for this device says why it ended; what the device \
+                     advertises is why it is worth reading again rather than treating as empty.",
+                    record.ip,
+                    source.label(),
+                    record.group.label(),
+                ),
+                DeviceClaim::Implements { source } => format!(
+                    "{} advertises {}, but returned no {} at all. A device that says it does this \
+                     and then reports none of it is usually restricting what the credential may \
+                     see — an SNMP view, or a VLAN context the query has to name.",
+                    record.ip,
+                    source.label(),
+                    record.group.label(),
+                ),
+            }
+        })
+        .collect()
 }
 
 /// One line per distinct failure, or empty if there were none.
@@ -531,28 +789,36 @@ pub fn render_incomplete_snmp_walks(records: &[IncompleteSnmpWalk]) -> Vec<Strin
     // contradicted themselves — "192.168.7.230 did not finish reporting VLAN membership or bridge
     // forwarding" immediately followed by "192.168.7.230 returned nothing at all", which reads as
     // two incompatible claims about the same walk. Keyed this way, each line makes one claim.
-    type Key = (bool, Option<ShortfallReason>, SnmpWalkGroup);
-    let mut devices_by_group: BTreeMap<Key, BTreeSet<IpAddr>> = BTreeMap::new();
+    // `partial_read_is_discarded` joins them for the same reason: it decides what the sentence
+    // claims happened to the rows that were read, so merging a group that keeps them with one
+    // that throws them away would make one of the two claims false.
+    /// What one line asserts, apart from which devices and groups it names: whether the walk
+    /// returned anything, whether the rows it returned were kept, and why it stopped.
+    type Claim = (bool, bool, Option<ShortfallReason>);
+    let mut devices_by_group: BTreeMap<(Claim, SnmpWalkGroup), BTreeSet<IpAddr>> = BTreeMap::new();
     for r in records {
+        let claim = (
+            r.returned_any,
+            r.group.partial_read_is_discarded(),
+            r.reason,
+        );
         devices_by_group
-            .entry((r.returned_any, r.reason, r.group))
+            .entry((claim, r.group))
             .or_default()
             .insert(r.ip);
     }
-    let mut groups_by_devices: BTreeMap<
-        (bool, Option<ShortfallReason>, BTreeSet<IpAddr>),
-        Vec<SnmpWalkGroup>,
-    > = BTreeMap::new();
-    for ((returned_any, reason, group), ips) in devices_by_group {
+    let mut groups_by_devices: BTreeMap<(Claim, BTreeSet<IpAddr>), Vec<SnmpWalkGroup>> =
+        BTreeMap::new();
+    for ((claim, group), ips) in devices_by_group {
         groups_by_devices
-            .entry((returned_any, reason, ips))
+            .entry((claim, ips))
             .or_default()
             .push(group);
     }
 
     groups_by_devices
         .iter()
-        .map(|((returned_any, reason, ips), groups)| {
+        .map(|(((returned_any, discarded, reason), ips), groups)| {
             let who = list_addresses_prose(ips);
             let labels: Vec<&str> = groups.iter().map(|g| g.label()).collect();
             let what = join_prose(&labels);
@@ -580,9 +846,20 @@ pub fn render_incomplete_snmp_walks(records: &[IncompleteSnmpWalk]) -> Vec<Strin
                      means the agent is under load. Previously discovered values were kept and \
                      refresh on the next complete scan."
                 ),
+                // Say that the rows this scan did read were thrown away. The old sentence promised
+                // only that nothing was overwritten, which reads as "no harm done" — and on a
+                // device whose walk has never once completed it is the whole harm: every scan
+                // reads neighbours, every scan discards them, and the operator is told their
+                // previously discovered values are safe while the device shows no links at all.
+                _ if *returned_any && *discarded => format!(
+                    "{who} did not finish reporting {what}, so what it did answer was not \
+                     recorded — a partial read cannot tell a value that has gone from one that was \
+                     not reached. Previously discovered values were kept, and refresh on the next \
+                     complete scan."
+                ),
                 _ if *returned_any => format!(
-                    "{who} did not finish reporting {what}, so previously discovered values were \
-                     kept rather than overwritten and refresh on the next complete scan."
+                    "{who} did not finish reporting {what}, so what it read was recorded and the \
+                     rest refreshes on the next complete scan."
                 ),
                 _ if groups.iter().all(|g| g.absence_means_unsupported()) => format!(
                     "{who} did not answer for {what}, which these switches commonly do not \
@@ -1195,12 +1472,14 @@ mod tests {
     fn quiet_groups() -> SnmpCollectionOutcome {
         let clean = SnmpGroupOutcome {
             complete: true,
-            returned_any: true,
+            observed: 1,
             reason: None,
+            claim: None,
         };
         SnmpCollectionOutcome {
             lldp: clean,
             cdp: clean,
+            interfaces: clean,
             bridge_port_numbering: clean,
             bridge_forwarding: clean,
             vlan_membership: clean,
@@ -1210,6 +1489,288 @@ mod tests {
             lldp_local_ports: clean,
             vlan_names: clean,
         }
+    }
+
+    // ========================================================================
+    // Contradicted device claims
+    // ========================================================================
+
+    /// The headline case, and the one the whole mechanism exists for: a device that publishes a
+    /// count, answers with a fraction of it, and until now reported a clean scan.
+    ///
+    /// Both figures must appear. A line saying only that the count "looks wrong" leaves the
+    /// operator with nothing to check against their own switch.
+    #[test]
+    fn a_device_reading_far_below_its_own_interface_count_names_both_numbers() {
+        let outcome = SnmpCollectionOutcome {
+            interfaces: SnmpGroupOutcome {
+                complete: true,
+                observed: 1,
+                reason: None,
+                claim: Some(DeviceClaim::Count {
+                    source: ClaimSource::IfNumber,
+                    expected: 23,
+                }),
+            },
+            ..quiet_groups()
+        };
+
+        let claims = contradicted_claims(ip("192.168.200.151"), outcome);
+        assert_eq!(claims.len(), 1, "{claims:?}");
+
+        let msg = joined(&render_contradicted_claims(&claims));
+        assert!(msg.contains("192.168.200.151"), "{msg}");
+        assert!(msg.contains("23"), "{msg}");
+        assert!(msg.contains("only 1 could be read"), "{msg}");
+    }
+
+    /// A device that miscounts itself by a little is not a device that failed, and warning about
+    /// it teaches operators to skip the warning that matters. Sixteen of seventeen is the shape
+    /// of an interface appearing between the scalar read and the walk.
+    #[test]
+    fn a_device_slightly_off_its_own_count_is_not_reported() {
+        let outcome = SnmpCollectionOutcome {
+            interfaces: SnmpGroupOutcome {
+                complete: true,
+                observed: 16,
+                reason: None,
+                claim: Some(DeviceClaim::Count {
+                    source: ClaimSource::IfNumber,
+                    expected: 17,
+                }),
+            },
+            ..quiet_groups()
+        };
+
+        assert!(
+            contradicted_claims(ip("192.168.7.247"), outcome).is_empty(),
+            "a device one interface short of its own count is not a finding"
+        );
+    }
+
+    /// Our own cap is not the device's claim. A switch with more entries than one scan reads has
+    /// contradicted nothing, and `EntryCap` already says so in its own line — reporting both
+    /// would put two explanations of the same number on one device, one of them wrong.
+    #[test]
+    fn our_own_entry_cap_is_not_a_contradiction() {
+        let outcome = SnmpCollectionOutcome {
+            interfaces: SnmpGroupOutcome {
+                complete: false,
+                observed: 10,
+                reason: Some(ShortfallReason::EntryCap { limit: 10 }),
+                claim: Some(DeviceClaim::Count {
+                    source: ClaimSource::IfNumber,
+                    expected: 4000,
+                }),
+            },
+            ..quiet_groups()
+        };
+
+        assert!(
+            contradicted_claims(ip("192.168.7.240"), outcome).is_empty(),
+            "hitting our own cap is not the device disagreeing with itself"
+        );
+    }
+
+    /// GH #686's shape: a switch whose `sysServices` bridge bit is set and whose bridge MIB
+    /// answers `noSuchObject`. Today that renders as the benign "does not implement SNMP
+    /// bridge-port numbering"; the device has in fact contradicted itself, and the contradiction
+    /// is what points at an SNMP view or a VLAN context rather than at absent hardware.
+    #[test]
+    fn a_switch_that_says_it_bridges_and_serves_no_bridge_mib_is_reported() {
+        let outcome = SnmpCollectionOutcome {
+            bridge_port_numbering: SnmpGroupOutcome {
+                complete: true,
+                observed: 0,
+                reason: Some(ShortfallReason::Unsupported),
+                claim: Some(DeviceClaim::Implements {
+                    source: ClaimSource::SysServicesBridgeBit,
+                }),
+            },
+            ..quiet_groups()
+        };
+
+        let claims = contradicted_claims(ip("192.168.7.230"), outcome);
+        assert_eq!(claims.len(), 1, "{claims:?}");
+
+        let msg = joined(&render_contradicted_claims(&claims));
+        assert!(msg.contains("sysServices bridge bit"), "{msg}");
+        assert!(msg.contains("VLAN context"), "{msg}");
+    }
+
+    /// GH #685: `has_lldp_local=true` with a bare "did not finish". The shortfall line alone
+    /// reads as a transient worth waiting out; naming what the device claimed is what makes it
+    /// worth chasing. Fires despite `complete: false`, which is the whole point.
+    #[test]
+    fn a_device_running_an_lldp_agent_with_no_neighbours_is_reported() {
+        let outcome = SnmpCollectionOutcome {
+            lldp: SnmpGroupOutcome {
+                complete: false,
+                observed: 0,
+                reason: Some(ShortfallReason::NoAnswer),
+                claim: Some(DeviceClaim::Implements {
+                    source: ClaimSource::LldpLocalIdentity,
+                }),
+            },
+            ..quiet_groups()
+        };
+
+        let claims = contradicted_claims(ip("192.168.200.151"), outcome);
+        assert_eq!(claims.len(), 1, "{claims:?}");
+
+        let msg = joined(&render_contradicted_claims(&claims));
+        assert!(msg.contains("an LLDP chassis ID of its own"), "{msg}");
+        assert!(msg.contains("LLDP neighbours"), "{msg}");
+    }
+
+    /// The defect this branch exists for, found by scanning the sim: three devices whose ifTable
+    /// walk was cut off by simulator load each got a line saying they "may be misreporting" their
+    /// count or "declining to serve" rows — beside a line already saying they stopped responding
+    /// partway. Two accounts of one device, and the more specific one was wrong.
+    ///
+    /// The figure is still worth stating: the shortfall line knows the read ended but not how much
+    /// of the table it missed, because only the device knows that.
+    #[test]
+    fn a_cut_short_read_states_the_figure_without_naming_a_cause() {
+        let outcome = SnmpCollectionOutcome {
+            interfaces: SnmpGroupOutcome {
+                complete: false,
+                observed: 14,
+                reason: Some(ShortfallReason::NoAnswer),
+                claim: Some(DeviceClaim::Count {
+                    source: ClaimSource::IfNumber,
+                    expected: 52,
+                }),
+            },
+            ..quiet_groups()
+        };
+
+        let msg = joined(&render_contradicted_claims(&contradicted_claims(
+            ip("192.168.7.250"),
+            outcome,
+        )));
+
+        // Both figures, which is the whole reason the line is emitted at all.
+        assert!(msg.contains("52"), "{msg}");
+        assert!(msg.contains("14"), "{msg}");
+        // Neither cause, because the walk stopping is what happened and is reported elsewhere.
+        assert!(!msg.contains("misreporting its own count"), "{msg}");
+        assert!(!msg.contains("declining"), "{msg}");
+    }
+
+    /// The other half of the same rule. A device that answered everything asked of it and still
+    /// came up short of its own count *has* either miscounted or withheld rows, and dropping that
+    /// from every line would cost the one case where naming a cause is the useful part.
+    #[test]
+    fn a_completed_short_read_still_names_what_it_could_mean() {
+        let outcome = SnmpCollectionOutcome {
+            interfaces: SnmpGroupOutcome {
+                complete: true,
+                observed: 1,
+                reason: None,
+                claim: Some(DeviceClaim::Count {
+                    source: ClaimSource::IfNumber,
+                    expected: 23,
+                }),
+            },
+            ..quiet_groups()
+        };
+
+        let msg = joined(&render_contradicted_claims(&contradicted_claims(
+            ip("192.168.200.151"),
+            outcome,
+        )));
+
+        assert!(msg.contains("misreporting its own count"), "{msg}");
+        assert!(msg.contains("declining"), "{msg}");
+    }
+
+    /// `Unsupported` is not a cut-short read: the agent answered, with `noSuchObject`. A device
+    /// that says it bridges and then says it has no bridge MIB really is restricting what the
+    /// credential sees, so that line keeps its cause — this is the GH #686 shape.
+    #[test]
+    fn an_unsupported_table_keeps_the_cause_a_cut_short_one_drops() {
+        let outcome = SnmpCollectionOutcome {
+            bridge_port_numbering: SnmpGroupOutcome {
+                complete: true,
+                observed: 0,
+                reason: Some(ShortfallReason::Unsupported),
+                claim: Some(DeviceClaim::Implements {
+                    source: ClaimSource::SysServicesBridgeBit,
+                }),
+            },
+            ..quiet_groups()
+        };
+
+        let msg = joined(&render_contradicted_claims(&contradicted_claims(
+            ip("192.168.7.248"),
+            outcome,
+        )));
+
+        assert!(msg.contains("VLAN context"), "{msg}");
+        assert!(!msg.contains("incomplete-walk line"), "{msg}");
+    }
+
+    /// A device that says nothing about itself can contradict nothing. Most groups on most
+    /// devices are this, so a claim-less outcome staying silent is what keeps the mechanism from
+    /// being the noise it was built to replace.
+    #[test]
+    fn a_group_the_device_made_no_claim_about_is_never_reported() {
+        let outcome = SnmpCollectionOutcome {
+            lldp: SnmpGroupOutcome {
+                complete: false,
+                observed: 0,
+                reason: Some(ShortfallReason::NoAnswer),
+                claim: None,
+            },
+            ..quiet_groups()
+        };
+
+        assert!(contradicted_claims(ip("192.168.7.231"), outcome).is_empty());
+    }
+
+    /// A contradiction and a shortfall are different statements about one device, and it can
+    /// warrant both: the shortfall says why the read stopped, the contradiction says what the
+    /// device said was waiting. Neither may swallow the other.
+    #[test]
+    fn a_contradiction_does_not_replace_the_shortfall_line() {
+        let outcome = SnmpCollectionOutcome {
+            lldp: SnmpGroupOutcome {
+                complete: false,
+                observed: 0,
+                reason: Some(ShortfallReason::NoAnswer),
+                claim: Some(DeviceClaim::Implements {
+                    source: ClaimSource::LldpLocalIdentity,
+                }),
+            },
+            ..quiet_groups()
+        };
+        let addr = ip("192.168.200.151");
+
+        assert_eq!(snmp_walk_shortfalls(addr, outcome).len(), 1);
+        assert_eq!(contradicted_claims(addr, outcome).len(), 1);
+    }
+
+    /// A short interface walk is reported by `IncompleteInterfaceWalk`, in its own vocabulary.
+    /// `SnmpWalkGroup::Interfaces` exists so the count can be checked against `ifNumber`, and
+    /// telling one operator their interfaces came up short twice, in two phrasings, is what the
+    /// separation prevents.
+    #[test]
+    fn the_interfaces_group_is_never_reported_as_a_short_walk() {
+        let outcome = SnmpCollectionOutcome {
+            interfaces: SnmpGroupOutcome {
+                complete: false,
+                observed: 0,
+                reason: Some(ShortfallReason::NoAnswer),
+                claim: None,
+            },
+            ..quiet_groups()
+        };
+
+        assert!(
+            snmp_walk_shortfalls(ip("192.168.7.248"), outcome).is_empty(),
+            "interface shortfalls belong to render_incomplete_interface_walks"
+        );
     }
 
     /// The suppression above is scoped to the groups keyed by `dot1dBasePortIfIndex`. The ARP
@@ -1228,7 +1789,8 @@ mod tests {
                 vlan_membership: SnmpGroupOutcome::default(),
                 arp_table: SnmpGroupOutcome {
                     complete: false,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: Some(ShortfallReason::Desynchronised),
                 },
                 ..quiet_groups()
@@ -1251,12 +1813,14 @@ mod tests {
             SnmpCollectionOutcome {
                 lldp: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: false,
+                    observed: 0,
+                    claim: None,
                     reason: None,
                 },
                 cdp: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: false,
+                    observed: 0,
+                    claim: None,
                     reason: None,
                 },
                 // Everything below is a consequence of this one failure.
@@ -1287,27 +1851,32 @@ mod tests {
                 // rows returned, and no walk-level reason because no walk stopped early.
                 lldp: SnmpGroupOutcome {
                     complete: false,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: None,
                 },
                 cdp: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: false,
+                    observed: 0,
+                    claim: None,
                     reason: None,
                 },
                 bridge_port_numbering: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: None,
                 },
                 bridge_forwarding: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: None,
                 },
                 vlan_membership: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: None,
                 },
                 ..quiet_groups()
@@ -1330,27 +1899,32 @@ mod tests {
             SnmpCollectionOutcome {
                 lldp: SnmpGroupOutcome {
                     complete: false,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: Some(ShortfallReason::NoAnswer),
                 },
                 cdp: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: false,
+                    observed: 0,
+                    claim: None,
                     reason: None,
                 },
                 bridge_port_numbering: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: None,
                 },
                 bridge_forwarding: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: None,
                 },
                 vlan_membership: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: None,
                 },
                 ..quiet_groups()
@@ -1370,27 +1944,32 @@ mod tests {
             SnmpCollectionOutcome {
                 lldp: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: None,
                 },
                 cdp: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: false,
+                    observed: 0,
+                    claim: None,
                     reason: None,
                 },
                 bridge_port_numbering: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: None,
                 },
                 bridge_forwarding: SnmpGroupOutcome {
                     complete: false,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: None,
                 },
                 vlan_membership: SnmpGroupOutcome {
                     complete: true,
-                    returned_any: true,
+                    observed: 1,
+                    claim: None,
                     reason: None,
                 },
                 ..quiet_groups()

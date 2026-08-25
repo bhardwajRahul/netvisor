@@ -9,10 +9,12 @@ use std::net::IpAddr;
 use tokio::time::timeout;
 use tracing::{debug, trace, warn};
 
-use crate::daemon::discovery::service::warnings::{MalformedNeighbourReason, ShortfallReason};
+use crate::daemon::discovery::service::warnings::{
+    ClaimSource, DeviceClaim, MalformedNeighbourReason, ShortfallReason,
+};
 use crate::server::snmp::resolution::lldp::canonical_mac;
 
-use super::oids::{self, oid_to_vec, parse_oid};
+use super::oids::{self, oid_to_vec};
 use super::session::{MAX_WALK_ENTRIES, SNMP_TIMEOUT};
 use super::types::{
     ArpEntry, BridgeFdbEntry, CdpNeighbor, DeviceInventory, IfTableEntry, IpAddrEntry,
@@ -27,23 +29,39 @@ use super::values::{
 const BULK_MAX_REPETITIONS: u32 = 20;
 
 /// A single `getbulk` round-trip's non-error outcome. Transport failures (timeouts,
-/// session errors) are the `Err` arm of the returned `Result`; the one legitimate
-/// non-error signal is an agent that refuses getbulk, which the walk retries via getnext.
+/// session errors) are the `Err` arm of the returned `Result`; the legitimate non-error
+/// signals are an agent that refuses getbulk, which the walk retries via getnext, and one
+/// that says the page it was asked for will not fit, which the walk retries smaller.
 /// Varbinds borrow the session's response buffer (`snmp2::Value<'a>` holds `&'a [u8]`
 /// for octet strings), so a page is only valid while the session stays borrowed.
 pub type Varbinds<'a> = Vec<(Vec<u64>, Value<'a>)>;
+
+/// SNMP `tooBig(1)` — the response to this request would exceed what the agent can send.
+///
+/// RFC 3416 lets an agent answer an over-large getbulk this way instead of returning fewer
+/// varbinds, and it does so with an *empty* varbind list. `Pdu::validate` checks message type,
+/// request id and community and ignores `error-status` entirely, so without this the response
+/// arrived as a zero-varbind page and ended the column as [`WalkStop::EmptyResponse`] — a
+/// device answering "ask me for less" reported as one that had gone silent.
+const SNMP_ERR_TOO_BIG: u32 = 1;
 
 pub enum WalkPage<'a> {
     /// Decoded varbinds in wire order, OIDs as sub-id vectors.
     Varbinds(Varbinds<'a>),
     /// Agent rejected getbulk (e.g. SNMPv1) — retry from the same OID with getnext.
     BulkUnsupported,
+    /// Agent answered `tooBig` — retry from the same OID with fewer repetitions.
+    TooBig,
 }
 
-/// The two SNMP operations `walk_subtree` needs. Abstracting them keeps the walk loop
+/// The SNMP operations the query layer needs. Abstracting them keeps the walk loop
 /// transport-agnostic so its termination logic is unit-testable without a live UDP
 /// socket. Two implementors only: `Box<AsyncSession>` in production (below) and a
 /// canned-page mock under `#[cfg(test)]`.
+///
+/// The `Send` supertrait is load-bearing beyond spawning: it is what lets [`Self::get_scalar`]
+/// carry a default body, because `async_trait` adds an implicit `Self: Send` bound to any
+/// provided `&mut self` method. Removing it would make every test fake prove `Send` by hand.
 #[async_trait::async_trait]
 pub trait SnmpWalkTransport: Send {
     async fn walk_getbulk<'a>(
@@ -52,6 +70,43 @@ pub trait SnmpWalkTransport: Send {
         max_repetitions: u32,
     ) -> Result<WalkPage<'a>>;
     async fn walk_getnext<'a>(&'a mut self, from: &[u64]) -> Result<Varbinds<'a>>;
+
+    /// Read one scalar instance, e.g. `sysName.0`.
+    ///
+    /// `Ok(None)` is "the agent has nothing at that OID" — a `noSuchObject`, a `noSuchInstance`,
+    /// an empty varbind list, or a next-OID that is not the one asked for. `Err` is the transport.
+    /// The three are collapsed because every caller already treats them identically; if a scalar
+    /// ever needs "unimplemented" told apart from "absent", this should return
+    /// `Some(Value::NoSuchObject)` rather than grow a third arm.
+    ///
+    /// The default body exists so the whole fake-transport suite gains scalar support without
+    /// edits: `query_system_info` and `query_lldp_local` took `&mut Box<AsyncSession>` concretely
+    /// and so were the only two SNMP queries with no test and no way to reach them from a fake.
+    /// Production overrides it with a real GET.
+    async fn get_scalar<'a>(&'a mut self, oid: &[u64]) -> Result<Option<Value<'a>>> {
+        // GETNEXT from the OID with its last sub-id removed is a GET expressed in the operations
+        // every transport already has: `sysName` is the immediate lexicographic predecessor of
+        // `sysName.0` — nothing can sort strictly between `P` and `P.0` — so an agent's first
+        // varbind for it is that instance when it exists and something else when it does not.
+        // Requiring an exact OID match is what stops "something else" (the next column, the next
+        // MIB object) being read as the scalar; that mis-read is silent and lands one device's
+        // identity on another.
+        let Some((_, parent)) = oid.split_last() else {
+            return Ok(None);
+        };
+        Ok(self
+            .walk_getnext(parent)
+            .await?
+            .into_iter()
+            .find(|(resp, _)| resp.as_slice() == oid)
+            .map(|(_, value)| value)
+            .filter(|value| {
+                !matches!(
+                    value,
+                    Value::NoSuchObject | Value::NoSuchInstance | Value::EndOfMibView
+                )
+            }))
+    }
 }
 
 #[async_trait::async_trait]
@@ -63,6 +118,7 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
     ) -> Result<WalkPage<'a>> {
         let oid = Oid::from(from).map_err(|_| anyhow::anyhow!("invalid walk OID"))?;
         match timeout(SNMP_TIMEOUT, self.getbulk(&[&oid], 0, max_repetitions)).await {
+            Ok(Ok(pdu)) if pdu.error_status == SNMP_ERR_TOO_BIG => Ok(WalkPage::TooBig),
             Ok(Ok(pdu)) => Ok(WalkPage::Varbinds(
                 pdu.varbinds.map(|(o, v)| (oid_to_vec(&o), v)).collect(),
             )),
@@ -87,6 +143,29 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
             Err(_) => Err(anyhow::anyhow!("getnext timed out")),
         }
     }
+
+    /// A real GET rather than the trait's GETNEXT emulation: it is what the device is asked in
+    /// production, and on an agent whose scalar is absent it says so instead of handing back
+    /// whatever object happens to sort next. The two filters match the default body exactly, so
+    /// a fake and a live session cannot disagree about what "nothing there" looks like.
+    async fn get_scalar<'a>(&'a mut self, oid: &[u64]) -> Result<Option<Value<'a>>> {
+        let requested = Oid::from(oid).map_err(|_| anyhow::anyhow!("invalid scalar OID"))?;
+        match timeout(SNMP_TIMEOUT, self.get(&requested)).await {
+            Ok(Ok(mut response)) => Ok(response
+                .varbinds
+                .next()
+                .filter(|(resp, _)| oid_to_vec(resp) == oid)
+                .map(|(_, value)| value)
+                .filter(|value| {
+                    !matches!(
+                        value,
+                        Value::NoSuchObject | Value::NoSuchInstance | Value::EndOfMibView
+                    )
+                })),
+            Ok(Err(e)) => Err(anyhow::Error::new(e).context("get failed")),
+            Err(_) => Err(anyhow::anyhow!("get timed out")),
+        }
+    }
 }
 
 /// Walk the OID subtree rooted at `base_oid_str`, invoking `on_entry(suffix, value)`
@@ -102,6 +181,36 @@ impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
 /// device that is *persistently* answering out of step should be reported as truncated rather
 /// than have the scan spin on it.
 const MAX_DESYNC_RETRIES: u8 = 2;
+
+/// How many times one walk step will re-issue its request after getting no usable answer at all —
+/// a timeout, a session error, or a page with no varbinds on it.
+///
+/// SNMP runs over UDP and nothing beneath us retransmits: `AsyncSession::send_and_recv` is one
+/// `send` and one `recv`, bounded only by [`SNMP_TIMEOUT`]. `snmpwalk` defaults to `-r 5 -t 1`, so
+/// until this existed the daemon was strictly less tolerant than the command line operators use to
+/// prove a device is readable — a single dropped datagram in any one of the seven LLDP columns
+/// ended that column, which marks the whole neighbour set non-authoritative and leaves the switch
+/// looking as though it has no LLDP at all (GH #685).
+///
+/// Counted separately from [`MAX_DESYNC_RETRIES`] so a device suffering both faults cannot spend
+/// one budget on the other. Kept as small as the desync budget for the same reason: a device that
+/// has genuinely stopped answering should be reported, not spun on.
+const MAX_TRANSPORT_RETRIES: u8 = 2;
+
+/// Ask the agent for half as much next time, and give up on getbulk entirely once even a
+/// single-repetition page has not worked.
+///
+/// Halving rather than dropping straight to getnext because the difference is a whole table's
+/// worth of round trips: a 10000-entry FDB read one varbind at a time is the shape the walk
+/// timeout was raised for. This is what net-snmp does with `tooBig`, and it is why the reporter's
+/// `snmpbulkwalk` read a table our walk gave up on.
+fn shrink_page(max_reps: &mut u32, use_bulk: &mut bool) {
+    if *max_reps > 1 {
+        *max_reps = (*max_reps / 2).max(1);
+    } else {
+        *use_bulk = false;
+    }
+}
 
 /// Whether this error means the session read an answer to a question nobody is waiting for.
 ///
@@ -140,11 +249,7 @@ where
     T: SnmpWalkTransport,
     F: FnMut(&[u64], &Value),
 {
-    let base_parts: Vec<u64> = base_oid_str
-        .split('.')
-        .filter(|s| !s.is_empty())
-        .filter_map(|s| s.parse().ok())
-        .collect();
+    let base_parts: Vec<u64> = oids::oid_parts(base_oid_str);
 
     let mut current_parts = base_parts.clone();
     let mut count = 0usize;
@@ -152,6 +257,11 @@ where
     let mut stop = WalkStop::EndOfSubtree;
     let mut stop_detail: Option<String> = None;
     let mut desync_retries = 0u8;
+    let mut transport_retries = 0u8;
+    // Repetitions asked for per getbulk round. Walk-local rather than the constant because it only
+    // ever shrinks: an agent that could not fit 20 varbinds will not fit them on the next page
+    // either, so re-escalating would just re-earn the same failure.
+    let mut max_reps = BULK_MAX_REPETITIONS;
     // Every in-subtree OID already handed to `on_entry`. This is what tells the two devices that
     // used to look identical apart: an OID below where we asked from is the GH #674 firmware bug
     // when it names a row we have not seen, and an agent going in circles when it does not.
@@ -169,15 +279,26 @@ where
         }
 
         let varbinds = if use_bulk {
-            match session
-                .walk_getbulk(&current_parts, BULK_MAX_REPETITIONS)
-                .await
-            {
+            match session.walk_getbulk(&current_parts, max_reps).await {
                 Ok(WalkPage::Varbinds(v)) => v,
                 Ok(WalkPage::BulkUnsupported) => {
                     // Agent rejected getbulk (e.g. v1) — retry from the same OID with
                     // getnext and stay on getnext for the rest of this walk.
                     use_bulk = false;
+                    continue 'walk;
+                }
+                Ok(WalkPage::TooBig) => {
+                    // The agent named its own remedy, so this is not a retry against a budget —
+                    // halving terminates on its own (20 → 10 → 5 → 2 → 1 → getnext) and each
+                    // round asks a strictly easier question than the one just refused.
+                    shrink_page(&mut max_reps, &mut use_bulk);
+                    debug!(
+                        ip = %ip,
+                        base = base_oid_str,
+                        max_repetitions = max_reps,
+                        getbulk = use_bulk,
+                        "Agent refused the page size; asking for less"
+                    );
                     continue 'walk;
                 }
                 Err(e) if is_desync(&e) && desync_retries < MAX_DESYNC_RETRIES => {
@@ -188,6 +309,24 @@ where
                         attempt = desync_retries,
                         error = %e,
                         "Re-issuing after reading a stale answer"
+                    );
+                    continue 'walk;
+                }
+                Err(e) if transport_retries < MAX_TRANSPORT_RETRIES => {
+                    transport_retries += 1;
+                    // Shrink as well as retry. A timeout on this path is as likely to be the
+                    // agent labouring over a large page as a lost datagram — the reporter's
+                    // switch answered getbulk at roughly nine times the per-varbind cost of
+                    // getnext — and a smaller page addresses both.
+                    shrink_page(&mut max_reps, &mut use_bulk);
+                    debug!(
+                        ip = %ip,
+                        base = base_oid_str,
+                        attempt = transport_retries,
+                        max_repetitions = max_reps,
+                        getbulk = use_bulk,
+                        error = %e,
+                        "Re-issuing after no answer"
                     );
                     continue 'walk;
                 }
@@ -211,6 +350,17 @@ where
                     );
                     continue 'walk;
                 }
+                Err(e) if transport_retries < MAX_TRANSPORT_RETRIES => {
+                    transport_retries += 1;
+                    debug!(
+                        ip = %ip,
+                        base = base_oid_str,
+                        attempt = transport_retries,
+                        error = %e,
+                        "Re-issuing after no answer"
+                    );
+                    continue 'walk;
+                }
                 Err(e) => {
                     stop = WalkStop::Transport;
                     stop_detail = Some(e.to_string());
@@ -219,9 +369,27 @@ where
             }
         };
 
-        // Empty response mid-walk is abnormal (getbulk) or an exhausted column
-        // (getnext) — treat as partial either way.
+        // Empty response mid-walk is abnormal (getbulk) or an exhausted column (getnext). Worth
+        // one more ask before giving up on the column: every other wrong-shaped answer here — a
+        // stale OID, a non-advancing OID, a request-id mismatch — is re-asked, and this one has
+        // the same causes. An agent that means it answers the same way again and the column ends
+        // as it did before.
         if varbinds.is_empty() {
+            if transport_retries < MAX_TRANSPORT_RETRIES {
+                transport_retries += 1;
+                if use_bulk {
+                    shrink_page(&mut max_reps, &mut use_bulk);
+                }
+                debug!(
+                    ip = %ip,
+                    base = base_oid_str,
+                    attempt = transport_retries,
+                    max_repetitions = max_reps,
+                    getbulk = use_bulk,
+                    "Re-issuing after an answer with no varbinds on it"
+                );
+                continue 'walk;
+            }
             stop = WalkStop::EmptyResponse;
             break;
         }
@@ -368,9 +536,14 @@ where
     Ok(stop)
 }
 
-/// Query system MIB information from a device
-pub async fn query_system_info(
-    session: &mut Box<snmp2::AsyncSession>,
+/// Query system MIB information from a device.
+///
+/// `sysServices` and `ifNumber` are read here alongside the descriptive scalars because they are
+/// what the device claims about itself: the bridge bit in the first says it switches, and the
+/// second says how many interfaces to expect. Both are compared against what the walks actually
+/// return, so a device that short-changes a collection can be reported rather than believed.
+pub async fn query_system_info<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
 ) -> Result<SystemInfo> {
     let mut info = SystemInfo::default();
@@ -383,37 +556,31 @@ pub async fn query_system_info(
         (oids::system::SYS_LOCATION, "sysLocation"),
         (oids::system::SYS_CONTACT, "sysContact"),
         (oids::system::SYS_UPTIME, "sysUpTime"),
+        (oids::system::SYS_SERVICES, "sysServices"),
+        (oids::if_mib::IF_NUMBER, "ifNumber"),
     ];
 
     for (oid_str, name) in oids_to_query {
-        let oid = match parse_oid(oid_str) {
-            Ok(o) => o,
-            Err(e) => {
-                warn!("Failed to parse OID {}: {}", oid_str, e);
-                continue;
-            }
-        };
-
-        match timeout(SNMP_TIMEOUT, session.get(&oid)).await {
-            Ok(Ok(mut response)) => {
-                if let Some((resp_oid, value)) = response.varbinds.next() {
-                    trace!("SNMP {} from {}: {:?} = {:?}", name, ip, resp_oid, value);
-                    match name {
-                        "sysDescr" => info.sys_descr = value_to_string(&value),
-                        "sysObjectID" => info.sys_object_id = value_to_string(&value),
-                        "sysName" => info.sys_name = value_to_string(&value),
-                        "sysLocation" => info.sys_location = value_to_string(&value),
-                        "sysContact" => info.sys_contact = value_to_string(&value),
-                        "sysUpTime" => info.sys_uptime = value_to_u64(&value),
-                        _ => {}
-                    }
+        match session.get_scalar(&oids::oid_parts(oid_str)).await {
+            Ok(Some(value)) => {
+                trace!("SNMP {} from {}: {:?}", name, ip, value);
+                match name {
+                    "sysDescr" => info.sys_descr = value_to_string(&value),
+                    "sysObjectID" => info.sys_object_id = value_to_string(&value),
+                    "sysName" => info.sys_name = value_to_string(&value),
+                    "sysLocation" => info.sys_location = value_to_string(&value),
+                    "sysContact" => info.sys_contact = value_to_string(&value),
+                    "sysUpTime" => info.sys_uptime = value_to_u64(&value),
+                    "sysServices" => info.sys_services = value_to_i32(&value),
+                    "ifNumber" => info.if_number = value_to_i32(&value),
+                    _ => {}
                 }
             }
-            Ok(Err(e)) => {
-                debug!("SNMP GET {} failed from {}: {:?}", name, ip, e);
+            Ok(None) => {
+                debug!("SNMP GET {} returned nothing from {}", name, ip);
             }
-            Err(_) => {
-                debug!("SNMP GET {} timeout from {}", name, ip);
+            Err(e) => {
+                debug!("SNMP GET {} failed from {}: {}", name, ip, e);
             }
         }
     }
@@ -466,6 +633,16 @@ pub struct SnmpCollection<T> {
     /// Set by both neighbour tables: LLDP discards a record with no chassis ID, CDP one with no
     /// device id, for the same reason in both cases.
     pub discarded: usize,
+    /// What the device led us to expect here, when it published anything.
+    ///
+    /// The rest of this struct describes the read from the inside — how far it got, why it
+    /// stopped, what it threw away. This is the one field sourced from the device rather than
+    /// from us, and it is what lets a scan say "the device told us to expect 23 and we read 1"
+    /// instead of only "we did not finish".
+    ///
+    /// `None` wherever nothing was published, which is most groups: the claim is only as good as
+    /// the scalar behind it, and inventing one would be worse than staying quiet.
+    pub claim: Option<DeviceClaim>,
     /// What accounts for most of `discarded`, or `None` when nothing was discarded.
     ///
     /// The count alone cannot say whether a rescan will help, and the warning built from it
@@ -488,6 +665,7 @@ impl<T: Default> SnmpCollection<T> {
             reason: None,
             discarded: 0,
             discard_reason: None,
+            claim: None,
         }
     }
 }
@@ -506,6 +684,7 @@ impl<T> SnmpCollection<T> {
             reason: shortfall.reason,
             discarded: 0,
             discard_reason: None,
+            claim: None,
         }
     }
 }
@@ -518,6 +697,7 @@ impl<T: Default> Default for SnmpCollection<T> {
             unsupported: false,
             discarded: 0,
             discard_reason: None,
+            claim: None,
             // `query_or_default` produces this when a whole query timed out or errored, and it
             // genuinely cannot say more — the future was dropped before it could report.
             reason: Some(ShortfallReason::NoAnswer),
@@ -869,10 +1049,22 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     let mut chassis_subtype_shortfall = Shortfall::default();
     let mut chassis_value_shortfall = Shortfall::default();
 
-    // Keys the chassis columns actually listed. A key present in `neighbors` but absent here was
-    // conjured by a later column alone — a ghost row, not a truncated read. `walk_if_table` has
-    // the same guard in `known_if_indexes`; this table had none.
-    let mut chassis_keys: HashSet<(i32, i32)> = HashSet::new();
+    // Keys each chassis column listed, kept apart rather than merged.
+    //
+    // Their union answers the ghost-row question: a key present in `neighbors` but in neither of
+    // these was conjured by a later column alone, not lost to a truncated read. (`walk_if_table`
+    // has the same guard in `known_if_indexes`; this table had none.)
+    //
+    // Their *disagreement* answers a second question the walk cannot. Both columns are mandatory
+    // per IEEE 802.1AB, so a row one lists and the other does not means one read came up short —
+    // whether the agent skipped a successor or the walk stopped early. That distinction is
+    // invisible at the transport: a response that skips a row carries the right request id and a
+    // well-formed OID, and is byte-for-byte a legitimate end-of-column. Judging it by OID position
+    // instead is the assumption GH #674 had to remove before unsorted firmware could be read at
+    // all. Which rows each column enumerated is evidence of a different kind, and it is already
+    // here for the asking.
+    let mut subtype_keys: HashSet<(i32, i32)> = HashSet::new();
+    let mut value_keys: HashSet<(i32, i32)> = HashSet::new();
 
     // Values rejected for being the wrong ASN.1 type, by the type the agent actually sent. A
     // count says something went wrong; the type says what, and the two point at different
@@ -969,7 +1161,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
                         });
                 match column_name {
                     "remChassisIdSubtype" => {
-                        chassis_keys.insert((local_port, rem_index));
+                        subtype_keys.insert((local_port, rem_index));
                         match value_to_i32(value) {
                             Some(v) => neighbor.remote_chassis_id_subtype = Some(v as u8),
                             // Not a silent discard any more. An agent answering the subtype with
@@ -981,7 +1173,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
                         }
                     }
                     "remChassisId" => {
-                        chassis_keys.insert((local_port, rem_index));
+                        value_keys.insert((local_port, rem_index));
                         match value {
                             Value::OctetString(bytes) => {
                                 neighbor.remote_chassis_id_bytes = Some(bytes.to_vec());
@@ -1072,7 +1264,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
             if has_subtype && has_value {
                 return true;
             }
-            if !chassis_keys.contains(key) {
+            if !subtype_keys.contains(key) && !value_keys.contains(key) {
                 // Neither chassis column ever listed this (localPortNum, remIndex). A later
                 // column invented it, so there was never a chassis ID to lose.
                 ghost_rows += 1;
@@ -1098,6 +1290,12 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         short_index,
         unexpected_subtype_type.is_some() || unexpected_value_type.is_some(),
         !chassis_subtype_shortfall.complete || !chassis_value_shortfall.complete,
+        // Only a *partial* disagreement is evidence of a stop. A column that listed nothing at all
+        // while its sibling listed rows, on a walk that ended cleanly, is a column the device does
+        // not implement — truncation means rows arrived and then stopped. Without that guard,
+        // firmware that simply omits `lldpRemChassisIdSubtype` is reported as a read worth
+        // retrying, which is the opposite of the advice its operator needs.
+        subtype_keys != value_keys && !subtype_keys.is_empty() && !value_keys.is_empty(),
     );
     if discarded > 0 {
         shortfall.complete = false;
@@ -1112,6 +1310,9 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
             unexpected_value_type,
             subtype_walk = ?chassis_subtype_shortfall.reason,
             value_walk = ?chassis_value_shortfall.reason,
+            // Non-zero with both walks reporting clean is the shape that has no other tell: one
+            // column simply listed rows the other did not.
+            chassis_column_gap = subtype_keys.symmetric_difference(&value_keys).count(),
             reason = ?discard_reason,
             "LLDP neighbours missing the mandatory chassis ID; discarding them and marking the \
              walk partial"
@@ -1135,6 +1336,9 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         complete: shortfall.complete,
         unsupported,
         reason: shortfall.reason,
+        // The LLDP/CDP claim is the device's own local identity, which is read later in the
+        // collection than this walk, so the caller attaches it.
+        claim: None,
     })
 }
 
@@ -1179,27 +1383,43 @@ fn dominant_discard_reason(
     missing_chassis: usize,
     short_index: usize,
     wrong_type: bool,
-    chassis_walk_cut_short: bool,
+    chassis_walk_truncated: bool,
+    chassis_columns_disagree: bool,
 ) -> Option<MalformedNeighbourReason> {
     if ghost_rows + missing_chassis + short_index == 0 {
         return None;
     }
     // Truncation overrides the counts rather than competing with them. A chassis column that
     // stopped early lists none of the rows past the stop, so its casualties are indistinguishable
-    // from rows the column never had — they land in `ghost_rows` and would otherwise be reported
-    // as a firmware defect no rescan can fix. That is the wrong advice for the case the comment
-    // above the filter calls the common one, and truncation is the only positive evidence
-    // available to tell them apart.
-    if chassis_walk_cut_short {
+    // from rows the column never had — they land in `ghost_rows`, or in `missing_chassis` when the
+    // sibling column did list them, and would otherwise be reported as a firmware defect no rescan
+    // can fix.
+    //
+    // The evidence is ranked, because it is not equally good. A shortfall the walk recognised is
+    // decisive; a type we actually recorded is decisive about the firmware; two chassis columns
+    // enumerating different rows is only circumstantial, and is the sole trace an agent leaves
+    // when it skips a successor row.
+    // A column that reported a shortfall stopped for a reason the walk itself recognised, and
+    // that is the strongest evidence there is.
+    if chassis_walk_truncated {
+        return Some(MalformedNeighbourReason::WalkCutShort);
+    }
+    // A recorded type outranks the circumstantial signal below it. We saw what the agent put on
+    // the wire for that column, which a truncated read never gets to see — so a device answering
+    // `lldpRemChassisIdSubtype` with an OCTET STRING is telling us about its firmware, not about
+    // our read, and a rescan will produce the same answer forever.
+    if wrong_type {
+        return Some(MalformedNeighbourReason::UnexpectedType);
+    }
+    // Circumstantial: an agent that skips a successor row ends the column on a clean
+    // `EndOfSubtree` — right request id, well-formed OID, nothing to retry on — and the only trace
+    // left is the two mandatory chassis columns having enumerated different rows.
+    if chassis_columns_disagree {
         return Some(MalformedNeighbourReason::WalkCutShort);
     }
     // The read finished, so a row the chassis columns listed and left without a usable value is
-    // something the device did. The recorded type says whether it answered wrongly or not at all.
-    let missing_reason = if wrong_type {
-        MalformedNeighbourReason::UnexpectedType
-    } else {
-        MalformedNeighbourReason::IncompleteRecords
-    };
+    // something the device did.
+    let missing_reason = MalformedNeighbourReason::IncompleteRecords;
     [
         (missing_chassis, missing_reason),
         (ghost_rows, MalformedNeighbourReason::GhostRows),
@@ -1462,6 +1682,9 @@ pub async fn query_cdp_neighbors<T: SnmpWalkTransport>(
         complete: shortfall.complete,
         unsupported,
         reason: shortfall.reason,
+        // The LLDP/CDP claim is the device's own local identity, which is read later in the
+        // collection than this walk, so the caller attaches it.
+        claim: None,
     })
 }
 
@@ -1666,6 +1889,23 @@ pub async fn query_bridge_port_mapping<T: SnmpWalkTransport>(
 ) -> Result<SnmpCollection<HashMap<i32, i32>>> {
     let mut port_to_if_index: HashMap<i32, i32> = HashMap::new();
     let mut shortfall = Shortfall::default();
+
+    // Asked before the walk so the device's own figure survives a walk that returns nothing —
+    // which is the case worth reporting. A switch declaring 48 bridge ports and then answering
+    // this table with silence has contradicted itself, and that reads very differently to an
+    // operator than the bare "does not implement SNMP bridge-port numbering" it produces today.
+    let claim = session
+        .get_scalar(&oids::oid_parts(oids::bridge::DOT1D_BASE_NUM_PORTS))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|value| value_to_i32(&value))
+        .filter(|ports| *ports > 0)
+        .map(|ports| DeviceClaim::Count {
+            source: ClaimSource::Dot1dBaseNumPorts,
+            expected: ports as usize,
+        });
+
     // OID suffix is the bridge port number; value is the ifIndex.
     walk_column(
         session,
@@ -1689,6 +1929,7 @@ pub async fn query_bridge_port_mapping<T: SnmpWalkTransport>(
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,
+        claim,
     })
 }
 
@@ -1726,6 +1967,13 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     // Step 2: Walk legacy dot1dTpFdbTable columns.
     let mut fdb_entries: HashMap<String, FdbBuilder> = HashMap::new();
 
+    // Every column answering "no such object" is a device with no bridge MIB *here* — which on a
+    // switch that partitions its forwarding database by VLAN means "not in this context", not
+    // "this switch forwards nothing". `unsupported` was hard-coded false, so a Catalyst read
+    // without its VLAN context reported a complete, empty, authoritative read of a table it had
+    // never been asked for, and the operator was told nothing at all (GH #686).
+    let mut all_columns_unsupported = true;
+
     let columns = [
         (oids::bridge::fdb_entry::DOT1D_TP_FDB_ADDRESS, "address"),
         (oids::bridge::fdb_entry::DOT1D_TP_FDB_PORT, "port"),
@@ -1734,7 +1982,7 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // OID suffix is a 6-octet MAC encoded as 6 sub-ids.
-        walk_column(
+        let stop = walk_column(
             session,
             ip,
             base_oid_str,
@@ -1758,6 +2006,9 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
             },
         )
         .await;
+        if !stop.is_unsupported() {
+            all_columns_unsupported = false;
+        }
     }
 
     // Step 3: Merge in VLAN-aware Q-BRIDGE dot1qTpFdbTable entries. Legacy rows
@@ -1767,12 +2018,17 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
     if !qbridge.complete {
         shortfall.complete = false;
     }
+    if !qbridge.unsupported {
+        all_columns_unsupported = false;
+    }
     let qbridge = qbridge.records;
     for (key, builder) in qbridge {
         fdb_entries.entry(key).or_insert(builder);
     }
 
-    // Filter: keep learned (3) and self (5), resolve bridge port to ifIndex
+    // Filter: keep learned(3) and mgmt(5), resolve bridge port to ifIndex. Not self(4) — those
+    // are the bridge's own port addresses, which name no neighbour. (The old comment here read
+    // "self (5)"; 5 is mgmt, per the encoding documented on DOT1Q_TP_FDB_STATUS.)
     let result: Vec<BridgeFdbEntry> = fdb_entries
         .into_values()
         .filter_map(|e| {
@@ -1798,13 +2054,18 @@ pub async fn query_bridge_fdb<T: SnmpWalkTransport>(
         "Bridge FDB walk finished"
     );
 
+    // Only when neither table was there to read. A device serving one row is reporting one row;
+    // a device serving neither table is not reporting at all.
+    let unsupported = all_columns_unsupported && result.is_empty();
+
     Ok(SnmpCollection {
         records: result,
         complete: shortfall.complete,
-        unsupported: false,
+        unsupported,
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,
+        claim: None,
     })
 }
 
@@ -1822,6 +2083,9 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
 ) -> Result<SnmpCollection<HashMap<String, FdbBuilder>>> {
     let mut entries: HashMap<String, FdbBuilder> = HashMap::new();
     let mut shortfall = Shortfall::default();
+    // Reported so the caller can tell a switch with no Q-BRIDGE MIB from one whose Q-BRIDGE
+    // table is genuinely empty. Hard-coding this false made the caller's own check dead.
+    let mut all_columns_unsupported = true;
 
     let columns = [
         (oids::bridge::q_fdb_entry::DOT1Q_TP_FDB_PORT, "port"),
@@ -1830,7 +2094,7 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
 
     for (base_oid_str, column_name) in columns {
         // Q-BRIDGE index = dot1qFdbId (1 sub-id) + MAC (6 octets).
-        walk_column(
+        let stop = walk_column(
             session,
             ip,
             base_oid_str,
@@ -1859,61 +2123,60 @@ async fn walk_qbridge_fdb<T: SnmpWalkTransport>(
             },
         )
         .await;
+        if !stop.is_unsupported() {
+            all_columns_unsupported = false;
+        }
     }
+
+    let entries_empty = entries.is_empty();
 
     Ok(SnmpCollection {
         records: entries,
         complete: shortfall.complete,
-        unsupported: false,
+        unsupported: all_columns_unsupported && entries_empty,
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,
+        claim: None,
     })
 }
 
 /// Query local LLDP chassis ID (scalar GETs, not walks).
 /// Returns the device's own LLDP identity.
-pub async fn query_lldp_local(
-    session: &mut Box<snmp2::AsyncSession>,
+pub async fn query_lldp_local<T: SnmpWalkTransport>(
+    session: &mut T,
     ip: IpAddr,
 ) -> Result<Option<LldpLocalInfo>> {
     // GET lldpLocChassisIdSubtype
-    let subtype_oid = parse_oid(oids::lldp::local::LLDP_LOC_CHASSIS_ID_SUBTYPE)?;
-    let subtype = match timeout(SNMP_TIMEOUT, session.get(&subtype_oid)).await {
-        Ok(Ok(mut response)) => response
-            .varbinds
-            .next()
-            .and_then(|(_, value)| value_to_i32(&value))
+    let subtype = match session
+        .get_scalar(&oids::oid_parts(
+            oids::lldp::local::LLDP_LOC_CHASSIS_ID_SUBTYPE,
+        ))
+        .await
+    {
+        Ok(value) => value
+            .and_then(|value| value_to_i32(&value))
             .map(|v| v as u8),
-        Ok(Err(e)) => {
+        Err(e) => {
             debug!(
-                "LLDP local chassis ID subtype GET failed from {}: {:?}",
+                "LLDP local chassis ID subtype GET failed from {}: {}",
                 ip, e
             );
-            None
-        }
-        Err(_) => {
-            debug!("LLDP local chassis ID subtype GET timeout from {}", ip);
             None
         }
     };
 
     // GET lldpLocChassisId
-    let chassis_oid = parse_oid(oids::lldp::local::LLDP_LOC_CHASSIS_ID)?;
-    let chassis_bytes = match timeout(SNMP_TIMEOUT, session.get(&chassis_oid)).await {
-        Ok(Ok(mut response)) => response.varbinds.next().and_then(|(_, value)| {
-            if let Value::OctetString(bytes) = &value {
-                Some(bytes.to_vec())
-            } else {
-                None
-            }
+    let chassis_bytes = match session
+        .get_scalar(&oids::oid_parts(oids::lldp::local::LLDP_LOC_CHASSIS_ID))
+        .await
+    {
+        Ok(value) => value.and_then(|value| match value {
+            Value::OctetString(bytes) => Some(bytes.to_vec()),
+            _ => None,
         }),
-        Ok(Err(e)) => {
-            debug!("LLDP local chassis ID GET failed from {}: {:?}", ip, e);
-            None
-        }
-        Err(_) => {
-            debug!("LLDP local chassis ID GET timeout from {}", ip);
+        Err(e) => {
+            debug!("LLDP local chassis ID GET failed from {}: {}", ip, e);
             None
         }
     };
@@ -2030,6 +2293,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
             reason: shortfall.reason,
             discarded: 0,
             discard_reason: None,
+            claim: None,
         });
     }
 
@@ -2139,6 +2403,7 @@ pub async fn query_port_vlan_membership<T: SnmpWalkTransport>(
         reason: shortfall.reason,
         discarded: 0,
         discard_reason: None,
+        claim: None,
     })
 }
 
@@ -2203,6 +2468,209 @@ mod walk_tests {
         async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
             Ok(self.next_page())
         }
+    }
+
+    /// One canned answer, so a test can put the shapes a live agent produces *between* good pages
+    /// rather than only at the end of them. [`MockTransport`] can only ever answer, which is why
+    /// the walk's behaviour after a bad answer went untested.
+    enum Answer {
+        /// Varbinds, in wire order. An empty one is the zero-varbind page an agent sends with
+        /// `tooBig` set — indistinguishable from a table that has ended, before this walk learned
+        /// to ask again.
+        Page(Vec<Vec<u64>>),
+        /// The agent said the page it was asked for will not fit.
+        TooBig,
+        /// Nothing came back: a timeout, or a datagram lost on the way. Nothing beneath the walk
+        /// retransmits, so this is one lost packet as the walk sees it.
+        NoAnswer,
+    }
+
+    /// Serves scripted answers and records the page size each getbulk asked for.
+    struct FlakyTransport {
+        answers: VecDeque<Answer>,
+        /// What to answer once the script runs out. `None` ends the walk by leaving the subtree.
+        tail: Option<Answer>,
+        /// `max_repetitions` per getbulk, in order, so a test can assert the walk asked for less
+        /// after being refused rather than repeating the request that failed.
+        asked: Vec<u32>,
+        /// Requests served, to catch a retry that turns into a spin.
+        requests: usize,
+    }
+
+    impl FlakyTransport {
+        fn new(answers: Vec<Answer>) -> Self {
+            Self {
+                answers: answers.into(),
+                tail: None,
+                asked: Vec::new(),
+                requests: 0,
+            }
+        }
+
+        /// Answers the script, then this for ever.
+        fn then_always(mut self, tail: Answer) -> Self {
+            self.tail = Some(tail);
+            self
+        }
+
+        fn answer(&mut self) -> Result<Varbinds<'static>, Answer> {
+            self.requests += 1;
+            let next = self
+                .answers
+                .pop_front()
+                .unwrap_or_else(|| match &self.tail {
+                    Some(Answer::TooBig) => Answer::TooBig,
+                    Some(Answer::NoAnswer) => Answer::NoAnswer,
+                    Some(Answer::Page(p)) => Answer::Page(p.clone()),
+                    // Out of the subtree and above everything served: the natural end of a column.
+                    None => Answer::Page(page(&["1.3.6.1.2.1.2.2.1.2.1"])),
+                });
+            match next {
+                Answer::Page(oids) => Ok(oids
+                    .into_iter()
+                    .map(|o| (o, Value::Integer(1)))
+                    .collect::<Varbinds<'static>>()),
+                other => Err(other),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SnmpWalkTransport for FlakyTransport {
+        async fn walk_getbulk<'a>(&'a mut self, _from: &[u64], max: u32) -> Result<WalkPage<'a>> {
+            self.asked.push(max);
+            match self.answer() {
+                Ok(v) => Ok(WalkPage::Varbinds(v)),
+                Err(Answer::TooBig) => Ok(WalkPage::TooBig),
+                Err(_) => Err(anyhow::anyhow!("getbulk timed out")),
+            }
+        }
+
+        async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
+            match self.answer() {
+                Ok(v) => Ok(v),
+                Err(_) => Err(anyhow::anyhow!("getnext timed out")),
+            }
+        }
+    }
+
+    /// An agent that refuses the page size has named its own remedy, and the walk has to take it.
+    ///
+    /// RFC 3416 lets an agent answer an over-large getbulk with `tooBig` and no varbinds rather
+    /// than with fewer varbinds, and `lldpRemSysDesc` — long free text, twenty rows to a page — is
+    /// the request that provokes it. The response carries error-status but a perfectly valid
+    /// request id and community, so it used to arrive as an empty page and end the column, which
+    /// takes the whole neighbour set with it (GH #685). net-snmp asks again for half as much,
+    /// which is why the reporter's `snmpbulkwalk` read a table this walk gave up on.
+    #[tokio::test]
+    async fn a_refused_page_size_is_asked_for_again_smaller() {
+        let mut session = FlakyTransport::new(vec![
+            Answer::TooBig,
+            Answer::Page(page(&[
+                "1.3.6.1.2.1.2.2.1.1.1",
+                "1.3.6.1.2.1.2.2.1.1.2",
+                "1.3.6.1.2.1.2.2.1.1.3",
+            ])),
+        ]);
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
+            .await
+            .unwrap();
+
+        assert!(
+            stop.is_complete(),
+            "an agent that asked for a smaller page has not stopped answering, but the walk \
+             reported {stop:?}"
+        );
+        assert_eq!(
+            seen, 3,
+            "every row behind the refused page must still be read"
+        );
+        assert!(
+            session.asked[1] < session.asked[0],
+            "the retry has to ask for less than the page that was refused, or it earns the same \
+             refusal: asked {:?}",
+            session.asked
+        );
+    }
+
+    /// SNMP is UDP and nothing beneath the walk retransmits, so one dropped datagram used to end
+    /// a column outright — and a column ending marks its whole group non-authoritative, so the
+    /// server keeps what it holds and a first-ever scan records nothing at all. `snmpwalk`
+    /// defaults to five retransmissions; the daemon has to be at least as tolerant as the tool
+    /// operators use to prove the device is readable.
+    #[tokio::test]
+    async fn one_lost_datagram_does_not_end_a_column() {
+        let mut session = FlakyTransport::new(vec![
+            Answer::Page(page(&["1.3.6.1.2.1.2.2.1.1.1"])),
+            Answer::NoAnswer,
+            Answer::Page(page(&["1.3.6.1.2.1.2.2.1.1.2"])),
+        ]);
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
+            .await
+            .unwrap();
+
+        assert!(
+            stop.is_complete(),
+            "a walk that lost one datagram and then got its answer is not a short read, but it \
+             reported {stop:?}"
+        );
+        assert_eq!(
+            seen, 2,
+            "the row behind the lost datagram must still be read"
+        );
+    }
+
+    /// The empty-page shape of the same fault: an answer with no varbinds on it, from an agent
+    /// that skipped a beat rather than one that has finished. Re-asked like every other
+    /// wrong-shaped answer the walk handles, instead of being the one that is taken at its word.
+    #[tokio::test]
+    async fn an_answer_with_no_varbinds_is_asked_again() {
+        let mut session = FlakyTransport::new(vec![
+            Answer::Page(page(&["1.3.6.1.2.1.2.2.1.1.1"])),
+            Answer::Page(Vec::new()),
+            Answer::Page(page(&["1.3.6.1.2.1.2.2.1.1.2"])),
+        ]);
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
+            .await
+            .unwrap();
+
+        assert!(
+            stop.is_complete(),
+            "an empty page followed by the rest of the table is not a short read, but the walk \
+             reported {stop:?}"
+        );
+        assert_eq!(seen, 2, "the row behind the empty page must still be read");
+    }
+
+    /// The other half of the retry: a device that has genuinely gone quiet must be reported as
+    /// such, promptly. Retrying for ever would turn one unreachable switch into the whole scan's
+    /// budget, which is the failure the desync retries are already bounded against.
+    #[tokio::test]
+    async fn a_device_that_stays_silent_is_still_reported_short() {
+        let mut session = FlakyTransport::new(vec![Answer::Page(page(&["1.3.6.1.2.1.2.2.1.1.1"]))])
+            .then_always(Answer::NoAnswer);
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
+            .await
+            .unwrap();
+
+        assert!(
+            !stop.is_complete(),
+            "a device that never answered again cannot have completed its table"
+        );
+        assert_eq!(seen, 1, "the one page it did answer is still collected");
+        assert!(
+            session.requests < 10,
+            "the walk must give up on a silent device rather than spin on it (made {} requests)",
+            session.requests
+        );
     }
 
     /// A device that keeps answering with the same in-subtree OID must not walk to the
@@ -2869,6 +3337,87 @@ mod if_table_tests {
         );
     }
 
+    /// The two chassis columns disagreeing about which rows exist is evidence that one read came
+    /// up short — evidence the walk's own completeness flag cannot supply.
+    ///
+    /// The `lldpRemChassisId` column lists three neighbours; `lldpRemChassisIdSubtype` lists only
+    /// the first two. Both walks end cleanly, because a response that skips a successor is
+    /// byte-for-byte identical to the end of a column: same request id, well-formed, an OID that
+    /// simply moved further than it should have. Nothing at the transport can tell the two apart,
+    /// and no OID-position rule should try — that is exactly the assumption GH #674 removed so
+    /// unsorted firmware could be read at all.
+    ///
+    /// What *is* available is the two columns naming different row sets. For a table whose
+    /// identifying columns are both mandatory, that means one of them stopped early, and a rescan
+    /// is the remedy. Reported as `IncompleteRecords` it told the operator the opposite — that the
+    /// device served the row without an identifier and retrying would change nothing.
+    #[tokio::test]
+    async fn chassis_columns_listing_different_rows_are_a_short_read_not_a_malformed_record() {
+        let mut agent = FakeAgent::new(&[
+            // Subtype column stops after two rows.
+            ("1.0.8802.1.1.2.1.4.1.1.4.100.11.1", Canned::Int(7)),
+            ("1.0.8802.1.1.2.1.4.1.1.4.500.19.2", Canned::Int(4)),
+            // Value column lists all three.
+            ("1.0.8802.1.1.2.1.4.1.1.5.100.11.1", Canned::Str("C230408")),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.500.19.2",
+                Canned::Bytes(&[0xf0, 0x64, 0x26, 0xb3, 0x84, 0x00]),
+            ),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.1400.16.3",
+                Canned::Bytes(&[0x78, 0x8c, 0x77, 0xe5, 0x92, 0x7d]),
+            ),
+            ("1.0.8802.1.1.2.1.4.1.1.9.500.19.2", Canned::Str("VSAFC11")),
+        ]);
+
+        let walk = query_lldp_neighbors(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(walk.records.len(), 2, "the two complete rows still resolve");
+        assert_eq!(walk.discarded, 1);
+        assert_eq!(
+            walk.discard_reason,
+            Some(MalformedNeighbourReason::WalkCutShort),
+            "one column listed a row the other never did, so the read came up short"
+        );
+        assert!(
+            !walk.complete,
+            "a lost neighbour must not let the server prune what it already holds"
+        );
+    }
+
+    /// The floor under the change above: a row *both* columns listed, whose subtype never arrived,
+    /// is still the device's doing and still not worth a rescan. Without this the new signal could
+    /// relabel every genuine firmware defect as a transient short read.
+    #[tokio::test]
+    async fn a_row_both_chassis_columns_listed_stays_a_malformed_record() {
+        let mut agent = FakeAgent::new(&[
+            ("1.0.8802.1.1.2.1.4.1.1.4.100.11.1", Canned::Int(4)),
+            // Listed by the subtype column, but the value is a type that column cannot hold, so
+            // the row is keyed by both and still unusable.
+            (
+                "1.0.8802.1.1.2.1.4.1.1.4.500.19.2",
+                Canned::Str("not-an-int"),
+            ),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.100.11.1",
+                Canned::Bytes(&[0x00, 0x11, 0xb4, 0x8c, 0x02, 0xe0]),
+            ),
+            (
+                "1.0.8802.1.1.2.1.4.1.1.5.500.19.2",
+                Canned::Bytes(&[0xf0, 0x64, 0x26, 0xb3, 0x84, 0x00]),
+            ),
+        ]);
+
+        let walk = query_lldp_neighbors(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(walk.discarded, 1);
+        assert_ne!(
+            walk.discard_reason,
+            Some(MalformedNeighbourReason::WalkCutShort),
+            "both columns listed the row, so nothing came up short — a rescan is not the remedy"
+        );
+    }
+
     /// The floor under the fix above. An index we still cannot key has to be counted and reported,
     /// not skipped — silently dropping a row is precisely what hid the TL-SX3016F, and a firmware
     /// serving some other shape must not be able to hide the same way.
@@ -3179,6 +3728,73 @@ mod if_table_tests {
             "a table walked past is implemented and empty, not absent"
         );
         assert!(lldp.complete);
+    }
+
+    /// `get_scalar`'s default body is a GETNEXT from the OID with its last sub-id removed, which
+    /// works because nothing sorts strictly between `P` and `P.0`. Proving it against a fake
+    /// agent is what makes the whole system group testable: `query_system_info` took a concrete
+    /// `Box<AsyncSession>` and could not be reached without a live socket.
+    #[tokio::test]
+    async fn a_scalar_is_read_through_the_walk_transport() {
+        let mut agent = FakeAgent::new(&[
+            ("1.3.6.1.2.1.1.5.0", Canned::Str("switch-core-01")),
+            ("1.3.6.1.2.1.1.7.0", Canned::Int(6)),
+            ("1.3.6.1.2.1.2.1.0", Canned::Int(23)),
+        ]);
+
+        let info = query_system_info(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(info.sys_name.as_deref(), Some("switch-core-01"));
+        assert_eq!(info.if_number, Some(23));
+        // sysServices 6 = bits 2 and 3: this device bridges and routes.
+        assert_eq!(info.sys_services, Some(6));
+    }
+
+    /// The exact-match rule. Asking for a scalar the agent does not hold must read as absent —
+    /// never as whatever object happens to sort next, which on this agent is a different scalar
+    /// entirely. That mis-read is silent and would put one device's figure on another.
+    #[tokio::test]
+    async fn an_absent_scalar_does_not_return_the_next_object() {
+        // No sysServices and no ifNumber; sysName sits above both and would be returned by a
+        // GETNEXT that did not check which OID came back.
+        let mut agent = FakeAgent::new(&[("1.3.6.1.2.1.1.5.0", Canned::Str("switch-mute-01"))]);
+
+        let info = query_system_info(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(info.sys_name.as_deref(), Some("switch-mute-01"));
+        assert_eq!(info.sys_services, None, "sysServices is not implemented");
+        assert_eq!(info.if_number, None, "ifNumber is not implemented");
+    }
+
+    /// A device that publishes no `dot1dBaseNumPorts` makes no claim, and the collection must
+    /// carry `None` rather than a zero that would read as "it said it has no ports".
+    #[tokio::test]
+    async fn a_bridge_that_publishes_no_port_count_makes_no_claim() {
+        let mut agent = FakeAgent::new(&[("1.3.6.1.2.1.17.1.4.1.2.1", Canned::Int(1))]);
+
+        let bridge = query_bridge_port_mapping(&mut agent, ip()).await.unwrap();
+
+        assert_eq!(bridge.records.len(), 1);
+        assert!(bridge.claim.is_none());
+    }
+
+    /// The claim has to survive a walk that returns nothing, because that is the case worth
+    /// reporting: a switch declaring 48 bridge ports and then serving none of the table has
+    /// contradicted itself, and reading the scalar after the walk would lose exactly that.
+    #[tokio::test]
+    async fn a_declared_port_count_survives_an_empty_bridge_walk() {
+        let mut agent = FakeAgent::new(&[("1.3.6.1.2.1.17.1.2.0", Canned::Int(48))]);
+
+        let bridge = query_bridge_port_mapping(&mut agent, ip()).await.unwrap();
+
+        assert!(bridge.records.is_empty());
+        assert_eq!(
+            bridge.claim,
+            Some(DeviceClaim::Count {
+                source: ClaimSource::Dot1dBaseNumPorts,
+                expected: 48,
+            })
+        );
     }
 
     /// `lldpLocPortId` under subtype 3 is the port's MAC, sent either as six raw octets or —

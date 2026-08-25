@@ -159,6 +159,7 @@ erDiagram
   uuid first_discovery_id FK
   uuid snapshot_id FK
   uuid virtualization_service_id FK
+  text name_source
 }
 "public.subnets" {
   uuid id
@@ -469,6 +470,7 @@ erDiagram
   uuid last_discovery_id FK
   uuid first_discovery_id FK
   uuid snapshot_id FK
+  timestamp_with_time_zone neighbor_seen_at
 }
 "public.credentials" {
   uuid id

@@ -18,6 +18,7 @@ use crate::server::{
         service::InterfaceService,
     },
     ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},
+    networks::service::NetworkService,
     ports::{r#impl::base::Port, service::PortService},
     services::{
         r#impl::{base::Service, definitions::ServiceDefinitionExt},
@@ -78,6 +79,9 @@ pub struct HostService {
     credential_service: Arc<CredentialService>,
     subnet_service: Arc<SubnetService>,
     vlan_service: Arc<VlanService>,
+    /// Reads the network's staleness window, which is what decides whether a link's neighbour
+    /// evidence still counts. Via the service, never the storage layer.
+    network_service: Arc<NetworkService>,
     event_bus: Arc<EventBus>,
     entity_tag_service: Arc<EntityTagService>,
 }
@@ -214,6 +218,13 @@ pub struct LldpResolutionStats {
     pub host_no_strategy: usize,
     /// Neighbor identified a device this network has never discovered.
     pub host_not_found: usize,
+    /// Neighbor's identifier matched several devices and so names none of them.
+    ///
+    /// Its own counter for the same reason as [`Self::port_ambiguous`]: the far end is not
+    /// missing, it is duplicated — two hosts carrying one chassis id, or sharing the `sysName`
+    /// a neighbour advertised. Counting it as `host_not_found` sent an operator looking for a
+    /// device that is already scanned, twice over.
+    pub host_ambiguous: usize,
     /// Remote host known, but the port ID subtype has no lookup strategy.
     pub port_no_strategy: usize,
     /// Remote host known, port ID looked up, no such port on that host.
@@ -252,11 +263,12 @@ impl LldpResolutionStats {
                 self.host_not_found += 1;
                 None
             }
-            // Not produced by the host ladder: an ambiguous MAC there yields no host and falls
-            // through to the chassis-id and sysName tiers, so the verdict that reaches here is
-            // theirs. Counted with `not_found` to keep the match total.
+            // An identifier that named more than one device. Counted apart from `not_found`
+            // because the two call for opposite things: a chassis id or sysName matching nothing
+            // is a device we have not discovered, while one matching two is a device we have —
+            // twice, or under a name its neighbour shares with another.
             IdentityResolution::Ambiguous => {
-                self.host_not_found += 1;
+                self.host_ambiguous += 1;
                 None
             }
         }

@@ -593,6 +593,16 @@ impl ApiError {
         Self::coded(StatusCode::FORBIDDEN, ErrorCode::InviteEmailMismatch)
     }
 
+    // === Email errors ===
+
+    /// Internal error (500) - the configured mail server refused the message.
+    pub fn email_delivery_failed() -> Self {
+        Self::coded(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorCode::EmailDeliveryFailed,
+        )
+    }
+
     /// Forbidden (429) - rate limit exceeded
     pub fn rate_limit_exceeded() -> Self {
         Self::coded(StatusCode::TOO_MANY_REQUESTS, ErrorCode::RateLimitExceeded)
@@ -684,11 +694,29 @@ impl axum::response::IntoResponse for ApiError {
     }
 }
 
+/// A mail server's rejection, translated for the client.
+///
+/// The rejection itself is deliberately not passed through. lettre's `Display` reproduces
+/// the server's reply verbatim, which on Microsoft 365 includes the relay hostname and
+/// per-request diagnostic tokens — detail an operator needs and an end user should never
+/// be shown. The transport has already logged all of it; what reaches the client is a
+/// translatable code and nothing else.
+impl From<&lettre::transport::smtp::Error> for ApiError {
+    fn from(_: &lettre::transport::smtp::Error) -> Self {
+        Self::email_delivery_failed()
+    }
+}
+
 impl From<anyhow::Error> for ApiError {
     fn from(err: anyhow::Error) -> Self {
         // Check if this is an ApiError (preserves status code and error code)
         if let Some(api_err) = err.downcast_ref::<ApiError>() {
             return api_err.clone();
+        }
+
+        // A mail server rejection: coded, so the raw SMTP reply stays in the log.
+        if let Some(smtp_err) = err.downcast_ref::<lettre::transport::smtp::Error>() {
+            return smtp_err.into();
         }
 
         // Check if this is a ValidationError (should return 400)

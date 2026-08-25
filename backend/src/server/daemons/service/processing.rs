@@ -374,8 +374,7 @@ impl DaemonService {
             network_id: effective_network_id,
             // Placeholder identity: the daemon's own reported name, which sits at the same rung
             // as a hostname, so a later scan of the machine can improve on it.
-            name: String::new(),
-            name_source: HostNameSource::default(),
+            name: HostName::default(),
             hostname: None,
             description: None,
             source: EntitySource::Discovery,
@@ -395,9 +394,9 @@ impl DaemonService {
             serial_number: None,
             credential_assignments: vec![],
         });
-        if let Some(candidate) = HostName::from_hostname(request.name.clone()) {
-            dummy_host.base.apply_name(candidate);
-        }
+        dummy_host
+            .base
+            .apply_name(HostName::Hostname(request.name.clone()));
 
         let host_response = host_service
             .discover_host(

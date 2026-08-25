@@ -970,7 +970,11 @@ function buildElkGraph(
 				'elk.edgeRouting': 'POLYLINE',
 				'elk.spacing.nodeNode': '50',
 				'elk.spacing.componentComponent': '75',
-				'elk.layered.spacing.nodeNodeBetweenLayers': '75',
+				// L2 lays out RIGHT, so a layer is a *vertical* stack of switches and the spacing
+				// between layers is the *horizontal* gap between those stacks — the axes are
+				// inverted relative to every other view, which runs DOWN. Widened from 75 so the
+				// port-to-port edges running between stacks have room to be followed by eye.
+				'elk.layered.spacing.nodeNodeBetweenLayers': '150',
 				'elk.layered.spacing.edgeNodeBetweenLayers': '25',
 				'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
 				'elk.layered.crossingMinimization.forceNodeModelOrder': 'true',

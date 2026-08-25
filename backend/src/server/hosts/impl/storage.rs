@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::server::{
     hosts::r#impl::{
         base::{Host, HostBase},
-        name::HostNameSource,
+        name::HostName,
         virtualization::HostVirtualization,
     },
     shared::{
@@ -104,7 +104,6 @@ impl Storable for Host {
             base:
                 Self::BaseData {
                     name,
-                    name_source,
                     description,
                     hostname,
                     network_id,
@@ -162,8 +161,8 @@ impl Storable for Host {
                 SqlValue::Uuid(id),
                 SqlValue::Timestamp(created_at),
                 SqlValue::Timestamp(updated_at),
-                SqlValue::String(name),
-                SqlValue::HostNameSource(name_source),
+                SqlValue::String(name.value().to_string()),
+                SqlValue::HostNameSource(name.source()),
                 SqlValue::OptionalString(description),
                 SqlValue::Uuid(network_id),
                 SqlValue::EntitySource(source),
@@ -206,10 +205,12 @@ impl Storable for Host {
                 None => None,
             };
 
-        let name_source: HostNameSource = row
-            .get::<String, _>("name_source")
-            .parse()
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize name_source: {}", e))?;
+        let name = HostName::from_parts(
+            row.get::<String, _>("name"),
+            row.get::<String, _>("name_source")
+                .parse()
+                .map_err(|e| anyhow::anyhow!("Failed to deserialize name_source: {}", e))?,
+        );
 
         Ok(Host {
             id: row.get("id"),
@@ -222,8 +223,7 @@ impl Storable for Host {
             last_discovery_id: row.get("last_discovery_id"),
             first_discovery_id: row.get("first_discovery_id"),
             base: HostBase {
-                name: row.get("name"),
-                name_source,
+                name,
                 description: row.get("description"),
                 network_id: row.get("network_id"),
                 source,
@@ -270,7 +270,7 @@ impl Entity for Host {
     fn to_csv_row(&self) -> Self::CsvRow {
         HostCsvRow {
             id: self.id,
-            name: self.base.name.clone(),
+            name: self.base.name.to_string(),
             hostname: self.base.hostname.clone(),
             description: self.base.description.clone(),
             network_id: self.base.network_id,

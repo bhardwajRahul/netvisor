@@ -261,8 +261,17 @@ impl DiscoveryService {
         }
 
         let filter = StorableFilter::<Discovery>::new_for_historical_session(session_id);
-        let Some(mut discovery) = self.discovery_storage.get_one(filter).await? else {
-            tracing::debug!(
+        let Some(mut discovery) = self
+            .discovery_storage
+            .get_unique(filter)
+            .await?
+            .at_most_one()?
+        else {
+            // A completed session always has a row — `handle_session_completion` writes it before
+            // publishing the event that triggers this work. So this is either a scan whose record
+            // retention has already pruned, or that ordering has regressed; both are worth saying
+            // out loud, because the second is invisible from the outside. It cost two days once.
+            tracing::warn!(
                 session_id = %session_id,
                 "No historical discovery row to carry the post-scan warnings"
             );
@@ -273,24 +282,14 @@ impl DiscoveryService {
             return Ok(());
         };
         results.warnings.extend(lines);
+        // Nothing else in the Discovery path stamps this, and the row's content just changed.
+        discovery.set_updated_at(Utc::now());
 
-        let updated = self.discovery_storage.update(&mut discovery).await?;
-
-        // The Discovery modal renders the warning list from a fetched row, so without an event an
-        // operator watching the scan it belongs to never sees the additions.
-        if let Some(scope) = EntityScope::from_ids(
-            updated.id(),
-            updated.clone().into(),
-            self.get_network_id(&updated),
-            self.get_organization_id(&updated),
-        ) {
-            self.event_bus()
-                .publish(
-                    Event::new(scope, EntityOperation::Updated, AuthenticatedEntity::System)
-                        .with_flags(EntityEventFlags::default()),
-                )
-                .await?;
-        }
+        // Through the service rather than its storage: that is what publishes the `Updated` event
+        // the open Discovery modal needs to refetch, with the staleness and log-suppression flags
+        // worked out properly. Writing to storage direct skips all of it.
+        <Self as CrudService<Discovery>>::update(self, &mut discovery, AuthenticatedEntity::System)
+            .await?;
 
         Ok(())
     }

@@ -4,7 +4,10 @@ use uuid::Uuid;
 
 use crate::server::{
     bindings::r#impl::base::Binding,
-    hosts::r#impl::base::{Host, HostBase},
+    hosts::r#impl::{
+        base::{Host, HostBase},
+        name::HostName,
+    },
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
     networks::r#impl::{Network, NetworkBase},
     ports::r#impl::base::{Port, PortType},
@@ -84,7 +87,9 @@ pub fn create_remote_host(
     let binding = Binding::new_port_serviceless(dynamic_port.id, Some(ip_address.id));
 
     let base = HostBase {
-        name: "Mobile Device".to_string(),
+        // A deliberate label on a synthetic host, not something we derived — discovery
+        // must never rename these.
+        name: HostName::Manual("Mobile Device".to_string()),
         hostname: None,
         network_id,
         tags: Vec::new(),
@@ -126,7 +131,9 @@ pub fn create_internet_connectivity_host(
     let binding = Binding::new_port_serviceless(https_port.id, Some(ip_address.id));
 
     let base = HostBase {
-        name: "Google.com".to_string(),
+        // A deliberate label on a synthetic host, not something we derived — discovery
+        // must never rename these.
+        name: HostName::Manual("Google.com".to_string()),
         network_id,
         tags: Vec::new(),
         hostname: None,
@@ -169,7 +176,9 @@ pub fn create_public_dns_host(
     let binding = Binding::new_port_serviceless(dns_udp_port.id, Some(ip_address.id));
 
     let base = HostBase {
-        name: "Cloudflare DNS".to_string(),
+        // A deliberate label on a synthetic host, not something we derived — discovery
+        // must never rename these.
+        name: HostName::Manual("Cloudflare DNS".to_string()),
         hostname: None,
         network_id,
         description: None,

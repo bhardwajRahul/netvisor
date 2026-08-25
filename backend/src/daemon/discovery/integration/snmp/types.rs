@@ -20,6 +20,15 @@ pub struct SystemInfo {
     pub sys_contact: Option<String>,
     /// sysUpTime - Time since last re-initialization (hundredths of seconds)
     pub sys_uptime: Option<u64>,
+    /// sysServices - the layers this device claims to implement (RFC 1213 bitfield).
+    ///
+    /// Bit 2 (value 2) is the datalink layer: a device that sets it says it bridges, which is why
+    /// an empty bridge table from one is a contradiction rather than a device that simply does
+    /// not switch.
+    pub sys_services: Option<i32>,
+    /// ifNumber - how many interfaces the device says it has, for checking the ifTable walk
+    /// against the device's own count rather than only against itself.
+    pub if_number: Option<i32>,
 }
 
 /// Interface entry from ifTable/ifXTable

@@ -387,7 +387,10 @@ impl BillingService {
         };
         let customer_id = customer.id().to_string();
         let filter = StorableFilter::<Organization>::new_with_stripe_customer_id(&customer_id);
-        self.organization_service.get_one(filter).await
+        self.organization_service
+            .get_unique(filter)
+            .await?
+            .at_most_one()
     }
 
     pub(crate) async fn handle_invoice_payment_failed(

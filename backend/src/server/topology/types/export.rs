@@ -76,8 +76,8 @@ pub fn topology_to_mermaid(nodes: &[Node], edges: &[Edge], data: &TopologyData) 
                 {
                     let host_name = hosts
                         .get(host_id)
-                        .map(|h| h.base.name.as_str())
-                        .unwrap_or("Unknown Host");
+                        .map(|h| h.base.name.to_string())
+                        .unwrap_or_else(|| "Unknown Host".to_string());
 
                     let ip = ip_address_id
                         .and_then(|iid| ip_addresses.get(&iid))
@@ -85,9 +85,9 @@ pub fn topology_to_mermaid(nodes: &[Node], edges: &[Edge], data: &TopologyData) 
                         .unwrap_or_default();
 
                     let label = if ip.is_empty() {
-                        mermaid_escape(host_name)
+                        mermaid_escape(&host_name)
                     } else {
-                        format!("{}<br/>{}", mermaid_escape(host_name), ip)
+                        format!("{}<br/>{}", mermaid_escape(&host_name), ip)
                     };
 
                     writeln!(output, "        n_{}[\"{}\"]", short_id(&node.id), label).unwrap();
@@ -218,10 +218,10 @@ pub fn topology_to_confluence(nodes: &[Node], edges: &[Edge], data: &TopologyDat
     writeln!(output).unwrap();
 
     // Build node_id -> host name map
-    let hosts_map: HashMap<Uuid, &str> = data
+    let hosts_map: HashMap<Uuid, String> = data
         .hosts
         .iter()
-        .map(|h| (h.id, h.base.name.as_str()))
+        .map(|h| (h.id, h.base.name.to_string()))
         .collect();
     let nodes_map: HashMap<Uuid, _> = nodes.iter().map(|n| (n.id, n)).collect();
 
@@ -229,7 +229,7 @@ pub fn topology_to_confluence(nodes: &[Node], edges: &[Edge], data: &TopologyDat
         let source_host = nodes_map
             .get(&edge.source)
             .and_then(|n| match &n.node_type {
-                NodeType::Element { host_id, .. } => hosts_map.get(host_id).copied(),
+                NodeType::Element { host_id, .. } => hosts_map.get(host_id).map(String::as_str),
                 NodeType::Container { .. } => n.header.as_deref(),
             })
             .unwrap_or("Unknown");
@@ -237,7 +237,7 @@ pub fn topology_to_confluence(nodes: &[Node], edges: &[Edge], data: &TopologyDat
         let target_host = nodes_map
             .get(&edge.target)
             .and_then(|n| match &n.node_type {
-                NodeType::Element { host_id, .. } => hosts_map.get(host_id).copied(),
+                NodeType::Element { host_id, .. } => hosts_map.get(host_id).map(String::as_str),
                 NodeType::Container { .. } => n.header.as_deref(),
             })
             .unwrap_or("Unknown");

@@ -111,17 +111,14 @@ impl HostService {
         // reverse-DNS hostname fills in only over something weaker, and a name a person typed is
         // never touched by either. A daemon too old to send a rank enters as `Unspecified` and
         // changes nothing on its own — the hostname arm still reproduces its old IP-upgrade.
-        if let Some(candidate) = new_host_data.base.name_candidate()
-            && existing_host.base.apply_name(candidate)
+        if existing_host
+            .base
+            .apply_name(new_host_data.base.name.clone())
         {
             has_updates = true;
         }
-        if let Some(candidate) = existing_host
-            .base
-            .hostname
-            .clone()
-            .and_then(HostName::from_hostname)
-            && existing_host.base.apply_name(candidate)
+        if let Some(hostname) = existing_host.base.hostname.clone()
+            && existing_host.base.apply_name(HostName::Hostname(hostname))
         {
             has_updates = true;
         }
@@ -235,7 +232,7 @@ impl HostService {
 
         let daemon_filter = StorableFilter::<Daemon>::new_from_host_ids(&[other_host.id]);
 
-        if self.daemon_service.get_one(daemon_filter).await?.is_some() {
+        if self.daemon_service.exists(daemon_filter).await? {
             return Err(ValidationError::new(
                 "Can't consolidate a host that has a daemon associated with it. \
                  Consolidate the other host into the host with the daemon instead.",

@@ -3147,7 +3147,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.8"
+         *       "server_version": "0.17.11"
          *     }
          */
         ApiMeta: {
@@ -3158,7 +3158,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.8
+             * @example 0.17.11
              */
             server_version: string;
         };
@@ -3176,19 +3176,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-08-03T19:06:30.690316Z",
+             *       "created_at": "2026-08-24T23:53:28.526832Z",
              *       "first_discovery_id": null,
-             *       "id": "3b7ac356-18e6-40df-8c0d-d13bdc2f5f1b",
+             *       "id": "08a407f2-deb2-4da2-94a2-0cccc9cbb0c7",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-08-03T19:06:30.690316Z",
+             *       "last_seen_at": "2026-08-24T23:53:28.526832Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-08-03T19:06:30.690316Z",
-             *       "valid_from": "2026-08-03T19:06:30.690316Z",
+             *       "updated_at": "2026-08-24T23:53:28.526832Z",
+             *       "valid_from": "2026-08-24T23:53:28.526832Z",
              *       "valid_to": null
              *     }
              */
@@ -3743,6 +3743,7 @@ export interface components {
              *           "lldp_sys_name": null,
              *           "mac_address": "DE:AD:BE:EF:CA:FE",
              *           "neighbor": null,
+             *           "neighbor_seen_at": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "oper_status": "Up",
              *           "speed_bps": 1000000000,
@@ -3797,19 +3798,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-08-03T19:06:30.671280Z",
+             *               "created_at": "2026-08-24T23:53:28.511375Z",
              *               "first_discovery_id": null,
-             *               "id": "778db3b7-5a61-4b49-8808-b4cdbd4e899f",
+             *               "id": "bba6bda6-86e2-4980-b7b6-b36a5752ca41",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-08-03T19:06:30.671280Z",
+             *               "last_seen_at": "2026-08-24T23:53:28.511375Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-08-03T19:06:30.671280Z",
-             *               "valid_from": "2026-08-03T19:06:30.671280Z",
+             *               "updated_at": "2026-08-24T23:53:28.511375Z",
+             *               "valid_from": "2026-08-24T23:53:28.511375Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3823,7 +3824,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Tasmota",
+             *           "service_definition": "Amazon Echo",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -4480,19 +4481,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-08-03T19:06:30.684204Z",
+             *           "created_at": "2026-08-24T23:53:28.521705Z",
              *           "first_discovery_id": null,
-             *           "id": "99339589-6317-4468-8c09-3c12cfeb929d",
+             *           "id": "0cd838b8-3dbb-4564-87c2-b97f4556da11",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-08-03T19:06:30.684204Z",
+             *           "last_seen_at": "2026-08-24T23:53:28.521705Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-08-03T19:06:30.684204Z",
-             *           "valid_from": "2026-08-03T19:06:30.684204Z",
+             *           "updated_at": "2026-08-24T23:53:28.521705Z",
+             *           "valid_from": "2026-08-24T23:53:28.521705Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4506,7 +4507,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Tasmota",
+             *       "service_definition": "Amazon Echo",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -5309,19 +5310,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-08-03T19:06:30.671658Z",
+         *       "created_at": "2026-08-24T23:53:28.511640Z",
          *       "first_discovery_id": null,
-         *       "id": "ca0478cb-6d49-4b13-9fb6-344652876bb8",
+         *       "id": "33c885a5-feb6-4a17-9479-4fba4402705c",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-08-03T19:06:30.671658Z",
+         *       "last_seen_at": "2026-08-24T23:53:28.511640Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-08-03T19:06:30.671658Z",
-         *       "valid_from": "2026-08-03T19:06:30.671658Z",
+         *       "updated_at": "2026-08-24T23:53:28.511640Z",
+         *       "valid_from": "2026-08-24T23:53:28.511640Z",
          *       "valid_to": null
          *     }
          */
@@ -5614,7 +5615,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Tasmota",
+         *           "service_definition": "Amazon Echo",
          *           "tags": [],
          *           "virtualization_metadata": null,
          *           "virtualization_service_id": null
@@ -7093,7 +7094,7 @@ export interface components {
          *     Child entities (ip_addresses, ports, services) are stored in their own tables
          *     and queried by `host_id`. They are NOT stored on the host.
          */
-        HostBase: {
+        HostBase: components["schemas"]["HostName"] & {
             /** @description LLDP lldpLocChassisId - globally unique device identifier for deduplication */
             chassis_id?: string | null;
             /** @description Credential assignments for this host (hydrated from junction table). */
@@ -7113,18 +7114,6 @@ export interface components {
             manufacturer?: string | null;
             /** @description ENTITY-MIB entPhysicalModelName - hardware model */
             model?: string | null;
-            /**
-             * @description Human-facing name for the host.
-             *
-             *     Always the best name known. Which rung of the naming ladder it came from is recorded
-             *     separately in `name_source`, and only `apply_name` may write either.
-             */
-            name: string;
-            /**
-             * @description Which rung of the naming ladder produced `name`: an address, a detected service, a
-             *     hostname, an integration's device name, or a person typing it. Read-only over the API.
-             */
-            name_source?: components["schemas"]["HostNameSource"];
             /**
              * Format: uuid
              * @description The network this entity belongs to.
@@ -7158,17 +7147,13 @@ export interface components {
              */
             virtualization_service_id: string | null;
         };
-        /**
-         * @description Which rung of the naming ladder produced a host's display name, weakest first.
-         *
-         *     Declaration order is the precedence order — `Ord` is derived from it, and that derive is the
-         *     whole enforcement mechanism: a rung inserted at its rank propagates to every comparison, so
-         *     there is no per-call-site precedence to keep in sync.
-         *
-         *     Persisted as bare text (`Manual`, `Integration`, …) via `Display`/`FromStr`.
-         * @enum {string}
-         */
-        HostNameSource: "Unspecified" | "Ip" | "DetectedService" | "Hostname" | "Integration" | "Manual";
+        HostName: {
+            /** @description Human-facing name for the host. */
+            name: string;
+            name_source?: components["schemas"]["HostNameSource"];
+        };
+        /** @enum {string} */
+        HostNameSource: "Unnamed" | "Unspecified" | "Ip" | "DetectedService" | "Hostname" | "Integration" | "Manual";
         /** @enum {string} */
         HostNamingFallback: "Ip" | "BestService";
         /**
@@ -7214,6 +7199,7 @@ export interface components {
          *           "lldp_sys_name": null,
          *           "mac_address": "DE:AD:BE:EF:CA:FE",
          *           "neighbor": null,
+         *           "neighbor_seen_at": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "oper_status": "Up",
          *           "speed_bps": 1000000000,
@@ -7268,19 +7254,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-08-03T19:06:30.670854Z",
+         *               "created_at": "2026-08-24T23:53:28.511075Z",
          *               "first_discovery_id": null,
-         *               "id": "46e98061-733c-446d-800f-2cc1efe90719",
+         *               "id": "cf5715ea-bb22-402b-b1e9-ce07963f985a",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-08-03T19:06:30.670854Z",
+         *               "last_seen_at": "2026-08-24T23:53:28.511075Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-08-03T19:06:30.670854Z",
-         *               "valid_from": "2026-08-03T19:06:30.670854Z",
+         *               "updated_at": "2026-08-24T23:53:28.511075Z",
+         *               "valid_from": "2026-08-24T23:53:28.511075Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -7294,7 +7280,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Tasmota",
+         *           "service_definition": "Amazon Echo",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -7817,6 +7803,19 @@ export interface components {
              */
             native_vlan_id?: string | null;
             neighbor?: null | components["schemas"]["Neighbor"];
+            /**
+             * Format: date-time
+             * @description When a scan last carried evidence that something is adjacent to this port.
+             *
+             *     The freshness subject for the *link*, as `last_seen_at` is for the port. A port keeps
+             *     appearing in the ifTable long after its neighbour record stops arriving, so `last_seen_at`
+             *     cannot tell a live adjacency from one whose evidence has vanished. Judged against the same
+             *     `Network::stale_cutoff` as every other freshness verdict.
+             *
+             *     `None` means no scan has ever carried evidence for this row, and reads as *unknown* —
+             *     never as stale. Server-owned: stamped on the discovery ingest path, never sent by a daemon.
+             */
+            readonly neighbor_seen_at?: string | null;
             /**
              * Format: uuid
              * @description The network this entity belongs to.
@@ -8422,7 +8421,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.8"
+         *       "server_version": "0.17.11"
          *     }
          */
         PaginatedApiMeta: {
@@ -8435,7 +8434,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.8
+             * @example 0.17.11
              */
             server_version: string;
         };
@@ -9718,19 +9717,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-08-03T19:06:30.671574Z",
+         *           "created_at": "2026-08-24T23:53:28.511580Z",
          *           "first_discovery_id": null,
-         *           "id": "092afe22-97f8-4bc4-a103-569782d4393f",
+         *           "id": "8ee4a127-e56b-483a-80d4-64200a1e52f8",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-08-03T19:06:30.671574Z",
+         *           "last_seen_at": "2026-08-24T23:53:28.511580Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-08-03T19:06:30.671574Z",
-         *           "valid_from": "2026-08-03T19:06:30.671574Z",
+         *           "updated_at": "2026-08-24T23:53:28.511580Z",
+         *           "valid_from": "2026-08-24T23:53:28.511580Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -9744,7 +9743,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Tasmota",
+         *       "service_definition": "Amazon Echo",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -10378,7 +10377,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "a84691d3-74d0-4967-ae76-cf510fb432a7",
+             *           "id": "6a4b748d-bdd7-4df5-9a12-76c97f1517df",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -10388,23 +10387,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "b49472d1-1cd4-4340-b9d2-19674a0cfedb",
+             *           "id": "b247842f-02d5-479f-ad97-6e46fe411d31",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "31d4c8e7-77be-449c-b2f9-0ab5836924f8",
+             *           "id": "e74084c5-5dc0-4cab-9947-2d816a290922",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "9675598e-a790-4199-a294-66a36ee34c5e",
+             *           "id": "8cad1720-76c4-429f-b85e-0524e1508224",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "b49472d1-1cd4-4340-b9d2-19674a0cfedb",
+             *           "id": "b247842f-02d5-479f-ad97-6e46fe411d31",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -10417,19 +10416,19 @@ export interface components {
              * @description Rules deciding how entities are placed and inlined within containers.
              * @default [
              *       {
-             *         "id": "283ff095-7f0c-4c8d-a63e-8be4e9a7bb61",
+             *         "id": "3cfc4105-2f24-4b94-8727-6dcb2117e1cc",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "b4f0758b-ce9a-43ac-802a-e1f385b65079",
+             *         "id": "f8d15480-7d52-4715-8d78-f1269f2e469c",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "3a622453-ccf7-45dd-b4f3-e6b3ffb33e51",
+             *         "id": "3aada207-5f33-489b-82ba-c58e1a6fff43",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "9ac43a4b-758c-4052-a760-4cff987bfea3",
+             *         "id": "c541b65a-2342-4cfd-9903-378dd7e9e585",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -10447,7 +10446,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "f9f4444e-f370-44c7-9247-548c0dceb468",
+             *         "id": "33dd2396-3ad0-41c8-a953-237713940a31",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -10456,15 +10455,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "c760800f-c45d-4ad1-91ab-ece194327a05",
+             *         "id": "b39c15ef-0983-4a0e-bddd-278aad8e7c0c",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "0471f9e4-1610-4734-9dca-540b2d871dc5",
+             *         "id": "67c761b7-f0a4-49b6-8577-cf0c1cf5b2e1",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "88ce46ee-7577-47c3-b8f9-e1ec4944f66b",
+             *         "id": "bf17a683-ac9f-45fc-9c40-b0453a2d2c30",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -10495,6 +10494,11 @@ export interface components {
              *         }
              *       },
              *       "L2Physical": {
+             *         "Interface": {
+             *           "LinkState": [
+             *             "Unlinked"
+             *           ]
+             *         },
              *         "Service": {
              *           "Category": [
              *             "OpenPorts"

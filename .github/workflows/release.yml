@@ -96,6 +96,17 @@ jobs:
           path: ui/src/lib/data/*.json
           retention-days: 1
 
+      # `generate-fixtures` also downloads service logos, to a different tree.
+      # The Docker build gets them by running the generator inside its own
+      # rust-builder stage; the standalone UI build (build-ui) has no Rust
+      # toolchain, so it needs them as an artifact.
+      - name: Upload generated service logos
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-logos
+          path: ui/static/logos/services/
+          retention-days: 1
+
   migration-branch-test:
     name: Test migrations on Neon branch
     runs-on: ubuntu-latest
@@ -287,6 +298,122 @@ jobs:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           branch: release/${{ github.event.release.tag_name }}-migration-check
           api_key: ${{ secrets.NEON_API_KEY }}
+
+  # ============================================
+  # Build the static UI once, for the standalone server binaries to embed.
+  # The Docker image builds its own copy inside backend/Dockerfile; this job
+  # exists because `cross` has no Node toolchain.
+  # ============================================
+  build-ui:
+    name: Build UI
+    runs-on: ubuntu-latest
+    needs: test-and-update-fixtures
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull latest changes
+        run: |
+          git fetch origin ${{ github.event.release.target_commitish }}
+          git reset --hard origin/${{ github.event.release.target_commitish }}
+
+      - name: Download generated UI fixtures
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-fixtures
+          path: ui/src/lib/data/
+
+      - name: Download generated service logos
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-logos
+          path: ui/static/logos/services/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build UI
+        working-directory: ui
+        env:
+          PUBLIC_SERVER_HOSTNAME: default
+          PUBLIC_SERVER_PORT: 60072
+        run: |
+          npm ci
+          npm run build
+          test -f build/index.html || (echo "UI build produced no index.html" && exit 1)
+
+      - name: Upload UI build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-build
+          path: ui/build/
+          retention-days: 1
+
+  # ============================================
+  # Standalone server binaries — migrations and the UI compiled in, so a
+  # non-Docker install is one file plus a database.
+  # ============================================
+  build-server-binaries:
+    name: Build Server Binaries
+    runs-on: ${{ matrix.runner }}
+    needs: [build-ui, migration-branch-test]
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            binary: scanopy-server-linux-amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            binary: scanopy-server-linux-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull latest changes
+        run: |
+          git fetch origin ${{ github.event.release.target_commitish }}
+          git reset --hard origin/${{ github.event.release.target_commitish }}
+
+      # rust-embed resolves `#[folder = "../ui/build"]` at compile time, so the
+      # build output has to be in place before cargo runs.
+      - name: Download UI build
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-build
+          path: ui/build/
+
+      # Built in the official Alpine Rust image rather than with `cross`, for
+      # two reasons. `cross` mounts the cargo workspace root — `backend/` — so
+      # `../ui/build` is not visible inside its container and the rust-embed
+      # derive fails. And on Alpine the host target already is musl, so this
+      # needs no cross-linking: each runner builds its own architecture
+      # natively (matching the runner pair build-docker-server uses) and the
+      # result is a statically linked binary.
+      - name: Build server (static musl)
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "$PWD":/src -w /src/backend \
+            rust:1.90-alpine \
+            sh -c 'apk add --no-cache musl-dev build-base perl && cargo build --release --bin server --features embed-ui'
+
+      - name: Prepare binary
+        run: |
+          # The container writes target/ as root.
+          sudo cp backend/target/release/server ${{ matrix.binary }}
+          sudo chown "$USER" ${{ matrix.binary }}
+          chmod +x ${{ matrix.binary }}
+          file ${{ matrix.binary }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}
+          path: ${{ matrix.binary }}
+          retention-days: 1
 
   build-binaries:
     name: Build Daemon Binaries
@@ -676,7 +803,7 @@ jobs:
   upload-assets:
     name: Upload Release Assets
     runs-on: ubuntu-latest
-    needs: [build-binaries, create-manifests]
+    needs: [build-binaries, build-server-binaries, create-manifests]
     permissions:
       contents: write
 
@@ -691,8 +818,11 @@ jobs:
           # (scanopy-daemon-windows-amd64.msi/scanopy-daemon-windows-amd64.msi). A
           # second `*.msi` glob double-matched it, so softprops uploaded the same
           # asset twice and the second attempt 404'd. One glob covers everything.
+          # The server glob is disjoint from the daemon one for the same reason —
+          # overlapping globs double-upload.
           files: |
             scanopy-daemon-*/scanopy-daemon-*
+            scanopy-server-*/scanopy-server-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

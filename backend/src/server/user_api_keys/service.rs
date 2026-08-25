@@ -81,7 +81,7 @@ impl UserApiKeyService {
         use crate::server::shared::storage::{filter::StorableFilter, traits::Storage};
 
         let filter = StorableFilter::<UserApiKey>::new_from_api_key(hashed_key.to_string());
-        if let Some(mut key) = self.storage.get_one(filter).await? {
+        if let Some(mut key) = self.storage.get_unique(filter).await?.at_most_one()? {
             // Hydrate network_ids from junction table
             key.base.network_ids = self.network_access_storage.get_for_key(&key.id).await?;
             self.hydrate_tags(&mut key).await?;

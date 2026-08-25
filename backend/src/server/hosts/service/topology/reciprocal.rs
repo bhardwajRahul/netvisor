@@ -45,10 +45,15 @@ impl HostService {
     /// behind each already-bound far-end port, and the existing chassis ladder for the rows that
     /// are not resolved yet — whose verdicts are cached so the resolution pass does not repeat
     /// them.
+    ///
+    /// `evidence_cutoff` is the instant before which a `neighbor_seen_at` counts as stale — the
+    /// network's own staleness window, so a link is judged by the same rule and the same setting
+    /// as every other freshness verdict.
     pub(super) async fn build_neighbor_adjacency(
         &self,
         network_id: Uuid,
         resolver: &LldpResolverImpl,
+        evidence_cutoff: DateTime<Utc>,
     ) -> Result<NeighborAdjacency> {
         let filter = StorableFilter::<Interface>::new_for_lldp_neighbors_in_network(network_id);
         let interfaces = self.interface_service.get_all(filter).await?;
@@ -73,7 +78,7 @@ impl HostService {
 
         let mut host_of: HashMap<Uuid, IdentityResolution> = HashMap::new();
         // (local host, remote host) -> the local ports that name that remote host.
-        let mut ports_between: HashMap<(Uuid, Uuid), Vec<Uuid>> = HashMap::new();
+        let mut ports_between: HashMap<(Uuid, Uuid), Vec<NamingPort>> = HashMap::new();
 
         for interface in &interfaces {
             let resolution = match interface.base.neighbor {
@@ -93,15 +98,24 @@ impl HostService {
                             )
                             .await
                     } else if let Some(ref device_id) = interface.base.cdp_device_id {
-                        IdentityResolution::found(
-                            resolver.find_host_by_sys_name(device_id, network_id).await,
-                        )
+                        resolver.find_host_by_sys_name(device_id, network_id).await
                     } else {
                         IdentityResolution::NoStrategy
                     }
                 }
             };
             host_of.insert(interface.id, resolution);
+
+            // Whether this row says what it says from evidence the window still carries. The
+            // `Some(Neighbor::_)` arms above read the stored binding rather than the identifiers,
+            // so without this a binding is its own confirmation for ever.
+            //
+            // `None` is unknown, not stale: a row no scan has ever had evidence for — or that
+            // predates the column — must not lose its binding the moment this ships.
+            let evidence_current = interface
+                .base
+                .neighbor_seen_at
+                .is_none_or(|seen| seen >= evidence_cutoff);
 
             // A device naming itself contributes no adjacency and must never pair.
             if let IdentityResolution::Resolved(remote_host_id) = resolution
@@ -110,7 +124,10 @@ impl HostService {
                 ports_between
                     .entry((interface.base.host_id, remote_host_id))
                     .or_default()
-                    .push(interface.id);
+                    .push(NamingPort {
+                        interface_id: interface.id,
+                        evidence_current,
+                    });
             }
         }
 
@@ -156,7 +173,12 @@ impl HostService {
         }
 
         let bound_filter = StorableFilter::<Interface>::new_from_entity_ids(&[bound_id]).live();
-        let Some(bound) = self.interface_service.get_one(bound_filter).await? else {
+        let Some(bound) = self
+            .interface_service
+            .get_unique(bound_filter)
+            .await?
+            .at_most_one()?
+        else {
             return Ok(PortBinding::Stands);
         };
         let Some(mac) = bound.base.mac_address else {
@@ -178,14 +200,26 @@ impl HostService {
     }
 }
 
+/// A local port that names a remote host, and whether it still says so from evidence a scan
+/// actually carried — as opposed to from a stored binding already pointing at the far end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct NamingPort {
+    interface_id: Uuid,
+    evidence_current: bool,
+}
+
 /// The pairs where each device names the other on exactly one port.
 ///
 /// The "exactly one each way" rule is the whole guard. Two switches joined by a LAG name each other
 /// on several ports and there is no evidence in LLDP for which member faces which — pairing them
 /// would name an arbitrary port and draw it as authoritative, the precise failure the shared-MAC
 /// guard exists to prevent. Those stay device-level.
+///
+/// The tally counts *every* naming port, stored bindings included — that is what keeps a LAG whose
+/// members have already resolved device-level, and it must not be narrowed. Only the emission is
+/// gated on evidence, below.
 fn reciprocal_pairs(
-    ports_between: &HashMap<(Uuid, Uuid), Vec<Uuid>>,
+    ports_between: &HashMap<(Uuid, Uuid), Vec<NamingPort>>,
 ) -> HashMap<Uuid, (Uuid, Uuid)> {
     let mut reciprocal = HashMap::new();
     for ((local_host, remote_host), local_ports) in ports_between {
@@ -198,7 +232,19 @@ fn reciprocal_pairs(
         let [remote_port] = remote_ports[..] else {
             continue;
         };
-        reciprocal.insert(local_port, (remote_port, *remote_host));
+        // A pair is two devices *naming* each other. A stored binding read back as adjacency is
+        // the binding under examination, so a pair resting on one confirms only itself — and
+        // `re_examine_port_binding` would then call a link whose evidence has completely
+        // disappeared confirmed, for ever. Both sides are required: the far end may well be
+        // answering perfectly while it is the local port whose evidence vanished, and gating one
+        // side alone would downgrade one endpoint while the other kept pointing at it.
+        if !local_port.evidence_current || !remote_port.evidence_current {
+            continue;
+        }
+        reciprocal.insert(
+            local_port.interface_id,
+            (remote_port.interface_id, *remote_host),
+        );
     }
     reciprocal
 }
@@ -222,6 +268,23 @@ pub(super) enum PortBinding {
 mod reciprocal_tests {
     use super::*;
 
+    /// A port naming a neighbour from evidence a scan actually carried.
+    fn evidenced(interface_id: Uuid) -> NamingPort {
+        NamingPort {
+            interface_id,
+            evidence_current: true,
+        }
+    }
+
+    /// A port that names a neighbour only because a stored binding still points at it — the shape
+    /// a link takes once its LLDP/CDP/FDB evidence has stopped arriving.
+    fn unevidenced(interface_id: Uuid) -> NamingPort {
+        NamingPort {
+            interface_id,
+            evidence_current: false,
+        }
+    }
+
     /// Two switches, one cable, each naming the other on one port. Neither can identify the
     /// other's port from what it advertises (both report one chassis MAC across every port), but
     /// both endpoints are locally known, so the pair is unambiguous.
@@ -231,8 +294,8 @@ mod reciprocal_tests {
         let (port_a, port_b) = (Uuid::new_v4(), Uuid::new_v4());
 
         let pairs = reciprocal_pairs(&HashMap::from([
-            ((switch_a, switch_b), vec![port_a]),
-            ((switch_b, switch_a), vec![port_b]),
+            ((switch_a, switch_b), vec![evidenced(port_a)]),
+            ((switch_b, switch_a), vec![evidenced(port_b)]),
         ]));
 
         assert_eq!(pairs.get(&port_a), Some(&(port_b, switch_b)));
@@ -245,8 +308,14 @@ mod reciprocal_tests {
     fn a_lag_between_two_switches_stays_device_level() {
         let (switch_a, switch_b) = (Uuid::new_v4(), Uuid::new_v4());
         let pairs = reciprocal_pairs(&HashMap::from([
-            ((switch_a, switch_b), vec![Uuid::new_v4(), Uuid::new_v4()]),
-            ((switch_b, switch_a), vec![Uuid::new_v4(), Uuid::new_v4()]),
+            (
+                (switch_a, switch_b),
+                vec![evidenced(Uuid::new_v4()), evidenced(Uuid::new_v4())],
+            ),
+            (
+                (switch_b, switch_a),
+                vec![evidenced(Uuid::new_v4()), evidenced(Uuid::new_v4())],
+            ),
         ]));
 
         assert!(pairs.is_empty());
@@ -259,8 +328,53 @@ mod reciprocal_tests {
         let (switch_a, switch_b) = (Uuid::new_v4(), Uuid::new_v4());
 
         let pairs = reciprocal_pairs(&HashMap::from([
-            ((switch_a, switch_b), vec![Uuid::new_v4(), Uuid::new_v4()]),
-            ((switch_b, switch_a), vec![Uuid::new_v4()]),
+            (
+                (switch_a, switch_b),
+                vec![evidenced(Uuid::new_v4()), evidenced(Uuid::new_v4())],
+            ),
+            ((switch_b, switch_a), vec![evidenced(Uuid::new_v4())]),
+        ]));
+
+        assert!(pairs.is_empty());
+    }
+
+    /// The failure this column exists for: a port whose neighbour evidence has stopped arriving
+    /// keeps its stored binding, and `build_neighbor_adjacency` reads that binding back as
+    /// adjacency. Pairing on it would make the binding its own confirmation, so
+    /// `re_examine_port_binding` would answer `Stands` for a link nothing evidences any more.
+    ///
+    /// The far end is deliberately still answering: in the case this was reproduced from it is the
+    /// local port that went quiet, and a rule that only checked the far end would confirm it.
+    #[test]
+    fn a_pair_resting_on_evidence_that_stopped_arriving_does_not_pair() {
+        let (switch_a, switch_b) = (Uuid::new_v4(), Uuid::new_v4());
+        let (port_a, port_b) = (Uuid::new_v4(), Uuid::new_v4());
+
+        let pairs = reciprocal_pairs(&HashMap::from([
+            ((switch_a, switch_b), vec![unevidenced(port_a)]),
+            ((switch_b, switch_a), vec![evidenced(port_b)]),
+        ]));
+
+        assert!(pairs.is_empty());
+    }
+
+    /// A LAG whose members have already resolved names the far end from stored bindings rather
+    /// than from identifiers. Those still have to count, or the tally would see one evidenced port
+    /// each way, pair them, and draw an arbitrary LAG member as authoritative — the outcome the
+    /// "exactly one each way" rule exists to prevent.
+    #[test]
+    fn a_lag_stays_device_level_when_only_one_member_still_has_evidence() {
+        let (switch_a, switch_b) = (Uuid::new_v4(), Uuid::new_v4());
+
+        let pairs = reciprocal_pairs(&HashMap::from([
+            (
+                (switch_a, switch_b),
+                vec![evidenced(Uuid::new_v4()), unevidenced(Uuid::new_v4())],
+            ),
+            (
+                (switch_b, switch_a),
+                vec![evidenced(Uuid::new_v4()), unevidenced(Uuid::new_v4())],
+            ),
         ]));
 
         assert!(pairs.is_empty());
@@ -272,7 +386,10 @@ mod reciprocal_tests {
     fn a_one_sided_adjacency_does_not_pair() {
         let (switch, endpoint) = (Uuid::new_v4(), Uuid::new_v4());
 
-        let pairs = reciprocal_pairs(&HashMap::from([((switch, endpoint), vec![Uuid::new_v4()])]));
+        let pairs = reciprocal_pairs(&HashMap::from([(
+            (switch, endpoint),
+            vec![evidenced(Uuid::new_v4())],
+        )]));
 
         assert!(pairs.is_empty());
     }
@@ -286,10 +403,10 @@ mod reciprocal_tests {
         let (one_to_core, two_to_core) = (Uuid::new_v4(), Uuid::new_v4());
 
         let pairs = reciprocal_pairs(&HashMap::from([
-            ((core, edge_one), vec![core_to_one]),
-            ((edge_one, core), vec![one_to_core]),
-            ((core, edge_two), vec![core_to_two]),
-            ((edge_two, core), vec![two_to_core]),
+            ((core, edge_one), vec![evidenced(core_to_one)]),
+            ((edge_one, core), vec![evidenced(one_to_core)]),
+            ((core, edge_two), vec![evidenced(core_to_two)]),
+            ((edge_two, core), vec![evidenced(two_to_core)]),
         ]));
 
         assert_eq!(pairs.get(&core_to_one), Some(&(one_to_core, edge_one)));

@@ -215,6 +215,12 @@ impl InterfaceService {
 
         let existing = self.find_matching_existing(&entry, claimed).await?;
 
+        // Before either preserve step: `entry` still holds exactly what this scan carried, and
+        // `preserve_uncollected_data` below may put the *previous* scan's neighbour identifiers
+        // back on it. Stamping after that would call a link freshly evidenced every scan while its
+        // neighbour walk has in fact been failing for a month.
+        entry.stamp_neighbor_evidence(existing.as_ref());
+
         if let Some(existing_entry) = existing {
             let mut updated = entry;
             updated.id = existing_entry.id;
@@ -243,29 +249,12 @@ impl InterfaceService {
     ) -> Result<Option<Interface>> {
         let host_id = entry.base.host_id;
 
-        tracing::debug!(
-            host_id = %host_id,
-            incoming_if_index = entry.base.if_index,
-            incoming_if_name = ?entry.base.if_name,
-            incoming_mac = ?entry.base.mac_address,
-            "InterfaceService::find_matching_existing: start"
-        );
-
         // Load host's interfaces once for all three tiers. `claimed` excludes rows
         // already matched/created earlier in this batch so siblings sharing a weak
         // identity (chassis MAC, NULL if_name) can't collapse onto one row.
         let existing = self.get_for_host(&host_id).await?;
 
         let matched_id = match_existing_interface(entry, &existing, claimed);
-
-        tracing::debug!(
-            host_id = %host_id,
-            incoming_if_index = entry.base.if_index,
-            incoming_if_name = ?entry.base.if_name,
-            matched = matched_id.is_some(),
-            matched_id = ?matched_id,
-            "InterfaceService::find_matching_existing: tiered match result"
-        );
 
         Ok(matched_id.and_then(|id| existing.into_iter().find(|e| e.id == id)))
     }

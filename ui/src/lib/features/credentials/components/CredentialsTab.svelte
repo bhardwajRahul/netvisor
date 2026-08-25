@@ -29,7 +29,12 @@
 		billingPlans,
 		entities
 	} from '$lib/shared/stores/metadata';
-	import { getCredentialTypeId, getTargetTagProps } from '$lib/features/credentials/types/base';
+	import {
+		getCredentialTypeId,
+		getStabilityTagProps,
+		getTargetTagProps,
+		getUpstreamSupportTagProps
+	} from '$lib/features/credentials/types/base';
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
 	import type { TabProps } from '$lib/shared/types';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
@@ -55,7 +60,7 @@
 		common_networks,
 		common_notApplicable,
 		common_noEntityYet,
-		common_scope
+		common_targets
 	} from '$lib/paraglide/messages';
 
 	let { isReadOnly = false }: TabProps = $props();
@@ -291,15 +296,26 @@
 				filterOptions: credentialTypes.getItems().map((t) => t.name ?? t.id),
 				getValue: (item: Credential) => credentialTypes.getName(getCredentialTypeId(item)),
 				display: {
+					// Beta and unofficial-API ride with the type, which is what they qualify, and so
+					// land ahead of the scope column — the same order `CredentialTypeDisplay` uses in
+					// the wizard and the type dropdown. Without them a beta credential looked no
+					// different here from a stable one.
 					getItems: (item: Credential) => {
 						const typeId = getCredentialTypeId(item);
+						const meta = credentialTypes.getMetadata(typeId);
 						return [
 							{
 								id: typeId,
 								label: credentialTypes.getName(typeId),
 								color: credentialTypes.getColorHelper(typeId).color,
 								icon: credentialTypes.getIconComponent(typeId)
-							}
+							},
+							...[
+								getStabilityTagProps(meta?.stability),
+								getUpstreamSupportTagProps(meta?.upstream_support)
+							]
+								.filter((tag) => tag !== null)
+								.map((tag) => ({ id: `${typeId}-${tag.label}`, ...tag }))
 						];
 					}
 				}
@@ -352,7 +368,7 @@
 			},
 			{
 				key: 'target',
-				label: common_scope(),
+				label: common_targets(),
 				type: 'array',
 				searchable: true,
 				filterable: true,
@@ -365,7 +381,12 @@
 					return meta?.targets ?? [];
 				},
 				display: {
-					// Same chip props the card uses, so a scope reads identically in
+					// Off by default: the target set is a property of the credential *type*, so it repeats
+					// down the column for every credential of the same type and earns its width
+					// only when someone is actually sorting or filtering by it. Still filterable
+					// and groupable, and still shown on the cards.
+					hiddenByDefault: true,
+					// Same chip props the card uses, so a target reads identically in
 					// both views rather than falling back to undifferentiated grey.
 					getItems: (item: Credential) => {
 						const meta = credentialTypes.getMetadata(getCredentialTypeId(item));

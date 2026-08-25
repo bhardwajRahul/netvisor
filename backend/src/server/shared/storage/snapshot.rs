@@ -62,17 +62,32 @@ pub trait Snapshotable: Storable {
     /// entities with no within-tracked FKs).
     fn remap_fks_for_clone(&mut self, _maps: &FkMaps) {}
 
-    /// Rewrite this row's *self*-references — FK columns that point at another
-    /// row of the **same** type in this clone batch — using `own_map`
-    /// (live_id → closed_id for this type). Runs after `remap_fks_for_clone`,
-    /// once every row of this type has a closed id, because a self-reference
-    /// can't be resolved in the per-row pass (the target may not be cloned yet).
-    /// The closed rows are inserted in one bulk statement, so a self-reference
-    /// to another row in the same batch resolves at statement end.
+    /// This row's *self*-reference — an FK column pointing at another row of the
+    /// **same** type — as it stands, or `None` for types that have none.
+    ///
+    /// A self-reference cannot be rewritten in the per-row `remap_fks_for_clone`
+    /// pass (the target may not be cloned yet), and it cannot be rewritten
+    /// before the INSERT either: `create_many_in_tx` splits a batch into one
+    /// statement per `MAX_BIND_PARAMS / cols_per_row` rows, and the FK is
+    /// `NOT DEFERRABLE`, so it is checked at the end of *each* statement. A
+    /// closed id written before the insert therefore dangles whenever its target
+    /// lands in a later chunk (GH #687). The clone is inserted carrying its
+    /// original live reference — a row that already exists, so the INSERT is
+    /// valid however it chunks — and `close_and_clone_for` rewrites it once
+    /// every closed row of this type is in the table.
+    ///
+    /// Ordering the batch instead is not an option: reciprocal LLDP pairs are
+    /// cycles (A→B, B→A), so no topological order exists.
     ///
     /// Default: no self-references. Overridden by `Interface` (LLDP/CDP
     /// `neighbor` pointing at another interface).
-    fn remap_own_clone_refs(&mut self, _own_map: &std::collections::HashMap<Uuid, Uuid>) {}
+    fn own_clone_ref(&self) -> Option<Uuid> {
+        None
+    }
+
+    /// Point this row's self-reference at `id`. Only called for types that
+    /// return `Some` from [`Snapshotable::own_clone_ref`].
+    fn set_own_clone_ref(&mut self, _id: Uuid) {}
 }
 
 /// Accessors for the discovery-driven audit columns.
@@ -294,7 +309,7 @@ mod discovery_tracked_stamping_tests {
 
     fn fresh_host() -> Host {
         Host::new(HostBase {
-            name: "test".to_string(),
+            name: crate::server::hosts::r#impl::name::HostName::Manual("test".to_string()),
             network_id: Uuid::new_v4(),
             ..Default::default()
         })

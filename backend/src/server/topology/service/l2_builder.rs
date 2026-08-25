@@ -158,7 +158,7 @@ impl ViewBuilder for L2Builder {
                 },
                 position: Default::default(),
                 size: Default::default(),
-                header: Some(host.base.name.clone()),
+                header: Some(host.base.name.to_string()),
             });
         }
 
@@ -236,6 +236,7 @@ impl ViewBuilder for L2Builder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::hosts::r#impl::name::HostName;
     use crate::server::{
         hosts::r#impl::base::{Host, HostBase},
         interfaces::r#impl::base::{Interface, InterfaceBase, Neighbor},
@@ -257,7 +258,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: name.to_string(),
+                name: HostName::Manual(name.to_string()),
                 ..Default::default()
             },
             ..Default::default()

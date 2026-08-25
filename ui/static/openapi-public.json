@@ -12148,19 +12148,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-08-16T21:33:14.598577Z",
+              "created_at": "2026-08-24T23:53:28.526830Z",
               "first_discovery_id": null,
-              "id": "021c203a-d581-45b8-a1e0-16116d87e41f",
+              "id": "c7aee94e-e87b-4247-92de-5860e9eff1f7",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-16T21:33:14.598577Z",
+              "last_seen_at": "2026-08-24T23:53:28.526830Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-16T21:33:14.598577Z",
-              "valid_from": "2026-08-16T21:33:14.598577Z",
+              "updated_at": "2026-08-24T23:53:28.526830Z",
+              "valid_from": "2026-08-24T23:53:28.526830Z",
               "valid_to": null
             }
           },
@@ -13401,6 +13401,7 @@
                   "lldp_sys_name": null,
                   "mac_address": "DE:AD:BE:EF:CA:FE",
                   "neighbor": null,
+                  "neighbor_seen_at": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "oper_status": "Up",
                   "speed_bps": 1000000000,
@@ -13455,19 +13456,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-08-16T21:33:14.574431Z",
+                      "created_at": "2026-08-24T23:53:28.511378Z",
                       "first_discovery_id": null,
-                      "id": "381460d4-a7ec-4f12-8137-7833af21811c",
+                      "id": "e8ff630d-eeea-4cf9-af81-8a51fdd46a9a",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-08-16T21:33:14.574431Z",
+                      "last_seen_at": "2026-08-24T23:53:28.511378Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-08-16T21:33:14.574431Z",
-                      "valid_from": "2026-08-16T21:33:14.574431Z",
+                      "updated_at": "2026-08-24T23:53:28.511378Z",
+                      "valid_from": "2026-08-24T23:53:28.511378Z",
                       "valid_to": null
                     }
                   ],
@@ -13481,7 +13482,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Google Home",
+                  "service_definition": "Amazon Echo",
                   "source": {
                     "type": "Manual"
                   },
@@ -14684,19 +14685,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-08-16T21:33:14.590140Z",
+                  "created_at": "2026-08-24T23:53:28.521669Z",
                   "first_discovery_id": null,
-                  "id": "5c9cc618-4093-44b9-9573-9ae7edf78870",
+                  "id": "237f7a0b-eb63-473f-bbdd-6af7088d5428",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-16T21:33:14.590140Z",
+                  "last_seen_at": "2026-08-24T23:53:28.521669Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-16T21:33:14.590140Z",
-                  "valid_from": "2026-08-16T21:33:14.590140Z",
+                  "updated_at": "2026-08-24T23:53:28.521669Z",
+                  "valid_from": "2026-08-24T23:53:28.521669Z",
                   "valid_to": null
                 }
               ],
@@ -14710,7 +14711,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Google Home",
+              "service_definition": "Amazon Echo",
               "source": {
                 "type": "Manual"
               },
@@ -16770,19 +16771,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-08-16T21:33:14.574850Z",
+          "created_at": "2026-08-24T23:53:28.511637Z",
           "first_discovery_id": null,
-          "id": "8493cd52-600a-4384-8b6c-4be32596ddef",
+          "id": "e6f32d7c-4abb-4a01-b098-a4179f800a7d",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-08-16T21:33:14.574850Z",
+          "last_seen_at": "2026-08-24T23:53:28.511637Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-08-16T21:33:14.574850Z",
-          "valid_from": "2026-08-16T21:33:14.574850Z",
+          "updated_at": "2026-08-24T23:53:28.511637Z",
+          "valid_from": "2026-08-24T23:53:28.511637Z",
           "valid_to": null
         }
       },
@@ -17420,7 +17421,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Google Home",
+              "service_definition": "Amazon Echo",
               "tags": [],
               "virtualization_metadata": null,
               "virtualization_service_id": null
@@ -20505,167 +20506,181 @@
         }
       },
       "HostBase": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/HostName",
+            "description": "The host's name, together with the rung of the naming ladder that produced it.\n\nSerialises as the two flat keys `name` and `name_source`, so the wire format is a bare\nstring exactly as it has always been. Assign only through [`HostBase::apply_name`]."
+          },
+          {
+            "type": "object",
+            "required": [
+              "network_id",
+              "hostname",
+              "description",
+              "source",
+              "virtualization_metadata",
+              "virtualization_service_id",
+              "hidden",
+              "tags",
+              "credential_assignments"
+            ],
+            "properties": {
+              "chassis_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "LLDP lldpLocChassisId - globally unique device identifier for deduplication"
+              },
+              "credential_assignments": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CredentialAssignment"
+                },
+                "description": "Credential assignments for this host (hydrated from junction table)."
+              },
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Free-text notes about the host."
+              },
+              "hidden": {
+                "type": "boolean",
+                "description": "Whether the host is hidden from topology views."
+              },
+              "hostname": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Hostname as resolved or reported by the host."
+              },
+              "management_url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uri",
+                "description": "URL for device management interface (manual or discovered)"
+              },
+              "manufacturer": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalMfgName - hardware manufacturer"
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalModelName - hardware model"
+              },
+              "network_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The network this entity belongs to."
+              },
+              "serial_number": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalSerialNum - hardware serial number"
+              },
+              "source": {
+                "$ref": "#/components/schemas/EntitySource",
+                "description": "How this host came to be known — discovered, imported, or created by hand."
+              },
+              "sys_contact": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysContact.0 - admin contact info"
+              },
+              "sys_descr": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysDescr.0 - full system description"
+              },
+              "sys_location": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysLocation.0 - physical location"
+              },
+              "sys_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysName.0 - administratively-assigned hostname"
+              },
+              "sys_object_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysObjectID.0 - vendor OID for device identification"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "description": "Tags assigned to this entity."
+              },
+              "virtualization_metadata": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/HostVirtualization",
+                    "description": "How the host is virtualized, when it is a VM or container guest."
+                  }
+                ]
+              },
+              "virtualization_service_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "The service doing the virtualizing — the hypervisor this VM runs on.\n\nIts own column with a foreign key rather than a field inside\n[`HostVirtualization`]: a reference that no longer resolves now fails the write instead of\nsurviving as a value nothing matches, and `ON DELETE SET NULL` clears it when the\nhypervisor service goes away (GH #650)."
+              }
+            }
+          }
+        ],
+        "description": "Base data for a Host entity (stored in database).\nChild entities (ip_addresses, ports, services) are stored in their own tables\nand queried by `host_id`. They are NOT stored on the host."
+      },
+      "HostName": {
         "type": "object",
-        "description": "Base data for a Host entity (stored in database).\nChild entities (ip_addresses, ports, services) are stored in their own tables\nand queried by `host_id`. They are NOT stored on the host.",
         "required": [
-          "name",
-          "network_id",
-          "hostname",
-          "description",
-          "source",
-          "virtualization_metadata",
-          "virtualization_service_id",
-          "hidden",
-          "tags",
-          "credential_assignments"
+          "name"
         ],
         "properties": {
-          "chassis_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "LLDP lldpLocChassisId - globally unique device identifier for deduplication"
-          },
-          "credential_assignments": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CredentialAssignment"
-            },
-            "description": "Credential assignments for this host (hydrated from junction table)."
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Free-text notes about the host."
-          },
-          "hidden": {
-            "type": "boolean",
-            "description": "Whether the host is hidden from topology views."
-          },
-          "hostname": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Hostname as resolved or reported by the host."
-          },
-          "management_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uri",
-            "description": "URL for device management interface (manual or discovered)"
-          },
-          "manufacturer": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "ENTITY-MIB entPhysicalMfgName - hardware manufacturer"
-          },
-          "model": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "ENTITY-MIB entPhysicalModelName - hardware model"
-          },
           "name": {
             "type": "string",
-            "description": "Human-facing name for the host.\n\nAlways the best name known. Which rung of the naming ladder it came from is recorded\nseparately in `name_source`, and only `apply_name` may write either."
+            "description": "Human-facing name for the host."
           },
           "name_source": {
-            "$ref": "#/components/schemas/HostNameSource",
-            "description": "Which rung of the naming ladder produced `name`: an address, a detected service, a\nhostname, an integration's device name, or a person typing it. Read-only over the API."
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The network this entity belongs to."
-          },
-          "serial_number": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "ENTITY-MIB entPhysicalSerialNum - hardware serial number"
-          },
-          "source": {
-            "$ref": "#/components/schemas/EntitySource",
-            "description": "How this host came to be known — discovered, imported, or created by hand."
-          },
-          "sys_contact": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP sysContact.0 - admin contact info"
-          },
-          "sys_descr": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP sysDescr.0 - full system description"
-          },
-          "sys_location": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP sysLocation.0 - physical location"
-          },
-          "sys_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP sysName.0 - administratively-assigned hostname"
-          },
-          "sys_object_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP sysObjectID.0 - vendor OID for device identification"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Tags assigned to this entity."
-          },
-          "virtualization_metadata": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/HostVirtualization",
-                "description": "How the host is virtualized, when it is a VM or container guest."
-              }
-            ]
-          },
-          "virtualization_service_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "The service doing the virtualizing — the hypervisor this VM runs on.\n\nIts own column with a foreign key rather than a field inside\n[`HostVirtualization`]: a reference that no longer resolves now fails the write instead of\nsurviving as a value nothing matches, and `ON DELETE SET NULL` clears it when the\nhypervisor service goes away (GH #650)."
+            "$ref": "#/components/schemas/HostNameSource"
           }
         }
       },
       "HostNameSource": {
         "type": "string",
-        "description": "Which rung of the naming ladder produced a host's display name, weakest first.\n\nDeclaration order is the precedence order — `Ord` is derived from it, and that derive is the\nwhole enforcement mechanism: a rung inserted at its rank propagates to every comparison, so\nthere is no per-call-site precedence to keep in sync.\n\nPersisted as bare text (`Manual`, `Integration`, …) via `Display`/`FromStr`.",
         "enum": [
+          "Unnamed",
           "Unspecified",
           "Ip",
           "DetectedService",
@@ -20909,6 +20924,7 @@
               "lldp_sys_name": null,
               "mac_address": "DE:AD:BE:EF:CA:FE",
               "neighbor": null,
+              "neighbor_seen_at": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "oper_status": "Up",
               "speed_bps": 1000000000,
@@ -20963,19 +20979,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-08-16T21:33:14.573968Z",
+                  "created_at": "2026-08-24T23:53:28.511077Z",
                   "first_discovery_id": null,
-                  "id": "4b887e25-0f1f-4330-8975-d9f24892eb0a",
+                  "id": "db77e225-1e44-4f11-8def-2dd2f27751e4",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-16T21:33:14.573968Z",
+                  "last_seen_at": "2026-08-24T23:53:28.511077Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-16T21:33:14.573968Z",
-                  "valid_from": "2026-08-16T21:33:14.573968Z",
+                  "updated_at": "2026-08-24T23:53:28.511077Z",
+                  "valid_from": "2026-08-24T23:53:28.511077Z",
                   "valid_to": null
                 }
               ],
@@ -20989,7 +21005,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Google Home",
+              "service_definition": "Amazon Echo",
               "source": {
                 "type": "Manual"
               },
@@ -21922,6 +21938,15 @@
                 "description": "Resolved neighbor connection (mutually exclusive: either Interface or Host)"
               }
             ]
+          },
+          "neighbor_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a scan last carried evidence that something is adjacent to this port.\n\nThe freshness subject for the *link*, as `last_seen_at` is for the port. A port keeps\nappearing in the ifTable long after its neighbour record stops arriving, so `last_seen_at`\ncannot tell a live adjacency from one whose evidence has vanished. Judged against the same\n`Network::stale_cutoff` as every other freshness verdict.\n\n`None` means no scan has ever carried evidence for this row, and reads as *unknown* —\nnever as stale. Server-owned: stamped on the discovery ingest path, never sent by a daemon.",
+            "readOnly": true
           },
           "network_id": {
             "type": "string",
@@ -23890,6 +23915,7 @@
                     "lldp_sys_name": null,
                     "mac_address": "DE:AD:BE:EF:CA:FE",
                     "neighbor": null,
+                    "neighbor_seen_at": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "oper_status": "Up",
                     "speed_bps": 1000000000,
@@ -23944,19 +23970,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-08-16T21:33:14.563721Z",
+                        "created_at": "2026-08-24T23:53:28.504681Z",
                         "first_discovery_id": null,
-                        "id": "45414525-459c-46c3-926b-db65a38849b2",
+                        "id": "bc32eaf8-51ea-4fb2-996f-813becf25437",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-08-16T21:33:14.563721Z",
+                        "last_seen_at": "2026-08-24T23:53:28.504681Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-08-16T21:33:14.563721Z",
-                        "valid_from": "2026-08-16T21:33:14.563721Z",
+                        "updated_at": "2026-08-24T23:53:28.504681Z",
+                        "valid_from": "2026-08-24T23:53:28.504681Z",
                         "valid_to": null
                       }
                     ],
@@ -23970,7 +23996,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Google Home",
+                    "service_definition": "Amazon Echo",
                     "source": {
                       "type": "Manual"
                     },
@@ -24106,19 +24132,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-08-16T21:33:14.588031Z",
+                    "created_at": "2026-08-24T23:53:28.520758Z",
                     "first_discovery_id": null,
-                    "id": "80367e57-7285-4891-a106-1432b6544ded",
+                    "id": "38461510-884d-415f-a877-b87674358c00",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-08-16T21:33:14.588031Z",
+                    "last_seen_at": "2026-08-24T23:53:28.520758Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-08-16T21:33:14.588031Z",
-                    "valid_from": "2026-08-16T21:33:14.588031Z",
+                    "updated_at": "2026-08-24T23:53:28.520758Z",
+                    "valid_from": "2026-08-24T23:53:28.520758Z",
                     "valid_to": null
                   }
                 ],
@@ -24132,7 +24158,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Google Home",
+                "service_definition": "Amazon Echo",
                 "source": {
                   "type": "Manual"
                 },
@@ -26110,19 +26136,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-08-16T21:33:14.574725Z",
+              "created_at": "2026-08-24T23:53:28.511573Z",
               "first_discovery_id": null,
-              "id": "a010a6b3-d9a4-4b66-aaae-2ad2fa200cc3",
+              "id": "f41fba70-b864-4041-a4cf-f3fd0650d9be",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-16T21:33:14.574725Z",
+              "last_seen_at": "2026-08-24T23:53:28.511573Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-16T21:33:14.574725Z",
-              "valid_from": "2026-08-16T21:33:14.574725Z",
+              "updated_at": "2026-08-24T23:53:28.511573Z",
+              "valid_from": "2026-08-24T23:53:28.511573Z",
               "valid_to": null
             }
           ],
@@ -26136,7 +26162,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Google Home",
+          "service_definition": "Amazon Echo",
           "source": {
             "type": "Manual"
           },
@@ -27334,7 +27360,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "9dce42a4-22b0-41c5-ae7f-ae44016676aa",
+                  "id": "4e0dae99-2b01-4133-8a12-5737512b4eca",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -27344,23 +27370,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "5f34ddc9-0a88-4d8a-a89b-269de24089a1",
+                  "id": "02325375-1b06-4157-8100-8d6ce64a333c",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "dca05dce-7796-45e8-8484-b2347d0fddd3",
+                  "id": "422b9eac-ea3f-49df-a383-6cf1a5817739",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "0c5d2fb6-b721-4af5-8294-6c3543d88824",
+                  "id": "36ed47e0-8a2a-46c3-97b5-b6658856921f",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "5f34ddc9-0a88-4d8a-a89b-269de24089a1",
+                  "id": "02325375-1b06-4157-8100-8d6ce64a333c",
                   "rule": "ByHost"
                 }
               ]
@@ -27390,19 +27416,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "d7dcbc5e-156d-4d26-bf00-b26f3195ce3f",
+                "id": "d2664d1c-40c0-46ae-a9bb-16d8e38a8399",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "1ea617b9-5848-44ed-b397-aa0f5f48446f",
+                "id": "58d454cf-2797-4a8b-9a38-5bcd6753341a",
                 "rule": "ByVLAN"
               },
               {
-                "id": "83c87873-b802-49ab-87bb-9688b014ee24",
+                "id": "c455d872-4dee-4a47-85b4-f9c879f07906",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "cc0db9bb-cd46-4e9a-8abd-84a2b817f3c8",
+                "id": "bc795c3c-3b0a-4de1-aaeb-435497bd3963",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -27420,7 +27446,7 @@
                 }
               },
               {
-                "id": "994b3e49-309a-422b-baa3-4fdc19ecdfd1",
+                "id": "77215660-8342-4d40-870e-b98822ba7d76",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -27429,15 +27455,15 @@
                 }
               },
               {
-                "id": "5800014e-af82-479b-8506-6d8e5ccaa31f",
+                "id": "1f2d6bcb-372b-4068-9129-e7154ed2de8b",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "f89d685c-2a45-4311-a7cd-8cc4712458f6",
+                "id": "893e9128-b087-4ee0-aaa9-63771741ebcf",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "a47129ff-413e-4e4d-ba10-fe816b3771ee",
+                "id": "e0a8e036-7c4b-4066-8d7f-b383ddd75783",
                 "rule": "ByStack"
               }
             ]

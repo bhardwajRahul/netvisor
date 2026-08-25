@@ -12,22 +12,27 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
+/// The 100-character cap the API has always enforced on a host name. A custom validator rather
+/// than `#[validate(length)]` because the derive cannot see a length through [`HostName`].
+fn validate_host_name(name: &HostName) -> Result<(), validator::ValidationError> {
+    if name.value().chars().count() > 100 {
+        return Err(validator::ValidationError::new("length"));
+    }
+    Ok(())
+}
+
 /// Base data for a Host entity (stored in database).
 /// Child entities (ip_addresses, ports, services) are stored in their own tables
 /// and queried by `host_id`. They are NOT stored on the host.
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct HostBase {
-    /// Human-facing name for the host.
+    /// The host's name, together with the rung of the naming ladder that produced it.
     ///
-    /// Always the best name known. Which rung of the naming ladder it came from is recorded
-    /// separately in `name_source`, and only `apply_name` may write either.
-    #[validate(length(min = 0, max = 100))]
-    pub name: String,
-    /// Which rung of the naming ladder produced `name`: an address, a detected service, a
-    /// hostname, an integration's device name, or a person typing it. Read-only over the API.
-    #[serde(default)]
-    #[schema(read_only)]
-    pub name_source: HostNameSource,
+    /// Serialises as the two flat keys `name` and `name_source`, so the wire format is a bare
+    /// string exactly as it has always been. Assign only through [`HostBase::apply_name`].
+    #[serde(flatten)]
+    #[validate(custom(function = "validate_host_name"))]
+    pub name: HostName,
     /// The network this entity belongs to.
     pub network_id: Uuid,
     /// Hostname as resolved or reported by the host.
@@ -99,8 +104,7 @@ pub struct HostBase {
 impl Default for HostBase {
     fn default() -> Self {
         Self {
-            name: String::new(),
-            name_source: HostNameSource::default(),
+            name: HostName::default(),
             network_id: Uuid::nil(),
             hostname: None,
             description: None,
@@ -137,35 +141,25 @@ impl HostBase {
     /// detected service, an IP) never displaces it, and nothing displaces
     /// [`HostNameSource::Manual`].
     pub fn apply_name(&mut self, candidate: HostName) -> bool {
-        if candidate.source() < self.name_source {
+        // A blank candidate is an absent name, not a value — it must never displace a real one.
+        if candidate.is_blank() || candidate.source() < self.name.source() || self.name == candidate
+        {
             return false;
         }
-        let (value, source) = candidate.into_parts();
-        if self.name == value && self.name_source == source {
-            return false;
-        }
-        self.name = value;
-        self.name_source = source;
+        self.name = candidate;
         true
     }
 
     /// Lower the recorded provenance to `ceiling` if it claims more, keeping the name itself.
     /// Returns whether anything changed.
     ///
-    /// The server applies this to daemon payloads. It is the only other writer of `name_source`,
-    /// and it can only ever move it down the ladder.
+    /// The server applies this to daemon payloads, and it can only ever move the rung down.
     pub fn clamp_name_source(&mut self, ceiling: HostNameSource) -> bool {
-        if self.name_source <= ceiling {
+        if self.name.source() <= ceiling {
             return false;
         }
-        self.name_source = ceiling;
+        self.name = self.name.clone().clamped_to(ceiling);
         true
-    }
-
-    /// The stored name as a candidate, for merging this host's name into another one.
-    /// `None` when the host has no name.
-    pub(in crate::server::hosts) fn name_candidate(&self) -> Option<HostName> {
-        HostName::from_parts(self.name.clone(), self.name_source)
     }
 }
 
@@ -281,9 +275,9 @@ mod tests {
     #[test]
     fn reapplying_an_unchanged_name_reports_no_change() {
         let mut base = HostBase::default();
-        assert!(base.apply_name(HostName::from_integration("Core Switch").unwrap()));
-        assert!(!base.apply_name(HostName::from_integration("Core Switch").unwrap()));
-        assert!(base.apply_name(HostName::from_integration("Core Switch 2").unwrap()));
+        assert!(base.apply_name(HostName::Integration("Core Switch".to_string())));
+        assert!(!base.apply_name(HostName::Integration("Core Switch".to_string())));
+        assert!(base.apply_name(HostName::Integration("Core Switch 2".to_string())));
     }
 
     /// The same value arriving from a *better* source is still a change worth recording: the name
@@ -291,8 +285,8 @@ mod tests {
     #[test]
     fn the_same_name_from_a_higher_rung_is_recorded() {
         let mut base = HostBase::default();
-        base.apply_name(HostName::from_hostname("switch.lan").unwrap());
-        assert!(base.apply_name(HostName::from_integration("switch.lan").unwrap()));
-        assert_eq!(base.name_source, HostNameSource::Integration);
+        base.apply_name(HostName::Hostname("switch.lan".to_string()));
+        assert!(base.apply_name(HostName::Integration("switch.lan".to_string())));
+        assert_eq!(base.name.source(), HostNameSource::Integration);
     }
 }

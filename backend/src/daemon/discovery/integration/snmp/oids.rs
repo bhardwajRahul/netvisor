@@ -24,6 +24,20 @@ pub fn oid_to_vec(oid: &Oid) -> Vec<u64> {
     oid.iter().map(|iter| iter.collect()).unwrap_or_default()
 }
 
+/// Split a dotted OID string into sub-ids.
+///
+/// Unlike [`parse_oid`] this cannot fail: non-numeric components are dropped. Every caller passes
+/// a constant from this module, so a malformed OID is a bug in this file rather than something a
+/// device can provoke — and a walk that starts from a shorter base reads as a truncated column,
+/// which is visible, where a panic mid-collection is not.
+pub fn oid_parts(oid_str: &str) -> Vec<u64> {
+    oid_str
+        .split('.')
+        .filter(|s| !s.is_empty())
+        .filter_map(|s| s.parse().ok())
+        .collect()
+}
+
 /// System MIB OIDs (RFC 3418)
 pub mod system {
     /// sysDescr.0 - Full textual description of the entity
@@ -53,8 +67,19 @@ pub mod if_mib {
     /// ifTable - Interface table
     pub const IF_TABLE: &str = "1.3.6.1.2.1.2.2";
 
-    /// ifNumber.0 - Number of network ip_addresses
+    /// ifNumber.0 - How many interfaces the device says it has.
+    ///
+    /// Read as the expected row count for the ifTable walk: a device claiming 23 and answering
+    /// with 1 has short-changed the collection, and saying so is the only way an operator learns
+    /// that from a scan that otherwise reports itself complete.
     pub const IF_NUMBER: &str = "1.3.6.1.2.1.2.1.0";
+
+    /// The `ifNumber` object without its `.0` instance.
+    ///
+    /// What an agent *registers* to serve, as opposed to what a manager gets. The simulator needs
+    /// the distinction: `mibII/interfaces` owns this scalar, so a fixture that does not register
+    /// the object has its own count answered from the host's kernel state instead.
+    pub const IF_NUMBER_OBJECT: &str = "1.3.6.1.2.1.2.1";
 
     /// ifEntry - Entry in interface table
     pub const IF_ENTRY: &str = "1.3.6.1.2.1.2.2.1";
@@ -91,6 +116,11 @@ pub mod if_mib {
 
     /// ifXTable - Extended interface table (IF-MIB)
     pub mod if_x_table {
+        /// ifXTable - the extended interface table itself, which is the subtree an agent
+        /// registers. `IF_X_ENTRY` below is one level deeper, and registering that instead would
+        /// leave the table's own node unserved.
+        pub const IF_X_TABLE: &str = "1.3.6.1.2.1.31.1.1";
+
         /// ifXEntry - Entry in extended interface table
         pub const IF_X_ENTRY: &str = "1.3.6.1.2.1.31.1.1.1";
 
@@ -128,6 +158,10 @@ pub mod ip_mib {
 
 /// LLDP-MIB OIDs (IEEE 802.1AB)
 pub mod lldp {
+    /// The whole LLDP MIB. Local system data and the remote table live under it, so an agent
+    /// serves both from one registration.
+    pub const LLDP_MIB: &str = "1.0.8802.1.1.2";
+
     /// lldpLocalSystemData - Local system information
     pub mod local {
         /// lldpLocChassisId - Local chassis ID (globally unique device identifier)
@@ -202,6 +236,9 @@ pub mod lldp {
 
 /// CDP-MIB OIDs (Cisco proprietary)
 pub mod cdp {
+    /// The Cisco CDP MIB root, which is the subtree an agent registers to serve the cache table.
+    pub const CDP_MIB: &str = "1.3.6.1.4.1.9.9.23";
+
     /// cdpCacheTable - CDP neighbor cache table
     pub const CDP_CACHE_TABLE: &str = "1.3.6.1.4.1.9.9.23.1.2.1";
 
@@ -229,6 +266,9 @@ pub mod cdp {
 
 /// ENTITY-MIB OIDs (RFC 4133) - Physical entity information
 pub mod entity {
+    /// The ENTITY-MIB root, which is the subtree an agent registers to serve the physical table.
+    pub const ENTITY_MIB: &str = "1.3.6.1.2.1.47";
+
     /// entPhysicalTable - Physical entity table
     pub const ENT_PHYSICAL_TABLE: &str = "1.3.6.1.2.1.47.1.1.1";
 
@@ -283,6 +323,11 @@ pub mod arp {
 
 /// Bridge MIB OIDs (RFC 4188) - MAC forwarding table
 pub mod bridge {
+    /// The BRIDGE-MIB root, covering the base port table, both forwarding databases and the
+    /// Q-BRIDGE VLAN tables. One registration serves all of them, which is why a device's bridge
+    /// data lives in one file.
+    pub const BRIDGE_MIB: &str = "1.3.6.1.2.1.17";
+
     /// dot1dTpFdbTable - Transparent bridge forwarding database
     pub const DOT1D_TP_FDB_TABLE: &str = "1.3.6.1.2.1.17.4.3";
 
@@ -291,6 +336,14 @@ pub mod bridge {
 
     /// dot1dBasePortIfIndex - bridge port to ifIndex mapping
     pub const DOT1D_BASE_PORT_IF_INDEX: &str = "1.3.6.1.2.1.17.1.4.1.2";
+
+    /// dot1dBaseNumPorts.0 - How many bridge ports the device says it controls.
+    ///
+    /// The bridge MIB's analogue of `ifNumber`, and the sharper of the two signals that a switch
+    /// is not giving up its bridge tables: a device declaring 48 ports and answering the port
+    /// mapping with none has contradicted itself, whereas the `sysServices` bridge bit alone only
+    /// says it is a bridge.
+    pub const DOT1D_BASE_NUM_PORTS: &str = "1.3.6.1.2.1.17.1.2.0";
 
     /// dot1dTpFdbEntry columns
     pub mod fdb_entry {

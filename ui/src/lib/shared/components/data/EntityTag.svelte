@@ -22,7 +22,8 @@
 		disableNavigate = false
 	}: {
 		entityRef: EntityRef;
-		label: string;
+		/** Omit to render the icon alone, as `Tag` does. */
+		label?: string;
 		icon?: IconComponent | null;
 		color?: Color;
 		disabled?: boolean;

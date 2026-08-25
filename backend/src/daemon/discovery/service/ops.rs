@@ -35,7 +35,7 @@ use crate::{
         hosts::r#impl::{
             api::{DiscoveryHostRequest, HostResponse},
             base::{Host, HostBase},
-            name::{HostName, HostNameSource},
+            name::HostName,
             virtualization::HostVirtualization,
         },
         interfaces::r#impl::base::{Interface, InterfaceDataComplete},
@@ -305,9 +305,9 @@ impl HostData {
     /// detected service, and loses to a name a controller or a person supplied.
     pub fn with_hostname_fallback(&mut self, hostname: String) -> &mut Self {
         if self.host.base.hostname.is_none() {
-            if let Some(candidate) = HostName::from_hostname(hostname.clone()) {
-                self.host.base.apply_name(candidate);
-            }
+            self.host
+                .base
+                .apply_name(HostName::Hostname(hostname.clone()));
             self.host.base.hostname = Some(hostname);
         }
         self
@@ -489,6 +489,11 @@ impl DiscoveryOps {
         }
         if let Ok(records) = session.incomplete_snmp_walks.lock() {
             warnings.extend(warnings::render_incomplete_snmp_walks(&records));
+        }
+        // Directly after the shortfalls, because on a device that produced both the two lines are
+        // halves of one story: why the read stopped, and what the device said was waiting.
+        if let Ok(records) = session.contradicted_claims.lock() {
+            warnings.extend(warnings::render_contradicted_claims(&records));
         }
         if let Ok(records) = session.unresolved_lldp_ports.lock() {
             warnings.extend(warnings::render_unresolved_lldp_ports(&records));
@@ -705,6 +710,22 @@ impl DiscoveryOps {
         }
         if let Ok(session) = self.get_session().await
             && let Ok(mut buffer) = session.incomplete_snmp_walks.lock()
+        {
+            buffer.extend(records);
+        }
+    }
+
+    /// Record the device's own figures that this host's collection contradicted.
+    ///
+    /// Kept apart from [`Self::record_snmp_shortfalls`] because the two answer different
+    /// questions and a device can warrant both: one says why the read stopped, the other says
+    /// what the device claimed was there to read.
+    pub async fn record_contradicted_claims(&self, records: Vec<warnings::ContradictedClaim>) {
+        if records.is_empty() {
+            return;
+        }
+        if let Ok(session) = self.get_session().await
+            && let Ok(mut buffer) = session.contradicted_claims.lock()
         {
             buffer.extend(records);
         }
@@ -1169,8 +1190,7 @@ impl DiscoveryOps {
         let gateway_ips = session.gateway_ips.clone();
 
         let mut host = Host::new(HostBase {
-            name: "Unknown Device".to_string(),
-            name_source: HostNameSource::default(),
+            name: HostName::default(),
             hostname: hostname.clone(),
             tags: Vec::new(),
             network_id,
@@ -1206,12 +1226,12 @@ impl DiscoveryOps {
         // Rungs the scan itself can reach. `host_naming_fallback` decides which of the two
         // bottom rungs the user prefers when there is no hostname; an integration that knows a
         // human-assigned name outranks all of them and applies later, during `execute()`.
-        let ip_name = HostName::from_ip(ip_address.base.ip_address);
+        let ip_name = HostName::Ip(ip_address.base.ip_address);
         let candidate = match (hostname, best_service_name, host_naming_fallback) {
-            (Some(hostname), _, _) => HostName::from_hostname(hostname).unwrap_or(ip_name),
+            (Some(hostname), _, _) => HostName::Hostname(hostname),
             (None, _, HostNamingFallback::Ip) => ip_name,
             (None, Some(service), HostNamingFallback::BestService) => {
-                HostName::from_service(service).unwrap_or(ip_name)
+                HostName::DetectedService(service)
             }
             (None, None, HostNamingFallback::BestService) => ip_name,
         };

@@ -20,6 +20,7 @@ use scanopy::server::{
         cache::AppCache,
         factory::{create_public_share_routes, create_router},
     },
+    shared::web_assets,
     shares::handlers::{ShareIndexHtml, share_html_handler},
 };
 use tower::ServiceBuilder;
@@ -245,6 +246,9 @@ async fn main() -> anyhow::Result<()> {
                     static_path.display()
                 ))),
         )
+    } else if web_assets::is_embedded() {
+        tracing::debug!(target: LOG_TARGET, "  Serving web assets compiled into the binary");
+        base_router.fallback(web_assets::fallback_handler)
     } else {
         tracing::debug!(target: LOG_TARGET, "  Web assets not configured (API-only mode)");
         base_router
@@ -390,9 +394,17 @@ async fn main() -> anyhow::Result<()> {
     // `PasswordGate` and error views still render client-side. Leaving
     // these to protected_app's fallback ServeDir would ship them with the
     // global (looser) CSP, so we intercept the HTML here.
-    if let Some(static_path) = &web_external_path {
-        let index_html = std::fs::read_to_string(format!("{}/index.html", static_path.display()))
-            .expect("index.html must exist when web_external_path is set");
+    let share_index_html = match &web_external_path {
+        Some(static_path) => Some(
+            std::fs::read_to_string(format!("{}/index.html", static_path.display()))
+                .expect("index.html must exist when web_external_path is set"),
+        ),
+        // Falls back to the compiled-in copy, so a standalone binary serves
+        // share links with the same per-share CSP a container deploy does.
+        None => web_assets::index_html(),
+    };
+
+    if let Some(index_html) = share_index_html {
         let share_index = ShareIndexHtml(Arc::new(index_html));
 
         public_share_app = public_share_app
@@ -594,8 +606,10 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
-    if web_external_path.is_some() {
-        tracing::info!(target: LOG_TARGET, "  Web UI:          enabled");
+    if let Some(static_path) = &web_external_path {
+        tracing::info!(target: LOG_TARGET, "  Web UI:          enabled (from {})", static_path.display());
+    } else if web_assets::is_embedded() {
+        tracing::info!(target: LOG_TARGET, "  Web UI:          enabled (compiled into binary)");
     } else {
         tracing::info!(target: LOG_TARGET, "  Web UI:          disabled (API-only)");
     }
@@ -626,7 +640,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(target: LOG_TARGET, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     tracing::info!(target: LOG_TARGET, "Server ready");
     tracing::info!(target: LOG_TARGET, "  API:             {}/api", public_url);
-    if web_external_path.is_some() {
+    if web_external_path.is_some() || web_assets::is_embedded() {
         tracing::info!(target: LOG_TARGET, "  Web UI:          {}", public_url);
     }
     tracing::info!(target: LOG_TARGET, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");

@@ -105,9 +105,7 @@ impl ControllerIdentity {
         }
         if let Some(name) = name {
             host_data.with_sys_name(name.clone());
-            if let Some(candidate) = HostName::from_integration(name) {
-                host_data.apply_name(candidate);
-            }
+            host_data.apply_name(HostName::Integration(name));
         }
         if let Some(chassis_id) = chassis_id {
             host_data.with_chassis_id(chassis_id);
@@ -127,11 +125,11 @@ impl ControllerIdentity {
     }
 
     fn apply_names(base: &mut HostBase, name: Option<String>, hostname: Option<String>) {
-        if let Some(candidate) = hostname.and_then(HostName::from_hostname) {
-            base.apply_name(candidate);
+        if let Some(hostname) = hostname {
+            base.apply_name(HostName::Hostname(hostname));
         }
-        if let Some(candidate) = name.and_then(HostName::from_integration) {
-            base.apply_name(candidate);
+        if let Some(name) = name {
+            base.apply_name(HostName::Integration(name));
         }
     }
 
@@ -270,7 +268,7 @@ mod tests {
     fn controller_name_becomes_the_display_name() {
         let host = identity(Some("Core Switch"), None).into_host(Uuid::new_v4());
         assert_eq!(host.base.name, "Core Switch");
-        assert_eq!(host.base.name_source, HostNameSource::Integration);
+        assert_eq!(host.base.name.source(), HostNameSource::Integration);
         // Still mirrored into sys_name, which is what LLDP neighbour resolution matches on.
         assert_eq!(host.base.sys_name.as_deref(), Some("Core Switch"));
     }
@@ -279,22 +277,23 @@ mod tests {
     fn a_controller_known_hostname_names_a_client_that_has_no_assigned_name() {
         let host = identity(None, Some("marys-laptop")).into_host(Uuid::new_v4());
         assert_eq!(host.base.name, "marys-laptop");
-        assert_eq!(host.base.name_source, HostNameSource::Hostname);
+        assert_eq!(host.base.name.source(), HostNameSource::Hostname);
     }
 
     #[test]
     fn an_assigned_name_outranks_a_hostname_for_the_same_device() {
         let host = identity(Some("Reception iPad"), Some("ipad-1a2b")).into_host(Uuid::new_v4());
         assert_eq!(host.base.name, "Reception iPad");
-        assert_eq!(host.base.name_source, HostNameSource::Integration);
+        assert_eq!(host.base.name.source(), HostNameSource::Integration);
         assert_eq!(host.base.hostname.as_deref(), Some("ipad-1a2b"));
     }
 
     #[test]
     fn a_blank_controller_name_leaves_the_host_unnamed_rather_than_naming_it_empty() {
         let host = identity(Some("   "), None).into_host(Uuid::new_v4());
-        assert_eq!(host.base.name, "");
-        assert_eq!(host.base.name_source, HostNameSource::Unspecified);
+        // `Unnamed`, not an empty `Unspecified`: "no name" and "a name we cannot attribute" are
+        // different states, and only the latter should outrank anything.
+        assert_eq!(host.base.name, HostName::Unnamed);
         assert_eq!(host.base.sys_name, None);
     }
 }

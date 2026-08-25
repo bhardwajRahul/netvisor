@@ -1692,6 +1692,7 @@ qu.edu.az
 sdu.edu.az
 tourism.edu.az
 wu.edu.az
+qu.edu.az
 cob.edu.bs
 agu.edu.bh
 ahliauniversity.org
@@ -10579,3 +10580,4 @@ neu.ac.bd
 istp.fr
 stmikadhiguna.ac.id
 uindatokarama.ac.id
+ntc.edu.vn

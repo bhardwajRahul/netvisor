@@ -260,12 +260,9 @@ pub async fn test_all_tables_have_entity_mapping() {
     let (pool, _database_url, _container) = setup_test_db().await;
 
     // Apply migrations to create the schema
-    crate::server::shared::storage::migration_runner::apply_migrations(
-        &pool,
-        std::path::Path::new("./migrations"),
-    )
-    .await
-    .expect("Failed to run migrations");
+    crate::server::shared::storage::migration_runner::apply_embedded_migrations(&pool)
+        .await
+        .expect("Failed to run migrations");
 
     // Get all tables from information_schema
     let tables: Vec<String> = sqlx::query_scalar(
@@ -385,12 +382,9 @@ pub async fn test_database_schema_backward_compatibility() {
 
         println!("Successfully read all tables from latest release database");
 
-        crate::server::shared::storage::migration_runner::apply_migrations(
-            &pool,
-            std::path::Path::new("./migrations"),
-        )
-        .await
-        .expect("Failed to apply current schema to old database");
+        crate::server::shared::storage::migration_runner::apply_embedded_migrations(&pool)
+            .await
+            .expect("Failed to apply current schema to old database");
 
         println!("Successfully applied current schema to old database");
     } else {
@@ -445,12 +439,9 @@ pub async fn test_struct_deserialization_backward_compatibility() {
         let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
 
         // Apply current migrations
-        crate::server::shared::storage::migration_runner::apply_migrations(
-            &pool,
-            std::path::Path::new("./migrations"),
-        )
-        .await
-        .expect("Failed to apply current schema");
+        crate::server::shared::storage::migration_runner::apply_embedded_migrations(&pool)
+            .await
+            .expect("Failed to apply current schema");
 
         println!("Testing deserialization of all entity types...");
 
@@ -500,12 +491,9 @@ pub async fn test_entity_columns_match_live_schema() {
     use crate::tests::setup_test_db;
 
     let (pool, _database_url, _container) = setup_test_db().await;
-    crate::server::shared::storage::migration_runner::apply_migrations(
-        &pool,
-        std::path::Path::new("./migrations"),
-    )
-    .await
-    .expect("Failed to run migrations");
+    crate::server::shared::storage::migration_runner::apply_embedded_migrations(&pool)
+        .await
+        .expect("Failed to run migrations");
 
     /// For a Storable type, fetch the live column spec for its table and
     /// compare against what to_params() produces. Pushes human-readable

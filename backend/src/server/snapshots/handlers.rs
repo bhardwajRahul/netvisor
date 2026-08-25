@@ -123,12 +123,43 @@ async fn create_snapshot(
         // closed copy. Single transaction; rolls back on any failure. No
         // topology row is built — the snapshot's graph is built on request from
         // these closed copies by the read path.
-        state
+        if let Err(e) = state
             .services
             .snapshot_service
             .run_close_and_clone(created.base.network_id, created.base.taken_at, created.id)
             .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+        {
+            // The response carries the message, but a failure here rolls the
+            // clone transaction back and leaves nothing behind to diagnose from
+            // — GH #687 was reported with no server-side record of it at all.
+            tracing::error!(
+                snapshot_id = %created.id,
+                network_id = %created.base.network_id,
+                error = ?e,
+                "Snapshot close-and-clone failed; no rows were captured",
+            );
+
+            // The snapshots row is INSERTed before close-and-clone and is not
+            // part of its transaction, so a failed clone otherwise leaves a
+            // snapshot that captured nothing — selectable in the picker and
+            // rendering an empty topology, which reads as "the network was
+            // empty at that time" rather than as the failure it was.
+            if let Err(cleanup) = state
+                .services
+                .snapshot_service
+                .delete(&created.id, auth.entity.clone())
+                .await
+            {
+                tracing::error!(
+                    snapshot_id = %created.id,
+                    error = ?cleanup,
+                    "Could not remove the snapshot row after a failed close-and-clone; it captured \
+                     no entities and should be deleted by hand",
+                );
+            }
+
+            return Err(ApiError::internal_error(&e.to_string()));
+        }
 
         Ok::<Snapshot, ApiError>(created)
     }

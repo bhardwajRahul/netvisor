@@ -1,4 +1,4 @@
-import { entityRef, type CardFieldItem } from '$lib/shared/components/data/types';
+import { entityRef, type LabelledCardFieldItem } from '$lib/shared/components/data/types';
 import { entities } from '$lib/shared/stores/metadata';
 import type { Network } from './types';
 
@@ -13,7 +13,7 @@ import type { Network } from './types';
 export function networkItems(
 	networkIds: string | string[] | null | undefined,
 	networks: Network[]
-): CardFieldItem[] {
+): LabelledCardFieldItem[] {
 	if (!networkIds) return [];
 	const ids = Array.isArray(networkIds) ? networkIds : [networkIds];
 
