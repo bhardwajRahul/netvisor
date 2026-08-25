@@ -1144,7 +1144,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Email install command to current user */
+        /**
+         * Email install command to current user
+         * @description Session-only, and `IsUser` says so at the extractor rather than in the body. "The current user"
+         *     has no answer for an automation identity: a user API key carries `user_id` but no address, so
+         *     this endpoint could never serve one. An API key that wants the command reads it directly from
+         *     `GET /api/v1/daemons/{id}/install-command`.
+         */
         post: operations["email_install_command"];
         delete?: never;
         options?: never;
@@ -3147,7 +3153,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.11"
+         *       "server_version": "0.17.12"
          *     }
          */
         ApiMeta: {
@@ -3158,7 +3164,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.11
+             * @example 0.17.12
              */
             server_version: string;
         };
@@ -3176,19 +3182,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-08-24T23:53:28.526832Z",
+             *       "created_at": "2026-08-25T19:45:57.271115Z",
              *       "first_discovery_id": null,
-             *       "id": "08a407f2-deb2-4da2-94a2-0cccc9cbb0c7",
+             *       "id": "57329606-36d2-47f7-89e3-478ffb4a1345",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-08-24T23:53:28.526832Z",
+             *       "last_seen_at": "2026-08-25T19:45:57.271115Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-08-24T23:53:28.526832Z",
-             *       "valid_from": "2026-08-24T23:53:28.526832Z",
+             *       "updated_at": "2026-08-25T19:45:57.271115Z",
+             *       "valid_from": "2026-08-25T19:45:57.271115Z",
              *       "valid_to": null
              *     }
              */
@@ -3798,19 +3804,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-08-24T23:53:28.511375Z",
+             *               "created_at": "2026-08-25T19:45:57.250281Z",
              *               "first_discovery_id": null,
-             *               "id": "bba6bda6-86e2-4980-b7b6-b36a5752ca41",
+             *               "id": "f0e3c910-1f1e-42c2-86e2-c238781b0140",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-08-24T23:53:28.511375Z",
+             *               "last_seen_at": "2026-08-25T19:45:57.250281Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-08-24T23:53:28.511375Z",
-             *               "valid_from": "2026-08-24T23:53:28.511375Z",
+             *               "updated_at": "2026-08-25T19:45:57.250281Z",
+             *               "valid_from": "2026-08-25T19:45:57.250281Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3824,7 +3830,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Amazon Echo",
+             *           "service_definition": "Jotty",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3879,6 +3885,10 @@ export interface components {
                 last_seen_at: string;
                 /** @description Link to the host's own management interface. */
                 management_url?: string | null;
+                /** @description ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above. */
+                readonly manufacturer?: string | null;
+                /** @description ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above. */
+                readonly model?: string | null;
                 /** @description Human-facing name for the host. */
                 name: string;
                 /**
@@ -3893,6 +3903,8 @@ export interface components {
                 network_id: string;
                 /** @description Open ports on this host. */
                 ports: components["schemas"]["Port"][];
+                /** @description ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above. */
+                readonly serial_number?: string | null;
                 /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
                 /** @description How this host came to be known — discovered, imported, or created by hand. */
@@ -3903,6 +3915,11 @@ export interface components {
                 sys_descr?: string | null;
                 /** @description SNMP sysLocation — physical location as configured on the device. */
                 sys_location?: string | null;
+                /**
+                 * @description SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it
+                 *     from the device, so neither create nor update accepts it.
+                 */
+                readonly sys_name?: string | null;
                 /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
                 sys_object_id?: string | null;
                 /** @description Tags assigned to this entity. */
@@ -4481,19 +4498,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-08-24T23:53:28.521705Z",
+             *           "created_at": "2026-08-25T19:45:57.264336Z",
              *           "first_discovery_id": null,
-             *           "id": "0cd838b8-3dbb-4564-87c2-b97f4556da11",
+             *           "id": "a2a0973b-e650-496e-8f3b-b520125fada4",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-08-24T23:53:28.521705Z",
+             *           "last_seen_at": "2026-08-25T19:45:57.264336Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-08-24T23:53:28.521705Z",
-             *           "valid_from": "2026-08-24T23:53:28.521705Z",
+             *           "updated_at": "2026-08-25T19:45:57.264336Z",
+             *           "valid_from": "2026-08-25T19:45:57.264336Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4507,7 +4524,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Amazon Echo",
+             *       "service_definition": "Jotty",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -5310,19 +5327,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-08-24T23:53:28.511640Z",
+         *       "created_at": "2026-08-25T19:45:57.250716Z",
          *       "first_discovery_id": null,
-         *       "id": "33c885a5-feb6-4a17-9479-4fba4402705c",
+         *       "id": "dce3cf8a-0413-4c22-a92e-2db1929045f7",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-08-24T23:53:28.511640Z",
+         *       "last_seen_at": "2026-08-25T19:45:57.250716Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-08-24T23:53:28.511640Z",
-         *       "valid_from": "2026-08-24T23:53:28.511640Z",
+         *       "updated_at": "2026-08-25T19:45:57.250716Z",
+         *       "valid_from": "2026-08-25T19:45:57.250716Z",
          *       "valid_to": null
          *     }
          */
@@ -5615,7 +5632,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Amazon Echo",
+         *           "service_definition": "Jotty",
          *           "tags": [],
          *           "virtualization_metadata": null,
          *           "virtualization_service_id": null
@@ -7254,19 +7271,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-08-24T23:53:28.511075Z",
+         *               "created_at": "2026-08-25T19:45:57.249786Z",
          *               "first_discovery_id": null,
-         *               "id": "cf5715ea-bb22-402b-b1e9-ce07963f985a",
+         *               "id": "f9204840-dd99-4ef9-b8ee-59d5f5a823cb",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-08-24T23:53:28.511075Z",
+         *               "last_seen_at": "2026-08-25T19:45:57.249786Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-08-24T23:53:28.511075Z",
-         *               "valid_from": "2026-08-24T23:53:28.511075Z",
+         *               "updated_at": "2026-08-25T19:45:57.249786Z",
+         *               "valid_from": "2026-08-25T19:45:57.249786Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -7280,7 +7297,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Amazon Echo",
+         *           "service_definition": "Jotty",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -7335,6 +7352,10 @@ export interface components {
             last_seen_at: string;
             /** @description Link to the host's own management interface. */
             management_url?: string | null;
+            /** @description ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above. */
+            readonly manufacturer?: string | null;
+            /** @description ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above. */
+            readonly model?: string | null;
             /** @description Human-facing name for the host. */
             name: string;
             /**
@@ -7349,6 +7370,8 @@ export interface components {
             network_id: string;
             /** @description Open ports on this host. */
             ports: components["schemas"]["Port"][];
+            /** @description ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above. */
+            readonly serial_number?: string | null;
             /** @description Services running on this host. */
             services: components["schemas"]["Service"][];
             /** @description How this host came to be known — discovered, imported, or created by hand. */
@@ -7359,6 +7382,11 @@ export interface components {
             sys_descr?: string | null;
             /** @description SNMP sysLocation — physical location as configured on the device. */
             sys_location?: string | null;
+            /**
+             * @description SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it
+             *     from the device, so neither create nor update accepts it.
+             */
+            readonly sys_name?: string | null;
             /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
             sys_object_id?: string | null;
             /** @description Tags assigned to this entity. */
@@ -8421,7 +8449,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.11"
+         *       "server_version": "0.17.12"
          *     }
          */
         PaginatedApiMeta: {
@@ -8434,7 +8462,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.11
+             * @example 0.17.12
              */
             server_version: string;
         };
@@ -8626,6 +8654,10 @@ export interface components {
                 last_seen_at: string;
                 /** @description Link to the host's own management interface. */
                 management_url?: string | null;
+                /** @description ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above. */
+                readonly manufacturer?: string | null;
+                /** @description ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above. */
+                readonly model?: string | null;
                 /** @description Human-facing name for the host. */
                 name: string;
                 /**
@@ -8640,6 +8672,8 @@ export interface components {
                 network_id: string;
                 /** @description Open ports on this host. */
                 ports: components["schemas"]["Port"][];
+                /** @description ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above. */
+                readonly serial_number?: string | null;
                 /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
                 /** @description How this host came to be known — discovered, imported, or created by hand. */
@@ -8650,6 +8684,11 @@ export interface components {
                 sys_descr?: string | null;
                 /** @description SNMP sysLocation — physical location as configured on the device. */
                 sys_location?: string | null;
+                /**
+                 * @description SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it
+                 *     from the device, so neither create nor update accepts it.
+                 */
+                readonly sys_name?: string | null;
                 /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
                 sys_object_id?: string | null;
                 /** @description Tags assigned to this entity. */
@@ -9717,19 +9756,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-08-24T23:53:28.511580Z",
+         *           "created_at": "2026-08-25T19:45:57.250619Z",
          *           "first_discovery_id": null,
-         *           "id": "8ee4a127-e56b-483a-80d4-64200a1e52f8",
+         *           "id": "856e9390-087d-434e-884d-a747c16b67a0",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-08-24T23:53:28.511580Z",
+         *           "last_seen_at": "2026-08-25T19:45:57.250619Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-08-24T23:53:28.511580Z",
-         *           "valid_from": "2026-08-24T23:53:28.511580Z",
+         *           "updated_at": "2026-08-25T19:45:57.250619Z",
+         *           "valid_from": "2026-08-25T19:45:57.250619Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -9743,7 +9782,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Amazon Echo",
+         *       "service_definition": "Jotty",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -10377,7 +10416,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "6a4b748d-bdd7-4df5-9a12-76c97f1517df",
+             *           "id": "f6175543-6db0-4dba-ab73-2290096f40ba",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -10387,23 +10426,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "b247842f-02d5-479f-ad97-6e46fe411d31",
+             *           "id": "09f319ef-7569-405c-a2e6-5a28c56d339d",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "e74084c5-5dc0-4cab-9947-2d816a290922",
+             *           "id": "d12e6e1b-dc6f-4546-bb71-bdf1c4d722bf",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "8cad1720-76c4-429f-b85e-0524e1508224",
+             *           "id": "050bc56a-c499-4a4d-aed0-8e64605b6bee",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "b247842f-02d5-479f-ad97-6e46fe411d31",
+             *           "id": "09f319ef-7569-405c-a2e6-5a28c56d339d",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -10416,19 +10455,19 @@ export interface components {
              * @description Rules deciding how entities are placed and inlined within containers.
              * @default [
              *       {
-             *         "id": "3cfc4105-2f24-4b94-8727-6dcb2117e1cc",
+             *         "id": "796afe58-fb6b-4a3b-87ec-57d3e5691794",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "f8d15480-7d52-4715-8d78-f1269f2e469c",
+             *         "id": "4eaf1e52-4e5c-45da-814e-7fcff038b87b",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "3aada207-5f33-489b-82ba-c58e1a6fff43",
+             *         "id": "33ac0e5b-2a3e-4b1a-9b4f-d72636b5be69",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "c541b65a-2342-4cfd-9903-378dd7e9e585",
+             *         "id": "1ccd21c5-2b71-43c5-97dd-cb373499770a",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -10446,7 +10485,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "33dd2396-3ad0-41c8-a953-237713940a31",
+             *         "id": "61a5df21-9b37-4ee2-908a-c12203a93161",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -10455,15 +10494,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "b39c15ef-0983-4a0e-bddd-278aad8e7c0c",
+             *         "id": "108bd3b4-2e1f-4d49-a799-d3bf691abfa1",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "67c761b7-f0a4-49b6-8577-cf0c1cf5b2e1",
+             *         "id": "1ae8607a-089a-4146-80dd-8da8168e9e62",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "bf17a683-ac9f-45fc-9c40-b0453a2d2c30",
+             *         "id": "53f7b9ea-820a-4e5d-a33f-a29b863a471e",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -13375,6 +13414,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
+            /** @description User session required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
         };
     };
     export_daemons_csv: {
@@ -15136,6 +15184,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_Invite"];
+                };
+            };
+            /** @description Recipient named but the caller has no address to send from */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
             /** @description Cannot create invite with higher permissions */

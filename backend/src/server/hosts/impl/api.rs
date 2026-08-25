@@ -787,6 +787,23 @@ pub struct HostResponse {
     /// LLDP chassis identifier, used to match the host to its neighbours.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chassis_id: Option<String>,
+    /// SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it
+    /// from the device, so neither create nor update accepts it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(read_only)]
+    pub sys_name: Option<String>,
+    /// ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(read_only)]
+    pub manufacturer: Option<String>,
+    /// ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(read_only)]
+    pub model: Option<String>,
+    /// ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(read_only)]
+    pub serial_number: Option<String>,
     /// Credentials assigned to scan this host.
     #[serde(default)]
     pub credential_assignments: Vec<CredentialAssignment>,
@@ -828,6 +845,10 @@ impl HostResponse {
             sys_contact,
             management_url,
             chassis_id,
+            sys_name,
+            manufacturer,
+            model,
+            serial_number,
             credential_assignments,
             ip_addresses: _,
             ports: _,
@@ -865,10 +886,10 @@ impl HostResponse {
                 sys_contact: sys_contact.clone(),
                 management_url: management_url.clone(),
                 chassis_id: chassis_id.clone(),
-                sys_name: None,
-                manufacturer: None,
-                model: None,
-                serial_number: None,
+                sys_name: sys_name.clone(),
+                manufacturer: manufacturer.clone(),
+                model: model.clone(),
+                serial_number: serial_number.clone(),
                 credential_assignments: credential_assignments.clone(),
             },
         }
@@ -919,10 +940,10 @@ impl HostResponse {
             sys_contact,
             management_url,
             chassis_id,
-            sys_name: _,
-            manufacturer: _,
-            model: _,
-            serial_number: _,
+            sys_name,
+            manufacturer,
+            model,
+            serial_number,
             credential_assignments,
         } = base;
 
@@ -947,6 +968,10 @@ impl HostResponse {
             sys_contact,
             management_url,
             chassis_id,
+            sys_name,
+            manufacturer,
+            model,
+            serial_number,
             credential_assignments,
             ip_addresses,
             ports,

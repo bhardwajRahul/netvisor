@@ -223,6 +223,12 @@ impl DaemonResponse for HostResponse {
             sys_contact: _,
             management_url: _,
             chassis_id: _,
+            // Plain optional strings — no tagged enum a newer server could add a variant to,
+            // so nothing to skew.
+            sys_name: _,
+            manufacturer: _,
+            model: _,
+            serial_number: _,
             credential_assignments: _,
             ip_addresses: _,
             ports: _,

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.11\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.11\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.11)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.12\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.12\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.12)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -2354,6 +2354,7 @@
           "Daemons"
         ],
         "summary": "Email install command to current user",
+        "description": "Session-only, and `IsUser` says so at the extractor rather than in the body. \"The current user\"\nhas no answer for an automation identity: a user API key carries `user_id` but no address, so\nthis endpoint could never serve one. An API key that wants the command reads it directly from\n`GET /api/v1/daemons/{id}/install-command`.",
         "operationId": "email_install_command",
         "requestBody": {
           "content": {
@@ -2385,12 +2386,19 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "User session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
-          {
-            "user_api_key": []
-          },
           {
             "session": []
           }
@@ -5913,6 +5921,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_Invite"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Recipient named but the caller has no address to send from",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
                 }
               }
             }
@@ -12013,12 +12031,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.11"
+            "example": "0.17.12"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.11"
+          "server_version": "0.17.12"
         }
       },
       "ApiResponse": {
@@ -12148,19 +12166,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-08-24T23:53:28.526830Z",
+              "created_at": "2026-08-25T19:47:36.723974Z",
               "first_discovery_id": null,
-              "id": "c7aee94e-e87b-4247-92de-5860e9eff1f7",
+              "id": "b50a3c81-4164-4096-abe8-dc551b31a9eb",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-24T23:53:28.526830Z",
+              "last_seen_at": "2026-08-25T19:47:36.723974Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-24T23:53:28.526830Z",
-              "valid_from": "2026-08-24T23:53:28.526830Z",
+              "updated_at": "2026-08-25T19:47:36.723974Z",
+              "valid_from": "2026-08-25T19:47:36.723974Z",
               "valid_to": null
             }
           },
@@ -13274,6 +13292,22 @@
                 ],
                 "description": "Link to the host's own management interface."
               },
+              "manufacturer": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above.",
+                "readOnly": true
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above.",
+                "readOnly": true
+              },
               "name": {
                 "type": "string",
                 "description": "Human-facing name for the host."
@@ -13293,6 +13327,14 @@
                   "$ref": "#/components/schemas/Port"
                 },
                 "description": "Open ports on this host."
+              },
+              "serial_number": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above.",
+                "readOnly": true
               },
               "services": {
                 "type": "array",
@@ -13325,6 +13367,14 @@
                   "null"
                 ],
                 "description": "SNMP sysLocation — physical location as configured on the device."
+              },
+              "sys_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it\nfrom the device, so neither create nor update accepts it.",
+                "readOnly": true
               },
               "sys_object_id": {
                 "type": [
@@ -13456,19 +13506,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-08-24T23:53:28.511378Z",
+                      "created_at": "2026-08-25T19:47:36.702010Z",
                       "first_discovery_id": null,
-                      "id": "e8ff630d-eeea-4cf9-af81-8a51fdd46a9a",
+                      "id": "2d544eb8-f52f-4407-8078-2faba98c92c0",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-08-24T23:53:28.511378Z",
+                      "last_seen_at": "2026-08-25T19:47:36.702010Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-08-24T23:53:28.511378Z",
-                      "valid_from": "2026-08-24T23:53:28.511378Z",
+                      "updated_at": "2026-08-25T19:47:36.702010Z",
+                      "valid_from": "2026-08-25T19:47:36.702010Z",
                       "valid_to": null
                     }
                   ],
@@ -13482,7 +13532,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Amazon Echo",
+                  "service_definition": "Jotty",
                   "source": {
                     "type": "Manual"
                   },
@@ -14685,19 +14735,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-08-24T23:53:28.521669Z",
+                  "created_at": "2026-08-25T19:47:36.717111Z",
                   "first_discovery_id": null,
-                  "id": "237f7a0b-eb63-473f-bbdd-6af7088d5428",
+                  "id": "65723301-b0f7-4ba1-9917-73b044c0ee01",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-24T23:53:28.521669Z",
+                  "last_seen_at": "2026-08-25T19:47:36.717111Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-24T23:53:28.521669Z",
-                  "valid_from": "2026-08-24T23:53:28.521669Z",
+                  "updated_at": "2026-08-25T19:47:36.717111Z",
+                  "valid_from": "2026-08-25T19:47:36.717111Z",
                   "valid_to": null
                 }
               ],
@@ -14711,7 +14761,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Amazon Echo",
+              "service_definition": "Jotty",
               "source": {
                 "type": "Manual"
               },
@@ -16771,19 +16821,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-08-24T23:53:28.511637Z",
+          "created_at": "2026-08-25T19:47:36.702236Z",
           "first_discovery_id": null,
-          "id": "e6f32d7c-4abb-4a01-b098-a4179f800a7d",
+          "id": "4b81295a-0906-43c5-8723-bdf533cdf9b9",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-08-24T23:53:28.511637Z",
+          "last_seen_at": "2026-08-25T19:47:36.702236Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-08-24T23:53:28.511637Z",
-          "valid_from": "2026-08-24T23:53:28.511637Z",
+          "updated_at": "2026-08-25T19:47:36.702236Z",
+          "valid_from": "2026-08-25T19:47:36.702236Z",
           "valid_to": null
         }
       },
@@ -17421,7 +17471,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Amazon Echo",
+              "service_definition": "Jotty",
               "tags": [],
               "virtualization_metadata": null,
               "virtualization_service_id": null
@@ -20797,6 +20847,22 @@
             ],
             "description": "Link to the host's own management interface."
           },
+          "manufacturer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above.",
+            "readOnly": true
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above.",
+            "readOnly": true
+          },
           "name": {
             "type": "string",
             "description": "Human-facing name for the host."
@@ -20816,6 +20882,14 @@
               "$ref": "#/components/schemas/Port"
             },
             "description": "Open ports on this host."
+          },
+          "serial_number": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above.",
+            "readOnly": true
           },
           "services": {
             "type": "array",
@@ -20848,6 +20922,14 @@
               "null"
             ],
             "description": "SNMP sysLocation — physical location as configured on the device."
+          },
+          "sys_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it\nfrom the device, so neither create nor update accepts it.",
+            "readOnly": true
           },
           "sys_object_id": {
             "type": [
@@ -20979,19 +21061,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-08-24T23:53:28.511077Z",
+                  "created_at": "2026-08-25T19:47:36.701744Z",
                   "first_discovery_id": null,
-                  "id": "db77e225-1e44-4f11-8def-2dd2f27751e4",
+                  "id": "d56082ee-5104-4d0e-968e-d589023b517a",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-24T23:53:28.511077Z",
+                  "last_seen_at": "2026-08-25T19:47:36.701744Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-24T23:53:28.511077Z",
-                  "valid_from": "2026-08-24T23:53:28.511077Z",
+                  "updated_at": "2026-08-25T19:47:36.701744Z",
+                  "valid_from": "2026-08-25T19:47:36.701744Z",
                   "valid_to": null
                 }
               ],
@@ -21005,7 +21087,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Amazon Echo",
+              "service_definition": "Jotty",
               "source": {
                 "type": "Manual"
               },
@@ -23339,7 +23421,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.11"
+            "example": "0.17.12"
           }
         },
         "example": {
@@ -23350,7 +23432,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.11"
+          "server_version": "0.17.12"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -23788,6 +23870,22 @@
                   ],
                   "description": "Link to the host's own management interface."
                 },
+                "manufacturer": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above.",
+                  "readOnly": true
+                },
+                "model": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above.",
+                  "readOnly": true
+                },
                 "name": {
                   "type": "string",
                   "description": "Human-facing name for the host."
@@ -23807,6 +23905,14 @@
                     "$ref": "#/components/schemas/Port"
                   },
                   "description": "Open ports on this host."
+                },
+                "serial_number": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above.",
+                  "readOnly": true
                 },
                 "services": {
                   "type": "array",
@@ -23839,6 +23945,14 @@
                     "null"
                   ],
                   "description": "SNMP sysLocation — physical location as configured on the device."
+                },
+                "sys_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it\nfrom the device, so neither create nor update accepts it.",
+                  "readOnly": true
                 },
                 "sys_object_id": {
                   "type": [
@@ -23970,19 +24084,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-08-24T23:53:28.504681Z",
+                        "created_at": "2026-08-25T19:47:36.690216Z",
                         "first_discovery_id": null,
-                        "id": "bc32eaf8-51ea-4fb2-996f-813becf25437",
+                        "id": "a2df2b93-5530-43b3-b340-20173e79f516",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-08-24T23:53:28.504681Z",
+                        "last_seen_at": "2026-08-25T19:47:36.690216Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-08-24T23:53:28.504681Z",
-                        "valid_from": "2026-08-24T23:53:28.504681Z",
+                        "updated_at": "2026-08-25T19:47:36.690216Z",
+                        "valid_from": "2026-08-25T19:47:36.690216Z",
                         "valid_to": null
                       }
                     ],
@@ -23996,7 +24110,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Amazon Echo",
+                    "service_definition": "Jotty",
                     "source": {
                       "type": "Manual"
                     },
@@ -24132,19 +24246,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-08-24T23:53:28.520758Z",
+                    "created_at": "2026-08-25T19:47:36.716328Z",
                     "first_discovery_id": null,
-                    "id": "38461510-884d-415f-a877-b87674358c00",
+                    "id": "c600e54b-3436-4558-8584-0b63c3d6a44c",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-08-24T23:53:28.520758Z",
+                    "last_seen_at": "2026-08-25T19:47:36.716328Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-08-24T23:53:28.520758Z",
-                    "valid_from": "2026-08-24T23:53:28.520758Z",
+                    "updated_at": "2026-08-25T19:47:36.716328Z",
+                    "valid_from": "2026-08-25T19:47:36.716328Z",
                     "valid_to": null
                   }
                 ],
@@ -24158,7 +24272,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Amazon Echo",
+                "service_definition": "Jotty",
                 "source": {
                   "type": "Manual"
                 },
@@ -26136,19 +26250,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-08-24T23:53:28.511573Z",
+              "created_at": "2026-08-25T19:47:36.702178Z",
               "first_discovery_id": null,
-              "id": "f41fba70-b864-4041-a4cf-f3fd0650d9be",
+              "id": "d12ab999-d121-4cca-a042-83c05cc8e437",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-24T23:53:28.511573Z",
+              "last_seen_at": "2026-08-25T19:47:36.702178Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-24T23:53:28.511573Z",
-              "valid_from": "2026-08-24T23:53:28.511573Z",
+              "updated_at": "2026-08-25T19:47:36.702178Z",
+              "valid_from": "2026-08-25T19:47:36.702178Z",
               "valid_to": null
             }
           ],
@@ -26162,7 +26276,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Amazon Echo",
+          "service_definition": "Jotty",
           "source": {
             "type": "Manual"
           },
@@ -27360,7 +27474,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "4e0dae99-2b01-4133-8a12-5737512b4eca",
+                  "id": "36a6ce82-b736-4c4c-a05f-22c862d047a8",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -27370,23 +27484,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "02325375-1b06-4157-8100-8d6ce64a333c",
+                  "id": "785d72f7-36b6-41e2-81a8-e23cccf82d6f",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "422b9eac-ea3f-49df-a383-6cf1a5817739",
+                  "id": "c5380f46-240a-476b-aa57-87379bb8c3ce",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "36ed47e0-8a2a-46c3-97b5-b6658856921f",
+                  "id": "bfad1277-b72d-40e2-93a8-50e51908c4e2",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "02325375-1b06-4157-8100-8d6ce64a333c",
+                  "id": "785d72f7-36b6-41e2-81a8-e23cccf82d6f",
                   "rule": "ByHost"
                 }
               ]
@@ -27416,19 +27530,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "d2664d1c-40c0-46ae-a9bb-16d8e38a8399",
+                "id": "24e2fe84-5427-40df-8d4a-8fac7f07bfa4",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "58d454cf-2797-4a8b-9a38-5bcd6753341a",
+                "id": "cb5d2cea-08c6-433f-bad7-2f3e9ccb2b46",
                 "rule": "ByVLAN"
               },
               {
-                "id": "c455d872-4dee-4a47-85b4-f9c879f07906",
+                "id": "1fccdf24-f146-4283-87f3-c8fb2cfd7a9c",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "bc795c3c-3b0a-4de1-aaeb-435497bd3963",
+                "id": "6d3118d3-1739-4c54-8868-50006a683ea8",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -27446,7 +27560,7 @@
                 }
               },
               {
-                "id": "77215660-8342-4d40-870e-b98822ba7d76",
+                "id": "d3a0808b-0605-41e6-bae2-99d0b98908e3",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -27455,15 +27569,15 @@
                 }
               },
               {
-                "id": "1f2d6bcb-372b-4068-9129-e7154ed2de8b",
+                "id": "7826bd7c-1a87-44bb-ad63-bca636088eac",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "893e9128-b087-4ee0-aaa9-63771741ebcf",
+                "id": "538951e6-a955-4715-9e18-a060640d213a",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "e0a8e036-7c4b-4066-8d7f-b383ddd75783",
+                "id": "dbac0c98-7099-4d69-8385-b7f374fb96e1",
                 "rule": "ByStack"
               }
             ]

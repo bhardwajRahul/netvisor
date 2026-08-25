@@ -46,6 +46,11 @@
 			sys_contact: host.sys_contact ?? null,
 			management_url: host.management_url ?? null,
 			chassis_id: host.chassis_id ?? null,
+			sys_name: host.sys_name ?? null,
+			// Hardware identity - same treatment
+			manufacturer: host.manufacturer ?? null,
+			model: host.model ?? null,
+			serial_number: host.serial_number ?? null,
 			credential_assignments: host.credential_assignments ?? [],
 			interfaces: [] // Interfaces not available in this context
 		};

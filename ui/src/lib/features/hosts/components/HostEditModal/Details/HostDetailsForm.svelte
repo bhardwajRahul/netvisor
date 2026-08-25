@@ -17,9 +17,14 @@
 		common_placeholderHostname,
 		hosts_details_descriptionPlaceholder,
 		hosts_details_namePlaceholder,
+		common_manufacturer,
+		common_model,
+		common_serialNumber,
+		hosts_hardwareInfo,
 		hosts_snmp_chassisId,
 		hosts_snmp_managementUrl,
 		hosts_snmp_sysDescr,
+		hosts_snmp_sysName,
 		hosts_snmp_sysObjectId,
 		hosts_snmp_systemInfo
 	} from '$lib/paraglide/messages';
@@ -47,15 +52,25 @@
 			formData.sys_location ||
 			formData.sys_contact ||
 			formData.chassis_id ||
-			formData.management_url
+			formData.management_url ||
+			formData.sys_name
 		)
 	);
+
+	// Hardware identity gets its own card: manufacturer/model/serial also arrive from controller
+	// integrations (UniFi, HPE Instant On), so they must not sit under an SNMP heading.
+	let hasHardwareInfo = $derived(
+		!!(formData.manufacturer || formData.model || formData.serial_number)
+	);
+
+	// The side column exists if either card has something to show.
+	let hasDeviceInfo = $derived(hasSnmpInfo || hasHardwareInfo);
 </script>
 
 <div class="space-y-6 p-6">
-	<div class="flex gap-6" class:flex-col={!isEditing || !hasSnmpInfo}>
+	<div class="flex gap-6" class:flex-col={!isEditing || !hasDeviceInfo}>
 		<!-- Form fields column -->
-		<div class="min-w-0 space-y-6" class:flex-[3]={isEditing && hasSnmpInfo}>
+		<div class="min-w-0 space-y-6" class:flex-[3]={isEditing && hasDeviceInfo}>
 			<div class="grid grid-cols-2 gap-6">
 				<form.Field
 					name="name"
@@ -115,32 +130,42 @@
 			<TagPicker bind:selectedTagIds={formData.tags} />
 		</div>
 
-		<!-- SNMP System Info column (only when editing and has data) -->
-		{#if isEditing && hasSnmpInfo}
-			<div class="flex-[2]">
-				<InfoCard title={hosts_snmp_systemInfo()}>
-					<InfoRow label={hosts_snmp_sysDescr()}>{formData.sys_descr || '-'}</InfoRow>
-					<InfoRow label={hosts_snmp_sysObjectId()} mono>{formData.sys_object_id || '-'}</InfoRow>
-					<InfoRow label={common_location()}>{formData.sys_location || '-'}</InfoRow>
-					<InfoRow label={common_contact()}>{formData.sys_contact || '-'}</InfoRow>
-					<InfoRow label={hosts_snmp_chassisId()} mono>{formData.chassis_id || '-'}</InfoRow>
-					<InfoRow label={hosts_snmp_managementUrl()}>
-						{#if formData.management_url}
-							<!-- eslint-disable svelte/no-navigation-without-resolve -->
-							<a
-								href={formData.management_url}
-								target="_blank"
-								rel="external noopener noreferrer"
-								class="break-all text-blue-400 hover:text-blue-300"
-							>
-								{formData.management_url}
-							</a>
-							<!-- eslint-enable svelte/no-navigation-without-resolve -->
-						{:else}
-							-
-						{/if}
-					</InfoRow>
-				</InfoCard>
+		<!-- Device info column (only when editing and has data) -->
+		{#if isEditing && hasDeviceInfo}
+			<div class="flex-[2] space-y-6">
+				{#if hasHardwareInfo}
+					<InfoCard title={hosts_hardwareInfo()}>
+						<InfoRow label={common_manufacturer()}>{formData.manufacturer || '-'}</InfoRow>
+						<InfoRow label={common_model()} mono>{formData.model || '-'}</InfoRow>
+						<InfoRow label={common_serialNumber()} mono>{formData.serial_number || '-'}</InfoRow>
+					</InfoCard>
+				{/if}
+				{#if hasSnmpInfo}
+					<InfoCard title={hosts_snmp_systemInfo()}>
+						<InfoRow label={hosts_snmp_sysName()}>{formData.sys_name || '-'}</InfoRow>
+						<InfoRow label={hosts_snmp_sysDescr()}>{formData.sys_descr || '-'}</InfoRow>
+						<InfoRow label={hosts_snmp_sysObjectId()} mono>{formData.sys_object_id || '-'}</InfoRow>
+						<InfoRow label={common_location()}>{formData.sys_location || '-'}</InfoRow>
+						<InfoRow label={common_contact()}>{formData.sys_contact || '-'}</InfoRow>
+						<InfoRow label={hosts_snmp_chassisId()} mono>{formData.chassis_id || '-'}</InfoRow>
+						<InfoRow label={hosts_snmp_managementUrl()}>
+							{#if formData.management_url}
+								<!-- eslint-disable svelte/no-navigation-without-resolve -->
+								<a
+									href={formData.management_url}
+									target="_blank"
+									rel="external noopener noreferrer"
+									class="break-all text-blue-400 hover:text-blue-300"
+								>
+									{formData.management_url}
+								</a>
+								<!-- eslint-enable svelte/no-navigation-without-resolve -->
+							{:else}
+								-
+							{/if}
+						</InfoRow>
+					</InfoCard>
+				{/if}
 			</div>
 		{/if}
 	</div>
