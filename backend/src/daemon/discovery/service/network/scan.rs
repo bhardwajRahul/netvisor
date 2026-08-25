@@ -435,25 +435,44 @@ impl NetworkScan {
             }
         }
 
-        // Release the ping-sweep responders that ARP never answered for.
+        // Release the addresses a non-ARP signal answered for.
         //
-        // This is the case ICMP exists for: on a subnet the daemon has an interface on, an
+        // This is the case those signals exist for: on a subnet the daemon has an interface on, an
         // address that does not answer ARP was previously never queued at all — the forwarder
         // above emits one message per reply and nothing else — so a VM behind a hypervisor bridge
         // was invisible with no setting able to reach it (GH #678).
         //
+        // Both signals land here rather than only ICMP, because each reaches addresses the other
+        // does not. Our ARP is raw layer-2 injection, so it fails on exactly the paths #678
+        // describes while ICMP and mDNS both go through the kernel; and a host can drop echo
+        // requests while still advertising its services (macOS stealth mode does precisely that).
+        // The browse also has no target list to truncate, so past `arp_scan_cutoff` on a very
+        // large subnet it is the only signal still reaching anything.
+        //
         // Deliberately last: joining the forwarders first means every ARP reply is already in the
         // channel ahead of these messages, so the receiver claims those addresses first and an
-        // address both signals found keeps its MAC. Holding a `host_tx` clone also keeps the
+        // address several signals found keeps its MAC. Holding a `host_tx` clone also keeps the
         // channel open until this finishes, so the pipeline cannot decide discovery is over while
         // these are still to come.
         if !interfaced_subnets.is_empty() {
             let host_tx = host_tx.clone();
             let mut icmp = icmp_responders.clone();
             let release_subnets = interfaced_subnets.clone();
+            let browsed = mdns_hosts.clone();
             tokio::spawn(async move {
                 let responders = icmp.responders().await;
-                if responders.is_empty() {
+
+                // mDNS first: where both answered, its evidence is the more specific statement
+                // about the host. The two are interchangeable to everything downstream — neither
+                // yields a MAC and both skip the responsiveness check — so this only decides
+                // which one the logs name.
+                let released_addresses: Vec<(IpAddr, LivenessEvidence)> = browsed
+                    .keys()
+                    .map(|ip| (*ip, LivenessEvidence::Mdns))
+                    .chain(responders.iter().map(|ip| (*ip, LivenessEvidence::Icmp)))
+                    .collect();
+
+                if released_addresses.is_empty() {
                     return;
                 }
                 if tokio::task::spawn_blocking(move || {
@@ -465,34 +484,30 @@ impl NetworkScan {
                 .is_err()
                 {
                     tracing::warn!(
-                        "ARP forwarders could not be joined; not releasing ICMP-only responders, \
+                        "ARP forwarders could not be joined; not releasing non-ARP responders, \
                          which risks scanning an address twice"
                     );
                     return;
                 }
 
                 let mut released = 0u64;
-                for ip in responders.iter() {
+                for (ip, evidence) in released_addresses {
                     // Only addresses the interfaced path swept. The enumerated stream already
-                    // dispatched every address in its own range, tagged with this same sweep's
-                    // result, so anything else here is out of scope by construction.
-                    let Some(subnet) = release_subnets.iter().find(|s| s.base.cidr.contains(ip))
+                    // dispatched every address in its own range, tagged with these same results,
+                    // so anything else here is out of scope by construction.
+                    let Some(subnet) = release_subnets.iter().find(|s| s.base.cidr.contains(&ip))
                     else {
                         continue;
                     };
-                    if host_tx
-                        .send((*ip, subnet.clone(), LivenessEvidence::Icmp))
-                        .await
-                        .is_err()
-                    {
+                    if host_tx.send((ip, subnet.clone(), evidence)).await.is_err() {
                         return; // Receiver dropped
                     }
                     released += 1;
                 }
                 tracing::info!(
                     released,
-                    "Queued ICMP responders for deep scan (ARP-claimed addresses are skipped \
-                     by the receiver)"
+                    "Queued non-ARP responders for deep scan (ARP-claimed and duplicate \
+                     addresses are skipped by the receiver)"
                 );
             });
         }
@@ -518,6 +533,7 @@ impl NetworkScan {
             let host_tx = host_tx.clone();
             let stream_targets = target_ips.clone();
             let mut icmp = icmp_responders.clone();
+            let browsed = mdns_hosts.clone();
             tokio::spawn(async move {
                 // Wait for the ping sweep before streaming, so each address can be tagged with
                 // the evidence that exists for it. An address that answered ICMP is already
@@ -532,7 +548,13 @@ impl NetworkScan {
                         if stream_targets.as_ref().is_some_and(|t| !t.contains(&addr)) {
                             continue;
                         }
-                        let evidence = if responders.contains(&addr) {
+                        // Both non-ARP signals are consulted here, not just the ping sweep. When
+                        // ARP is unavailable outright every subnet takes this path, the daemon's
+                        // own segment included — and that is exactly where a browse has something
+                        // to say.
+                        let evidence = if browsed.contains_key(&addr) {
+                            LivenessEvidence::Mdns
+                        } else if responders.contains(&addr) {
                             LivenessEvidence::Icmp
                         } else {
                             LivenessEvidence::Enumerated
@@ -723,12 +745,16 @@ impl NetworkScan {
 
                             // The responsiveness-check budget is seeded up front for every
                             // non-interfaced address, and normally retired inside
-                            // deep_scan_host. An address the ping sweep already proved alive
+                            // deep_scan_host. An address a non-ARP signal already proved alive
                             // skips that check entirely, so retire its share here instead —
                             // otherwise completed_cost can never converge on total_cost and the
-                            // scan stalls short of 100%.
-                            if evidence == LivenessEvidence::Icmp
-                                && non_interfaced_subnet_ids.contains(&subnet.id)
+                            // scan stalls short of 100%. Keyed on the signal rather than on
+                            // `is_confirmed_live`, since an ARP-answered address was never
+                            // seeded into this budget in the first place.
+                            if matches!(
+                                evidence,
+                                LivenessEvidence::Icmp | LivenessEvidence::Mdns
+                            ) && non_interfaced_subnet_ids.contains(&subnet.id)
                             {
                                 completed_cost.fetch_add(RESPONSIVENESS_COST_CS, Ordering::Relaxed);
                             }

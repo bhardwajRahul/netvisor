@@ -177,6 +177,16 @@ pub(super) enum LivenessEvidence {
     Arp(MacAddress),
     /// An ICMP echo reply. Proves the address is alive; says nothing else about it.
     Icmp,
+    /// An mDNS/DNS-SD announcement. Like ICMP it proves the address is alive without yielding a
+    /// MAC, and it reaches two populations ICMP does not:
+    ///
+    /// - A host that drops echo requests but still advertises its services — macOS with stealth
+    ///   mode enabled is the common one, since that setting stops ping replies and leaves Bonjour
+    ///   untouched.
+    /// - Addresses past `arp_scan_cutoff` on a very large interfaced subnet. Both sweeps work from
+    ///   a materialised target list truncated at that prefix; a multicast browse is one packet to
+    ///   the group and reaches every responder on the link however large the subnet is.
+    Mdns,
     /// No signal yet — the address is simply within a subnet being swept. Must still pass the TCP
     /// responsiveness check before it is treated as a host.
     Enumerated,
@@ -187,7 +197,7 @@ impl LivenessEvidence {
     pub(super) fn mac(&self) -> Option<MacAddress> {
         match self {
             Self::Arp(mac) => Some(*mac),
-            Self::Icmp | Self::Enumerated => None,
+            Self::Icmp | Self::Mdns | Self::Enumerated => None,
         }
     }
 
@@ -197,7 +207,7 @@ impl LivenessEvidence {
     /// of which previously keyed off `mac.is_some()` and so silently meant "ARP answered".
     pub(super) fn is_confirmed_live(&self) -> bool {
         match self {
-            Self::Arp(_) | Self::Icmp => true,
+            Self::Arp(_) | Self::Icmp | Self::Mdns => true,
             Self::Enumerated => false,
         }
     }
@@ -344,6 +354,7 @@ mod tests {
         for evidence in [
             LivenessEvidence::Arp(mac()),
             LivenessEvidence::Icmp,
+            LivenessEvidence::Mdns,
             LivenessEvidence::Enumerated,
         ] {
             if evidence.mac().is_some() {
