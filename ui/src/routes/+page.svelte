@@ -245,9 +245,18 @@
 			min-w-0: a flex child defaults to min-width:auto, so it cannot shrink
 			below its content. Without it a wide table stretches main, then the flex
 			row, and the whole page scrolls sideways instead of the table alone.
+
+			relative: this is the scroll container, but nothing here was positioned, so
+			it was the containing block for nothing. Absolutely positioned descendants
+			resolved against the initial containing block instead and kept their static
+			position — for a 59-row host table, `sr-only` spans a thousand pixels below
+			the fold. Out of main's overflow, they extended the *document*, so the whole
+			page scrolled and main slid out of view: scroll down and the table was gone.
+			`relative` makes main their containing block, so its own overflow contains
+			them and only main scrolls.
 		-->
 		<main
-			class="min-w-0 flex-1 overflow-auto transition-all duration-300"
+			class="relative min-w-0 flex-1 overflow-auto transition-all duration-300"
 			class:ml-16={sidebarCollapsed}
 			class:ml-48={!sidebarCollapsed}
 		>
