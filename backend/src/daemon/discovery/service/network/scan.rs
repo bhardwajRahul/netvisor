@@ -1,4 +1,5 @@
 use super::arp::{self, ArpScanResult};
+use super::icmp;
 use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::discovery::service::warnings::{CredentialIssue, CredentialIssueReason};
 use crate::daemon::discovery::types::base::DiscoveryCriticalError;
@@ -25,7 +26,6 @@ use crate::server::{
 use anyhow::Error;
 use cidr::IpCidr;
 use futures::StreamExt;
-use mac_address::MacAddress;
 use pnet::datalink;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -36,10 +36,10 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
-    DeepScanParams, DiscoveredHostData, FULL_SCAN_COST_CS, LATE_ARRIVAL_GRACE_PERIOD,
-    LIGHT_SCAN_COST_CS, MAX_PROGRESS_REPORT_INTERVAL, NetworkScan, PROGRESS_ARP_PHASE,
-    PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE, RESPONSIVENESS_COST_CS,
-    integration_cost_for_ip, liveness_probe_ports,
+    DeepScanParams, DiscoveredHostData, DispatchedAddresses, FULL_SCAN_COST_CS,
+    LATE_ARRIVAL_GRACE_PERIOD, LIGHT_SCAN_COST_CS, LivenessEvidence, MAX_PROGRESS_REPORT_INTERVAL,
+    NetworkScan, PROGRESS_ARP_PHASE, PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE,
+    RESPONSIVENESS_COST_CS, integration_cost_for_ip, liveness_probe_ports,
 };
 
 impl NetworkScan {
@@ -170,8 +170,7 @@ impl NetworkScan {
 
         // Create async channel for discovered hosts
         // Buffer size allows ARP to run ahead while deep scanning catches up
-        let (host_tx, mut host_rx) =
-            tokio_mpsc::channel::<(IpAddr, Subnet, Option<MacAddress>)>(256);
+        let (host_tx, mut host_rx) = tokio_mpsc::channel::<(IpAddr, Subnet, LivenessEvidence)>(256);
 
         // Start ARP scanning for interfaced subnets — build target IPs per-subnet.
         // ARP needs all targets upfront (multi-round retries), so a Vec is required.
@@ -182,13 +181,64 @@ impl NetworkScan {
             .unwrap_or(defaults::arp_scan_cutoff());
         let max_arp_targets: usize = 1usize << (32 - arp_cutoff as u32);
 
-        // Work-based ARP progress signal (B): `arp_packets_sent` is incremented per ARP
-        // request across every subnet/round; `arp_packets_total` is the upper bound of
-        // requests this scan will send (targets × rounds). Progress/ETA derive from real
-        // send throughput so a wrong rate estimate can't pin the bar or lie about the ETA.
-        let arp_packets_sent = Arc::new(AtomicU64::new(0));
-        let mut arp_packets_total: u64 = 0;
+        // Work-based discovery progress signal (B): `discovery_packets_sent` is incremented per
+        // ARP *and* ICMP request across every subnet/round; `discovery_packets_total` is the upper
+        // bound of requests this scan will send (targets × rounds). Progress/ETA derive from real
+        // send throughput so a wrong rate estimate can't pin the bar or lie about the ETA. Both
+        // sweeps feed the same pair because they share the one 0-30% progress band.
+        let discovery_packets_sent = Arc::new(AtomicU64::new(0));
+        let mut discovery_packets_total: u64 = 0;
         let arp_total_rounds = 1 + arp_retries as u64;
+
+        // ---------------------------------------------------------------
+        // ICMP echo sweep — the second liveness signal
+        // ---------------------------------------------------------------
+        // Runs concurrently with ARP over the whole scan scope. It exists because an address on
+        // an interfaced subnet that does not answer ARP is otherwise never queued at all: the ARP
+        // forwarder emits one message per reply and nothing else (GH #678). It is purely
+        // additive — it never filters what the other paths would have found, because plenty of
+        // hosts answer ARP while dropping ICMP (Windows blocks echo by default).
+        let icmp_available = icmp::is_available();
+        let icmp_responders = if icmp_available {
+            // One flat target list: ICMP is layer 4 and routed by the kernel, so a single sweep
+            // covers interfaced and non-interfaced subnets alike. Capped by the same cutoff ARP
+            // uses — this list is materialised, and an uncapped /8 would exhaust memory the way
+            // the streaming enumeration below is careful not to.
+            let mut targets: Vec<std::net::Ipv4Addr> = Vec::new();
+            for subnet in &scanned_subnets {
+                for addr in subnet.base.cidr.iter().map(|a| a.address()) {
+                    if !is_targeted(&addr) {
+                        continue;
+                    }
+                    if let IpAddr::V4(ipv4) = addr {
+                        targets.push(ipv4);
+                        if targets.len() >= max_arp_targets {
+                            break;
+                        }
+                    }
+                }
+                if targets.len() >= max_arp_targets {
+                    tracing::warn!(
+                        cutoff = format!("/{}", arp_cutoff),
+                        max_ips = max_arp_targets,
+                        "ICMP target list truncated to /{} cutoff",
+                        arp_cutoff
+                    );
+                    break;
+                }
+            }
+            discovery_packets_total += targets.len() as u64 * arp_total_rounds;
+            spawn_icmp_sweep(targets, arp_retries, scan_rate_pps, &discovery_packets_sent)
+        } else {
+            // Resolves immediately with nothing, so every consumer below takes the same path
+            // whether or not ICMP is available.
+            IcmpSweep::unavailable()
+        };
+
+        // Joined by the ICMP release task below, which must not run until every ARP forwarder has
+        // finished — otherwise it could claim an address ARP was about to report, and the host
+        // would lose the MAC only ARP carries.
+        let mut arp_forwarders: Vec<std::thread::JoinHandle<()>> = Vec::new();
 
         if !interfaced_subnets.is_empty() {
             let mut subnet_to_ips: HashMap<IpCidr, (Subnet, Vec<std::net::Ipv4Addr>)> =
@@ -289,7 +339,7 @@ impl NetworkScan {
                     arp_rate_pps,
                     "Starting ARP scan"
                 );
-                arp_packets_total += target_count as u64 * arp_total_rounds;
+                discovery_packets_total += target_count as u64 * arp_total_rounds;
 
                 match arp::scan_subnet(
                     &interface,
@@ -299,7 +349,7 @@ impl NetworkScan {
                     use_npcap,
                     arp_retries,
                     arp_rate_pps,
-                    arp_packets_sent.clone(),
+                    discovery_packets_sent.clone(),
                 ) {
                     Ok(arp_rx) => {
                         // Spawn a task to forward ARP results to the async channel
@@ -310,7 +360,10 @@ impl NetworkScan {
                         // Use a background thread for the blocking recv, forward via channel.
                         // Hard timeout prevents infinite hangs if the ARP receiver thread
                         // gets stuck (e.g., on bridge ip_addresses with continuous traffic).
-                        std::thread::spawn(move || {
+                        // The handle is kept so the ICMP release below can wait for every
+                        // forwarder to finish — that is what makes "ARP had its chance at this
+                        // address" a fact rather than a guess.
+                        arp_forwarders.push(std::thread::spawn(move || {
                             let forwarder_start = Instant::now();
                             let forwarder_timeout = Duration::from_secs(600); // 10 minutes
                             let mut forwarded = 0u64;
@@ -327,12 +380,14 @@ impl NetworkScan {
 
                                 match arp_rx.recv_timeout(Duration::from_millis(100)) {
                                     Ok(ArpScanResult { ip, mac }) => {
-                                        // Use blocking_send since we're in a std thread
+                                        // Use blocking_send since we're in a std thread.
+                                        // ARP evidence dispatches immediately and outranks
+                                        // everything else — it is the only signal carrying a MAC.
                                         if host_tx
                                             .blocking_send((
                                                 IpAddr::V4(ip),
                                                 subnet.clone(),
-                                                Some(mac),
+                                                LivenessEvidence::Arp(mac),
                                             ))
                                             .is_err()
                                         {
@@ -350,7 +405,7 @@ impl NetworkScan {
                                 forwarded,
                                 "ARP forwarder completed"
                             );
-                        });
+                        }));
                     }
                     Err(e) => {
                         if DiscoveryCriticalError::is_critical_error(e.to_string()) {
@@ -362,6 +417,74 @@ impl NetworkScan {
                 }
             }
         }
+
+        // Release the ping-sweep responders that ARP never answered for.
+        //
+        // This is the case ICMP exists for: on a subnet the daemon has an interface on, an
+        // address that does not answer ARP was previously never queued at all — the forwarder
+        // above emits one message per reply and nothing else — so a VM behind a hypervisor bridge
+        // was invisible with no setting able to reach it (GH #678).
+        //
+        // Deliberately last: joining the forwarders first means every ARP reply is already in the
+        // channel ahead of these messages, so the receiver claims those addresses first and an
+        // address both signals found keeps its MAC. Holding a `host_tx` clone also keeps the
+        // channel open until this finishes, so the pipeline cannot decide discovery is over while
+        // these are still to come.
+        if !interfaced_subnets.is_empty() {
+            let host_tx = host_tx.clone();
+            let mut icmp = icmp_responders.clone();
+            let release_subnets = interfaced_subnets.clone();
+            tokio::spawn(async move {
+                let responders = icmp.responders().await;
+                if responders.is_empty() {
+                    return;
+                }
+                if tokio::task::spawn_blocking(move || {
+                    for forwarder in arp_forwarders {
+                        let _ = forwarder.join();
+                    }
+                })
+                .await
+                .is_err()
+                {
+                    tracing::warn!(
+                        "ARP forwarders could not be joined; not releasing ICMP-only responders, \
+                         which risks scanning an address twice"
+                    );
+                    return;
+                }
+
+                let mut released = 0u64;
+                for ip in responders.iter() {
+                    // Only addresses the interfaced path swept. The enumerated stream already
+                    // dispatched every address in its own range, tagged with this same sweep's
+                    // result, so anything else here is out of scope by construction.
+                    let Some(subnet) = release_subnets.iter().find(|s| s.base.cidr.contains(ip))
+                    else {
+                        continue;
+                    };
+                    if host_tx
+                        .send((*ip, subnet.clone(), LivenessEvidence::Icmp))
+                        .await
+                        .is_err()
+                    {
+                        return; // Receiver dropped
+                    }
+                    released += 1;
+                }
+                tracing::info!(
+                    released,
+                    "Queued ICMP responders for deep scan (ARP-claimed addresses are skipped \
+                     by the receiver)"
+                );
+            });
+        }
+
+        // Captured before the subnets move into the streaming task below. Used to retire the
+        // responsiveness-check budget for addresses the ping sweep answered for, which is seeded
+        // per non-interfaced address but only spent by addresses that actually run the check.
+        let non_interfaced_subnet_ids: HashSet<Uuid> =
+            non_interfaced_subnets.iter().map(|s| s.id).collect();
 
         // Send all non-interfaced IPs directly to deep scanner (no discovery phase).
         // Key insight: ARP filters to responsive hosts before expensive port scanning.
@@ -377,13 +500,31 @@ impl NetworkScan {
             // Each IP is generated on-the-fly and sent through the channel.
             let host_tx = host_tx.clone();
             let stream_targets = target_ips.clone();
+            let mut icmp = icmp_responders.clone();
             tokio::spawn(async move {
+                // Wait for the ping sweep before streaming, so each address can be tagged with
+                // the evidence that exists for it. An address that answered ICMP is already
+                // proven alive and skips the TCP responsiveness check; every other address is
+                // `Enumerated` and still has to earn its way past it, exactly as before.
+                //
+                // Only the responder *set* is held in memory — the enumeration itself still
+                // streams, so a bogus CIDR cannot exhaust memory here.
+                let responders = icmp.responders().await;
                 for subnet in non_interfaced_subnets {
                     for addr in subnet.base.cidr.iter().map(|a| a.address()) {
                         if stream_targets.as_ref().is_some_and(|t| !t.contains(&addr)) {
                             continue;
                         }
-                        if host_tx.send((addr, subnet.clone(), None)).await.is_err() {
+                        let evidence = if responders.contains(&addr) {
+                            LivenessEvidence::Icmp
+                        } else {
+                            LivenessEvidence::Enumerated
+                        };
+                        if host_tx
+                            .send((addr, subnet.clone(), evidence))
+                            .await
+                            .is_err()
+                        {
                             return; // Receiver dropped
                         }
                     }
@@ -456,7 +597,13 @@ impl NetworkScan {
         let mut deep_scan_started_at: Option<Instant> = None;
 
         // Buffer for hosts waiting to be scanned when at concurrency limit
-        let mut pending_hosts: Vec<(IpAddr, Subnet, Option<MacAddress>)> = Vec::new();
+        let mut pending_hosts: Vec<(IpAddr, Subnet, LivenessEvidence)> = Vec::new();
+
+        // Tracks which addresses have already been handed to the deep scanner, so an address
+        // both sweeps answered for is scanned once. The channel itself has no dedup — every
+        // message it carries spawns a scan — and before ICMP there was exactly one producer per
+        // address, so nothing needed one.
+        let mut dispatched = DispatchedAddresses::default();
 
         // Use interval instead of sleep - interval persists across select iterations
         // whereas sleep creates a new future each time and gets dropped when other branches fire
@@ -471,8 +618,8 @@ impl NetworkScan {
                                   completed_cost_val: usize,
                                   hosts_discovered_val: usize,
                                   hosts_scanned_val: usize,
-                                  arp_packets_sent_val: u64,
-                                  arp_packets_total_val: u64|
+                                  discovery_packets_sent_val: u64,
+                                  discovery_packets_total_val: u64|
          -> u8 {
             if !channel_closed {
                 // ARP + deep scan run concurrently, so blend both so the bar keeps moving
@@ -483,8 +630,10 @@ impl NetworkScan {
                 // when the send rate differs from the estimate); fall back to the time
                 // estimate before any packet is sent, or on paths that can't report sends
                 // (Windows SendARP).
-                let arp_frac = if arp_packets_total_val > 0 && arp_packets_sent_val > 0 {
-                    (arp_packets_sent_val as f64 / arp_packets_total_val as f64).min(1.0)
+                let arp_frac = if discovery_packets_total_val > 0 && discovery_packets_sent_val > 0
+                {
+                    (discovery_packets_sent_val as f64 / discovery_packets_total_val as f64)
+                        .min(1.0)
                 } else if estimated_arp_duration.as_secs() > 0 {
                     (pipeline_start.elapsed().as_secs_f64() / estimated_arp_duration.as_secs_f64())
                         .min(1.0)
@@ -545,20 +694,42 @@ impl NetworkScan {
                 // Try to receive new hosts from the channel
                 host = host_rx.recv(), if !channel_closed => {
                     match host {
-                        Some((ip, subnet, mac)) => {
-                            // Only count ARP-confirmed hosts immediately.
-                            // Non-interfaced hosts are counted after responsiveness
+                        Some((ip, subnet, evidence)) => {
+                            // One dispatch per address, whichever producer got here first.
+                            // ARP arrives during the sweep and claims as it goes; the ping
+                            // sweep's own responders are released on channel close below, by
+                            // which point every address ARP found is already claimed and keeps
+                            // the MAC only ARP carries.
+                            if !dispatched.claim(ip) {
+                                continue;
+                            }
+
+                            // The responsiveness-check budget is seeded up front for every
+                            // non-interfaced address, and normally retired inside
+                            // deep_scan_host. An address the ping sweep already proved alive
+                            // skips that check entirely, so retire its share here instead —
+                            // otherwise completed_cost can never converge on total_cost and the
+                            // scan stalls short of 100%.
+                            if evidence == LivenessEvidence::Icmp
+                                && non_interfaced_subnet_ids.contains(&subnet.id)
+                            {
+                                completed_cost.fetch_add(RESPONSIVENESS_COST_CS, Ordering::Relaxed);
+                            }
+
+                            // Only count hosts something has already answered for.
+                            // Addresses with no signal yet are counted after the responsiveness
                             // check passes in deep_scan_host().
-                            if mac.is_some() {
+                            if evidence.is_confirmed_live() {
                                 hosts_discovered.fetch_add(1, Ordering::Relaxed);
                             }
                             *last_activity.lock().unwrap() = Instant::now();
 
                             // Early-report a minimal host so the UI shows it immediately.
-                            // Only for interfaced hosts (mac.is_some()) — they're confirmed
-                            // responsive via ARP. Non-interfaced hosts must pass the TCP
-                            // responsiveness check in deep_scan_host() first.
-                            if mac.is_some()
+                            // Only for addresses a sweep answered for — they're confirmed live.
+                            // Everything else must pass the TCP responsiveness check in
+                            // deep_scan_host() first.
+                            let mac = evidence.mac();
+                            if evidence.is_confirmed_live()
                                 && let std::collections::hash_map::Entry::Vacant(e) = early_reported_hosts.entry(ip)
                             {
                                 let early_subnet = subnet.clone();
@@ -633,9 +804,9 @@ impl NetworkScan {
                                 let hosts_discovered = hosts_discovered.clone();
                                 let scan_controller = scan_controller.clone();
 
-                                // Only count batches for hosts with MAC (known responsive from ARP).
-                                // Non-interfaced hosts will have batches counted AFTER responsiveness check.
-                                if mac.is_some() {
+                                // Only count batches for addresses a sweep already answered for.
+                                // Everything else has batches counted AFTER the responsiveness check.
+                                if evidence.is_confirmed_live() {
                                     let integration_cost = self.compute_integration_cost_for_ip(ip);
                                     total_cost.fetch_add(scan_cost_cs + integration_cost, Ordering::Relaxed);
                                 }
@@ -656,7 +827,7 @@ impl NetworkScan {
                                         .deep_scan_host(DeepScanParams {
                                             ip,
                                             subnet: &subnet,
-                                            mac,
+                                            evidence,
                                             cancel,
                                             scan_rate_pps,
                                             port_scan_batch_size: effective_batch_size,
@@ -693,13 +864,13 @@ impl NetworkScan {
                                     }
                                 }));
                             } else {
-                                // Only count batches for hosts with MAC (known responsive from ARP).
-                                // Non-interfaced hosts will have batches counted AFTER responsiveness check.
-                                if mac.is_some() {
+                                // Only count batches for addresses a sweep already answered for.
+                                // Everything else has batches counted AFTER the responsiveness check.
+                                if evidence.is_confirmed_live() {
                                     let integration_cost = self.compute_integration_cost_for_ip(ip);
                                     total_cost.fetch_add(scan_cost_cs + integration_cost, Ordering::Relaxed);
                                 }
-                                pending_hosts.push((ip, subnet, mac));
+                                pending_hosts.push((ip, subnet, evidence));
                             }
                         }
                         None => {
@@ -741,7 +912,7 @@ impl NetworkScan {
                     // Spawn next buffered host if available
                     // Note: batches only counted for MAC hosts when buffered; non-MAC hosts
                     // have batches counted in deep_scan_host after responsiveness check
-                    if let Some((ip, subnet, mac)) = pending_hosts.pop() {
+                    if let Some((ip, subnet, evidence)) = pending_hosts.pop() {
                         let cancel = cancel.clone();
                         let gateway_ips = gateway_ips.clone();
                         let hosts_scanned = hosts_scanned.clone();
@@ -768,7 +939,7 @@ impl NetworkScan {
                                 .deep_scan_host(DeepScanParams {
                                     ip,
                                     subnet: &subnet,
-                                    mac,
+                                    evidence,
                                     cancel,
                                     scan_rate_pps,
                                     port_scan_batch_size: effective_batch_size,
@@ -815,7 +986,7 @@ impl NetworkScan {
                     let completed_cost_val = completed_cost.load(Ordering::Relaxed);
                     let hosts_discovered_val = hosts_discovered.load(Ordering::Relaxed);
                     let hosts_scanned_val = hosts_scanned.load(Ordering::Relaxed);
-                    let arp_packets_sent_val = arp_packets_sent.load(Ordering::Relaxed);
+                    let discovery_packets_sent_val = discovery_packets_sent.load(Ordering::Relaxed);
 
                     // Calculate progress. Clamp to be monotonic: the blended ARP+deep-scan
                     // value can dip when ARP discovers more hosts (growing the deep-scan
@@ -828,8 +999,8 @@ impl NetworkScan {
                         completed_cost_val,
                         hosts_discovered_val,
                         hosts_scanned_val,
-                        arp_packets_sent_val,
-                        arp_packets_total,
+                        discovery_packets_sent_val,
+                        discovery_packets_total,
                     )
                     .max(last_progress_report);
 
@@ -837,12 +1008,12 @@ impl NetworkScan {
                     // (rounds 2-3 re-probe every dead IP). Derived from real send rate so
                     // the ETA stops claiming "<1 min" while ARP still has minutes to go.
                     let arp_remaining_secs = if !channel_closed
-                        && arp_packets_total > 0
-                        && arp_packets_sent_val > 0
+                        && discovery_packets_total > 0
+                        && discovery_packets_sent_val > 0
                     {
                         let arp_elapsed = pipeline_start.elapsed().as_secs_f64();
-                        let rate = arp_packets_sent_val as f64 / arp_elapsed.max(0.001);
-                        let remaining = arp_packets_total.saturating_sub(arp_packets_sent_val);
+                        let rate = discovery_packets_sent_val as f64 / arp_elapsed.max(0.001);
+                        let remaining = discovery_packets_total.saturating_sub(discovery_packets_sent_val);
                         (remaining as f64 / rate.max(0.001)) as u32
                     } else {
                         0
@@ -1034,7 +1205,7 @@ impl NetworkScan {
         let DeepScanParams {
             ip,
             subnet,
-            mac,
+            evidence,
             cancel,
             scan_rate_pps,
             port_scan_batch_size,
@@ -1060,10 +1231,14 @@ impl NetworkScan {
         // Use fixed batch size, limited by scan controller if FD exhaustion has occurred
         let effective_batch_size = port_scan_batch_size.min(scan_controller.batch_size());
 
-        // For non-interfaced hosts (no MAC from ARP), check responsiveness first.
-        // This avoids full 65k port scans on hosts that aren't online.
+        // For addresses no sweep has answered for, check responsiveness first. This avoids full
+        // 65k port scans on addresses that aren't online.
+        //
+        // Keyed on the evidence rather than on the MAC being absent: an ICMP echo reply proves
+        // the address is alive without yielding a MAC, and putting it through this check would
+        // drop it again for answering no TCP port — undoing the entire point of the ping sweep.
         let mut responsiveness_ports: HashSet<u16> = HashSet::new();
-        if mac.is_none() {
+        if !evidence.is_confirmed_live() {
             // Every port the deep scan would look at, so this check can only skip an address
             // nothing we were going to probe answers on. See `liveness_probe_ports`.
             let discovery_ports: Vec<u16> = liveness_probe_ports(light_scan_ports);
@@ -1071,7 +1246,7 @@ impl NetworkScan {
             tracing::debug!(
                 ip = %ip,
                 ports = discovery_ports.len(),
-                "Checking responsiveness (non-interfaced host)"
+                "Checking responsiveness (no liveness signal yet)"
             );
 
             let responsive_ports = scan_tcp_ports(
@@ -1280,7 +1455,9 @@ impl NetworkScan {
             name: None,
             subnet_id: subnet.id,
             ip_address: ip,
-            mac_address: mac,
+            // Only ARP yields one; an ICMP-discovered host records no MAC, exactly as a
+            // TCP-responsive one on a non-interfaced subnet always has.
+            mac_address: evidence.mac(),
             position: 0,
         });
 
@@ -1453,6 +1630,68 @@ pub(crate) fn unreachable_credential_targets(
             reason: CredentialIssueReason::TargetNotScanned,
         })
         .collect()
+}
+
+/// A handle to the ICMP sweep, which runs concurrently with ARP.
+///
+/// The set of responders is published once, when the sweep finishes. Two consumers wait on it —
+/// the non-interfaced enumeration, which needs to tag each address it streams, and the pipeline
+/// loop, which releases interfaced-subnet responders ARP never claimed. `watch` carries the value
+/// to both without either racing the other or the producer.
+#[derive(Clone)]
+pub(super) struct IcmpSweep {
+    rx: tokio::sync::watch::Receiver<Option<Arc<HashSet<IpAddr>>>>,
+}
+
+impl IcmpSweep {
+    /// A sweep that never ran. Consumers take the same path as they would for one that found
+    /// nothing, so there is no "is ICMP on?" branch anywhere downstream.
+    fn unavailable() -> Self {
+        let (_tx, rx) = tokio::sync::watch::channel(Some(Arc::new(HashSet::new())));
+        Self { rx }
+    }
+
+    /// The addresses that answered, once the sweep has finished.
+    async fn responders(&mut self) -> Arc<HashSet<IpAddr>> {
+        match self.rx.wait_for(|v| v.is_some()).await {
+            Ok(value) => value.clone().unwrap_or_default(),
+            // The producer task died. Degrading to "nothing answered" keeps the scan running with
+            // exactly the pre-ICMP behaviour, which is the right failure mode for a signal that is
+            // only ever additive.
+            Err(_) => Arc::new(HashSet::new()),
+        }
+    }
+}
+
+/// Start the ICMP sweep and drain its (blocking) receiver on a worker thread.
+fn spawn_icmp_sweep(
+    targets: Vec<std::net::Ipv4Addr>,
+    retries: u32,
+    rate_pps: u32,
+    packets_sent: &Arc<AtomicU64>,
+) -> IcmpSweep {
+    let (tx, rx) = tokio::sync::watch::channel(None);
+    let packets_sent = packets_sent.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let mut responders: HashSet<IpAddr> = HashSet::new();
+        match icmp::sweep(targets, retries, rate_pps, packets_sent) {
+            Ok(results) => {
+                // The sender closes the channel when both sweep threads finish, so this drains
+                // for exactly as long as the sweep runs.
+                for result in results {
+                    responders.insert(IpAddr::V4(result.ip));
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "ICMP sweep failed to start; continuing without it");
+            }
+        }
+        tracing::info!(responders = responders.len(), "ICMP echo sweep finished");
+        let _ = tx.send(Some(Arc::new(responders)));
+    });
+
+    IcmpSweep { rx }
 }
 
 /// Credentials pinned to an in-scope address that no host answered at.
