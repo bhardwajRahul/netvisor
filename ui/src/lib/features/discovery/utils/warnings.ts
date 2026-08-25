@@ -16,7 +16,7 @@
 import { getLocale } from '$lib/paraglide/runtime';
 import type { components } from '$lib/api/schema';
 import claimSources from '$lib/data/claim-sources.json';
-import credentialTypes from '$lib/data/credential-types.json';
+import discoveryIntegrations from '$lib/data/discovery-integrations.json';
 import malformedNeighbourConsequences from '$lib/data/malformed-neighbour-consequences.json';
 import snmpWalkGroups from '$lib/data/snmp-walk-groups.json';
 import warningCodes from '$lib/data/warning-codes.json';
@@ -60,11 +60,14 @@ const consequence = (id: string) =>
 	nameOf(malformedNeighbourConsequences, 'malformed_neighbour_consequences', id);
 
 /**
- * The credential type's display name, from the credential-types fixture rather than a hand-kept
- * map — the backend sends the integration discriminant, and its English lives with the rest of the
- * credential metadata.
+ * The integration's display name.
+ *
+ * Keyed by `CredentialQueryPayloadDiscriminants`, which is what the warning carries. Not
+ * `credential-types.json`: that is keyed by `CredentialType` (SnmpV1/V2c/V3, UnifiApiKey, …), so
+ * `DockerProxy` resolved there by coincidence while `Snmp`, `UnifiController` and `InstantOn` fell
+ * through and rendered as their raw discriminants.
  */
-const integration = (id: string) => nameOf(credentialTypes, 'credential_types', id);
+const integration = (id: string) => nameOf(discoveryIntegrations, 'discovery_integrations', id);
 
 /**
  * Join as a localized list, capped, saying how many were left out.
@@ -168,12 +171,9 @@ const WARNING_PARAMS = {
 	CredentialTargetNotScanned: credentialParams,
 	CredentialTargetNotResponding: credentialParams,
 	CredentialGateClosed: (w) => ({
-		credentials: credentialsOf(w),
-		addresses: addressesOf(w),
-		ports: joinList(
-			w.flatMap((x) => x.ports.map(String)),
-			'conjunction'
-		)
+		credential: integration(w[0].integration),
+		address: w[0].address,
+		ports: joinList(w[0].ports.map(String), 'conjunction')
 	}),
 	CredentialRejected: attemptParams,
 	CredentialMalformed: attemptParams,
@@ -225,16 +225,10 @@ function malformedParams(
 	};
 }
 
-const credentialsOf = (w: { integration: string }[]) =>
-	joinList(
-		w.map((x) => integration(x.integration)),
-		'conjunction'
-	);
-
 function credentialParams(
 	w: WarningOf<'CredentialTargetNotScanned' | 'CredentialTargetNotResponding'>[]
 ): Params {
-	return { credentials: credentialsOf(w), addresses: addressesOf(w) };
+	return { credential: integration(w[0].integration), address: w[0].address };
 }
 
 function attemptParams(
@@ -249,14 +243,12 @@ function attemptParams(
 		| 'CredentialTimedOut'
 	>[]
 ): Params {
-	// Every distinct diagnostic the group produced. The backend keeps one per address now, so a
-	// host failing for its own reason is no longer shown a neighbour's.
-	const details = [...new Set(w.map((x) => x.detail).filter((d): d is string => !!d))];
+	// This address's own diagnostic. Grouping credential warnings would put one message against
+	// several addresses, which is exactly the batching the per-occurrence records exist to undo.
 	return {
-		credentials: credentialsOf(w),
-		addresses: addressesOf(w),
-		detail:
-			details.length > 0 ? joinList(details, 'conjunction') : discovery_warningNoFurtherDetail()
+		credential: integration(w[0].integration),
+		address: w[0].address,
+		detail: w[0].detail || discovery_warningNoFurtherDetail()
 	};
 }
 
@@ -345,6 +337,19 @@ const PER_OCCURRENCE = new Set<DiscoveryWarningCode>([
 	'ClaimedCountUnderRead',
 	'ClaimedCapabilityReadCutShort',
 	'ClaimedCapabilityEmpty',
+	// Every credential warning: each carries the diagnostic the library returned for *that*
+	// address, and grouping them re-merges what the backend went to the trouble of keeping apart.
+	'CredentialTargetNotScanned',
+	'CredentialTargetNotResponding',
+	'CredentialGateClosed',
+	'CredentialRejected',
+	'CredentialMalformed',
+	'CredentialTlsFailed',
+	'CredentialNotThisService',
+	'CredentialCollectionFailed',
+	'CredentialCollectionTimedOut',
+	'CredentialUnreachable',
+	'CredentialTimedOut',
 	'Unknown'
 ]);
 

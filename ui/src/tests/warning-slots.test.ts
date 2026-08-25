@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import warningCodes from '$lib/data/warning-codes.json';
+import discoveryIntegrations from '$lib/data/discovery-integrations.json';
 import { renderWarnings, type DiscoveryWarning } from '$lib/features/discovery/utils/warnings';
 
 /**
@@ -92,6 +93,41 @@ describe('discovery warning rendering', () => {
 		// One says a rescan may help and the other says it never will; merging them would have to
 		// pick one answer and be wrong for the other device.
 		expect(rendered).toHaveLength(2);
+	});
+
+	it('resolves every integration to a name, never a raw discriminant', () => {
+		// The discriminants a warning can carry are not the ids of credential-types.json, which is
+		// keyed by CredentialType — reusing that fixture resolved DockerProxy by coincidence and
+		// rendered Snmp, UnifiController and InstantOn as their raw values.
+		const integrations = discoveryIntegrations.map((i) => i.id);
+		expect(integrations.length).toBeGreaterThan(0);
+
+		for (const id of integrations) {
+			const w = { ...sample('CredentialRejected'), integration: id } as unknown as DiscoveryWarning;
+			const [line] = renderWarnings([w]);
+			const name = discoveryIntegrations.find((i) => i.id === id)?.name;
+			expect(line, `${id} has no display name`).toContain(name);
+			// The raw value may only appear when it is also the display name.
+			if (name !== id) expect(line, `${id} leaked its discriminant`).not.toContain(id);
+		}
+	});
+
+	it('gives each failing credential address its own sentence and diagnostic', () => {
+		const at = (address: string, detail: string) =>
+			({ ...sample('CredentialRejected'), address, detail }) as unknown as DiscoveryWarning;
+
+		const rendered = renderWarnings([
+			at('10.0.0.1', 'wrong community'),
+			at('10.0.0.2', 'authentication failure')
+		]);
+
+		// Grouping these would put one diagnostic against both addresses, which is the batching the
+		// per-occurrence records exist to undo.
+		expect(rendered).toHaveLength(2);
+		expect(rendered[0]).toContain('10.0.0.1');
+		expect(rendered[0]).toContain('wrong community');
+		expect(rendered[1]).toContain('10.0.0.2');
+		expect(rendered[1]).toContain('authentication failure');
 	});
 
 	it('renders a legacy string warning as its own text', () => {
