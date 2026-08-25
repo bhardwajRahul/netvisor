@@ -30,6 +30,33 @@ pub const SERVICE_ENUMERATION: &str = "_services._dns-sd._udp.local.";
 /// label a vendor generated.
 const FRIENDLY_NAME_KEYS: [&str; 2] = ["fn", "nm"];
 
+/// Service types whose instance name names the *device*, rather than something running on it.
+///
+/// The distinction is not cosmetic. `_airplay._tcp` gave "Maya's MacBook Pro" and `_sonos._tcp`
+/// gave "Living Room" — both stable properties of the device. `_spotify-connect._tcp` gave
+/// "Spotify Group Session [612Gq]", which named a playback session and vanished with it.
+///
+/// An allowlist rather than a denylist of session-like types: a type nobody has considered should
+/// not get to name a host by default, and the cost of omitting a good one is a host that keeps its
+/// reverse-DNS name instead of gaining a friendlier one.
+const DEVICE_NAMING_SERVICES: [&str; 8] = [
+    "_airplay._tcp",
+    "_raop._tcp",
+    "_sonos._tcp",
+    "_googlecast._tcp",
+    "_hue._tcp",
+    "_device-info._tcp",
+    "_hap._tcp",
+    "_ipp._tcp",
+];
+
+/// Whether an instance of `service_type` may lend its name to the host.
+fn names_a_device(service_type: &str) -> bool {
+    DEVICE_NAMING_SERVICES
+        .iter()
+        .any(|allowed| service_type.eq_ignore_ascii_case(allowed))
+}
+
 /// Build one query carrying a `PTR` question per name.
 ///
 /// A single message with several questions is legal and is what a browse should send: one packet
@@ -145,31 +172,29 @@ impl Accumulator {
                 let host = hosts.entry(*address).or_default();
                 host.hostname
                     .get_or_insert_with(|| trim_root(&target.to_utf8()));
-                host.services.extend(services.iter().cloned());
-                if let Some(txt) = txt {
-                    host.txt
-                        .extend(txt.iter().map(|(k, v)| (k.clone(), v.clone())));
+                // TXT belongs to the service that carried it, not to the host at large — see
+                // `DnsSdHost::services`.
+                for service in services {
+                    let entry = host.services.entry(service.clone()).or_default();
+                    if let Some(txt) = txt {
+                        entry.extend(txt.iter().map(|(k, v)| (k.clone(), v.clone())));
+                    }
                 }
-                // TXT outranks the instance label because it is what the owner typed, not what the
-                // vendor generated.
+                // Only instances of a service type that names the *device* may supply a host name.
                 //
-                // The fallback to the instance label is under investigation: a live scan named an
-                // iPhone "Spotify Group Session [612Gq]", because `_spotify-connect._tcp` names a
-                // *session* rather than the device and sorted first. TEMPORARY diagnostic, to
-                // establish which service type and which path supplies each name on real hardware
-                // before the rule is narrowed — REMOVE once that is known.
-                let from_txt = txt.and_then(friendly_name_from_txt);
-                let name = from_txt.clone().or_else(|| first_label(instance));
-                if let Some(name) = name {
-                    tracing::debug!(
-                        address = %address,
-                        instance = %instance,
-                        services = %services.iter().cloned().collect::<Vec<_>>().join(","),
-                        source = if from_txt.is_some() { "txt" } else { "instance-label" },
-                        candidate = %name,
-                        accepted = host.instance_name.is_none(),
-                        "mDNS name candidate"
-                    );
+                // A live scan named an iPhone "Spotify Group Session [612Gq]": a
+                // `_spotify-connect._tcp` instance is a playback session, so the name changed as
+                // soon as the session ended. Browsing the same network minutes later found that
+                // instance already gone and replaced by `sonosRINCON_347E5CD3843A01400` on a
+                // different device — the churn, demonstrated rather than predicted.
+                //
+                // TXT still outranks the instance label within an allowed service, because it is
+                // what the owner typed rather than what the vendor generated.
+                if services.iter().any(|s| names_a_device(s))
+                    && let Some(name) = txt
+                        .and_then(friendly_name_from_txt)
+                        .or_else(|| first_label(instance))
+                {
                     host.instance_name.get_or_insert(name);
                 }
             }
@@ -306,10 +331,10 @@ mod tests {
             .expect("the A record's address carries the host");
 
         assert_eq!(host.hostname.as_deref(), Some("chromecast-a1b2c3.local"));
-        assert!(host.services.contains("_googlecast._tcp"));
-        assert_eq!(
-            host.txt.get("md").map(String::as_str),
-            Some("Chromecast Ultra")
+        assert!(host.advertises("_googlecast._tcp", None));
+        assert!(
+            host.advertises("_googlecast._tcp", Some(("md", "Chromecast"))),
+            "the TXT model must be readable through the service that carried it"
         );
     }
 
@@ -349,7 +374,57 @@ mod tests {
         let hosts = accumulator.resolve();
         let host = &hosts[&IpAddr::V4(Ipv4Addr::new(192, 168, 1, 60))];
         assert_eq!(host.instance_name.as_deref(), Some("Office Printer"));
-        assert!(host.services.contains("_ipp._tcp"));
+        assert!(host.advertises("_ipp._tcp", None));
+    }
+
+    /// The live failure: a scan named an iPhone "Spotify Group Session [612Gq]" from a
+    /// `_spotify-connect._tcp` instance. That names a playback session, so the host name changed
+    /// as soon as the session ended — a browse minutes later found the instance already gone.
+    ///
+    /// The device's own announcement must win regardless of which instance the records arrive in,
+    /// so the same fixture is asserted both ways round.
+    #[test]
+    fn a_session_instance_does_not_get_to_name_the_device() {
+        for session_first in [false, true] {
+            let mut message = Message::response(0, hickory_resolver::proto::op::OpCode::Query);
+            let device = ("_airplay._tcp.local.", "Maya's iPhone");
+            let session = (
+                "_spotify-connect._tcp.local.",
+                "Spotify Group Session [612Gq]",
+            );
+            let order = if session_first {
+                [session, device]
+            } else {
+                [device, session]
+            };
+
+            for (service, label) in order {
+                message.add_answer(record(service, RData::PTR(PTR(instance(label, service)))));
+                message.add_additional(record_for(
+                    instance(label, service),
+                    RData::SRV(SRV::new(0, 0, 7000, name("iPhone.local."))),
+                ));
+            }
+            message.add_additional(record(
+                "iPhone.local.",
+                RData::A(A(Ipv4Addr::new(192, 168, 4, 23))),
+            ));
+
+            let mut accumulator = Accumulator::default();
+            accumulator.absorb(&message.to_bytes().unwrap());
+            let hosts = accumulator.resolve();
+            let host = &hosts[&IpAddr::V4(Ipv4Addr::new(192, 168, 4, 23))];
+
+            assert_eq!(
+                host.instance_name.as_deref(),
+                Some("Maya's iPhone"),
+                "session listed first: {session_first}"
+            );
+            assert!(
+                host.advertises("_spotify-connect._tcp", None),
+                "the session is still recorded as a service — it just cannot name the host"
+            );
+        }
     }
 
     /// An instance whose SRV or A never arrived has no address to attach to. Recording it against
@@ -393,8 +468,8 @@ mod tests {
         let hosts = accumulator.resolve();
         assert_eq!(hosts.len(), 1, "one device must not become two hosts");
         let host = &hosts[&IpAddr::V4(Ipv4Addr::new(192, 168, 1, 70))];
-        assert!(host.services.contains("_airplay._tcp"));
-        assert!(host.services.contains("_raop._tcp"));
+        assert!(host.advertises("_airplay._tcp", None));
+        assert!(host.advertises("_raop._tcp", None));
     }
 
     /// The enumeration query answers with service *types*, not instances. Treating them as

@@ -29,7 +29,7 @@ impl ServiceDefinition for ChromecastDevice {
         Pattern::AllOf(vec![
             Pattern::MacVendor(Vendor::GOOGLE),
             Pattern::AnyOf(vec![
-                Pattern::DnsSdService(DnsSdServiceType::GOOGLE_CAST),
+                Pattern::DnsSd(DnsSdServiceType::GOOGLE_CAST, None),
                 Pattern::AllOf(vec![
                     Pattern::Port(PortType::new_tcp(8008)),
                     Pattern::Port(PortType::new_tcp(8009)),

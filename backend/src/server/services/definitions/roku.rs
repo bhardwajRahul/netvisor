@@ -26,7 +26,7 @@ impl ServiceDefinition for RokuDevice {
             Pattern::AnyOf(vec![
                 Pattern::Port(PortType::new_tcp(8060)),
                 // A Roku with its ECP port closed still announces AirPlay.
-                Pattern::DnsSdService(DnsSdServiceType::AIRPLAY),
+                Pattern::DnsSd(DnsSdServiceType::AIRPLAY, None),
             ]),
         ])
     }

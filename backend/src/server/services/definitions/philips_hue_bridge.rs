@@ -23,7 +23,7 @@ impl ServiceDefinition for PhilipsHueBridge {
             Pattern::MacVendor(Vendor::PHILIPS),
             Pattern::AnyOf(vec![
                 Pattern::Endpoint(PortType::Http, "/", "hue", None),
-                Pattern::DnsSdService(DnsSdServiceType::HUE),
+                Pattern::DnsSd(DnsSdServiceType::HUE, None),
             ]),
         ])
     }
