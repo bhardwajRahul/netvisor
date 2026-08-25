@@ -36,6 +36,18 @@ const MAX_LISTED = 10;
 type Params = Record<string, string | number>;
 type WarningOf<C extends DiscoveryWarningCode> = Extract<DiscoveryWarning, { code: C }>;
 
+/**
+ * Resolve a host id to its name, or `undefined` when it cannot be resolved.
+ *
+ * Passed in rather than queried here: the warnings carry ids, and the component already holds the
+ * host query that turns them into names. Returning `undefined` is a normal outcome — the query may
+ * still be in flight, and a historical scan can name a host that has since been deleted.
+ */
+export type HostNameLookup = (hostId: string) => string | undefined;
+
+/** No names available: every host segment is omitted, which is how this rendered before names. */
+const NO_HOST_NAMES: HostNameLookup = () => undefined;
+
 /** Metadata lookup for a slot value, falling back to the fixture's own English. */
 function nameOf(fixture: { id: string; name: string | null }[], fixtureKey: string, id: string) {
 	const entry = fixture.find((item) => item.id === id);
@@ -187,10 +199,10 @@ const WARNING_PARAMS = {
 
 	WarningsTruncated: (w) => ({ elided: sum(w.map((x) => x.elided)) }),
 	// The whole sentence *is* the detail: a warning from another version, or one written before
-	// warnings were coded at all.
-	Unknown: (w) => ({ detail: w.map((x) => x.detail).join(' ') })
+	// warnings were coded at all. Rendered one per occurrence, so this only ever sees one.
+	Unknown: (w) => ({ detail: w[0].detail })
 } satisfies {
-	[C in DiscoveryWarningCode]: (warnings: WarningOf<C>[]) => Params;
+	[C in DiscoveryWarningCode]: (warnings: WarningOf<C>[], hostName: HostNameLookup) => Params;
 };
 
 function malformedParams(
@@ -248,38 +260,103 @@ function attemptParams(
 	};
 }
 
-/** `Gi1/0/1 -> 00:ad:24:89:cc:f0 (core-sw)` — the sysName only when the device sent one, since it
- * is often the only human-readable clue to what the far end is. */
-const describeNeighbour = (w: { if_descr: string; identifier: string; sys_name?: string | null }) =>
-	`${w.if_descr} -> ${w.identifier}${w.sys_name ? ` (${w.sys_name})` : ''}`;
+/**
+ * `switch7 Gi1/0/1 -> 00:ad:24:89:cc:f0 (core-sw)`.
+ *
+ * Which of our devices saw the neighbour leads the line, because it is the first thing an operator
+ * needs in order to act — the identifier alone says a link is missing without saying where to go
+ * and look. Every segment is dropped when it is absent rather than filled with a placeholder: a
+ * host whose name has not loaded yet, or one deleted since the scan, then reads exactly as it did
+ * before names were resolved at all.
+ */
+function describeNeighbour(
+	w: { host_id: string; if_descr: string; identifier: string; sys_name?: string | null },
+	hostName: HostNameLookup
+): string {
+	const far = `${w.identifier}${w.sys_name ? ` (${w.sys_name})` : ''}`;
+	return [hostName(w.host_id), w.if_descr, '->', far].filter(Boolean).join(' ');
+}
 
 function neighbourParams(
-	w: WarningOf<'LldpNeighbourNotFound' | 'LldpNeighbourAmbiguous'>[]
+	w: WarningOf<'LldpNeighbourNotFound' | 'LldpNeighbourAmbiguous'>[],
+	hostName: HostNameLookup
 ): Params {
-	return { count: w.length, examples: joinList(w.map(describeNeighbour), 'conjunction') };
+	return {
+		count: w.length,
+		examples: joinList(
+			w.map((x) => describeNeighbour(x, hostName)),
+			'conjunction'
+		)
+	};
 }
 
-/** `Gi0/1 -> MacAddress("00:ad:…") (Port 9)` — both halves of the advertised id, because the
- * subtype says which tier ran and the value says what it looked for. */
-const describePort = (w: {
-	if_descr: string;
-	port_id?: string | null;
-	port_desc?: string | null;
-}) =>
-	`${w.if_descr} -> ${w.port_id ?? discovery_warningNoPortId()}${w.port_desc ? ` (${w.port_desc})` : ''}`;
+/**
+ * `switch7 Gi0/1 -> core-sw via MacAddress("00:ad:…") (Port 9)`.
+ *
+ * Both ends are named here, unlike the unmatched case: the far end resolved to a device, and the
+ * point of this warning is that the two are on the map and still not joined port-to-port. Both
+ * halves of the advertised id are kept, because the subtype says which tier ran and the value says
+ * what it looked for.
+ */
+function describePort(
+	w: {
+		host_id: string;
+		remote_host_id: string;
+		if_descr: string;
+		port_id?: string | null;
+		port_desc?: string | null;
+	},
+	hostName: HostNameLookup
+): string {
+	const id = `via ${w.port_id ?? discovery_warningNoPortId()}${w.port_desc ? ` (${w.port_desc})` : ''}`;
+	return [hostName(w.host_id), w.if_descr, '->', hostName(w.remote_host_id), id]
+		.filter(Boolean)
+		.join(' ');
+}
 
 function portParams(
-	w: WarningOf<'LldpPortNoStrategy' | 'LldpPortNotFound' | 'LldpPortAmbiguous'>[]
+	w: WarningOf<'LldpPortNoStrategy' | 'LldpPortNotFound' | 'LldpPortAmbiguous'>[],
+	hostName: HostNameLookup
 ): Params {
-	return { count: w.length, examples: joinList(w.map(describePort), 'conjunction') };
+	return {
+		count: w.length,
+		examples: joinList(
+			w.map((x) => describePort(x, hostName)),
+			'conjunction'
+		)
+	};
 }
+
+/**
+ * Codes that get one sentence per occurrence rather than one covering the group.
+ *
+ * Two reasons, both about the sentence being unshareable:
+ *
+ * - the claim warnings are built around two figures a device published about *itself*, and two
+ *   switches disagreeing with themselves by different amounts have nothing to share but the shape
+ *   of the complaint;
+ * - `Unknown` carries a whole pre-coded sentence as its detail, and merging several into one
+ *   bullet turns a historical scan's warning list into the wall of text the aggregation exists to
+ *   prevent. Before warnings were coded each of those strings was its own bullet, and it stays
+ *   that way.
+ */
+const PER_OCCURRENCE = new Set<DiscoveryWarningCode>([
+	'ClaimedCountReadCutShort',
+	'ClaimedCountUnderRead',
+	'ClaimedCapabilityReadCutShort',
+	'ClaimedCapabilityEmpty',
+	'Unknown'
+]);
 
 /**
  * Group a run's warnings by code and render one sentence per group, in the order the codes first
  * appear — which is the order the producers emitted them, so the shortfall for a device still
  * precedes the contradiction that explains it.
  */
-export function renderWarnings(warnings: DiscoveryWarning[]): string[] {
+export function renderWarnings(
+	warnings: DiscoveryWarning[],
+	hostName: HostNameLookup = NO_HOST_NAMES
+): string[] {
 	const byCode = new Map<DiscoveryWarningCode, DiscoveryWarning[]>();
 	for (const warning of warnings) {
 		const existing = byCode.get(warning.code);
@@ -291,17 +368,15 @@ export function renderWarnings(warnings: DiscoveryWarning[]): string[] {
 	}
 
 	return [...byCode].flatMap(([code, group_]) => {
-		const build = WARNING_PARAMS[code] as (w: DiscoveryWarning[]) => Params;
+		const build = WARNING_PARAMS[code] as (w: DiscoveryWarning[], lookup: HostNameLookup) => Params;
 		const fallback = warningCodes.find((c) => c.id === code)?.description;
 		if (!fallback) return [];
 
-		// The claim warnings name one device each, so each gets its own sentence rather than one
-		// covering the group — their figures are what the sentence is about.
-		if (code.startsWith('Claimed')) {
+		if (PER_OCCURRENCE.has(code)) {
 			return group_.map((warning) =>
-				metaDescriptionWith('warning_codes', code, build([warning]), fallback)
+				metaDescriptionWith('warning_codes', code, build([warning], hostName), fallback)
 			);
 		}
-		return [metaDescriptionWith('warning_codes', code, build(group_), fallback)];
+		return [metaDescriptionWith('warning_codes', code, build(group_, hostName), fallback)];
 	});
 }
