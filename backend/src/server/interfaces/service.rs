@@ -277,7 +277,7 @@ impl InterfaceService {
 /// guard is applied after the `claimed` filter: a MAC shared by more than one
 /// *unclaimed* existing row stays ambiguous (VLAN sub-interfaces / bond members)
 /// and yields no match.
-fn match_existing_interface(
+pub(crate) fn match_existing_interface(
     entry: &Interface,
     existing: &[Interface],
     claimed: &HashSet<Uuid>,

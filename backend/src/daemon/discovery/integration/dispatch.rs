@@ -28,8 +28,8 @@ use crate::server::services::r#impl::patterns::ClientProbe;
 use crate::server::subnets::r#impl::base::Subnet;
 
 use super::{
-    DiscoveryIntegration, IntegrationContext, IntegrationRegistry, ProbeContext, ProbeSuccess,
-    execute_with_progress_reporting,
+    DiscoveryIntegration, IntegrationContext, IntegrationRegistry, InterfaceSource, ProbeContext,
+    ProbeSuccess, execute_with_progress_reporting,
 };
 
 /// Run one credential against one integration and say what happened.
@@ -575,6 +575,10 @@ pub async fn execute_integrations(
             ip: params.ip,
             credential,
             credential_id: *cred_id,
+            interface_source: InterfaceSource {
+                credential: discriminant,
+                scope: integration.interface_view_scope(),
+            },
             cancel: params.cancel,
             ops: params.ops,
             utils: params.utils,

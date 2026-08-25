@@ -69,7 +69,7 @@ use crate::{
 
 use super::{
     Checkpoint, Completeness, DiscoveryIntegration, IntegrationContext, IntegrationFailure,
-    ProbeContext, ProbeFailure, ProbeSuccess,
+    InterfaceViewScope, ProbeContext, ProbeFailure, ProbeSuccess,
 };
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::{
@@ -126,6 +126,11 @@ pub struct SnmpIntegration;
 
 #[async_trait]
 impl DiscoveryIntegration for SnmpIntegration {
+    /// An ifTable walk is the device's own account of every interface it has.
+    fn interface_view_scope(&self) -> InterfaceViewScope {
+        InterfaceViewScope::FullIfTable
+    }
+
     fn credential_type(&self) -> CredentialQueryPayloadDiscriminants {
         CredentialQueryPayloadDiscriminants::Snmp
     }
@@ -294,7 +299,8 @@ impl DiscoveryIntegration for SnmpIntegration {
         // whether every attribute column also finished (#649).
         let network_id = host_data.host.base.network_id;
         let no_vlan_uuids = std::collections::HashMap::new();
-        host_data.replace_interfaces(
+        host_data.contribute_interfaces(
+            ctx.interface_source,
             snmp_if_entries
                 .iter()
                 .map(|entry| {
@@ -727,7 +733,8 @@ impl DiscoveryIntegration for SnmpIntegration {
         // --- Convert SNMP ifTable entries to Interface entities ---
         // Replaces (not appends to) the bare set persisted right after the ifTable walk, now that
         // the neighbour/FDB/VLAN queries have supplied the enrichment those bare entries lacked.
-        host_data.replace_interfaces(
+        host_data.contribute_interfaces(
+            ctx.interface_source,
             snmp_if_entries
                 .iter()
                 .map(|entry| {
