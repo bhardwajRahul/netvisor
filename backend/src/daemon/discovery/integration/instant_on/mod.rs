@@ -47,7 +47,8 @@ use crate::server::services::r#impl::patterns::{ClientProbe, ManagedDevice};
 use super::controller::{self, MappedClient};
 use super::{
     Checkpoint, CollectionShortfall, Completeness, DiscoveryIntegration, IntegrationContext,
-    IntegrationFailure, ProbeContext, ProbeFailure, ProbeSuccess,
+    IntegrationFailure, InterfaceSource, InterfaceViewScope, ProbeContext, ProbeFailure,
+    ProbeSuccess,
 };
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::AttemptOutcome;
@@ -63,6 +64,11 @@ pub struct InstantOnIntegration;
 
 #[async_trait]
 impl DiscoveryIntegration for InstantOnIntegration {
+    /// The portal reports switch ports and AP uplinks, not a device's whole ifTable.
+    fn interface_view_scope(&self) -> InterfaceViewScope {
+        InterfaceViewScope::PhysicalPortsOnly
+    }
+
     fn credential_type(&self) -> CredentialQueryPayloadDiscriminants {
         CredentialQueryPayloadDiscriminants::InstantOn
     }
@@ -164,7 +170,7 @@ impl DiscoveryIntegration for InstantOnIntegration {
                         // second one.
                         if device.ip == ctx.ip {
                             anchor_matched = true;
-                            enrich_scanned_host(host_data, &device);
+                            enrich_scanned_host(host_data, ctx.interface_source, &device);
                             continue;
                         }
                         match create_device_host(ctx, &subnets, device).await {
@@ -362,20 +368,21 @@ fn collect_subnets(
 }
 
 /// Fold the portal's own device record into the host being scanned.
-fn enrich_scanned_host(host_data: &mut HostData, device: &mapping::MappedDevice) {
+///
+/// `HostData` is shared across every integration for this IP, and these ports are merged with
+/// whatever else collected the same host rather than replacing it — `PhysicalPortsOnly` says an
+/// SNMP ifTable outranks this view port for port, and a port only the portal knows about is still
+/// added. That matters less on an Instant On switch, where SNMP being unavailable is the reason
+/// this integration exists, than on an anchor host that is some other reachable device.
+fn enrich_scanned_host(
+    host_data: &mut HostData,
+    source: InterfaceSource,
+    device: &mapping::MappedDevice,
+) {
     device.identity.enrich(host_data);
 
-    // `HostData` is shared across every integration for this IP. If SNMP already walked the
-    // ifTable its view is strictly richer, and overwriting it would also discard SNMP's honest
-    // partial-collection flags. Unlikely on an Instant On switch — SNMP being unavailable is the
-    // reason this integration exists — but the anchor may be some other reachable device.
-    if !host_data.interfaces.is_empty() {
-        tracing::debug!(
-            "Interfaces already collected for this host; skipping Instant On interface mapping"
-        );
-        return;
-    }
-    host_data.replace_interfaces(
+    host_data.contribute_interfaces(
+        source,
         device.interfaces.clone(),
         interfaces_complete(),
         interface_data_complete(),

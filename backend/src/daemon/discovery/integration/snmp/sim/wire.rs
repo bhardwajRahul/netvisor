@@ -105,7 +105,7 @@ impl PassValue {
     }
 }
 
-pub use crate::server::snmp::resolution::lldp::MacEncoding;
+pub use crate::server::lldp::MacEncoding;
 
 /// One instance: a fully-qualified OID and its value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,8 +125,11 @@ impl Row {
         Self { oid, value }
     }
 
-    /// A scalar instance — `base` with a `.0` appended where the constant does not already carry
-    /// one.
+    /// A scalar instance, served at `base` exactly as given.
+    ///
+    /// Nothing is appended: the scalar OID constants carry their own trailing `.0`. A constant
+    /// without one is served at the object OID, where a walk of the table finds no instance and
+    /// the value silently does not exist.
     pub fn scalar(base: &str, value: PassValue) -> Self {
         let oid = oid_parts(base);
         Self { oid, value }

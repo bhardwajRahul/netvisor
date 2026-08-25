@@ -4,6 +4,10 @@
 //! along with resolution methods to convert LLDP neighbor data into
 //! database entity references.
 
+pub mod resolver;
+
+pub use resolver::LldpResolver;
+
 use crate::server::shared::storage::pg_value::strip_nuls;
 use crate::server::shared::storage::traits::Unique;
 use serde::{Deserialize, Serialize};
@@ -598,9 +602,6 @@ fn parse_network_address(value: &[u8]) -> Option<IpAddr> {
         _ => None,
     }
 }
-
-// Re-export LldpResolver trait from resolver module for backward compatibility
-pub use super::resolver::LldpResolver;
 
 #[cfg(test)]
 mod wire_round_trip_tests {

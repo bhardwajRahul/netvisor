@@ -5,12 +5,12 @@ use crate::server::bindings::r#impl::base::Binding;
 use crate::server::credentials::r#impl::mapping::{IntegrationTarget, Target};
 use crate::server::credentials::r#impl::types::CredentialType;
 use crate::server::dependencies::r#impl::base::Dependency;
+use crate::server::lldp::{LldpChassisId, LldpPortId};
 use crate::server::services::r#impl::base::Service;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::entity_metadata::EntityCategory;
 use crate::server::shared::events::types::{BillingOperation, OnboardingOperationDiscriminants};
 use crate::server::shares::r#impl::base::ShareOptions;
-use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::tags::r#impl::base::Tag;
 use crate::server::topology::types::views::TopologyView;
@@ -613,7 +613,7 @@ impl SqlValue {
         kind: SqlValueDiscriminants,
         out: &mut std::collections::BTreeMap<&'static str, Vec<String>>,
     ) {
-        use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
+        use crate::server::lldp::{LldpChassisId, LldpPortId};
         use ShareOptions;
         use TopologyView;
         use Vlan;

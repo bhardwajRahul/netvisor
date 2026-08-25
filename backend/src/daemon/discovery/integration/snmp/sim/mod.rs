@@ -87,7 +87,6 @@ pub struct SimDevice {
 /// The file suffixes, kept here so the deployment and the registrations cannot disagree about
 /// what a device's files are called.
 const IFTABLE: &str = "iftable";
-const LLDP: &str = "lldp";
 const BRIDGE: &str = "bridge";
 const ARP: &str = "arp";
 const IPADDR: &str = "ipaddr";
@@ -121,9 +120,9 @@ impl SimDevice {
             // the handler re-reads its file per request, so copying a variant over it takes effect
             // with no snmpd restart.
             let suffix = if self.tables.lldp_variants.is_empty() {
-                LLDP.to_string()
+                table.mib.file_suffix.to_string()
             } else {
-                format!("{LLDP}-active")
+                format!("{}-active", table.mib.file_suffix)
             };
             files.push(self.file(&suffix, Ordering::Ascending, table.wire_rows()));
         }
@@ -197,7 +196,7 @@ impl SimDevice {
             .iter()
             .map(|(name, table)| {
                 DataFile::new(
-                    format!("{}-lldp-{}", self.name, name),
+                    format!("{}-{}-{}", self.name, table.mib.file_suffix, name),
                     Ordering::Ascending,
                     table.wire_rows(),
                 )
@@ -246,13 +245,19 @@ impl SimDevice {
                 });
             }
         }
-        let lldp_file = if self.tables.lldp_variants.is_empty() {
-            LLDP.to_string()
-        } else {
-            format!("{LLDP}-active")
+        // The LLDP subtree is the table's own — a device serving a MIB other than the classic
+        // one registers that root instead, and nothing else here has to know.
+        let lldp_mib = self.tables.lldp.as_ref().map(|t| t.mib);
+        let lldp_file = match (&lldp_mib, self.tables.lldp_variants.is_empty()) {
+            (Some(mib), true) => mib.file_suffix.to_string(),
+            (Some(mib), false) => format!("{}-active", mib.file_suffix),
+            (None, _) => String::new(),
         };
         for (suffix, subtree) in [
-            (lldp_file.as_str(), lldp_oids::LLDP_MIB),
+            (
+                lldp_file.as_str(),
+                lldp_mib.map(|m| m.root).unwrap_or(lldp_oids::LLDP_MIB),
+            ),
             (BRIDGE, bridge::BRIDGE_MIB),
             (ENTITY, entity::ENTITY_MIB),
             (CDP, cdp::CDP_MIB),
@@ -317,8 +322,14 @@ impl SimDevice {
     /// variant over `-lldp-active.txt`, and a test does it by handing the variant's rows to an
     /// agent that serves only that subtree.
     pub fn registrations_for_lldp_only(&self) -> Vec<Registration> {
+        let root = self
+            .tables
+            .lldp
+            .as_ref()
+            .map(|t| t.mib.root)
+            .unwrap_or(lldp_oids::LLDP_MIB);
         vec![Registration {
-            subtree: oid_parts(lldp_oids::LLDP_MIB),
+            subtree: oid_parts(root),
             file: 0,
             handler: Handler::Normal,
         }]

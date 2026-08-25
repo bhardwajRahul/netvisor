@@ -309,7 +309,7 @@ static IF_TYPES: phf::Map<i32, &'static str> = phf_map! {
 ///
 /// # Example
 /// ```
-/// use scanopy::server::snmp::resolution::generated::get_if_type_name;
+/// use scanopy::server::snmp::generated::get_if_type_name;
 ///
 /// assert_eq!(get_if_type_name(6), Some("ethernetCsmacd"));
 /// assert_eq!(get_if_type_name(117), Some("gigabitEthernet"));

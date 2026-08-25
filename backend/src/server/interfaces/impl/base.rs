@@ -1,9 +1,9 @@
+use crate::server::lldp::{LldpChassisId, LldpPortId};
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::types::{
     Color, Icon,
     metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
 };
-use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
 use crate::server::topology::types::views::{
     FilterValueContext, HasFilterValues, MetadataFilterType,
 };

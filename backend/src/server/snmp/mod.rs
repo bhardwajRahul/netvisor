@@ -1,1 +1,1 @@
-pub mod resolution;
+pub mod generated;

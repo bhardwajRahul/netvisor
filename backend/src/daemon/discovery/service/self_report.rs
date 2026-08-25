@@ -1,7 +1,8 @@
 //! Self-report phase: daemon reports itself as a host on the network.
 //!
-//! Runs on first discovery only. Creates the daemon host with its ip_addresses,
-//! Scanopy service, and bindings on bound subnets.
+//! Runs on first discovery only. Creates the daemon host with its ip_addresses, NIC rows,
+//! Scanopy service, and bindings on bound subnets. Later scans re-report only the NIC rows,
+//! through `run_daemon_host_interfaces_phase`.
 
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -15,7 +16,7 @@ use crate::daemon::utils::base::DaemonUtils;
 use crate::server::bindings::r#impl::base::Binding;
 use crate::server::hosts::r#impl::base::{Host, HostBase};
 use crate::server::hosts::r#impl::name::HostName;
-use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
+use crate::server::interfaces::r#impl::base::{Interface, InterfaceDataComplete};
 use crate::server::ip_addresses::r#impl::base::{ALL_IP_ADDRESSES_IP, IPAddress};
 use crate::server::ports::r#impl::base::Port;
 use crate::server::ports::r#impl::base::PortType;
@@ -28,9 +29,58 @@ use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::base::Subnet;
 
 impl DiscoveryRunner {
-    /// Self-report phase: detect ip_addresses, create daemon host with Scanopy service.
-    /// Only runs on first discovery (is_first_run check in caller).
-    pub(super) async fn run_self_report_phase(
+    /// The daemon host's own addresses, and one `Interface` row per NIC that bears them.
+    ///
+    /// Addresses are narrowed to the subnets this discovery created, because an address outside
+    /// them has nowhere to live. The NIC rows deliberately are not: a multi-NIC server's LLDP
+    /// chassis id is whichever MAC lldpd elected, and that NIC need not carry an address on any
+    /// subnet Scanopy scans — which is exactly the case that leaves a switch's neighbour record
+    /// for this host unresolvable. Every NIC has to be present for that MAC to be findable.
+    async fn own_addresses_and_interfaces(
+        &self,
+        network_id: Uuid,
+        created_subnets: &[Subnet],
+    ) -> Result<(Vec<IPAddress>, Vec<Interface>), Error> {
+        let utils = &self.service.utils;
+        let interface_filter = self.service.config_store.get_interfaces().await?;
+        let (ip_addresses, _, _) = utils
+            .get_own_interfaces(network_id, &interface_filter)
+            .await?;
+
+        let ip_addresses: Vec<IPAddress> = ip_addresses
+            .into_iter()
+            .filter_map(|mut i| {
+                if let Some(subnet) = created_subnets
+                    .iter()
+                    .find(|s| s.base.cidr.contains(&i.base.ip_address))
+                {
+                    i.base.subnet_id = subnet.id;
+                    return Some(i);
+                }
+                None
+            })
+            .collect();
+
+        let interfaces = utils.own_nics_as_interfaces(
+            network_id,
+            self.host_id,
+            &interface_filter,
+            &ip_addresses,
+        );
+
+        Ok((ip_addresses, interfaces))
+    }
+
+    /// Re-report the daemon host's own NICs, every scan after the first.
+    ///
+    /// Self-report runs once per install and the localhost phase only runs when a localhost
+    /// credential exists, so without this the daemon's interface rows would be frozen at whatever
+    /// the machine looked like the first time it ever scanned. A NIC added, renamed or re-addressed
+    /// later would never appear, and the neighbour records naming it would stay unresolved.
+    ///
+    /// Ports and services are left to self-report: neither is pruned on upsert, so omitting them
+    /// changes nothing, and re-sending them every scan would be noise.
+    pub(super) async fn run_daemon_host_interfaces_phase(
         &self,
         ops: &DiscoveryOps,
         created_subnets: &[Subnet],
@@ -47,53 +97,40 @@ impl DiscoveryRunner {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Network ID not set"))?;
 
-        let utils = &self.service.utils;
-        let host_id = self.host_id;
-
-        let binding_address = self.service.config_store.get_bind_address().await?;
-        let binding_ip = IpAddr::V4(binding_address.parse::<Ipv4Addr>()?);
-
-        // Get ip_addresses
-        let interface_filter = self.service.config_store.get_interfaces().await?;
-        let (ip_addresses, _, _) = utils
-            .get_own_interfaces(network_id, &interface_filter)
+        let (ip_addresses, interfaces) = self
+            .own_addresses_and_interfaces(network_id, created_subnets)
             .await?;
 
-        if cancel.is_cancelled() {
-            return Err(anyhow::anyhow!("Discovery cancelled"));
+        if interfaces.is_empty() {
+            tracing::debug!("No local NICs to report for the daemon host");
+            return Ok(());
         }
 
-        // Filter ip_addresses to those with matching created subnets
-        let ip_addresses: Vec<IPAddress> = ip_addresses
-            .into_iter()
-            .filter_map(|mut i| {
-                if let Some(subnet) = created_subnets
-                    .iter()
-                    .find(|s| s.base.cidr.contains(&i.base.ip_address))
-                {
-                    i.base.subnet_id = subnet.id;
-                    return Some(i);
-                }
-                None
-            })
-            .collect();
+        let mut host = Host::new(self.own_host_base(network_id));
+        host.id = self.host_id;
 
-        let daemon_bound_subnet_ids: Vec<Uuid> =
-            if binding_address == ALL_IP_ADDRESSES_IP.to_string() {
-                created_subnets.iter().map(|s| s.id).collect()
-            } else {
-                created_subnets
-                    .iter()
-                    .filter(|s| s.base.cidr.contains(&binding_ip))
-                    .map(|s| s.id)
-                    .collect()
-            };
+        ops.create_host(
+            host,
+            ip_addresses,
+            vec![],
+            vec![],
+            interfaces,
+            vec![],
+            // pnet enumerates NICs, not an ifTable, and skips container bridges — so this is
+            // never authority to delete an interface some other collector recorded.
+            false,
+            // ...and it reads no neighbour data at all, so every group must be preserved.
+            InterfaceDataComplete::none(),
+            cancel,
+        )
+        .await?;
 
-        let own_port = Port::new_hostless(PortType::new_tcp(
-            self.service.config_store.get_port().await?,
-        ));
-        let own_port_id = own_port.id;
-        let local_ip = utils.get_own_ip_address()?;
+        Ok(())
+    }
+
+    /// The daemon's own `HostBase`, named the way self-report names it.
+    fn own_host_base(&self, network_id: Uuid) -> HostBase {
+        let utils = &self.service.utils;
         let hostname = utils.get_own_hostname();
 
         let mut host_base = HostBase {
@@ -120,13 +157,65 @@ impl DiscoveryRunner {
         };
 
         // The daemon's own host: its hostname if the OS reports one, otherwise its address.
-        host_base.apply_name(
-            hostname
-                .map(HostName::Hostname)
-                .unwrap_or_else(|| HostName::Ip(local_ip)),
-        );
+        host_base.apply_name(hostname.map(HostName::Hostname).unwrap_or_else(|| {
+            match utils.get_own_ip_address() {
+                Ok(ip) => HostName::Ip(ip),
+                Err(_) => HostName::default(),
+            }
+        }));
 
-        let mut host = Host::new(host_base);
+        host_base
+    }
+
+    /// Self-report phase: detect ip_addresses, create daemon host with Scanopy service.
+    /// Only runs on first discovery (is_first_run check in caller).
+    pub(super) async fn run_self_report_phase(
+        &self,
+        ops: &DiscoveryOps,
+        created_subnets: &[Subnet],
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        if cancel.is_cancelled() {
+            return Err(anyhow::anyhow!("Discovery cancelled"));
+        }
+
+        let network_id = self
+            .service
+            .config_store
+            .get_network_id()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Network ID not set"))?;
+
+        let host_id = self.host_id;
+
+        let binding_address = self.service.config_store.get_bind_address().await?;
+        let binding_ip = IpAddr::V4(binding_address.parse::<Ipv4Addr>()?);
+
+        let (ip_addresses, interfaces) = self
+            .own_addresses_and_interfaces(network_id, created_subnets)
+            .await?;
+
+        if cancel.is_cancelled() {
+            return Err(anyhow::anyhow!("Discovery cancelled"));
+        }
+
+        let daemon_bound_subnet_ids: Vec<Uuid> =
+            if binding_address == ALL_IP_ADDRESSES_IP.to_string() {
+                created_subnets.iter().map(|s| s.id).collect()
+            } else {
+                created_subnets
+                    .iter()
+                    .filter(|s| s.base.cidr.contains(&binding_ip))
+                    .map(|s| s.id)
+                    .collect()
+            };
+
+        let own_port = Port::new_hostless(PortType::new_tcp(
+            self.service.config_store.get_port().await?,
+        ));
+        let own_port_id = own_port.id;
+
+        let mut host = Host::new(self.own_host_base(network_id));
         host.id = host_id;
 
         let daemon_service_definition = ScanopyDaemon;
@@ -162,12 +251,13 @@ impl DiscoveryRunner {
             ip_addresses.clone(),
             vec![own_port],
             vec![daemon_service],
+            interfaces,
             vec![],
-            vec![],
-            // Self-report carries no ifTable; empty interface set, nothing to prune.
-            true,
-            // ...and no neighbour data, so nothing to preserve against either.
-            InterfaceDataComplete::default(),
+            // pnet enumerates NICs, not an ifTable, and skips container bridges — so this is
+            // never authority to delete an interface some other collector recorded.
+            false,
+            // ...and it reads no neighbour data at all, so every group must be preserved.
+            InterfaceDataComplete::none(),
             cancel,
         )
         .await?;

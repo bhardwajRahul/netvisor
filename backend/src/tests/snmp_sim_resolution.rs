@@ -3,7 +3,7 @@
 //! These run against Postgres rather than the in-memory inventory on purpose. Every defect below
 //! was a *SQL semantics* defect — a lookup with no `ORDER BY` and no `LIMIT` returning an arbitrary
 //! row, or a tier that declined when it should have matched — and the fake inventory in
-//! `snmp::resolution::lldp`'s tests re-implements those semantics in Rust, so it cannot fail the
+//! `server::lldp`'s tests re-implements those semantics in Rust, so it cannot fail the
 //! way the database did.
 //!
 //! What makes them device tests rather than resolver tests is where the inventory comes from: the
@@ -22,11 +22,11 @@ use crate::server::hosts::r#impl::name::HostName;
 use crate::server::{
     hosts::r#impl::base::Host,
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
-    shared::storage::traits::Storage,
-    snmp::resolution::{
-        lldp::{IdentityResolution, LldpChassisId, LldpPortId},
+    lldp::{
+        IdentityResolution, LldpChassisId, LldpPortId,
         resolver::{LldpResolver, LldpResolverImpl},
     },
+    shared::storage::traits::Storage,
 };
 
 use super::{host, network, organization, subnet, test_services};

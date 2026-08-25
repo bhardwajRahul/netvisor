@@ -41,7 +41,7 @@ use crate::server::services::r#impl::patterns::{ClientProbe, ManagedDevice};
 use super::controller;
 use super::{
     Checkpoint, Completeness, DiscoveryIntegration, IntegrationContext, IntegrationFailure,
-    ProbeContext, ProbeFailure, ProbeSuccess,
+    InterfaceSource, InterfaceViewScope, ProbeContext, ProbeFailure, ProbeSuccess,
 };
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::service::warnings::AttemptOutcome;
@@ -57,6 +57,12 @@ pub struct UnifiIntegration;
 
 #[async_trait]
 impl DiscoveryIntegration for UnifiIntegration {
+    /// A `port_table` is every physical port and nothing else: the same switch under SNMP also
+    /// reports the VLAN, loopback and CPU interfaces UniFi never mentions.
+    fn interface_view_scope(&self) -> InterfaceViewScope {
+        InterfaceViewScope::PhysicalPortsOnly
+    }
+
     fn credential_type(&self) -> CredentialQueryPayloadDiscriminants {
         CredentialQueryPayloadDiscriminants::UnifiController
     }
@@ -175,7 +181,7 @@ impl DiscoveryIntegration for UnifiIntegration {
             // appears in its own inventory it enriches the scanned host rather than becoming
             // a second one.
             if device.ip == ctx.ip {
-                enrich_scanned_host(host_data, &device);
+                enrich_scanned_host(host_data, ctx.interface_source, &device);
                 continue;
             }
 
@@ -249,19 +255,21 @@ fn collect_subnets(
 use super::merge_subnets;
 
 /// Fold the controller's own device record into the host being scanned.
-fn enrich_scanned_host(host_data: &mut HostData, device: &mapping::MappedDevice) {
+///
+/// `HostData` is shared across every integration for this IP, and the ports offered here are
+/// merged with whatever else collected the same host rather than replacing it — `PhysicalPortsOnly`
+/// says an SNMP ifTable outranks this view port for port, and a port only UniFi knows about is
+/// still added. This used to be an `if !host_data.interfaces.is_empty()` bail, which dropped the
+/// whole contribution and depended on SNMP happening to run first.
+fn enrich_scanned_host(
+    host_data: &mut HostData,
+    source: InterfaceSource,
+    device: &mapping::MappedDevice,
+) {
     device.identity.enrich(host_data);
 
-    // `HostData` is shared across every integration for this IP. If SNMP already walked the
-    // ifTable, its view is strictly richer (VLAN, loopback and CPU interfaces UniFi omits),
-    // and overwriting it would also discard SNMP's honest partial-collection flags.
-    if !host_data.interfaces.is_empty() {
-        tracing::debug!(
-            "Interfaces already collected for this host; skipping UniFi interface mapping"
-        );
-        return;
-    }
-    host_data.replace_interfaces(
+    host_data.contribute_interfaces(
+        source,
         device.interfaces.clone(),
         interfaces_complete(),
         interface_data_complete(),

@@ -12,7 +12,7 @@ use tracing::{debug, trace, warn};
 use crate::daemon::discovery::service::warnings::{
     ClaimSource, DeviceClaim, MalformedNeighbourReason, ShortfallReason,
 };
-use crate::server::snmp::resolution::lldp::canonical_mac;
+use crate::server::lldp::canonical_mac;
 
 use super::oids::{self, oid_to_vec};
 use super::session::{MAX_WALK_ENTRIES, SNMP_TIMEOUT};
@@ -1035,6 +1035,22 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     session: &mut T,
     ip: IpAddr,
 ) -> Result<SnmpCollection<Vec<LldpNeighbor>>> {
+    query_lldp_neighbors_for(session, ip, &CLASSIC_LLDP_MIB).await
+}
+
+/// The neighbour walk, against whichever LLDP MIB `mib` names.
+///
+/// Everything here except the three fields of [`LldpMibProfile`] is MIB-agnostic — the shortfall
+/// accumulators, the chassis-column key sets and their disagreement test, the ghost-row
+/// classification, the wrong-type reporting, the short-index counter and
+/// [`dominant_discard_reason`] are all about *how a walk failed*, not which OIDs it walked. That
+/// machinery is the accumulated answer to GH #668, #674, #649 and #685, and a second MIB must
+/// reuse it rather than grow a second copy that drifts.
+pub async fn query_lldp_neighbors_for<T: SnmpWalkTransport>(
+    session: &mut T,
+    ip: IpAddr,
+    mib: &LldpMibProfile,
+) -> Result<SnmpCollection<Vec<LldpNeighbor>>> {
     let mut neighbors: HashMap<(i32, i32), LldpNeighbor> = HashMap::new();
     let mut shortfall = Shortfall::default();
 
@@ -1074,77 +1090,28 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
 
     // Rows whose OID index carried too few sub-identifiers to key at all. Counted rather than
     // skipped: this used to be a bare `return` and it is how an entire switch went missing in
-    // silence (see the index comment below).
+    // silence (see `split_lldp_rem_index`).
     let mut short_index = 0usize;
 
-    // LLDP remote table uses a complex index: lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex
-    // We'll walk the columns and extract the local port from the OID
-
-    let columns = [
-        (
-            oids::lldp::remote::entry::LLDP_REM_CHASSIS_ID_SUBTYPE,
-            "remChassisIdSubtype",
-        ),
-        (
-            oids::lldp::remote::entry::LLDP_REM_CHASSIS_ID,
-            "remChassisId",
-        ),
-        (
-            oids::lldp::remote::entry::LLDP_REM_PORT_ID_SUBTYPE,
-            "remPortIdSubtype",
-        ),
-        (oids::lldp::remote::entry::LLDP_REM_PORT_ID, "remPortId"),
-        (oids::lldp::remote::entry::LLDP_REM_PORT_DESC, "remPortDesc"),
-        (oids::lldp::remote::entry::LLDP_REM_SYS_NAME, "remSysName"),
-        (oids::lldp::remote::entry::LLDP_REM_SYS_DESC, "remSysDesc"),
-        // NOTE: lldpRemManAddr is intentionally NOT walked here. It lives in the
-        // separate lldpRemManAddrTable whose index carries extra trailing sub-ids
-        // (addrSubtype.addrLen.addr), so the 3-element index parse below does not
-        // apply. It is resolved by walk_lldp_rem_man_addr() after this loop.
-    ];
+    // Which columns to walk, and how to read a neighbour key out of a row's index, are the whole
+    // of what varies between LLDP MIB revisions — see [`LldpMibProfile`].
+    let columns = mib.remote_columns;
 
     // Every column answering "no such object" is how an agent says it has no LLDP-MIB, as
     // opposed to walking past the end of a table it implements but has no neighbours in.
     let mut all_columns_unsupported = true;
 
     for (base_oid_str, column_name) in columns {
-        // lldpRemEntry index: timeMark.localPortNum.remIndex
         let stop = walk_column(
             session,
             ip,
             base_oid_str,
             &mut shortfall,
             |suffix, value| {
-                // `lldpRemEntry` is indexed lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex, and
-                // not every firmware serves all three. A TP-Link TL-SX3016F omits the time mark
-                // and indexes on the remaining two, confirmed by snmpwalk against the reporter's
-                // switch (GH #668):
-                //
-                //   iso.0.8802.1.1.2.1.4.1.1.4.1.1 = INTEGER: 4
-                //   iso.0.8802.1.1.2.1.4.1.1.5.1.1 = STRING: "00:AD:24:89:CC:F0"
-                //
-                // — three well-formed neighbours on local ports 1, 3 and 5, each remIndex 1.
-                //
-                // Read the pair off the end instead of assuming the time mark is there: the local
-                // port and remote index are the final two sub-ids under either layout, so a
-                // conformant three-element index parses exactly as before.
-                //
-                // The old `suffix.len() < 3` guard did not merely mis-parse these rows, it made
-                // the device disappear without trace: no record was created, so nothing reached
-                // the discard counters below, `complete` stayed true, and an empty result from a
-                // switch with sixteen ports was then treated as authoritative — overwriting the
-                // LLDP data the server held with NULL. It was the only failure here that produced
-                // no warning of any kind.
-                let Some((&rem_index, head)) = suffix.split_last() else {
+                let Some((local_port, rem_index)) = (mib.split_rem_index)(suffix) else {
                     short_index += 1;
                     return;
                 };
-                let Some(&local_port) = head.last() else {
-                    short_index += 1;
-                    return;
-                };
-                let local_port = local_port as i32;
-                let rem_index = rem_index as i32;
                 let neighbor =
                     neighbors
                         .entry((local_port, rem_index))
@@ -1213,7 +1180,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
     // Its index is timeMark.localPortNum.remIndex.addrSubtype.addrLen.addr, so the
     // address lives in the OID *index*, not the column value. We walk an accessible
     // column (lldpRemManAddrIfSubtype) and reconstruct the address from the index.
-    let man_base_oid_str = oids::lldp::remote::entry::LLDP_REM_MAN_ADDR_IF_SUBTYPE;
+    let man_base_oid_str = mib.man_addr_column;
     // Management address is optional enrichment; ignore walk errors (keeps the
     // neighbours already collected above).
     // Management address is optional enrichment, so it gets its own accumulator and its outcome
@@ -1225,7 +1192,7 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         man_base_oid_str,
         &mut mgmt,
         |suffix, _value| {
-            if let Some((local_port, rem_index, buf)) = split_lldp_man_addr_index(suffix)
+            if let Some((local_port, rem_index, buf)) = (mib.split_man_addr_index)(suffix)
                 && let Some(addr) = parse_lldp_mgmt_addr(&buf)
                 && let Some(neighbor) = neighbors.get_mut(&(local_port, rem_index))
             {
@@ -1340,6 +1307,103 @@ pub async fn query_lldp_neighbors<T: SnmpWalkTransport>(
         // collection than this walk, so the caller attaches it.
         claim: None,
     })
+}
+
+/// Reads `(local port, remote index, [family, addr…])` out of a management-address table index.
+///
+/// The address lives in the OID index rather than a column value, which is why this returns bytes
+/// rather than a parsed address — `parse_lldp_mgmt_addr` does that part.
+type ManAddrIndexSplitter = fn(&[u64]) -> Option<(i32, i32, Vec<u8>)>;
+
+/// Which LLDP MIB a neighbour walk is reading.
+///
+/// The classic LLDP-MIB (`1.0.8802.1.1.2`) is not the only one in the field: some NOSes implement
+/// only the 802.1AB-2009 LLDP-V2-MIB (`1.3.111.2.802.1.1.13`), and a device that serves one and not
+/// the other contributes no L2 edges at all. The two differ in exactly three ways — which columns
+/// to walk, how to read a neighbour key out of a row's index, and where the management address
+/// lives — so they are named here rather than duplicating [`query_lldp_neighbors_for`], whose bulk
+/// is failure diagnosis that neither MIB gets to have its own version of.
+///
+/// The subtype enumerations are *identical* between the two revisions, so nothing downstream of
+/// the walk — `LldpChassisId`, `LldpPortId`, `from_snmp`, the stored JSONB — varies by profile.
+pub struct LldpMibProfile {
+    /// The seven remote-table columns, each with the short name used in warnings. Note the column
+    /// numbers are not shared between revisions: `lldpV2RemEntry` inserts `lldpV2RemLocalIfIndex`
+    /// as column 2, so every V2 remote column sits one above its classic counterpart.
+    pub remote_columns: [(&'static str, &'static str); 7],
+    /// Read `(local port, remote index)` out of the sub-ids following a remote column's OID.
+    pub split_rem_index: fn(&[u64]) -> Option<(i32, i32)>,
+    /// The accessible column of the separate management-address table, walked for its *index*.
+    pub man_addr_column: &'static str,
+    /// Read the neighbour key and address bytes out of that table's index.
+    pub split_man_addr_index: ManAddrIndexSplitter,
+}
+
+/// The classic LLDP-MIB, `1.0.8802.1.1.2`.
+pub static CLASSIC_LLDP_MIB: LldpMibProfile = LldpMibProfile {
+    remote_columns: [
+        (
+            oids::lldp::remote::entry::LLDP_REM_CHASSIS_ID_SUBTYPE,
+            "remChassisIdSubtype",
+        ),
+        (
+            oids::lldp::remote::entry::LLDP_REM_CHASSIS_ID,
+            "remChassisId",
+        ),
+        (
+            oids::lldp::remote::entry::LLDP_REM_PORT_ID_SUBTYPE,
+            "remPortIdSubtype",
+        ),
+        (oids::lldp::remote::entry::LLDP_REM_PORT_ID, "remPortId"),
+        (oids::lldp::remote::entry::LLDP_REM_PORT_DESC, "remPortDesc"),
+        (oids::lldp::remote::entry::LLDP_REM_SYS_NAME, "remSysName"),
+        (oids::lldp::remote::entry::LLDP_REM_SYS_DESC, "remSysDesc"),
+    ],
+    split_rem_index: split_lldp_rem_index,
+    // `lldpRemManAddr` is deliberately not among the columns above: it lives in the separate
+    // `lldpRemManAddrTable`, whose index carries extra trailing sub-ids, so the neighbour-key
+    // splitter does not apply to it.
+    man_addr_column: oids::lldp::remote::entry::LLDP_REM_MAN_ADDR_IF_SUBTYPE,
+    split_man_addr_index: split_lldp_man_addr_index,
+};
+
+/// Split an `lldpRemEntry` OID index into `(lldpRemLocalPortNum, lldpRemIndex)`.
+///
+/// The index is `timeMark.localPortNum.remIndex`, and not every firmware serves all three. A
+/// TP-Link TL-SX3016F omits the time mark and indexes on the remaining two, confirmed by snmpwalk
+/// against the reporter's switch (GH #668):
+///
+/// ```text
+///   iso.0.8802.1.1.2.1.4.1.1.4.1.1 = INTEGER: 4
+///   iso.0.8802.1.1.2.1.4.1.1.5.1.1 = STRING: "00:AD:24:89:CC:F0"
+/// ```
+///
+/// — three well-formed neighbours on local ports 1, 3 and 5, each remIndex 1.
+///
+/// So the pair is read off the *end* rather than from a fixed offset: the local port and remote
+/// index are the final two sub-ids under either layout, and a conformant three-element index
+/// parses exactly as before.
+///
+/// The old `suffix.len() < 3` guard did not merely mis-parse these rows, it made the device
+/// disappear without trace: no record was created, so nothing reached the discard counters,
+/// `complete` stayed true, and an empty result from a switch with sixteen ports was then treated
+/// as authoritative — overwriting the LLDP data the server held with NULL. It was the only
+/// failure in this walk that produced no warning of any kind.
+///
+/// **Reading from the end is what makes this table-specific, and it does not generalise.**
+/// `lldpV2RemEntry` (LLDP-V2-MIB, `1.3.111.2.802.1.1.13`) is indexed
+/// `timeMark.localIfIndex.localDestMACAddress.remIndex` — four sub-ids, because
+/// `LldpV2DestAddressTableIndex` is an `Unsigned32(1..4096)` row pointer into
+/// `lldpV2DestAddressTable`, a single sub-id and not six octets of MAC. Passed a V2 suffix this
+/// function returns `(destAddressIndex, remIndex)`, so every neighbour on the device collapses
+/// onto the destination-address index — in practice 1, the nearest-bridge group address — and all
+/// but one is discarded as a duplicate, silently, in exactly the way described above. A V2 walk
+/// needs its own splitter that reads from the front and requires all four sub-ids; it must also
+/// skip `remap_lldp_local_ports`, since `lldpV2RemLocalIfIndex` is already an ifIndex.
+fn split_lldp_rem_index(suffix: &[u64]) -> Option<(i32, i32)> {
+    let (&rem_index, head) = suffix.split_last()?;
+    let &local_port = head.last()?;
+    Some((local_port as i32, rem_index as i32))
 }
 
 /// Split an `lldpRemManAddrTable` OID index into its neighbour key and management address.
@@ -2727,7 +2791,7 @@ mod walk_tests {
 #[cfg(test)]
 mod if_table_tests {
     use super::*;
-    use crate::server::snmp::resolution::lldp::LldpChassisId;
+    use crate::server::lldp::LldpChassisId;
 
     const IF_INDEX: &str = "1.3.6.1.2.1.2.2.1.1";
     const IF_DESCR: &str = "1.3.6.1.2.1.2.2.1.2";
@@ -3278,6 +3342,24 @@ mod if_table_tests {
     /// as authoritative and cleared the LLDP data the server held. It was the only failure in this
     /// query that produced no warning at all, which is why the device appeared in none of the
     /// reporter's scan warnings while every other problem device did.
+    /// The neighbour key is the last two sub-ids whatever precedes them, and a suffix too short to
+    /// hold both is rejected rather than half-read.
+    ///
+    /// The rejection arm is the one that matters: it is what routes a malformed row to
+    /// `short_index` and into the operator warning, instead of building a neighbour keyed on a
+    /// port the device never named. The four-sub-id case stands in for `lldpV2RemEntry`, which
+    /// this splitter is not for — it parses without complaint and yields the destination-address
+    /// index in place of the local port, which is why a V2 walk needs its own front-relative
+    /// splitter rather than this one.
+    #[test]
+    fn the_neighbour_key_is_the_last_two_sub_ids() {
+        assert_eq!(split_lldp_rem_index(&[0, 3, 7]), Some((3, 7)));
+        assert_eq!(split_lldp_rem_index(&[3, 7]), Some((3, 7)));
+        assert_eq!(split_lldp_rem_index(&[7]), None);
+        assert_eq!(split_lldp_rem_index(&[]), None);
+        assert_eq!(split_lldp_rem_index(&[0, 10009, 1, 6]), Some((1, 6)));
+    }
+
     #[tokio::test]
     async fn a_neighbour_table_indexed_without_a_time_mark_is_read() {
         let mut agent = FakeAgent::new(&[

@@ -10,6 +10,7 @@ Thank you for your interest in contributing to Scanopy! We welcome contributions
 - [Development Environment Setup](#development-environment-setup)
 - [Development Workflow](#development-workflow)
 - [Adding Service Definitions](#adding-service-definitions)
+- [Adding an Integration](#adding-an-integration)
 - [Testing](#testing)
 - [Submitting Your Contribution](#submitting-your-contribution)
 - [Licensing](#contributor-license-agreement)
@@ -55,7 +56,14 @@ For larger features or bug fixes:
 - Write tests for new functionality
 - Update documentation as needed
 
-### 5. Translations
+### 5. Integrations (Advanced)
+
+A new way for Scanopy to collect data — a device API, a controller, a management protocol. Much
+larger than a service definition: a credential type, a daemon-side collector, and a set of
+declarations the compiler will demand from you. Discuss it in an issue first, then see
+[Adding an Integration](#adding-an-integration).
+
+### 6. Translations
 
 Help make Scanopy accessible to users worldwide by contributing translations:
 
@@ -734,6 +742,133 @@ impl ServiceDefinition for EeroGateway {
 
 inventory::submit!(ServiceDefinitionFactory::new(create_service::<EeroGateway>));
 ```
+
+## Adding an Integration
+
+An integration is one way for Scanopy to collect data: SNMP, a Docker socket, a UniFi controller.
+Each is a single implementation of `DiscoveryIntegration`
+(`backend/src/daemon/discovery/integration/mod.rs`) bound to one credential type, registered in
+`IntegrationRegistry::get`, and dispatched generically — `probe()` decides whether the service
+answers this credential, `execute()` collects and enriches. Nothing about your integration belongs
+in the orchestrator.
+
+This is a large contribution. Open an issue first.
+
+### 0. First check it needs a credential at all
+
+Two questions, before anything else.
+
+**Is there credential material?** A secret, an account, an endpoint. If the whole payload would be
+one optional local path, it is not a credential — machine-local settings belong in the daemon's own
+configuration, alongside flags like `--interfaces`.
+
+**Whose data is it?** An integration authenticates to a service that knows about *other* entities:
+Docker's containers, a controller's switches. Anything that describes the daemon's **own host** is
+self-description, and it belongs in the unconditional daemon-host phase
+(`run_daemon_host_interfaces_phase` in `backend/src/daemon/discovery/service/self_report.rs`)
+instead. That path needs no credential, no dispatch and no platform gate — probe for the capability
+and do nothing when it is absent, which also keeps working on whichever operating systems happen to
+support it.
+
+Getting this wrong is expensive in a direction that is hard to reverse: a credential type that
+targets the daemon host is always treated as user-assigned, so on a machine where the underlying
+software is not installed it reports a failure on **every scan**, and there is no suppression path.
+
+### 1. A credential type is about ten files
+
+The compiler finds most of them, because every match is exhaustive with no wildcard:
+
+- `server/credentials/impl/types/mod.rs` — the variant, plus arms in `merge_redacted_secrets`,
+  `credential_category`, `targets`, `single_endpoint_per_host`, `get_inline_value`,
+  `associated_service` and `to_query_payload`.
+- `server/credentials/impl/types/metadata.rs` — nine arms: `to_credential_type`,
+  `upstream_support`, `icon`, `display_name`, `integration_discovers`, `transport_note`,
+  `transport_label`, `minimum_daemon_version` and `stability`.
+- `server/credentials/impl/types/fields.rs` — the form field definitions.
+- `server/credentials/impl/mapping.rs` — the wire payload variant and the discriminant conversion.
+- `server/services/definitions/<name>.rs` and `definitions/mod.rs`, plus a new `ClientProbe`
+  variant in `server/services/impl/patterns.rs`.
+- `daemon/discovery/integration/<name>/`, plus the `IntegrationRegistry::get` arm.
+
+Then run `make generate-fixtures`, which regenerates `ui/src/lib/data/credential-types.json`,
+`integrations.json`, and the `meta_credential_types_*` keys in `messages/en.json`.
+
+**No UI code is required.** `CredentialForm.svelte` builds the form from that metadata.
+
+Two things that look like broken tooling and are not:
+
+- Adding a variant to `CredentialType` fails the DB-enum backward-compatibility test
+  (`test_current_writes_subset_of_previous_release`). A brand-new variant is absent from the
+  recorded baseline, so *every* variant reads as added. It is resolved by regenerating the baseline
+  at release time, not by changing your code.
+- A new *enum-valued* metadata field generates no `messages/en.json` keys. The generator emits
+  names, descriptions and per-field labels only; enum values like `stability` get hand-written
+  message keys.
+
+### 2. `associated_service()` is a gate, not a label
+
+If the service definition your credential names is not *matched on the host*, `execute()` never
+runs, and the operator is told the service was not identified. Your `ServiceDefinition` needs a
+`Pattern::ClientResponse(ClientProbe::Yours)` arm, and your `probe()` has to produce that match.
+
+### 3. `HostData` is shared, and interfaces merge
+
+Several integrations can collect one host in a single scan against one `HostData`. Scalar host
+fields are first-write-wins. Interfaces go through `contribute_interfaces`, which merges
+contributions by interface identity: you declare `interface_view_scope()` on the trait — there is no
+default, so you cannot compile without choosing — and that decides which row wins where two
+collectors describe the same interface. You never need to check whether someone else already
+collected interfaces.
+
+### 4. Declare completeness honestly
+
+This is where the real bugs are. Two separate facts, and they travel together in one call
+deliberately — splitting them was a live data-loss bug.
+
+- **`interfaces_complete`** — is this an authoritative, complete list? `false` if your walk was cut
+  short, and `false` if your protocol only ever sees part of the device. A `true` here authorises
+  the server to **delete** interfaces it holds and you did not report, and with them the topology
+  links resolved onto those rows.
+- **`InterfaceDataComplete { lldp, cdp, fdb, vlan_membership }`** — which groups you read *in full*.
+  Every field defaults to `true`, and a `true` you did not earn lets the server null that column. An
+  interface that loses its LLDP chassis ID drops out of link resolution permanently. If you do not
+  read CDP, say `cdp: false`.
+
+### 5. `execute()` returns `Completeness`, not `()`
+
+`Complete`, or `Partial(CollectionShortfall { what, collected, expected })`, which becomes the
+operator's warning. It is a return type rather than a field so that you have to name it at the point
+you actually know. If you persist mid-flight — SNMP does, so that a hang in a late query cannot
+leave a host with zero interfaces — use the `Checkpoint` you are handed; that is the only enrichment
+that survives a timeout.
+
+### 6. Classify your own errors
+
+`AttemptOutcome` has one `From<&YourClientError>` implementation per client library. Write one.
+Every dispatch branch must record an outcome; there is a debug assertion that fires if a credential
+attempt leaves the ledger without a disposition.
+
+### 7. Testing
+
+Put I/O behind a trait and script fakes against it. `SnmpWalkTransport` in
+`backend/src/daemon/discovery/integration/snmp/queries.rs` is the model, with around fifteen fake
+agents in the same file. CI runs `cargo test --lib` only, so anything needing Docker or a database
+will not run there.
+
+SNMP additionally has a simulator: devices are typed Rust values in
+`backend/src/daemon/discovery/integration/snmp/sim/devices/` with a required
+`Purpose::Regression { issue, defect }`, and the workflow in `tools/snmp/SNMP-TEST-ENV.md` is *add a
+struct, write the failing test, fix the code*. Never commit a captured device walk — rewrite
+identifiers consistently, the same value to the same replacement, so the cross-table joins still
+hold.
+
+### 8. Conventions that will come up in review
+
+- All user-visible strings go through paraglide i18n (`messages/en.json`, `prefix_camelCase`).
+- No raw SQL: entity queries use `StorableFilter` and the generic storage layer.
+- A service never touches another entity's storage layer, only its service.
+- JSONB columns get a typed `SqlValue` variant, never a generic `serde_json::Value`.
+- Backend enums reach the frontend through the generated schema. Never retype them in TypeScript.
 
 ## Testing
 
