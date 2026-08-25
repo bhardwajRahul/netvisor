@@ -1385,6 +1385,16 @@ impl DiscoveryOps {
         };
         host.base.apply_name(candidate);
 
+        // A DNS-SD instance name is what the owner typed during setup — "Living Room TV" rather
+        // than "chromecast-a1b2c3" — so it outranks everything the scan can derive and applies
+        // after them. `apply_name` compares rungs, so this is a no-op against a name a person
+        // typed into Scanopy or one an integration read back out of a controller.
+        if let Some(dns_sd) = params.dns_sd
+            && let Some(instance_name) = &dns_sd.instance_name
+        {
+            host.base.apply_name(HostName::DnsSd(instance_name.clone()));
+        }
+
         tracing::info!(
             ip = %ip_address.base.ip_address,
             host_name = %host.base.name,

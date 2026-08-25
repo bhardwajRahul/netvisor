@@ -431,6 +431,8 @@ async fn create_device_host(
             virtualization_service_id: None,
             client_responses: &client_responses,
             managed_device: &managed_device,
+            // Reported by a controller, not swept over multicast.
+            dns_sd: &None,
         },
         &[],
         &daemon_id,

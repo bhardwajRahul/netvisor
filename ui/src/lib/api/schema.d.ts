@@ -7153,7 +7153,7 @@ export interface components {
             name_source?: components["schemas"]["HostNameSource"];
         };
         /** @enum {string} */
-        HostNameSource: "Unnamed" | "Unspecified" | "Ip" | "DetectedService" | "Hostname" | "Integration" | "Manual";
+        HostNameSource: "Unnamed" | "Unspecified" | "Ip" | "DetectedService" | "Hostname" | "DnsSd" | "Integration" | "Manual";
         /** @enum {string} */
         HostNamingFallback: "Ip" | "BestService";
         /**

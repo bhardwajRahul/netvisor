@@ -22937,6 +22937,7 @@
           "Ip",
           "DetectedService",
           "Hostname",
+          "DnsSd",
           "Integration",
           "Manual"
         ]
