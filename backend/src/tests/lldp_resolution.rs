@@ -24,7 +24,6 @@ use crate::server::{
 };
 
 use super::{host, network, organization, subnet, test_services};
-use crate::server::hosts::r#impl::name::HostName;
 
 /// Everything a resolution test needs: a network with hosts and interfaces in it, and a resolver
 /// pointed at the same database.

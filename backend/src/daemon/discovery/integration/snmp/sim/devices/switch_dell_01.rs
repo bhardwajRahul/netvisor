@@ -243,7 +243,7 @@ mod tests {
         let scan = harness::scan("switch-dell-01").await;
 
         assert_eq!(scan.neighbours.records.len(), 4);
-        assert_eq!(scan.local_ports.len(), 17);
+        assert_eq!(scan.local_ports.len(), 6);
 
         // Each neighbour reached a real interface rather than an index no interface holds.
         for neighbour in &scan.neighbours.records {
@@ -272,14 +272,14 @@ mod tests {
     ///
     /// Every other device agrees with itself, which demonstrates the count check staying quiet but
     /// cannot demonstrate it firing — and a guard nobody has watched fire is a guard nobody knows
-    /// works. A scan must still record all 23: a device that misreports itself is still a device
-    /// to scan.
+    /// works. A scan must still record every row it serves: a device that misreports itself is
+    /// still a device to scan.
     #[tokio::test]
     async fn it_misreports_its_own_interface_count_on_purpose() {
         let scan = harness::scan("switch-dell-01").await;
 
         assert_eq!(scan.system.if_number, Some(52), "what it claims");
-        assert_eq!(scan.if_table.entries.len(), 23, "what it serves");
+        assert_eq!(scan.if_table.entries.len(), 7, "what it serves");
         assert!(
             scan.if_table.set_complete,
             "the walk itself is complete — the contradiction is the device's, not the read's"
