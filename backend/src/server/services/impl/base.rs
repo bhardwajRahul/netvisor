@@ -161,6 +161,11 @@ pub struct ServiceMatchBaselineParams<'a> {
     /// Set when this host came from a management controller's device inventory rather than
     /// from a direct network probe. Read by [`Pattern::ManagedDeviceType`].
     pub managed_device: &'a Option<crate::server::services::r#impl::patterns::ManagedDevice>,
+    /// Set when the mDNS browse reached this host's broadcast domain and it answered. Read by
+    /// [`Pattern::DnsSdService`]. `None` on every path that cannot see multicast — a routed
+    /// subnet, a container on bridge networking, or a host discovered by an integration rather
+    /// than by a link-local sweep.
+    pub dns_sd: &'a Option<crate::daemon::discovery::service::network::mdns::DnsSdHost>,
 }
 
 #[derive(Debug, Clone)]

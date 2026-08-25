@@ -1,6 +1,7 @@
 pub mod arp;
 mod dns;
 pub mod icmp;
+pub mod mdns;
 mod scan;
 mod subnets;
 
@@ -272,6 +273,9 @@ pub(super) struct DeepScanParams<'a> {
     early_host_id: Uuid,
     is_full_scan: bool,
     light_scan_ports: &'a HashSet<u16>,
+    /// What the mDNS browse collected, keyed by address. Empty on any subnet the daemon has no
+    /// interface on, because multicast does not cross a router.
+    mdns_hosts: Arc<std::collections::HashMap<IpAddr, mdns::DnsSdHost>>,
     credential_mappings: &'a [crate::server::credentials::r#impl::mapping::CredentialMapping<
         crate::server::credentials::r#impl::mapping::CredentialQueryPayload,
     >],

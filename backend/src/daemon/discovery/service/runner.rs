@@ -325,6 +325,8 @@ impl DiscoveryRunner {
             client_responses: &probe_results.client_responses,
             // The daemon's own host, probed locally.
             managed_device: &None,
+            // Probed locally over loopback; multicast browsing does not apply.
+            dns_sd: &None,
         };
 
         let mut host_data = match ops

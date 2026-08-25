@@ -58,6 +58,11 @@ pub enum HostName {
     DetectedService(String),
     /// Reverse DNS, a hostname the host reported, or SNMP sysName.
     Hostname(String),
+    /// A DNS-SD instance name the device announced over mDNS — the Chromecast `fn=Living Room
+    /// TV`, or the label somebody typed during a device's setup. Person-assigned and stable
+    /// across DHCP lease changes, which is why it outranks reverse DNS; below `Integration`
+    /// because an mDNS announcement is unauthenticated and anything on the link can make one.
+    DnsSd(String),
     /// A name a person assigned in a controller (UniFi, HPE Instant On, …) and that the
     /// integration read back out. Deliberate, and stable across DHCP lease changes.
     Integration(String),
@@ -87,6 +92,7 @@ impl HostName {
             Self::Unspecified(v)
             | Self::DetectedService(v)
             | Self::Hostname(v)
+            | Self::DnsSd(v)
             | Self::Integration(v)
             | Self::Manual(v) => Cow::Borrowed(v),
         }
@@ -129,6 +135,7 @@ impl HostName {
             },
             HostNameSource::DetectedService => Self::DetectedService(value),
             HostNameSource::Hostname => Self::Hostname(value),
+            HostNameSource::DnsSd => Self::DnsSd(value),
             HostNameSource::Integration => Self::Integration(value),
             HostNameSource::Manual => Self::Manual(value),
         }

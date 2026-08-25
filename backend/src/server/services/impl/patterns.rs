@@ -201,6 +201,40 @@ impl InstantOnDeviceType {
     pub const GATEWAY: &'static str = "GATEWAY";
 }
 
+/// DNS-SD service types, as a device advertises them on 5353.
+///
+/// Named here rather than inline in definitions for the same reason as the vendor blocks above:
+/// the string is a protocol identifier, and one typo produces a pattern that silently never
+/// matches. Written without the `.local` domain, which is how the browse normalises them.
+///
+/// These reach devices the port scan cannot: a HomeKit sensor or a HomePod may expose no TCP port
+/// worth scanning and still announce itself here.
+pub struct DnsSdServiceType;
+impl DnsSdServiceType {
+    /// Chromecast and Google Home. TXT `md=` carries the model, which is what separates the two.
+    pub const GOOGLE_CAST: &'static str = "_googlecast._tcp";
+    /// Apple TV, HomePod, AirPort — anything that can receive AirPlay.
+    pub const AIRPLAY: &'static str = "_airplay._tcp";
+    /// AirPlay audio (Remote Audio Output Protocol). HomePods and AirPlay speakers.
+    pub const RAOP: &'static str = "_raop._tcp";
+    /// Apple's device-to-device pairing channel, on Apple TVs and HomePods.
+    pub const COMPANION_LINK: &'static str = "_companion-link._tcp";
+    /// Apple device metadata; TXT `model=` carries the hardware identifier.
+    pub const DEVICE_INFO: &'static str = "_device-info._tcp";
+    /// HomeKit Accessory Protocol. TXT `ci=` carries the accessory category.
+    pub const HOMEKIT: &'static str = "_hap._tcp";
+    /// Internet Printing Protocol — the AirPrint advertisement.
+    pub const IPP: &'static str = "_ipp._tcp";
+    /// Raw page-description printing, advertised alongside IPP by most network printers.
+    pub const PDL_DATASTREAM: &'static str = "_pdl-datastream._tcp";
+    /// Sonos speakers.
+    pub const SONOS: &'static str = "_sonos._tcp";
+    /// Philips Hue bridge.
+    pub const HUE: &'static str = "_hue._tcp";
+    /// Home Assistant.
+    pub const HOME_ASSISTANT: &'static str = "_home-assistant._tcp";
+}
+
 #[derive(Debug, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(IntoStaticStr))]
 pub enum Pattern<'a> {
@@ -260,6 +294,14 @@ pub enum Pattern<'a> {
     /// Whether the service runs in a container (Docker or Podman). Runtime-agnostic;
     /// per-runtime container definitions narrow to their virtualization via a custom check.
     ContainerVirtualization,
+
+    /// Whether the host advertised the given DNS-SD service type over mDNS.
+    ///
+    /// Takes a service type string (see [`DnsSdServiceType`]), mirroring how
+    /// [`Pattern::ManagedDeviceType`] takes a vendor device class. Only matches when the mDNS
+    /// browse reached the host's broadcast domain — mDNS is link-local, so this is evidence a
+    /// daemon can only gather about the segments it sits on.
+    DnsSdService(&'a str),
 
     /// Whether a management controller reported this device as the given device class.
     /// Takes a vendor-specific class string (see [`UnifiDeviceType`]), mirroring how
@@ -324,6 +366,7 @@ impl PartialEq for Pattern<'_> {
             (Pattern::ClientResponse(a), Pattern::ClientResponse(b)) => a == b,
             (Pattern::ContainerVirtualization, Pattern::ContainerVirtualization) => true,
             (Pattern::ManagedDeviceType(a), Pattern::ManagedDeviceType(b)) => a == b,
+            (Pattern::DnsSdService(a), Pattern::DnsSdService(b)) => a == b,
             (Pattern::None, Pattern::None) => true,
             _ => false,
         }
@@ -400,6 +443,9 @@ impl Display for Pattern<'_> {
             Pattern::ManagedDeviceType(device_type) => {
                 write!(f, "Controller reports device type '{}'", device_type)
             }
+            Pattern::DnsSdService(service_type) => {
+                write!(f, "Host advertises '{}' over mDNS", service_type)
+            }
             Pattern::None => write!(f, "No match pattern provided"),
         }
     }
@@ -426,6 +472,7 @@ impl Pattern<'_> {
             endpoint_responses,
             virtualization_metadata,
             managed_device,
+            dns_sd,
             ..
         } = baseline_params;
 
@@ -965,6 +1012,36 @@ impl Pattern<'_> {
                 None => Err(anyhow!("Host was not reported by a management controller")),
             },
 
+            // A device asserting its own service type is as direct as a controller naming a
+            // device class, but nobody authenticated to us to say it — an mDNS announcement is
+            // unauthenticated and trivially spoofable by anything on the link. `High` rather than
+            // the `Certain` that `ManagedDeviceType` earns, and definitions AND it with a vendor
+            // or port arm where one exists.
+            Pattern::DnsSdService(expected) => match dns_sd {
+                Some(host)
+                    if host
+                        .services
+                        .iter()
+                        .any(|s| s.eq_ignore_ascii_case(expected)) =>
+                {
+                    Ok(MatchResult {
+                        ports: vec![],
+                        endpoint: None,
+                        mac_vendor: None,
+                        details: MatchDetails {
+                            reason: MatchReason::Reason(format!(
+                                "Host advertises '{expected}' over mDNS"
+                            )),
+                            confidence: MatchConfidence::High,
+                        },
+                    })
+                }
+                Some(_) => Err(anyhow!("Host did not advertise '{expected}' over mDNS")),
+                // Not the same statement as "it didn't advertise it": mDNS is link-local, so a
+                // host on a routed subnet can run the service and still never be asked.
+                None => Err(anyhow!("No mDNS response was collected for this host")),
+            },
+
             Pattern::None => Err(anyhow!("No match pattern provided")),
         }
     }
@@ -1074,6 +1151,7 @@ mod tests {
         matched_services: Vec<Service>,
         client_responses: std::collections::HashMap<super::ClientProbe, Vec<PortType>>,
         managed_device: Option<super::ManagedDevice>,
+        dns_sd: Option<crate::daemon::discovery::service::network::mdns::DnsSdHost>,
     }
 
     impl TestContext {
@@ -1110,6 +1188,7 @@ mod tests {
                 matched_services: vec![],
                 client_responses: std::collections::HashMap::new(),
                 managed_device: None,
+                dns_sd: None,
             }
         }
 
@@ -1146,6 +1225,7 @@ mod tests {
                 virtualization_service_id: None,
                 client_responses: &self.client_responses,
                 managed_device: &self.managed_device,
+                dns_sd: &self.dns_sd,
             }
         }
     }
@@ -1344,6 +1424,7 @@ mod tests {
             virtualization_service_id: None,
             client_responses: &client_responses,
             managed_device: &None,
+            dns_sd: &None,
         };
         let params = DiscoverySessionServiceMatchParams {
             host_id: &ctx.host_id,
@@ -1390,6 +1471,7 @@ mod tests {
             virtualization_service_id: None,
             client_responses: &client_responses,
             managed_device: &None,
+            dns_sd: &None,
         };
         let params = DiscoverySessionServiceMatchParams {
             host_id: &ctx.host_id,
@@ -1556,6 +1638,86 @@ mod tests {
         assert!(
             pattern.matches(&params).is_err(),
             "an access point must not match the switch definition"
+        );
+    }
+
+    use super::DnsSdServiceType;
+
+    fn announcing(
+        services: &[&str],
+    ) -> crate::daemon::discovery::service::network::mdns::DnsSdHost {
+        crate::daemon::discovery::service::network::mdns::DnsSdHost {
+            services: services.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    /// An Apple TV answers no distinguishing network probe — the whole reason it needed mDNS — so
+    /// its announcement is both necessary and sufficient, and each half is worth pinning.
+    ///
+    /// The third case is the one that bites: `_airplay._tcp` alone is a HomePod, an AirPort or a
+    /// Roku, and a definition matching on it would claim all of them are Apple TVs.
+    #[test]
+    fn an_apple_tv_is_identified_by_its_announcement_and_only_by_it() {
+        use crate::server::services::definitions::apple_tv::AppleTv;
+
+        let mut ctx = TestContext::new();
+        let ports = vec![];
+        let pattern = AppleTv.discovery_pattern();
+
+        let baseline = ctx.create_baseline_params(&ports);
+        let params = ctx.create_params_with_ports(&baseline, &ports);
+        assert!(
+            pattern.matches(&params).is_err(),
+            "no mDNS response at all must not identify anything"
+        );
+
+        ctx.dns_sd = Some(announcing(&[
+            DnsSdServiceType::AIRPLAY,
+            DnsSdServiceType::COMPANION_LINK,
+        ]));
+        let baseline = ctx.create_baseline_params(&ports);
+        let params = ctx.create_params_with_ports(&baseline, &ports);
+        let result = pattern.matches(&params);
+        assert!(
+            result.is_ok(),
+            "AirPlay plus a companion link should identify an Apple TV: {:?}",
+            result.err()
+        );
+
+        ctx.dns_sd = Some(announcing(&[DnsSdServiceType::AIRPLAY]));
+        let baseline = ctx.create_baseline_params(&ports);
+        let params = ctx.create_params_with_ports(&baseline, &ports);
+        assert!(
+            pattern.matches(&params).is_err(),
+            "AirPlay alone is a speaker or a TV stick, not necessarily an Apple TV"
+        );
+    }
+
+    /// "The browse never reached this host" and "the host does not run this service" are different
+    /// statements, and the difference is not cosmetic: mDNS is link-local, so a device on a routed
+    /// subnet can run the service and never be asked. The reason text has to say which happened,
+    /// or an operator reads a scoping limit as an absence.
+    #[test]
+    fn an_unbrowsed_host_is_distinguished_from_one_that_did_not_answer() {
+        let ctx_without = TestContext::new();
+        let ports = vec![];
+        let pattern = Pattern::DnsSdService(DnsSdServiceType::GOOGLE_CAST);
+
+        let baseline = ctx_without.create_baseline_params(&ports);
+        let params = ctx_without.create_params_with_ports(&baseline, &ports);
+        let unbrowsed = pattern.matches(&params).unwrap_err().to_string();
+
+        let mut ctx_with = TestContext::new();
+        ctx_with.dns_sd = Some(announcing(&[DnsSdServiceType::AIRPLAY]));
+        let baseline = ctx_with.create_baseline_params(&ports);
+        let params = ctx_with.create_params_with_ports(&baseline, &ports);
+        let answered_otherwise = pattern.matches(&params).unwrap_err().to_string();
+
+        assert_ne!(
+            unbrowsed, answered_otherwise,
+            "a host we never browsed must not report the same reason as one that answered \
+             without this service"
         );
     }
 }

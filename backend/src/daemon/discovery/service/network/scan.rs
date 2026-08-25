@@ -1,5 +1,6 @@
 use super::arp::{self, ArpScanResult};
 use super::icmp;
+use super::mdns;
 use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::discovery::service::warnings::{CredentialIssue, CredentialIssueReason};
 use crate::daemon::discovery::types::base::DiscoveryCriticalError;
@@ -55,7 +56,7 @@ impl NetworkScan {
         let session = ops.get_session().await?;
 
         let interface_filter = ops.config_store.get_interfaces().await?;
-        let (_, _, subnet_cidr_to_mac) = utils
+        let (own_addresses, _, subnet_cidr_to_mac) = utils
             .get_own_interfaces(session.info.network_id, &interface_filter)
             .await?;
 
@@ -189,6 +190,22 @@ impl NetworkScan {
         let discovery_packets_sent = Arc::new(AtomicU64::new(0));
         let mut discovery_packets_total: u64 = 0;
         let arp_total_rounds = 1 + arp_retries as u64;
+
+        // ---------------------------------------------------------------
+        // mDNS / DNS-SD browse
+        // ---------------------------------------------------------------
+        // Runs to completion before the sweeps rather than alongside them: it is one multicast
+        // burst per broadcast domain taking a few seconds against a scan measured in minutes, and
+        // every host scanned afterwards can then be matched against a complete picture instead of
+        // racing one being assembled.
+        //
+        // Link-local by construction, so this only ever sees the daemon's own broadcast domains.
+        // A routed subnet gets nothing from it however live its hosts are — stated here because
+        // an empty result on such a subnet is correct behaviour, not a fault.
+        let mdns_hosts = Arc::new(
+            self.browse_mdns(&own_addresses, &scanned_subnets, target_ips.as_ref())
+                .await,
+        );
 
         // ---------------------------------------------------------------
         // ICMP echo sweep — the second liveness signal
@@ -813,6 +830,8 @@ impl NetworkScan {
                                 let probe_raw_socket_ports = self.scan_settings.probe_raw_socket_ports;
                                 let light_scan_ports = self.light_scan_ports.clone();
                                 let network_subnets_ref = network_subnets.clone();
+
+                                let mdns_hosts_ref = mdns_hosts.clone();
                                 let early_host_handle = early_reported_hosts.remove(&ip);
                                 pending_scans.push(Box::pin(async move {
                                     let early_host_id = match early_host_handle {
@@ -842,6 +861,8 @@ impl NetworkScan {
                                             early_host_id,
                                             is_full_scan,
                                             light_scan_ports: &light_scan_ports,
+
+                                            mdns_hosts: mdns_hosts_ref,
                                             credential_mappings: &self.credential_mappings,
                                             known_subnets: network_subnets_ref,
                                         }, ops, utils)
@@ -924,6 +945,8 @@ impl NetworkScan {
                         let probe_raw_socket_ports = self.scan_settings.probe_raw_socket_ports;
                         let light_scan_ports = self.light_scan_ports.clone();
                         let network_subnets_ref = network_subnets.clone();
+
+                        let mdns_hosts_ref = mdns_hosts.clone();
                         let early_host_handle = early_reported_hosts.remove(&ip);
 
                         pending_scans.push(Box::pin(async move {
@@ -954,6 +977,8 @@ impl NetworkScan {
                                     early_host_id,
                                     is_full_scan,
                                     light_scan_ports: &light_scan_ports,
+
+                                    mdns_hosts: mdns_hosts_ref,
                                     credential_mappings: &self.credential_mappings,
                                     known_subnets: network_subnets_ref,
                                 }, ops, utils)
@@ -1222,6 +1247,8 @@ impl NetworkScan {
             light_scan_ports,
             credential_mappings,
             known_subnets,
+
+            mdns_hosts,
         } = params;
 
         if cancel.is_cancelled() {
@@ -1447,7 +1474,16 @@ impl NetworkScan {
         );
 
         // DNS hostname lookup (SNMP sysName fallback now handled by SnmpIntegration.execute())
-        let hostname = self.get_hostname_for_ip(ip).await?;
+        //
+        // That lookup is a unicast PTR query, so it answers only for addresses some DNS server
+        // holds a record for. mDNS fills the gap it cannot reach: `.local` is not a unicast zone,
+        // and the device answers for itself. Used as a fallback rather than a replacement — where
+        // an operator maintains reverse DNS, that is the more deliberate name of the two.
+        let dns_sd = mdns_hosts.get(&ip).cloned();
+        let hostname = self
+            .get_hostname_for_ip(ip)
+            .await?
+            .or_else(|| dns_sd.as_ref().and_then(|host| host.hostname.clone()));
         // MAC enrichment from SNMP ipAddrTable now handled by SnmpIntegration.execute()
         let ip_address = IPAddress::new(IPAddressBase {
             network_id: subnet.base.network_id,
@@ -1479,6 +1515,10 @@ impl NetworkScan {
                     client_responses,
                     // Directly scanned, not reported by a controller.
                     managed_device: &None,
+                    // Present only when the browse reached this address's broadcast domain —
+                    // mDNS is link-local, so a routed subnet yields `None` however live the
+                    // host is.
+                    dns_sd: &dns_sd,
                 },
                 hostname,
                 self.host_naming_fallback,
@@ -1630,6 +1670,41 @@ pub(crate) fn unreachable_credential_targets(
             reason: CredentialIssueReason::TargetNotScanned,
         })
         .collect()
+}
+
+impl NetworkScan {
+    /// Browse the daemon's own broadcast domains for mDNS/DNS-SD announcements.
+    ///
+    /// Results are narrowed to the scan's scope for the same reason
+    /// [`unreachable_credential_targets`] exists: multicast reaches whatever shares the link,
+    /// including addresses on subnets this discovery was never asked to cover, and a rescan
+    /// deliberately narrows to specific addresses. Recording the rest would invent hosts the
+    /// operator did not ask for.
+    async fn browse_mdns(
+        &self,
+        own_addresses: &[IPAddress],
+        scanned_subnets: &[Subnet],
+        target_ips: Option<&HashSet<IpAddr>>,
+    ) -> HashMap<IpAddr, mdns::DnsSdHost> {
+        let interface_addresses: Vec<std::net::Ipv4Addr> = own_addresses
+            .iter()
+            .filter_map(|address| match address.base.ip_address {
+                IpAddr::V4(v4) if !v4.is_loopback() => Some(v4),
+                _ => None,
+            })
+            .collect();
+
+        if interface_addresses.is_empty() {
+            return HashMap::new();
+        }
+
+        let mut hosts = mdns::browse(&interface_addresses).await;
+        hosts.retain(|ip, _| {
+            scanned_subnets.iter().any(|s| s.base.cidr.contains(ip))
+                && target_ips.is_none_or(|t| t.contains(ip))
+        });
+        hosts
+    }
 }
 
 /// A handle to the ICMP sweep, which runs concurrently with ARP.

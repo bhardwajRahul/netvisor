@@ -334,6 +334,8 @@ impl<'a> ContainerScanner<'a> {
                 client_responses: &empty_client_responses,
                 // Container inventory, not a management controller's device inventory.
                 managed_device: &None,
+                // ...and not swept over multicast either.
+                dns_sd: &None,
             };
 
             if let Ok(Some(host_data)) = self
@@ -491,6 +493,8 @@ impl<'a> ContainerScanner<'a> {
                         client_responses: &empty_client_responses,
                         // Container inventory, not a management controller's device inventory.
                         managed_device: &None,
+                        // ...and not swept over multicast either.
+                        dns_sd: &None,
                     },
                     None,
                     self.host_naming_fallback,
