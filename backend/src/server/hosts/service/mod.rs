@@ -1,3 +1,4 @@
+use crate::daemon::discovery::types::warnings::DiscoveryWarning;
 use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
@@ -195,10 +196,11 @@ mod update;
 
 /// Statistics from LLDP link resolution.
 ///
-/// The outcome counters below are deliberately fixed-cardinality and are emitted on the
-/// end-of-resolution log line. Only a fully resolved neighbor (`ports_resolved`) draws an L2
-/// edge, so "the physical view is empty" has several very different causes that look identical
-/// from the outside; these split them apart without logging anything per-neighbor.
+/// What survives here are the counters no warning covers: the successes, and the one failure mode
+/// that is not worth a warning. The five per-reason failure counters this used to carry are now
+/// exactly the count of their `DiscoveryWarning`s, and keeping both would leave two sources for
+/// one number that can silently disagree — with the warnings being the ones an operator can
+/// actually read, since they reach the scan record rather than only the container log.
 #[derive(Default, Debug)]
 pub struct LldpResolutionStats {
     /// Total number of interfaces with unresolved LLDP data
@@ -215,26 +217,11 @@ pub struct LldpResolutionStats {
     /// not firing, which no other counter distinguishes from "nothing needed it".
     pub ports_resolved_reciprocal: usize,
     /// Neighbor advertised no identifier any strategy can look up.
+    ///
+    /// The only failure counter left, because it is the only one with no warning behind it: it
+    /// counts the `cdp_address`-only rows there was never anything to resolve in, and a warning
+    /// per one of those would bury the ones that mean something.
     pub host_no_strategy: usize,
-    /// Neighbor identified a device this network has never discovered.
-    pub host_not_found: usize,
-    /// Neighbor's identifier matched several devices and so names none of them.
-    ///
-    /// Its own counter for the same reason as [`Self::port_ambiguous`]: the far end is not
-    /// missing, it is duplicated — two hosts carrying one chassis id, or sharing the `sysName`
-    /// a neighbour advertised. Counting it as `host_not_found` sent an operator looking for a
-    /// device that is already scanned, twice over.
-    pub host_ambiguous: usize,
-    /// Remote host known, but the port ID subtype has no lookup strategy.
-    pub port_no_strategy: usize,
-    /// Remote host known, port ID looked up, no such port on that host.
-    pub port_not_found: usize,
-    /// Remote host known, but the identifier matched several of its ports and so names none.
-    ///
-    /// Its own counter because it is the one port outcome that is not a gap in our data: the far
-    /// end was found, and the device is reporting one MAC for every port (GH #668). Reading it as
-    /// `port_not_found` would send an operator hunting a device that is already scanned.
-    pub port_ambiguous: usize,
 }
 
 /// What one LLDP/CDP resolution pass produced.
@@ -243,8 +230,9 @@ pub struct LldpResolutionStats {
 /// because a self-hosted operator has no other way to see why the physical view is sparse.
 pub struct LldpResolutionOutcome {
     pub stats: LldpResolutionStats,
-    /// Operator-facing lines, in the same voice as the daemon's scan warnings.
-    pub warnings: Vec<String>,
+    /// One coded warning per far end that could not be placed, carrying the evidence needed to
+    /// triage it. Coded like the daemon's, so both producers reach the same metric.
+    pub warnings: Vec<DiscoveryWarning>,
 }
 
 impl LldpResolutionStats {
@@ -259,18 +247,11 @@ impl LldpResolutionStats {
                 self.host_no_strategy += 1;
                 None
             }
-            IdentityResolution::NotFound => {
-                self.host_not_found += 1;
-                None
-            }
-            // An identifier that named more than one device. Counted apart from `not_found`
-            // because the two call for opposite things: a chassis id or sysName matching nothing
-            // is a device we have not discovered, while one matching two is a device we have —
-            // twice, or under a name its neighbour shares with another.
-            IdentityResolution::Ambiguous => {
-                self.host_ambiguous += 1;
-                None
-            }
+            // Both reach the operator as a warning apiece rather than as a counter — see
+            // `LldpNeighbourNotFound` and `LldpNeighbourAmbiguous`, which call for opposite
+            // things: an identifier matching nothing is a device that was never discovered,
+            // while one matching two is a device we have, twice over.
+            IdentityResolution::NotFound | IdentityResolution::Ambiguous => None,
         }
     }
 
@@ -282,18 +263,12 @@ impl LldpResolutionStats {
                 self.ports_resolved += 1;
                 Neighbor::Interface(interface_id)
             }
-            IdentityResolution::NoStrategy => {
-                self.port_no_strategy += 1;
-                Neighbor::Host(host_id)
-            }
-            IdentityResolution::NotFound => {
-                self.port_not_found += 1;
-                Neighbor::Host(host_id)
-            }
-            IdentityResolution::Ambiguous => {
-                self.port_ambiguous += 1;
-                Neighbor::Host(host_id)
-            }
+            // Each of the three is its own `LldpPort*` warning, which is where the distinction
+            // between them now lives. Falling back to `Neighbor::Host` keeps the identification
+            // we do have.
+            IdentityResolution::NoStrategy
+            | IdentityResolution::NotFound
+            | IdentityResolution::Ambiguous => Neighbor::Host(host_id),
         }
     }
 }

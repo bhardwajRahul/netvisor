@@ -6,7 +6,10 @@
 //! properties (plan, status), and groups events under the org.
 
 use crate::{
-    daemon::discovery::types::base::{DiscoveryPhase, DiscoveryPhaseDiscriminants},
+    daemon::discovery::types::{
+        base::{DiscoveryPhase, DiscoveryPhaseDiscriminants},
+        warnings::DiscoveryWarningCode,
+    },
     server::{
         auth::middleware::auth::AuthenticatedEntity,
         discovery::r#impl::types::DiscoveryType,
@@ -29,6 +32,7 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use serde_json::json;
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 /// Demo org ID — filtered from noisy analytics events to avoid skewing metrics.
@@ -523,6 +527,95 @@ impl Subscriber<DiscoveryPhase> for PosthogService {
     }
 }
 inventory::submit!(SubscriberRegistration::new::<PosthogService, DiscoveryPhase>());
+
+#[async_trait]
+impl Subscriber<DiscoveryWarningCode> for PosthogService {
+    /// Every code, `Unknown` included. An allowlist is what lets a newly added code go silently
+    /// missing from analytics — the argument the billing subscriber above makes, and it holds
+    /// harder here, where the codes are the whole point.
+    fn filter(&self) -> EventFilter<DiscoveryWarningCode> {
+        EventFilter::all()
+    }
+
+    /// One event per `(session, code, integration)`, not per occurrence.
+    ///
+    /// Warnings are recorded one per affected device, so a single scan can raise hundreds. Product
+    /// analytics is asking what fraction of scans hit a given failure mode, not how many devices
+    /// each hit — Grafana already counts devices — so the batch is collapsed and the device count
+    /// rides along as `occurrences`. A session's warnings are all published in one loop, so they
+    /// arrive inside one debounce window.
+    ///
+    /// Nothing that identifies a customer's network reaches PostHog: no address, no host id, and
+    /// not the library diagnostic on `detail`.
+    async fn handle(&self, events: Vec<Event<DiscoveryWarningCode>>) -> Result<(), Error> {
+        // Keyed rather than counted per event so the org lookup below runs once per session
+        // instead of once per warning — two DB round-trips times several hundred is not a cost
+        // worth paying for a number that would be identical every time.
+        let mut grouped: BTreeMap<(Uuid, DiscoveryWarningCode, Option<String>), Grouped> =
+            BTreeMap::new();
+
+        for event in events {
+            if event.flags.suppress_logs {
+                continue;
+            }
+            let integration = event.scope.integration.map(|i| i.to_string());
+            let entry = grouped
+                .entry((event.scope.session_id, event.operation, integration))
+                .or_insert_with(|| Grouped {
+                    occurrences: 0,
+                    network_id: event.scope.network_id,
+                    daemon_id: event.scope.daemon_id,
+                    authentication: event.authentication.clone(),
+                });
+            entry.occurrences += 1;
+        }
+
+        for ((session_id, code, integration), group) in grouped {
+            let Some(distinct_id) = self
+                .resolve_distinct_id_via_network(&group.authentication, group.network_id)
+                .await
+            else {
+                tracing::debug!(
+                    session_id = %session_id,
+                    "Skipping PostHog discovery-warning event — cannot attribute"
+                );
+                continue;
+            };
+
+            let mut props = auth_properties(&group.authentication);
+            props["session_id"] = json!(session_id.to_string());
+            props["network_id"] = json!(group.network_id.to_string());
+            props["daemon_id"] = json!(group.daemon_id.to_string());
+            props["code"] = json!(code.to_string());
+            props["integration"] = json!(integration.unwrap_or_else(|| "none".to_string()));
+            props["occurrences"] = json!(group.occurrences);
+
+            if let Some(org_id) = self.get_org_id_from_network(&group.network_id).await {
+                props["organization_id"] = json!(org_id.to_string());
+            }
+
+            inject_org_group(&mut props);
+            self.capture("discovery_warning", &distinct_id, props).await;
+        }
+        Ok(())
+    }
+
+    fn debounce_window_ms(&self) -> u64 {
+        5000
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    PosthogService,
+    DiscoveryWarningCode,
+>());
+
+/// One `(session, code, integration)` bucket, and what it takes to attribute it once.
+struct Grouped {
+    occurrences: usize,
+    network_id: Uuid,
+    daemon_id: Uuid,
+    authentication: AuthenticatedEntity,
+}
 
 #[cfg(test)]
 mod tests {

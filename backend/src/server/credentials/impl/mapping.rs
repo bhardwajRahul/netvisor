@@ -187,7 +187,24 @@ impl std::fmt::Display for IntegrationTarget {
 /// Credential payload sent to daemon with secrets exposed.
 /// Each variant corresponds to a CredentialType variant.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, EnumDiscriminants)]
-#[strum_discriminants(derive(Hash, strum::Display))]
+// The discriminant is the integration's stable identity: it labels the discovery-warning metric
+// and rides on every coded credential warning, which is why it needs serde and a schema of its own
+// rather than only `Display`. The display names live in metadata, never here.
+#[strum_discriminants(
+    derive(
+        Hash,
+        PartialOrd,
+        Ord,
+        Serialize,
+        Deserialize,
+        ToSchema,
+        strum::Display,
+        strum::EnumIter,
+        strum::IntoStaticStr,
+        strum::VariantNames
+    ),
+    strum(serialize_all = "PascalCase")
+)]
 #[serde(tag = "type")]
 pub enum CredentialQueryPayload {
     Snmp(SnmpQueryCredential),

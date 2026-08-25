@@ -131,3 +131,32 @@ where
         }
     }
 }
+
+/// Pull the `{named}` slots out of a message template, in order of appearance.
+///
+/// Shared rather than duplicated: the error-code TypeScript generator needs the same parse to emit
+/// each code's parameter type, and two extractors that disagree about what counts as a slot is
+/// exactly the drift the warning-code test exists to catch.
+pub fn extract_slots(template: &str) -> Vec<String> {
+    let mut slots = Vec::new();
+    let mut chars = template.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c != '{' {
+            continue;
+        }
+        let mut name = String::new();
+        while let Some(&next) = chars.peek() {
+            if next == '}' {
+                chars.next();
+                break;
+            }
+            name.push(chars.next().unwrap_or_default());
+        }
+        if !name.is_empty() {
+            slots.push(name);
+        }
+    }
+
+    slots
+}

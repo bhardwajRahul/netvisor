@@ -2,6 +2,7 @@ use super::arp::{self, ArpScanResult};
 use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::discovery::service::warnings::{CredentialIssue, CredentialIssueReason};
 use crate::daemon::discovery::types::base::DiscoveryCriticalError;
+use crate::daemon::discovery::types::warnings::DiscoveryWarning;
 use crate::daemon::utils::base::{DaemonUtils, PlatformDaemonUtils};
 use crate::daemon::utils::scanner::{
     ScanConcurrencyController, can_arp_scan, scan_endpoints, scan_tcp_ports, scan_udp_ports,
@@ -949,23 +950,28 @@ impl NetworkScan {
                         .ok()
                         .map(|s| s.estimated_remaining_secs.load(Ordering::Relaxed))
                         .filter(|&s| s != u32::MAX && s > 0);
-                    let msg = match remaining {
-                        Some(secs) => format!(
-                            "Scan hit its time limit ({}h) — {} host(s) not scanned (~{} min of estimated work remaining). Raise Max Discovery Duration or rescan.",
-                            max_discovery_duration.as_secs() / 3600,
-                            not_scanned,
-                            secs.div_ceil(60),
-                        ),
-                        None => format!(
-                            "Scan hit its time limit ({}h) — {} host(s) not scanned. Raise Max Discovery Duration or rescan.",
-                            max_discovery_duration.as_secs() / 3600,
-                            not_scanned,
-                        ),
+                    let hours =
+                        u32::try_from(max_discovery_duration.as_secs() / 3600).unwrap_or(u32::MAX);
+                    let hosts_not_scanned = u32::try_from(not_scanned).unwrap_or(u32::MAX);
+                    // Two codes rather than one with an optional figure: an operator reading
+                    // "~40 min remaining" is being told how much to raise the limit by, and a
+                    // warning that silently omits that when no estimate exists reads as though
+                    // there were none left.
+                    let warning = match remaining {
+                        Some(secs) => DiscoveryWarning::ScanTimeLimitWithEstimate {
+                            hours,
+                            hosts_not_scanned,
+                            minutes_remaining: secs.div_ceil(60),
+                        },
+                        None => DiscoveryWarning::ScanTimeLimit {
+                            hours,
+                            hosts_not_scanned,
+                        },
                     };
                     if let Ok(session) = ops.get_session().await
                         && let Ok(mut warnings) = session.warnings.lock()
                     {
-                        warnings.push(msg);
+                        warnings.push(warning);
                     }
                 }
                 break;
@@ -1450,7 +1456,7 @@ pub(crate) fn unreachable_credential_targets(
         .filter(|o| !o.ip.is_loopback())
         .filter(|o| !subnets.iter().any(|s| s.base.cidr.contains(&o.ip)))
         .map(|o| CredentialIssue {
-            label: o.credential.discovery_label(),
+            integration: (&o.credential).into(),
             ip: o.ip,
             reason: CredentialIssueReason::TargetNotScanned,
         })
@@ -1481,7 +1487,7 @@ pub(crate) fn unanswered_credential_targets(
         .filter(|o| target_ips.is_none_or(|t| t.contains(&o.ip)))
         .filter(|o| !answered.contains(&o.ip))
         .map(|o| CredentialIssue {
-            label: o.credential.discovery_label(),
+            integration: (&o.credential).into(),
             ip: o.ip,
             reason: CredentialIssueReason::TargetNotResponding,
         })

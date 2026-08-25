@@ -11,6 +11,7 @@ use crate::daemon::discovery::service::warnings::{
     MalformedNeighbours, SnmpCollectedNothing, UnresolvedLldpPorts, VlanRecordingFailed,
 };
 use crate::daemon::discovery::types::base::DiscoverySessionInfo;
+use crate::daemon::discovery::types::warnings::DiscoveryWarning;
 use crate::daemon::{
     discovery::{buffer::EntityBuffer, manager::DaemonDiscoverySessionManager},
     shared::{api_client::DaemonApiClient, config::ConfigStore},
@@ -131,7 +132,7 @@ pub struct DiscoverySession {
     /// fires per host belongs in one of the typed accumulators below, which are
     /// rendered to a single line at finalize — a `Vec<String>` written per host
     /// multiplies by the host count and drowns the notification.
-    pub warnings: Arc<std::sync::Mutex<Vec<String>>>,
+    pub warnings: Arc<std::sync::Mutex<Vec<DiscoveryWarning>>>,
     // The three typed accumulators are `pub(super)` — visible throughout `service`, and to
     // nothing outside it. That is deliberate and load-bearing rather than tidiness.
     //

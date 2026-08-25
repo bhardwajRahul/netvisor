@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::{
-    daemon::discovery::types::base::DiscoveryPhase,
+    daemon::discovery::types::{base::DiscoveryPhase, warnings::DiscoveryWarningCode},
     server::{
         digest::payload::DiscoveryDigestOperation,
         shared::events::{
@@ -24,6 +24,9 @@ pub struct EventBus {
     pub entity_channel: TypedChannel<EntityOperation>,
     pub discovery_channel: TypedChannel<DiscoveryPhase>,
     pub discovery_digest_channel: TypedChannel<DiscoveryDigestOperation>,
+    /// One event per coded scan warning. Separate from `discovery_channel` because warnings arrive
+    /// from two producers, one of which runs after the terminal phase event has already gone out.
+    pub discovery_warning_channel: TypedChannel<DiscoveryWarningCode>,
 }
 
 impl Default for EventBus {
@@ -42,6 +45,7 @@ impl EventBus {
             entity_channel: TypedChannel::new(),
             discovery_channel: TypedChannel::new(),
             discovery_digest_channel: TypedChannel::new(),
+            discovery_warning_channel: TypedChannel::new(),
         }
     }
 
@@ -114,5 +118,11 @@ impl BusChannel<DiscoveryPhase> for EventBus {
 impl BusChannel<DiscoveryDigestOperation> for EventBus {
     fn channel(&self) -> &TypedChannel<DiscoveryDigestOperation> {
         &self.discovery_digest_channel
+    }
+}
+
+impl BusChannel<DiscoveryWarningCode> for EventBus {
+    fn channel(&self) -> &TypedChannel<DiscoveryWarningCode> {
+        &self.discovery_warning_channel
     }
 }

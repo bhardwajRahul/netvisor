@@ -7,6 +7,7 @@
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import type { DiscoveryUpdatePayload } from '../../types/api';
+	import { renderWarnings } from '../../utils/warnings';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
 	import { useSubnetsQuery, getSubnetById } from '$lib/features/subnets/queries';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
@@ -123,7 +124,10 @@
 <div class="space-y-4">
 	<!-- Status Banner -->
 	{#if payload.phase === 'Complete' && payload.warnings && payload.warnings.length > 0}
-		<InlineWarning title={discovery_completedWithWarnings()} items={payload.warnings} />
+		<InlineWarning
+			title={discovery_completedWithWarnings()}
+			items={renderWarnings(payload.warnings)}
+		/>
 	{:else if payload.phase === 'Complete'}
 		<InlineSuccess title={payload.phase} />
 	{:else if payload.phase === 'Failed'}

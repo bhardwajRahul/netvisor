@@ -465,6 +465,18 @@ impl DiscoveryService {
         if session.phase.is_terminal() {
             let is_rescan = session.discovery_type.rescan_target_host_id().is_some();
 
+            // Here rather than anywhere earlier because this is the one place a terminal payload
+            // is processed exactly once — a redundant terminal update from an old daemon has
+            // already returned above, so the counters cannot be double-incremented by a ServerPoll
+            // re-delivery.
+            self.publish_warning_events(
+                session.network_id,
+                session.session_id,
+                session.daemon_id,
+                &session.warnings,
+            )
+            .await;
+
             // Create historical discovery record
             let network_name = match self.network_service.get_by_id(&session.network_id).await {
                 Ok(Some(network)) => network.base.name,

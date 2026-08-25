@@ -1,6 +1,9 @@
 //! Live session access, snapshot-coordination acquire/release, state transitions, and cancellation pull.
 use super::*;
 
+use crate::daemon::discovery::types::warnings::DiscoveryWarning;
+use crate::server::discovery::r#impl::warning_events::DiscoveryWarningScope;
+
 impl DiscoveryService {
     /// Expose stream to handler
     pub fn subscribe(&self) -> broadcast::Receiver<DiscoveryUpdatePayload> {
@@ -240,6 +243,31 @@ impl DiscoveryService {
         }
     }
 
+    /// Publish one event per coded warning, so the metrics, analytics and logging subscribers all
+    /// see it once.
+    ///
+    /// Called from both producers — the daemon's terminal payload and LLDP/CDP resolution — which
+    /// is the whole reason warnings have an operation of their own. Failures to publish are
+    /// swallowed by the bus itself; a warning that does not reach a counter must never take the
+    /// scan record down with it.
+    pub async fn publish_warning_events(
+        &self,
+        network_id: Uuid,
+        session_id: Uuid,
+        daemon_id: Uuid,
+        warnings: &[DiscoveryWarning],
+    ) {
+        for warning in warnings {
+            let scope =
+                DiscoveryWarningScope::new(network_id, session_id, daemon_id, warning.clone());
+            let code = warning.code();
+            let _ = self
+                .event_bus
+                .publish(Event::new(scope, code, AuthenticatedEntity::System))
+                .await;
+        }
+    }
+
     /// Add lines to the warning list of the historical row recording a finished session.
     ///
     /// Post-scan work that a daemon cannot do — neighbour resolution above all — necessarily runs
@@ -254,7 +282,7 @@ impl DiscoveryService {
     pub async fn append_historical_warnings(
         &self,
         session_id: Uuid,
-        lines: Vec<String>,
+        lines: Vec<DiscoveryWarning>,
     ) -> Result<()> {
         if lines.is_empty() {
             return Ok(());
@@ -281,7 +309,9 @@ impl DiscoveryService {
         let RunType::Historical { ref mut results } = discovery.base.run_type else {
             return Ok(());
         };
-        results.warnings.extend(lines);
+        let network_id = discovery.base.network_id;
+        let daemon_id = discovery.base.daemon_id;
+        results.warnings.extend(lines.iter().cloned());
         // Nothing else in the Discovery path stamps this, and the row's content just changed.
         discovery.set_updated_at(Utc::now());
 
@@ -290,6 +320,12 @@ impl DiscoveryService {
         // worked out properly. Writing to storage direct skips all of it.
         <Self as CrudService<Discovery>>::update(self, &mut discovery, AuthenticatedEntity::System)
             .await?;
+
+        // After the write, so a warning cannot be counted for a record that failed to save. These
+        // arrive too late for the terminal `DiscoveryPhase` event — resolution runs on the back of
+        // it — which is why they need an event of their own to reach the same subscribers.
+        self.publish_warning_events(network_id, session_id, daemon_id, &lines)
+            .await;
 
         Ok(())
     }

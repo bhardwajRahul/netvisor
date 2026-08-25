@@ -3692,10 +3692,15 @@ export interface components {
                  */
                 started_at?: string | null;
                 /**
-                 * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
-                 *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
+                 * @description Non-fatal findings from a completed run — one per occurrence, each carrying the code that
+                 *     identifies it and the detail that fills the sentence. Unlike `error`, these do not mark the
+                 *     run failed.
+                 *
+                 *     Read through [`deserialize_warnings`] rather than the derived impl, which is what keeps
+                 *     historical records and pre-coded daemons rendering: both send bare strings here, and both
+                 *     land as `Unknown` carrying that text instead of failing the whole payload.
                  */
-                warnings?: string[];
+                warnings?: components["schemas"]["DiscoveryWarning"][];
             };
             /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
@@ -5128,10 +5133,15 @@ export interface components {
                  */
                 started_at?: string | null;
                 /**
-                 * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
-                 *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
+                 * @description Non-fatal findings from a completed run — one per occurrence, each carrying the code that
+                 *     identifies it and the detail that fills the sentence. Unlike `error`, these do not mark the
+                 *     run failed.
+                 *
+                 *     Read through [`deserialize_warnings`] rather than the derived impl, which is what keeps
+                 *     historical records and pre-coded daemons rendering: both send bare strings here, and both
+                 *     land as `Unknown` carrying that text instead of failing the whole payload.
                  */
-                warnings?: string[];
+                warnings?: components["schemas"]["DiscoveryWarning"][];
             }[];
             /** @description Human-readable failure message. Omitted on success. */
             error?: string | null;
@@ -5536,6 +5546,15 @@ export interface components {
              */
             email: string;
         };
+        /**
+         * @description Where a device's claim about itself came from.
+         *
+         *     Named rather than folded into a sentence because the operator's next step depends on it: a
+         *     wrong `ifNumber` is a firmware bug to report upstream, while a set bridge bit over an empty
+         *     bridge table is usually a missing SNMP view or VLAN context on their side.
+         * @enum {string}
+         */
+        ClaimSource: "IfNumber" | "SysServicesBridgeBit" | "LldpLocalIdentity" | "Dot1dBaseNumPorts";
         /** @enum {string} */
         Color: "Pink" | "Rose" | "Red" | "Amber" | "Orange" | "Green" | "Emerald" | "Teal" | "Cyan" | "Blue" | "Indigo" | "Purple" | "Fuchsia" | "Violet" | "Sky" | "Gray" | "Lime" | "Yellow";
         /** @enum {string} */
@@ -5756,6 +5775,18 @@ export interface components {
             /** @description Interface IDs to limit this credential to. None = all host ip_addresses. */
             ip_address_ids: string[] | null;
         };
+        /** @description One credential's attempt against one address, and what the client library said about it. */
+        CredentialAttempt: {
+            address: string;
+            /**
+             * @description The library's own diagnostic — free text, so it can only ever be displayed. It is the one
+             *     thing the code cannot supersede: the code says which failure mode, this says what actually
+             *     came back ("connection refused (os error 111)"), and it is now attributable to this one
+             *     address rather than being the first message of a whole batch.
+             */
+            detail: string | null;
+            integration: components["schemas"]["CredentialQueryPayloadDiscriminants"];
+        };
         CredentialBase: {
             /**
              * @description Networks this credential is assigned to (Broadcast scope).
@@ -5795,6 +5826,8 @@ export interface components {
         };
         /** @enum {string} */
         CredentialOrderField: "created_at" | "name" | "updated_at";
+        /** @enum {string} */
+        CredentialQueryPayloadDiscriminants: "Snmp" | "DockerProxy" | "DockerSocket" | "PodmanProxy" | "PodmanSocket" | "UnifiController" | "InstantOn" | "Unknown";
         /**
          * @description Release maturity of a credential type's integration.
          *
@@ -6630,10 +6663,223 @@ export interface components {
              */
             started_at?: string | null;
             /**
-             * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
-             *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
+             * @description Non-fatal findings from a completed run — one per occurrence, each carrying the code that
+             *     identifies it and the detail that fills the sentence. Unlike `error`, these do not mark the
+             *     run failed.
+             *
+             *     Read through [`deserialize_warnings`] rather than the derived impl, which is what keeps
+             *     historical records and pre-coded daemons rendering: both send bare strings here, and both
+             *     land as `Unknown` carrying that text instead of failing the whole payload.
              */
-            warnings?: string[];
+            warnings?: components["schemas"]["DiscoveryWarning"][];
+        };
+        /**
+         * @description A single non-fatal finding from one discovery run, about one device, neighbour, or the scan
+         *     itself.
+         *
+         *     Serialized with the code as the tag, so the generated TypeScript is a discriminated union the
+         *     UI can switch on exhaustively. The derived `Deserialize` reads that shape; the leniency that
+         *     keeps historical records and pre-coded daemons working lives in [`deserialize_warnings`],
+         *     which is applied at the one field that holds these.
+         */
+        DiscoveryWarning: {
+            address: string;
+            /** @enum {string} */
+            code: "InterfaceSetCutShort";
+            /** Format: int32 */
+            collected: number;
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "InterfaceDetailsCutShort";
+            /** Format: int32 */
+            collected: number;
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkEntryCap";
+            group: components["schemas"]["SnmpWalkGroup"];
+            /** Format: int32 */
+            limit: number;
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkUnsupported";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkDesynchronised";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkPartialDiscarded";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkPartialRecorded";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkBridgeMibAbsent";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpWalkNoAnswer";
+            group: components["schemas"]["SnmpWalkGroup"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "ClaimedCountReadCutShort";
+            /** Format: int32 */
+            expected: number;
+            group: components["schemas"]["SnmpWalkGroup"];
+            /** Format: int32 */
+            observed: number;
+            source: components["schemas"]["ClaimSource"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "ClaimedCountUnderRead";
+            /** Format: int32 */
+            expected: number;
+            group: components["schemas"]["SnmpWalkGroup"];
+            /** Format: int32 */
+            observed: number;
+            source: components["schemas"]["ClaimSource"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "ClaimedCapabilityReadCutShort";
+            group: components["schemas"]["SnmpWalkGroup"];
+            source: components["schemas"]["ClaimSource"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "ClaimedCapabilityEmpty";
+            group: components["schemas"]["SnmpWalkGroup"];
+            source: components["schemas"]["ClaimSource"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "LldpLocalPortDropped";
+            /** Format: int32 */
+            dropped: number;
+            /** Format: int32 */
+            total: number;
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "LldpLocalPortMisplaced";
+            /** Format: int32 */
+            misplaced: number;
+        } | (components["schemas"]["MalformedNeighbours"] & {
+            /** @enum {string} */
+            code: "MalformedNeighboursWalkCutShort";
+        }) | (components["schemas"]["MalformedNeighbours"] & {
+            /** @enum {string} */
+            code: "MalformedNeighboursGhostRows";
+        }) | (components["schemas"]["MalformedNeighbours"] & {
+            /** @enum {string} */
+            code: "MalformedNeighboursIncompleteRecords";
+        }) | (components["schemas"]["MalformedNeighbours"] & {
+            /** @enum {string} */
+            code: "MalformedNeighboursUnexpectedType";
+        }) | (components["schemas"]["MalformedNeighbours"] & {
+            /** @enum {string} */
+            code: "MalformedNeighboursUnreadableIndex";
+        }) | {
+            address: string;
+            /** @enum {string} */
+            code: "SnmpCollectedNothing";
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "VlanRecordingFailed";
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "CredentialTargetNotScanned";
+            integration: components["schemas"]["CredentialQueryPayloadDiscriminants"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "CredentialTargetNotResponding";
+            integration: components["schemas"]["CredentialQueryPayloadDiscriminants"];
+        } | {
+            address: string;
+            /** @enum {string} */
+            code: "CredentialGateClosed";
+            integration: components["schemas"]["CredentialQueryPayloadDiscriminants"];
+            ports: number[];
+        } | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialRejected";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialMalformed";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialTlsFailed";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialNotThisService";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialCollectionFailed";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialCollectionTimedOut";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialUnreachable";
+        }) | (components["schemas"]["CredentialAttempt"] & {
+            /** @enum {string} */
+            code: "CredentialTimedOut";
+        }) | {
+            /** @enum {string} */
+            code: "ScanTimeLimitWithEstimate";
+            /** Format: int32 */
+            hosts_not_scanned: number;
+            /** Format: int32 */
+            hours: number;
+            /** Format: int32 */
+            minutes_remaining: number;
+        } | {
+            /** @enum {string} */
+            code: "ScanTimeLimit";
+            /** Format: int32 */
+            hosts_not_scanned: number;
+            /** Format: int32 */
+            hours: number;
+        } | (components["schemas"]["UnmatchedNeighbour"] & {
+            /** @enum {string} */
+            code: "LldpNeighbourNotFound";
+        }) | (components["schemas"]["UnmatchedNeighbour"] & {
+            /** @enum {string} */
+            code: "LldpNeighbourAmbiguous";
+        }) | (components["schemas"]["UnresolvedPort"] & {
+            /** @enum {string} */
+            code: "LldpPortNoStrategy";
+        }) | (components["schemas"]["UnresolvedPort"] & {
+            /** @enum {string} */
+            code: "LldpPortNotFound";
+        }) | (components["schemas"]["UnresolvedPort"] & {
+            /** @enum {string} */
+            code: "LldpPortAmbiguous";
+        }) | {
+            /** @enum {string} */
+            code: "WarningsTruncated";
+            /** Format: int32 */
+            elided: number;
+        } | {
+            /** @enum {string} */
+            code: "Unknown";
+            detail: string;
         };
         /** @description The docker install method. */
         DockerInstall: {
@@ -8057,6 +8303,29 @@ export interface components {
              * @description The account password.
              */
             password: string;
+        };
+        /**
+         * @description What discarding a device's malformed neighbour records cost it.
+         *
+         *     A slot value rather than two codes per reason: losing every link and losing some of them is a
+         *     difference in severity, not in failure mode, and the metric asks about mode. Splitting it into
+         *     codes would double the enum to say something the operator reads in one clause.
+         * @enum {string}
+         */
+        MalformedNeighbourConsequence: "AllLinksLost" | "SomeLinksLost";
+        /** @description Neighbour records discarded for want of the identifier that matches the far end. */
+        MalformedNeighbours: {
+            address: string;
+            consequence: components["schemas"]["MalformedNeighbourConsequence"];
+            /** Format: int32 */
+            discarded: number;
+            group: components["schemas"]["SnmpWalkGroup"];
+            /**
+             * Format: int32
+             * @description Records that survived, which is what decides whether this cost the device some of its
+             *     topology or all of it.
+             */
+            kept: number;
         };
         /** @enum {string} */
         MatchConfidence: "NotApplicable" | "Low" | "Medium" | "High" | "Certain";
@@ -10057,6 +10326,15 @@ export interface components {
          */
         SnmpV3PrivProtocol: "Aes128" | "Aes256";
         /**
+         * @description An SNMP data group a walk may come up short on.
+         *
+         *     An enum rather than a free string so the code derivation below is exhaustive: every group has
+         *     to declare which consequence sentence describes it, and a new one cannot be added without
+         *     choosing.
+         * @enum {string}
+         */
+        SnmpWalkGroup: "Lldp" | "Cdp" | "Interfaces" | "BridgePortNumbering" | "BridgeForwarding" | "VlanMembership" | "ArpTable" | "DeviceInventory" | "IpAddresses" | "LldpLocalPorts" | "VlanNames";
+        /**
          * @example {
          *       "cidr": "192.168.1.0/24",
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -10547,6 +10825,45 @@ export interface components {
         TransportProtocol: "Udp" | "Tcp";
         /** @description No payload. Present only so the envelope keeps its shape. */
         TupleUnit: Record<string, never>;
+        /** @description A neighbour advertised by a local interface whose far end could not be placed on a host. */
+        UnmatchedNeighbour: {
+            /**
+             * Format: uuid
+             * @description The local device that saw the neighbour, not the far end — the far end is what could not
+             *     be identified.
+             */
+            host_id: string;
+            /** @description The chassis ID (LLDP) or device id (CDP) that did not identify one host. */
+            identifier: string;
+            if_descr: string;
+            sys_name: string | null;
+        };
+        /** @description A neighbour whose far-end host resolved but whose far-end *port* did not. */
+        UnresolvedPort: {
+            /**
+             * Format: uuid
+             * @description The local device that saw the neighbour, and the port it saw it on.
+             */
+            host_id: string;
+            if_descr: string;
+            /**
+             * @description `lldpRemPortDesc`, the last-resort tier. Present because "the id failed and the description
+             *     was empty" and "both were tried and neither matched" call for different fixes.
+             */
+            port_desc: string | null;
+            /**
+             * @description The advertised port id in `Debug` form, which carries subtype and value together
+             *     (`MacAddress("00:ad:24:af:4e:00")`, `InterfaceName("2")`). Both halves are needed: the
+             *     subtype says which tier ran and the value says what it looked for.
+             */
+            port_id: string | null;
+            /**
+             * Format: uuid
+             * @description The far-end device, already resolved — this is what makes it distinct from
+             *     [`UnmatchedNeighbour`].
+             */
+            remote_host_id: string;
+        };
         /**
          * @description Request type for updating a host with its children.
          *     Uses the same input types as CreateHostRequest.

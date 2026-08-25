@@ -1,9 +1,9 @@
 //! LLDP and FDB link resolution.
 use super::*;
 
-/// How many unmatched neighbours the summary names before eliding the rest. Matches the cap the
-/// daemon's scan warnings use, for the same reason: a line long enough to scroll is not read.
-const MAX_LISTED_UNMATCHED: usize = 10;
+use crate::daemon::discovery::types::warnings::{
+    DiscoveryWarning, UnmatchedNeighbour, UnresolvedPort,
+};
 
 /// Why a far end could not be placed, carried alongside the identifiers that were tried.
 ///
@@ -28,110 +28,63 @@ impl UnresolvedReason {
             IdentityResolution::Ambiguous => Some(Self::Ambiguous),
         }
     }
-
-    fn describe(self) -> &'static str {
-        match self {
-            Self::NoStrategy => "no lookup strategy for this port-id subtype",
-            Self::NotFound => "no port on that device matches",
-            Self::Ambiguous => "several ports on that device match, so it identifies none",
-        }
-    }
 }
 
-/// A neighbour advertised by a local interface whose far end no strategy could place.
+/// The warning for a far end no strategy could place, or `None` when it is not worth reporting.
 ///
-/// Holds what identifies both ends — which of our devices saw it, on which port, and the
-/// identifier the far end advertised — because those are the three things needed to decide whether
-/// an unresolved neighbour is a device that should have been scanned or one that never will be.
-struct UnmatchedNeighbour {
-    /// The local device that saw the neighbour, not the far end — the far end is what we failed
-    /// to identify.
-    host_id: Uuid,
-    if_descr: String,
-    /// The chassis ID (LLDP) or device id (CDP) that matched nothing.
+/// `NoStrategy` is deliberately silent on the host side: it counts the `cdp_address`-only rows the
+/// resolver itself calls "nothing here to resolve", and a warning per one of those would bury the
+/// two that mean something.
+///
+/// What each warning carries is what it takes to decide whether an unresolved neighbour is a
+/// device that should have been scanned or one that never will be: which of our devices saw it, on
+/// which port, and the identifier the far end advertised. That evidence used to exist only in a
+/// log line, where the operator who needed it could not read it.
+fn unmatched_neighbour_warning(
+    interface: &Interface,
     identifier: String,
     sys_name: Option<String>,
-}
-
-impl UnmatchedNeighbour {
-    fn new(interface: &Interface, identifier: String, sys_name: Option<String>) -> Self {
-        Self {
-            host_id: interface.base.host_id,
-            if_descr: interface.base.if_descr.clone(),
-            identifier,
-            sys_name,
-        }
-    }
-
-    /// `switch7 ten-gigabitEthernet 1/0/1 -> 00:ad:24:89:cc:f0 (core-sw)`, with the sysName only
-    /// when the device sent one — it is often the only human-readable clue to what the far end is.
-    fn describe(&self, host_name: Option<&String>) -> String {
-        let host = host_name.map(String::as_str).unwrap_or("unknown host");
-        let sys_name = match &self.sys_name {
-            Some(name) if !name.trim().is_empty() => format!(" ({name})"),
-            _ => String::new(),
-        };
-        format!("{host} {} -> {}{sys_name}", self.if_descr, self.identifier)
+    reason: UnresolvedReason,
+) -> Option<DiscoveryWarning> {
+    let detail = UnmatchedNeighbour {
+        host_id: interface.base.host_id,
+        if_descr: interface.base.if_descr.clone(),
+        identifier,
+        sys_name,
+    };
+    match reason {
+        UnresolvedReason::NotFound => Some(DiscoveryWarning::LldpNeighbourNotFound(detail)),
+        UnresolvedReason::Ambiguous => Some(DiscoveryWarning::LldpNeighbourAmbiguous(detail)),
+        UnresolvedReason::NoStrategy => None,
     }
 }
 
-/// A neighbour whose far-end *device* is known but whose port could not be identified.
+/// The warning for a neighbour whose far-end *device* is known but whose port is not.
 ///
 /// This is the row that draws a device-level edge instead of a port-to-port one — the "attached to
-/// the whole switch" outcome. `host_not_found` already names the far ends we have never seen; this
-/// names the ones we have, which is the harder case to reason about from a counter alone: the
-/// devices are both on the map and the operator has nothing left to scan.
-struct UnresolvedPort {
-    /// The local device that saw the neighbour, and the port it saw it on.
-    host_id: Uuid,
-    if_descr: String,
-    /// The far-end device, already resolved — this is what makes it distinct from
-    /// [`UnmatchedNeighbour`].
+/// the whole switch" outcome, and the harder case to reason about from a counter alone: both
+/// devices are on the map and the operator has nothing left to scan. All three reasons are
+/// reported, because each names a different fix.
+fn unresolved_port_warning(
+    interface: &Interface,
     remote_host_id: Uuid,
-    /// The advertised port id in `Debug` form, which carries subtype and value together
-    /// (`MacAddress("00:ad:24:af:4e:00")`, `InterfaceName("2")`). Both halves are needed: the
-    /// subtype says which tier ran and the value says what it looked for.
     port_id: Option<String>,
-    /// `lldpRemPortDesc`, the last-resort tier. Present here because "the id failed and the
-    /// description was empty" and "both were tried and neither matched" call for different fixes.
-    port_desc: Option<String>,
     reason: UnresolvedReason,
-}
-
-impl UnresolvedPort {
-    fn new(
-        interface: &Interface,
-        remote_host_id: Uuid,
-        port_id: Option<String>,
-        reason: UnresolvedReason,
-    ) -> Self {
-        Self {
-            host_id: interface.base.host_id,
-            if_descr: interface.base.if_descr.clone(),
-            remote_host_id,
-            port_id,
-            port_desc: interface.base.lldp_port_desc.clone(),
-            reason,
-        }
-    }
-
-    /// `switch7 Gi0/1 -> switch3 via MacAddress("00:ad:…") desc "Port 9": several ports match`
-    fn describe(&self, host_name: Option<&String>, remote_name: Option<&String>) -> String {
-        let host = host_name.map(String::as_str).unwrap_or("unknown host");
-        let remote = remote_name.map(String::as_str).unwrap_or("unknown host");
-        let port_id = match &self.port_id {
-            Some(id) => format!(" via {id}"),
-            None => " with no port id".to_string(),
-        };
-        let desc = match &self.port_desc {
-            Some(desc) if !desc.trim().is_empty() => format!(" desc {desc:?}"),
-            _ => String::new(),
-        };
-        format!(
-            "{host} {} -> {remote}{port_id}{desc}: {}",
-            self.if_descr,
-            self.reason.describe()
-        )
+) -> DiscoveryWarning {
+    let detail = UnresolvedPort {
+        host_id: interface.base.host_id,
+        if_descr: interface.base.if_descr.clone(),
+        remote_host_id,
+        port_id,
+        // `lldpRemPortDesc`, the last-resort tier. Carried because "the id failed and the
+        // description was empty" and "both were tried and neither matched" call for different
+        // fixes.
+        port_desc: interface.base.lldp_port_desc.clone(),
+    };
+    match reason {
+        UnresolvedReason::NoStrategy => DiscoveryWarning::LldpPortNoStrategy(detail),
+        UnresolvedReason::NotFound => DiscoveryWarning::LldpPortNotFound(detail),
+        UnresolvedReason::Ambiguous => DiscoveryWarning::LldpPortAmbiguous(detail),
     }
 }
 
@@ -153,7 +106,6 @@ struct NeighborAdjacency {
 }
 
 mod reciprocal;
-mod reporting;
 
 use reciprocal::PortBinding;
 
@@ -212,9 +164,7 @@ impl HostService {
         // stable set of genuinely-unknown neighbours (endpoints, phones, unmanaged gear — the
         // expected case) from a resolution defect without knowing *which* devices they are
         // (GH #668).
-        let mut unmatched: Vec<UnmatchedNeighbour> = Vec::new();
-        // Every far end whose device is known but whose port is not — the device-level edges.
-        let mut unresolved_ports: Vec<UnresolvedPort> = Vec::new();
+        let mut warnings: Vec<DiscoveryWarning> = Vec::new();
         let mut reopened = 0usize;
         let mut rebound = 0usize;
 
@@ -285,11 +235,12 @@ impl HostService {
                         .copied()
                         .unwrap_or(IdentityResolution::NoStrategy),
                 };
-                if matches!(host, IdentityResolution::NotFound) {
-                    unmatched.push(UnmatchedNeighbour::new(
+                if let Some(reason) = UnresolvedReason::from_resolution(host) {
+                    warnings.extend(unmatched_neighbour_warning(
                         &interface,
                         chassis_id.identifier(),
                         interface.base.lldp_sys_name.clone(),
+                        reason,
                     ));
                 }
                 match stats.record_host(host) {
@@ -333,7 +284,7 @@ impl HostService {
                                 None => port,
                             };
                         if let Some(reason) = UnresolvedReason::from_resolution(port) {
-                            unresolved_ports.push(UnresolvedPort::new(
+                            warnings.push(unresolved_port_warning(
                                 &interface,
                                 host_id,
                                 interface
@@ -356,8 +307,13 @@ impl HostService {
                         .copied()
                         .unwrap_or(IdentityResolution::NoStrategy),
                 };
-                if matches!(host, IdentityResolution::NotFound) {
-                    unmatched.push(UnmatchedNeighbour::new(&interface, device_id.clone(), None));
+                if let Some(reason) = UnresolvedReason::from_resolution(host) {
+                    warnings.extend(unmatched_neighbour_warning(
+                        &interface,
+                        device_id.clone(),
+                        None,
+                        reason,
+                    ));
                 }
                 match stats.record_host(host) {
                     None => None,
@@ -379,7 +335,7 @@ impl HostService {
                                 None => port,
                             };
                         if let Some(reason) = UnresolvedReason::from_resolution(port) {
-                            unresolved_ports.push(UnresolvedPort::new(
+                            warnings.push(unresolved_port_warning(
                                 &interface,
                                 host_id,
                                 interface
@@ -415,20 +371,15 @@ impl HostService {
             hosts_resolved = stats.hosts_resolved,
             ports_resolved = stats.ports_resolved,
             ports_resolved_reciprocal = stats.ports_resolved_reciprocal,
+            // The five per-reason failure counters this line used to carry are now exactly the
+            // count of their `DiscoveryWarning`s, and two sources for one number can only
+            // disagree. `host_no_strategy` stays because nothing warns on it: it counts the
+            // `cdp_address`-only rows there was never anything to resolve in.
             host_no_strategy = stats.host_no_strategy,
-            host_not_found = stats.host_not_found,
-            host_ambiguous = stats.host_ambiguous,
-            port_no_strategy = stats.port_no_strategy,
-            port_not_found = stats.port_not_found,
-            port_ambiguous = stats.port_ambiguous,
             reopened,
             rebound,
             "LLDP/CDP link resolution complete"
         );
-
-        let warnings = self
-            .report_unresolved(network_id, &unmatched, &unresolved_ports)
-            .await;
 
         Ok(LldpResolutionOutcome { stats, warnings })
     }
@@ -440,7 +391,7 @@ impl HostService {
     pub async fn append_resolution_warnings(
         &self,
         session_id: Uuid,
-        warnings: Vec<String>,
+        warnings: Vec<DiscoveryWarning>,
     ) -> Result<()> {
         self.discovery_service
             .append_historical_warnings(session_id, warnings)

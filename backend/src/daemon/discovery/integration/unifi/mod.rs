@@ -147,7 +147,7 @@ impl DiscoveryIntegration for UnifiIntegration {
             );
             ctx.ops
                 .record_attempt_failure(
-                    ctx.credential.discovery_label(),
+                    ctx.credential.into(),
                     ctx.ip,
                     AttemptOutcome::CollectionFailed,
                     format!(

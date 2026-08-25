@@ -1,0 +1,72 @@
+//! The event a discovery warning is, once it reaches the server.
+//!
+//! Warnings arrive from two producers that cannot share a carrier any other way: the daemon posts
+//! them on the terminal payload, and LLDP/CDP resolution appends its own *after* that payload has
+//! been written and its `DiscoveryPhase` event published. Hanging codes off `DiscoveryScope` would
+//! therefore have counted the first producer and silently missed the second — and it would have
+//! put a payload list on an identity scope.
+//!
+//! So the warning is its own operation, published once per occurrence by both producers, and the
+//! metrics, analytics and logging subscribers each read it once. That is a fold rather than a
+//! chain: nothing here republishes a fact to inform some other operation's subscriber.
+//!
+//! The code *is* the operation, which is what lets a subscriber filter by code, the metric label by
+//! it directly, and the log line name itself after it.
+
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::daemon::discovery::types::warnings::{DiscoveryWarning, DiscoveryWarningCode};
+use crate::server::credentials::r#impl::mapping::CredentialQueryPayloadDiscriminants;
+use crate::server::shared::events::EventFlags;
+use crate::server::shared::events::traits::{EventFilter, Operation};
+use crate::server::shared::events::types::EventLogLevel;
+
+/// Which run a warning came from, and which integration produced it.
+///
+/// `integration` is on the scope rather than in the operation because it is an identity dimension:
+/// it is the metric's second label, and the bus's whole shape puts those on the scope. `warning`
+/// rides along so the log line carries the occurrence's own evidence — the address, the counts, the
+/// library's diagnostic — which is the thing that used to exist only in a `tracing::warn!` the
+/// operator could not read.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct DiscoveryWarningScope {
+    pub network_id: Uuid,
+    pub session_id: Uuid,
+    pub daemon_id: Uuid,
+    /// `None` for the scan-level and link-resolution findings, which belong to the pipeline rather
+    /// than to any one integration. It becomes the metric's `none` label rather than being dropped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integration: Option<CredentialQueryPayloadDiscriminants>,
+    pub warning: DiscoveryWarning,
+}
+
+impl Operation for DiscoveryWarningCode {
+    type Scope = DiscoveryWarningScope;
+    type Flags = EventFlags;
+    type Filter = EventFilter<DiscoveryWarningCode>;
+
+    fn log_level(&self) -> EventLogLevel {
+        // Every one of these is a non-fatal finding by construction — a fatal one sets `error` on
+        // the payload and fails the run instead.
+        EventLogLevel::Warn
+    }
+}
+
+impl DiscoveryWarningScope {
+    /// The scope for one warning from one session.
+    pub fn new(
+        network_id: Uuid,
+        session_id: Uuid,
+        daemon_id: Uuid,
+        warning: DiscoveryWarning,
+    ) -> Self {
+        Self {
+            network_id,
+            session_id,
+            daemon_id,
+            integration: warning.integration(),
+            warning,
+        }
+    }
+}

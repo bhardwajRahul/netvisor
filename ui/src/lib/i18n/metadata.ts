@@ -19,6 +19,50 @@ interface TranslatableField {
 	options?: { value: string; label: string }[];
 }
 
+/**
+ * Fill `{named}` slots in a fixture string, for the fallback path only.
+ *
+ * Paraglide does the interpolation on the translated path; this exists for when no message is
+ * compiled for a key, which would otherwise show the operator a raw `{addresses}`.
+ */
+function interpolate(template: string, params: Record<string, unknown>): string {
+	return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
+		name in params ? String(params[name]) : whole
+	);
+}
+
+/**
+ * Resolve a fixture item's translated description and fill its slots.
+ *
+ * Separate from `metaDescription` because a message with slots compiles to a function that
+ * *requires* an inputs object — calling it with none, as `resolveMeta` does, throws and silently
+ * degrades to the untranslated fixture string. Modelled on `translateError` in ./errors.ts, which
+ * has the same shape for the same reason.
+ */
+export function metaDescriptionWith(
+	fixtureKey: string,
+	id: string | null,
+	params: Record<string, unknown>,
+	fallback: string
+): string {
+	if (!id) return interpolate(fallback, params);
+
+	const key = `meta_${fixtureKey}_${id}_description`;
+	const messageFn = m[key as keyof typeof m] as
+		| ((inputs: Record<string, unknown>) => string)
+		| undefined;
+
+	if (typeof messageFn === 'function') {
+		try {
+			return messageFn(params);
+		} catch {
+			// Fall through to the fixture string, interpolated the same way.
+		}
+	}
+
+	return interpolate(fallback, params);
+}
+
 function resolveMeta(key: string, fallback: string): string {
 	const messageFn = m[key as keyof typeof m] as (() => string) | undefined;
 
