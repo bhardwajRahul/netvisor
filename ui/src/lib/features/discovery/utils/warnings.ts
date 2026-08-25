@@ -253,6 +253,20 @@ function attemptParams(
 }
 
 /**
+ * Join the two ends of a neighbour relation.
+ *
+ * The arrow only carries meaning with something on both sides. A host deleted since the scan, or a
+ * device that reported no interface description, can empty one end — and `-> TAMMIERENEW` or
+ * `1/1 -> via InterfaceName("1/1")` reads as a rendering fault rather than as missing data. Drop
+ * the arrow instead and show the end that survived.
+ */
+function arrow(near: string, far: string): string {
+	if (!near) return far;
+	if (!far) return near;
+	return `${near} -> ${far}`;
+}
+
+/**
  * `switch7 Gi1/0/1 -> 00:ad:24:89:cc:f0 (core-sw)`.
  *
  * Which of our devices saw the neighbour leads the line, because it is the first thing an operator
@@ -265,8 +279,9 @@ function describeNeighbour(
 	w: { host_id: string; if_descr: string; identifier: string; sys_name?: string | null },
 	hostName: HostNameLookup
 ): string {
+	const near = [hostName(w.host_id), w.if_descr].filter(Boolean).join(' ');
 	const far = `${w.identifier}${w.sys_name ? ` (${w.sys_name})` : ''}`;
-	return [hostName(w.host_id), w.if_descr, '->', far].filter(Boolean).join(' ');
+	return arrow(near, far);
 }
 
 function neighbourParams(
@@ -300,10 +315,15 @@ function describePort(
 	},
 	hostName: HostNameLookup
 ): string {
-	const id = `via ${w.port_id ?? discovery_warningNoPortId()}${w.port_desc ? ` (${w.port_desc})` : ''}`;
-	return [hostName(w.host_id), w.if_descr, '->', hostName(w.remote_host_id), id]
-		.filter(Boolean)
-		.join(' ');
+	const near = [hostName(w.host_id), w.if_descr].filter(Boolean).join(' ');
+	const desc = w.port_desc ? ` (${w.port_desc})` : '';
+	// "via <id>" when the device advertised one, "with no port id" when it did not — the
+	// distinction the tiers turn on, and the phrasing the prose these replaced used.
+	const id = w.port_id ? `via ${w.port_id}${desc}` : `${discovery_warningNoPortId()}${desc}`;
+	// The port only belongs to something when the far end resolved; without it the arrow points
+	// straight at the identifier that was tried.
+	const remote = hostName(w.remote_host_id);
+	return arrow(near, remote ? `${remote} ${id}` : id);
 }
 
 function portParams(

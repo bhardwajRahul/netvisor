@@ -897,7 +897,7 @@
 	"discovery_upgradeRequiredTitle": "Daemon upgrade required",
 	"discovery_viewRun": "View Discovery Run: {name}",
 	"discovery_warningNoFurtherDetail": "no further detail",
-	"discovery_warningNoPortId": "no port id",
+	"discovery_warningNoPortId": "with no port id",
 	"errors_auth_api_key_required": "API key required",
 	"errors_auth_daemon_key_not_created": "Daemon is trying to register with an API key that has not yet been created",
 	"errors_auth_daemon_not_provisioned": "This daemon must be provisioned before it can register. Provision it in the Scanopy UI and re-run the install command.",
