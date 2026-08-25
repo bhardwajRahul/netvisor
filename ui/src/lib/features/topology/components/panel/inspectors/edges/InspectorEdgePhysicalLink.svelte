@@ -5,11 +5,7 @@
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import type { RenderableTopology } from '$lib/features/topology/types/base';
-	import {
-		common_source,
-		common_target,
-		topology_neighborEvidence
-	} from '$lib/paraglide/messages';
+	import { common_source, common_target, topology_neighborEvidence } from '$lib/paraglide/messages';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { neighborEvidenceTag } from '$lib/shared/utils/freshness';
 	import { formatRelativeTime } from '$lib/shared/utils/formatting';

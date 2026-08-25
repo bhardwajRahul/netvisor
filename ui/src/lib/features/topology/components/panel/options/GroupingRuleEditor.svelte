@@ -243,9 +243,22 @@
 
 	let viewMeta = $derived(viewsJson.find((p) => p.id === currentView));
 
+	/** The element entities this view actually renders, top-level only. */
+	let viewElementEntities = $derived.by((): Entity[] => {
+		const elementEntities =
+			(
+				(viewMeta?.metadata as Record<string, unknown>)?.element_config as
+					| { element_entities?: Array<{ entity_type: Entity; inline_entities: Entity[] }> }
+					| undefined
+			)?.element_entities ?? [];
+		// Top-level entities only: an inline entity is drawn *inside* another element's card
+		// (a Service on an IP address), so it is not what the view is a view of.
+		return [...new SvelteSet(elementEntities.map((config) => config.entity_type))];
+	});
+
 	// Resolve each element entity to its nearest taggable ancestor (or itself
-	// if taggable), deduped — drives both the ByTag rule description and the
-	// "{entity} Grouping" heading.
+	// if taggable), deduped — drives the ByTag rule description, which has to name
+	// what you can actually tag rather than what is on screen.
 	let viewTaggableEntities = $derived.by((): Entity[] => {
 		const elementEntities =
 			(
@@ -270,8 +283,12 @@
 		return [...resolved];
 	});
 
-	let elementGroupingLabel = $derived(formatEntityLabelTitle(viewTaggableEntities));
-	let elementGroupingLabelPlural = $derived(formatEntityLabel(viewTaggableEntities));
+	// Named for what the view renders, not for what those elements can be tagged by: L2 groups
+	// Interfaces and L3 groups IP Addresses, and both resolve to Host for tagging purposes.
+	// Sharing one value made every view whose elements are not themselves taggable name the
+	// wrong thing, while Workloads and Application looked correct only because theirs are.
+	let elementGroupingLabel = $derived(formatEntityLabelTitle(viewElementEntities));
+	let elementGroupingLabelPlural = $derived(formatEntityLabel(viewElementEntities));
 
 	let byTagRuleDescription = $derived(
 		topology_byTagRuleDescription({

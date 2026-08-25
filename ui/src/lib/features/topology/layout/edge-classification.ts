@@ -143,10 +143,7 @@ export function getDefaultHiddenEdgeTypes(view: TopologyView): EdgeTypeDiscrimin
  * silently read as current. Networks still come from the query cache, which is where
  * `currentElementRenderContext` reads them for the node pills.
  */
-export function getLinkEvidenceTag(
-	edge: TopologyEdge,
-	interfaces: Interface[]
-): TagProps | null {
+export function getLinkEvidenceTag(edge: TopologyEdge, interfaces: Interface[]): TagProps | null {
 	if (edge.edge_type !== 'PhysicalLink') return null;
 
 	const networks = queryClient.getQueryData<Network[]>(queryKeys.networks.all) ?? [];

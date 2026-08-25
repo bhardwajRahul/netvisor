@@ -45,7 +45,19 @@ export const ELEMENT_HANDLE_SIZE_PX = 8;
 const EMPTY_HANDLE_SET: ReadonlySet<string> = new Set<string>();
 
 /** Literal width every element card is built at, and the fallback for handle geometry. */
-const ELEMENT_WIDTH_PX = 250;
+export const ELEMENT_WIDTH_PX = 250;
+
+/** Horizontal padding on an element card's text, mirroring `px-2` in `ElementNode.svelte`. */
+const ELEMENT_CARD_PADDING_X_PX = 8;
+
+/**
+ * Width a card's text actually gets, once its padding is taken off.
+ *
+ * Exported because it is the reference anything truncating a name has to match: a card ellipsizes
+ * at this width, so anything wanting to truncate "like a card does" measures against this rather
+ * than repeating the card's dimensions.
+ */
+export const ELEMENT_TEXT_WIDTH_PX = ELEMENT_WIDTH_PX - ELEMENT_CARD_PADDING_X_PX * 2;
 
 /**
  * Stand-in height for handle geometry on a node with no measurement yet.
