@@ -13,6 +13,9 @@ use tempfile::NamedTempFile;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::server::shared::types::metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider};
+use crate::server::shared::types::{Color, Icon};
+
 // Re-export type-specific types so external imports don't break
 pub use super::types::container_proxy::ContainerProxyQueryCredential;
 pub use super::types::instant_on::InstantOnQueryCredential;
@@ -292,7 +295,53 @@ impl CredentialQueryPayload {
             Self::Unknown => "unknown credential",
         }
     }
+}
 
+/// Display metadata for the integration behind a credential.
+///
+/// The discriminant is what a coded scan warning carries, and it needs a name an operator
+/// recognises — "SNMP", not `Snmp`. Distinct from `integrations.json`, which is keyed by display
+/// name and covers the five *integrations*, and from `credential-types.json`, which is keyed by
+/// `CredentialType` (ten variants: SnmpV1/V2c/V3, UnifiApiKey/UnifiLocalAdmin, …). Neither is keyed
+/// by these eight values, so neither can resolve them: reusing the credential-type fixture happened
+/// to work for `DockerProxy` and silently rendered `Snmp`, `UnifiController` and `InstantOn` as
+/// their raw discriminants.
+///
+/// Named to sit inside "the {name} credential", which is the phrasing every credential warning
+/// uses and the one the prose these codes replaced used before them.
+impl HasId for CredentialQueryPayloadDiscriminants {
+    fn id(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl EntityMetadataProvider for CredentialQueryPayloadDiscriminants {
+    fn color(&self) -> Color {
+        Color::Gray
+    }
+
+    fn icon(&self) -> Icon {
+        Icon::KeyRound
+    }
+}
+
+impl TypeMetadataProvider for CredentialQueryPayloadDiscriminants {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Snmp => "SNMP",
+            Self::DockerProxy => "Docker proxy",
+            Self::DockerSocket => "Docker socket",
+            Self::PodmanProxy => "Podman proxy",
+            Self::PodmanSocket => "Podman socket",
+            Self::UnifiController => "UniFi controller",
+            Self::InstantOn => "Instant On portal",
+            // Reachable only from a warning written by a newer binary than this one.
+            Self::Unknown => "unrecognised",
+        }
+    }
+}
+
+impl CredentialQueryPayload {
     /// Resolve all FilePath fields to Value by reading from disk,
     /// then validate PEM contents for fields that require it.
     pub fn resolve_file_paths(&self) -> Result<Self, anyhow::Error> {

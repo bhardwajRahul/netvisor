@@ -67,6 +67,9 @@ export const COVERED_FIXTURES = [
 	{ file: 'warning-codes.json', key: 'warning_codes', kind: 'typeMetadata' },
 	{ file: 'snmp-walk-groups.json', key: 'snmp_walk_groups', kind: 'typeMetadata' },
 	{ file: 'claim-sources.json', key: 'claim_sources', kind: 'typeMetadata' },
+	// Keyed by the credential-query discriminant a warning carries, which credential-types.json
+	// cannot resolve — it is keyed by CredentialType.
+	{ file: 'discovery-integrations.json', key: 'discovery_integrations', kind: 'typeMetadata' },
 	{
 		file: 'malformed-neighbour-consequences.json',
 		key: 'malformed_neighbour_consequences',
