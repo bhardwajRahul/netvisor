@@ -27,6 +27,7 @@
 	import type { FieldDefinition } from '$lib/shared/stores/metadata';
 	import { Eye, EyeOff } from 'lucide-svelte';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
+	import { docsUrl } from '$lib/shared/utils/docs';
 	import {
 		common_name,
 		credentials_credentialType,
@@ -37,10 +38,8 @@
 		credentials_namePlaceholderExample,
 		credentials_secretStoredInDatabase,
 		credentials_typeImmutableWarning,
-		credentials_docsSnmp,
-		credentials_docsSnmpLinkText,
-		credentials_docsDockerProxy,
-		credentials_docsDockerProxyLinkText,
+		credentials_docsIntegration,
+		credentials_docsIntegrationLinkText,
 		daemons_credentialWizardTargetIpHelp,
 		daemons_credentialWizardAddRemoteHostTarget,
 		daemons_credentialWizardAddDaemonHostTarget,
@@ -142,10 +141,14 @@
 	let supportsDaemonHost = $derived(supportedTargets.includes('DaemonHost'));
 	let supportsRemoteHosts = $derived(supportedTargets.includes('Hosts'));
 	let supportsHosts = $derived(supportsDaemonHost || supportsRemoteHosts);
-	// Integration (associated service) name — used in the daemon-host-taken message.
+	// Integration (associated service) name — used in the daemon-host-taken message and the
+	// guide link below.
 	let integrationName = $derived(
 		credentialTypes.getMetadata(selectedTypeId)?.associated_service ?? ''
 	);
+	// Guide for the selected type's integration. Comes from the credential metadata rather than a
+	// branch per type, so every credential type links its guide instead of the two that had one.
+	let integrationDocsPath = $derived(credentialTypes.getMetadata(selectedTypeId)?.docs_path ?? '');
 	// Show the Hosts | Networks toggle only when both modes are available.
 	let showTargetModeToggle = $derived(supportsHosts && supportsNetworks);
 
@@ -841,17 +844,11 @@
 				</div>
 			{/if}
 
-			{#if selectedTypeId === 'SnmpV1' || selectedTypeId === 'SnmpV2c' || selectedTypeId === 'SnmpV3'}
+			{#if integrationDocsPath}
 				<DocsHint
-					text={credentials_docsSnmp()}
-					href="https://scanopy.net/docs/guides/snmp-credentials/"
-					linkText={credentials_docsSnmpLinkText()}
-				/>
-			{:else if selectedTypeId === 'DockerProxy'}
-				<DocsHint
-					text={credentials_docsDockerProxy()}
-					href="https://scanopy.net/docs/guides/docker-proxy/"
-					linkText={credentials_docsDockerProxyLinkText()}
+					text={credentials_docsIntegration()}
+					href={docsUrl(integrationDocsPath)}
+					linkText={credentials_docsIntegrationLinkText({ integration: integrationName })}
 				/>
 			{/if}
 		</div>

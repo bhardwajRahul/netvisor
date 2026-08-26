@@ -295,6 +295,28 @@ impl CredentialTypeDiscriminants {
         }
     }
 
+    /// Path to the documentation guide for the integration this credential targets, relative to
+    /// the site root and with a trailing slash. One arm per associated service, like
+    /// [`integration_discovers`](Self::integration_discovers), because a guide documents the
+    /// integration rather than one of its transports.
+    ///
+    /// Exhaustive (no wildcard): a new credential variant cannot compile until its integration has
+    /// a guide to point at. The website's `check-integration-guides.mjs` asserts each path resolves
+    /// to the guide whose `integration` frontmatter names this service, so the two declarations
+    /// cannot drift apart.
+    ///
+    /// A path rather than a URL: the website consumes it root-relative, and the app composes it
+    /// onto the public docs base itself.
+    pub fn integration_docs_path(&self) -> &'static str {
+        match self {
+            Self::SnmpV1 | Self::SnmpV2c | Self::SnmpV3 => "/docs/guides/integrations/snmp/",
+            Self::DockerProxy | Self::DockerSocket => "/docs/guides/integrations/docker/",
+            Self::PodmanProxy | Self::PodmanSocket => "/docs/guides/integrations/podman/",
+            Self::UnifiApiKey | Self::UnifiLocalAdmin => "/docs/guides/integrations/unifi/",
+            Self::InstantOnAccount => "/docs/guides/integrations/instant-on/",
+        }
+    }
+
     /// Transport-specific note appended after the canonical discovery text. This is
     /// the only per-transport prose; the shared "what's discovered" stem lives in
     /// [`integration_discovers`](Self::integration_discovers).
@@ -436,6 +458,9 @@ impl CredentialTypeDiscriminants {
             // Whether the vendor publishes this API. Orthogonal to `stability` — an integration
             // can be fully validated and still be riding an undocumented endpoint.
             "upstream_support": self.upstream_support(),
+            // Guide for this credential's integration, path-only. The form links it for every
+            // type rather than the two it used to hardcode.
+            "docs_path": self.integration_docs_path(),
             "associated_service": ServiceDefinition::name(&*service),
             "has_logo": service.has_logo(),
             "logo_ext": logo_ext,

@@ -79,6 +79,9 @@ export interface CredentialTypeMetadata {
 	 *  "Unofficial API" tag but stay selectable. A separate axis from `stability`: an integration
 	 *  can be fully validated and still ride an endpoint the vendor never published. */
 	upstream_support?: components['schemas']['UpstreamSupport'];
+	/** Guide for this type's integration, root-relative and trailing-slashed
+	 *  (`/docs/guides/integrations/snmp/`). Compose onto the docs origin with `docsUrl`. */
+	docs_path?: string;
 	/** Whether the associated service has a logo */
 	has_logo?: boolean;
 	/** Whether the logo needs a white background */
