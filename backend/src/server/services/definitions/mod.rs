@@ -55,6 +55,7 @@ impl ServiceDefinitionRegistry {
 // NetworkCore
 pub mod dhcp_server;
 pub mod gateway;
+pub mod gnmi;
 pub mod ntp;
 pub mod rdp;
 pub mod rustdesk;
