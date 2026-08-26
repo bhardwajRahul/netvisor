@@ -50,7 +50,7 @@ use crate::server::{
     shares::r#impl::base::{Share, ShareBase, ShareOptions},
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
-        types::SubnetType,
+        types::{SubnetCidrSource, SubnetType},
     },
     tags::r#impl::base::{Tag, TagBase},
     topology::types::{
@@ -561,6 +561,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 1, 0), 24).unwrap()),
                 network_id: hq.id,
                 name: "HQ Management".to_string(),
@@ -582,6 +583,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 10, 0), 24).unwrap()),
                 network_id: hq.id,
                 name: "HQ Office LAN".to_string(),
@@ -603,6 +605,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 20, 0), 24).unwrap()),
                 network_id: hq.id,
                 name: "HQ Servers".to_string(),
@@ -624,6 +627,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 40, 0), 24).unwrap()),
                 network_id: hq.id,
                 name: "HQ Storage".to_string(),
@@ -645,6 +649,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 30, 0), 24).unwrap()),
                 network_id: hq.id,
                 name: "HQ IoT".to_string(),
@@ -666,6 +671,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 17, 0, 0), 16).unwrap()),
                 network_id: hq.id,
                 name: "HQ Docker Bridge".to_string(),
@@ -687,6 +693,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 100, 0), 24).unwrap()),
                 network_id: hq.id,
                 name: "HQ Guest WiFi".to_string(),
@@ -709,6 +716,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 24).unwrap()),
                 network_id: dc.id,
                 name: "DC Management".to_string(),
@@ -730,6 +738,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 16, 10, 0), 24).unwrap()),
                 network_id: dc.id,
                 name: "DC Compute".to_string(),
@@ -751,6 +760,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 16, 20, 0), 24).unwrap()),
                 network_id: dc.id,
                 name: "DC Storage".to_string(),
@@ -772,6 +782,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 16, 30, 0), 24).unwrap()),
                 network_id: dc.id,
                 name: "DC DMZ".to_string(),
@@ -793,6 +804,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 18, 0, 0), 16).unwrap()),
                 network_id: dc.id,
                 name: "DC Docker Bridge".to_string(),
@@ -814,6 +826,7 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 8, 0, 0), 24).unwrap()),
                 network_id: dc.id,
                 name: "DC VPN Tunnel".to_string(),

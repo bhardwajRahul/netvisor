@@ -18,7 +18,7 @@ use crate::server::{
     shared::{storage::traits::Storable, types::entities::EntitySource},
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
-        types::SubnetType,
+        types::{SubnetCidrSource, SubnetType},
     },
     users::r#impl::base::{User, UserBase},
 };
@@ -46,6 +46,8 @@ be found by scanning. Create ip_addresses on this subnet to include them in your
                 .to_string(),
         ),
         subnet_type: SubnetType::Internet,
+        // Seeded by Scanopy on purpose, so it must never read as a guess to confirm.
+        cidr_source: SubnetCidrSource::Observed,
         virtualization_service_id: None,
         source: EntitySource::System,
     };
@@ -68,6 +70,7 @@ subnet to include them in your topology."
                 .to_string(),
         ),
         subnet_type: SubnetType::Remote,
+        cidr_source: SubnetCidrSource::Observed,
         virtualization_service_id: None,
         source: EntitySource::System,
     };

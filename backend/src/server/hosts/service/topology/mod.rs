@@ -63,6 +63,29 @@ fn unmatched_neighbour_warning(
     }
 }
 
+/// The far end behind a `NotFound` warning, where it published somewhere it lives.
+///
+/// Derived at exactly the sites that warn, so what an operator is told and what a range is inferred
+/// from can never be two different populations. `Ambiguous` is excluded on purpose: it means the
+/// identifier names several hosts this network already holds, so the range is known and the problem
+/// is duplicate records.
+fn unplaced_far_end(interface: &Interface, reason: UnresolvedReason) -> Option<UnplacedFarEnd> {
+    if reason != UnresolvedReason::NotFound {
+        return None;
+    }
+    Some(UnplacedFarEnd {
+        host_id: interface.base.host_id,
+        if_descr: interface.base.if_descr.clone(),
+        sys_name: interface
+            .base
+            .lldp_sys_name
+            .clone()
+            .or_else(|| interface.base.cdp_device_id.clone()),
+        address: interface.advertised_identity().address?,
+        vlan_id: interface.base.native_vlan_id,
+    })
+}
+
 /// The warning for a neighbour whose far-end *device* is known but whose port is not.
 ///
 /// This is the row that draws a device-level edge instead of a port-to-port one — the "attached to
@@ -109,7 +132,10 @@ struct NeighborAdjacency {
     reciprocal: HashMap<Uuid, (Uuid, Uuid)>,
 }
 
+mod inference;
 mod reciprocal;
+
+use inference::UnplacedFarEnd;
 
 use reciprocal::PortBinding;
 
@@ -169,6 +195,10 @@ impl HostService {
         // expected case) from a resolution defect without knowing *which* devices they are
         // (GH #668).
         let mut warnings: Vec<DiscoveryWarning> = Vec::new();
+        // Far ends that told us where they live and still matched nothing. Pooled across the whole
+        // network rather than per device: two switches naming far ends in one range must produce
+        // one subnet, and only the server sees both.
+        let mut unplaced: Vec<UnplacedFarEnd> = Vec::new();
         let mut reopened = 0usize;
         let mut rebound = 0usize;
 
@@ -246,6 +276,7 @@ impl HostService {
                         interface.base.lldp_sys_name.clone(),
                         reason,
                     ));
+                    unplaced.extend(unplaced_far_end(&interface, reason));
                 }
                 match stats.record_host(host) {
                     None => None,
@@ -318,6 +349,7 @@ impl HostService {
                         None,
                         reason,
                     ));
+                    unplaced.extend(unplaced_far_end(&interface, reason));
                 }
                 match stats.record_host(host) {
                     None => None,
@@ -376,6 +408,7 @@ impl HostService {
                         None,
                         reason,
                     ));
+                    unplaced.extend(unplaced_far_end(&interface, reason));
                 }
                 // No port id of any kind on this row, so a resolved device stays device-level.
                 stats.record_host(host).map(Neighbor::Host)
@@ -389,6 +422,10 @@ impl HostService {
             self.persist_neighbor(&mut interface, &original_neighbor)
                 .await?;
         }
+
+        // Ranges implied by the far ends nothing could place. After the loop rather than inside it:
+        // this is a question about the whole network's evidence, not about any one interface.
+        warnings.extend(self.infer_far_end_subnets(network_id, unplaced).await?);
 
         tracing::info!(
             network_id = %network_id,

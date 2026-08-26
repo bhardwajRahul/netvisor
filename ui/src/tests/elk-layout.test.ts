@@ -99,6 +99,7 @@ function makeSubnet(id: string, subnetType: SubnetType): Subnet {
 	return {
 		id,
 		name: `subnet-${subnetType}`,
+		cidr_source: 'Observed',
 		subnet_type: subnetType,
 		network_id: uuid(),
 		cidr: '10.0.0.0/24',

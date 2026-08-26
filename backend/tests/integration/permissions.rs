@@ -11,7 +11,7 @@ use scanopy::server::networks::r#impl::{Network, NetworkBase};
 use scanopy::server::shared::storage::traits::Storable;
 use scanopy::server::shared::types::entities::EntitySource;
 use scanopy::server::subnets::r#impl::base::{Subnet, SubnetBase};
-use scanopy::server::subnets::r#impl::types::SubnetType;
+use scanopy::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
 use std::net::Ipv4Addr;
 use uuid::Uuid;
 
@@ -170,6 +170,7 @@ async fn test_cannot_create_subnet_on_other_network(
     println!("Testing: Cannot create subnet on inaccessible network...");
 
     let subnet = Subnet::new(SubnetBase {
+        cidr_source: SubnetCidrSource::Observed,
         name: "Unauthorized Subnet".to_string(),
         description: None,
         network_id: other_network_id, // Network user doesn't have access to

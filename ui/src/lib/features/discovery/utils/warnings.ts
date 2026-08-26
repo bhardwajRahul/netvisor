@@ -25,6 +25,8 @@ import {
 	common_andNMore,
 	discovery_warningNoFurtherDetail,
 	discovery_warningAtAddress,
+	discovery_warningInferredFrom,
+	discovery_warningSeenBy,
 	discovery_warningNoPortId
 } from '$lib/paraglide/messages';
 
@@ -198,6 +200,14 @@ const WARNING_PARAMS = {
 	LldpPortNotFound: portParams,
 	LldpPortAmbiguous: portParams,
 
+	ProvisionalSubnetInferred: (w, hostName) => ({
+		count: w.length,
+		examples: joinList(
+			w.map((x) => describeProvisionalSubnet(x, hostName)),
+			'conjunction'
+		)
+	}),
+
 	WarningsTruncated: (w) => ({ elided: sum(w.map((x) => x.elided)) }),
 	// The whole sentence *is* the detail: a warning from another version, or one written before
 	// warnings were coded at all. Rendered one per occurrence, so this only ever sees one.
@@ -337,6 +347,31 @@ function describePort(
 	// straight at the identifier that was tried.
 	const remote = hostName(w.remote_host_id);
 	return arrow(near, remote ? `${remote} ${id}` : id);
+}
+
+/**
+ * `10.20.30.0/24, from offsite-core-01 (10.20.30.11) and offsite-edge-01 (10.20.30.24) seen by
+ * switch-offsite-01`.
+ *
+ * Names the far ends rather than only the range, because "we invented a subnet" is not something an
+ * operator can act on: the labels are what let them recognise a segment as real, spot a device with
+ * a factory-default address, or decide the range needs correcting.
+ */
+function describeProvisionalSubnet(
+	w: WarningOf<'ProvisionalSubnetInferred'>,
+	hostName: HostNameLookup
+): string {
+	// Paired positionally where both are present: `sys_names` omits far ends that sent none, so a
+	// group where only some did would otherwise misalign names against addresses.
+	const named =
+		w.sys_names.length === w.addresses.length
+			? w.addresses.map((address, i) => `${w.sys_names[i]} (${address})`)
+			: w.addresses;
+	const seenBy = [...new Set(w.seen_by_host_ids.map(hostName).filter(Boolean))] as string[];
+	const from = discovery_warningInferredFrom({ far_ends: joinList(named, 'conjunction') });
+	return seenBy.length
+		? `${w.cidr}, ${from} ${discovery_warningSeenBy({ devices: joinList(seenBy, 'conjunction') })}`
+		: `${w.cidr}, ${from}`;
 }
 
 function portParams(

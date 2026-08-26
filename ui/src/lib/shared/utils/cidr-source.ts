@@ -1,0 +1,70 @@
+/**
+ * The badge that says a subnet's range was assumed rather than read.
+ *
+ * One definition, rendered by the shared `Tag` wherever a subnet appears — the subnet list, the
+ * topology inspector, a picker — for the same reason `getFreshnessTag` is one definition: a subnet
+ * and the same subnet drawn somewhere else must not disagree about how much it is trusted, or look
+ * different when they say it.
+ *
+ * Colour is deliberately neither of the two already spoken for. `getFreshnessTag` owns amber
+ * ("behind"), `getDaemonStatusTag` owns red ("broken"), and this is neither: the range is probably
+ * right and nothing is wrong — an operator is being asked to confirm a guess. As with those, the
+ * label carries the meaning without relying on colour.
+ */
+
+import { HelpCircle } from 'lucide-svelte';
+
+import type { components } from '$lib/api/schema';
+import type { CardFieldItem, TagProps } from '$lib/shared/components/data/types';
+import { subnets_rangeAssumed, subnets_rangeAssumedDetail } from '$lib/paraglide/messages';
+import { toColor } from '$lib/shared/utils/styling';
+
+/** Derived from the backend enum rather than restated, so a new rung cannot drift out of sync. */
+export type SubnetCidrSource = components['schemas']['SubnetCidrSource'];
+
+/**
+ * The shape these read: any subnet, and any older payload that predates the column.
+ *
+ * Optional rather than required so a historical scan record or a cached response without it reads
+ * as settled instead of throwing — an absent rung is not a guess.
+ */
+type WithCidrSource = { cidr_source?: SubnetCidrSource };
+
+/** Whether this subnet's range is a guess awaiting confirmation. */
+export function isProvisionalCidr(subnet: WithCidrSource): boolean {
+	return subnet.cidr_source === 'Inferred';
+}
+
+/**
+ * The provisional-range tag, or `null` when there is nothing to say.
+ *
+ * `null` for `Observed` and `Confirmed` alike: a range read off a device and one a person typed are
+ * both settled, and the badge exists only to mark the third case.
+ */
+export function getCidrSourceTag(subnet: WithCidrSource): TagProps | null {
+	if (!isProvisionalCidr(subnet)) return null;
+	return {
+		label: subnets_rangeAssumed(),
+		color: toColor('indigo'),
+		icon: HelpCircle,
+		title: subnets_rangeAssumedDetail()
+	};
+}
+
+/**
+ * The badge as a data-table field item, for the `cidr` column.
+ *
+ * Sits beside the range rather than in a column of its own: the claim is about *that value*, and a
+ * separate column would read as an attribute of the subnet instead of a caveat on its CIDR.
+ */
+export function cidrSourceItems<T extends WithCidrSource>(): (
+	subnet: T
+) => CardFieldItem[] | undefined {
+	return (subnet) => {
+		const tag = getCidrSourceTag(subnet);
+		if (!tag) return undefined;
+		return [
+			{ id: 'inferred-cidr', label: tag.label, color: tag.color, icon: tag.icon, title: tag.title }
+		];
+	};
+}

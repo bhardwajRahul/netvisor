@@ -1844,11 +1844,12 @@ mod tests {
     use super::*;
     use crate::server::shared::storage::traits::Storable;
     use crate::server::subnets::r#impl::base::SubnetBase;
-    use crate::server::subnets::r#impl::types::SubnetType;
+    use crate::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
     use std::str::FromStr;
 
     fn subnet(cidr: &str) -> Subnet {
         Subnet::new(SubnetBase {
+            cidr_source: SubnetCidrSource::Observed,
             cidr: cidr::IpCidr::from_str(cidr).unwrap(),
             network_id: uuid::Uuid::new_v4(),
             name: cidr.to_string(),

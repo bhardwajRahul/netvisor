@@ -22,7 +22,7 @@ use crate::server::{
     },
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
-        types::SubnetType,
+        types::{SubnetCidrSource, SubnetType},
     },
     topology::types::edges::EdgeStyle,
     users::r#impl::base::{User, UserBase},
@@ -156,6 +156,7 @@ pub fn port(network_id: &Uuid, host_id: &Uuid) -> Port {
 
 pub fn subnet(network_id: &Uuid) -> Subnet {
     Subnet::new(SubnetBase {
+        cidr_source: SubnetCidrSource::Observed,
         name: "Test Subnet".to_string(),
         description: None,
         network_id: *network_id,

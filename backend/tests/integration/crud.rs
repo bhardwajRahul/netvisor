@@ -14,7 +14,7 @@ use scanopy::server::shared::storage::traits::Storable;
 use scanopy::server::shared::types::Color;
 use scanopy::server::shared::types::entities::EntitySource;
 use scanopy::server::subnets::r#impl::base::{Subnet, SubnetBase};
-use scanopy::server::subnets::r#impl::types::SubnetType;
+use scanopy::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
 use scanopy::server::tags::r#impl::base::{Tag, TagBase};
 use scanopy::server::topology::types::edges::EdgeStyle;
 use scanopy::server::user_api_keys::r#impl::api::UserApiKeyResponse;
@@ -50,6 +50,7 @@ async fn test_subnet_crud(ctx: &TestContext) -> Result<(), String> {
     println!("Testing Subnet CRUD...");
 
     let subnet = Subnet::new(SubnetBase {
+        cidr_source: SubnetCidrSource::Observed,
         name: "Test Subnet".to_string(),
         description: Some("Test description".to_string()),
         network_id: ctx.network_id,
@@ -586,6 +587,7 @@ async fn test_user_api_key_authentication(ctx: &TestContext) -> Result<(), Strin
 
     // Test: Access POST /api/v1/subnets with Bearer token (should fail - requires Member)
     let test_subnet = Subnet::new(SubnetBase {
+        cidr_source: SubnetCidrSource::Observed,
         name: "API Key Test Subnet".to_string(),
         description: None,
         network_id: ctx.network_id,
@@ -892,6 +894,7 @@ async fn test_user_api_key_network_access(ctx: &TestContext) -> Result<(), Strin
 
     // Create a subnet on the other network to query
     let other_subnet = Subnet::new(SubnetBase {
+        cidr_source: SubnetCidrSource::Observed,
         name: "Other Network Subnet".to_string(),
         description: None,
         network_id: other_network.id,

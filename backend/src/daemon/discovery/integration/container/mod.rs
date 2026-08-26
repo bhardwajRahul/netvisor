@@ -29,7 +29,7 @@ use crate::server::services::r#impl::virtualization::{
 use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
-use crate::server::subnets::r#impl::types::SubnetType;
+use crate::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
 
 use super::{
     Checkpoint, CollectionShortfall, Completeness, ProbeContext, ProbeFailure, ProbeSuccess,
@@ -127,6 +127,7 @@ impl ContainerRuntime {
             (subnet_type == bridge_subnet_type).then_some(runtime_service_id);
 
         Some(Subnet::new(SubnetBase {
+            cidr_source: SubnetCidrSource::Observed,
             cidr,
             description: None,
             tags: Vec::new(),

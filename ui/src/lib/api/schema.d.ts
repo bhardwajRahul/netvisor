@@ -6888,6 +6888,9 @@ export interface components {
         }) | (components["schemas"]["UnresolvedPort"] & {
             /** @enum {string} */
             code: "LldpPortAmbiguous";
+        }) | (components["schemas"]["ProvisionalSubnet"] & {
+            /** @enum {string} */
+            code: "ProvisionalSubnetInferred";
         }) | {
             /** @enum {string} */
             code: "WarningsTruncated";
@@ -10443,12 +10446,21 @@ export interface components {
              */
             readonly valid_to?: string | null;
         };
+        SubnetCidrSource: "Inferred" | "Observed" | "Confirmed";
         SubnetBase: {
             /**
              * @description Subnet in CIDR notation, IPv4 or IPv6.
              * @example 192.168.1.0/24
              */
             cidr: string;
+            /**
+             * @description How far [`Self::cidr`] can be trusted.
+             *
+             *     Written only by [`SubnetBase::apply_cidr`], which is what keeps the pair from drifting: a
+             *     range and the confidence in it are one fact, and assigning `cidr` alone is how a guess ends
+             *     up indistinguishable from a reading.
+             */
+            cidr_source: components["schemas"]["SubnetCidrSource"];
             /** @description Free-text notes about the subnet. */
             description?: string | null;
             /** @description Human-facing name for this subnet. */
@@ -10865,6 +10877,27 @@ export interface components {
         /** @description No payload. Present only so the envelope keeps its shape. */
         TupleUnit: Record<string, never>;
         /** @description A neighbour advertised by a local interface whose far end could not be placed on a host. */
+        ProvisionalSubnet: {
+            /** @description The addresses that motivated it, in the order observed. */
+            addresses: string[];
+            /** @description The range, in CIDR notation. */
+            cidr: string;
+            /** @description The local devices that saw them. */
+            seen_by_host_ids: string[];
+            /**
+             * Format: uuid
+             * @description The subnet row created for it, so the UI can link straight to it.
+             */
+            subnet_id: string;
+            /** @description The far ends' own `sysName`s, where they sent any — the labels an operator recognises. */
+            sys_names: string[];
+            /**
+             * @description Whether a shared VLAN widened the range past the conventional prefix, rather than it being
+             *     the `/24` (or `/64`) a lone address is assumed to sit in. The difference is how much the
+             *     range rests on evidence versus on convention.
+             */
+            widened_by_vlan: boolean;
+        };
         UnmatchedNeighbour: {
             /**
              * @description The address the far end published for itself — `lldpRemManAddr`, a `NetworkAddress` port
