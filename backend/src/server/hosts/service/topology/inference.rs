@@ -32,6 +32,8 @@ use cidr::{IpCidr, Ipv4Cidr, Ipv6Cidr};
 use uuid::Uuid;
 
 use crate::daemon::discovery::types::warnings::ProvisionalSubnet;
+use crate::server::ip_addresses::r#impl::base::IPAddressBase;
+use crate::server::networks::r#impl::Network;
 use crate::server::subnets::r#impl::{
     base::SubnetBase,
     types::{SubnetCidrSource, SubnetType},
@@ -59,6 +61,10 @@ pub(super) struct UnplacedFarEnd {
     pub if_descr: String,
     /// The far end's own `sysName`, where it sent one. The label an operator recognises.
     pub sys_name: Option<String>,
+    /// The chassis identifier it advertised, canonicalised the way a scanned device's own
+    /// `lldpLocChassisId` is stored — which is what lets the minted host merge with the real one
+    /// on `select_matching_host`'s chassis tier the moment anything scans it.
+    pub chassis_id: String,
     /// The address it published. Already filtered by `is_usable_identity_address`.
     pub address: IpAddr,
     /// The VLAN the seeing port carries, where the bridge tables gave one.
@@ -289,6 +295,7 @@ impl HostService {
         &self,
         network_id: Uuid,
         far_ends: Vec<UnplacedFarEnd>,
+        limit_ctx: Option<&HostLimitContext>,
     ) -> Result<Vec<DiscoveryWarning>> {
         if far_ends.is_empty() {
             return Ok(Vec::new());
@@ -346,6 +353,9 @@ impl HostService {
                 "Inferred a subnet from far-end addresses"
             );
 
+            self.mint_far_end_hosts(network_id, &created, &range.far_ends, limit_ctx)
+                .await;
+
             warnings.push(DiscoveryWarning::ProvisionalSubnetInferred(
                 ProvisionalSubnet {
                     cidr: range.cidr.to_string(),
@@ -379,6 +389,7 @@ mod tests {
             host_id: Uuid::new_v4(),
             if_descr: "Gi0/1".to_string(),
             sys_name: Some("far-end".to_string()),
+            chassis_id: "00:ad:24:89:cc:f0".to_string(),
             address: address.parse().unwrap(),
             vlan_id,
         }
@@ -547,5 +558,133 @@ mod tests {
             &[],
         );
         assert_eq!(cidrs(&one), cidrs(&other));
+    }
+}
+
+impl HostService {
+    /// The plan limit that applies to hosts on this network, or `None` where the plan sets none.
+    ///
+    /// Best-effort by design: a network or organization that cannot be read yields no context, and
+    /// the mint proceeds ungated rather than the whole resolution pass failing over a lookup. The
+    /// alternative — treating an unreadable plan as a full one — would silently stop drawing links
+    /// on a healthy fleet.
+    pub(super) async fn host_limit_context(&self, network_id: Uuid) -> Option<HostLimitContext> {
+        let network = self.network_service.get_by_id(&network_id).await.ok()??;
+        let org_id = network.base.organization_id;
+        let plan = self
+            .organization_service
+            .get_by_id(&org_id)
+            .await
+            .ok()?
+            .and_then(|o| o.base.plan)
+            .unwrap_or_else(crate::server::billing::plans::get_free_plan);
+
+        let limit = plan.host_limit()?;
+        let org_network_ids = self
+            .network_service
+            .get_all(StorableFilter::<Network>::new_from_org_id(&org_id))
+            .await
+            .unwrap_or_default()
+            .iter()
+            .map(|n| n.id)
+            .collect();
+
+        Some(HostLimitContext {
+            limit,
+            org_id,
+            org_network_ids,
+            plan,
+        })
+    }
+
+    /// Mint a host for each far end now that there is a subnet to place it in.
+    ///
+    /// The same thing `ControllerIdentity::into_host` does for a device a controller reports but
+    /// the sweep never scanned, and deliberately through the same pipeline: `create_with_children`
+    /// runs `select_matching_host` first, so a far end whose address or chassis id this network
+    /// already holds updates that host instead of duplicating it. Minting is only ever the
+    /// *fallback*, which is what keeps a device from appearing twice.
+    ///
+    /// `limit_ctx` is what makes the plan's host limit apply here at all. Both existing gates sit
+    /// on paths this one does not take, so without it minting would quietly outrun a limit while
+    /// still counting towards the number a customer is shown.
+    ///
+    /// Nothing here fails the pass. Link resolution is the caller's job, and a far end that cannot
+    /// be minted — because the plan is full, or because two sessions raced — is one missing host,
+    /// not a reason to lose every link the pass resolved.
+    async fn mint_far_end_hosts(
+        &self,
+        network_id: Uuid,
+        subnet: &Subnet,
+        far_ends: &[UnplacedFarEnd],
+        limit_ctx: Option<&HostLimitContext>,
+    ) {
+        // One host per address: several ports naming the same far end is one device, and minting
+        // per sighting would put a row on the map for every cable.
+        let mut minted: HashSet<IpAddr> = HashSet::new();
+
+        for far_end in far_ends {
+            if !minted.insert(far_end.address) {
+                continue;
+            }
+
+            let mut host = Host::new(HostBase {
+                network_id,
+                // Reported by something else and never contacted. Distinct from `Discovery` so a
+                // host with no ports and no services is not read as a device that is merely down,
+                // and promoted the moment a scan reaches it.
+                source: EntitySource::Inferred,
+                // The neighbour's advertised sysName is matched against this column by the
+                // resolution ladder, so recording it is what lets the *next* pass place this far
+                // end without re-deriving anything.
+                sys_name: far_end.sys_name.clone(),
+                chassis_id: Some(far_end.chassis_id.clone()),
+                ..Default::default()
+            });
+            // Ranked, not assigned: a sysName is reverse-DNS-grade evidence, so a real scan's
+            // hostname or a name a person types still outranks it.
+            host.base.apply_name(match &far_end.sys_name {
+                Some(name) => HostName::Hostname(name.clone()),
+                None => HostName::Ip(far_end.address),
+            });
+            host.last_seen_at = Utc::now();
+
+            let ip_address = IPAddress::new(IPAddressBase {
+                network_id,
+                host_id: Uuid::nil(), // Server assigns.
+                subnet_id: subnet.id,
+                ip_address: far_end.address,
+                mac_address: None,
+                name: None,
+                position: 0,
+            });
+
+            if let Err(e) = self
+                .create_with_children(
+                    host,
+                    vec![ip_address],
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    ConflictBehavior::Upsert,
+                    AuthenticatedEntity::System,
+                    limit_ctx,
+                    // A neighbour sees an address and a name, never an ifTable. Claiming an
+                    // authoritative empty one here would tear down interfaces a later SNMP walk of
+                    // the same host collected.
+                    false,
+                    InterfaceDataComplete::none(),
+                )
+                .await
+            {
+                tracing::warn!(
+                    network_id = %network_id,
+                    address = %far_end.address,
+                    error = %e,
+                    "Could not mint a host for an unplaceable far end"
+                );
+            }
+        }
     }
 }

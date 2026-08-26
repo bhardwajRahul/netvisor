@@ -7225,6 +7225,9 @@ export interface components {
             type: "DiscoveryWithMatch";
         } | {
             /** @enum {string} */
+            type: "Inferred";
+        } | {
+            /** @enum {string} */
             type: "Unknown";
         };
         EsxiVirtualization: {

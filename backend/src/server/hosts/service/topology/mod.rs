@@ -73,6 +73,17 @@ fn unplaced_far_end(interface: &Interface, reason: UnresolvedReason) -> Option<U
     if reason != UnresolvedReason::NotFound {
         return None;
     }
+    // The chassis id for LLDP, the device id for CDP. Both are what the far end calls itself, and
+    // both are stored the way a scanned device's own identity is, so either can be the hinge the
+    // minted host later merges on.
+    let chassis_id = interface
+        .base
+        .lldp_chassis_id
+        .as_ref()
+        .map(|id| id.identifier())
+        .or_else(|| interface.base.cdp_device_id.clone())
+        .filter(|id| !id.trim().is_empty())?;
+
     Some(UnplacedFarEnd {
         host_id: interface.base.host_id,
         if_descr: interface.base.if_descr.clone(),
@@ -81,6 +92,7 @@ fn unplaced_far_end(interface: &Interface, reason: UnresolvedReason) -> Option<U
             .lldp_sys_name
             .clone()
             .or_else(|| interface.base.cdp_device_id.clone()),
+        chassis_id,
         address: interface.advertised_identity().address?,
         vlan_id: interface.base.native_vlan_id,
     })
@@ -132,6 +144,15 @@ struct NeighborAdjacency {
     reciprocal: HashMap<Uuid, (Uuid, Uuid)>,
 }
 
+/// What one resolution pass concluded.
+struct NeighbourPass {
+    stats: LldpResolutionStats,
+    warnings: Vec<DiscoveryWarning>,
+    /// Far ends that published an address and still matched nothing — the evidence the inference
+    /// runs on, and empty on the second pass for anything the first one caused to be minted.
+    unplaced: Vec<UnplacedFarEnd>,
+}
+
 mod inference;
 mod reciprocal;
 
@@ -155,7 +176,13 @@ impl HostService {
     /// - Partial resolution: Only host identified → `Neighbor::Host(id)`
     ///
     /// Returns the statistics and the operator-facing summary of what could not be placed.
-    pub async fn resolve_lldp_links(&self, network_id: Uuid) -> Result<LldpResolutionOutcome> {
+    /// Resolve every neighbour once, and report the far ends nothing could place.
+    ///
+    /// Split out from [`Self::resolve_lldp_links`] so it can be run a second time after far-end
+    /// subnets and hosts have been minted: those hosts are resolvable the moment they exist, and
+    /// re-running here is the difference between a link appearing now and appearing after the next
+    /// scan.
+    async fn resolve_neighbours_once(&self, network_id: Uuid) -> Result<NeighbourPass> {
         let resolver = LldpResolverImpl::new(
             self.interface_service.clone(),
             self.ip_address_service.clone(),
@@ -423,10 +450,6 @@ impl HostService {
                 .await?;
         }
 
-        // Ranges implied by the far ends nothing could place. After the loop rather than inside it:
-        // this is a question about the whole network's evidence, not about any one interface.
-        warnings.extend(self.infer_far_end_subnets(network_id, unplaced).await?);
-
         tracing::info!(
             network_id = %network_id,
             total = stats.total,
@@ -443,7 +466,52 @@ impl HostService {
             "LLDP/CDP link resolution complete"
         );
 
-        Ok(LldpResolutionOutcome { stats, warnings })
+        Ok(NeighbourPass {
+            stats,
+            warnings,
+            unplaced,
+        })
+    }
+
+    /// Resolve LLDP links for all interfaces in a network, inferring what is missing.
+    ///
+    /// Two passes at most. The first resolves what it can and collects the far ends that told us
+    /// where they live and still matched nothing; those become subnets and hosts; the second pass
+    /// then places the neighbours naming them.
+    ///
+    /// The second pass's findings *replace* the first's rather than adding to them. A far end that
+    /// resolves once its host exists is no longer an unmatched neighbour, and reporting both would
+    /// tell an operator that the same devices are missing and were just added.
+    pub async fn resolve_lldp_links(&self, network_id: Uuid) -> Result<LldpResolutionOutcome> {
+        let first = self.resolve_neighbours_once(network_id).await?;
+
+        // The plan's host limit, built the way the daemon batch path builds it
+        // (`DaemonService::process_discovery_entities`). Minting runs outside both existing gates,
+        // so without this it would quietly outrun the limit while still counting towards the number
+        // a customer is shown on their dashboard and in their usage email.
+        let limit_ctx = self.host_limit_context(network_id).await;
+
+        let inferred = self
+            .infer_far_end_subnets(network_id, first.unplaced, limit_ctx.as_ref())
+            .await?;
+
+        if inferred.is_empty() {
+            return Ok(LldpResolutionOutcome {
+                stats: first.stats,
+                warnings: first.warnings,
+            });
+        }
+
+        // Exactly one re-run, never a loop: the second pass mints nothing, so a far end it still
+        // cannot place is one no further pass would place either.
+        let second = self.resolve_neighbours_once(network_id).await?;
+        let mut warnings = second.warnings;
+        warnings.extend(inferred);
+
+        Ok(LldpResolutionOutcome {
+            stats: second.stats,
+            warnings,
+        })
     }
 
     /// Put a resolution pass's findings on the scan record they belong to.

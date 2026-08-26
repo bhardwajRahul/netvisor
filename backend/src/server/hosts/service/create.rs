@@ -365,7 +365,11 @@ impl HostService {
         // Stage 1: IP-address-based collision detection
         // Compares MAC addresses and subnet+IP to find hosts that represent the same physical machine
         let matching_result = self
-            .find_matching_host_by_ip_addresses(&host.base.network_id, &ip_addresses)
+            .find_matching_host_by_ip_addresses(
+                &host.base.network_id,
+                &ip_addresses,
+                host.base.chassis_id.as_deref(),
+            )
             .await?;
 
         let is_new_host = matching_result.is_none();

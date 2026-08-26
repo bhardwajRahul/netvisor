@@ -249,6 +249,7 @@ impl ServiceFactory {
             subnet_service.clone(),
             vlan_service.clone(),
             network_service.clone(),
+            organization_service.clone(),
             event_bus.clone(),
             entity_tag_service.clone(),
         ));

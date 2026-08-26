@@ -116,6 +116,16 @@ pub enum EntitySource {
     Discovery,
     #[schema(title = "DiscoveryWithMatch")]
     DiscoveryWithMatch { details: MatchDetails },
+    /// Known only because something else reported it — an LLDP/CDP neighbour publishing an address,
+    /// or a controller listing a device — and never contacted directly.
+    ///
+    /// A distinct rung rather than plain `Discovery` because the difference is exactly what an
+    /// operator cannot otherwise see: a host with no ports, no services and an address nothing ever
+    /// answered on is indistinguishable from a device that is simply down. It counts as discovered
+    /// for every other purpose — see [`Self::is_from_discovery`] — so staleness, quota and the
+    /// discovery FKs behave for it precisely as they do for a swept host.
+    #[schema(title = "Inferred")]
+    Inferred,
     // `other` makes an EntitySource variant a newer server adds degrade to
     // `Unknown` on an older daemon instead of failing the whole response.
     // EntitySource is embedded as `.source` on nearly every entity, so this is
@@ -130,7 +140,9 @@ impl EntitySource {
     pub fn is_from_discovery(&self) -> bool {
         matches!(
             self,
-            EntitySource::Discovery | EntitySource::DiscoveryWithMatch { .. }
+            EntitySource::Discovery
+                | EntitySource::DiscoveryWithMatch { .. }
+                | EntitySource::Inferred
         )
     }
 }
