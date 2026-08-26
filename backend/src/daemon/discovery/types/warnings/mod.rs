@@ -44,61 +44,82 @@ pub use values::{ClaimSource, MalformedNeighbourConsequence, SnmpWalkGroup};
 pub enum DiscoveryWarning {
     // ---- Interface walks -------------------------------------------------
     /// The interface *set* was cut short, so interfaces are genuinely missing.
+    #[schema(title = "InterfaceSetCutShort")]
     InterfaceSetCutShort {
+        /// The device whose walk fell short.
         #[schema(value_type = String)]
         address: IpAddr,
+        /// Interfaces read before the walk stopped.
         collected: u32,
     },
     /// The set was complete and only the attribute columns fell short, so nothing is missing —
     /// some descriptions or speeds are just blank. Kept apart from the above because reporting
     /// this as possible data loss sends people hunting for interfaces that were never absent.
+    #[schema(title = "InterfaceDetailsCutShort")]
     InterfaceDetailsCutShort {
+        /// The device whose walk fell short.
         #[schema(value_type = String)]
         address: IpAddr,
+        /// Interfaces whose attribute columns were read in full.
         collected: u32,
     },
 
     // ---- SNMP walk shortfalls --------------------------------------------
     /// Stopped at our own entry cap. The device is fine and larger than we read.
+    #[schema(title = "SnmpWalkEntryCap")]
     SnmpWalkEntryCap {
+        /// The device this group was read from.
         #[schema(value_type = String)]
         address: IpAddr,
         group: SnmpWalkGroup,
+        /// Entries per table that collection stops at.
         limit: u32,
     },
     /// The device does not implement this MIB. Not a fault, and no later scan will change it.
+    #[schema(title = "SnmpWalkUnsupported")]
     SnmpWalkUnsupported {
+        /// The device this group was read from.
         #[schema(value_type = String)]
         address: IpAddr,
         group: SnmpWalkGroup,
     },
     /// The agent answered out of step with what was asked — stale or non-advancing responses.
+    #[schema(title = "SnmpWalkDesynchronised")]
     SnmpWalkDesynchronised {
+        /// The device this group was read from.
         #[schema(value_type = String)]
         address: IpAddr,
         group: SnmpWalkGroup,
     },
     /// A partial read whose rows are thrown away rather than recorded, so the device contributes
     /// nothing for this group however much it answered.
+    #[schema(title = "SnmpWalkPartialDiscarded")]
     SnmpWalkPartialDiscarded {
+        /// The device this group was read from.
         #[schema(value_type = String)]
         address: IpAddr,
         group: SnmpWalkGroup,
     },
     /// A partial read whose rows were recorded as far as they got.
+    #[schema(title = "SnmpWalkPartialRecorded")]
     SnmpWalkPartialRecorded {
+        /// The device this group was read from.
         #[schema(value_type = String)]
         address: IpAddr,
         group: SnmpWalkGroup,
     },
     /// Nothing came back for the root of the bridge MIB, which switches commonly do not implement.
+    #[schema(title = "SnmpWalkBridgeMibAbsent")]
     SnmpWalkBridgeMibAbsent {
+        /// The device this group was read from.
         #[schema(value_type = String)]
         address: IpAddr,
         group: SnmpWalkGroup,
     },
     /// Nothing came back at all, and the device stopped answering rather than reporting empty.
+    #[schema(title = "SnmpWalkNoAnswer")]
     SnmpWalkNoAnswer {
+        /// The device this group was read from.
         #[schema(value_type = String)]
         address: IpAddr,
         group: SnmpWalkGroup,
@@ -106,32 +127,44 @@ pub enum DiscoveryWarning {
 
     // ---- Contradicted claims ---------------------------------------------
     /// The device published a count, and the read ended before reaching it.
+    #[schema(title = "ClaimedCountReadCutShort")]
     ClaimedCountReadCutShort {
+        /// The device that published the count.
         #[schema(value_type = String)]
         address: IpAddr,
         group: SnmpWalkGroup,
         source: ClaimSource,
+        /// Rows the device said it had.
         expected: u32,
+        /// Rows the read returned.
         observed: u32,
     },
     /// The device published a count, the read finished, and it came up short anyway.
+    #[schema(title = "ClaimedCountUnderRead")]
     ClaimedCountUnderRead {
+        /// The device that published the count.
         #[schema(value_type = String)]
         address: IpAddr,
         group: SnmpWalkGroup,
         source: ClaimSource,
+        /// Rows the device said it had.
         expected: u32,
+        /// Rows the read returned.
         observed: u32,
     },
     /// The device declared the capability, and the read ended without returning any.
+    #[schema(title = "ClaimedCapabilityReadCutShort")]
     ClaimedCapabilityReadCutShort {
+        /// The device that declared the capability.
         #[schema(value_type = String)]
         address: IpAddr,
         group: SnmpWalkGroup,
         source: ClaimSource,
     },
     /// The device declared the capability, the read finished, and it returned none.
+    #[schema(title = "ClaimedCapabilityEmpty")]
     ClaimedCapabilityEmpty {
+        /// The device that declared the capability.
         #[schema(value_type = String)]
         address: IpAddr,
         group: SnmpWalkGroup,
@@ -140,17 +173,24 @@ pub enum DiscoveryWarning {
 
     // ---- LLDP local port numbering ---------------------------------------
     /// Neighbours whose local port matched no interface, so they were discarded entirely.
+    #[schema(title = "LldpLocalPortDropped")]
     LldpLocalPortDropped {
+        /// The device that reported the neighbours.
         #[schema(value_type = String)]
         address: IpAddr,
+        /// Neighbours discarded for want of a matching interface.
         dropped: u32,
+        /// Neighbours the device reported in all.
         total: u32,
     },
     /// Neighbours whose local port could not be identified but did match an interface number, so
     /// they are drawn against a port that may be the wrong one.
+    #[schema(title = "LldpLocalPortMisplaced")]
     LldpLocalPortMisplaced {
+        /// The device that reported the neighbours.
         #[schema(value_type = String)]
         address: IpAddr,
+        /// Neighbours drawn against a port that may be the wrong one.
         misplaced: u32,
     },
 
@@ -168,34 +208,45 @@ pub enum DiscoveryWarning {
 
     // ---- Whole-device outcomes -------------------------------------------
     /// SNMP answered and every table came back empty.
+    #[schema(title = "SnmpCollectedNothing")]
     SnmpCollectedNothing {
+        /// The device that answered.
         #[schema(value_type = String)]
         address: IpAddr,
     },
     /// The device answered correctly and persisting its VLANs failed.
+    #[schema(title = "VlanRecordingFailed")]
     VlanRecordingFailed {
+        /// The device whose VLANs could not be recorded.
         #[schema(value_type = String)]
         address: IpAddr,
     },
 
     // ---- Credential issues -----------------------------------------------
     /// The credential's address is not on any subnet this scan covers.
+    #[schema(title = "CredentialTargetNotScanned")]
     CredentialTargetNotScanned {
+        /// The address the credential is bound to.
         #[schema(value_type = String)]
         address: IpAddr,
         integration: CredentialQueryPayloadDiscriminants,
     },
     /// Nothing answered at the credential's address during the scan.
+    #[schema(title = "CredentialTargetNotResponding")]
     CredentialTargetNotResponding {
+        /// The address the credential is bound to.
         #[schema(value_type = String)]
         address: IpAddr,
         integration: CredentialQueryPayloadDiscriminants,
     },
     /// The port the credential needs was not open, so it was never tried.
+    #[schema(title = "CredentialGateClosed")]
     CredentialGateClosed {
+        /// The address the credential is bound to.
         #[schema(value_type = String)]
         address: IpAddr,
         integration: CredentialQueryPayloadDiscriminants,
+        /// The ports that had to be open for the probe to run.
         ports: Vec<u16>,
     },
     /// The credential was refused.
@@ -217,13 +268,23 @@ pub enum DiscoveryWarning {
 
     // ---- Scan-level ------------------------------------------------------
     /// The run hit its global time limit, with an estimate of the work left.
+    #[schema(title = "ScanTimeLimitWithEstimate")]
     ScanTimeLimitWithEstimate {
+        /// The limit the run hit, in hours.
         hours: u32,
+        /// Hosts still queued when the run stopped.
         hosts_not_scanned: u32,
+        /// Estimated minutes of work left at that point.
         minutes_remaining: u32,
     },
     /// The run hit its global time limit, with no usable estimate.
-    ScanTimeLimit { hours: u32, hosts_not_scanned: u32 },
+    #[schema(title = "ScanTimeLimit")]
+    ScanTimeLimit {
+        /// The limit the run hit, in hours.
+        hours: u32,
+        /// Hosts still queued when the run stopped.
+        hosts_not_scanned: u32,
+    },
 
     // ---- Server-side LLDP/CDP resolution ---------------------------------
     /// The advertised identifier matches no host on this network.
@@ -240,19 +301,29 @@ pub enum DiscoveryWarning {
     // ---- Meta ------------------------------------------------------------
     /// The run produced more warnings than the scan record holds. Emitted rather than dropping
     /// the tail silently — a list that simply stops reads as though that was all of them.
-    WarningsTruncated { elided: u32 },
+    #[schema(title = "WarningsTruncated")]
+    WarningsTruncated {
+        /// Warnings dropped past the record's cap.
+        elided: u32,
+    },
     /// A warning this binary does not recognise: a bare string from a historical record or a
     /// pre-coded daemon, or a code from a newer one. Carries the original text so scan history
     /// keeps rendering; the code itself is what reaches the metric, never `detail`.
-    Unknown { detail: String },
+    #[schema(title = "Unknown")]
+    Unknown {
+        /// The original warning text, rendered as-is.
+        detail: String,
+    },
 }
 
 /// Neighbour records discarded for want of the identifier that matches the far end.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct MalformedNeighbours {
+    /// The device that reported the records.
     #[schema(value_type = String)]
     pub address: IpAddr,
     pub group: SnmpWalkGroup,
+    /// Records thrown away for want of a usable identifier.
     pub discarded: u32,
     /// Records that survived, which is what decides whether this cost the device some of its
     /// topology or all of it.
@@ -263,6 +334,7 @@ pub struct MalformedNeighbours {
 /// One credential's attempt against one address, and what the client library said about it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct CredentialAttempt {
+    /// The address the credential was tried against.
     #[schema(value_type = String)]
     pub address: IpAddr,
     pub integration: CredentialQueryPayloadDiscriminants,
@@ -280,9 +352,11 @@ pub struct UnmatchedNeighbour {
     /// The local device that saw the neighbour, not the far end — the far end is what could not
     /// be identified.
     pub host_id: Uuid,
+    /// The local interface that advertised the neighbour.
     pub if_descr: String,
     /// The chassis ID (LLDP) or device id (CDP) that did not identify one host.
     pub identifier: String,
+    /// The far end's advertised `sysName`, where it sent one.
     #[schema(required)]
     pub sys_name: Option<String>,
 }
@@ -292,6 +366,7 @@ pub struct UnmatchedNeighbour {
 pub struct UnresolvedPort {
     /// The local device that saw the neighbour, and the port it saw it on.
     pub host_id: Uuid,
+    /// The local interface that advertised the neighbour.
     pub if_descr: String,
     /// The far-end device, already resolved — this is what makes it distinct from
     /// [`UnmatchedNeighbour`].
