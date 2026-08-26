@@ -359,6 +359,16 @@ pub struct UnmatchedNeighbour {
     /// The far end's advertised `sysName`, where it sent one.
     #[schema(required)]
     pub sys_name: Option<String>,
+    /// The address the far end published for itself — `lldpRemManAddr`, a `NetworkAddress` port
+    /// id, or `cdpCacheAddress` — where it sent a usable one.
+    ///
+    /// Carried because it is the difference between two reports that otherwise read identically:
+    /// "the far end told us where it lives and this network holds no such address" is a device
+    /// nobody has scanned, while "it told us nothing" is a device that cannot be placed no matter
+    /// how much of the network is scanned. Without it, deciding which of the two a fleet is
+    /// looking at costs another round trip to the operator (GH #668).
+    #[schema(required)]
+    pub address: Option<String>,
 }
 
 /// A neighbour whose far-end host resolved but whose far-end *port* did not.

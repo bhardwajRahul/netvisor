@@ -23,7 +23,7 @@ use crate::server::{
     hosts::r#impl::base::Host,
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
     lldp::{
-        IdentityResolution, LldpChassisId, LldpPortId,
+        AdvertisedIdentity, IdentityResolution, LldpChassisId, LldpPortId,
         resolver::{LldpResolver, LldpResolverImpl},
     },
     shared::storage::traits::Storage,
@@ -173,7 +173,7 @@ async fn a_chassis_id_on_no_port_still_finds_its_device() {
 
     assert_eq!(
         advertised
-            .resolve_host_id(&lab.resolver, lab.network_id, None)
+            .resolve_host_id(&lab.resolver, lab.network_id, AdvertisedIdentity::default())
             .await,
         IdentityResolution::Resolved(netgear.host.id),
         "the far end is findable only through the chassis id it recorded about itself"
@@ -255,7 +255,7 @@ async fn a_mac_on_every_port_of_the_far_end_resolves_to_no_port() {
     // The host resolves; only the port must not.
     assert_eq!(
         Scanned::advertised_chassis(ambiguous)
-            .resolve_host_id(&lab.resolver, lab.network_id, None)
+            .resolve_host_id(&lab.resolver, lab.network_id, AdvertisedIdentity::default())
             .await,
         IdentityResolution::Resolved(dlink.host.id)
     );
@@ -367,7 +367,10 @@ async fn a_far_end_nobody_scanned_resolves_to_nothing() {
         .resolve_host_id(
             &lab.resolver,
             lab.network_id,
-            stranger.remote_sys_name.as_deref(),
+            AdvertisedIdentity {
+                sys_name: stranger.remote_sys_name.as_deref(),
+                address: stranger.remote_mgmt_addr,
+            },
         )
         .await;
     assert_eq!(

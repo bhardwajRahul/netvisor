@@ -135,6 +135,91 @@ impl IdentityResolution {
     }
 }
 
+/// What a neighbour advertised about itself *besides* the chassis id being resolved.
+///
+/// A parameter object rather than more positional arguments: the subtype-independent tiers of
+/// [`LldpChassisId::resolve_host_id`] each consume one of these, and a bare `Option<&str>,
+/// Option<IpAddr>` pair at a dozen call sites is the shape that eventually gets passed in the
+/// wrong order.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AdvertisedIdentity<'a> {
+    /// `lldpRemSysName`, or the CDP device id — an operator-assigned label, not an identifier.
+    pub sys_name: Option<&'a str>,
+    /// An address the far end published for itself: `lldpRemManAddr`, a `NetworkAddress` port id,
+    /// or `cdpCacheAddress`. Already filtered by [`is_usable_identity_address`] where it comes
+    /// from an entity — see [`crate::server::interfaces::r#impl::base::InterfaceBase::advertised_address`].
+    pub address: Option<IpAddr>,
+}
+
+impl AdvertisedIdentity<'_> {
+    /// Resolve a far-end *device* from what it published about itself, independent of any chassis
+    /// id.
+    ///
+    /// These are tiers 2 and 3 of [`LldpChassisId::resolve_host_id`], lifted out because CDP has
+    /// no chassis id and so cannot run that ladder — but a CDP device id is a `sysName` and
+    /// `cdpCacheAddress` is a management address, and both deserve the same treatment. Sharing the
+    /// code is what keeps the two protocols from drifting into different answers for the same
+    /// evidence.
+    ///
+    /// Returns [`IdentityResolution::NoStrategy`] when neither tier had anything to run, which the
+    /// caller must not fold into `NotFound`: "nothing to look up" and "looked and it is not here"
+    /// send an operator to different places.
+    pub async fn resolve_host_id<R: LldpResolver>(
+        &self,
+        resolver: &R,
+        network_id: Uuid,
+    ) -> IdentityResolution {
+        let mut strategy_ran = false;
+        let mut saw_ambiguous = false;
+
+        // The address outranks the name: it is the far end's own statement of where it lives,
+        // while `sysName` is a label an operator assigned and a vendor may have defaulted.
+        if let Some(address) = self.address.filter(is_usable_identity_address) {
+            strategy_ran = true;
+            let by_address = resolver.find_host_by_ip(&address, network_id).await;
+            if !by_address.is_unresolved() {
+                return by_address;
+            }
+            saw_ambiguous |= by_address == IdentityResolution::Ambiguous;
+        }
+
+        if let Some(sys_name) = self.sys_name.map(str::trim).filter(|s| !s.is_empty()) {
+            strategy_ran = true;
+            let by_sys_name = resolver.find_host_by_sys_name(sys_name, network_id).await;
+            if !by_sys_name.is_unresolved() {
+                return by_sys_name;
+            }
+            saw_ambiguous |= by_sys_name == IdentityResolution::Ambiguous;
+        }
+
+        match (saw_ambiguous, strategy_ran) {
+            (true, _) => IdentityResolution::Ambiguous,
+            (false, true) => IdentityResolution::NotFound,
+            (false, false) => IdentityResolution::NoStrategy,
+        }
+    }
+}
+
+/// Whether an advertised address can stand for a device at all.
+///
+/// LLDP's management-address parser accepts any 4 or 16 bytes (`parse_lldp_mgmt_addr`), and
+/// misconfigured or half-initialised gear publishes all of these. None of them names a device on
+/// this network, and looking any of them up would at best waste a query and at worst match the
+/// wrong host: `0.0.0.0` and `127.0.0.1` are held by nothing, while a link-local address is
+/// per-segment and can legitimately repeat across devices.
+pub fn is_usable_identity_address(addr: &IpAddr) -> bool {
+    if addr.is_unspecified() || addr.is_loopback() || addr.is_multicast() {
+        return false;
+    }
+    match addr {
+        IpAddr::V4(v4) => !v4.is_link_local() && !v4.is_broadcast(),
+        IpAddr::V6(v6) => {
+            // `is_unicast_link_local` is still unstable, so test the `fe80::/10` prefix directly.
+            v6.segments()[0] & 0xffc0 != 0xfe80
+        }
+    }
+}
+
 /// Serde helper for IpAddr as string
 mod ip_addr_serde {
     use serde::{self, Deserialize, Deserializer, Serializer};
@@ -227,7 +312,7 @@ impl LldpChassisId {
     /// - ChassisComponent/LocallyAssigned: `hosts.chassis_id`
     /// - InterfaceAlias/PortComponent: nothing reliable
     ///
-    /// Then two subtype-independent fallbacks, both needed on real hardware:
+    /// Then three subtype-independent fallbacks, all needed on real hardware:
     ///
     /// 1. `hosts.chassis_id`, for *every* subtype. A switch's chassis MAC is not required to be
     ///    any of its port MACs, and on several vendors it isn't: the Netgear GS724Tv3 advertises a
@@ -235,14 +320,24 @@ impl LldpChassisId {
     ///    the MacAddress strategy above finds nothing (GH #664). The daemon already records each
     ///    scanned device's own LLDP chassis ID on `hosts.chassis_id` in this same canonical form,
     ///    which is the only place that MAC exists server-side.
-    /// 2. The neighbor's advertised `sysName` against `hosts.sys_name` — the same last resort CDP
+    /// 2. An address the far end published for itself, against `ip_addresses.ip_address`. The
+    ///    objection to using `lldpRemManAddr` has always been that it is "where you manage the
+    ///    device, not necessarily the physical connection point" — true of a *port*, and beside
+    ///    the point for a *device*, which is all this tier claims to identify. It is the only tier
+    ///    that can place a device whose SNMP tables came back empty: such a host carries no
+    ///    interface row to hold the chassis MAC and no `chassis_id` of its own, so tiers above are
+    ///    structurally dead, yet its management address is exactly what its neighbours publish
+    ///    (GH #668).
+    /// 3. The neighbor's advertised `sysName` against `hosts.sys_name` — the same last resort CDP
     ///    has always used, for devices whose chassis identity is unrecoverable but whose name was
-    ///    captured by an SNMP scan. Only accepted when exactly one host matches.
+    ///    captured by an SNMP scan. Only accepted when exactly one host matches. Deliberately last:
+    ///    `sysName` is operator-assigned and frequently a vendor default, so it is the weakest of
+    ///    the three.
     pub async fn resolve_host_id<R: LldpResolver>(
         &self,
         resolver: &R,
         network_id: Uuid,
-        sys_name: Option<&str>,
+        advertised: AdvertisedIdentity<'_>,
     ) -> IdentityResolution {
         let mut strategy_ran = false;
 
@@ -280,14 +375,14 @@ impl LldpChassisId {
             saw_ambiguous |= by_chassis == IdentityResolution::Ambiguous;
         }
 
-        if let Some(sys_name) = sys_name.map(str::trim).filter(|s| !s.is_empty()) {
-            strategy_ran = true;
-            let by_sys_name = resolver.find_host_by_sys_name(sys_name, network_id).await;
-            if !by_sys_name.is_unresolved() {
-                return by_sys_name;
-            }
-            saw_ambiguous |= by_sys_name == IdentityResolution::Ambiguous;
+        // Tiers 2 and 3, which need nothing from the chassis id and are therefore shared with CDP.
+        // `NoStrategy` here means neither ran, which must not promote a `NotFound` verdict.
+        let by_advertised = advertised.resolve_host_id(resolver, network_id).await;
+        if !by_advertised.is_unresolved() {
+            return by_advertised;
         }
+        strategy_ran |= by_advertised != IdentityResolution::NoStrategy;
+        saw_ambiguous |= by_advertised == IdentityResolution::Ambiguous;
 
         match (saw_ambiguous, strategy_ran) {
             (true, _) => IdentityResolution::Ambiguous,
@@ -902,6 +997,9 @@ mod resolution_tests {
         id: Uuid,
         chassis_id: Option<String>,
         sys_name: Option<String>,
+        /// The host's `ip_addresses` rows, for the address tier. A host may hold several, and two
+        /// hosts holding one is the duplicate the production `get_unique` reports as ambiguous.
+        addresses: Vec<IpAddr>,
     }
 
     #[derive(Default)]
@@ -968,8 +1066,16 @@ mod resolution_tests {
             IdentityResolution::from_unique(Self::only(hosts))
         }
 
-        async fn find_host_by_ip(&self, _ip: &IpAddr, _network_id: Uuid) -> IdentityResolution {
-            IdentityResolution::NotFound
+        async fn find_host_by_ip(&self, ip: &IpAddr, _network_id: Uuid) -> IdentityResolution {
+            IdentityResolution::from_unique(
+                Self::only(
+                    self.hosts
+                        .iter()
+                        .filter(|h| h.addresses.contains(ip))
+                        .collect(),
+                )
+                .map(|h| h.id),
+            )
         }
 
         async fn find_host_by_if_name(&self, name: &str, _network_id: Uuid) -> IdentityResolution {
@@ -1079,7 +1185,7 @@ mod resolution_tests {
         let chassis = LldpChassisId::MacAddress("00:1a:2b:3c:4d:63".to_string());
         assert_eq!(
             chassis
-                .resolve_host_id(&inventory, Uuid::new_v4(), None)
+                .resolve_host_id(&inventory, Uuid::new_v4(), AdvertisedIdentity::default())
                 .await,
             IdentityResolution::Resolved(switch)
         );
@@ -1092,7 +1198,14 @@ mod resolution_tests {
 
         assert_eq!(
             chassis
-                .resolve_host_id(&inventory, Uuid::new_v4(), Some("some-ap"))
+                .resolve_host_id(
+                    &inventory,
+                    Uuid::new_v4(),
+                    AdvertisedIdentity {
+                        sys_name: Some("some-ap"),
+                        ..Default::default()
+                    },
+                )
                 .await,
             IdentityResolution::NotFound
         );
@@ -1122,7 +1235,14 @@ mod resolution_tests {
         let chassis = LldpChassisId::MacAddress("00:1a:2b:3c:4d:63".to_string());
         assert_eq!(
             chassis
-                .resolve_host_id(&inventory, Uuid::new_v4(), Some("switch"))
+                .resolve_host_id(
+                    &inventory,
+                    Uuid::new_v4(),
+                    AdvertisedIdentity {
+                        sys_name: Some("switch"),
+                        ..Default::default()
+                    },
+                )
                 .await,
             // The MAC tier found nothing and the sysName tier found two. The ladder keeps
             // descending past an ambiguous tier — a later one may still tell them apart — but
@@ -1404,7 +1524,7 @@ mod resolution_tests {
             LldpChassisId::from_snmp(7, b"C230408").expect("the neighbour sends the same bytes");
         assert_eq!(
             advertised
-                .resolve_host_id(&inventory, Uuid::new_v4(), None)
+                .resolve_host_id(&inventory, Uuid::new_v4(), AdvertisedIdentity::default())
                 .await,
             IdentityResolution::Resolved(westermo)
         );
@@ -1432,7 +1552,7 @@ mod resolution_tests {
         let advertised = LldpChassisId::from_snmp(7, b"C230408\0").expect("parses");
         assert_eq!(
             advertised
-                .resolve_host_id(&inventory, Uuid::new_v4(), None)
+                .resolve_host_id(&inventory, Uuid::new_v4(), AdvertisedIdentity::default())
                 .await,
             IdentityResolution::Resolved(westermo)
         );
@@ -1562,7 +1682,7 @@ mod resolution_tests {
         let chassis = LldpChassisId::MacAddress("00:ad:24:af:4e:00".to_string());
         assert_eq!(
             chassis
-                .resolve_host_id(&inventory, Uuid::new_v4(), None)
+                .resolve_host_id(&inventory, Uuid::new_v4(), AdvertisedIdentity::default())
                 .await,
             IdentityResolution::Resolved(switch)
         );
@@ -1600,7 +1720,14 @@ mod resolution_tests {
         let chassis = LldpChassisId::LocallyAssigned("shared-chassis".to_string());
         assert_eq!(
             chassis
-                .resolve_host_id(&inventory, Uuid::new_v4(), Some("switch-a"))
+                .resolve_host_id(
+                    &inventory,
+                    Uuid::new_v4(),
+                    AdvertisedIdentity {
+                        sys_name: Some("switch-a"),
+                        ..Default::default()
+                    },
+                )
                 .await,
             IdentityResolution::Resolved(wanted)
         );
@@ -1630,12 +1757,210 @@ mod resolution_tests {
         let chassis = LldpChassisId::MacAddress(mac.to_string());
         assert_eq!(
             chassis
-                .resolve_host_id(&inventory, Uuid::new_v4(), None)
+                .resolve_host_id(&inventory, Uuid::new_v4(), AdvertisedIdentity::default())
                 .await,
             // Ambiguous rather than NotFound: the MAC names two devices we have discovered, not
             // zero. An operator told "not found" goes looking for a device that is already
             // scanned — twice, which is the thing to fix.
             IdentityResolution::Ambiguous
+        );
+    }
+
+    /// The subtype-independent fallbacks are *ordered*, and the order carries meaning: a chassis
+    /// id is an identifier the far end asserted about itself, while `sysName` is an
+    /// operator-assigned label two devices can share and a vendor can leave at a default. Where
+    /// the two name different hosts the chassis id has to win.
+    ///
+    /// Pinned because tiers get inserted between them — the management-address tier is one — and
+    /// an insertion that reordered these would silently start attaching links to whichever device
+    /// happened to be named "switch".
+    #[tokio::test]
+    async fn the_chassis_id_fallback_outranks_the_sys_name_fallback() {
+        let by_chassis = Uuid::new_v4();
+        let inventory = FakeInventory {
+            hosts: vec![
+                FakeHost {
+                    id: by_chassis,
+                    chassis_id: Some("00:1a:2b:3c:4d:63".to_string()),
+                    ..Default::default()
+                },
+                FakeHost {
+                    id: Uuid::new_v4(),
+                    sys_name: Some("core-switch".to_string()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let chassis = LldpChassisId::MacAddress("00:1a:2b:3c:4d:63".to_string());
+        assert_eq!(
+            chassis
+                .resolve_host_id(
+                    &inventory,
+                    Uuid::new_v4(),
+                    AdvertisedIdentity {
+                        sys_name: Some("core-switch"),
+                        ..Default::default()
+                    },
+                )
+                .await,
+            IdentityResolution::Resolved(by_chassis)
+        );
+    }
+
+    /// `NoStrategy` and `NotFound` are the two halves of "did not resolve" and mean opposite
+    /// things to whoever reads the scan summary: nothing to look up, versus looked and the device
+    /// is not here. A subtype with no strategy and nothing else to try must produce the former.
+    ///
+    /// Pinned because every new tier adds a site that sets `strategy_ran`, and one that sets it
+    /// unconditionally would turn every one of these into a `NotFound` the operator is invited to
+    /// go and scan.
+    #[tokio::test]
+    async fn a_subtype_with_no_strategy_and_nothing_else_to_try_reports_no_strategy() {
+        let inventory = FakeInventory::default();
+
+        // Empty, so even the raw-identifier `hosts.chassis_id` fallback declines to run.
+        let chassis = LldpChassisId::PortComponent(String::new());
+        assert_eq!(
+            chassis
+                .resolve_host_id(&inventory, Uuid::new_v4(), AdvertisedIdentity::default())
+                .await,
+            IdentityResolution::NoStrategy
+        );
+    }
+
+    /// GH #668: a switch that answers SNMP but serves no ifTable, no addresses and no LLDP local
+    /// identity holds no interface row to carry the chassis MAC its neighbours advertise and no
+    /// `chassis_id` of its own — every tier above the address is structurally dead for it. The
+    /// address it publishes in `lldpRemManAddr` is the one identifier that survives, and this
+    /// network already holds it.
+    ///
+    /// The host deliberately has no `sys_name`, so only the address tier can produce this answer.
+    #[tokio::test]
+    async fn a_far_end_with_no_chassis_record_resolves_on_the_address_it_advertises() {
+        let mute_switch = Uuid::new_v4();
+        let advertised_address: IpAddr = "192.168.7.248".parse().unwrap();
+        let inventory = FakeInventory {
+            hosts: vec![FakeHost {
+                id: mute_switch,
+                addresses: vec![advertised_address],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let chassis = LldpChassisId::MacAddress("00:ad:24:89:cc:f0".to_string());
+        assert_eq!(
+            chassis
+                .resolve_host_id(
+                    &inventory,
+                    Uuid::new_v4(),
+                    AdvertisedIdentity {
+                        sys_name: Some("Switch1"),
+                        address: Some(advertised_address),
+                    },
+                )
+                .await,
+            IdentityResolution::Resolved(mute_switch)
+        );
+    }
+
+    /// An address is the far end's own statement of where it lives; `sysName` is a label an
+    /// operator assigned and a vendor may have defaulted. Where they name different hosts, the
+    /// address has to win, or a fleet with two devices called `switch` attaches links by name in
+    /// preference to by address.
+    #[tokio::test]
+    async fn the_address_tier_outranks_the_sys_name_tier() {
+        let by_address = Uuid::new_v4();
+        let advertised_address: IpAddr = "10.20.30.11".parse().unwrap();
+        let inventory = FakeInventory {
+            hosts: vec![
+                FakeHost {
+                    id: by_address,
+                    addresses: vec![advertised_address],
+                    ..Default::default()
+                },
+                FakeHost {
+                    id: Uuid::new_v4(),
+                    sys_name: Some("switch".to_string()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let chassis = LldpChassisId::MacAddress("00:ad:24:89:cc:f0".to_string());
+        assert_eq!(
+            chassis
+                .resolve_host_id(
+                    &inventory,
+                    Uuid::new_v4(),
+                    AdvertisedIdentity {
+                        sys_name: Some("switch"),
+                        address: Some(advertised_address),
+                    },
+                )
+                .await,
+            IdentityResolution::Resolved(by_address)
+        );
+    }
+
+    /// `parse_lldp_mgmt_addr` accepts any four or sixteen bytes, so half-initialised firmware
+    /// publishes `0.0.0.0` and a link-local address is per-segment and repeats across devices.
+    /// Neither names a device here.
+    ///
+    /// The verdict matters as much as the miss: an unusable address must leave the row reading
+    /// `NoStrategy` — nothing to look up — rather than `NotFound`, which tells an operator a
+    /// device is missing from their inventory and invites them to go and scan for it.
+    #[tokio::test]
+    async fn an_address_that_can_name_no_device_is_not_looked_up() {
+        let inventory = FakeInventory::default();
+        let chassis = LldpChassisId::PortComponent(String::new());
+
+        for unusable in ["0.0.0.0", "169.254.3.4", "127.0.0.1", "fe80::1"] {
+            assert_eq!(
+                chassis
+                    .resolve_host_id(
+                        &inventory,
+                        Uuid::new_v4(),
+                        AdvertisedIdentity {
+                            sys_name: None,
+                            address: Some(unusable.parse().unwrap()),
+                        },
+                    )
+                    .await,
+                IdentityResolution::NoStrategy,
+                "{unusable} should not be looked up at all"
+            );
+        }
+    }
+
+    /// CDP carries no chassis id, so it cannot run the ladder above — but `cdpCacheAddress` is a
+    /// management address and the device id is a `sysName`, which are exactly the tiers the ladder
+    /// ends with. Sharing them is what stops a neighbour from being unresolvable purely for having
+    /// arrived over the other protocol.
+    #[tokio::test]
+    async fn a_cdp_neighbour_resolves_from_the_address_it_cached() {
+        let router = Uuid::new_v4();
+        let cached_address: IpAddr = "10.20.30.1".parse().unwrap();
+        let inventory = FakeInventory {
+            hosts: vec![FakeHost {
+                id: router,
+                addresses: vec![cached_address],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            AdvertisedIdentity {
+                sys_name: Some("core-rtr"),
+                address: Some(cached_address),
+            }
+            .resolve_host_id(&inventory, Uuid::new_v4())
+            .await,
+            IdentityResolution::Resolved(router)
         );
     }
 }

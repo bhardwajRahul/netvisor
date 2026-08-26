@@ -899,6 +899,7 @@
 	"discovery_upgradeRequiredBody": "This daemon is running a version prior to v0.15.0 and must be upgraded to create new discoveries. <a href='https://scanopy.net/docs/guides/unified-discovery-migration/' target='_blank' class='underline'>Learn more</a>.",
 	"discovery_upgradeRequiredTitle": "Daemon upgrade required",
 	"discovery_viewRun": "View Discovery Run: {name}",
+	"discovery_warningAtAddress": "at {address}",
 	"discovery_warningNoFurtherDetail": "no further detail",
 	"discovery_warningNoPortId": "with no port id",
 	"errors_auth_api_key_required": "API key required",

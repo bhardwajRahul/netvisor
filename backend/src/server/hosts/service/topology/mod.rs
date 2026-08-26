@@ -51,6 +51,10 @@ fn unmatched_neighbour_warning(
         if_descr: interface.base.if_descr.clone(),
         identifier,
         sys_name,
+        address: interface
+            .advertised_identity()
+            .address
+            .map(|addr| addr.to_string()),
     };
     match reason {
         UnresolvedReason::NotFound => Some(DiscoveryWarning::LldpNeighbourNotFound(detail)),
@@ -350,10 +354,31 @@ impl HostService {
                     }
                 }
             } else {
-                // Admitted by the filter on cdp_address alone, which is a management address and
-                // never a physical connection — there is nothing here to resolve.
-                stats.host_no_strategy += 1;
-                None
+                // Admitted by the filter on `cdp_address` alone. It is a management address, so it
+                // names no *port* — but it does name a device, and `find_host_by_ip` can place it.
+                // Treating the row as unresolvable was the reason a CDP-only neighbour could sit in
+                // `host_no_strategy` for ever while the address identifying it was already stored.
+                let host = match known_host_id {
+                    Some(host_id) => IdentityResolution::Resolved(host_id),
+                    None => host_of
+                        .get(&interface.id)
+                        .copied()
+                        .unwrap_or(IdentityResolution::NoStrategy),
+                };
+                if let Some(reason) = UnresolvedReason::from_resolution(host) {
+                    warnings.extend(unmatched_neighbour_warning(
+                        &interface,
+                        interface
+                            .base
+                            .cdp_address
+                            .map(|addr| addr.to_string())
+                            .unwrap_or_default(),
+                        None,
+                        reason,
+                    ));
+                }
+                // No port id of any kind on this row, so a resolved device stays device-level.
+                stats.record_host(host).map(Neighbor::Host)
             };
 
             // Persist the resolved neighbor. `None` leaves the row as it was: an existing partial

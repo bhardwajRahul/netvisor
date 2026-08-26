@@ -24,6 +24,7 @@ import { metaDescriptionWith, metaName } from '$lib/i18n/metadata';
 import {
 	common_andNMore,
 	discovery_warningNoFurtherDetail,
+	discovery_warningAtAddress,
 	discovery_warningNoPortId
 } from '$lib/paraglide/messages';
 
@@ -267,20 +268,32 @@ function arrow(near: string, far: string): string {
 }
 
 /**
- * `switch7 Gi1/0/1 -> 00:ad:24:89:cc:f0 (core-sw)`.
+ * `switch7 Gi1/0/1 -> 00:ad:24:89:cc:f0 (core-sw) at 10.20.30.11`.
  *
  * Which of our devices saw the neighbour leads the line, because it is the first thing an operator
  * needs in order to act — the identifier alone says a link is missing without saying where to go
  * and look. Every segment is dropped when it is absent rather than filled with a placeholder: a
  * host whose name has not loaded yet, or one deleted since the scan, then reads exactly as it did
  * before names were resolved at all.
+ *
+ * The address is the segment that says which kind of gap this is. A far end that published one and
+ * still matched nothing is a device on a range this network has not scanned, which an operator can
+ * act on; one that published none cannot be placed however much gets scanned. Reading the two apart
+ * used to cost a round trip to whoever reported the scan.
  */
 function describeNeighbour(
-	w: { host_id: string; if_descr: string; identifier: string; sys_name?: string | null },
+	w: {
+		host_id: string;
+		if_descr: string;
+		identifier: string;
+		sys_name?: string | null;
+		address?: string | null;
+	},
 	hostName: HostNameLookup
 ): string {
 	const near = [hostName(w.host_id), w.if_descr].filter(Boolean).join(' ');
-	const far = `${w.identifier}${w.sys_name ? ` (${w.sys_name})` : ''}`;
+	const named = `${w.identifier}${w.sys_name ? ` (${w.sys_name})` : ''}`;
+	const far = w.address ? `${named} ${discovery_warningAtAddress({ address: w.address })}` : named;
 	return arrow(near, far);
 }
 

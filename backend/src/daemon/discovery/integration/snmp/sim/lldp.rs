@@ -13,6 +13,8 @@
 //! left *abbreviated* (`0:4:96:1:e0:0`) as the standing guard on the unpadded form. Changing any
 //! of those removes coverage rather than fixing anything.
 
+use std::net::IpAddr;
+
 use super::wire::{MacEncoding, PassValue, Row};
 use crate::daemon::discovery::integration::snmp::oids::lldp;
 use crate::server::lldp::{LldpChassisId, LldpPortId};
@@ -64,6 +66,13 @@ pub struct SimLldpRemoteColumns {
     pub port_desc: &'static str,
     pub sys_name: &'static str,
     pub sys_desc: &'static str,
+    /// The accessible column of the separate `lldpRemManAddrTable`.
+    ///
+    /// Served for its *index*, not its value: the address itself is encoded in the trailing
+    /// sub-ids, which is why the daemon walks this column and reconstructs the address from the
+    /// OID rather than reading it (`queries.rs::split_lldp_man_addr_index`). A fixture that put
+    /// the address in the value would look right and be invisible to the collector.
+    pub man_addr_if_subtype: &'static str,
 }
 
 /// The classic LLDP-MIB, `1.0.8802.1.1.2`.
@@ -87,9 +96,27 @@ pub static CLASSIC: SimLldpMib = SimLldpMib {
         port_desc: lldp::remote::entry::LLDP_REM_PORT_DESC,
         sys_name: lldp::remote::entry::LLDP_REM_SYS_NAME,
         sys_desc: lldp::remote::entry::LLDP_REM_SYS_DESC,
+        man_addr_if_subtype: lldp::remote::entry::LLDP_REM_MAN_ADDR_IF_SUBTYPE,
     },
     rem_suffix: classic_rem_suffix,
 };
+
+/// The `lldpRemManAddrTable` index sub-ids that follow a neighbour's own key:
+/// `lldpRemManAddrSubtype.lldpRemManAddrLen.lldpRemManAddr`.
+///
+/// The subtype is the IANA address family (1 = IPv4, 2 = IPv6) and the length counts the address
+/// octets that follow, each as its own sub-id. This is the exact shape
+/// `queries.rs::split_lldp_man_addr_index` reads back, and getting the length wrong is the failure
+/// it silently skips rather than reports.
+fn man_addr_suffix(addr: &IpAddr) -> Vec<u64> {
+    let (family, octets): (u64, Vec<u8>) = match addr {
+        IpAddr::V4(v4) => (1, v4.octets().to_vec()),
+        IpAddr::V6(v6) => (2, v6.octets().to_vec()),
+    };
+    let mut suffix = vec![family, octets.len() as u64];
+    suffix.extend(octets.into_iter().map(u64::from));
+    suffix
+}
 
 /// `lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex` — three sub-ids, or two where the firmware
 /// omits the time mark (GH #668).
@@ -172,6 +199,12 @@ pub struct RemoteNeighbour {
     pub port_desc: Option<String>,
     pub sys_name: Option<String>,
     pub sys_desc: Option<String>,
+    /// `lldpRemManAddr` — the address the far end publishes for its own management.
+    ///
+    /// Optional because plenty of firmware serves no management-address table at all, and that
+    /// absence is itself a case worth covering: it is the difference between a far end this
+    /// network could place if it were scanned and one that cannot be placed at all.
+    pub mgmt_addr: Option<IpAddr>,
     /// Set only where the malformed shape is the point.
     pub defect: Option<ChassisDefect>,
 }
@@ -192,6 +225,7 @@ impl RemoteNeighbour {
             port_desc: None,
             sys_name: None,
             sys_desc: None,
+            mgmt_addr: None,
             defect: None,
         }
     }
@@ -218,6 +252,11 @@ impl RemoteNeighbour {
 
     pub fn sys_desc(mut self, desc: &str) -> Self {
         self.sys_desc = Some(desc.to_string());
+        self
+    }
+
+    pub fn mgmt_addr(mut self, addr: IpAddr) -> Self {
+        self.mgmt_addr = Some(addr);
         self
     }
 
@@ -290,6 +329,19 @@ impl RemoteNeighbour {
             if let Some(text) = text {
                 rows.push(Row::at(base, &suffix, PassValue::Str(text.clone())));
             }
+        }
+
+        // The management address rides in the index of its own table. The value served here is
+        // `lldpRemManAddrIfSubtype` and the collector ignores it — 1 is `unknown`, which is what a
+        // device that does not tie the address to a numbered interface reports.
+        if let Some(addr) = &self.mgmt_addr {
+            let mut man_suffix = suffix.clone();
+            man_suffix.extend(man_addr_suffix(addr));
+            rows.push(Row::at(
+                mib.remote.man_addr_if_subtype,
+                &man_suffix,
+                PassValue::Integer(1),
+            ));
         }
         rows
     }
