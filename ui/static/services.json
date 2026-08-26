@@ -1,5 +1,23 @@
 [
   {
+    "category": "ContainerRuntime",
+    "color": "Blue",
+    "description": "Daemonless container runtime",
+    "discovery_pattern": "Client probe Podman succeeded",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/podman.svg",
+    "name": "Podman"
+  },
+  {
+    "category": "ContainerRuntime",
+    "color": "Blue",
+    "description": "Docker",
+    "discovery_pattern": "Client probe Docker succeeded",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg",
+    "name": "Docker"
+  },
+  {
     "category": "Media",
     "color": "Blue",
     "description": "User invitation and management system for Jellyfin, Plex, Emby etc",
@@ -288,6 +306,15 @@
     "name": "CUPS"
   },
   {
+    "category": "Printer",
+    "color": "Gray",
+    "description": "A network printer advertising AirPrint",
+    "discovery_pattern": "Any of: (Host advertises '_ipp._tcp' over mDNS, Host advertises '_pdl-datastream._tcp' over mDNS)",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/printer.svg",
+    "name": "AirPrint Printer"
+  },
+  {
     "category": "IoT",
     "color": "Yellow",
     "description": "Wiz IoT Devices",
@@ -318,7 +345,7 @@
     "category": "IoT",
     "color": "Yellow",
     "description": "Sonos wireless speaker system",
-    "discovery_pattern": "All of: (MAC Address belongs to Sonos, Inc., Any of: (445/tcp is open, 3445/tcp is open, 1400/tcp is open, 1410/tcp is open, 1843/tcp is open, 3400/tcp is open, 3401/tcp is open, 3500/tcp is open))",
+    "discovery_pattern": "All of: (MAC Address belongs to Sonos, Inc., Any of: (Host advertises '_sonos._tcp' over mDNS, 445/tcp is open, 3445/tcp is open, 1400/tcp is open, 1410/tcp is open, 1843/tcp is open, 3400/tcp is open, 3401/tcp is open, 3500/tcp is open))",
     "logo_needs_white_background": true,
     "logo_url": "https://simpleicons.org/icons/sonos.svg",
     "name": "Sonos Speaker"
@@ -327,7 +354,7 @@
     "category": "IoT",
     "color": "Yellow",
     "description": "Roku streaming device or TV",
-    "discovery_pattern": "All of: (MAC Address belongs to Roku, Inc, 8060/tcp is open)",
+    "discovery_pattern": "All of: (MAC Address belongs to Roku, Inc, Any of: (8060/tcp is open, Host advertises '_airplay._tcp' over mDNS))",
     "logo_needs_white_background": true,
     "logo_url": "https://simpleicons.org/icons/roku.svg",
     "name": "Roku Media Player"
@@ -378,10 +405,28 @@
     "name": "IoT"
   },
   {
+    "category": "Media",
+    "color": "Blue",
+    "description": "Apple smart speaker and HomeKit hub",
+    "discovery_pattern": "Host advertises '_airplay._tcp' over mDNS with model=AudioAccessory…",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/apple.svg",
+    "name": "HomePod"
+  },
+  {
+    "category": "IoT",
+    "color": "Yellow",
+    "description": "A device speaking the HomeKit Accessory Protocol",
+    "discovery_pattern": "All of: (Host advertises '_hap._tcp' over mDNS, Not (Host advertises '_airplay._tcp' over mDNS))",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/apple.svg",
+    "name": "HomeKit Accessory"
+  },
+  {
     "category": "IoT",
     "color": "Yellow",
     "description": "Google Home smart speaker or display",
-    "discovery_pattern": "All of: (Any of: (MAC Address belongs to Nest Labs Inc., MAC Address belongs to Google, Inc.), All of: (8008/tcp is open, 8009/tcp is open))",
+    "discovery_pattern": "All of: (Any of: (MAC Address belongs to Nest Labs Inc., MAC Address belongs to Google, Inc.), Any of: (All of: (8008/tcp is open, 8009/tcp is open), Host advertises '_googlecast._tcp' over mDNS))",
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/google-home.svg",
     "name": "Google Home"
@@ -399,7 +444,7 @@
     "category": "IoT",
     "color": "Yellow",
     "description": "Google Chromecast streaming device",
-    "discovery_pattern": "All of: (MAC Address belongs to Google, Inc., 8008/tcp is open, 8009/tcp is open)",
+    "discovery_pattern": "All of: (MAC Address belongs to Google, Inc., Any of: (Host advertises '_googlecast._tcp' over mDNS, All of: (8008/tcp is open, 8009/tcp is open)))",
     "logo_needs_white_background": true,
     "logo_url": "https://simpleicons.org/icons/googlecast.svg",
     "name": "Chromecast"
@@ -421,6 +466,15 @@
     "logo_needs_white_background": false,
     "logo_url": "",
     "name": "BACnet"
+  },
+  {
+    "category": "Media",
+    "color": "Blue",
+    "description": "Apple set-top box and HomeKit hub",
+    "discovery_pattern": "Host advertises '_airplay._tcp' over mDNS with model=AppleTV…",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/apple.svg",
+    "name": "Apple TV"
   },
   {
     "category": "IoT",
@@ -1368,15 +1422,6 @@
     "name": "Podman Container"
   },
   {
-    "category": "ContainerRuntime",
-    "color": "Blue",
-    "description": "Daemonless container runtime",
-    "discovery_pattern": "Client probe Podman succeeded",
-    "logo_needs_white_background": false,
-    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/podman.svg",
-    "name": "Podman"
-  },
-  {
     "category": "Orchestrator",
     "color": "Purple",
     "description": "Enterprise Kubernetes",
@@ -1431,15 +1476,6 @@
     "name": "Docker Swarm"
   },
   {
-    "category": "ContainerRuntime",
-    "color": "Blue",
-    "description": "Docker",
-    "discovery_pattern": "Client probe Docker succeeded",
-    "logo_needs_white_background": false,
-    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg",
-    "name": "Docker"
-  },
-  {
     "category": "Container",
     "color": "Blue",
     "description": "A generic docker container",
@@ -1470,7 +1506,7 @@
     "category": "IoT",
     "color": "Yellow",
     "description": "Philips Hue Bridge for lighting control",
-    "discovery_pattern": "All of: (MAC Address belongs to Philips Lighting BV, Endpoint response body from <ip>:80/ contains \"hue\")",
+    "discovery_pattern": "All of: (MAC Address belongs to Philips Lighting BV, Any of: (Endpoint response body from <ip>:80/ contains \"hue\", Host advertises '_hue._tcp' over mDNS))",
     "logo_needs_white_background": true,
     "logo_url": "https://simpleicons.org/icons/philipshue.svg",
     "name": "Philips Hue Bridge"
@@ -2293,6 +2329,15 @@
     "logo_needs_white_background": false,
     "logo_url": "",
     "name": "NTP Server"
+  },
+  {
+    "category": "NetworkCore",
+    "color": "Yellow",
+    "description": "Network management interface over gRPC",
+    "discovery_pattern": "Client probe Gnmi succeeded",
+    "logo_needs_white_background": false,
+    "logo_url": "",
+    "name": "gNMI"
   },
   {
     "category": "NetworkCore",
