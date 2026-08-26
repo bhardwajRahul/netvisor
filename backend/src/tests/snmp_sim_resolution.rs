@@ -98,6 +98,24 @@ impl Lab {
         }
     }
 
+    /// A host that answered SNMP and served nothing else: no interfaces, no chassis id, no
+    /// `sysName` — the shape `switch-mute-01` has, and the shape every tier above the address is
+    /// structurally unable to place. It holds exactly one thing: an address.
+    async fn host_with_only_an_address(&self, name: &str, address: IpAddr) -> Host {
+        let mut record = host(&self.network_id);
+        record.base.name = HostName::Manual(name.to_string());
+        record.base.chassis_id = None;
+        record.base.sys_name = None;
+        self.storage.hosts.create(&record).await.unwrap();
+
+        let mut ip = super::ip_address(&self.network_id, &self._subnet_id);
+        ip.base.host_id = record.id;
+        ip.base.ip_address = address;
+        self.storage.ip_addresses.create(&ip).await.unwrap();
+
+        record
+    }
+
     async fn interface(&self, host_id: Uuid, entry: &IfTableEntry) -> Interface {
         let interface = Interface::new(InterfaceBase {
             host_id,
@@ -177,6 +195,82 @@ async fn a_chassis_id_on_no_port_still_finds_its_device() {
             .await,
         IdentityResolution::Resolved(netgear.host.id),
         "the far end is findable only through the chassis id it recorded about itself"
+    );
+}
+
+/// GH #668: the far end that answered SNMP and served nothing else.
+///
+/// Such a device carries no interface row to hold the chassis MAC its neighbours advertise and no
+/// `chassis_id` of its own, so the MAC tier and the chassis tier are structurally dead for it — and
+/// with no `sysName` recorded either, the ladder had nothing left. The address it publishes in
+/// `lldpRemManAddr` is the one identifier that survives, and this network already holds it.
+///
+/// Against the database because that is where it has to hold: the tier resolves through
+/// `ip_addresses`, and the fake-inventory tests re-implement that lookup rather than running it.
+#[tokio::test]
+async fn a_far_end_with_no_tables_is_found_by_the_address_it_publishes() {
+    let lab = Lab::new().await;
+    let management_address: IpAddr = "192.168.1.248".parse().unwrap();
+    let mute = lab
+        .host_with_only_an_address("switch-mute-01", management_address)
+        .await;
+
+    // What a D-Link neighbour of it advertises: a chassis MAC that exists nowhere on our side.
+    let advertised = LldpChassisId::MacAddress("00:ad:24:89:cc:f0".to_string());
+
+    // The preconditions. Without these the test could pass through a tier it is not about.
+    assert_eq!(
+        lab.resolver
+            .find_host_by_mac(&advertised.identifier(), lab.network_id)
+            .await,
+        IdentityResolution::NotFound,
+        "the chassis MAC must be on no interface and no address"
+    );
+    assert_eq!(
+        lab.resolver
+            .find_host_by_chassis_id(&advertised.identifier(), lab.network_id)
+            .await,
+        IdentityResolution::NotFound,
+        "and on no host's own chassis id"
+    );
+
+    assert_eq!(
+        advertised
+            .resolve_host_id(
+                &lab.resolver,
+                lab.network_id,
+                AdvertisedIdentity {
+                    sys_name: None,
+                    address: Some(management_address),
+                },
+            )
+            .await,
+        IdentityResolution::Resolved(mute.id),
+        "the address it published is the only tier that can place it"
+    );
+}
+
+/// An address nothing holds stays `NotFound` — the tier must not invent a match, and this is the
+/// population the subnet inference then runs on.
+#[tokio::test]
+async fn a_published_address_this_network_does_not_hold_resolves_to_nothing() {
+    let lab = Lab::new().await;
+    lab.host_with_only_an_address("switch-mute-01", "192.168.1.248".parse().unwrap())
+        .await;
+
+    let advertised = LldpChassisId::MacAddress("00:ad:24:89:cc:f0".to_string());
+    assert_eq!(
+        advertised
+            .resolve_host_id(
+                &lab.resolver,
+                lab.network_id,
+                AdvertisedIdentity {
+                    sys_name: None,
+                    address: Some("10.20.30.11".parse().unwrap()),
+                },
+            )
+            .await,
+        IdentityResolution::NotFound
     );
 }
 
