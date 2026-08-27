@@ -321,7 +321,7 @@ impl InstantOnIntegration {
 
         let mapped = mapping::map_devices(&devices, &clients, network_id, subnets);
         let device_ips: Vec<std::net::IpAddr> = mapped.iter().map(|d| d.ip).collect();
-        let mapped_clients = mapping::map_clients(&clients, network_id, subnets, &device_ips);
+        let mapped_clients = mapping::map_clients(&clients, network_id, &device_ips);
 
         if mapped.len() < devices.len() {
             // Silent truncation would read as "the site only contains these devices", and in the

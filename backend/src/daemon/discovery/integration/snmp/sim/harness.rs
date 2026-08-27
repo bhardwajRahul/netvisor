@@ -15,12 +15,12 @@ use std::net::IpAddr;
 use super::SimDevice;
 use crate::daemon::discovery::integration::snmp::queries::{IfTableWalk, SnmpCollection};
 use crate::daemon::discovery::integration::snmp::types::{
-    ArpEntry, BridgeFdbEntry, IfTableEntry, LldpLocalPort, LldpNeighbor, SystemInfo,
+    ArpEntry, BridgeFdbEntry, CdpNeighbor, IfTableEntry, LldpLocalPort, LldpNeighbor, SystemInfo,
 };
 use crate::daemon::discovery::integration::snmp::{
     LocalPortOutcome, count_dropped_neighbours, query_arp_table, query_bridge_fdb,
-    query_bridge_port_mapping, query_ip_addr_table, query_lldp_local_ports, query_lldp_neighbors,
-    query_system_info, remap_lldp_local_ports, walk_if_table,
+    query_bridge_port_mapping, query_cdp_neighbors, query_ip_addr_table, query_lldp_local_ports,
+    query_lldp_neighbors, query_system_info, remap_lldp_local_ports, walk_if_table,
 };
 
 /// Everything one scan of a device reads.
@@ -41,6 +41,9 @@ pub struct Collected {
     /// claimed. Every one is discarded whole when interfaces are built.
     pub dropped_neighbours: usize,
     pub arp: SnmpCollection<Vec<ArpEntry>>,
+    /// CDP neighbours, read the way `SnmpIntegration::execute` reads them. Collected here because
+    /// a column the simulator emits and nothing reads back proves only that it was written.
+    pub cdp: SnmpCollection<Vec<CdpNeighbor>>,
     pub bridge_ports: HashMap<i32, i32>,
     pub fdb: SnmpCollection<Vec<BridgeFdbEntry>>,
     pub ip_addresses: usize,
@@ -121,6 +124,9 @@ pub async fn collect(device: &SimDevice) -> Collected {
         count_dropped_neighbours(&neighbours.records, &local_ports, &if_table.entries);
 
     let arp = query_arp_table(&mut agent, ip).await.unwrap_or_default();
+    let cdp = query_cdp_neighbors(&mut agent, ip)
+        .await
+        .unwrap_or_default();
     let bridge_mapping = query_bridge_port_mapping(&mut agent, ip)
         .await
         .unwrap_or_default();
@@ -142,6 +148,7 @@ pub async fn collect(device: &SimDevice) -> Collected {
         local_port_outcome,
         dropped_neighbours,
         arp,
+        cdp,
         bridge_ports,
         fdb,
         ip_addresses,

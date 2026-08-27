@@ -12,11 +12,18 @@ use crate::server::{
         },
         types::entities::EntitySource,
     },
-    subnets::r#impl::base::Subnet,
+    subnets::r#impl::{
+        base::{Subnet, SubnetBase},
+        inference::{infer_range_for, placeable_subnet},
+        types::{SubnetCidrSource, SubnetType},
+    },
     tags::entity_tags::EntityTagService,
 };
-use anyhow::Result;
+use anyhow::{Error, Result};
 use async_trait::async_trait;
+use chrono::Utc;
+use cidr::IpCidr;
+use std::net::IpAddr;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -208,7 +215,72 @@ impl CrudService<Subnet> for SubnetService {
     }
 }
 
+/// Where an address belongs, and how sure we are of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Placement {
+    /// A subnet this network already holds contains it.
+    Existing(Uuid),
+    /// Nothing held it, so a range was inferred and created. The row carries
+    /// [`SubnetCidrSource::Inferred`], so it badges and asks an operator to confirm it.
+    Inferred(Uuid),
+    /// Nothing holds it and nothing may be invented for it — a public address, or IPv6 global
+    /// unicast, neither of which is a segment of this network to create. The caller decides.
+    Unplaceable,
+}
+
 impl SubnetService {
+    /// Place an address, inferring a range for it when nothing this network holds contains it.
+    ///
+    /// The single automatic-placement entry point. Every source of a discovered address goes
+    /// through it — an LLDP far end, a controller-reported device, a repaired daemon payload — so
+    /// they cannot disagree about which subnet an address belongs to, and so that "nothing holds
+    /// this" is answered the same way once rather than per integration.
+    ///
+    /// Deliberately not the placement rule for a *container* endpoint: the runtime API already says
+    /// which network the endpoint is on, and re-deriving that by address would throw away an
+    /// identity for a guess — see `get_container_interfaces`.
+    pub async fn place_address(&self, network_id: Uuid, ip: IpAddr) -> Result<Placement, Error> {
+        let live = self
+            .get_all(StorableFilter::<Subnet>::new_from_network_ids(&[network_id]).live())
+            .await?;
+
+        if let Some(subnet) = placeable_subnet(&live, ip) {
+            return Ok(Placement::Existing(subnet.id));
+        }
+
+        let live_cidrs: Vec<IpCidr> = live.iter().map(|s| s.base.cidr).collect();
+        let Some(cidr) = infer_range_for(ip, &live_cidrs) else {
+            return Ok(Placement::Unplaceable);
+        };
+
+        let mut subnet = Subnet::new(SubnetBase {
+            cidr,
+            // A range nothing read, only inferred — the whole reason this rung exists.
+            cidr_source: SubnetCidrSource::Inferred,
+            network_id,
+            name: cidr.to_string(),
+            description: None,
+            // Not `Management` even where a management address produced it: on a flat network that
+            // address is just the device's LAN address, and typing the subnet would be a second
+            // guess stacked on the first.
+            subnet_type: SubnetType::Unknown,
+            virtualization_service_id: None,
+            source: EntitySource::Discovery,
+            tags: Vec::new(),
+        });
+        subnet.last_seen_at = Utc::now();
+
+        let created = self.create(subnet, AuthenticatedEntity::System).await?;
+        tracing::info!(
+            network_id = %network_id,
+            ip = %ip,
+            cidr = %cidr,
+            subnet_id = %created.id,
+            "Inferred a subnet for an address nothing on this network holds"
+        );
+        Ok(Placement::Inferred(created.id))
+    }
+
     pub fn new(
         storage: Arc<GenericPostgresStorage<Subnet>>,
         event_bus: Arc<EventBus>,

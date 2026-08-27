@@ -163,7 +163,11 @@ impl HostService {
         // can drop. Post-upsert `get_for_host` alone would miss subnets that
         // disappeared entirely from the host.
         let previous_subnets: HashSet<Uuid> = self
-            .find_matching_host_by_ip_addresses(&host.base.network_id, &ip_addresses)
+            .find_matching_host_by_ip_addresses(
+                &host.base.network_id,
+                &ip_addresses,
+                host.base.chassis_id.as_deref(),
+            )
             .await?
             .map(|(_, existing_ips)| existing_ips.iter().map(|i| i.base.subnet_id).collect())
             .unwrap_or_default();

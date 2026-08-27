@@ -721,11 +721,13 @@ mod tests {
     use crate::server::shared::storage::traits::Storable;
     use crate::server::shared::types::entities::EntitySource;
     use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::types::SubnetCidrSource;
     use pnet::datalink::NetworkInterface;
     use std::str::FromStr;
 
     fn make_subnet(cidr: &str, subnet_type: SubnetType) -> Subnet {
         Subnet::new(SubnetBase {
+            cidr_source: SubnetCidrSource::Observed,
             cidr: IpCidr::from_str(cidr).unwrap(),
             network_id: Uuid::nil(),
             name: String::new(),

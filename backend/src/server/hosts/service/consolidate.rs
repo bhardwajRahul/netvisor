@@ -15,8 +15,10 @@ impl HostService {
         &self,
         network_id: &Uuid,
         incoming_ip_addresses: &[IPAddress],
+        incoming_chassis_id: Option<&str>,
     ) -> Result<Option<(Host, Vec<IPAddress>)>> {
-        if incoming_ip_addresses.is_empty() {
+        // A payload with neither an address nor a chassis id carries no identity to match on.
+        if incoming_ip_addresses.is_empty() && incoming_chassis_id.is_none() {
             return Ok(None);
         }
 
@@ -40,19 +42,25 @@ impl HostService {
             .get_for_hosts(&host_ids, None)
             .await?;
 
-        let candidates: Vec<(Uuid, Vec<IPAddress>)> = all_hosts
+        let candidates: Vec<HostCandidate> = all_hosts
             .iter()
-            .map(|h| (h.id, ip_addresses_by_host.remove(&h.id).unwrap_or_default()))
+            .map(|h| HostCandidate {
+                id: h.id,
+                chassis_id: h.base.chassis_id.clone(),
+                ip_addresses: ip_addresses_by_host.remove(&h.id).unwrap_or_default(),
+            })
             .collect();
 
-        let Some(matched_id) = select_matching_host(incoming_ip_addresses, &candidates) else {
+        let Some(matched_id) =
+            select_matching_host(incoming_ip_addresses, incoming_chassis_id, &candidates)
+        else {
             return Ok(None);
         };
 
         let host_ip_addresses = candidates
             .into_iter()
-            .find(|(id, _)| *id == matched_id)
-            .map(|(_, ip_addresses)| ip_addresses)
+            .find(|c| c.id == matched_id)
+            .map(|c| c.ip_addresses)
             .unwrap_or_default();
 
         Ok(all_hosts

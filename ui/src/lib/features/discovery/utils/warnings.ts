@@ -24,6 +24,9 @@ import { metaDescriptionWith, metaName } from '$lib/i18n/metadata';
 import {
 	common_andNMore,
 	discovery_warningNoFurtherDetail,
+	discovery_warningAtAddress,
+	discovery_warningInferredFrom,
+	discovery_warningSeenBy,
 	discovery_warningNoPortId
 } from '$lib/paraglide/messages';
 
@@ -194,6 +197,14 @@ const WARNING_PARAMS = {
 	LldpPortNotFound: portParams,
 	LldpPortAmbiguous: portParams,
 
+	ProvisionalSubnetInferred: (w, hostName) => ({
+		count: w.length,
+		examples: joinList(
+			w.map((x) => describeProvisionalSubnet(x, hostName)),
+			'conjunction'
+		)
+	}),
+
 	WarningsTruncated: (w) => ({ elided: sum(w.map((x) => x.elided)) }),
 	// The whole sentence *is* the detail: a warning from another version, or one written before
 	// warnings were coded at all. Rendered one per occurrence, so this only ever sees one.
@@ -281,20 +292,32 @@ function arrow(near: string, far: string): string {
 }
 
 /**
- * `switch7 Gi1/0/1 -> 00:ad:24:89:cc:f0 (core-sw)`.
+ * `switch7 Gi1/0/1 -> 00:ad:24:89:cc:f0 (core-sw) at 10.20.30.11`.
  *
  * Which of our devices saw the neighbour leads the line, because it is the first thing an operator
  * needs in order to act — the identifier alone says a link is missing without saying where to go
  * and look. Every segment is dropped when it is absent rather than filled with a placeholder: a
  * host whose name has not loaded yet, or one deleted since the scan, then reads exactly as it did
  * before names were resolved at all.
+ *
+ * The address is the segment that says which kind of gap this is. A far end that published one and
+ * still matched nothing is a device on a range this network has not scanned, which an operator can
+ * act on; one that published none cannot be placed however much gets scanned. Reading the two apart
+ * used to cost a round trip to whoever reported the scan.
  */
 function describeNeighbour(
-	w: { host_id: string; if_descr: string; identifier: string; sys_name?: string | null },
+	w: {
+		host_id: string;
+		if_descr: string;
+		identifier: string;
+		sys_name?: string | null;
+		address?: string | null;
+	},
 	hostName: HostNameLookup
 ): string {
 	const near = [hostName(w.host_id), w.if_descr].filter(Boolean).join(' ');
-	const far = `${w.identifier}${w.sys_name ? ` (${w.sys_name})` : ''}`;
+	const named = `${w.identifier}${w.sys_name ? ` (${w.sys_name})` : ''}`;
+	const far = w.address ? `${named} ${discovery_warningAtAddress({ address: w.address })}` : named;
 	return arrow(near, far);
 }
 
@@ -338,6 +361,37 @@ function describePort(
 	// straight at the identifier that was tried.
 	const remote = hostName(w.remote_host_id);
 	return arrow(near, remote ? `${remote} ${id}` : id);
+}
+
+/**
+ * `10.20.30.0/24, from offsite-core-01 (10.20.30.11) and offsite-edge-01 (10.20.30.24) seen by
+ * switch-offsite-01`.
+ *
+ * Names the far ends rather than only the range, because "we invented a subnet" is not something an
+ * operator can act on: the labels are what let them recognise a segment as real, spot a device with
+ * a factory-default address, or decide the range needs correcting.
+ */
+function describeProvisionalSubnet(
+	w: WarningOf<'ProvisionalSubnetInferred'>,
+	hostName: HostNameLookup
+): string {
+	// A range is reported for as long as it is unconfirmed, so most of them arrive without the
+	// far-end evidence that produced them — the pass that inferred it may have been scans ago, and
+	// one inferred while placing a controller-reported address never had a neighbour at all. The
+	// range alone is still the actionable part.
+	if (!w.addresses.length) return w.cidr;
+
+	// Paired positionally where both are present: `sys_names` omits far ends that sent none, so a
+	// group where only some did would otherwise misalign names against addresses.
+	const named =
+		w.sys_names.length === w.addresses.length
+			? w.addresses.map((address, i) => `${w.sys_names[i]} (${address})`)
+			: w.addresses;
+	const seenBy = [...new Set(w.seen_by_host_ids.map(hostName).filter(Boolean))] as string[];
+	const from = discovery_warningInferredFrom({ far_ends: joinList(named, 'conjunction') });
+	return seenBy.length
+		? `${w.cidr}, ${from} ${discovery_warningSeenBy({ devices: joinList(seenBy, 'conjunction') })}`
+		: `${w.cidr}, ${from}`;
 }
 
 function portParams(

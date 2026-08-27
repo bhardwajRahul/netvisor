@@ -96,6 +96,8 @@ impl DiscoveryWarningCode {
             | Self::LldpPortNotFound
             | Self::LldpPortAmbiguous => &["count", "examples"],
 
+            Self::ProvisionalSubnetInferred => &["count", "examples"],
+
             Self::WarningsTruncated => &["elided"],
             Self::Unknown => &["detail"],
         }
@@ -150,6 +152,9 @@ impl DiscoveryWarningCode {
             | Self::SnmpWalkEntryCap
             | Self::SnmpWalkUnsupported
             | Self::SnmpWalkBridgeMibAbsent
+            // A range Scanopy proposes, not a fault: the segment is probably real and the operator
+            // is being asked to confirm it, which is a different thing from something going wrong.
+            | Self::ProvisionalSubnetInferred
             | Self::Unknown => Severity::Informational,
         }
     }
@@ -223,6 +228,7 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
             Self::LldpPortNoStrategy => "No lookup for the advertised port id",
             Self::LldpPortNotFound => "Advertised port not found",
             Self::LldpPortAmbiguous => "Advertised port not unique",
+            Self::ProvisionalSubnetInferred => "Address range assumed, please confirm",
             Self::WarningsTruncated => "Some warnings not recorded",
             Self::Unknown => "Warning from another version",
         }
@@ -354,6 +360,9 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
             }
             Self::LldpPortAmbiguous => {
                 "LLDP/CDP neighbours resolved to a device but several of its ports match the advertised port id ({count} in total), so it identifies none and Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
+            }
+            Self::ProvisionalSubnetInferred => {
+                "{count} subnet(s) on this network have a range Scanopy assumed rather than read, because devices reported addresses in them that nothing scanned holds. Nothing advertises a netmask, so the range around an address is a convention — confirm or correct it on the subnet. No daemon has an interface on these ranges, and they are reported on every scan until confirmed. {examples}"
             }
             Self::WarningsTruncated => {
                 "{elided} further warnings from this scan were not recorded, because it produced more than the scan record holds. Narrow what the scan covers to see the rest."

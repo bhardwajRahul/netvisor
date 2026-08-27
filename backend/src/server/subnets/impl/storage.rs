@@ -18,7 +18,7 @@ use crate::server::{
     },
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
-        types::SubnetType,
+        types::{SubnetCidrSource, SubnetType},
     },
 };
 
@@ -29,6 +29,7 @@ pub struct SubnetCsvRow {
     pub name: String,
     pub cidr: String,
     pub subnet_type: String,
+    pub cidr_source: String,
     pub description: Option<String>,
     pub network_id: Uuid,
     pub source: String,
@@ -87,6 +88,7 @@ impl Storable for Subnet {
                     network_id,
                     source,
                     cidr,
+                    cidr_source,
                     subnet_type,
                     description,
                     virtualization_service_id,
@@ -100,6 +102,7 @@ impl Storable for Subnet {
                 "name",
                 "description",
                 "cidr",
+                "cidr_source",
                 "source",
                 "subnet_type",
                 "virtualization_service_id",
@@ -118,6 +121,7 @@ impl Storable for Subnet {
                 SqlValue::String(name),
                 SqlValue::OptionalString(description),
                 SqlValue::IpCidr(cidr),
+                SqlValue::String(cidr_source.id().to_string()),
                 SqlValue::EntitySource(source),
                 SqlValue::String(subnet_type.id().to_string()),
                 SqlValue::OptionalUuid(virtualization_service_id),
@@ -140,6 +144,17 @@ impl Storable for Subnet {
             .map_err(|e| anyhow::anyhow!("Failed to deserialize cidr: {}", e))?;
         let subnet_type = SubnetType::from_str(&row.get::<String, _>("subnet_type"))
             .map_err(|e| anyhow::anyhow!("Failed to parse subnet_type: {}", e))?;
+        // Degrade rather than fail the whole row load, matching `subnet_type` above: a binary that
+        // predates a newly added rung must still be able to read those subnets. `Observed` is the
+        // safe landing place — it neither prompts an operator nor overrides one.
+        let cidr_source = SubnetCidrSource::from_str(&row.get::<String, _>("cidr_source"))
+            .unwrap_or_else(|_| {
+                tracing::warn!(
+                    cidr_source = %row.get::<String, _>("cidr_source"),
+                    "Unrecognized SubnetCidrSource; degrading to Observed"
+                );
+                SubnetCidrSource::Observed
+            });
         let source: EntitySource =
             serde_json::from_value(row.get::<serde_json::Value, _>("source"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize source: {}", e))?;
@@ -160,6 +175,7 @@ impl Storable for Subnet {
                 network_id: row.get("network_id"),
                 source,
                 cidr,
+                cidr_source,
                 subnet_type,
                 virtualization_service_id: row.get("virtualization_service_id"),
                 tags: Vec::new(), // Hydrated from entity_tags junction table
@@ -258,6 +274,7 @@ impl Entity for Subnet {
             name: self.base.name.clone(),
             cidr: self.base.cidr.to_string(),
             subnet_type: self.base.subnet_type.id().to_string(),
+            cidr_source: self.base.cidr_source.id().to_string(),
             description: self.base.description.clone(),
             network_id: self.base.network_id,
             source: format!("{:?}", self.base.source),
@@ -304,6 +321,12 @@ impl Entity for Subnet {
     }
 
     fn set_source(&mut self, source: EntitySource) {
+        // A range a person typed into Scanopy is an assertion, not a reading, and it sits at the
+        // top of the confidence ladder — the same act that makes the row `Manual` is the one that
+        // makes its CIDR `Confirmed`, so the two cannot be set apart from each other.
+        if source == EntitySource::Manual {
+            self.base.cidr_source = SubnetCidrSource::Confirmed;
+        }
         self.base.source = source;
     }
 
@@ -312,5 +335,14 @@ impl Entity for Subnet {
         self.base.source = existing.base.source.clone();
         self.created_at = existing.created_at;
         self.updated_at = existing.updated_at;
+
+        // An edit that moves the range is the "confirm or correct" action: discovery never changes
+        // an existing subnet's CIDR — `SubnetService::create` dedups *by* CIDR and refreshes the
+        // row it matched — so a different value arriving here came from a person.
+        if self.base.cidr != existing.base.cidr {
+            self.base.cidr_source = SubnetCidrSource::Confirmed;
+        } else {
+            self.base.cidr_source = self.base.cidr_source.max(existing.base.cidr_source);
+        }
     }
 }

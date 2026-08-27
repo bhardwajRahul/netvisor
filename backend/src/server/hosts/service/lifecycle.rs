@@ -15,6 +15,7 @@ impl HostService {
         subnet_service: Arc<SubnetService>,
         vlan_service: Arc<VlanService>,
         network_service: Arc<NetworkService>,
+        organization_service: Arc<OrganizationService>,
         event_bus: Arc<EventBus>,
         entity_tag_service: Arc<EntityTagService>,
     ) -> Self {
@@ -30,6 +31,7 @@ impl HostService {
             subnet_service,
             vlan_service,
             network_service,
+            organization_service,
             event_bus,
             entity_tag_service,
         }

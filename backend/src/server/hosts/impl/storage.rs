@@ -346,8 +346,14 @@ impl Entity for Host {
     }
 
     fn preserve_immutable_fields(&mut self, existing: &Self) {
-        // source is set at creation time (Manual or Discovery), cannot be changed
-        self.base.source = existing.base.source.clone();
+        // source is set at creation time (Manual or Discovery), cannot be changed — with one
+        // exception. `Inferred` says "nothing has ever contacted this device", and the moment a
+        // scan does, that stops being true. Pinning it would leave a host that answers SNMP still
+        // badged as second-hand for ever, which is the opposite of what the rung is for.
+        self.base.source = match (&existing.base.source, &self.base.source) {
+            (EntitySource::Inferred, incoming) if incoming.is_from_discovery() => incoming.clone(),
+            (existing_source, _) => existing_source.clone(),
+        };
         self.created_at = existing.created_at;
         self.updated_at = existing.updated_at;
     }

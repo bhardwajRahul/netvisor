@@ -1,4 +1,4 @@
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 
 use crate::daemon::discovery::integration::snmp::sim::lldp::{
     Advertised, LldpTable, RemoteNeighbour,
@@ -174,7 +174,10 @@ pub fn cdp_table() -> CdpTable {
         remote_device_id: Some("router-gw-01".into()),
         remote_port_id: Some("ge-0/0/0".into()),
         remote_platform: Some("Juniper MX204".into()),
-        remote_address: None,
+        // The address `router-gw-01` publishes for itself. CDP carries no chassis id, so this and
+        // the device id are the only two identities a CDP neighbour has — and the address is the
+        // one that still works when the far end's own tables came back empty.
+        remote_address: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 232))),
     }])
 }
 
@@ -216,6 +219,28 @@ mod tests {
 
     /// GH #686's read half: the forwarding database is a join across three columns, and the daemon
     /// keeps learned(3) and mgmt(5) while dropping self(4). Eight rows must yield seven entries —
+    /// `cdpCacheAddress` is raw address octets in a column the simulator served for no device at
+    /// all, so nothing exercised the tier that resolves a CDP neighbour by the address it
+    /// publishes — the only identity such a neighbour has besides its device id, and the one that
+    /// still works when the far end's own tables came back empty.
+    #[tokio::test]
+    async fn its_cdp_neighbour_publishes_the_address_it_is_reachable_at() {
+        let scan = harness::scan("switch-core-01").await;
+
+        let neighbour = scan
+            .cdp
+            .records
+            .iter()
+            .find(|n| n.remote_device_id.as_deref() == Some("router-gw-01"))
+            .expect("the CDP neighbour on Gi0/2");
+
+        assert_eq!(
+            neighbour.remote_address,
+            Some("192.168.7.232".parse().expect("valid address")),
+            "the address must survive the octet-string round trip"
+        );
+    }
+
     /// a filter that stopped working shows up as a count too *high*, not as an empty table.
     #[tokio::test]
     async fn its_forwarding_table_drops_only_the_self_rows() {

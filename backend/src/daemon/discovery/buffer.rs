@@ -503,7 +503,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_entity_buffer_lifecycle() {
-        use crate::server::subnets::r#impl::{base::SubnetBase, types::SubnetType};
+        use crate::server::subnets::r#impl::{
+            base::SubnetBase,
+            types::{SubnetCidrSource, SubnetType},
+        };
         use chrono::Utc;
         use cidr::{IpCidr, Ipv4Cidr};
         use std::net::Ipv4Addr;
@@ -524,6 +527,7 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 name: "test-subnet".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
                 network_id,
@@ -555,7 +559,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_pending_only_returns_pending() {
-        use crate::server::subnets::r#impl::{base::SubnetBase, types::SubnetType};
+        use crate::server::subnets::r#impl::{
+            base::SubnetBase,
+            types::{SubnetCidrSource, SubnetType},
+        };
         use chrono::Utc;
         use cidr::{IpCidr, Ipv4Cidr};
         use std::net::Ipv4Addr;
@@ -576,6 +583,7 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 name: "subnet-1".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
                 network_id,
@@ -597,6 +605,7 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 name: "subnet-2".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 2, 0), 24).unwrap()),
                 network_id,
@@ -628,7 +637,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_clear_all_removes_pending_and_created() {
-        use crate::server::subnets::r#impl::{base::SubnetBase, types::SubnetType};
+        use crate::server::subnets::r#impl::{
+            base::SubnetBase,
+            types::{SubnetCidrSource, SubnetType},
+        };
         use chrono::Utc;
         use cidr::{IpCidr, Ipv4Cidr};
         use std::net::Ipv4Addr;
@@ -649,6 +661,7 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 name: "subnet-1".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
                 network_id,
@@ -670,6 +683,7 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 name: "subnet-2".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 2, 0), 24).unwrap()),
                 network_id,
@@ -712,7 +726,10 @@ mod tests {
         // 5. await_subnet() can now find the created subnet
         // 6. clear_created() removes confirmed entities
 
-        use crate::server::subnets::r#impl::{base::SubnetBase, types::SubnetType};
+        use crate::server::subnets::r#impl::{
+            base::SubnetBase,
+            types::{SubnetCidrSource, SubnetType},
+        };
         use chrono::Utc;
         use cidr::{IpCidr, Ipv4Cidr};
         use std::net::Ipv4Addr;
@@ -735,6 +752,7 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 name: "discovered-subnet".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
                 network_id,
@@ -1020,7 +1038,10 @@ mod tests {
 
     #[tokio::test]
     async fn get_scanned_ids_excludes_pending_only_includes_created() {
-        use crate::server::subnets::r#impl::{base::SubnetBase, types::SubnetType};
+        use crate::server::subnets::r#impl::{
+            base::SubnetBase,
+            types::{SubnetCidrSource, SubnetType},
+        };
         use chrono::Utc;
         use cidr::{IpCidr, Ipv4Cidr};
         use std::net::Ipv4Addr;
@@ -1041,6 +1062,7 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 name: "pending".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 1, 0), 24).unwrap()),
                 network_id,
@@ -1064,6 +1086,7 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
+                cidr_source: SubnetCidrSource::Observed,
                 name: "created".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 2, 0), 24).unwrap()),
                 network_id,

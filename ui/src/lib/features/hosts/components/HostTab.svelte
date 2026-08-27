@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { hostSourceItems } from '$lib/shared/utils/host-source';
 	import { lastSeenItems } from '$lib/shared/utils/freshness';
 	import type {
 		Host,
@@ -292,7 +293,7 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					display: { primary: true, width: 220, order: 0 }
+					display: { primary: true, width: 220, order: 0, getItems: hostSourceItems() }
 				},
 				hostname: {
 					label: common_hostname(),

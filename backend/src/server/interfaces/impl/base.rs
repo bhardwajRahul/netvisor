@@ -1,4 +1,6 @@
-use crate::server::lldp::{LldpChassisId, LldpPortId};
+use crate::server::lldp::{
+    AdvertisedIdentity, LldpChassisId, LldpPortId, is_usable_identity_address,
+};
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::types::{
     Color, Icon,
@@ -542,6 +544,40 @@ impl Interface {
     /// Returns true if this port has any neighbor discovery data (LLDP or CDP)
     pub fn has_neighbor_discovery_data(&self) -> bool {
         self.has_lldp_data() || self.has_cdp_data()
+    }
+
+    /// Everything the far end published about *itself* besides its chassis id, for the
+    /// subtype-independent tiers of [`LldpChassisId::resolve_host_id`].
+    ///
+    /// One method rather than one per protocol, because the tiers do not care which protocol
+    /// carried the value: a CDP device id is a `sysName` and `cdpCacheAddress` is a management
+    /// address, and resolving them differently is how the CDP branch ended up with no address
+    /// tier at all.
+    ///
+    /// The address preference is deliberate. `lldpRemManAddr` is the far end's own statement of
+    /// where it is managed, so it comes first. A `NetworkAddress` *port* id is second: it names
+    /// the port rather than the device, which makes it a weaker statement of identity but a
+    /// perfectly good one — the address still belongs to the device at the other end of this
+    /// cable. `cdpCacheAddress` is last only because a row carrying it rarely carries the others.
+    pub fn advertised_identity(&self) -> AdvertisedIdentity<'_> {
+        let port_id_address = match self.base.lldp_port_id {
+            Some(LldpPortId::NetworkAddress(addr)) => Some(addr),
+            _ => None,
+        };
+
+        AdvertisedIdentity {
+            sys_name: self
+                .base
+                .lldp_sys_name
+                .as_deref()
+                .or(self.base.cdp_device_id.as_deref()),
+            address: self
+                .base
+                .lldp_mgmt_addr
+                .or(port_id_address)
+                .or(self.base.cdp_address)
+                .filter(is_usable_identity_address),
+        }
     }
 
     /// Whether this row carries evidence that *something* is adjacent to this port.

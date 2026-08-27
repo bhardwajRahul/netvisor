@@ -29,7 +29,7 @@ use crate::server::services::r#impl::virtualization::{
 use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
-use crate::server::subnets::r#impl::types::SubnetType;
+use crate::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
 
 use super::{
     Checkpoint, CollectionShortfall, Completeness, ProbeContext, ProbeFailure, ProbeSuccess,
@@ -127,6 +127,7 @@ impl ContainerRuntime {
             (subnet_type == bridge_subnet_type).then_some(runtime_service_id);
 
         Some(Subnet::new(SubnetBase {
+            cidr_source: SubnetCidrSource::Observed,
             cidr,
             description: None,
             tags: Vec::new(),
@@ -413,20 +414,17 @@ pub async fn execute(
     let bridge_subnets = scanner.create_bridge_subnets().await?;
     ctx.ops.report_progress(10).await.ok();
 
-    let all_subnets: Vec<_> = ctx
-        .known_subnets
-        .iter()
-        .cloned()
-        .chain(bridge_subnets.iter().cloned())
-        .collect();
-
     let containers = scanner.get_containers_and_summaries().await?;
     let container_count = containers.len();
     ctx.ops.report_progress(20).await.ok();
 
     let mut host_interfaces = host_data.ip_addresses.clone();
-    let containers_interfaces_and_subnets =
-        scanner.get_container_interfaces(&containers, &all_subnets, &mut host_interfaces);
+    let containers_interfaces_and_subnets = scanner.get_container_interfaces(
+        &containers,
+        &bridge_subnets,
+        ctx.known_subnets,
+        &mut host_interfaces,
+    );
 
     let scan = scanner
         .scan_and_process_containers(

@@ -10,6 +10,7 @@
 //! lowercase-colon form `from_snmp` does — the raw-string `hosts.chassis_id` fallback compares
 //! by string equality, so a UniFi-sourced and an SNMP-sourced chassis ID must be byte-identical.
 
+use crate::server::subnets::r#impl::inference::placeable_subnet;
 use std::collections::HashMap;
 use std::net::IpAddr;
 
@@ -45,10 +46,14 @@ pub struct MappedDevice {
 
 /// Translate a `stat/device` payload.
 ///
-/// Devices whose IP is missing, unparseable, or outside every known subnet are **skipped**:
-/// host deduplication is exclusively IP-based (`hosts/service/mod.rs::select_matching_host`),
-/// so a host created without a resolvable IP would mint a fresh duplicate on every scan rather
-/// than updating the existing one.
+/// A device whose IP is missing, unparseable, or in no subnet this network holds is skipped. The
+/// last of those is not placement — the server re-places every address it stores — it is that
+/// service matching needs a subnet to evaluate `Pattern::SubnetIsType` and the gateway patterns
+/// against, and there is nothing honest to hand it.
+///
+/// The rule is [`placeable_subnet`], not first-match: the list carries the `0.0.0.0/0`
+/// organizational rows, which contain every IPv4 address, so `find` returned `Internet` for
+/// everything and this skip never happened.
 pub fn map_devices(
     devices: &[UnifiDevice],
     network_id: Uuid,
@@ -74,7 +79,7 @@ fn map_device(
     by_mac: &HashMap<String, &UnifiDevice>,
 ) -> Option<MappedDevice> {
     let ip: IpAddr = device.ip.as_deref()?.trim().parse().ok()?;
-    let subnet = subnets.iter().find(|s| s.base.cidr.contains(&ip))?;
+    placeable_subnet(subnets, ip)?;
     let device_mac = device.mac.as_deref().and_then(canonical_mac);
 
     let identity = ControllerIdentity {
@@ -96,8 +101,8 @@ fn map_device(
 
     let ip_address = IPAddress::new(IPAddressBase {
         network_id,
-        host_id: Uuid::nil(), // server assigns
-        subnet_id: subnet.id,
+        host_id: Uuid::nil(),   // server assigns
+        subnet_id: Uuid::nil(), // server places
         ip_address: ip,
         mac_address: device_mac.as_deref().and_then(|m| m.parse().ok()),
         name: None,
@@ -319,7 +324,6 @@ fn apply_lldp_table(interfaces: &mut [Interface], device: &UnifiDevice) {
 pub fn map_clients(
     stations: &[UnifiStation],
     network_id: Uuid,
-    subnets: &[Subnet],
     device_ips: &[IpAddr],
 ) -> Vec<MappedClient> {
     stations
@@ -339,7 +343,6 @@ pub fn map_clients(
                 station.ip.as_deref(),
                 station.mac.as_deref(),
                 network_id,
-                subnets,
             )
         })
         .filter(|client| !device_ips.contains(&client.ip))
@@ -393,6 +396,68 @@ mod tests {
             },
             ..Default::default()
         }]
+    }
+
+    /// Every network is seeded with an `Internet` and a `Remote Network` subnet, both `0.0.0.0/0`,
+    /// and the daemon's list is the network's whole address space — so both are in it. No test
+    /// here included them, which is why first-match placement survived: `find` matched `Internet`
+    /// for every IPv4 address, so a device was never actually skipped and every one of them was
+    /// filed under the internet.
+    fn subnets_with_catch_alls(network_id: Uuid) -> Vec<Subnet> {
+        let catch_all = |name: &str| Subnet {
+            base: SubnetBase {
+                name: name.to_string(),
+                network_id,
+                cidr: "0.0.0.0/0".parse().expect("valid CIDR"),
+                subnet_type: SubnetType::Internet,
+                source: EntitySource::System,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        // Seeded first, so they lead the `created_at ASC` order the daemon receives.
+        let mut subnets = vec![catch_all("Internet"), catch_all("Remote Network")];
+        subnets.extend(test_subnets(network_id));
+        subnets
+    }
+
+    /// A device on a real subnet is placed there even with the catch-alls ahead of it in the list.
+    #[test]
+    fn a_device_is_placed_on_its_real_subnet_not_a_catch_all() {
+        let network_id = Uuid::new_v4();
+        let devices = parse(USW_UPLINK);
+        let real = test_subnets(network_id)[0].id;
+
+        let mapped = map_devices(&devices, network_id, &subnets_with_catch_alls(network_id));
+
+        assert!(
+            !mapped.is_empty(),
+            "the fixture must map at least one device"
+        );
+        for device in &mapped {
+            assert_eq!(
+                device.ip_address.base.subnet_id, real,
+                "{} was filed under a catch-all",
+                device.ip
+            );
+        }
+    }
+
+    /// And a device in a range this network does not hold is skipped rather than filed under one —
+    /// service matching has no subnet to evaluate its subnet patterns against for it.
+    #[test]
+    fn a_device_in_no_held_range_is_skipped_rather_than_filed_under_a_catch_all() {
+        let network_id = Uuid::new_v4();
+        let devices = parse(USW_UPLINK);
+
+        // Only the catch-alls: nothing here holds the fixture's addresses.
+        let only_catch_alls: Vec<Subnet> = subnets_with_catch_alls(network_id)
+            .into_iter()
+            .filter(|s| s.base.cidr.to_string() == "0.0.0.0/0")
+            .collect();
+
+        assert!(map_devices(&devices, network_id, &only_catch_alls).is_empty());
     }
 
     fn map(json: &str) -> Vec<MappedDevice> {

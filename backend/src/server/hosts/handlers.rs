@@ -9,6 +9,7 @@ use crate::server::discovery::r#impl::scan_settings::{RescanSettings, ScanSettin
 use crate::server::discovery::r#impl::types::{DiscoveryType, RunType};
 use crate::server::interfaces::r#impl::base::Interface;
 use crate::server::ip_addresses::r#impl::base::IPAddress;
+use crate::server::networks::r#impl::Network;
 use crate::server::openapi::tags as api_tags;
 use crate::server::ports::r#impl::base::{Port, PortType};
 use crate::server::services::r#impl::base::Service;
@@ -452,9 +453,26 @@ async fn create_host(
                     .and_then(|o| o.base.plan)
                     .unwrap_or_else(crate::server::billing::plans::get_free_plan);
                 if let Some(limit) = plan.host_limit() {
-                    let org_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
-                    let current_hosts =
-                        state.services.host_service.get_all(org_filter).await?.len() as u64;
+                    // Counted the way the dashboard counts and the way the discovery path gates:
+                    // through `count_for_networks`, which narrows SCD2 entities to live rows, and
+                    // across *every* network the organization owns. Hand-rolling it here meant
+                    // closed snapshot copies were counted and the caller's own accessible networks
+                    // were the scope — so a user could be shown 18/25 and refused at 25, and a
+                    // member whose networks are a subset of the org's could create past the limit.
+                    let org_network_ids: Vec<Uuid> = state
+                        .services
+                        .network_service
+                        .get_all(StorableFilter::<Network>::new_from_org_id(&org_id))
+                        .await
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|n| n.id)
+                        .collect();
+                    let current_hosts = state
+                        .services
+                        .host_service
+                        .count_for_networks(&org_network_ids)
+                        .await?;
                     if current_hosts >= limit {
                         let _ = state
                             .services

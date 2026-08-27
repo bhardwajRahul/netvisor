@@ -314,6 +314,8 @@ pub enum DiscoveryWarning {
     LldpPortNotFound(UnresolvedPort),
     /// The far end resolved, and several of its ports match, so it identifies none.
     LldpPortAmbiguous(UnresolvedPort),
+    /// A range was created from the addresses unplaceable far ends publish for themselves.
+    ProvisionalSubnetInferred(ProvisionalSubnet),
 
     // ---- Meta ------------------------------------------------------------
     /// The run produced more warnings than the scan record holds. Emitted rather than dropping
@@ -376,6 +378,40 @@ pub struct UnmatchedNeighbour {
     /// The far end's advertised `sysName`, where it sent one.
     #[schema(required)]
     pub sys_name: Option<String>,
+    /// The address the far end published for itself — `lldpRemManAddr`, a `NetworkAddress` port
+    /// id, or `cdpCacheAddress` — where it sent a usable one.
+    ///
+    /// Carried because it is the difference between two reports that otherwise read identically:
+    /// "the far end told us where it lives and this network holds no such address" is a device
+    /// nobody has scanned, while "it told us nothing" is a device that cannot be placed no matter
+    /// how much of the network is scanned. Without it, deciding which of the two a fleet is
+    /// looking at costs another round trip to the operator (GH #668).
+    #[schema(required)]
+    pub address: Option<String>,
+}
+
+/// A range inferred from where unplaceable far ends say they live.
+///
+/// Carries the evidence rather than just the verdict, because "we invented a subnet" is not a
+/// sentence an operator can act on: which of their devices saw it, on which ports, and what those
+/// far ends call themselves is what lets them recognise a segment as real, correct the range, or
+/// see that it is a device with a factory-default address.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
+pub struct ProvisionalSubnet {
+    /// The range, in CIDR notation.
+    pub cidr: String,
+    /// The subnet row created for it, so the UI can link straight to it.
+    pub subnet_id: Uuid,
+    /// The addresses that motivated it, in the order observed.
+    pub addresses: Vec<String>,
+    /// The far ends' own `sysName`s, where they sent any — the labels an operator recognises.
+    pub sys_names: Vec<String>,
+    /// The local devices that saw them.
+    pub seen_by_host_ids: Vec<Uuid>,
+    /// Whether a shared VLAN widened the range past the conventional prefix, rather than it being
+    /// the `/24` (or `/64`) a lone address is assumed to sit in. The difference is how much the
+    /// range rests on evidence versus on convention.
+    pub widened_by_vlan: bool,
 }
 
 /// A neighbour whose far-end host resolved but whose far-end *port* did not.
@@ -477,6 +513,7 @@ pub enum DiscoveryWarningCode {
     LldpPortNoStrategy,
     LldpPortNotFound,
     LldpPortAmbiguous,
+    ProvisionalSubnetInferred,
     WarningsTruncated,
     /// Absorbs a code from a newer binary. Fieldless, so `#[serde(other)]` applies — the text of
     /// an unrecognised warning rides on [`DiscoveryWarning::Unknown`] instead, where no metric
@@ -552,6 +589,7 @@ impl DiscoveryWarning {
             Self::LldpPortNoStrategy(_) => DiscoveryWarningCode::LldpPortNoStrategy,
             Self::LldpPortNotFound(_) => DiscoveryWarningCode::LldpPortNotFound,
             Self::LldpPortAmbiguous(_) => DiscoveryWarningCode::LldpPortAmbiguous,
+            Self::ProvisionalSubnetInferred(_) => DiscoveryWarningCode::ProvisionalSubnetInferred,
             Self::WarningsTruncated { .. } => DiscoveryWarningCode::WarningsTruncated,
             Self::Unknown { .. } => DiscoveryWarningCode::Unknown,
         }
@@ -609,6 +647,7 @@ impl DiscoveryWarning {
             | Self::LldpPortNoStrategy(_)
             | Self::LldpPortNotFound(_)
             | Self::LldpPortAmbiguous(_)
+            | Self::ProvisionalSubnetInferred(_)
             | Self::WarningsTruncated { .. }
             | Self::Unknown { .. } => None,
         }

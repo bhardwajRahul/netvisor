@@ -7,7 +7,7 @@ use scanopy::server::hosts::r#impl::base::Host;
 use scanopy::server::shared::storage::traits::Storable;
 use scanopy::server::shared::types::entities::EntitySource;
 use scanopy::server::subnets::r#impl::base::{Subnet, SubnetBase};
-use scanopy::server::subnets::r#impl::types::SubnetType;
+use scanopy::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
 use scanopy::server::tags::r#impl::base::Tag;
 use std::net::Ipv4Addr;
 
@@ -58,6 +58,7 @@ async fn test_billing_past_due_blocks_requests(ctx: &TestContext) -> Result<(), 
     set_plan_status(Some("past_due"))?;
 
     let subnet = Subnet::new(SubnetBase {
+        cidr_source: SubnetCidrSource::Observed,
         name: "Blocked Subnet".to_string(),
         description: None,
         network_id: ctx.network_id,

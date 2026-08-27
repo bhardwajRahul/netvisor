@@ -43,7 +43,7 @@ use crate::server::{
     shared::types::{Color, entities::EntitySource},
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
-        types::SubnetType,
+        types::{SubnetCidrSource, SubnetType},
     },
     tags::r#impl::base::{Tag, TagBase},
     topology::types::edges::EdgeStyle,
@@ -155,6 +155,7 @@ pub fn subnet() -> Subnet {
         last_discovery_id: None,
         first_discovery_id: None,
         base: SubnetBase {
+            cidr_source: SubnetCidrSource::Observed,
             name: "LAN".to_string(),
             description: Some("Local area network".to_string()),
             network_id: ids::NETWORK,

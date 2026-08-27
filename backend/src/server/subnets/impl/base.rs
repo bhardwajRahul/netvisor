@@ -5,7 +5,7 @@ use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::api::deserialize_empty_string_as_none;
 use crate::server::shared::types::entities::EntitySource;
-use crate::server::subnets::r#impl::types::SubnetType;
+use crate::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
 use chrono::{DateTime, Utc};
 use cidr::{IpCidr, Ipv4Cidr};
 use pnet::ipnetwork::IpNetwork;
@@ -42,6 +42,14 @@ pub struct SubnetBase {
     #[schema(value_type = String, pattern = r"^[0-9A-Fa-f.:]+/\d{1,3}$", example = "192.168.1.0/24")]
     #[serde(deserialize_with = "deserialize_cidr")]
     pub cidr: IpCidr,
+    /// How far [`Self::cidr`] can be trusted.
+    ///
+    /// Written only by [`SubnetBase::apply_cidr`], which is what keeps the pair from drifting: a
+    /// range and the confidence in it are one fact, and assigning `cidr` alone is how a guess ends
+    /// up indistinguishable from a reading.
+    #[serde(default)]
+    #[schema(required)]
+    pub cidr_source: SubnetCidrSource,
     /// The network this entity belongs to.
     pub network_id: Uuid,
     /// Human-facing name for this subnet.
@@ -77,6 +85,7 @@ impl Default for SubnetBase {
     fn default() -> Self {
         Self {
             cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 4, 0), 24).unwrap()),
+            cidr_source: SubnetCidrSource::default(),
             name: "New Subnet".to_string(),
             network_id: Uuid::new_v4(),
             description: None,
@@ -198,6 +207,8 @@ impl Subnet {
 
                 Some(Subnet::new(SubnetBase {
                     cidr,
+                    // Straight off the device's own ipAdEntNetMask, or a daemon's own interface.
+                    cidr_source: SubnetCidrSource::Observed,
                     network_id,
                     description: None,
                     tags: Vec::new(),
@@ -251,6 +262,28 @@ impl Subnet {
     ///
     /// `StorableFilter::<Subnet>::user_managed` is the SQL form of this; the two
     /// must be changed together.
+    /// Assign `cidr`/`cidr_source` if `source` is at least as authoritative as what is stored.
+    /// Returns whether anything changed.
+    ///
+    /// **This is the only place either field is written.** The ordering lives entirely in
+    /// [`SubnetCidrSource`]'s derived `Ord`, so a caller only has to say where its range came from.
+    ///
+    /// Equal rank wins, which is what makes a re-scan idempotent in the useful direction: a device
+    /// that re-reports its own `ipAdEntNetMask` refreshes an observation, while an inference never
+    /// displaces one and nothing displaces a range a person confirmed. That last rule is the same
+    /// one [`Subnet::corrects_container_bridge_guess`] already applies to `subnet_type` — a user's
+    /// explicit assertion is not a guess to be repaired.
+    pub fn apply_cidr(&mut self, cidr: IpCidr, source: SubnetCidrSource) -> bool {
+        if source < self.base.cidr_source
+            || (self.base.cidr == cidr && self.base.cidr_source == source)
+        {
+            return false;
+        }
+        self.base.cidr = cidr;
+        self.base.cidr_source = source;
+        true
+    }
+
     pub fn is_user_managed(&self) -> bool {
         self.base.source == EntitySource::Manual || !self.base.subnet_type.is_synthetic_category()
     }
@@ -317,6 +350,7 @@ mod tests {
         source: EntitySource,
     ) -> Subnet {
         Subnet::new(SubnetBase {
+            cidr_source: SubnetCidrSource::Observed,
             cidr: cidr::IpCidr::from_str("172.30.10.0/24").unwrap(),
             network_id: Uuid::nil(),
             name: "172.30.10.0/24".into(),

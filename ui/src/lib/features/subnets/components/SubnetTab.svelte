@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { lastSeenItems } from '$lib/shared/utils/freshness';
+	import { cidrSourceItems } from '$lib/shared/utils/cidr-source';
 	import SubnetEditModal from './SubnetEditModal/SubnetEditModal.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
@@ -189,7 +190,7 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					display: { order: 3 }
+					display: { order: 3, getItems: cidrSourceItems() }
 				},
 				subnet_type: {
 					label: subnets_subnetType(),
