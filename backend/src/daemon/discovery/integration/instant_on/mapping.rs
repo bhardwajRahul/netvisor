@@ -20,6 +20,7 @@
 //!    (`"1/1/1"`), which is handled by deriving interface identity from the port's own reported id
 //!    rather than assuming a flat index — see [`port_if_index`].
 
+use crate::server::subnets::r#impl::inference::placeable_subnet;
 use std::collections::HashMap;
 use std::net::IpAddr;
 
@@ -104,7 +105,9 @@ fn map_device(
     by_id: &HashMap<&str, &InstantOnDevice>,
 ) -> Option<MappedDevice> {
     let ip: IpAddr = device.ip_address.as_deref()?.trim().parse().ok()?;
-    let subnet = subnets.iter().find(|s| s.base.cidr.contains(&ip))?;
+    // Not first-match: the list carries the `0.0.0.0/0` organizational rows, which contain every
+    // IPv4 address, so `find` returned `Internet` for everything and nothing was ever skipped.
+    let subnet = placeable_subnet(subnets, ip)?;
     let device_mac = device.mac_address.as_deref().and_then(canonical_mac);
 
     let identity = ControllerIdentity {
@@ -385,7 +388,6 @@ fn apply_client_macs(
 pub fn map_clients(
     clients: &[InstantOnClient],
     network_id: Uuid,
-    subnets: &[Subnet],
     device_ips: &[IpAddr],
 ) -> Vec<MappedClient> {
     clients
@@ -407,7 +409,6 @@ pub fn map_clients(
                 client.ip_address.as_deref(),
                 client.mac_address.as_deref(),
                 network_id,
-                subnets,
             )
         })
         .filter(|client| !device_ips.contains(&client.ip))

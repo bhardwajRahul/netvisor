@@ -26,7 +26,6 @@ use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::lldp::canonical_mac;
 use crate::server::shared::types::entities::EntitySource;
-use crate::server::subnets::r#impl::base::Subnet;
 
 /// The identity fields a controller reports for one device or client.
 ///
@@ -165,28 +164,33 @@ pub struct MappedClient {
 }
 
 impl MappedClient {
-    /// Place a reported client on a known subnet, or skip it.
+    /// A reported client, with its address left for the server to place.
     ///
-    /// `None` when the address is missing, unparseable, or outside every known subnet: host
-    /// deduplication is IP-based, so a host created without a placeable address would mint a
-    /// fresh duplicate on every scan instead of updating the one already there.
+    /// `None` only when the address is missing or unparseable — there is nothing to report about a
+    /// client whose address we cannot read. It used to also return `None` for an address outside
+    /// every known subnet, on the grounds that IP-based dedup would mint a duplicate every scan;
+    /// that reasoning was sound and the remedy was not, because the subnet list it consulted
+    /// carries `0.0.0.0/0` catch-alls that contain every IPv4 address, so nothing was ever skipped
+    /// and everything landed on `Internet` instead.
+    ///
+    /// `subnet_id` is left nil the way `host_id` already is: the server places the address against
+    /// the network's authoritative subnet list and infers a range where nothing holds it, which is
+    /// the only place that decision can be made consistently across integrations.
     pub fn new(
         identity: ControllerIdentity,
         ip: Option<&str>,
         mac: Option<&str>,
         network_id: Uuid,
-        subnets: &[Subnet],
     ) -> Option<Self> {
         let ip: IpAddr = ip?.trim().parse().ok()?;
-        let subnet = subnets.iter().find(|s| s.base.cidr.contains(&ip))?;
         let mac = mac.and_then(canonical_mac);
 
         Some(Self {
             identity,
             ip_address: IPAddress::new(IPAddressBase {
                 network_id,
-                host_id: Uuid::nil(), // server assigns
-                subnet_id: subnet.id,
+                host_id: Uuid::nil(),   // server assigns
+                subnet_id: Uuid::nil(), // server places
                 ip_address: ip,
                 mac_address: mac.as_deref().and_then(|m| m.parse().ok()),
                 name: None,
