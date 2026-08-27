@@ -95,6 +95,18 @@ const CDP: &str = "cdp";
 pub(crate) const VLAN20: &str = "vlan20";
 /// `lldpLocPortTable`, split out for a device that serves it through a handler of its own.
 const LOCPORTS: &str = "locports";
+
+/// A scalar's *object* OID: the constant without its trailing instance sub-id.
+///
+/// The MIB constants name instances (`lldpLocChassisId.0`), which is what a walk asks for, but
+/// `pass` registers a subtree. Registering the instance leaves the object invisible to a GETNEXT
+/// arriving from above, so the scalar is only reachable by a caller that already knows its exact
+/// OID.
+fn scalar_object(oid: &str) -> Vec<u64> {
+    let mut parts = oid_parts(oid);
+    parts.pop();
+    parts
+}
 const EMPTY: &str = "empty";
 
 impl SimDevice {
@@ -272,9 +284,16 @@ impl SimDevice {
             (Some(mib), false) => format!("{}-active", mib.file_suffix),
             (None, _) => String::new(),
         };
+        let lldp_splits = self
+            .tables
+            .lldp
+            .as_ref()
+            .is_some_and(lldp::LldpTable::splits_registrations);
         for (suffix, subtree) in [
             (
-                lldp_file.as_str(),
+                // Skipped where the sub-tables are registered separately below: this line covers
+                // all of them, and covering them is exactly what stops them being served.
+                if lldp_splits { "" } else { lldp_file.as_str() },
                 lldp_mib.map(|m| m.root).unwrap_or(lldp_oids::LLDP_MIB),
             ),
             (BRIDGE, bridge::BRIDGE_MIB),
@@ -289,14 +308,35 @@ impl SimDevice {
                 });
             }
         }
-        // A device that serves one LLDP sub-table differently gets a `pass` line for it, nested
-        // inside the MIB-root line above. Both the model and net-snmp route to the longest match,
-        // so the root keeps answering the local-system scalars while these take their own tables.
-        // Emitted only when a handler is non-default, so every other device's config is unchanged.
+        // A device that serves one LLDP sub-table differently carves the MIB into disjoint pieces
+        // instead of registering the root: the local-system scalars one by one, then the port
+        // table, then the remote tables. Emitted only when a handler is non-default, so every
+        // other device's config is the single root line it always was.
+        //
+        // Disjoint is not tidiness. net-snmp's `pass` serves only the broadest of a set of
+        // overlapping lines and silently ignores the nested ones — a root line plus `…1.3.7` plus
+        // `…1.4` answered everything from the root, so neither sub-table handler ever ran and the
+        // rows that had moved into the port table's own file were served by nobody. The device
+        // reported `No Such Instance` for a table it was holding, and the model, which resolved
+        // the nesting, said it was fine. `no_registration_is_nested_inside_another` is what stops
+        // that coming back.
         if let (Some(table), Some(file)) = (self.tables.lldp.as_ref(), index(&lldp_file))
             && table.splits_registrations()
         {
             let port_file = index(&format!("{lldp_file}-{LOCPORTS}")).unwrap_or(file);
+            let local = &table.mib.local;
+            for scalar in [
+                local.chassis_id_subtype,
+                local.chassis_id,
+                local.sys_name,
+                local.sys_desc,
+            ] {
+                registrations.push(Registration {
+                    subtree: scalar_object(scalar),
+                    file,
+                    handler: Handler::Normal,
+                });
+            }
             for (subtree, handler, from) in [
                 (
                     table.mib.local_port_table,
@@ -454,6 +494,41 @@ mod tests {
                 device.name,
                 device.ip
             );
+        }
+    }
+
+    /// No device registers a subtree inside another one it registers.
+    ///
+    /// net-snmp's `pass` serves only the broadest of a set of overlapping lines and silently
+    /// ignores the nested ones — no error, no log, the config simply does less than it says. A
+    /// device that registered its LLDP MIB root alongside `…1.3.7` and `…1.4` therefore served
+    /// every LLDP request from the root line, and because the split had moved the port-table rows
+    /// into their own file, that table came back `No Such Instance` from a device that was holding
+    /// it. Two scans and a wire capture to find, and none of it visible from the definitions.
+    ///
+    /// A property over every device rather than an assertion about the one that got it wrong: the
+    /// mistake is available to any device that wants to serve part of a MIB differently, and the
+    /// answer is always to carve the MIB up rather than nest inside it.
+    #[test]
+    fn no_registration_is_nested_inside_another() {
+        for device in lab() {
+            let registrations = device.registrations();
+            for (i, outer) in registrations.iter().enumerate() {
+                for (j, inner) in registrations.iter().enumerate() {
+                    if i == j {
+                        continue;
+                    }
+                    assert!(
+                        !(inner.subtree.len() > outer.subtree.len()
+                            && inner.subtree.starts_with(&outer.subtree)),
+                        "{} registers {:?} inside {:?}; net-snmp will serve only the outer one and \
+                         the inner handler and file will never run",
+                        device.name,
+                        inner.subtree,
+                        outer.subtree
+                    );
+                }
+            }
         }
     }
 

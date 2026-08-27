@@ -263,6 +263,13 @@ chmod +x "$CONF_DIR/snmp-pass-handler-stuck.sh"
 
 # A fourth handler: one that answers correctly and too slowly to be asked in bulk.
 #
+# KNOWN NOT TO WORK YET — see Handler::Slow in sim/transport.rs. snmpd drives `pass` serially
+# (measured: 3 calls, 3s sleep, 9.03s total), so a GETBULK of 20 blocks the agent for 20*sleep
+# while the client gives up after 5s. The GETNEXT the walk sends next queues behind that bulk and
+# times out as well, so the device fails both ways instead of failing one and answering the other.
+# The script is left in place because the fix is a different refusal mechanism, not a different
+# sleep; nothing registers this handler until then.
+#
 # snmpd assembles a GETBULK of n over a `pass` script by invoking it n times, so a handler that
 # takes t to answer costs n*t for a bulk page and t for a single GETNEXT. At 3s against the
 # daemon's 5s SNMP_TIMEOUT that splits the two cleanly: every bulk page the walk asks for — 20,

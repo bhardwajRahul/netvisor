@@ -13,8 +13,9 @@
 //!   next one up rather than inventing an answer.
 //! - The four handlers (`Normal`, `Positional`, `Stuck`, `Slow`) are the four shell scripts in
 //!   `tools/snmp/lxc/setup.sh`, and three of them are meant to misbehave.
-//! - A request goes to the *longest* registration covering it, as net-snmp's does, so one
-//!   sub-table of a MIB can be served by a different handler from the rest of it.
+//! - Registrations are disjoint, and a request goes to the first one covering it. net-snmp serves
+//!   only the broadest of a set of overlapping `pass` lines and ignores the rest, so serving one
+//!   sub-table of a MIB differently means carving the MIB up, not nesting inside it.
 
 use anyhow::Result;
 
@@ -41,11 +42,18 @@ pub enum Handler {
     /// `snmp-pass-handler-slow.sh` — the normal handler with a `sleep` in front of it. Answers a
     /// GETNEXT correctly and cannot assemble a GETBULK inside the client's timeout (GH #668).
     ///
-    /// This is one device behaviour, not two. snmpd builds a GETBULK of `n` over a `pass` script
-    /// by invoking it `n` times, so a handler that takes `t` to answer costs `n * t` for a bulk
-    /// page and `t` for a getnext. At the deployed `sleep 3` against [`SNMP_TIMEOUT`] of 5s, one
-    /// getnext returns with two seconds to spare and *every* bulk page — 20, 10, 5, 2 — does not.
-    /// The model states that as its outcome: a getbulk routed here fails, a getnext answers.
+    /// This is one device behaviour, not two: a getbulk routed here fails, a getnext answers.
+    ///
+    /// **The deployed twin does not yet reproduce it, and the model is ahead of the lab here.**
+    /// `snmp-pass-handler-slow.sh` sleeps per invocation, and snmpd drives `pass` serially — three
+    /// calls measured at 9.03s for a 3s sleep, strictly additive. A getbulk of 20 therefore blocks
+    /// the agent for `20 * sleep` while the client gives up after [`SNMP_TIMEOUT`], so the getnext
+    /// the walk sends next is still queued behind the bulk it was meant to escape and times out
+    /// too. Any sleep large enough to fail the bulk is large enough to fail the getnext behind it.
+    /// Slowness per varbind cannot express "will not serve bulk, will serve getnext" on a serial
+    /// agent; a mechanism that refuses the bulk without consuming agent time can. Until one
+    /// exists, this variant is exercised by the unit tests only and `switch-slowbulk-01` will not
+    /// reproduce GH #668 on the VM.
     ///
     /// Distinct from [`SimAgent::without_getbulk`], which is SNMPv1 answering "no such request
     /// type". That is a clean refusal the walk has always handled by falling back. This is
@@ -157,20 +165,19 @@ impl SimAgent {
     /// Split out of [`Self::answer`] because a request's *cost* belongs to whichever `pass` line
     /// serves it, not to the device: one slow registration on a switch whose other tables answer
     /// instantly is the shape GH #668 arrived in, and a whole-agent flag could not express it.
+    ///
+    /// First match, and it may stay first match because registrations are disjoint —
+    /// [`super::SimDevice::registrations`] builds them that way and
+    /// `no_registration_is_nested_inside_another` holds every device to it. This deliberately does
+    /// *not* prefer the longest match: net-snmp's `pass` serves only the broadest of a set of
+    /// overlapping lines and silently ignores the rest, so a model that resolved nesting would be
+    /// more capable than the agent it stands in for, and a fixture that worked here would go quiet
+    /// on the VM. That is not hypothetical — it is what a nested LLDP registration did.
     fn routed(&self, from: &[u64]) -> Option<(&Registration, &Row)> {
-        // Longest match wins, as net-snmp's does. Every registration was disjoint until the LLDP
-        // sub-tables needed separate handlers, and with nested ones the shortest match would
-        // swallow the more specific line: `1.0.8802.1.1.2.1.3` covers `…1.3.7.1.4`, so a
-        // first-match router would never reach the `…1.3.7` registration at all. Walking *up*
-        // from the match is unchanged — that is a registration falling off its own end and the
-        // agent moving to the next one.
         let start = self
             .registrations
             .iter()
-            .enumerate()
-            .filter(|(_, reg)| Self::covers(reg, from))
-            .max_by_key(|(_, reg)| reg.subtree.len())
-            .map(|(index, _)| index)
+            .position(|reg| Self::covers(reg, from))
             .or_else(|| {
                 self.registrations
                     .iter()
@@ -344,11 +351,17 @@ mod tests {
         assert_eq!(last, vec![1, 1, 1, 1]);
     }
 
-    /// A nested registration is reached, which is what lets one sub-table of a MIB be served
-    /// differently from the rest of it. Without longest-match routing the outer line answers
-    /// everything and the inner one is dead config.
+    /// The broadest of two overlapping registrations answers, and the nested one is dead config.
+    ///
+    /// This is net-snmp, not a modelling choice. A `pass` line nested inside another is not served
+    /// at all: an LLDP MIB registered at its root alongside `…1.3.7` and `…1.4` answered every
+    /// request from the root line, so the sub-table handlers never ran and the rows moved into the
+    /// sub-table's own file went unserved — the device reported `No Such Instance` for a table it
+    /// held. Pinned here so the model cannot quietly become more capable than the agent, and
+    /// enforced for real by `no_registration_is_nested_inside_another`, which stops any device
+    /// producing this config in the first place.
     #[test]
-    fn the_most_specific_registration_answers() {
+    fn a_registration_nested_inside_another_is_never_reached() {
         let file = arp_file(Ordering::Ascending, &[1, 2, 3]);
         let inner = oid_parts(arp::entry::IP_NET_TO_MEDIA_IF_INDEX);
         let outer = inner[..inner.len() - 1].to_vec();
@@ -368,11 +381,11 @@ mod tests {
             ],
         );
 
-        // `Stuck` answers every request with the first row. Reading anything else means the outer
-        // `Normal` registration took the request.
+        // `Stuck` would answer every request with the first row. Advancing normally is the outer
+        // `Normal` line taking the request, which is what the VM does.
         let page = agent.page(&inner, 3);
         let last: Vec<u64> = page.iter().map(|(oid, _)| *oid.last().unwrap()).collect();
-        assert_eq!(last, vec![1, 1, 1]);
+        assert_eq!(last, vec![1, 2, 3]);
     }
 
     /// The asymmetry GH #668 turns on: the same registration answers a getnext and cannot answer
