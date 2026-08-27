@@ -446,19 +446,65 @@ mod tests {
         envelope.elements
     }
 
-    /// The 192.168.20.0/24 the fixtures live on. `10.99.99.99` is deliberately outside it.
+    /// The 192.168.20.0/24 the fixtures live on, **plus the two `0.0.0.0/0` rows every network is
+    /// seeded with** — because that is what the daemon actually receives, and a list without them
+    /// is what let first-match placement file every device under `Internet` while looking correct
+    /// in every test. `10.99.99.99` is deliberately outside the real subnet.
     fn test_subnets(network_id: Uuid) -> Vec<Subnet> {
-        vec![Subnet {
+        let subnet = |name: &str, cidr: &str, subnet_type| Subnet {
             base: SubnetBase {
-                name: "Test".to_string(),
+                name: name.to_string(),
                 network_id,
-                cidr: "192.168.20.0/24".parse().expect("valid CIDR"),
-                subnet_type: SubnetType::Lan,
+                cidr: cidr.parse().expect("valid CIDR"),
+                subnet_type,
                 source: EntitySource::Discovery,
                 ..Default::default()
             },
             ..Default::default()
-        }]
+        };
+
+        // Seeded first, so they lead the `created_at ASC` order the daemon receives.
+        vec![
+            subnet("Internet", "0.0.0.0/0", SubnetType::Internet),
+            subnet("Remote Network", "0.0.0.0/0", SubnetType::Remote),
+            subnet("Test", "192.168.20.0/24", SubnetType::Lan),
+        ]
+    }
+
+    /// A device on the real subnet is placed there, and one outside every range this network holds
+    /// is skipped — not filed under a catch-all that technically contains it.
+    #[test]
+    fn devices_are_placed_on_real_subnets_and_never_on_a_catch_all() {
+        let network_id = Uuid::new_v4();
+        let subnets = test_subnets(network_id);
+        let real = subnets
+            .iter()
+            .find(|s| s.base.cidr.to_string() == "192.168.20.0/24")
+            .expect("the real subnet")
+            .id;
+
+        let mapped = map_devices(
+            &parse::<InstantOnDevice>(INVENTORY),
+            &parse::<InstantOnClient>(CLIENTS),
+            network_id,
+            &subnets,
+        );
+
+        assert!(
+            !mapped.is_empty(),
+            "the fixture must map at least one device"
+        );
+        for device in &mapped {
+            assert_eq!(
+                device.ip_address.base.subnet_id, real,
+                "{} was filed somewhere other than the subnet that holds it",
+                device.ip
+            );
+        }
+        assert!(
+            !mapped.iter().any(|d| d.ip.to_string() == "10.99.99.99"),
+            "a device outside every held range must be skipped, not placed on a catch-all"
+        );
     }
 
     fn map() -> Vec<MappedDevice> {
