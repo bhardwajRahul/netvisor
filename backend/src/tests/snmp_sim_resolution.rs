@@ -102,10 +102,17 @@ impl Lab {
     /// `sysName` — the shape `switch-mute-01` has, and the shape every tier above the address is
     /// structurally unable to place. It holds exactly one thing: an address.
     async fn host_with_only_an_address(&self, name: &str, address: IpAddr) -> Host {
+        self.mute_host(name, address, None).await
+    }
+
+    /// Seed a device that answers SNMP and serves nothing else, keeping whatever `sysName` it
+    /// reports. `Lab::scan` cannot be used for one: it reads the device's LLDP local identity, and
+    /// serving none is the whole point.
+    async fn mute_host(&self, name: &str, address: IpAddr, sys_name: Option<&str>) -> Host {
         let mut record = host(&self.network_id);
         record.base.name = HostName::Manual(name.to_string());
         record.base.chassis_id = None;
-        record.base.sys_name = None;
+        record.base.sys_name = sys_name.map(str::to_string);
         self.storage.hosts.create(&record).await.unwrap();
 
         let mut ip = super::ip_address(&self.network_id, &self._subnet_id);
@@ -247,6 +254,73 @@ async fn a_far_end_with_no_tables_is_found_by_the_address_it_publishes() {
             .await,
         IdentityResolution::Resolved(mute.id),
         "the address it published is the only tier that can place it"
+    );
+}
+
+/// GH #668 end to end, against the devices themselves.
+///
+/// `switch-offsite-01` names `switch-mute-01` on Gi0/4 as `Switch1`, which is not the sysName that
+/// device answers to. `switch-mute-01` serves no ifTable and no LLDP local identity, so it holds
+/// neither the chassis MAC its neighbour advertises nor a `chassis_id` of its own — and the sysName
+/// tier misses because the two names disagree. It is in the host list the whole time. The address
+/// it publishes is the only tier that can place it, which is the report's actual complaint.
+#[tokio::test]
+async fn the_mute_far_end_is_placed_only_by_the_address_its_neighbour_publishes() {
+    let lab = Lab::new().await;
+    let mute_device = crate::daemon::discovery::integration::snmp::sim::device("switch-mute-01");
+    let mute = lab
+        .mute_host(
+            "switch-mute-01",
+            IpAddr::V4(mute_device.ip),
+            mute_device.system.sys_name.as_deref(),
+        )
+        .await;
+    let offsite = lab.scan("switch-offsite-01").await;
+
+    let neighbour = offsite
+        .collected
+        .neighbours_named("Switch1")
+        .into_iter()
+        .next()
+        .expect("the neighbour on Gi0/4");
+    let advertised = Scanned::advertised_chassis(neighbour);
+
+    // Every tier above the address, shown failing rather than assumed to.
+    assert_eq!(
+        lab.resolver
+            .find_host_by_mac(&advertised.identifier(), lab.network_id)
+            .await,
+        IdentityResolution::NotFound,
+        "the chassis MAC is on no interface, because the device serves no ifTable"
+    );
+    assert_eq!(
+        lab.resolver
+            .find_host_by_chassis_id(&advertised.identifier(), lab.network_id)
+            .await,
+        IdentityResolution::NotFound,
+        "and on no host's own chassis id, because it publishes no LLDP local identity"
+    );
+    assert_eq!(
+        lab.resolver
+            .find_host_by_sys_name("Switch1", lab.network_id)
+            .await,
+        IdentityResolution::NotFound,
+        "and the name it is advertised under is not the one it answers to"
+    );
+
+    assert_eq!(
+        advertised
+            .resolve_host_id(
+                &lab.resolver,
+                lab.network_id,
+                AdvertisedIdentity {
+                    sys_name: neighbour.remote_sys_name.as_deref(),
+                    address: neighbour.remote_mgmt_addr,
+                },
+            )
+            .await,
+        IdentityResolution::Resolved(mute.id),
+        "a device sitting in the host list, placeable only by the address it publishes"
     );
 }
 

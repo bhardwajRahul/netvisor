@@ -19,6 +19,20 @@ use super::inline;
 const OFFSITE_CORE: &str = "10.20.30.11";
 const OFFSITE_EDGE: &str = "10.20.30.24";
 
+/// `switch-mute-01`'s own address — a device this lab *does* scan, and which serves nothing but its
+/// system MIB. It is the GH #668 "Switch1" shape: in the host list, no ifTable to carry the chassis
+/// MAC its neighbours advertise, no LLDP local identity to fill `hosts.chassis_id`, and a sysName
+/// its neighbours disagree with. Only the address it publishes can place it.
+const MUTE_NEIGHBOUR: &str = "192.168.7.248";
+
+/// What this switch's neighbour record calls it — deliberately *not* `switch-mute-01`, which is the
+/// device's own sysName. Real firmware disagrees like this, and it is what makes the sysName tier
+/// miss a device that is sitting in the host list.
+const MUTE_NEIGHBOUR_SYS_NAME: &str = "Switch1";
+
+/// A far end that identifies itself *by address* — chassis subtype 5, port subtype 4.
+const ADDRESSED_NEIGHBOUR: &str = "10.20.30.40";
+
 pub fn device() -> SimDevice {
     SimDevice {
         name: "switch-offsite-01",
@@ -111,6 +125,14 @@ fn lldp() -> LldpTable {
             3,
             Advertised::octets(LldpPortId::InterfaceName("GigabitEthernet0/3".to_string())),
         ),
+        LocalPort::new(
+            4,
+            Advertised::octets(LldpPortId::InterfaceName("GigabitEthernet0/4".to_string())),
+        ),
+        LocalPort::new(
+            5,
+            Advertised::octets(LldpPortId::InterfaceName("GigabitEthernet0/5".to_string())),
+        ),
     ])
     .neighbours(vec![
         RemoteNeighbour::new(
@@ -137,13 +159,40 @@ fn lldp() -> LldpTable {
             Advertised::octets(LldpPortId::InterfaceName("eth0".to_string())),
         )
         .sys_name("offsite-ap-01"),
+        // GH #668 itself. The far end is scanned and in the host list, and every tier above the
+        // address is dead for it: the chassis MAC is on no interface because it serves no ifTable,
+        // it publishes no LLDP local identity so `hosts.chassis_id` is null, and the sysName here
+        // disagrees with its own. Its management address is the only thing left.
+        RemoteNeighbour::new(
+            4,
+            Advertised::octets(LldpChassisId::MacAddress("00:ad:24:89:cc:f3".to_string())),
+            Advertised::octets(LldpPortId::InterfaceName("1".to_string())),
+        )
+        .sys_name(MUTE_NEIGHBOUR_SYS_NAME)
+        .mgmt_addr(MUTE_NEIGHBOUR.parse().unwrap()),
+        // Subtype 5 chassis id and subtype 4 port id — an address as the identity itself, rather
+        // than alongside it. Both encode as raw octets and both had no fixture in the lab, so the
+        // branches that read them were reachable only from unit tests.
+        RemoteNeighbour::new(
+            5,
+            Advertised::octets(LldpChassisId::NetworkAddress(
+                ADDRESSED_NEIGHBOUR.parse().unwrap(),
+            )),
+            Advertised::octets(LldpPortId::NetworkAddress(
+                ADDRESSED_NEIGHBOUR.parse().unwrap(),
+            )),
+        )
+        .sys_name("offsite-addressed-01"),
     ])
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{OFFSITE_CORE, OFFSITE_EDGE};
+    use super::{
+        ADDRESSED_NEIGHBOUR, MUTE_NEIGHBOUR, MUTE_NEIGHBOUR_SYS_NAME, OFFSITE_CORE, OFFSITE_EDGE,
+    };
     use crate::daemon::discovery::integration::snmp::sim::harness;
+    use crate::server::lldp::{LldpChassisId, LldpPortId};
 
     /// The management address arrives in the *index* of `lldpRemManAddrTable`, not in a column
     /// value, so a fixture that served it as a value would look correct and be invisible to the
@@ -175,6 +224,72 @@ mod tests {
             .next()
             .expect("the neighbour on Gi0/2");
         assert_eq!(edge.remote_mgmt_addr, Some(OFFSITE_EDGE.parse().unwrap()));
+    }
+
+    /// The GH #668 shape, at the fixture level: the neighbour naming `switch-mute-01` calls it
+    /// something its own sysName is not, so the sysName tier cannot place it however much of this
+    /// network is scanned. Asserted here so the fixture cannot quietly start agreeing and turn the
+    /// resolution test that depends on it into one that proves nothing.
+    #[tokio::test]
+    async fn the_mute_far_end_is_named_by_a_sys_name_it_does_not_answer_to() {
+        let scan = harness::scan("switch-offsite-01").await;
+        let mute = crate::daemon::discovery::integration::snmp::sim::device("switch-mute-01");
+
+        let neighbour = scan
+            .neighbours_named(MUTE_NEIGHBOUR_SYS_NAME)
+            .into_iter()
+            .next()
+            .expect("the neighbour on Gi0/4");
+
+        assert_ne!(
+            neighbour.remote_sys_name.as_deref(),
+            mute.system.sys_name.as_deref(),
+            "the advertised name must disagree, or the sysName tier would place it"
+        );
+        assert_eq!(
+            neighbour.remote_mgmt_addr,
+            Some(MUTE_NEIGHBOUR.parse().unwrap())
+        );
+        assert!(
+            mute.tables.lldp.is_none() && mute.tables.if_table.is_none(),
+            "the far end must serve no tables, or a tier above the address could place it"
+        );
+    }
+
+    /// Subtype 5 and subtype 4 carry an address where every other subtype carries text, and both
+    /// go out as raw octets. Nothing in the lab advertised either, so the decode was covered only
+    /// by unit tests over bytes this simulator had never actually produced.
+    #[tokio::test]
+    async fn an_address_valued_chassis_and_port_id_survive_the_wire() {
+        let scan = harness::scan("switch-offsite-01").await;
+
+        let neighbour = scan
+            .neighbours_named("offsite-addressed-01")
+            .into_iter()
+            .next()
+            .expect("the neighbour on Gi0/5");
+
+        let chassis = LldpChassisId::from_snmp(
+            neighbour.remote_chassis_id_subtype.expect("a subtype"),
+            neighbour.remote_chassis_id_bytes.as_ref().expect("a value"),
+        );
+        assert_eq!(
+            chassis,
+            Some(LldpChassisId::NetworkAddress(
+                ADDRESSED_NEIGHBOUR.parse().unwrap()
+            ))
+        );
+
+        let port = LldpPortId::from_snmp(
+            neighbour.remote_port_id_subtype.expect("a subtype"),
+            neighbour.remote_port_id_bytes.as_ref().expect("a value"),
+        );
+        assert_eq!(
+            port,
+            Some(LldpPortId::NetworkAddress(
+                ADDRESSED_NEIGHBOUR.parse().unwrap()
+            ))
+        );
     }
 
     /// A far end that publishes no management address must come back with `None` rather than

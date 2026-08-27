@@ -467,6 +467,18 @@ impl CdpTable {
                     rows.push(Row::at(base, &suffix, PassValue::Str(text.clone())));
                 }
             }
+
+            // `cdpCacheAddress` is raw address octets, not text — four of them for IPv4, which is
+            // the only width the collector decodes (`query_cdp_neighbors`). The field existed on
+            // this struct and was never served at all, so the address tier that resolves a CDP
+            // neighbour by where it says it lives had no end-to-end coverage.
+            if let Some(IpAddr::V4(v4)) = neighbour.remote_address {
+                rows.push(Row::at(
+                    cdp::entry::CDP_CACHE_ADDRESS,
+                    &suffix,
+                    PassValue::Octets(v4.octets().to_vec()),
+                ));
+            }
         }
         rows
     }
