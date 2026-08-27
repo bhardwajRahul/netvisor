@@ -5,7 +5,6 @@
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import type { ColorStyle, Color } from '$lib/shared/utils/styling';
 	import type { IconComponent } from '$lib/shared/utils/types';
-	import { collapsedContainerLines } from '../../labels';
 	import {
 		topology_elementCount,
 		topology_ungroupedCount,
@@ -66,11 +65,6 @@
 		searchMatchCount?: number;
 		searchHighlightRingStyle?: string;
 	} = $props();
-
-	// Collapsed root containers name themselves, with the element summary demoted to a subtitle.
-	let collapsedLines = $derived(
-		collapsedContainerLines(headerText, topology_elementCount({ summary: childSummary }))
-	);
 
 	let subgroupTotal = $derived(subgroupSummaries.reduce((sum, s) => sum + s.childCount, 0));
 	let ungroupedCount = $derived(childCount - subgroupTotal);
@@ -301,18 +295,11 @@
 		style="background: var(--color-topology-node-bg); position: relative; overflow: visible; transition: box-shadow 0.15s ease-in-out; border-top: 2px solid {colorHelper.rgb}; {tagHoverRingStyle}"
 	>
 		<div class="flex min-w-fit flex-col items-center gap-2 whitespace-nowrap px-6 py-4">
-			<!-- `data-entity-header` marks the entity's *name* for the filter panel's entity-type
-			     hover, so it goes on the title only when the title is that name — a container with
-			     nothing to be called by falls back to titling itself with its element count. -->
-			<span
-				data-entity-header={collapsedLines.subtitle ? '' : undefined}
-				class="text-secondary text-base font-medium underline"
-			>
-				{collapsedLines.title}
+			<!-- The container's name is not repeated here: a collapsed root container is named by
+			     its external title pill, which stays visible above the box in both states. -->
+			<span class="text-secondary text-base font-medium underline">
+				{topology_elementCount({ summary: childSummary })}
 			</span>
-			{#if collapsedLines.subtitle}
-				<span class="text-tertiary text-xs">{collapsedLines.subtitle}</span>
-			{/if}
 			{#if searchMatchCount > 0}
 				<span
 					class="flex items-center gap-1 rounded-full bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400"
