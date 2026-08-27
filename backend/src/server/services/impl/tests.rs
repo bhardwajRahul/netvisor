@@ -289,10 +289,13 @@ fn test_all_protocol_ports_have_generic_service() {
             // ClientResponse integrations (SNMP, Docker) handle their own port detection
             // via credentialed probes — they don't need Pattern::Port coverage.
             Pattern::ClientResponse(_) => true,
-            Pattern::AnyOf(patterns) => patterns
+            // `AllOf` counts for the same reason `AnyOf` does: `Pattern::ports()` flattens both,
+            // so either shape puts the port into the light scan. The industrial protocols are
+            // `AllOf([Port(p), ClientResponse(c)])` — the port is scanned, and the service is
+            // claimed only once the probe has answered on it.
+            Pattern::AnyOf(patterns) | Pattern::AllOf(patterns) => patterns
                 .iter()
                 .any(|p| pattern_matches_port_alone(p, target_port)),
-            Pattern::AllOf(_) => false,
             Pattern::Not(_) => false,
             _ => false,
         }
@@ -1067,4 +1070,77 @@ fn extract_service_name(content: &str) -> Option<String> {
 
     let name: String = chars[..end_pos].iter().collect();
     Some(name)
+}
+
+/// Every [`ClientProbe`] variant must have something that produces it.
+///
+/// A variant nothing emits gives its service definition a pattern that can never match, and the
+/// definition looks entirely healthy while doing nothing — which is the state
+/// `services/definitions/gnmi.rs` has been in. Both producers are `inventory` collections
+/// populated at link time, so no `const` can see across them; this is the assertion that can.
+#[test]
+fn every_client_probe_variant_has_a_producer() {
+    use std::collections::HashSet;
+    use strum::IntoEnumIterator;
+
+    use crate::daemon::utils::app_probe::all_app_probes;
+    use crate::server::services::r#impl::patterns::ClientProbe;
+
+    // Credentialed integrations build their `ProbeSuccess` inside `probe()` at runtime rather
+    // than declaring it, so there is nothing to enumerate and they are named here.
+    let from_integrations = [
+        ClientProbe::Snmp,
+        ClientProbe::Docker,
+        ClientProbe::Podman,
+        ClientProbe::UnifiController,
+        ClientProbe::InstantOn,
+    ];
+
+    // Known to have no producer. gNMI's definition matches on `ClientResponse(Gnmi)` and nothing
+    // emits it, so that service can never be detected. Listed rather than the test being weakened,
+    // so a *new* orphan still fails here.
+    let known_unproduced = [ClientProbe::Gnmi];
+
+    let from_app_probes: HashSet<ClientProbe> = all_app_probes()
+        .iter()
+        .filter_map(|probe| probe.client_probe())
+        .collect();
+
+    let orphans: Vec<ClientProbe> = ClientProbe::iter()
+        .filter(|c| !from_app_probes.contains(c))
+        .filter(|c| !from_integrations.contains(c))
+        .filter(|c| !known_unproduced.contains(c))
+        .collect();
+
+    assert!(
+        orphans.is_empty(),
+        "these ClientProbe variants have no producer, so any service definition matching on them \
+         can never match: {orphans:?}\n\
+         Either emit them from an AppProbe or a DiscoveryIntegration's probe(), or remove them."
+    );
+}
+
+/// A definition's probe and its discovery pattern have to agree about the port.
+///
+/// `probe_pattern` derives the pattern from the probe, so the two cannot drift where it is used —
+/// this catches a definition that hand-writes a pattern for one port while handing out a probe for
+/// another, which would scan a port nothing probes and probe a port nothing scans.
+#[test]
+fn a_definitions_probe_port_is_a_port_its_pattern_scans() {
+    use crate::server::services::definitions::ServiceDefinitionRegistry;
+    use crate::server::services::r#impl::definitions::ServiceDefinition;
+
+    for definition in ServiceDefinitionRegistry::all_service_definitions() {
+        let Some(probe) = definition.app_probe() else {
+            continue;
+        };
+        let scanned = definition.discovery_pattern().ports();
+        assert!(
+            scanned.contains(&probe.port()),
+            "{} probes {:?} but its discovery pattern scans {:?}",
+            ServiceDefinition::name(&definition),
+            probe.port(),
+            scanned
+        );
+    }
 }

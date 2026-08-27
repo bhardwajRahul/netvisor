@@ -4,16 +4,8 @@ use crate::server::services::r#impl::base::Service;
 use crate::server::services::r#impl::endpoints::{Endpoint, EndpointResponse};
 use anyhow::anyhow;
 use anyhow::{Error, Result};
-use cidr::IpCidr;
-use dhcproto::Encodable;
-use dhcproto::v4::{self, Decodable, Encoder, Message, MessageType};
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
-use hickory_resolver::Resolver;
-use hickory_resolver::config::{NameServerConfig, ResolverConfig};
-use hickory_resolver::net::runtime::TokioRuntimeProvider;
-use rand::{Rng, SeedableRng};
-use rsntp::AsyncSntpClient;
 use snmp2::{AsyncSession, Oid};
 use std::collections::HashMap;
 #[cfg(any(unix, test))]
@@ -23,12 +15,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
-use tokio::net::UdpSocket;
 use tokio::{net::TcpStream, time::timeout};
 use tokio_util::sync::CancellationToken;
 
 use crate::server::credentials::r#impl::mapping::{SnmpQueryCredential, SnmpVersion};
-use crate::server::ports::r#impl::base::{PortType, TransportProtocol};
+use crate::server::ports::r#impl::base::PortType;
 
 pub const SCAN_TIMEOUT: Duration = Duration::from_millis(800);
 
@@ -251,7 +242,7 @@ impl ScanConcurrencyController {
 ///
 /// # Returns
 /// Vector of successfully scanned results
-async fn batch_scan<T, O, F, Fut>(
+pub(crate) async fn batch_scan<T, O, F, Fut>(
     items: Vec<T>,
     batch_size: usize,
     scan_rate_pps: u32,
@@ -470,72 +461,26 @@ pub async fn scan_tcp_ports(
     Ok(open_ports)
 }
 
-pub async fn scan_udp_ports(
+/// Probe the two SNMP ports, one session at a time per host.
+///
+/// What is left of `scan_udp_ports` after the four non-credentialed probes moved onto the
+/// application-probe stage. It keeps its own function because SNMP is not batched with anything:
+/// sessions are sequential per host, and credentials are tried in specificity order.
+///
+/// **Not dead when `snmp_credentials` is empty.** The network scan passes `&[]` because
+/// `SnmpIntegration` owns credentialed probing, and this still tries the hardcoded `public`
+/// community on both ports — which is the only reason an SNMP device with a default community is
+/// found on a network with no credential configured at all.
+pub async fn probe_snmp_ports(
     ip: IpAddr,
     cancel: CancellationToken,
-    batch_size: usize,
-    scan_rate_pps: u32,
-    cidr: IpCidr,
-    gateway_ips: Vec<IpAddr>,
     snmp_credentials: &[SnmpQueryCredential],
 ) -> Result<Vec<PortType>, Error> {
-    let discovery_ports = Service::all_discovery_ports();
-
-    // Separate SNMP ports from other UDP ports
     let snmp_port_numbers: Vec<u16> = vec![161, 1161];
-    let other_ports: Vec<u16> = discovery_ports
-        .iter()
-        .filter(|p| p.protocol() == TransportProtocol::Udp)
-        .map(|p| p.number())
-        .filter(|p| !snmp_port_numbers.contains(p))
-        .collect();
+    let mut open_ports: Vec<PortType> = Vec::new();
 
-    // UDP is slower and less reliable, cap at 10 concurrent
-    let udp_batch_size = std::cmp::min(batch_size, 10);
-
-    let is_gateway = gateway_ips.contains(&ip);
-
-    // 1. Batch-scan non-SNMP UDP ports concurrently (DNS, NTP, DHCP, BACnet, etc.)
-    let mut open_ports = batch_scan(
-        other_ports.clone(),
-        udp_batch_size,
-        scan_rate_pps,
-        cancel.clone(),
-        |port| async move {
-            let result = match port {
-                53 => test_dns_service(ip).await,
-                123 => test_ntp_service(ip).await,
-                67 => {
-                    if is_gateway {
-                        test_dhcp_service(ip, &cidr).await
-                    } else {
-                        Ok(None)
-                    }
-                }
-                47808 => test_bacnet_service(ip).await,
-                _ => Ok(None),
-            };
-
-            match result {
-                Ok(Some(detected_port)) => {
-                    tracing::trace!("Found open UDP port {}:{}", ip, detected_port);
-                    Some(PortType::new_udp(detected_port))
-                }
-                Ok(None) => None,
-                Err(e) => {
-                    if DiscoveryCriticalError::is_critical_error(e.to_string()) {
-                        tracing::error!("Critical error scanning UDP {}:{}: {}", ip, port, e);
-                    }
-                    None
-                }
-            }
-        },
-    )
-    .await;
-
-    // 2. Probe SNMP ports sequentially — one session at a time per host.
-    //    Stagger all credentials across all ports. Don't short-circuit:
-    //    both ports could be open, and different communities can expose different MIB views.
+    // Don't short-circuit: both ports could be open, and different communities can expose
+    // different MIB views.
     if !cancel.is_cancelled() {
         for &port in &snmp_port_numbers {
             if cancel.is_cancelled() {
@@ -567,9 +512,9 @@ pub async fn scan_udp_ports(
 
     tracing::debug!(
         ip = %ip,
-        ports_scanned = %(other_ports.len() + snmp_port_numbers.len()),
+        ports_scanned = %snmp_port_numbers.len(),
         responses = %open_ports.len(),
-        "UDP ports scanned"
+        "SNMP ports probed"
     );
 
     Ok(open_ports)
@@ -723,51 +668,6 @@ pub async fn scan_endpoints(
     Ok(responses)
 }
 
-pub async fn test_dns_service(ip: IpAddr) -> Result<Option<u16>, Error> {
-    let mut config = ResolverConfig::default();
-    config.add_name_server(NameServerConfig::udp(ip));
-
-    let resolver =
-        Resolver::builder_with_config(config, TokioRuntimeProvider::default()).build()?;
-
-    match timeout(
-        Duration::from_millis(2000),
-        resolver.lookup_ip("google.com"),
-    )
-    .await
-    {
-        Ok(Ok(_)) => Ok(Some(53)),
-        _ => Ok(None),
-    }
-}
-
-pub async fn test_ntp_service(ip: IpAddr) -> Result<Option<u16>, Error> {
-    let client = AsyncSntpClient::new();
-    let server_addr = format!("{}:123", ip);
-
-    match timeout(
-        Duration::from_millis(2000),
-        client.synchronize(&server_addr),
-    )
-    .await
-    {
-        Ok(Ok(result)) => {
-            // Validate that we got a meaningful time response
-            if let Ok(datetime) = result.datetime().unix_timestamp() {
-                if datetime > Duration::from_secs(0) {
-                    Ok(Some(123))
-                } else {
-                    Ok(None)
-                }
-            } else {
-                Ok(None)
-            }
-        }
-        Ok(Err(_)) => Ok(None),
-        Err(_) => Ok(None),
-    }
-}
-
 /// Try an SNMP GET on a specific port using a credential
 /// What an SNMP liveness probe established, beyond "it did not work".
 ///
@@ -879,210 +779,6 @@ pub async fn try_snmp_with_public_on_port(ip: IpAddr, port: u16) -> Result<Optio
         }
         Ok(Err(_)) => Ok(None),
         Err(_) => Ok(None),
-    }
-}
-
-/// Test if a host is running a DHCP server on port 67
-pub async fn test_dhcp_service(ip: IpAddr, subnet_cidr: &IpCidr) -> Result<Option<u16>, Error> {
-    let socket = match UdpSocket::bind("0.0.0.0:68").await {
-        Ok(s) => s,
-        Err(_) => {
-            // If port 68 is busy (another DHCP client), try random port
-            match UdpSocket::bind("0.0.0.0:0").await {
-                Ok(s) => s,
-                Err(_) => {
-                    return Ok(None);
-                }
-            }
-        }
-    };
-
-    if socket.set_broadcast(true).is_err() {
-        return Ok(None);
-    }
-
-    // Calculate broadcast address for this subnet
-    let broadcast_addr = match subnet_cidr {
-        IpCidr::V4(cidr) => {
-            let broadcast_ip = cidr.last_address();
-            SocketAddr::new(IpAddr::V4(broadcast_ip), 67)
-        }
-        IpCidr::V6(_) => {
-            return Ok(None);
-        }
-    };
-
-    // Create a more complete DHCP DISCOVER message
-    let mut rng = rand::rngs::StdRng::from_os_rng();
-    let mac_addr: [u8; 6] = rng.random();
-    let transaction_id = rng.random::<u32>();
-
-    let mut msg = Message::default();
-    msg.set_opcode(v4::Opcode::BootRequest)
-        .set_htype(v4::HType::Eth)
-        .set_xid(transaction_id)
-        .set_flags(v4::Flags::default().set_broadcast())
-        .set_chaddr(&mac_addr);
-
-    // Add required and common DHCP options
-    msg.opts_mut()
-        .insert(v4::DhcpOption::MessageType(MessageType::Discover));
-
-    // Add parameter request list (commonly requested by clients)
-    msg.opts_mut()
-        .insert(v4::DhcpOption::ParameterRequestList(vec![
-            v4::OptionCode::SubnetMask,
-            v4::OptionCode::Router,
-            v4::OptionCode::DomainNameServer,
-            v4::OptionCode::DomainName,
-        ]));
-
-    // Encode DHCP DISCOVER packet
-    let mut buf = Vec::new();
-    let mut encoder = Encoder::new(&mut buf);
-    msg.encode(&mut encoder)?;
-
-    if socket.send_to(&buf, broadcast_addr).await.is_ok()
-        && let Some(port) = wait_for_dhcp_responses(&socket, ip, transaction_id, 3).await?
-    {
-        return Ok(Some(port));
-    }
-
-    // Fall back to unicast
-    let unicast_addr = SocketAddr::new(ip, 67);
-
-    if socket.send_to(&buf, unicast_addr).await.is_ok()
-        && let Some(port) = wait_for_dhcp_responses(&socket, ip, transaction_id, 3).await?
-    {
-        return Ok(Some(port));
-    }
-
-    Ok(None)
-}
-
-/// Helper function to wait for and validate DHCP responses (checks multiple times)
-async fn wait_for_dhcp_responses(
-    socket: &UdpSocket,
-    expected_ip: IpAddr,
-    expected_xid: u32,
-    max_attempts: usize,
-) -> Result<Option<u16>, Error> {
-    let mut response_buf = [0u8; 1500];
-
-    for _ in 1..=max_attempts {
-        match timeout(
-            Duration::from_millis(2000), // Longer timeout per attempt
-            socket.recv_from(&mut response_buf),
-        )
-        .await
-        {
-            Ok(Ok((len, from))) => {
-                if len == 0 {
-                    continue;
-                }
-
-                let response_ip = from.ip();
-
-                // Check if response came from the IP we're testing
-                if response_ip != expected_ip {
-                    continue; // Keep trying - might get another response
-                }
-
-                // Parse and validate DHCP message
-                match Message::decode(&mut dhcproto::Decoder::new(&response_buf[..len])) {
-                    Ok(response_msg) => {
-                        // Verify transaction ID matches
-                        if response_msg.xid() != expected_xid {
-                            continue;
-                        }
-
-                        // Check for valid DHCP response type
-                        let message_type = response_msg.opts().iter().find_map(|(_, opt)| {
-                            if let v4::DhcpOption::MessageType(msg_type) = opt {
-                                Some(msg_type)
-                            } else {
-                                None
-                            }
-                        });
-
-                        let is_valid = matches!(
-                            message_type,
-                            Some(&MessageType::Offer) | Some(&MessageType::Ack)
-                        );
-
-                        if is_valid {
-                            return Ok(Some(67));
-                        } else {
-                            continue;
-                        }
-                    }
-                    Err(_) => {
-                        continue;
-                    }
-                }
-            }
-            Ok(Err(_)) => {
-                break; // Socket error, no point continuing
-            }
-            Err(_) => {
-                // Timeout - continue to next attempt
-            }
-        }
-    }
-
-    Ok(None)
-}
-
-/// Test if a host is running a BACnet service on UDP port 47808
-pub async fn test_bacnet_service(ip: IpAddr) -> Result<Option<u16>, Error> {
-    let socket = UdpSocket::bind("0.0.0.0:0").await?;
-    let target = SocketAddr::new(ip, 47808);
-
-    // BACnet Who-Is probe packet
-    // BVLC header + NPDU + Who-Is APDU
-    let bacnet_probe: [u8; 12] = [
-        0x81, // BVLC type indicator
-        0x0a, // Original-Unicast-NPDU
-        0x00, 0x0c, // Length: 12 bytes (big-endian)
-        0x01, // NPDU version 1
-        0x04, // NPDU control: expecting reply, no DNET/DLEN/DADR
-        0x00, // Hop count (unused for unicast)
-        0x00, // Reserved
-        0x10, // APDU type: Unconfirmed service request
-        0x08, // Service choice: Who-Is
-        0x00, // No device instance range (optional field)
-        0x00, // Padding to reach 12 bytes
-    ];
-
-    if socket.send_to(&bacnet_probe, target).await.is_err() {
-        return Ok(None);
-    }
-
-    let mut response_buf = [0u8; 512];
-    match timeout(
-        Duration::from_millis(2000),
-        socket.recv_from(&mut response_buf),
-    )
-    .await
-    {
-        Ok(Ok((len, from))) => {
-            // Verify response is from the target IP
-            if from.ip() != ip {
-                return Ok(None);
-            }
-
-            // Check for valid BACnet response:
-            // - At least 4 bytes (minimum BVLC header)
-            // - First byte is 0x81 (BVLC type indicator)
-            if len >= 4 && response_buf[0] == 0x81 {
-                tracing::debug!("BACnet service detected on {}:47808", ip);
-                return Ok(Some(47808));
-            }
-
-            Ok(None)
-        }
-        Ok(Err(_)) => Ok(None),
-        Err(_) => Ok(None), // Timeout
     }
 }
 

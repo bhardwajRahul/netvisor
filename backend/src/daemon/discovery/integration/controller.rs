@@ -44,7 +44,12 @@ pub struct ControllerIdentity {
     pub manufacturer: Option<String>,
     pub model: Option<String>,
     pub serial_number: Option<String>,
-    pub sys_descr: Option<String>,
+    /// The firmware version the controller reports for the device.
+    ///
+    /// Controllers hold this as a structured field and it used to be flattened into `sys_descr`
+    /// as "UniFi firmware 6.5.59", which is neither a system description nor comparable. It has
+    /// its own column now.
+    pub firmware_revision: Option<String>,
 }
 
 impl ControllerIdentity {
@@ -60,7 +65,7 @@ impl ControllerIdentity {
             manufacturer,
             model,
             serial_number,
-            sys_descr,
+            firmware_revision,
         } = self.normalized();
 
         let mut host = Host::new(HostBase {
@@ -74,7 +79,7 @@ impl ControllerIdentity {
             manufacturer,
             model,
             serial_number,
-            sys_descr,
+            firmware_revision,
             ..Default::default()
         });
 
@@ -96,7 +101,7 @@ impl ControllerIdentity {
             manufacturer,
             model,
             serial_number,
-            sys_descr,
+            firmware_revision,
         } = self.clone().normalized();
 
         if let Some(hostname) = hostname {
@@ -118,8 +123,8 @@ impl ControllerIdentity {
         if let Some(serial_number) = serial_number {
             host_data.with_serial_number(serial_number);
         }
-        if let Some(sys_descr) = sys_descr {
-            host_data.with_sys_descr(sys_descr);
+        if let Some(firmware_revision) = firmware_revision {
+            host_data.with_firmware_revision(firmware_revision);
         }
     }
 
@@ -145,7 +150,7 @@ impl ControllerIdentity {
             manufacturer: blank_to_none(self.manufacturer),
             model: blank_to_none(self.model),
             serial_number: blank_to_none(self.serial_number),
-            sys_descr: blank_to_none(self.sys_descr),
+            firmware_revision: blank_to_none(self.firmware_revision),
         }
     }
 }
@@ -264,7 +269,7 @@ mod tests {
             manufacturer: None,
             model: None,
             serial_number: None,
-            sys_descr: None,
+            firmware_revision: None,
         }
     }
 

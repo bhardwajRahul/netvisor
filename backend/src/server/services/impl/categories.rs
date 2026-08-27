@@ -68,7 +68,12 @@ pub enum ServiceCategory {
     Workstation, // Desktops, laptops
     Mobile,      // Phones, tablets
     IoT,         // Smart devices, sensors
-    Printer,     // All printing devices
+    /// Operational-technology devices: PLCs, RTUs, drives, building controllers, and the
+    /// gateways fronting them. Separate from `IoT` because the protocols that identify them
+    /// (Modbus, EtherNet/IP, OPC UA, BACnet) and the estate they belong to are different — a
+    /// steel mill's PLCs are not smart speakers.
+    Industrial,
+    Printer, // All printing devices
 
     // Applications
     Database,    // DB servers
@@ -96,6 +101,41 @@ pub enum ServiceCategory {
     Custom,
     Scanopy,
     OpenPorts,
+}
+
+/// Deserialize a list of service categories, dropping any this build does not know.
+///
+/// `ServiceCategory` has no `#[serde(other)]` fallback, and its text reaches the database inside
+/// `topologies.options` JSONB via `ElementRule::ByServiceCategory`. Adding a variant is safe going
+/// forward; **rolling back is not** — an older binary reading a rule that names a category it was
+/// built without would fail the whole topology read, not just that entry.
+///
+/// So an unknown entry is dropped and the rest of the rule survives, which mirrors what
+/// `SubnetStorage` already does with an unrecognised `SubnetCidrSource`. Deliberately narrow: a
+/// lenient `Deserialize` on the enum itself would also make the API silently accept a misspelled
+/// category on write, and a rule that quietly does nothing is worse than a rejected request.
+pub fn deserialize_known_categories<'de, D>(
+    deserializer: D,
+) -> Result<Vec<ServiceCategory>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(
+            |value| match serde_json::from_value::<ServiceCategory>(value.clone()) {
+                Ok(category) => Some(category),
+                Err(_) => {
+                    tracing::warn!(
+                        %value,
+                        "Unrecognized service category in a grouping rule; dropping it"
+                    );
+                    None
+                }
+            },
+        )
+        .collect())
 }
 
 impl HasId for ServiceCategory {
@@ -134,6 +174,7 @@ impl EntityMetadataProvider for ServiceCategory {
             ServiceCategory::Workstation => Icon::Monitor,
             ServiceCategory::Mobile => Icon::Smartphone,
             ServiceCategory::IoT => Concept::IoT.icon(),
+            ServiceCategory::Industrial => Icon::Factory,
             ServiceCategory::Printer => Icon::Printer,
 
             // Applications
@@ -194,6 +235,7 @@ impl EntityMetadataProvider for ServiceCategory {
             ServiceCategory::Workstation => Color::Green,
             ServiceCategory::Mobile => Color::Blue,
             ServiceCategory::IoT => Concept::IoT.color(),
+            ServiceCategory::Industrial => Color::Orange,
             ServiceCategory::Printer => Color::Gray,
 
             // Applications
@@ -250,6 +292,7 @@ impl TypeMetadataProvider for ServiceCategory {
             Workstation => "Workstation",
             Mobile => "Mobile",
             IoT => "IoT",
+            Industrial => "Industrial Control",
             Printer => "Printer",
             Database => "Database",
             Development => "Development",
@@ -294,6 +337,9 @@ impl TypeMetadataProvider for ServiceCategory {
             Workstation => "Desktop computers and laptops",
             Mobile => "Phones and tablets",
             IoT => "Smart devices, sensors, and connected appliances",
+            Industrial => {
+                "Industrial control devices: PLCs, RTUs, drives, and building automation controllers"
+            }
             Printer => "Printers and print servers",
             Database => "Database servers like PostgreSQL, MySQL, and Redis",
             Development => "Dev tools, CI/CD pipelines, and configuration management",

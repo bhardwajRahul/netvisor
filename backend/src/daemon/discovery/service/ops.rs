@@ -227,6 +227,13 @@ impl HostData {
         self
     }
 
+    pub fn with_firmware_revision(&mut self, v: String) -> &mut Self {
+        if self.host.base.firmware_revision.is_none() {
+            self.host.base.firmware_revision = Some(v);
+        }
+        self
+    }
+
     pub fn with_management_url(&mut self, v: String) -> &mut Self {
         if self.host.base.management_url.is_none() {
             self.host.base.management_url = Some(v);
@@ -1359,6 +1366,7 @@ impl DiscoveryOps {
             manufacturer: None,
             model: None,
             serial_number: None,
+            firmware_revision: None,
             credential_assignments: vec![],
         });
 

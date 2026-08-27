@@ -121,10 +121,7 @@ fn map_device(
         manufacturer: Some("HPE".to_string()),
         model: device.model.clone(),
         serial_number: device.serial_number.clone(),
-        sys_descr: device
-            .firmware_version
-            .as_ref()
-            .map(|v| format!("Instant On firmware {v}")),
+        firmware_revision: device.firmware_version.clone(),
     };
 
     let ip_address = IPAddress::new(IPAddressBase {
@@ -402,7 +399,7 @@ pub fn map_clients(
                 manufacturer: None,
                 model: None,
                 serial_number: None,
-                sys_descr: None,
+                firmware_revision: None,
             };
             MappedClient::new(
                 identity,
@@ -656,10 +653,7 @@ mod tests {
         assert_eq!(stack.identity.manufacturer.as_deref(), Some("HPE"));
         assert_eq!(stack.identity.model.as_deref(), Some("1960-48G-4SFP"));
         assert_eq!(stack.identity.serial_number.as_deref(), Some("STACK-SER-1"));
-        assert_eq!(
-            stack.identity.sys_descr.as_deref(),
-            Some("Instant On firmware 3.4.0")
-        );
+        assert_eq!(stack.identity.firmware_revision.as_deref(), Some("3.4.0"));
         // Canonicalised to the same lowercase-colon form SNMP writes, so a neighbor's advertised
         // chassis ID can reach this host by string equality.
         assert_eq!(

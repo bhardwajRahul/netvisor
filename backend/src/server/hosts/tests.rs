@@ -21,6 +21,7 @@ fn host_response_round_trip_preserves_every_base_field() {
     host.base.manufacturer = Some("Cisco".to_string());
     host.base.model = Some("WS-C2960X-48FPD-L".to_string());
     host.base.serial_number = Some("FOC1234X5YZ".to_string());
+    host.base.firmware_revision = Some("15.0(2)SE11".to_string());
 
     let response =
         HostResponse::from_host_with_children(host.clone(), vec![], vec![], vec![], vec![]);

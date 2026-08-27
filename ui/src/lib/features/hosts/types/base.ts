@@ -63,6 +63,7 @@ export interface HostFormData {
 	manufacturer: string | null;
 	model: string | null;
 	serial_number: string | null;
+	firmware_revision: string | null;
 
 	// Credential assignments (user-editable, from junction table)
 	credential_assignments: CredentialAssignment[];

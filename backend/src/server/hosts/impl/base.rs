@@ -95,6 +95,17 @@ pub struct HostBase {
     /// ENTITY-MIB entPhysicalSerialNum - hardware serial number
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub serial_number: Option<String>,
+    /// Firmware or software revision of the device as a whole.
+    ///
+    /// Written by whichever source read it — a controller's REST inventory, an industrial probe's
+    /// identity response, and (once ENTITY-MIB revisions land) `entPhysicalFirmwareRev`. Before
+    /// this column existed each of those had nowhere to put a version it had already read, and two
+    /// of them flattened it into `sys_descr` as prose.
+    ///
+    /// Device-level rather than per-module: everything downstream is host-shaped, and the NCCoE
+    /// asset-inventory minimum says "product version", singular.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub firmware_revision: Option<String>,
     /// Credential assignments for this host (hydrated from junction table).
     #[serde(default)]
     #[schema(required)]
@@ -123,6 +134,7 @@ impl Default for HostBase {
             manufacturer: None,
             model: None,
             serial_number: None,
+            firmware_revision: None,
             credential_assignments: Vec::new(),
         }
     }
@@ -148,6 +160,72 @@ impl HostBase {
         }
         self.name = candidate;
         true
+    }
+
+    /// Fill every discovered attribute this host does not yet have from `incoming`, returning
+    /// whether anything changed. First-write-wins: a value already present is never displaced,
+    /// which is what protects the `manufacturer`, `model` and `serial_number` a person typed into
+    /// the host edit form from being overwritten by the next scan.
+    ///
+    /// **The destructure below is the point of this method.** These arms used to be written out
+    /// one per field at the single call site, and a field added to `HostBase` without one compiled
+    /// perfectly and then silently dropped that field on every re-scan — collected, stored once,
+    /// and never refreshed. Here a new field fails to compile until it is classified: either it is
+    /// a discovered attribute and gets filled, or it is named in the ignore list because something
+    /// else owns it (`name` has its own ladder, `tags` and `credential_assignments` are user state,
+    /// `hidden` is a user preference).
+    pub fn fill_missing_attributes_from(&mut self, incoming: &HostBase) -> bool {
+        let HostBase {
+            // Not attributes: owned by the naming ladder, by the user, or by the row itself.
+            name: _,
+            network_id: _,
+            description: _,
+            source: _,
+            virtualization_metadata: _,
+            virtualization_service_id: _,
+            hidden: _,
+            tags: _,
+            credential_assignments: _,
+            // Filled earlier in `upsert_host`, before the naming ladder reads it: a hostname that
+            // arrived on this scan has to be present when `apply_name(HostName::Hostname(..))`
+            // runs, or the host goes one whole scan without the name its hostname would give it.
+            hostname: _,
+            // Discovered attributes.
+            sys_descr,
+            sys_object_id,
+            sys_location,
+            sys_contact,
+            management_url,
+            chassis_id,
+            sys_name,
+            manufacturer,
+            model,
+            serial_number,
+            firmware_revision,
+        } = incoming;
+
+        let mut changed = false;
+        let mut fill = |slot: &mut Option<String>, incoming: &Option<String>| {
+            if slot.is_none()
+                && let Some(value) = incoming
+            {
+                *slot = Some(value.clone());
+                changed = true;
+            }
+        };
+
+        fill(&mut self.sys_descr, sys_descr);
+        fill(&mut self.sys_object_id, sys_object_id);
+        fill(&mut self.sys_location, sys_location);
+        fill(&mut self.sys_contact, sys_contact);
+        fill(&mut self.management_url, management_url);
+        fill(&mut self.chassis_id, chassis_id);
+        fill(&mut self.sys_name, sys_name);
+        fill(&mut self.manufacturer, manufacturer);
+        fill(&mut self.model, model);
+        fill(&mut self.serial_number, serial_number);
+        fill(&mut self.firmware_revision, firmware_revision);
+        changed
     }
 
     /// Lower the recorded provenance to `ceiling` if it claims more, keeping the name itself.
@@ -288,5 +366,42 @@ mod tests {
         base.apply_name(HostName::Hostname("switch.lan".to_string()));
         assert!(base.apply_name(HostName::Integration("switch.lan".to_string())));
         assert_eq!(base.name.source(), HostNameSource::Integration);
+    }
+    /// The characterization the attribute merge needed before it was extracted: what a person
+    /// typed into the host edit form has to survive every subsequent scan, and that protection is
+    /// the `is_none()` gate rather than anything about provenance.
+    #[test]
+    fn a_value_already_present_is_never_displaced() {
+        let mut existing = HostBase {
+            model: Some("typed-by-a-person".to_string()),
+            ..Default::default()
+        };
+        let incoming = HostBase {
+            model: Some("read-over-snmp".to_string()),
+            serial_number: Some("FOC1234X5YZ".to_string()),
+            ..Default::default()
+        };
+
+        assert!(existing.fill_missing_attributes_from(&incoming));
+
+        assert_eq!(existing.model.as_deref(), Some("typed-by-a-person"));
+        assert_eq!(existing.serial_number.as_deref(), Some("FOC1234X5YZ"));
+    }
+
+    /// `upsert_host` publishes an Updated event and triggers a topology rebuild off this return
+    /// value, so a scan that learns nothing new must report no change.
+    #[test]
+    fn learning_nothing_new_reports_no_change() {
+        let mut existing = HostBase {
+            model: Some("WS-C2960X".to_string()),
+            ..Default::default()
+        };
+        let incoming = HostBase {
+            model: Some("WS-C2960X".to_string()),
+            ..Default::default()
+        };
+
+        assert!(!existing.fill_missing_attributes_from(&incoming));
+        assert!(!existing.fill_missing_attributes_from(&HostBase::default()));
     }
 }

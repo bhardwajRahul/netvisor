@@ -321,7 +321,6 @@ pub mod client;
 // IoT
 pub mod amazon_echo;
 pub mod apple_tv;
-pub mod bacnet;
 pub mod camera;
 pub mod chromecast;
 pub mod frigate;
@@ -338,6 +337,12 @@ pub mod sonos_speaker;
 pub mod tasmota;
 pub mod tuyasmart;
 pub mod wiz;
+
+// Industrial
+pub mod bacnet;
+pub mod ethernet_ip;
+pub mod modbus_tcp;
+pub mod opc_ua;
 
 // Printer
 pub mod airprint_printer;

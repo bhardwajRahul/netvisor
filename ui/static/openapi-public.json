@@ -12166,19 +12166,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-08-26T01:22:52.448350Z",
+              "created_at": "2026-08-27T21:13:19.129605Z",
               "first_discovery_id": null,
-              "id": "b9859550-acc2-47cd-94ef-082ac5311ddf",
+              "id": "e44dc437-70c4-4ca6-ae4d-0081eb2d164d",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-26T01:22:52.448350Z",
+              "last_seen_at": "2026-08-27T21:13:19.129605Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-26T01:22:52.448350Z",
-              "valid_from": "2026-08-26T01:22:52.448350Z",
+              "updated_at": "2026-08-27T21:13:19.129605Z",
+              "valid_from": "2026-08-27T21:13:19.129605Z",
               "valid_to": null
             }
           },
@@ -13218,6 +13218,7 @@
               "source",
               "hidden",
               "tags",
+              "firmware_revision",
               "ip_addresses",
               "ports",
               "services",
@@ -13249,6 +13250,13 @@
                   "null"
                 ],
                 "description": "Free-text notes about the host."
+              },
+              "firmware_revision": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Firmware or software revision of the device."
               },
               "hidden": {
                 "type": "boolean",
@@ -13420,6 +13428,7 @@
               "created_at": "2026-01-15T10:30:00Z",
               "credential_assignments": [],
               "description": "Primary web server",
+              "firmware_revision": null,
               "hidden": false,
               "hostname": "web-server-01.local",
               "id": "550e8400-e29b-41d4-a716-446655440003",
@@ -13506,19 +13515,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-08-26T01:22:52.422762Z",
+                      "created_at": "2026-08-27T21:13:19.100396Z",
                       "first_discovery_id": null,
-                      "id": "4a431253-ed8c-42f8-bbac-be1d9880818c",
+                      "id": "af4c860a-2d1f-4ea3-9890-4621e7c4ef7b",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-08-26T01:22:52.422762Z",
+                      "last_seen_at": "2026-08-27T21:13:19.100396Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-08-26T01:22:52.422762Z",
-                      "valid_from": "2026-08-26T01:22:52.422762Z",
+                      "updated_at": "2026-08-27T21:13:19.100396Z",
+                      "valid_from": "2026-08-27T21:13:19.100396Z",
                       "valid_to": null
                     }
                   ],
@@ -13532,7 +13541,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Jotty",
+                  "service_definition": "Scanopy Server",
                   "source": {
                     "type": "Manual"
                   },
@@ -14735,19 +14744,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-08-26T01:22:52.442069Z",
+                  "created_at": "2026-08-27T21:13:19.121736Z",
                   "first_discovery_id": null,
-                  "id": "c75d83c5-b58c-4179-af0b-0090d3e43be9",
+                  "id": "7489a814-d81e-4542-831c-670ba2810dc9",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-26T01:22:52.442069Z",
+                  "last_seen_at": "2026-08-27T21:13:19.121736Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-26T01:22:52.442069Z",
-                  "valid_from": "2026-08-26T01:22:52.442069Z",
+                  "updated_at": "2026-08-27T21:13:19.121736Z",
+                  "valid_from": "2026-08-27T21:13:19.121736Z",
                   "valid_to": null
                 }
               ],
@@ -14761,7 +14770,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Jotty",
+              "service_definition": "Scanopy Server",
               "source": {
                 "type": "Manual"
               },
@@ -15148,6 +15157,7 @@
             "description": "The result payload. Omitted on failure.",
             "example": {
               "cidr": "192.168.1.0/24",
+              "cidr_source": "Observed",
               "created_at": "2026-01-15T10:30:00Z",
               "description": "Local area network",
               "first_discovery_id": null,
@@ -16821,19 +16831,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-08-26T01:22:52.423026Z",
+          "created_at": "2026-08-27T21:13:19.100662Z",
           "first_discovery_id": null,
-          "id": "62035cf7-1afa-484c-b047-f13dbf8c6dc8",
+          "id": "3b9e9d38-ed0a-44ce-918e-a91ae259a7ae",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-08-26T01:22:52.423026Z",
+          "last_seen_at": "2026-08-27T21:13:19.100662Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-08-26T01:22:52.423026Z",
-          "valid_from": "2026-08-26T01:22:52.423026Z",
+          "updated_at": "2026-08-27T21:13:19.100662Z",
+          "valid_from": "2026-08-27T21:13:19.100662Z",
           "valid_to": null
         }
       },
@@ -17481,7 +17491,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Jotty",
+              "service_definition": "Scanopy Server",
               "tags": [],
               "virtualization_metadata": null,
               "virtualization_service_id": null
@@ -20013,6 +20023,41 @@
           },
           {
             "type": "object",
+            "title": "LldpLocalPortDroppedReadCutShort",
+            "description": "The same loss, on a device whose own account of its port numbering was only half read.\n\nSeparate from [`Self::LldpLocalPortDropped`] because that one names a cause — the switch\nnumbering its LLDP ports apart from its interfaces — which is a property of the device and\nis not what happened here. Offering both readings in one sentence, as this used to, asks\nthe operator to pick; one says nothing will ever change and the other says a complete scan\nmay well place these neighbours (GH #668).",
+            "required": [
+              "address",
+              "dropped",
+              "total",
+              "code"
+            ],
+            "properties": {
+              "address": {
+                "type": "string",
+                "description": "The device that reported the neighbours."
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "LldpLocalPortDroppedReadCutShort"
+                ]
+              },
+              "dropped": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Neighbours discarded for want of a matching interface.",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Neighbours the device reported in all.",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
             "title": "LldpLocalPortMisplaced",
             "description": "Neighbours whose local port could not be identified but did match an interface number, so\nthey are drawn against a port that may be the wrong one.",
             "required": [
@@ -20646,6 +20691,29 @@
               }
             ],
             "description": "The far end resolved, and several of its ports match, so it identifies none."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProvisionalSubnet",
+                "description": "A range was created from the addresses unplaceable far ends publish for themselves."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "ProvisionalSubnetInferred"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "A range was created from the addresses unplaceable far ends publish for themselves."
           },
           {
             "type": "object",
@@ -21471,6 +21539,22 @@
           },
           {
             "type": "object",
+            "title": "Inferred",
+            "description": "Known only because something else reported it — an LLDP/CDP neighbour publishing an address,\nor a controller listing a device — and never contacted directly.\n\nA distinct rung rather than plain `Discovery` because the difference is exactly what an\noperator cannot otherwise see: a host with no ports, no services and an address nothing ever\nanswered on is indistinguishable from a device that is simply down. It counts as discovered\nfor every other purpose — see [`Self::is_from_discovery`] — so staleness, quota and the\ndiscovery FKs behave for it precisely as they do for a swept host.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Inferred"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "title": "Unknown",
             "required": [
               "type"
@@ -21746,6 +21830,13 @@
                 ],
                 "description": "Free-text notes about the host."
               },
+              "firmware_revision": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Firmware or software revision of the device as a whole.\n\nWritten by whichever source read it — a controller's REST inventory, an industrial probe's\nidentity response, and (once ENTITY-MIB revisions land) `entPhysicalFirmwareRev`. Before\nthis column existed each of those had nowhere to put a version it had already read, and two\nof them flattened it into `sys_descr` as prose.\n\nDevice-level rather than per-module: everything downstream is host-shaped, and the NCCoE\nasset-inventory minimum says \"product version\", singular."
+              },
               "hidden": {
                 "type": "boolean",
                 "description": "Whether the host is hidden from topology views."
@@ -21924,6 +22015,7 @@
           "source",
           "hidden",
           "tags",
+          "firmware_revision",
           "ip_addresses",
           "ports",
           "services",
@@ -21955,6 +22047,13 @@
               "null"
             ],
             "description": "Free-text notes about the host."
+          },
+          "firmware_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Firmware or software revision of the device."
           },
           "hidden": {
             "type": "boolean",
@@ -22126,6 +22225,7 @@
           "created_at": "2026-01-15T10:30:00Z",
           "credential_assignments": [],
           "description": "Primary web server",
+          "firmware_revision": null,
           "hidden": false,
           "hostname": "web-server-01.local",
           "id": "550e8400-e29b-41d4-a716-446655440003",
@@ -22212,19 +22312,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-08-26T01:22:52.422463Z",
+                  "created_at": "2026-08-27T21:13:19.100099Z",
                   "first_discovery_id": null,
-                  "id": "661547be-3e70-477c-bfad-022d5445200a",
+                  "id": "564f0ca5-69cb-44cf-9842-8453b30205de",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-26T01:22:52.422463Z",
+                  "last_seen_at": "2026-08-27T21:13:19.100099Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-26T01:22:52.422463Z",
-                  "valid_from": "2026-08-26T01:22:52.422463Z",
+                  "updated_at": "2026-08-27T21:13:19.100099Z",
+                  "valid_from": "2026-08-27T21:13:19.100099Z",
                   "valid_to": null
                 }
               ],
@@ -22238,7 +22338,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Jotty",
+              "service_definition": "Scanopy Server",
               "source": {
                 "type": "Manual"
               },
@@ -22628,7 +22728,7 @@
                         "items": {
                           "$ref": "#/components/schemas/ServiceCategory"
                         },
-                        "description": "Service categories to group into this subcontainer."
+                        "description": "Service categories to group into this subcontainer.\n\nLenient on read so a category this build does not know drops out of the rule instead\nof failing the whole topology — see [`deserialize_known_categories`]."
                       },
                       "is_infra_rule": {
                         "type": "boolean",
@@ -24990,6 +25090,7 @@
                 "source",
                 "hidden",
                 "tags",
+                "firmware_revision",
                 "ip_addresses",
                 "ports",
                 "services",
@@ -25021,6 +25122,13 @@
                     "null"
                   ],
                   "description": "Free-text notes about the host."
+                },
+                "firmware_revision": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Firmware or software revision of the device."
                 },
                 "hidden": {
                   "type": "boolean",
@@ -25192,6 +25300,7 @@
                 "created_at": "2026-01-15T10:30:00Z",
                 "credential_assignments": [],
                 "description": "Primary web server",
+                "firmware_revision": null,
                 "hidden": false,
                 "hostname": "web-server-01.local",
                 "id": "550e8400-e29b-41d4-a716-446655440003",
@@ -25278,19 +25387,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-08-26T01:22:52.410667Z",
+                        "created_at": "2026-08-27T21:13:19.088915Z",
                         "first_discovery_id": null,
-                        "id": "89ba78a8-aee0-4a56-a510-8328d0505533",
+                        "id": "3f5d2f8c-8db9-4ae2-97cc-25f0b1de0ec5",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-08-26T01:22:52.410667Z",
+                        "last_seen_at": "2026-08-27T21:13:19.088915Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-08-26T01:22:52.410667Z",
-                        "valid_from": "2026-08-26T01:22:52.410667Z",
+                        "updated_at": "2026-08-27T21:13:19.088915Z",
+                        "valid_from": "2026-08-27T21:13:19.088915Z",
                         "valid_to": null
                       }
                     ],
@@ -25304,7 +25413,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Jotty",
+                    "service_definition": "Scanopy Server",
                     "source": {
                       "type": "Manual"
                     },
@@ -25440,19 +25549,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-08-26T01:22:52.441239Z",
+                    "created_at": "2026-08-27T21:13:19.120452Z",
                     "first_discovery_id": null,
-                    "id": "09066aea-491f-448e-abfe-8653eaed5e3d",
+                    "id": "7372c6ee-97fb-43a6-a17f-2d9eb1724e0a",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-08-26T01:22:52.441239Z",
+                    "last_seen_at": "2026-08-27T21:13:19.120452Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-08-26T01:22:52.441239Z",
-                    "valid_from": "2026-08-26T01:22:52.441239Z",
+                    "updated_at": "2026-08-27T21:13:19.120452Z",
+                    "valid_from": "2026-08-27T21:13:19.120452Z",
                     "valid_to": null
                   }
                 ],
@@ -25466,7 +25575,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Jotty",
+                "service_definition": "Scanopy Server",
                 "source": {
                   "type": "Manual"
                 },
@@ -25592,6 +25701,7 @@
               ],
               "example": {
                 "cidr": "192.168.1.0/24",
+                "cidr_source": "Observed",
                 "created_at": "2026-01-15T10:30:00Z",
                 "description": "Local area network",
                 "first_discovery_id": null,
@@ -26549,6 +26659,9 @@
               "Wireguard",
               "OpenVPN",
               "BACnet",
+              "ModbusTcp",
+              "OpcUa",
+              "EtherNetIp",
               "JetDirect",
               "Custom"
             ]
@@ -26639,6 +26752,55 @@
             "format": "password",
             "description": "The API key (plaintext) for daemon authentication.\nThis is shown only once - store it securely.",
             "readOnly": true
+          }
+        }
+      },
+      "ProvisionalSubnet": {
+        "type": "object",
+        "description": "A range inferred from where unplaceable far ends say they live.\n\nCarries the evidence rather than just the verdict, because \"we invented a subnet\" is not a\nsentence an operator can act on: which of their devices saw it, on which ports, and what those\nfar ends call themselves is what lets them recognise a segment as real, correct the range, or\nsee that it is a device with a factory-default address.",
+        "required": [
+          "cidr",
+          "subnet_id",
+          "addresses",
+          "sys_names",
+          "seen_by_host_ids",
+          "widened_by_vlan"
+        ],
+        "properties": {
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The addresses that motivated it, in the order observed."
+          },
+          "cidr": {
+            "type": "string",
+            "description": "The range, in CIDR notation."
+          },
+          "seen_by_host_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The local devices that saw them."
+          },
+          "subnet_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The subnet row created for it, so the UI can link straight to it."
+          },
+          "sys_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The far ends' own `sysName`s, where they sent any — the labels an operator recognises."
+          },
+          "widened_by_vlan": {
+            "type": "boolean",
+            "description": "Whether a shared VLAN widened the range past the conventional prefix, rather than it being\nthe `/24` (or `/64`) a lone address is assumed to sit in. The difference is how much the\nrange rests on evidence versus on convention."
           }
         }
       },
@@ -27444,19 +27606,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-08-26T01:22:52.422971Z",
+              "created_at": "2026-08-27T21:13:19.100598Z",
               "first_discovery_id": null,
-              "id": "d2c166d0-358c-4643-9d0c-c905aaed4213",
+              "id": "7a0feb6d-6edf-4834-a8bb-a8af78f5c60e",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-26T01:22:52.422971Z",
+              "last_seen_at": "2026-08-27T21:13:19.100598Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-26T01:22:52.422971Z",
-              "valid_from": "2026-08-26T01:22:52.422971Z",
+              "updated_at": "2026-08-27T21:13:19.100598Z",
+              "valid_from": "2026-08-27T21:13:19.100598Z",
               "valid_to": null
             }
           ],
@@ -27470,7 +27632,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Jotty",
+          "service_definition": "Scanopy Server",
           "source": {
             "type": "Manual"
           },
@@ -27582,6 +27744,7 @@
           "Workstation",
           "Mobile",
           "IoT",
+          "Industrial",
           "Printer",
           "Database",
           "Development",
@@ -28138,6 +28301,7 @@
         ],
         "example": {
           "cidr": "192.168.1.0/24",
+          "cidr_source": "Observed",
           "created_at": "2026-01-15T10:30:00Z",
           "description": "Local area network",
           "first_discovery_id": null,
@@ -28162,6 +28326,7 @@
         "type": "object",
         "required": [
           "cidr",
+          "cidr_source",
           "network_id",
           "name",
           "subnet_type",
@@ -28175,6 +28340,10 @@
             "description": "Subnet in CIDR notation, IPv4 or IPv6.",
             "example": "192.168.1.0/24",
             "pattern": "^[0-9A-Fa-f.:]+/\\d{1,3}$"
+          },
+          "cidr_source": {
+            "$ref": "#/components/schemas/SubnetCidrSource",
+            "description": "How far [`Self::cidr`] can be trusted.\n\nWritten only by [`SubnetBase::apply_cidr`], which is what keeps the pair from drifting: a\nrange and the confidence in it are one fact, and assigning `cidr` alone is how a guess ends\nup indistinguishable from a reading."
           },
           "description": {
             "type": [
@@ -28217,6 +28386,15 @@
             "description": "The container runtime service that owns this bridge network.\n\nLoad-bearing for dedup: the same CIDR on two different Docker daemons is two distinct\nsubnets, so bridge rows only merge when this matches as well as the CIDR and network.\nA foreign key rather than a field inside a JSONB blob because a stale value here is\nprecisely what made a scan add a duplicate bridge row every time (GH #650) — now it\ncannot be written at all."
           }
         }
+      },
+      "SubnetCidrSource": {
+        "type": "string",
+        "description": "How far a subnet's CIDR can be trusted, and therefore whether an operator is asked to confirm it.\n\n**Declaration order is the precedence order.** `Ord` is derived from it and is the whole\nenforcement mechanism — the same arrangement [`HostNameSource`] uses for names, and for the\nsame reason: a rung inserted at its rank propagates to every comparison, with no per-call-site\nprecedence to keep in sync.\n\n[`HostNameSource`]: crate::server::hosts::r#impl::name::HostNameSource",
+        "enum": [
+          "Inferred",
+          "Observed",
+          "Confirmed"
+        ]
       },
       "SubnetOrderField": {
         "type": "string",
@@ -28685,7 +28863,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "a9787780-1ea0-4d76-8c60-2661f01bb3dc",
+                  "id": "ed4ec4ce-e48d-4738-b529-72dc4504cdde",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -28695,23 +28873,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "6f25bf1e-c8ac-424a-8438-21e80fba51df",
+                  "id": "3e0271a7-96ce-42b1-8a12-6491d79aad77",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "be52f34e-6058-4970-8957-3590acd819c8",
+                  "id": "4698473d-78f8-45c5-b81b-cc0b81c7c50f",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "3eacf781-e9ae-4a39-b0db-ae49aa9dde79",
+                  "id": "a77214a4-ca8b-4615-9f14-8ab6423bbaea",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "6f25bf1e-c8ac-424a-8438-21e80fba51df",
+                  "id": "3e0271a7-96ce-42b1-8a12-6491d79aad77",
                   "rule": "ByHost"
                 }
               ]
@@ -28741,19 +28919,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "247447e6-cdb3-4342-b981-196a56f16c25",
+                "id": "e84425a0-d231-4c45-bb22-8566963985d0",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "cacccf5d-3287-43ab-b6cb-0d748f61f365",
+                "id": "0a9d8b71-d187-4fe5-aee4-8c3a5d3c24f5",
                 "rule": "ByVLAN"
               },
               {
-                "id": "5ebc5ab6-3654-401f-b3f1-2c6d9d07ce66",
+                "id": "bc13f470-5097-48a3-83c0-ff022e9d89f3",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "64c42009-c871-40b1-bf2b-3c0f31ce303b",
+                "id": "a83a93a9-7eaa-4070-9ab0-a7d851964db0",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -28771,7 +28949,7 @@
                 }
               },
               {
-                "id": "3a91930e-e73e-4b11-9351-7b8b8a3023a1",
+                "id": "51eef564-3c6d-4205-bc5b-04d6a824d425",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -28780,15 +28958,15 @@
                 }
               },
               {
-                "id": "6ae491a4-6ebd-4f8d-afc6-6938878e8f4d",
+                "id": "6a9f2c0e-5748-4ad5-9ac5-c0323980b384",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "0f898aa5-6265-4771-ad2c-ae528b9204ca",
+                "id": "64cd36d3-7c0c-4321-b25c-b288153bd7c6",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "c93e2d14-c54b-4e8f-aa18-f5aac428df87",
+                "id": "14785fca-c93c-4475-adcb-ecfa9239d449",
                 "rule": "ByStack"
               }
             ]
@@ -28973,9 +29151,17 @@
           "host_id",
           "if_descr",
           "identifier",
-          "sys_name"
+          "sys_name",
+          "address"
         ],
         "properties": {
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The address the far end published for itself — `lldpRemManAddr`, a `NetworkAddress` port\nid, or `cdpCacheAddress` — where it sent a usable one.\n\nCarried because it is the difference between two reports that otherwise read identically:\n\"the far end told us where it lives and this network holds no such address\" is a device\nnobody has scanned, while \"it told us nothing\" is a device that cannot be placed no matter\nhow much of the network is scanned. Without it, deciding which of the two a fleet is\nlooking at costs another round trip to the operator (GH #668)."
+          },
           "host_id": {
             "type": "string",
             "format": "uuid",

@@ -44,6 +44,7 @@ pub struct HostCsvRow {
     pub manufacturer: Option<String>,
     pub model: Option<String>,
     pub serial_number: Option<String>,
+    pub firmware_revision: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -135,6 +136,7 @@ impl Storable for Host {
                     manufacturer,
                     model,
                     serial_number,
+                    firmware_revision,
                     credential_assignments: _, // Stored in host_credentials junction table
                 },
         } = self.clone();
@@ -163,6 +165,7 @@ impl Storable for Host {
                 "manufacturer",
                 "model",
                 "serial_number",
+                "firmware_revision",
                 "valid_from",
                 "valid_to",
                 "lineage_id",
@@ -193,6 +196,7 @@ impl Storable for Host {
                 SqlValue::OptionalString(manufacturer),
                 SqlValue::OptionalString(model),
                 SqlValue::OptionalString(serial_number),
+                SqlValue::OptionalString(firmware_revision),
                 SqlValue::Timestamp(valid_from),
                 SqlValue::OptionTimestamp(valid_to),
                 SqlValue::OptionalUuid(lineage_id),
@@ -255,6 +259,7 @@ impl Storable for Host {
                 manufacturer: row.get("manufacturer"),
                 model: row.get("model"),
                 serial_number: row.get("serial_number"),
+                firmware_revision: row.get("firmware_revision"),
                 credential_assignments: Vec::new(), // Hydrated from host_credentials junction table
             },
         })
@@ -299,6 +304,7 @@ impl Entity for Host {
             manufacturer: self.base.manufacturer.clone(),
             model: self.base.model.clone(),
             serial_number: self.base.serial_number.clone(),
+            firmware_revision: self.base.firmware_revision.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
         }

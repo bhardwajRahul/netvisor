@@ -804,6 +804,9 @@ pub struct HostResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(read_only)]
     pub serial_number: Option<String>,
+    /// Firmware or software revision of the device.
+    #[schema(required)]
+    pub firmware_revision: Option<String>,
     /// Credentials assigned to scan this host.
     #[serde(default)]
     pub credential_assignments: Vec<CredentialAssignment>,
@@ -849,6 +852,7 @@ impl HostResponse {
             manufacturer,
             model,
             serial_number,
+            firmware_revision,
             credential_assignments,
             ip_addresses: _,
             ports: _,
@@ -890,6 +894,7 @@ impl HostResponse {
                 manufacturer: manufacturer.clone(),
                 model: model.clone(),
                 serial_number: serial_number.clone(),
+                firmware_revision: firmware_revision.clone(),
                 credential_assignments: credential_assignments.clone(),
             },
         }
@@ -944,6 +949,7 @@ impl HostResponse {
             manufacturer,
             model,
             serial_number,
+            firmware_revision,
             credential_assignments,
         } = base;
 
@@ -972,6 +978,7 @@ impl HostResponse {
             manufacturer,
             model,
             serial_number,
+            firmware_revision,
             credential_assignments,
             ip_addresses,
             ports,
