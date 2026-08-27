@@ -131,50 +131,11 @@ impl HostService {
             has_updates = true;
         }
 
-        // Update SNMP fields if not set
-        if existing_host.base.sys_descr.is_none() && new_host_data.base.sys_descr.is_some() {
-            has_updates = true;
-            existing_host.base.sys_descr = new_host_data.base.sys_descr;
-        }
-        if existing_host.base.sys_object_id.is_none() && new_host_data.base.sys_object_id.is_some()
+        if existing_host
+            .base
+            .fill_missing_attributes_from(&new_host_data.base)
         {
             has_updates = true;
-            existing_host.base.sys_object_id = new_host_data.base.sys_object_id;
-        }
-        if existing_host.base.sys_location.is_none() && new_host_data.base.sys_location.is_some() {
-            has_updates = true;
-            existing_host.base.sys_location = new_host_data.base.sys_location;
-        }
-        if existing_host.base.sys_contact.is_none() && new_host_data.base.sys_contact.is_some() {
-            has_updates = true;
-            existing_host.base.sys_contact = new_host_data.base.sys_contact;
-        }
-        if existing_host.base.management_url.is_none()
-            && new_host_data.base.management_url.is_some()
-        {
-            has_updates = true;
-            existing_host.base.management_url = new_host_data.base.management_url;
-        }
-        if existing_host.base.chassis_id.is_none() && new_host_data.base.chassis_id.is_some() {
-            has_updates = true;
-            existing_host.base.chassis_id = new_host_data.base.chassis_id;
-        }
-        if existing_host.base.sys_name.is_none() && new_host_data.base.sys_name.is_some() {
-            has_updates = true;
-            existing_host.base.sys_name = new_host_data.base.sys_name;
-        }
-        if existing_host.base.manufacturer.is_none() && new_host_data.base.manufacturer.is_some() {
-            has_updates = true;
-            existing_host.base.manufacturer = new_host_data.base.manufacturer;
-        }
-        if existing_host.base.model.is_none() && new_host_data.base.model.is_some() {
-            has_updates = true;
-            existing_host.base.model = new_host_data.base.model;
-        }
-        if existing_host.base.serial_number.is_none() && new_host_data.base.serial_number.is_some()
-        {
-            has_updates = true;
-            existing_host.base.serial_number = new_host_data.base.serial_number;
         }
 
         // EntitySource merge: previously concatenated discovery metadata vecs

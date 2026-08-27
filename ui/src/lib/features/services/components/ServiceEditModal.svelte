@@ -51,6 +51,7 @@
 			manufacturer: host.manufacturer ?? null,
 			model: host.model ?? null,
 			serial_number: host.serial_number ?? null,
+			firmware_revision: host.firmware_revision ?? null,
 			credential_assignments: host.credential_assignments ?? [],
 			interfaces: [] // Interfaces not available in this context
 		};

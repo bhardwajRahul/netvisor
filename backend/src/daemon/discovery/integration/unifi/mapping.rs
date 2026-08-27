@@ -93,10 +93,7 @@ fn map_device(
         manufacturer: Some("Ubiquiti".to_string()),
         model: device.model.clone(),
         serial_number: device.serial.clone(),
-        sys_descr: device
-            .version
-            .as_ref()
-            .map(|v| format!("UniFi firmware {v}")),
+        firmware_revision: device.version.clone(),
     };
 
     let ip_address = IPAddress::new(IPAddressBase {
@@ -336,7 +333,7 @@ pub fn map_clients(
                 manufacturer: station.oui.clone(),
                 model: None,
                 serial_number: None,
-                sys_descr: None,
+                firmware_revision: None,
             };
             MappedClient::new(
                 identity,

@@ -252,6 +252,12 @@ pub enum ElementRule {
     #[schema(title = "ByServiceCategory")]
     ByServiceCategory {
         /// Service categories to group into this subcontainer.
+        ///
+        /// Lenient on read so a category this build does not know drops out of the rule instead
+        /// of failing the whole topology — see [`deserialize_known_categories`].
+        #[serde(
+            deserialize_with = "crate::server::services::r#impl::categories::deserialize_known_categories"
+        )]
         categories: Vec<ServiceCategory>,
         /// Heading for the subcontainer. Defaults to the category name.
         title: Option<String>,
@@ -572,5 +578,31 @@ mod tests {
         assert!(json.contains("ByStack"));
         let deserialized: IdentifiedRule<ElementRule> = serde_json::from_str(&json).unwrap();
         assert_eq!(rule, deserialized);
+    }
+    /// Rollback safety: a rule saved by a newer build names `Industrial`; a binary without that
+    /// variant must still be able to read the rule, minus the entry it cannot place.
+    #[test]
+    fn a_category_this_build_does_not_know_drops_out_of_the_rule() {
+        let saved = serde_json::json!({
+            "ByServiceCategory": {
+                "categories": ["NetworkCore", "SomethingFromTheFuture", "Printer"],
+                "title": "Infrastructure",
+                "is_infra_rule": true
+            }
+        });
+
+        let rule: ElementRule = serde_json::from_value(saved).expect("the rule still deserializes");
+
+        let ElementRule::ByServiceCategory {
+            categories, title, ..
+        } = rule
+        else {
+            panic!("expected a ByServiceCategory rule");
+        };
+        assert_eq!(
+            categories,
+            vec![ServiceCategory::NetworkCore, ServiceCategory::Printer]
+        );
+        assert_eq!(title.as_deref(), Some("Infrastructure"));
     }
 }

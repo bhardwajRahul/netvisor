@@ -137,6 +137,7 @@ pub fn host() -> Host {
             manufacturer: None,
             model: None,
             serial_number: None,
+            firmware_revision: None,
             credential_assignments: vec![],
         },
     }

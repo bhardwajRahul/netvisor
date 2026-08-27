@@ -20,6 +20,7 @@
 		common_manufacturer,
 		common_model,
 		common_serialNumber,
+		common_firmwareRevision,
 		hosts_hardwareInfo,
 		hosts_snmp_chassisId,
 		hosts_snmp_managementUrl,
@@ -138,6 +139,9 @@
 						<InfoRow label={common_manufacturer()}>{formData.manufacturer || '-'}</InfoRow>
 						<InfoRow label={common_model()} mono>{formData.model || '-'}</InfoRow>
 						<InfoRow label={common_serialNumber()} mono>{formData.serial_number || '-'}</InfoRow>
+						<InfoRow label={common_firmwareRevision()} mono
+							>{formData.firmware_revision || '-'}</InfoRow
+						>
 					</InfoCard>
 				{/if}
 				{#if hasSnmpInfo}

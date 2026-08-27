@@ -5,9 +5,10 @@ use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::discovery::service::warnings::{CredentialIssue, CredentialIssueReason};
 use crate::daemon::discovery::types::base::DiscoveryCriticalError;
 use crate::daemon::discovery::types::warnings::DiscoveryWarning;
+use crate::daemon::utils::app_probe::{ProbeContext, scan_app_probes};
 use crate::daemon::utils::base::{DaemonUtils, PlatformDaemonUtils};
 use crate::daemon::utils::scanner::{
-    ScanConcurrencyController, can_arp_scan, scan_endpoints, scan_tcp_ports, scan_udp_ports,
+    ScanConcurrencyController, can_arp_scan, probe_snmp_ports, scan_endpoints, scan_tcp_ports,
 };
 use crate::server::credentials::r#impl::mapping::{CredentialMapping, CredentialQueryPayload};
 use crate::server::discovery::r#impl::scan_settings::defaults;
@@ -1426,19 +1427,30 @@ impl NetworkScan {
         open_ports.sort_by_key(|p| (p.number(), p.protocol()));
         open_ports.dedup();
 
-        // Non-credentialed UDP scanning (DNS, NTP, DHCP, BACnet).
-        // SNMP probing is now handled by SnmpIntegration.probe() below.
-        let udp_ports = scan_udp_ports(
+        // SNMP port probing. Credentialed SNMP is SnmpIntegration.probe()'s below; this still
+        // tries the default `public` community, which is the only way an SNMP device is found on a
+        // network with no credential configured.
+        let snmp_ports = probe_snmp_ports(ip, cancel.clone(), &[]).await?;
+        open_ports.extend(snmp_ports);
+
+        // Non-credentialed application probes (DNS, NTP, DHCP, BACnet, Modbus, OPC UA,
+        // EtherNet/IP). TCP probes gate on `open_ports` from the connect scan above, so this has
+        // to run after it; the identities come back here and are applied further down, after the
+        // credentialed integrations have had their say.
+        let probe_ctx = ProbeContext {
             ip,
-            cancel.clone(),
-            effective_batch_size,
-            scan_rate_pps,
-            subnet.base.cidr,
-            gateway_ips.to_vec(),
-            &[], // No SNMP credentials — SNMP probing handled by integration
-        )
-        .await?;
-        open_ports.extend(udp_ports);
+            subnet_cidr: subnet.base.cidr,
+            is_gateway: gateway_ips.contains(&ip),
+            cancel: cancel.clone(),
+            scan_controller: scan_controller.clone(),
+        };
+        let app_probe_results =
+            scan_app_probes(&probe_ctx, &open_ports, effective_batch_size, scan_rate_pps).await;
+        for result in &app_probe_results {
+            if !open_ports.contains(&result.port) {
+                open_ports.push(result.port);
+            }
+        }
 
         // Read once here rather than at the endpoint scan below: integration probes make their
         // own TLS calls and need the same policy.
@@ -1446,7 +1458,7 @@ impl NetworkScan {
 
         // Integration probes — each checks connectivity and returns a ClientProbe for service matching
         use crate::daemon::discovery::integration::dispatch;
-        let probe_results = dispatch::probe_integrations(
+        let mut probe_results = dispatch::probe_integrations(
             ip,
             credential_mappings,
             &open_ports,
@@ -1470,6 +1482,17 @@ impl NetworkScan {
                 integration_cost_for_ip(credential_mappings, ip),
                 Ordering::Relaxed,
             );
+        }
+        // Fold the application probes into the same evidence map the credentialed integrations
+        // fill, so `Pattern::ClientResponse` needs no second channel.
+        for result in &app_probe_results {
+            if let Some(client_probe) = result.client_probe {
+                probe_results
+                    .client_responses
+                    .entry(client_probe)
+                    .or_default()
+                    .push(result.port);
+            }
         }
         let client_responses = &probe_results.client_responses;
 
@@ -1589,6 +1612,15 @@ impl NetworkScan {
             )
             .await
             .ok();
+
+            // Applied last, so a credentialed read of the same field keeps its value — the rule
+            // `ControllerIdentity::enrich` already documents. A probe sees only what a discovery
+            // packet carries; SNMP and the controllers read the device's own inventory.
+            for result in &app_probe_results {
+                if let Some(identity) = &result.identity {
+                    identity.enrich(&mut host_data);
+                }
+            }
 
             // Extract final state from host_data
             let interfaces_complete = host_data.interfaces_complete;

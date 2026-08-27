@@ -325,6 +325,12 @@
                   "label": "IoT"
                 },
                 {
+                  "color": "Orange",
+                  "icon": "factory",
+                  "id": "Industrial",
+                  "label": "Industrial Control"
+                },
+                {
                   "color": "Gray",
                   "icon": "printer",
                   "id": "Printer",
@@ -721,6 +727,12 @@
                   "label": "IoT"
                 },
                 {
+                  "color": "Orange",
+                  "icon": "factory",
+                  "id": "Industrial",
+                  "label": "Industrial Control"
+                },
+                {
                   "color": "Gray",
                   "icon": "printer",
                   "id": "Printer",
@@ -1062,6 +1074,12 @@
                   "icon": "circuit-board",
                   "id": "IoT",
                   "label": "IoT"
+                },
+                {
+                  "color": "Orange",
+                  "icon": "factory",
+                  "id": "Industrial",
+                  "label": "Industrial Control"
                 },
                 {
                   "color": "Gray",

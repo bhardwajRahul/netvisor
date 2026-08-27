@@ -230,6 +230,7 @@ impl DaemonResponse for HostResponse {
             manufacturer: _,
             model: _,
             serial_number: _,
+            firmware_revision: _,
             credential_assignments: _,
             ip_addresses: _,
             ports: _,

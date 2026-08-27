@@ -48,6 +48,7 @@
 		common_noEntityYet,
 		common_rescan,
 		common_serialNumber,
+		common_firmwareRevision,
 		common_service,
 		common_services,
 		common_tags,
@@ -423,6 +424,12 @@
 				{
 					key: 'serial_number',
 					label: common_serialNumber(),
+					type: 'string',
+					display: { hiddenByDefault: true }
+				},
+				{
+					key: 'firmware_revision',
+					label: common_firmwareRevision(),
 					type: 'string',
 					display: { hiddenByDefault: true }
 				},

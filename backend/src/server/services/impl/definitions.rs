@@ -1,3 +1,4 @@
+use crate::daemon::utils::app_probe::AppProbe;
 use crate::server::hosts::r#impl::virtualization::HostVirtualizationDiscriminants;
 use crate::server::services::definitions::ServiceDefinitionRegistry;
 use crate::server::services::definitions::docker_daemon::Docker;
@@ -39,6 +40,15 @@ pub trait ServiceDefinition: HasId + DynClone + DynHash + DynEq + Send + Sync {
     /// If service is not associated with a particular brand or vendor
     fn is_generic(&self) -> bool {
         false
+    }
+
+    /// The non-credentialed application probe that confirms this service, if it has one.
+    ///
+    /// Default `None`: most definitions match on ports and HTTP endpoints alone. Hanging the probe
+    /// here rather than on a registry of its own is what makes "a probe cannot exist without a
+    /// service definition" structural — see [`crate::daemon::utils::app_probe`].
+    fn app_probe(&self) -> Option<Box<dyn AppProbe>> {
+        None
     }
 
     /// URL of icon, or static path if serving from /logos.
@@ -93,6 +103,10 @@ impl ServiceDefinition for Box<dyn ServiceDefinition> {
 
     fn logo_needs_white_background(&self) -> bool {
         ServiceDefinition::logo_needs_white_background(&**self)
+    }
+
+    fn app_probe(&self) -> Option<Box<dyn AppProbe>> {
+        ServiceDefinition::app_probe(&**self)
     }
 }
 

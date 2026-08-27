@@ -270,6 +270,9 @@ pub enum PortType {
     Wireguard,
     OpenVPN,
     BACnet,
+    ModbusTcp,
+    OpcUa,
+    EtherNetIp,
     JetDirect,
     Custom(PortConfig),
 }
@@ -624,6 +627,20 @@ impl PortType {
                 number: 47808,
                 protocol: TransportProtocol::Udp,
             },
+            PortType::ModbusTcp => PortConfig {
+                number: 502,
+                protocol: TransportProtocol::Tcp,
+            },
+            PortType::OpcUa => PortConfig {
+                number: 4840,
+                protocol: TransportProtocol::Tcp,
+            },
+            // Unicast only. Broadcast ListIdentity is a sweep, not a per-host probe, and TCP
+            // 44818 carries the same identity for a connection setup this does not need.
+            PortType::EtherNetIp => PortConfig {
+                number: 44818,
+                protocol: TransportProtocol::Udp,
+            },
             PortType::JetDirect => PortConfig {
                 number: 9100,
                 protocol: TransportProtocol::Tcp,
@@ -705,6 +722,9 @@ impl TypeMetadataProvider for PortType {
             PortType::Wireguard => "Wireguard",
             PortType::OpenVPN => "OpenVPN",
             PortType::BACnet => "BACnet",
+            PortType::ModbusTcp => "Modbus TCP",
+            PortType::OpcUa => "OPC UA",
+            PortType::EtherNetIp => "EtherNet/IP",
             PortType::JetDirect => "JetDirect",
         }
     }
@@ -768,6 +788,9 @@ impl TypeMetadataProvider for PortType {
             PortType::Wireguard => "Wireguard VPN",
             PortType::OpenVPN => "OpenVPN",
             PortType::BACnet => "Building Automation and Control Network",
+            PortType::ModbusTcp => "Modbus industrial protocol over TCP",
+            PortType::OpcUa => "OPC Unified Architecture binary transport",
+            PortType::EtherNetIp => "EtherNet/IP industrial protocol (CIP encapsulation)",
             PortType::JetDirect => "JetDirect RAW Printing",
         }
     }

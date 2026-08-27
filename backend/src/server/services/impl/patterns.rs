@@ -149,10 +149,15 @@ impl MatchConfidence {
     }
 }
 
-/// Types of credentialed client probes that run before service matching.
+/// Types of client probes that run before service matching.
 /// The probe result (success/failure) is pre-computed; Pattern::ClientResponse
 /// just checks whether it succeeded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// Two kinds of producer fill this: the credentialed `DiscoveryIntegration`s, and the
+/// non-credentialed [`AppProbe`](crate::daemon::utils::app_probe::AppProbe)s. Every variant needs
+/// one — a variant nothing produces gives a service definition a pattern that can never match, and
+/// `every_client_probe_variant_has_a_producer` is what now says so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum_macros::EnumIter)]
 pub enum ClientProbe {
     Docker,
     /// A completed gNMI `Get` against the device. A gRPC listener accepts a TCP connect whatever
@@ -165,6 +170,13 @@ pub enum ClientProbe {
     /// Unlike the others this proves nothing is listening *on* the host — it proves the portal
     /// account works, which is what gates the integration's `execute`.
     InstantOn,
+    /// A well-formed MBAP frame came back with our transaction ID echoed. Says nothing about
+    /// whether the device answered `0x2B` — a `0xAB` exception is still Modbus.
+    ModbusTcp,
+    /// The OPC UA binary transport answered a `HEL` with an `ACK` or an `ERR`.
+    OpcUa,
+    /// A CIP ListIdentity reply came back with our sender context echoed.
+    EtherNetIp,
 }
 
 /// A device reported by a management controller the daemon authenticated to, rather than one
@@ -467,6 +479,26 @@ impl Display for Pattern<'_> {
             },
             Pattern::None => write!(f, "No match pattern provided"),
         }
+    }
+}
+
+/// The discovery pattern for a service confirmed by an application probe.
+///
+/// `AllOf([Port(p), ClientResponse(c)])`: the port goes into the light scan because
+/// [`Pattern::ports`] flattens `AllOf`, *and* the service matches only once the probe has actually
+/// answered. Both halves come from the probe itself, so the port that gets scanned and the port
+/// that gets probed cannot drift apart — the failure mode that left `ClientProbe::Gnmi` with a
+/// pattern nothing can ever satisfy.
+///
+/// A probe contributing no [`ClientProbe`] degrades to the port alone, which is what the four
+/// probes migrated off the old UDP dispatch already matched on.
+pub fn probe_pattern(probe: &dyn crate::daemon::utils::app_probe::AppProbe) -> Pattern<'static> {
+    match probe.client_probe() {
+        Some(client_probe) => Pattern::AllOf(vec![
+            Pattern::Port(probe.port()),
+            Pattern::ClientResponse(client_probe),
+        ]),
+        None => Pattern::Port(probe.port()),
     }
 }
 
