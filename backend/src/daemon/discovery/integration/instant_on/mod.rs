@@ -31,6 +31,7 @@ pub mod client;
 pub mod mapping;
 pub mod types;
 
+use crate::server::subnets::r#impl::inference::placeable_subnet;
 use std::time::Duration;
 
 use anyhow::{Error, Result};
@@ -411,10 +412,12 @@ async fn create_device_host(
     // these hosts get an ordinary `DiscoveryWithMatch` service with a real confidence — and are
     // identified as a switch or an access point, not merely as "Instant On".
     let managed_device = device_type.map(|device_type| ManagedDevice { device_type });
-    let subnet = subnets
-        .iter()
-        .find(|s| s.base.cidr.contains(&ip))
-        .ok_or_else(|| Error::msg("device IP is not in any known subnet"))?;
+    // For the service matcher, which needs a subnet to evaluate its subnet patterns against — not
+    // for placement, which the server redoes for every address it stores. `placeable_subnet` rather
+    // than first-match: the list carries the `0.0.0.0/0` organizational rows, which contain every
+    // IPv4 address, so `find` returned `Internet` for every device.
+    let subnet = placeable_subnet(subnets, ip)
+        .ok_or_else(|| Error::msg("device IP is in no subnet this network holds"))?;
 
     let all_ports: Vec<PortType> = vec![];
     let endpoint_responses = vec![];

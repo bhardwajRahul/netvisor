@@ -22,7 +22,6 @@ use crate::server::{
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use chrono::Utc;
-use cidr::IpCidr;
 use std::net::IpAddr;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -248,8 +247,7 @@ impl SubnetService {
             return Ok(Placement::Existing(subnet.id));
         }
 
-        let live_cidrs: Vec<IpCidr> = live.iter().map(|s| s.base.cidr).collect();
-        let Some(cidr) = infer_range_for(ip, &live_cidrs) else {
+        let Some(cidr) = infer_range_for(ip, &live) else {
             return Ok(Placement::Unplaceable);
         };
 

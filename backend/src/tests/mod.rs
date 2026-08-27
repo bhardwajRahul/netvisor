@@ -44,6 +44,7 @@ pub mod host_create_with_children;
 pub mod host_naming;
 pub mod lldp_resolution;
 pub mod snmp_sim_resolution;
+pub mod subnet_placement;
 
 pub const DAEMON_CONFIG_FIXTURE: &str = "src/tests/daemon_config.json";
 pub const SERVER_DB_FIXTURE: &str = "src/tests/scanopy.sql";

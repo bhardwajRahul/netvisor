@@ -137,7 +137,7 @@ fn lldp() -> LldpTable {
     .neighbours(vec![
         RemoteNeighbour::new(
             1,
-            Advertised::octets(LldpChassisId::MacAddress("00:ad:24:89:cc:f0".to_string())),
+            Advertised::octets(LldpChassisId::MacAddress("00:ad:24:c0:ff:e0".to_string())),
             Advertised::octets(LldpPortId::InterfaceName(
                 "Ten-GigabitEthernet1/0/1".to_string(),
             )),
@@ -146,7 +146,7 @@ fn lldp() -> LldpTable {
         .mgmt_addr(OFFSITE_CORE.parse().unwrap()),
         RemoteNeighbour::new(
             2,
-            Advertised::octets(LldpChassisId::MacAddress("00:ad:24:89:cc:f1".to_string())),
+            Advertised::octets(LldpChassisId::MacAddress("00:ad:24:c0:ff:e1".to_string())),
             Advertised::octets(LldpPortId::InterfaceName(
                 "GigabitEthernet1/0/8".to_string(),
             )),
@@ -155,7 +155,7 @@ fn lldp() -> LldpTable {
         .mgmt_addr(OFFSITE_EDGE.parse().unwrap()),
         RemoteNeighbour::new(
             3,
-            Advertised::octets(LldpChassisId::MacAddress("00:ad:24:89:cc:f2".to_string())),
+            Advertised::octets(LldpChassisId::MacAddress("00:ad:24:c0:ff:e2".to_string())),
             Advertised::octets(LldpPortId::InterfaceName("eth0".to_string())),
         )
         .sys_name("offsite-ap-01"),
@@ -165,7 +165,7 @@ fn lldp() -> LldpTable {
         // disagrees with its own. Its management address is the only thing left.
         RemoteNeighbour::new(
             4,
-            Advertised::octets(LldpChassisId::MacAddress("00:ad:24:89:cc:f3".to_string())),
+            Advertised::octets(LldpChassisId::MacAddress("00:ad:24:c0:ff:e3".to_string())),
             Advertised::octets(LldpPortId::InterfaceName("1".to_string())),
         )
         .sys_name(MUTE_NEIGHBOUR_SYS_NAME)

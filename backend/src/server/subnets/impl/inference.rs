@@ -187,20 +187,37 @@ pub fn placeable_subnet(live_subnets: &[Subnet], ip: IpAddr) -> Option<&Subnet> 
 ///
 /// Several addresses in one range still converge on one subnet without being pooled: bucketing is
 /// deterministic, so each computes the same CIDR, and subnet creation dedups on it.
-pub fn infer_range_for(address: IpAddr, live_cidrs: &[IpCidr]) -> Option<IpCidr> {
+pub fn infer_range_for(address: IpAddr, live: &[Subnet]) -> Option<IpCidr> {
     if !is_inferrable_space(&address) {
         return None;
     }
-    if live_cidrs.iter().any(|c| c.contains(&address)) {
+    let held = held_ranges(live);
+    if held.iter().any(|c| c.contains(&address)) {
         return None;
     }
     let bucket = conventional_bucket(address);
-    (!live_cidrs.iter().any(|c| overlaps(c, &bucket))).then_some(bucket)
+    (!held.iter().any(|c| overlaps(c, &bucket))).then_some(bucket)
+}
+
+/// The ranges this network actually holds, for the guards below.
+///
+/// **The organizational rows are not among them.** Every network is seeded with an `Internet` and a
+/// `Remote Network` subnet, both `0.0.0.0/0`, so a guard that asks "does anything already hold this
+/// address" or "would this overlap something" against the raw subnet list answers yes for every
+/// address on earth — and no range is ever inferred, on any real network. That is why these take
+/// `&[Subnet]` rather than a list of CIDRs a caller assembles: the exclusion is not something a
+/// call site can forget.
+fn held_ranges(live: &[Subnet]) -> Vec<IpCidr> {
+    live.iter()
+        .filter(|s| !s.is_organizational_subnet())
+        .map(|s| s.base.cidr)
+        .collect()
 }
 
 /// The ranges these far ends imply, given what the network already holds.
 ///
-/// `live_cidrs` is every subnet on the network, whatever its confidence. Two separate jobs:
+/// `live` is every subnet on the network, whatever its confidence — minus the organizational
+/// catch-alls, which [`held_ranges`] drops. Two separate jobs:
 /// an address already inside one is not evidence of anything missing — the range is known, the
 /// *host* at that address simply is not — and a range that would overlap an existing subnet is a
 /// symptom rather than an opportunity, so it is dropped rather than created.
@@ -208,11 +225,12 @@ pub fn infer_range_for(address: IpAddr, live_cidrs: &[IpCidr]) -> Option<IpCidr>
 /// Grouping is **network-wide, not per device**. Two switches naming far ends in the same range
 /// must produce one subnet, and only the server sees both: a network can have several daemons, each
 /// scanning a slice, and the pair may never appear in one daemon's report.
-pub fn infer_ranges(far_ends: Vec<UnplacedFarEnd>, live_cidrs: &[IpCidr]) -> Vec<InferredRange> {
+pub fn infer_ranges(far_ends: Vec<UnplacedFarEnd>, live: &[Subnet]) -> Vec<InferredRange> {
+    let held = held_ranges(live);
     let candidates: Vec<UnplacedFarEnd> = far_ends
         .into_iter()
         .filter(|f| is_inferrable_space(&f.address))
-        .filter(|f| !live_cidrs.iter().any(|c| c.contains(&f.address)))
+        .filter(|f| !held.iter().any(|c| c.contains(&f.address)))
         .collect();
 
     // VLAN first: a shared broadcast domain is the only evidence that can widen a range past the
@@ -248,7 +266,7 @@ pub fn infer_ranges(far_ends: Vec<UnplacedFarEnd>, live_cidrs: &[IpCidr]) -> Vec
 
     ranges
         .into_values()
-        .filter(|range| !live_cidrs.iter().any(|c| overlaps(c, &range.cidr)))
+        .filter(|range| !held.iter().any(|c| overlaps(c, &range.cidr)))
         .collect()
 }
 
@@ -334,7 +352,7 @@ mod tests {
         ranges.iter().map(|r| r.cidr.to_string()).collect()
     }
 
-    fn live(cidrs: &[&str]) -> Vec<Subnet> {
+    fn subnets_of(cidrs: &[&str]) -> Vec<Subnet> {
         cidrs
             .iter()
             .map(|c| Subnet {
@@ -345,6 +363,19 @@ mod tests {
                 ..Default::default()
             })
             .collect()
+    }
+
+    /// What a network's subnet list actually looks like: whatever it holds, **plus** the `Internet`
+    /// and `Remote Network` rows seeded at creation, both `0.0.0.0/0`.
+    ///
+    /// Every test here goes through this rather than building a bare list, because a bare list is
+    /// what let the guards ship inverted — `0.0.0.0/0` contains every address and overlaps every
+    /// range, so a guard tested without it looks correct and infers nothing in production. The one
+    /// helper that omits them, [`subnets_of`], is used only where a test is about their absence.
+    fn live(cidrs: &[&str]) -> Vec<Subnet> {
+        let mut subnets = subnets_of(&["0.0.0.0/0", "0.0.0.0/0"]);
+        subnets.extend(subnets_of(cidrs));
+        subnets
     }
 
     /// Every network is seeded with an `Internet` and a `Remote Network` subnet, both `0.0.0.0/0`,
@@ -369,7 +400,7 @@ mod tests {
     #[test]
     fn a_lone_address_in_unknown_space_infers_its_conventional_range() {
         assert_eq!(
-            infer_range_for("10.20.30.11".parse().unwrap(), &[]),
+            infer_range_for("10.20.30.11".parse().unwrap(), &live(&[])),
             Some(cidr("10.20.30.0/24"))
         );
     }
@@ -379,8 +410,8 @@ mod tests {
     /// CIDR — which is what makes per-address placement equivalent to the pooled pass here.
     #[test]
     fn addresses_in_one_range_infer_the_same_cidr_without_being_pooled() {
-        let first = infer_range_for("10.20.30.11".parse().unwrap(), &[]);
-        let second = infer_range_for("10.20.30.240".parse().unwrap(), &[]);
+        let first = infer_range_for("10.20.30.11".parse().unwrap(), &live(&[]));
+        let second = infer_range_for("10.20.30.240".parse().unwrap(), &live(&[]));
 
         assert_eq!(first, second);
         assert_eq!(first, Some(cidr("10.20.30.0/24")));
@@ -390,8 +421,8 @@ mod tests {
     /// the range that spans them would swallow everything discovered between.
     #[test]
     fn addresses_more_than_a_bucket_apart_infer_separate_ranges() {
-        let near = infer_range_for("10.20.30.11".parse().unwrap(), &[]);
-        let far = infer_range_for("10.20.99.5".parse().unwrap(), &[]);
+        let near = infer_range_for("10.20.30.11".parse().unwrap(), &live(&[]));
+        let far = infer_range_for("10.20.99.5".parse().unwrap(), &live(&[]));
 
         assert_ne!(near, far);
         assert_eq!(far, Some(cidr("10.20.99.0/24")));
@@ -401,7 +432,7 @@ mod tests {
     #[test]
     fn an_address_a_live_range_already_holds_infers_nothing() {
         assert_eq!(
-            infer_range_for("192.168.7.99".parse().unwrap(), &[cidr("192.168.7.0/24")]),
+            infer_range_for("192.168.7.99".parse().unwrap(), &live(&["192.168.7.0/24"])),
             None
         );
     }
@@ -409,13 +440,16 @@ mod tests {
     /// A public address is not a segment of yours to invent.
     #[test]
     fn a_public_address_infers_no_range() {
-        assert_eq!(infer_range_for("8.8.8.8".parse().unwrap(), &[]), None);
+        assert_eq!(
+            infer_range_for("8.8.8.8".parse().unwrap(), &live(&[])),
+            None
+        );
     }
 
     /// The convention rung: one address, nothing else, a `/24`.
     #[test]
     fn a_lone_address_becomes_the_conventional_prefix() {
-        let ranges = infer_ranges(vec![far_end("10.20.30.11", None)], &[]);
+        let ranges = infer_ranges(vec![far_end("10.20.30.11", None)], &live(&[]));
         assert_eq!(cidrs(&ranges), vec!["10.20.30.0/24"]);
     }
 
@@ -429,7 +463,7 @@ mod tests {
                 far_end("10.20.30.240", None),
                 far_end("10.20.30.24", None),
             ],
-            &[],
+            &live(&[]),
         );
 
         assert_eq!(cidrs(&ranges), vec!["10.20.30.0/24"]);
@@ -442,7 +476,7 @@ mod tests {
     fn adjacent_ranges_without_vlan_evidence_stay_separate() {
         let ranges = infer_ranges(
             vec![far_end("10.20.30.11", None), far_end("10.20.31.5", None)],
-            &[],
+            &live(&[]),
         );
         assert_eq!(cidrs(&ranges), vec!["10.20.30.0/24", "10.20.31.0/24"]);
     }
@@ -454,7 +488,7 @@ mod tests {
         let vlan = Some(Uuid::new_v4());
         let ranges = infer_ranges(
             vec![far_end("10.20.30.11", vlan), far_end("10.20.31.5", vlan)],
-            &[],
+            &live(&[]),
         );
 
         assert_eq!(cidrs(&ranges), vec!["10.20.30.0/23"]);
@@ -469,7 +503,7 @@ mod tests {
         let vlan = Some(Uuid::new_v4());
         let ranges = infer_ranges(
             vec![far_end("10.20.30.11", vlan), far_end("10.20.99.5", vlan)],
-            &[],
+            &live(&[]),
         );
 
         assert_eq!(cidrs(&ranges), vec!["10.20.30.0/24", "10.20.99.0/24"]);
@@ -481,7 +515,7 @@ mod tests {
     /// their subnet list.
     #[test]
     fn a_public_address_infers_nothing() {
-        let ranges = infer_ranges(vec![far_end("8.8.8.8", None)], &[]);
+        let ranges = infer_ranges(vec![far_end("8.8.8.8", None)], &live(&[]));
         assert!(ranges.is_empty());
     }
 
@@ -491,7 +525,7 @@ mod tests {
     fn an_address_inside_a_known_subnet_infers_nothing() {
         let ranges = infer_ranges(
             vec![far_end("192.168.7.99", None)],
-            &[cidr("192.168.7.0/24")],
+            &live(&["192.168.7.0/24"]),
         );
         assert!(ranges.is_empty());
     }
@@ -508,13 +542,13 @@ mod tests {
         let far_ends = vec![far_end("10.20.30.11", vlan), far_end("10.20.31.5", vlan)];
 
         assert_eq!(
-            cidrs(&infer_ranges(far_ends.clone(), &[])),
+            cidrs(&infer_ranges(far_ends.clone(), &live(&[]))),
             vec!["10.20.30.0/23"],
             "without the known subnet the pair widens, or this proves nothing"
         );
 
         // Contains neither address, and sits inside the `/23` they span.
-        assert!(infer_ranges(far_ends, &[cidr("10.20.30.128/25")]).is_empty());
+        assert!(infer_ranges(far_ends, &live(&["10.20.30.128/25"])).is_empty());
     }
 
     /// The narrower half of the same case: an address already inside a known subnet is not evidence
@@ -524,7 +558,7 @@ mod tests {
         let vlan = Some(Uuid::new_v4());
         let ranges = infer_ranges(
             vec![far_end("10.20.30.11", vlan), far_end("10.20.31.5", vlan)],
-            &[cidr("10.20.31.0/24")],
+            &live(&["10.20.31.0/24"]),
         );
 
         // 10.20.31.5 is accounted for; 10.20.30.11 still is not.
@@ -541,7 +575,7 @@ mod tests {
                 far_end("fd00:1234:5678:9abc::11", vlan),
                 far_end("fd00:1234:5678:9abc::24", vlan),
             ],
-            &[],
+            &live(&[]),
         );
         assert_eq!(cidrs(&ranges), vec!["fd00:1234:5678:9abc::/64"]);
     }
@@ -556,7 +590,7 @@ mod tests {
                 far_end("10.20.40.5", None),
                 far_end("10.20.30.99", None),
             ],
-            &[],
+            &live(&[]),
         );
         let other = infer_ranges(
             vec![
@@ -564,7 +598,7 @@ mod tests {
                 far_end("10.20.30.11", None),
                 far_end("10.20.40.5", None),
             ],
-            &[],
+            &live(&[]),
         );
         assert_eq!(cidrs(&one), cidrs(&other));
     }

@@ -5,7 +5,6 @@
 //! neighbour-advertised one are placed by the same rule. What is here is the part only this pass
 //! has: the far ends it collected, the evidence it can attach to a warning, and the hosts it mints
 //! for them.
-use cidr::IpCidr;
 
 use crate::daemon::discovery::types::warnings::ProvisionalSubnet;
 use crate::server::ip_addresses::r#impl::base::IPAddressBase;
@@ -41,12 +40,11 @@ impl HostService {
             .subnet_service
             .get_all(StorableFilter::<Subnet>::new_from_network_ids(&[network_id]).live())
             .await?;
-        let live_cidrs: Vec<IpCidr> = live.iter().map(|s| s.base.cidr).collect();
 
         let mut warnings = Vec::new();
         // Evidence per range this pass created, folded into the standing report below.
         let mut evidence: HashMap<Uuid, ProvisionalSubnet> = HashMap::new();
-        for range in infer_ranges(far_ends, &live_cidrs) {
+        for range in infer_ranges(far_ends, &live) {
             let mut subnet = Subnet::new(SubnetBase {
                 cidr: range.cidr,
                 // The whole point: a range nothing read, only inferred, so the row asks to be
