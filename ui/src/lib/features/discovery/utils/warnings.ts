@@ -149,11 +149,8 @@ const WARNING_PARAMS = {
 		group: group(w[0].group)
 	}),
 
-	LldpLocalPortDropped: (w) => ({
-		addresses: addressesOf(w),
-		dropped: sum(w.map((x) => x.dropped)),
-		total: sum(w.map((x) => x.total))
-	}),
+	LldpLocalPortDropped: droppedPortParams,
+	LldpLocalPortDroppedReadCutShort: droppedPortParams,
 	LldpLocalPortMisplaced: (w) => ({
 		addresses: addressesOf(w),
 		misplaced: sum(w.map((x) => x.misplaced))
@@ -204,6 +201,23 @@ const WARNING_PARAMS = {
 } satisfies {
 	[C in DiscoveryWarningCode]: (warnings: WarningOf<C>[], hostName: HostNameLookup) => Params;
 };
+
+/**
+ * The two codes carry the same three slots and differ only in the sentence they fill.
+ *
+ * Which sentence is the whole point: one says the device numbers its LLDP ports separately from
+ * its interfaces, the other says we did not finish reading that numbering. The backend decides
+ * which, from whether the reads completed — offering both at once left the operator to guess.
+ */
+function droppedPortParams(
+	w: WarningOf<'LldpLocalPortDropped' | 'LldpLocalPortDroppedReadCutShort'>[]
+): Params {
+	return {
+		addresses: addressesOf(w),
+		dropped: sum(w.map((x) => x.dropped)),
+		total: sum(w.map((x) => x.total))
+	};
+}
 
 function malformedParams(
 	w: WarningOf<

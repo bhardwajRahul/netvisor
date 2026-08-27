@@ -72,6 +72,7 @@ use super::{
     InterfaceViewScope, ProbeContext, ProbeFailure, ProbeSuccess,
 };
 use crate::daemon::discovery::service::ops::HostData;
+pub use crate::daemon::discovery::service::warnings::LocalPortPlacementReason;
 use crate::daemon::discovery::service::warnings::{
     AttemptOutcome, ClaimSource, DeviceClaim, IncompleteInterfaceWalk, MalformedNeighbours,
     SnmpCollectedNothing, SnmpCollectionOutcome, SnmpGroupOutcome, SnmpWalkGroup,
@@ -473,6 +474,14 @@ impl DiscoveryIntegration for SnmpIntegration {
                     unresolved: local_ports.unmatched,
                     dropped: local_ports.dropped,
                     total: lldp_count,
+                    // Both reads, because either one being short costs a placement — and because
+                    // telling an operator their switch numbers its LLDP ports separately, on a
+                    // device whose port table we only half read, is a diagnosis of a fault it
+                    // does not have (GH #668).
+                    reason: LocalPortPlacementReason::from_reads(
+                        lldp_local_ports_outcome.complete,
+                        if_set_complete,
+                    ),
                 })
                 .await;
         }

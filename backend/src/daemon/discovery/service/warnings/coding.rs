@@ -11,14 +11,17 @@
 //! summing is why `collected` counts never reached anyone and why a credential's diagnostic was
 //! only ever shown for the first address in a batch.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
+
+use crate::server::credentials::r#impl::mapping::CredentialQueryPayloadDiscriminants;
 
 use strum::EnumCount;
 
 use super::{
     AttemptOutcome, ContradictedClaim, CredentialIssue, CredentialIssueReason, DeviceClaim,
-    IncompleteInterfaceWalk, IncompleteSnmpWalk, MalformedNeighbourReason, MalformedNeighbours,
-    ShortfallReason, SnmpCollectedNothing, UnresolvedLldpPorts, VlanRecordingFailed,
+    IncompleteInterfaceWalk, IncompleteSnmpWalk, LocalPortPlacementReason,
+    MalformedNeighbourReason, MalformedNeighbours, ShortfallReason, SnmpCollectedNothing,
+    UnresolvedLldpPorts, VlanRecordingFailed,
 };
 use crate::daemon::discovery::types::warnings::{
     CredentialAttempt, DiscoveryWarning, MalformedNeighbourConsequence,
@@ -161,10 +164,25 @@ pub fn warn_unresolved_lldp_ports(records: &[UnresolvedLldpPorts]) -> Vec<Discov
 
     for record in records {
         if record.dropped > 0 {
-            warnings.push(DiscoveryWarning::LldpLocalPortDropped {
-                address: record.ip,
-                dropped: count(record.dropped),
-                total: count(record.total),
+            let address = record.ip;
+            let dropped = count(record.dropped);
+            let total = count(record.total);
+            // A `match` rather than a flag, so a third reason cannot be added without deciding how
+            // it reads. The two sentences differ on whether a rescan can help, which is the whole
+            // reason they are separate codes.
+            warnings.push(match record.reason {
+                LocalPortPlacementReason::ReadsComplete => DiscoveryWarning::LldpLocalPortDropped {
+                    address,
+                    dropped,
+                    total,
+                },
+                LocalPortPlacementReason::ReadCutShort => {
+                    DiscoveryWarning::LldpLocalPortDroppedReadCutShort {
+                        address,
+                        dropped,
+                        total,
+                    }
+                }
             });
         }
         let misplaced = record.unresolved.saturating_sub(record.dropped);
@@ -269,6 +287,9 @@ pub fn warn_credential_issues(issues: &[CredentialIssue]) -> Vec<DiscoveryWarnin
         }
     }
 
+    // One finding per broken credential, for the outcome where the address is not part of the
+    // problem. See `is_one_finding_per_credential`.
+    let mut reported_once: HashSet<(CredentialQueryPayloadDiscriminants, &str)> = HashSet::new();
     for outcome in ATTEMPT_ORDER {
         for issue in issues {
             if attempt_outcome(&issue.reason) != Some(outcome) {
@@ -276,6 +297,15 @@ pub fn warn_credential_issues(issues: &[CredentialIssue]) -> Vec<DiscoveryWarnin
             }
             if already_covered_by_address_line(issues, issue) {
                 continue;
+            }
+            if is_one_finding_per_credential(outcome) {
+                let message = match &issue.reason {
+                    CredentialIssueReason::Attempted { message, .. } => message.as_str(),
+                    _ => "",
+                };
+                if !reported_once.insert((issue.integration, message)) {
+                    continue;
+                }
             }
             let detail = match &issue.reason {
                 CredentialIssueReason::Attempted { message, .. } if !message.is_empty() => {
@@ -344,6 +374,31 @@ const ATTEMPT_ORDER: [AttemptOutcome; AttemptOutcome::COUNT] = [
     AttemptOutcome::TimedOut,
     AttemptOutcome::Cancelled,
 ];
+
+/// Whether this outcome describes the credential rather than the address it was tried at, and so
+/// is one finding however many hosts met it.
+///
+/// [`AttemptOutcome::Malformed`] alone. Every other outcome is the *device's* answer — refused,
+/// silent, not this service — and those are deliberately kept per-address, because the diagnostic
+/// belongs to that host and merging them re-does the batching the per-occurrence records exist to
+/// undo. A credential that could not be read has no per-host component at all: the same message,
+/// from the same broken field, at every address in the subnet, fixed by one edit. Undeduped, a /24
+/// sweep put two hundred identical bullets in front of the operator (GH #668).
+///
+/// A `match` rather than an `==` so a new outcome has to be considered rather than defaulted.
+fn is_one_finding_per_credential(outcome: AttemptOutcome) -> bool {
+    match outcome {
+        AttemptOutcome::Malformed => true,
+        AttemptOutcome::Rejected
+        | AttemptOutcome::Unreachable
+        | AttemptOutcome::TimedOut
+        | AttemptOutcome::NotThisService
+        | AttemptOutcome::TlsFailed
+        | AttemptOutcome::CollectionFailed
+        | AttemptOutcome::CollectionTimedOut
+        | AttemptOutcome::Cancelled => false,
+    }
+}
 
 /// Whether an address-level warning in the same batch already says what this one would.
 ///
@@ -619,6 +674,7 @@ mod tests {
             unresolved: 3,
             dropped: 1,
             total: 4,
+            reason: LocalPortPlacementReason::ReadsComplete,
         }]);
         assert_eq!(
             both,
@@ -640,11 +696,44 @@ mod tests {
             unresolved: 3,
             dropped: 3,
             total: 4,
+            reason: LocalPortPlacementReason::ReadsComplete,
         }]);
         assert_eq!(
             codes(&dropped_only),
             vec![DiscoveryWarningCode::LldpLocalPortDropped],
             "every unplaced neighbour was discarded, so there is no second population"
+        );
+    }
+
+    /// GH #668. The same loss, told two ways, because the operator can act on one of them.
+    ///
+    /// The single code these replace asserted a cause — that the switch numbers its LLDP ports
+    /// separately from its interfaces — and hedged it with "or did not answer for its LLDP port
+    /// table". On a device whose port table demonstrably did not finish, the first half is a
+    /// diagnosis of a fault it does not have, and the operator had no way to tell which half
+    /// applied to them.
+    #[test]
+    fn a_placement_lost_to_a_short_read_is_a_different_code_from_one_lost_to_numbering() {
+        let dropped = |reason| {
+            warn_unresolved_lldp_ports(&[UnresolvedLldpPorts {
+                ip: ip("192.168.7.253"),
+                unresolved: 0,
+                dropped: 2,
+                total: 6,
+                reason,
+            }])
+        };
+
+        assert_eq!(
+            codes(&dropped(LocalPortPlacementReason::ReadCutShort)),
+            vec![DiscoveryWarningCode::LldpLocalPortDroppedReadCutShort],
+            "the numbering was never fully read, so it cannot be what the numbering is blamed for"
+        );
+        assert_eq!(
+            codes(&dropped(LocalPortPlacementReason::ReadsComplete)),
+            vec![DiscoveryWarningCode::LldpLocalPortDropped],
+            "a device that told us everything it has and still does not line up is the case the \
+             port-numbering sentence was written for, and keeps it"
         );
     }
 
@@ -658,6 +747,7 @@ mod tests {
             unresolved: 2,
             dropped: 0,
             total: 6,
+            reason: LocalPortPlacementReason::ReadsComplete,
         }]);
 
         assert_eq!(
@@ -677,9 +767,67 @@ mod tests {
                 unresolved: 0,
                 dropped: 0,
                 total: 6,
+                reason: LocalPortPlacementReason::ReadsComplete,
             }])
             .is_empty()
         );
+    }
+
+    /// GH #668: a credential that cannot be read is one problem, not one problem per host.
+    ///
+    /// Every other credential warning carries that address's own diagnostic, which is why they are
+    /// rendered one bullet per occurrence. This one cannot: the fault is in the credential, the
+    /// message is identical everywhere, and the fix is a single edit. Undeduped, a /24 sweep would
+    /// put two hundred copies of "re-enter it" in front of the operator.
+    ///
+    /// Deduped on the diagnostic as well as the integration, so two *different* unreadable fields
+    /// — a missing community file and a missing v3 password file — stay two findings.
+    #[test]
+    fn an_unreadable_credential_is_reported_once_however_many_hosts_met_it() {
+        let at = |address: &str, detail: &str| CredentialIssue {
+            integration: CredentialQueryPayloadDiscriminants::Snmp,
+            ip: ip(address),
+            reason: CredentialIssueReason::Attempted {
+                outcome: AttemptOutcome::Malformed,
+                message: detail.to_string(),
+            },
+        };
+        let unreadable = "Failed to read community from public for SNMP: No such file or directory";
+        let sweep: Vec<CredentialIssue> = (1..=20)
+            .map(|host| at(&format!("10.0.0.{host}"), unreadable))
+            .collect();
+
+        assert_eq!(
+            warn_credential_issues(&sweep).len(),
+            1,
+            "one broken credential is one finding, whatever the size of the subnet it was tried in"
+        );
+
+        let two_faults = vec![
+            at("10.0.0.1", unreadable),
+            at(
+                "10.0.0.2",
+                "Failed to read auth_password from /etc/snmp.pw for SNMPv3",
+            ),
+        ];
+        assert_eq!(
+            warn_credential_issues(&two_faults).len(),
+            2,
+            "two different fields the operator has to fix are two findings"
+        );
+    }
+
+    /// A credential that was refused is *not* deduped: the device answered, and what it said is
+    /// specific to that address. Collapsing those would re-merge exactly what the per-occurrence
+    /// records exist to keep apart.
+    #[test]
+    fn a_refused_credential_is_still_reported_per_address() {
+        let warnings = warn_credential_issues(&[
+            attempted("10.0.0.1", AttemptOutcome::Rejected),
+            attempted("10.0.0.2", AttemptOutcome::Rejected),
+        ]);
+
+        assert_eq!(warnings.len(), 2);
     }
 
     /// GH #668. Whether retrying is worth the operator's time is the one thing these have to get

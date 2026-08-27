@@ -28,6 +28,11 @@ pub struct Collected {
     pub system: SystemInfo,
     pub if_table: IfTableWalk,
     pub local_ports: HashMap<i32, LldpLocalPort>,
+    /// Whether the `lldpLocPortTable` read finished. Kept alongside the rows because a placement
+    /// that failed reads completely differently depending on it: with a whole table the device
+    /// numbers its ports in a space of its own, and with a partial one we simply did not read the
+    /// numbering (GH #668).
+    pub local_ports_complete: bool,
     /// Neighbours *after* the local-port remap, which is the form the rest of the daemon sees.
     pub neighbours: SnmpCollection<Vec<LldpNeighbor>>,
     /// What the remap could and could not place.
@@ -102,10 +107,11 @@ pub async fn collect(device: &SimDevice) -> Collected {
 
     // The local-port table is read before the neighbours because the remap needs both, which is
     // the order `execute` uses.
-    let local_ports = query_lldp_local_ports(&mut agent, ip)
+    let local_port_walk = query_lldp_local_ports(&mut agent, ip)
         .await
-        .map(|c| c.records)
         .unwrap_or_default();
+    let local_ports_complete = local_port_walk.complete;
+    let local_ports = local_port_walk.records;
     let mut neighbours = query_lldp_neighbors(&mut agent, ip)
         .await
         .unwrap_or_default();
@@ -131,6 +137,7 @@ pub async fn collect(device: &SimDevice) -> Collected {
         system,
         if_table,
         local_ports,
+        local_ports_complete,
         neighbours,
         local_port_outcome,
         dropped_neighbours,

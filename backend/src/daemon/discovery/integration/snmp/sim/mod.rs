@@ -93,6 +93,8 @@ const IPADDR: &str = "ipaddr";
 const ENTITY: &str = "entity";
 const CDP: &str = "cdp";
 pub(crate) const VLAN20: &str = "vlan20";
+/// `lldpLocPortTable`, split out for a device that serves it through a handler of its own.
+const LOCPORTS: &str = "locports";
 const EMPTY: &str = "empty";
 
 impl SimDevice {
@@ -124,7 +126,24 @@ impl SimDevice {
             } else {
                 format!("{}-active", table.mib.file_suffix)
             };
-            files.push(self.file(&suffix, Ordering::Ascending, table.wire_rows()));
+            let mut rows = table.wire_rows();
+            if table.splits_registrations() {
+                // A sub-table served by its own handler needs its own file, because a `pass`
+                // script only ever sees the file it was given. `snmp-pass-handler-stuck.sh` reads
+                // `head -1`, so pointed at the whole MIB it would answer with a local-system
+                // scalar, net-snmp would reject that as outside the registration, and the device
+                // would report an *empty* port table rather than a truncated one — a different
+                // fault with a different warning.
+                let port_table = oid_parts(table.mib.local_port_table);
+                let split = rows
+                    .iter()
+                    .filter(|row| row.oid.starts_with(&port_table))
+                    .cloned()
+                    .collect();
+                rows.retain(|row| !row.oid.starts_with(&port_table));
+                files.push(self.file(&format!("{suffix}-{LOCPORTS}"), Ordering::Ascending, split));
+            }
+            files.push(self.file(&suffix, Ordering::Ascending, rows));
         }
         if !self.tables.bridge.is_empty() {
             let rows = self.tables.bridge.wire_rows(&self.ethernet_if_indexes());
@@ -267,6 +286,29 @@ impl SimDevice {
                     subtree: oid_parts(subtree),
                     file,
                     handler: Handler::Normal,
+                });
+            }
+        }
+        // A device that serves one LLDP sub-table differently gets a `pass` line for it, nested
+        // inside the MIB-root line above. Both the model and net-snmp route to the longest match,
+        // so the root keeps answering the local-system scalars while these take their own tables.
+        // Emitted only when a handler is non-default, so every other device's config is unchanged.
+        if let (Some(table), Some(file)) = (self.tables.lldp.as_ref(), index(&lldp_file))
+            && table.splits_registrations()
+        {
+            let port_file = index(&format!("{lldp_file}-{LOCPORTS}")).unwrap_or(file);
+            for (subtree, handler, from) in [
+                (
+                    table.mib.local_port_table,
+                    table.local_port_handler,
+                    port_file,
+                ),
+                (table.mib.remote_root, table.remote_handler, file),
+            ] {
+                registrations.push(Registration {
+                    subtree: oid_parts(subtree),
+                    file: from,
+                    handler,
                 });
             }
         }

@@ -11,8 +11,10 @@
 //!   and that registration's answer is bounded to its own subtree. Falling off the end moves to
 //!   the next registration, which is what makes a device serving nothing at a subtree report the
 //!   next one up rather than inventing an answer.
-//! - The three handlers (`Normal`, `Positional`, `Stuck`) are the three shell scripts in
-//!   `tools/snmp/lxc/setup.sh`, and two of them are meant to misbehave.
+//! - The four handlers (`Normal`, `Positional`, `Stuck`, `Slow`) are the four shell scripts in
+//!   `tools/snmp/lxc/setup.sh`, and three of them are meant to misbehave.
+//! - A request goes to the *longest* registration covering it, as net-snmp's does, so one
+//!   sub-table of a MIB can be served by a different handler from the rest of it.
 
 use anyhow::Result;
 
@@ -36,6 +38,23 @@ pub enum Handler {
     /// `snmp-pass-handler-stuck.sh` — answers every GETNEXT with the first line, whatever was
     /// asked. The non-advancing agent the walk's retry-then-stop guard was written for.
     Stuck,
+    /// `snmp-pass-handler-slow.sh` — the normal handler with a `sleep` in front of it. Answers a
+    /// GETNEXT correctly and cannot assemble a GETBULK inside the client's timeout (GH #668).
+    ///
+    /// This is one device behaviour, not two. snmpd builds a GETBULK of `n` over a `pass` script
+    /// by invoking it `n` times, so a handler that takes `t` to answer costs `n * t` for a bulk
+    /// page and `t` for a getnext. At the deployed `sleep 3` against [`SNMP_TIMEOUT`] of 5s, one
+    /// getnext returns with two seconds to spare and *every* bulk page — 20, 10, 5, 2 — does not.
+    /// The model states that as its outcome: a getbulk routed here fails, a getnext answers.
+    ///
+    /// Distinct from [`SimAgent::without_getbulk`], which is SNMPv1 answering "no such request
+    /// type". That is a clean refusal the walk has always handled by falling back. This is
+    /// silence, which until GH #668 it could not: `shrink_page` needed five halvings to reach
+    /// getnext and `MAX_TRANSPORT_RETRIES` allowed two, so the column was abandoned having never
+    /// asked the question the device would have answered.
+    ///
+    /// [`SNMP_TIMEOUT`]: crate::daemon::discovery::integration::snmp::session::SNMP_TIMEOUT
+    Slow,
 }
 
 impl Handler {
@@ -43,7 +62,9 @@ impl Handler {
     fn getnext<'a>(self, file: &'a ServedFile, from: &[u64]) -> Option<&'a Row> {
         let rows = &file.rows;
         match self {
-            Self::Normal => rows.iter().find(|row| row.oid.as_slice() > from),
+            // `Slow` differs from `Normal` only in how long it takes, which is a property of the
+            // request type rather than of the answer — see `SimAgent::walk_getbulk`.
+            Self::Normal | Self::Slow => rows.iter().find(|row| row.oid.as_slice() > from),
             Self::Stuck => rows.first(),
             Self::Positional => {
                 // The line after the requested one, in file order. A request naming no line of its
@@ -84,6 +105,13 @@ pub struct SimAgent {
     /// every table. That fallback is most of what GH #557 is about, and a transport that always
     /// answered getbulk could not exercise it.
     bulk_unsupported: bool,
+    /// Set once a walk has fallen back to getnext, and read by every walk after it.
+    ///
+    /// One `SimAgent` serves a whole collection, exactly as one session serves one host, so this
+    /// is what lets a device test observe the per-host half of the GH #668 fix — a device costing
+    /// the scan one column's worth of timeouts rather than one per column — and not only the
+    /// per-column half.
+    getbulk_unusable: bool,
 }
 
 impl SimAgent {
@@ -102,6 +130,7 @@ impl SimAgent {
             files,
             registrations,
             bulk_unsupported: false,
+            getbulk_unusable: false,
         }
     }
 
@@ -120,10 +149,28 @@ impl SimAgent {
     /// as exhausted and moves on, which is what stops one `pass` file leaking rows into a walk of
     /// a subtree it does not serve.
     fn answer(&self, from: &[u64]) -> Option<&Row> {
+        self.routed(from).map(|(_, row)| row)
+    }
+
+    /// The registration that answers `from`, alongside its row.
+    ///
+    /// Split out of [`Self::answer`] because a request's *cost* belongs to whichever `pass` line
+    /// serves it, not to the device: one slow registration on a switch whose other tables answer
+    /// instantly is the shape GH #668 arrived in, and a whole-agent flag could not express it.
+    fn routed(&self, from: &[u64]) -> Option<(&Registration, &Row)> {
+        // Longest match wins, as net-snmp's does. Every registration was disjoint until the LLDP
+        // sub-tables needed separate handlers, and with nested ones the shortest match would
+        // swallow the more specific line: `1.0.8802.1.1.2.1.3` covers `…1.3.7.1.4`, so a
+        // first-match router would never reach the `…1.3.7` registration at all. Walking *up*
+        // from the match is unchanged — that is a registration falling off its own end and the
+        // agent moving to the next one.
         let start = self
             .registrations
             .iter()
-            .position(|reg| Self::covers(reg, from))
+            .enumerate()
+            .filter(|(_, reg)| Self::covers(reg, from))
+            .max_by_key(|(_, reg)| reg.subtree.len())
+            .map(|(index, _)| index)
             .or_else(|| {
                 self.registrations
                     .iter()
@@ -141,7 +188,7 @@ impl SimAgent {
                 .getnext(&self.files[registration.file], ask)
                 .filter(|row| Self::covers(registration, &row.oid))
             {
-                return Some(row);
+                return Some((registration, row));
             }
         }
         None
@@ -176,6 +223,14 @@ impl SimAgent {
 
 #[async_trait::async_trait]
 impl SnmpWalkTransport for SimAgent {
+    fn getbulk_unusable(&self) -> bool {
+        self.getbulk_unusable
+    }
+
+    fn note_getbulk_unusable(&mut self) {
+        self.getbulk_unusable = true;
+    }
+
     async fn walk_getbulk<'a>(
         &'a mut self,
         from: &[u64],
@@ -183,6 +238,17 @@ impl SnmpWalkTransport for SimAgent {
     ) -> Result<WalkPage<'a>> {
         if self.bulk_unsupported {
             return Ok(WalkPage::BulkUnsupported);
+        }
+        // A bulk page over a `Handler::Slow` registration costs `max_repetitions` sleeps and the
+        // client gives up first, whatever it asked for — so this is an `Err`, the same shape a
+        // real timeout takes, and not an empty page or a refusal. `walk_getnext` below is
+        // deliberately not guarded: one invocation is what the handler *can* serve in time, and
+        // that asymmetry is the whole defect.
+        if self
+            .routed(from)
+            .is_some_and(|(reg, _)| reg.handler == Handler::Slow)
+        {
+            return Err(anyhow::anyhow!("getbulk timed out"));
         }
         Ok(WalkPage::Varbinds(self.page(from, max_repetitions)))
     }
@@ -276,6 +342,104 @@ mod tests {
         let page = agent.page(&oid_parts(arp::entry::IP_NET_TO_MEDIA_IF_INDEX), 4);
         let last: Vec<u64> = page.iter().map(|(oid, _)| *oid.last().unwrap()).collect();
         assert_eq!(last, vec![1, 1, 1, 1]);
+    }
+
+    /// A nested registration is reached, which is what lets one sub-table of a MIB be served
+    /// differently from the rest of it. Without longest-match routing the outer line answers
+    /// everything and the inner one is dead config.
+    #[test]
+    fn the_most_specific_registration_answers() {
+        let file = arp_file(Ordering::Ascending, &[1, 2, 3]);
+        let inner = oid_parts(arp::entry::IP_NET_TO_MEDIA_IF_INDEX);
+        let outer = inner[..inner.len() - 1].to_vec();
+        let agent = SimAgent::new(
+            &[file],
+            vec![
+                Registration {
+                    subtree: outer,
+                    file: 0,
+                    handler: Handler::Normal,
+                },
+                Registration {
+                    subtree: inner.clone(),
+                    file: 0,
+                    handler: Handler::Stuck,
+                },
+            ],
+        );
+
+        // `Stuck` answers every request with the first row. Reading anything else means the outer
+        // `Normal` registration took the request.
+        let page = agent.page(&inner, 3);
+        let last: Vec<u64> = page.iter().map(|(oid, _)| *oid.last().unwrap()).collect();
+        assert_eq!(last, vec![1, 1, 1]);
+    }
+
+    /// The asymmetry GH #668 turns on: the same registration answers a getnext and cannot answer
+    /// a getbulk of any size. A whole-agent flag could say "no getbulk"; only a per-registration
+    /// one can say "this table is slow and the rest of the device is fine".
+    #[tokio::test]
+    async fn a_slow_registration_answers_getnext_and_times_out_every_getbulk() {
+        let mut agent = agent(
+            arp_file(Ordering::Ascending, &[1, 2, 3]),
+            arp::entry::IP_NET_TO_MEDIA_IF_INDEX,
+            Handler::Slow,
+        );
+        let base = oid_parts(arp::entry::IP_NET_TO_MEDIA_IF_INDEX);
+
+        // Every page size the walk shrinks through, including the smallest it ever asks for.
+        for max_repetitions in [20, 10, 5, 2, 1] {
+            assert!(
+                agent.walk_getbulk(&base, max_repetitions).await.is_err(),
+                "a bulk page of {max_repetitions} costs that many sleeps and cannot arrive in time"
+            );
+        }
+
+        let answered = agent.walk_getnext(&base).await.expect("getnext answers");
+        assert_eq!(*answered[0].0.last().unwrap(), 1);
+    }
+
+    /// One slow `pass` line must not make the whole device slow. The reporter's switch served its
+    /// ifTable and ARP table perfectly while the LLDP subtree went silent.
+    #[tokio::test]
+    async fn a_slow_registration_does_not_slow_its_neighbours() {
+        let mut agent = SimAgent::new(
+            &[
+                arp_file(Ordering::Ascending, &[1, 2]),
+                DataFile::new(
+                    "iftable",
+                    Ordering::Ascending,
+                    vec![Row::at(
+                        if_mib::columns::IF_INDEX,
+                        &[1],
+                        PassValue::Integer(1),
+                    )],
+                ),
+            ],
+            vec![
+                Registration {
+                    subtree: oid_parts(arp::entry::IP_NET_TO_MEDIA_IF_INDEX),
+                    file: 0,
+                    handler: Handler::Slow,
+                },
+                Registration {
+                    subtree: oid_parts(if_mib::IF_TABLE),
+                    file: 1,
+                    handler: Handler::Normal,
+                },
+            ],
+        );
+
+        assert!(
+            agent
+                .walk_getbulk(&oid_parts(arp::entry::IP_NET_TO_MEDIA_IF_INDEX), 10)
+                .await
+                .is_err()
+        );
+        assert!(matches!(
+            agent.walk_getbulk(&oid_parts(if_mib::IF_TABLE), 10).await,
+            Ok(WalkPage::Varbinds(_))
+        ));
     }
 
     /// One file serving several subtrees must not leak rows across them: a walk of `ifTable` ends

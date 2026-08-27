@@ -183,6 +183,23 @@ pub enum DiscoveryWarning {
         /// Neighbours the device reported in all.
         total: u32,
     },
+    /// The same loss, on a device whose own account of its port numbering was only half read.
+    ///
+    /// Separate from [`Self::LldpLocalPortDropped`] because that one names a cause — the switch
+    /// numbering its LLDP ports apart from its interfaces — which is a property of the device and
+    /// is not what happened here. Offering both readings in one sentence, as this used to, asks
+    /// the operator to pick; one says nothing will ever change and the other says a complete scan
+    /// may well place these neighbours (GH #668).
+    #[schema(title = "LldpLocalPortDroppedReadCutShort")]
+    LldpLocalPortDroppedReadCutShort {
+        /// The device that reported the neighbours.
+        #[schema(value_type = String)]
+        address: IpAddr,
+        /// Neighbours discarded for want of a matching interface.
+        dropped: u32,
+        /// Neighbours the device reported in all.
+        total: u32,
+    },
     /// Neighbours whose local port could not be identified but did match an interface number, so
     /// they are drawn against a port that may be the wrong one.
     #[schema(title = "LldpLocalPortMisplaced")]
@@ -433,6 +450,7 @@ pub enum DiscoveryWarningCode {
     ClaimedCapabilityReadCutShort,
     ClaimedCapabilityEmpty,
     LldpLocalPortDropped,
+    LldpLocalPortDroppedReadCutShort,
     LldpLocalPortMisplaced,
     MalformedNeighboursWalkCutShort,
     MalformedNeighboursGhostRows,
@@ -487,6 +505,9 @@ impl DiscoveryWarning {
             }
             Self::ClaimedCapabilityEmpty { .. } => DiscoveryWarningCode::ClaimedCapabilityEmpty,
             Self::LldpLocalPortDropped { .. } => DiscoveryWarningCode::LldpLocalPortDropped,
+            Self::LldpLocalPortDroppedReadCutShort { .. } => {
+                DiscoveryWarningCode::LldpLocalPortDroppedReadCutShort
+            }
             Self::LldpLocalPortMisplaced { .. } => DiscoveryWarningCode::LldpLocalPortMisplaced,
             Self::MalformedNeighboursWalkCutShort(_) => {
                 DiscoveryWarningCode::MalformedNeighboursWalkCutShort
@@ -558,6 +579,7 @@ impl DiscoveryWarning {
             | Self::ClaimedCapabilityReadCutShort { .. }
             | Self::ClaimedCapabilityEmpty { .. }
             | Self::LldpLocalPortDropped { .. }
+            | Self::LldpLocalPortDroppedReadCutShort { .. }
             | Self::LldpLocalPortMisplaced { .. }
             | Self::MalformedNeighboursWalkCutShort(_)
             | Self::MalformedNeighboursGhostRows(_)

@@ -1707,6 +1707,8 @@
 	"meta_warning_codes_InterfaceDetailsCutShort_name": "Interface details cut short",
 	"meta_warning_codes_InterfaceSetCutShort_description": "{addresses} stopped responding partway through the SNMP interface list, so some interfaces are missing.",
 	"meta_warning_codes_InterfaceSetCutShort_name": "Interface list cut short",
+	"meta_warning_codes_LldpLocalPortDroppedReadCutShort_description": "{addresses} reported LLDP neighbours on a local port that matches no interface on the device ({dropped} of {total}), so they are discarded and draw no links — those devices will look as though they have no LLDP neighbours. The read of their own port numbering did not finish, so the numbering could not be matched up; the incomplete-walk line for each device says which table stopped and why. A complete scan may place these neighbours.",
+	"meta_warning_codes_LldpLocalPortDroppedReadCutShort_name": "LLDP port table read cut short",
 	"meta_warning_codes_LldpLocalPortDropped_description": "{addresses} reported LLDP neighbours on a local port that matches no interface on the device ({dropped} of {total}), so they are discarded and draw no links — those devices will look as though they have no LLDP neighbours. This usually means the switch numbers its LLDP ports separately from its interfaces, or did not answer for its LLDP port table.",
 	"meta_warning_codes_LldpLocalPortDropped_name": "LLDP neighbours discarded",
 	"meta_warning_codes_LldpLocalPortMisplaced_description": "{addresses} reported LLDP neighbours whose local port could not be identified but does match an interface number ({misplaced} in total), so they are drawn against a port that may not be the right one.",
