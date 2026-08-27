@@ -158,6 +158,21 @@ export function formatElementSummary(counts: Map<Entity, number>, viewId: string
 	return formatEntityCounts(counts);
 }
 
+/** The two stacked lines a collapsed root container shows: what it *is*, then what it holds.
+ *
+ *  The container's own name takes the title, and the element summary drops to a subtitle. It used
+ *  to be the other way round by omission — the collapsed variant never rendered the header at all,
+ *  so a switch full of ports read as "4 interfaces" and named nothing. A container with no header
+ *  keeps the summary as its title rather than showing a blank line above it. */
+export function collapsedContainerLines(
+	headerText: string,
+	childSummary: string
+): { title: string; subtitle: string | null } {
+	const name = headerText.trim();
+	if (!name) return { title: childSummary, subtitle: null };
+	return { title: name, subtitle: childSummary };
+}
+
 /** "Common {entity} tags" header — takes typed Entity, renders i18n with lowercase plural. */
 export function commonTagsHeader(entity: Entity): string {
 	return tags_entityTags({ entity: plural(entity) });
