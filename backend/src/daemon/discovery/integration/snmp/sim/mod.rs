@@ -122,6 +122,19 @@ impl SimDevice {
             .unwrap_or_default()
     }
 
+    /// Subtrees this device refuses a GETBULK for, as `snmp-bulk-refuser.py` is configured.
+    ///
+    /// Empty for every device but the one that needs it, and empty means no shim: the agent binds
+    /// its own address directly and nothing sits in front of it.
+    pub fn refuses_getbulk(&self) -> Vec<Vec<u64>> {
+        self.tables
+            .lldp
+            .as_ref()
+            .filter(|table| table.neighbours_refuse_getbulk)
+            .map(|table| vec![oid_parts(table.mib.remote_root)])
+            .unwrap_or_default()
+    }
+
     /// The `pass` data files this device serves, in a fixed order that the registrations index
     /// into.
     pub fn data_files(&self) -> Vec<DataFile> {
@@ -337,20 +350,16 @@ impl SimDevice {
                     handler: Handler::Normal,
                 });
             }
-            for (subtree, handler, from) in [
-                (
-                    table.mib.local_port_table,
-                    table.local_port_handler,
-                    port_file,
-                ),
-                (table.mib.remote_root, table.remote_handler, file),
-            ] {
-                registrations.push(Registration {
-                    subtree: oid_parts(subtree),
-                    file: from,
-                    handler,
-                });
-            }
+            registrations.push(Registration {
+                subtree: oid_parts(table.mib.local_port_table),
+                file: port_file,
+                handler: table.local_port_handler,
+            });
+            registrations.push(Registration {
+                subtree: oid_parts(table.mib.remote_root),
+                file,
+                handler: Handler::Normal,
+            });
         }
         if let Some(file) = index(IPADDR) {
             // Column by column, not as one subtree. net-snmp's own IP module owns `ipAddrTable`,
@@ -422,7 +431,8 @@ impl SimDevice {
     /// Whether it offers getbulk follows from its credential rather than being set per device:
     /// SNMPv1 has no getbulk, so the v1 agent forces every column through getnext.
     pub fn agent(&self) -> SimAgent {
-        let agent = SimAgent::new(&self.data_files(), self.registrations());
+        let agent = SimAgent::new(&self.data_files(), self.registrations())
+            .refusing_getbulk(self.refuses_getbulk());
         match self.credential {
             CredentialType::SnmpV1 { .. } => agent.without_getbulk(),
             _ => agent,
