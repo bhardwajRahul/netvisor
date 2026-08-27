@@ -1,6 +1,8 @@
 //! Host creation from API requests and the create-with-children path.
 use super::*;
 
+use crate::server::subnets::service::Placement;
+
 /// Decide whether the end-of-scan interface prune (delete interfaces no longer reported for a
 /// host) should run for this upsert. It runs only when ALL of these hold:
 ///   - `interfaces_complete`: the incoming set is an authoritative, complete ifTable. A partial
@@ -713,18 +715,39 @@ impl HostService {
                     );
                 }
                 let live_subnets = network_live_subnets.as_ref().expect("loaded above");
-                if let Some(resolved) = resolve_dangling_subnet_id(
-                    live_subnets,
-                    ip_address.base.subnet_id,
-                    ip_address.base.ip_address,
-                ) {
-                    tracing::warn!(
-                        ip = %ip_address.base.ip_address,
-                        dangling_subnet_id = %ip_address.base.subnet_id,
-                        resolved_subnet_id = %resolved,
-                        "Repaired ip_address referencing a non-existent subnet via CIDR match"
-                    );
-                    ip_address.base.subnet_id = resolved;
+
+                // A daemon that has not upgraded yet still picks the subnet itself, and picks
+                // wrongly: its list includes the `0.0.0.0/0` organizational rows, which contain
+                // every IPv4 address, so it stamps whichever it saw first. Re-placing such a row
+                // is scoped to discovery payloads — a person filing a host under Internet or
+                // Remote through the API is making a deliberate choice and is never second-guessed.
+                let names_a_catch_all = matches!(conflict_behavior, ConflictBehavior::Upsert)
+                    && live_subnets
+                        .iter()
+                        .any(|s| s.id == ip_address.base.subnet_id && s.is_organizational_subnet());
+
+                if needs_placement(live_subnets, &ip_address) || names_a_catch_all {
+                    match self
+                        .subnet_service
+                        .place_address(created_host.base.network_id, ip_address.base.ip_address)
+                        .await?
+                    {
+                        Placement::Existing(subnet_id) | Placement::Inferred(subnet_id) => {
+                            tracing::debug!(
+                                ip = %ip_address.base.ip_address,
+                                from_subnet_id = %ip_address.base.subnet_id,
+                                subnet_id = %subnet_id,
+                                "Placed ip_address server-side"
+                            );
+                            ip_address.base.subnet_id = subnet_id;
+                        }
+                        // A public address, or IPv6 global unicast — not a segment of this network
+                        // to invent. Leave the reference as it came and let the FK insert say so.
+                        Placement::Unplaceable => tracing::warn!(
+                            ip = %ip_address.base.ip_address,
+                            "No subnet holds this address and none may be inferred for it"
+                        ),
+                    }
                 }
             }
 
@@ -1424,27 +1447,15 @@ impl HostService {
     }
 }
 
-/// Resolve a dangling `subnet_id` — one that references no live subnet row — to
-/// the most-specific live subnet on the network whose CIDR contains `ip`.
+/// Whether this address needs the server to choose its subnet.
 ///
-/// Returns `None` when `subnet_id` already matches a live subnet (no repair
-/// needed) or when no live subnet contains the IP (unresolvable — the caller
-/// leaves the reference untouched and lets the FK insert error surface). On
-/// overlapping CIDRs the longest prefix wins, so an IP is never mis-attributed
-/// to a broader subnet while a more-specific one also contains it.
-fn resolve_dangling_subnet_id(
-    live_subnets: &[Subnet],
-    subnet_id: Uuid,
-    ip: std::net::IpAddr,
-) -> Option<Uuid> {
-    if live_subnets.iter().any(|s| s.id == subnet_id) {
-        return None;
-    }
-    live_subnets
+/// True when the id names no live subnet at all — nil, or a row this server never minted — which
+/// covers both an integration that deliberately leaves placement to the server and an old daemon
+/// reporting a stale id.
+fn needs_placement(live_subnets: &[Subnet], ip_address: &IPAddress) -> bool {
+    !live_subnets
         .iter()
-        .filter(|s| s.base.cidr.contains(&ip))
-        .max_by_key(|s| s.base.cidr.network_length())
-        .map(|s| s.id)
+        .any(|s| s.id == ip_address.base.subnet_id)
 }
 
 /// Rewrite a credential assignment's `ip_address_ids` from the daemon's own
@@ -1495,6 +1506,7 @@ pub(crate) fn remap_assignment_ip_ids(
 mod tests {
     use super::*;
     use crate::server::credentials::r#impl::types::CredentialAssignment;
+    use crate::server::ip_addresses::r#impl::base::IPAddressBase;
     use crate::server::subnets::r#impl::base::SubnetBase;
 
     fn subnet(id: Uuid, cidr: &str) -> Subnet {
@@ -1508,63 +1520,42 @@ mod tests {
         }
     }
 
+    fn ip_address_on(subnet_id: Uuid) -> IPAddress {
+        IPAddress {
+            base: IPAddressBase {
+                subnet_id,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[allow(dead_code)]
     fn ip(s: &str) -> std::net::IpAddr {
         s.parse().expect("valid test IP")
     }
 
+    /// The trigger, not the rule: an id naming no live subnet is the server's to choose — a nil
+    /// sentinel from an integration that leaves placement to us, or a stale id from a daemon
+    /// reporting a subnet this server never minted.
+    ///
+    /// The rule itself — longest prefix, never a `0.0.0.0/0` catch-all — lives with the subnets it
+    /// chooses among and is tested there.
     #[test]
-    fn repairs_dangling_loopback_to_seeded_subnet() {
-        // The compat case: the daemon reports 127.0.0.1 under a loopback subnet id
-        // this server never minted; the live seeded loopback subnet is `seeded`.
-        let seeded = Uuid::new_v4();
-        let live = vec![
-            subnet(seeded, "127.0.0.0/8"),
-            subnet(Uuid::new_v4(), "172.25.0.0/28"),
-        ];
-        let dangling = Uuid::new_v4();
-        assert_eq!(
-            resolve_dangling_subnet_id(&live, dangling, ip("127.0.0.1")),
-            Some(seeded)
-        );
+    fn an_id_naming_no_live_subnet_needs_placement() {
+        let live = vec![subnet(Uuid::new_v4(), "127.0.0.0/8")];
+
+        assert!(needs_placement(&live, &ip_address_on(Uuid::new_v4())));
+        assert!(needs_placement(&live, &ip_address_on(Uuid::nil())));
     }
 
+    /// And one that does name a live subnet is left alone, so an ordinary rescan re-places nothing.
     #[test]
-    fn valid_subnet_id_is_left_untouched() {
+    fn an_id_naming_a_live_subnet_is_left_alone() {
         let valid = Uuid::new_v4();
         let live = vec![subnet(valid, "127.0.0.0/8")];
-        // subnet_id already resolves to a live row -> no repair, no re-matching.
-        assert_eq!(
-            resolve_dangling_subnet_id(&live, valid, ip("127.0.0.1")),
-            None
-        );
-    }
 
-    #[test]
-    fn overlapping_cidrs_resolve_to_most_specific() {
-        let broad = Uuid::new_v4();
-        let specific = Uuid::new_v4();
-        // Both contain 10.0.0.5; the /24 must win over the /16.
-        let live = vec![
-            subnet(broad, "10.0.0.0/16"),
-            subnet(specific, "10.0.0.0/24"),
-        ];
-        let dangling = Uuid::new_v4();
-        assert_eq!(
-            resolve_dangling_subnet_id(&live, dangling, ip("10.0.0.5")),
-            Some(specific)
-        );
-    }
-
-    #[test]
-    fn unresolvable_ip_returns_none() {
-        // No live subnet contains the IP -> leave the reference so the insert
-        // error surfaces rather than silently mis-attributing the IP.
-        let live = vec![subnet(Uuid::new_v4(), "10.0.0.0/24")];
-        let dangling = Uuid::new_v4();
-        assert_eq!(
-            resolve_dangling_subnet_id(&live, dangling, ip("192.168.1.1")),
-            None
-        );
+        assert!(!needs_placement(&live, &ip_address_on(valid)));
     }
 
     fn assignment(ip_address_ids: Option<Vec<Uuid>>) -> CredentialAssignment {

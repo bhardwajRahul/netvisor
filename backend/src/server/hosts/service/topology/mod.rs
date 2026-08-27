@@ -156,7 +156,7 @@ struct NeighbourPass {
 mod inference;
 mod reciprocal;
 
-use inference::UnplacedFarEnd;
+use crate::server::subnets::r#impl::inference::UnplacedFarEnd;
 
 use reciprocal::PortBinding;
 
