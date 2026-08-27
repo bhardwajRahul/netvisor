@@ -1108,6 +1108,8 @@
 	"hosts_ipAddresses_placeholder": "Select subnet to create IP address on...",
 	"hosts_ipAddresses_selectToConfig": "Select an IP address from the list to configure it",
 	"hosts_ipAddresses_subnet": "Subnet {name}",
+	"hosts_neverContacted": "Never contacted",
+	"hosts_neverContactedDetail": "Scanopy knows this device only because something else reported it — a neighbouring device or a controller. Nothing has reached it directly, so it has no ports or services.",
 	"hosts_noInterfaces": "No interfaces",
 	"hosts_notVirtualized": "Not Virtualized",
 	"hosts_ports_configSubtitle": "Configure the port number and protocol",
