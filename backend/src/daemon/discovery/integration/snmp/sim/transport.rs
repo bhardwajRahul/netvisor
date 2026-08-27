@@ -11,8 +11,10 @@
 //!   and that registration's answer is bounded to its own subtree. Falling off the end moves to
 //!   the next registration, which is what makes a device serving nothing at a subtree report the
 //!   next one up rather than inventing an answer.
-//! - The four handlers (`Normal`, `Positional`, `Stuck`, `Slow`) are the four shell scripts in
-//!   `tools/snmp/lxc/setup.sh`, and three of them are meant to misbehave.
+//! - The three handlers (`Normal`, `Positional`, `Stuck`) are the three shell scripts in
+//!   `tools/snmp/lxc/setup.sh`, and two of them are meant to misbehave.
+//! - Refusing GETBULK is not a handler. It happens in front of the agent, so it is a property of
+//!   the device keyed by subtree — see [`SimAgent::refusing_getbulk`].
 //! - Registrations are disjoint, and a request goes to the first one covering it. net-snmp serves
 //!   only the broadest of a set of overlapping `pass` lines and ignores the rest, so serving one
 //!   sub-table of a MIB differently means carving the MIB up, not nesting inside it.
@@ -39,30 +41,6 @@ pub enum Handler {
     /// `snmp-pass-handler-stuck.sh` — answers every GETNEXT with the first line, whatever was
     /// asked. The non-advancing agent the walk's retry-then-stop guard was written for.
     Stuck,
-    /// `snmp-pass-handler-slow.sh` — the normal handler with a `sleep` in front of it. Answers a
-    /// GETNEXT correctly and cannot assemble a GETBULK inside the client's timeout (GH #668).
-    ///
-    /// This is one device behaviour, not two: a getbulk routed here fails, a getnext answers.
-    ///
-    /// **The deployed twin does not yet reproduce it, and the model is ahead of the lab here.**
-    /// `snmp-pass-handler-slow.sh` sleeps per invocation, and snmpd drives `pass` serially — three
-    /// calls measured at 9.03s for a 3s sleep, strictly additive. A getbulk of 20 therefore blocks
-    /// the agent for `20 * sleep` while the client gives up after [`SNMP_TIMEOUT`], so the getnext
-    /// the walk sends next is still queued behind the bulk it was meant to escape and times out
-    /// too. Any sleep large enough to fail the bulk is large enough to fail the getnext behind it.
-    /// Slowness per varbind cannot express "will not serve bulk, will serve getnext" on a serial
-    /// agent; a mechanism that refuses the bulk without consuming agent time can. Until one
-    /// exists, this variant is exercised by the unit tests only and `switch-slowbulk-01` will not
-    /// reproduce GH #668 on the VM.
-    ///
-    /// Distinct from [`SimAgent::without_getbulk`], which is SNMPv1 answering "no such request
-    /// type". That is a clean refusal the walk has always handled by falling back. This is
-    /// silence, which until GH #668 it could not: `shrink_page` needed five halvings to reach
-    /// getnext and `MAX_TRANSPORT_RETRIES` allowed two, so the column was abandoned having never
-    /// asked the question the device would have answered.
-    ///
-    /// [`SNMP_TIMEOUT`]: crate::daemon::discovery::integration::snmp::session::SNMP_TIMEOUT
-    Slow,
 }
 
 impl Handler {
@@ -70,9 +48,7 @@ impl Handler {
     fn getnext<'a>(self, file: &'a ServedFile, from: &[u64]) -> Option<&'a Row> {
         let rows = &file.rows;
         match self {
-            // `Slow` differs from `Normal` only in how long it takes, which is a property of the
-            // request type rather than of the answer — see `SimAgent::walk_getbulk`.
-            Self::Normal | Self::Slow => rows.iter().find(|row| row.oid.as_slice() > from),
+            Self::Normal => rows.iter().find(|row| row.oid.as_slice() > from),
             Self::Stuck => rows.first(),
             Self::Positional => {
                 // The line after the requested one, in file order. A request naming no line of its
@@ -113,6 +89,13 @@ pub struct SimAgent {
     /// every table. That fallback is most of what GH #557 is about, and a transport that always
     /// answered getbulk could not exercise it.
     bulk_unsupported: bool,
+    /// Subtrees this device will not serve a GETBULK for, in front of the agent rather than in it.
+    ///
+    /// Mirrors `snmp-bulk-refuser.py`, which takes exactly this list of prefixes and drops any
+    /// GETBULK whose first varbind falls under one. Keyed by subtree rather than by handler
+    /// because that is what the shim knows: it reads the PDU type and the first OID off the wire
+    /// and has no idea which `pass` line would have served it.
+    refuses_getbulk: Vec<Vec<u64>>,
     /// Set once a walk has fallen back to getnext, and read by every walk after it.
     ///
     /// One `SimAgent` serves a whole collection, exactly as one session serves one host, so this
@@ -138,8 +121,19 @@ impl SimAgent {
             files,
             registrations,
             bulk_unsupported: false,
+            refuses_getbulk: Vec::new(),
             getbulk_unusable: false,
         }
+    }
+
+    /// An agent behind a shim that drops GETBULK for these subtrees and forwards everything else.
+    ///
+    /// The GH #668 device: it will not answer a bulk page on its LLDP neighbour columns and will
+    /// answer a getnext on the very same OIDs, so a walk that never falls back loses the column
+    /// and one that does reads it in full.
+    pub fn refusing_getbulk(mut self, subtrees: Vec<Vec<u64>>) -> Self {
+        self.refuses_getbulk = subtrees;
+        self
     }
 
     /// An agent with no getbulk, as SNMPv1 has none.
@@ -246,14 +240,15 @@ impl SnmpWalkTransport for SimAgent {
         if self.bulk_unsupported {
             return Ok(WalkPage::BulkUnsupported);
         }
-        // A bulk page over a `Handler::Slow` registration costs `max_repetitions` sleeps and the
-        // client gives up first, whatever it asked for — so this is an `Err`, the same shape a
-        // real timeout takes, and not an empty page or a refusal. `walk_getnext` below is
-        // deliberately not guarded: one invocation is what the handler *can* serve in time, and
-        // that asymmetry is the whole defect.
+        // A refused bulk is a datagram the shim drops, so the client sees silence and times out.
+        // That is an `Err` — the shape a real timeout takes — and deliberately neither an empty
+        // page nor `BulkUnsupported`, both of which the walk has always handled. `walk_getnext`
+        // below is not guarded: the same OIDs answer perfectly well one varbind at a time, and
+        // that asymmetry is the whole of GH #668.
         if self
-            .routed(from)
-            .is_some_and(|(reg, _)| reg.handler == Handler::Slow)
+            .refuses_getbulk
+            .iter()
+            .any(|prefix| from.starts_with(prefix))
         {
             return Err(anyhow::anyhow!("getbulk timed out"));
         }
@@ -388,23 +383,28 @@ mod tests {
         assert_eq!(last, vec![1, 2, 3]);
     }
 
-    /// The asymmetry GH #668 turns on: the same registration answers a getnext and cannot answer
-    /// a getbulk of any size. A whole-agent flag could say "no getbulk"; only a per-registration
-    /// one can say "this table is slow and the rest of the device is fine".
+    /// The asymmetry GH #668 turns on: the same OIDs refuse a getbulk and answer a getnext.
+    ///
+    /// Verified against the real shim before this was written — `snmpbulkwalk` through
+    /// `snmp-bulk-refuser.py` times out on `1.0.8802.1.1.2.1.4.1.1.5` while `snmpwalk` returns all
+    /// three rows of it, and a getbulk of a different subtree is untouched.
     #[tokio::test]
-    async fn a_slow_registration_answers_getnext_and_times_out_every_getbulk() {
+    async fn a_refused_subtree_answers_getnext_and_times_out_every_getbulk() {
+        let base = oid_parts(arp::entry::IP_NET_TO_MEDIA_IF_INDEX);
         let mut agent = agent(
             arp_file(Ordering::Ascending, &[1, 2, 3]),
             arp::entry::IP_NET_TO_MEDIA_IF_INDEX,
-            Handler::Slow,
-        );
-        let base = oid_parts(arp::entry::IP_NET_TO_MEDIA_IF_INDEX);
+            Handler::Normal,
+        )
+        .refusing_getbulk(vec![base.clone()]);
 
-        // Every page size the walk shrinks through, including the smallest it ever asks for.
+        // Every page size the walk shrinks through, including the smallest it ever asks for. The
+        // shim drops on the PDU type, so the size it asked for never mattered.
         for max_repetitions in [20, 10, 5, 2, 1] {
             assert!(
                 agent.walk_getbulk(&base, max_repetitions).await.is_err(),
-                "a bulk page of {max_repetitions} costs that many sleeps and cannot arrive in time"
+                "a refused subtree drops the datagram whatever the page size, and {max_repetitions} \
+                 got an answer"
             );
         }
 
@@ -412,10 +412,12 @@ mod tests {
         assert_eq!(*answered[0].0.last().unwrap(), 1);
     }
 
-    /// One slow `pass` line must not make the whole device slow. The reporter's switch served its
-    /// ifTable and ARP table perfectly while the LLDP subtree went silent.
+    /// The refusal is scoped to its subtree. The reporter's switch served its ifTable and ARP
+    /// table by bulk on the same scan that lost its LLDP neighbours, and a device that refused
+    /// everything would be a different fixture — one the walk already handles.
     #[tokio::test]
-    async fn a_slow_registration_does_not_slow_its_neighbours() {
+    async fn a_refusal_does_not_spread_to_the_rest_of_the_device() {
+        let refused = oid_parts(arp::entry::IP_NET_TO_MEDIA_IF_INDEX);
         let mut agent = SimAgent::new(
             &[
                 arp_file(Ordering::Ascending, &[1, 2]),
@@ -431,9 +433,9 @@ mod tests {
             ],
             vec![
                 Registration {
-                    subtree: oid_parts(arp::entry::IP_NET_TO_MEDIA_IF_INDEX),
+                    subtree: refused.clone(),
                     file: 0,
-                    handler: Handler::Slow,
+                    handler: Handler::Normal,
                 },
                 Registration {
                     subtree: oid_parts(if_mib::IF_TABLE),
@@ -441,14 +443,10 @@ mod tests {
                     handler: Handler::Normal,
                 },
             ],
-        );
+        )
+        .refusing_getbulk(vec![refused.clone()]);
 
-        assert!(
-            agent
-                .walk_getbulk(&oid_parts(arp::entry::IP_NET_TO_MEDIA_IF_INDEX), 10)
-                .await
-                .is_err()
-        );
+        assert!(agent.walk_getbulk(&refused, 10).await.is_err());
         assert!(matches!(
             agent.walk_getbulk(&oid_parts(if_mib::IF_TABLE), 10).await,
             Ok(WalkPage::Varbinds(_))

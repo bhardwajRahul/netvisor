@@ -372,24 +372,31 @@ pub struct LldpTable {
     pub sys_desc: Option<String>,
     pub local_ports: Vec<LocalPort>,
     pub neighbours: Vec<RemoteNeighbour>,
-    /// Which `pass` handler serves `lldpLocPortTable`, and which serves the remote tables.
+    /// Which `pass` handler serves `lldpLocPortTable`.
     ///
-    /// One field per sub-table rather than one for the MIB, because the devices that need this
-    /// misbehave on exactly one of them: GH #668's switch3 went silent on the neighbour columns
-    /// while its port table answered, and its switch4 truncated the port table while the
-    /// neighbours read clean. A single handler could describe neither.
-    ///
-    /// Both `Normal` is the ordinary case and costs nothing: the table is then registered under
-    /// the MIB root as one line, exactly as before this existed.
+    /// Its own field because GH #668's switch4 truncated that table while its neighbours read
+    /// clean, and one handler for the whole MIB could not say so. `Normal` is the ordinary case
+    /// and costs nothing: the table is then registered under the MIB root as one line, exactly as
+    /// before this existed.
     pub local_port_handler: Handler,
-    pub remote_handler: Handler,
+    /// Whether the device refuses a GETBULK of its remote tables while still answering a getnext
+    /// on the same OIDs — GH #668's switch3.
+    ///
+    /// Not a handler, because it is not the agent doing it: `snmp-bulk-refuser.py` sits in front
+    /// and drops the datagram. A handler could not express it anyway. snmpd drives `pass` serially,
+    /// so a handler slow enough to fail a bulk page occupies the agent long enough to fail the
+    /// getnext queued behind it, and the device fails both ways instead of one.
+    pub neighbours_refuse_getbulk: bool,
 }
 
 impl LldpTable {
-    /// Whether this table needs its sub-tables registered apart, which is true only when one of
-    /// them is served differently from the other.
+    /// Whether this table needs its sub-tables registered apart.
+    ///
+    /// Only the port-table handler forces it. A bulk refusal does not: the shim works on the OID
+    /// off the wire and needs no `pass` line of its own, so a device that only refuses bulk keeps
+    /// the single MIB-root registration.
     pub fn splits_registrations(&self) -> bool {
-        self.local_port_handler != Handler::Normal || self.remote_handler != Handler::Normal
+        self.local_port_handler != Handler::Normal
     }
 }
 
@@ -403,7 +410,7 @@ impl LldpTable {
             local_ports: Vec::new(),
             neighbours: Vec::new(),
             local_port_handler: Handler::Normal,
-            remote_handler: Handler::Normal,
+            neighbours_refuse_getbulk: false,
         }
     }
 
@@ -413,9 +420,9 @@ impl LldpTable {
         self
     }
 
-    /// Serve `lldpRemTable` and `lldpRemManAddrTable` through a handler of their own.
-    pub fn neighbours_served_by(mut self, handler: Handler) -> Self {
-        self.remote_handler = handler;
+    /// Refuse a GETBULK of `lldpRemTable` and `lldpRemManAddrTable`, still answering getnext.
+    pub fn neighbours_refuse_getbulk(mut self) -> Self {
+        self.neighbours_refuse_getbulk = true;
         self
     }
 

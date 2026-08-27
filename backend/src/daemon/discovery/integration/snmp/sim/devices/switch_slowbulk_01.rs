@@ -4,7 +4,6 @@ use crate::daemon::discovery::integration::snmp::sim::lldp::{
     Advertised, LldpTable, LocalPort, RemoteNeighbour,
 };
 use crate::daemon::discovery::integration::snmp::sim::tables::{IfRow, IfTable};
-use crate::daemon::discovery::integration::snmp::sim::transport::Handler;
 use crate::daemon::discovery::integration::snmp::sim::wire::MacEncoding;
 use crate::daemon::discovery::integration::snmp::sim::{Purpose, SimDevice, Tables};
 use crate::daemon::discovery::integration::snmp::types::SystemInfo;
@@ -51,7 +50,7 @@ pub fn device() -> SimDevice {
             if_number: None,
         },
         tables: tables(),
-        arp_handler: Handler::Normal,
+        arp_handler: Default::default(),
         suppresses: Vec::new(),
     }
 }
@@ -89,7 +88,7 @@ pub fn lldp_table() -> LldpTable {
         "switch-slowbulk-01",
     )
     .sys_desc("Scanopy SNMP simulator, slow-getbulk profile")
-    .neighbours_served_by(Handler::Slow)
+    .neighbours_refuse_getbulk()
     .local_ports(vec![
         LocalPort::new(
             1,

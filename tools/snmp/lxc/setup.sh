@@ -261,82 +261,15 @@ echo "$LINE" | awk '{ print $1; print $2; $1=""; $2=""; sub(/^  */, ""); print }
 PASSEOF
 chmod +x "$CONF_DIR/snmp-pass-handler-stuck.sh"
 
-# A fourth handler: one that answers correctly and too slowly to be asked in bulk.
+# The GETBULK refuser, for the one device that must not answer a bulk page and must answer a
+# getnext on the same OIDs (GH #668).
 #
-# KNOWN NOT TO WORK YET — see Handler::Slow in sim/transport.rs. snmpd drives `pass` serially
-# (measured: 3 calls, 3s sleep, 9.03s total), so a GETBULK of 20 blocks the agent for 20*sleep
-# while the client gives up after 5s. The GETNEXT the walk sends next queues behind that bulk and
-# times out as well, so the device fails both ways instead of failing one and answering the other.
-# The script is left in place because the fix is a different refusal mechanism, not a different
-# sleep. switch-slowbulk-01 does still register it, so that device does not currently reproduce the
-# defect on the VM: its LLDP walk comes back empty and the scan reports SnmpWalkNoAnswer for it.
-#
-# Measured 2026-08-27, second lab scan: a full GETNEXT walk of that device's remote tables takes
-# 66.6s against the daemon's 60s SNMP_WALK_TIMEOUT, so even reaching the fallback is not enough.
-#
-# snmpd assembles a GETBULK of n over a `pass` script by invoking it n times, so a handler that
-# takes t to answer costs n*t for a bulk page and t for a single GETNEXT. At 3s against the
-# daemon's 5s SNMP_TIMEOUT that splits the two cleanly: every bulk page the walk asks for — 20,
-# 10, 5, 2 — exceeds the timeout, and one GETNEXT returns with two seconds to spare.
-#
-# That is the GH #668 device. Its columns are readable and were being reported empty, because the
-# walk halved its page size on each timeout and ran out of retries three shrinks before halving
-# would have reached GETNEXT. Registered on one subtree only, so the device serves the rest of its
-# tables at full speed — the reporter's switch answered its ifTable and ARP table fine.
-#
-# `sleep` is the whole difference from snmp-pass-handler.sh; the answer is identical.
-cat > "$CONF_DIR/snmp-pass-handler-slow.sh" << 'PASSEOF'
-#!/bin/bash
-DATA_FILE="$1"
-REQUEST="$2"
-OID="$3"
+# Not a `pass` handler: snmpd drives those serially, so a handler slow enough to fail a bulk page
+# occupies the agent long enough to fail the getnext queued behind it, and the device then fails
+# both ways instead of one. This sits in front of the agent instead and drops the datagram, which
+# costs the agent nothing. The agent behind it binds loopback; the generated config does that.
+install -m 755 "$SCRIPT_DIR/snmp-bulk-refuser.py" "$CONF_DIR/snmp-bulk-refuser.py"
 
-# Long enough that no multi-varbind bulk page fits in the client's 5s, short enough that a single
-# GETNEXT does. Raising this past 5 makes the device unreadable rather than bulk-unreadable, which
-# is a different fixture; lowering it past 2.5 lets a 2-repetition page through and the device
-# stops reproducing the defect.
-sleep 3
-
-if [ ! -f "$DATA_FILE" ]; then
-    echo "NONE"
-    exit 0
-fi
-
-case "$REQUEST" in
-    -g)
-        LINE=$(awk -v oid="$OID" '$1 == oid { print; exit }' "$DATA_FILE")
-        ;;
-    -n)
-        LINE=$(awk -v oid="$OID" '
-            {
-                if (oid_gt($1, oid)) {
-                    print
-                    exit
-                }
-            }
-            function oid_gt(a, b,    na, nb, sa, sb, i) {
-                na = split(a, sa, ".")
-                nb = split(b, sb, ".")
-                for (i = 1; i <= (na > nb ? na : nb); i++) {
-                    ai = (i <= na) ? sa[i]+0 : -1
-                    bi = (i <= nb) ? sb[i]+0 : -1
-                    if (ai > bi) return 1
-                    if (ai < bi) return 0
-                }
-                return 0
-            }
-        ' "$DATA_FILE")
-        ;;
-    *)  echo "NONE"; exit 0 ;;
-esac
-
-if [ -z "$LINE" ]; then
-    echo "NONE"
-    exit 0
-fi
-echo "$LINE" | awk '{ print $1; print $2; $1=""; $2=""; sub(/^  */, ""); print }'
-PASSEOF
-chmod +x "$CONF_DIR/snmp-pass-handler-slow.sh"
 
 
 # ── 4. Install the generated devices ─────────────────────────────────
@@ -389,6 +322,34 @@ UNIT
 
 for i in "${!UNITS[@]}"; do
     make_unit "${UNITS[$i]}" "${UNITS[$i]} (${HOSTS[$i]})"
+done
+
+# Devices with a GETBULK refuser in front of them. SHIMS is generated alongside the configs: each
+# entry is "unit|listen-ip|upstream-port|refused-oid[,refused-oid...]", empty for every device that
+# does not need one. The agent binds loopback and this owns the address the scanner talks to, so it
+# comes up behind a ready agent rather than in front of a port nothing is listening on yet.
+SHIM_UNITS=()
+for entry in "${SHIMS[@]:-}"; do
+    [ -n "$entry" ] || continue
+    IFS='|' read -r sname slisten sport srefuse <<< "$entry"
+    refuse_args=""
+    IFS=',' read -ra oids <<< "$srefuse"
+    for oid in "${oids[@]}"; do refuse_args="$refuse_args --refuse $oid"; done
+    cat > "/etc/systemd/system/snmp-bulk-refuser-${sname}.service" << UNIT
+[Unit]
+Description=SNMP GETBULK refuser — ${sname} (${slisten}:161 → 127.0.0.1:${sport})
+After=network.target snmpd-${sname}.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 ${CONF_DIR}/snmp-bulk-refuser.py --listen ${slisten}:161 --upstream 127.0.0.1:${sport}${refuse_args}
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    SHIM_UNITS+=("$sname")
 done
 
 # Any context back end binds loopback rather than a macvlan, has no entry in HOSTS, and must never
@@ -450,6 +411,14 @@ for name in "${UNITS[@]}"; do
     systemctl enable "snmpd-${name}" --quiet
     systemctl restart "snmpd-${name}"
     printf "  %-28s started\n" "snmpd-${name}"
+done
+# After the agents: each of these owns a device's public address and forwards to the agent behind
+# it, so it has nothing to forward to until that agent is listening.
+for name in "${SHIM_UNITS[@]:-}"; do
+    [ -n "$name" ] || continue
+    systemctl enable "snmp-bulk-refuser-${name}" --quiet
+    systemctl restart "snmp-bulk-refuser-${name}"
+    printf "  %-28s started\n" "snmp-bulk-refuser-${name}"
 done
 
 
