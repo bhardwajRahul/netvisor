@@ -184,9 +184,11 @@
 			<IconComp class={`h-5 w-5 ${colorHelper.icon}`} fill={fillIcon ? 'currentColor' : 'none'} />
 		{/if}
 
-		<span data-entity-header class="text-s text-secondary whitespace-nowrap font-medium">
-			{headerText}
-		</span>
+		{#if headerText}
+			<span data-entity-header class="text-s text-secondary whitespace-nowrap font-medium">
+				{headerText}
+			</span>
+		{/if}
 	</div>
 {:else if variant === 'inline'}
 	<!-- Inline header: inside container top padding -->
@@ -293,6 +295,8 @@
 		style="background: var(--color-topology-node-bg); position: relative; overflow: visible; transition: box-shadow 0.15s ease-in-out; border-top: 2px solid {colorHelper.rgb}; {tagHoverRingStyle}"
 	>
 		<div class="flex min-w-fit flex-col items-center gap-2 whitespace-nowrap px-6 py-4">
+			<!-- The container's name is not repeated here: a collapsed root container is named by
+			     its external title pill, which stays visible above the box in both states. -->
 			<span class="text-secondary text-base font-medium underline">
 				{topology_elementCount({ summary: childSummary })}
 			</span>

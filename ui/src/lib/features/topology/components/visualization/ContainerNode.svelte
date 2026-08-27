@@ -356,6 +356,7 @@
 		: undefined}
 >
 	<!-- TITLE: External (card/pill above container) -->
+	<!-- Rendered in both states: the pill is where a root container is named, collapsed or not. -->
 	{#if titleStyle === 'External' && (headerText || isCollapsible)}
 		<ContainerHeader
 			variant="external"
