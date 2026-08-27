@@ -452,6 +452,56 @@ impl CredentialQueryPayload {
     }
 }
 
+/// A credential field that could not be turned into the value the wire needs.
+///
+/// Typed rather than a formatted string so a caller can tell "the configuration is wrong" from
+/// "the network is wrong" without matching on message text — the same reason
+/// `snmp::queries::is_desync` downcasts `snmp2::Error` rather than reading its `Display`. Until
+/// this existed the two were the same `anyhow::Error` to every probe, and a community string typed
+/// into a file-path field was reported at every host in the scan as an unreachable device
+/// (GH #668).
+///
+/// Only a *read* failure. A temp-file write failing while handing a value to a client library that
+/// wants a path is our disk, not the operator's credential, and telling them to re-enter it would
+/// send them to fix something that is not broken.
+///
+/// `Display` reproduces the previous message verbatim, so daemon logs are unchanged.
+#[derive(Debug, thiserror::Error)]
+#[error("Failed to read {field} from {path} for {label}: {source}")]
+pub struct UnresolvableCredential {
+    /// The field on the credential, e.g. `community` or `auth_password`.
+    pub field: String,
+    /// The path that could not be read. Never a secret — a path is what makes this debuggable.
+    pub path: String,
+    /// Which credential type asked, e.g. `SNMP`.
+    pub label: String,
+    pub source: std::io::Error,
+}
+
+impl UnresolvableCredential {
+    fn read(field: &str, path: &str, label: &str) -> Result<String, anyhow::Error> {
+        std::fs::read_to_string(path).map_err(|source| {
+            anyhow::Error::new(Self {
+                field: field.to_string(),
+                path: path.to_string(),
+                label: label.to_string(),
+                source,
+            })
+        })
+    }
+}
+
+/// Whether this error is a credential field we could not read, wherever in the chain it sits.
+///
+/// Chain-walking rather than a top-level downcast because every caller adds context on the way up:
+/// `create_session` wraps, the probe wraps again, and a check on the outermost error would see
+/// none of them.
+pub fn is_unresolvable_credential(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| cause.is::<UnresolvableCredential>())
+}
+
 /// Non-secret value — inline or file path. Daemon can log freely.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 #[serde(tag = "mode")]
@@ -527,15 +577,7 @@ impl ResolvableValue {
             Self::Value { value } => Ok(value.clone()),
             Self::FilePath { path } => {
                 tracing::info!("Read {} from {} for {}", field_name, path, label);
-                std::fs::read_to_string(path).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to read {} from {} for {}: {}",
-                        field_name,
-                        path,
-                        label,
-                        e
-                    )
-                })
+                UnresolvableCredential::read(field_name, path, label)
             }
         }
     }
@@ -546,15 +588,7 @@ impl ResolvableValue {
             Self::Value { .. } => Ok(self.clone()),
             Self::FilePath { path } => {
                 tracing::info!("Read {} from {} for {}", field_name, path, label);
-                let contents = std::fs::read_to_string(path).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to read {} from {} for {}: {}",
-                        field_name,
-                        path,
-                        label,
-                        e
-                    )
-                })?;
+                let contents = UnresolvableCredential::read(field_name, path, label)?;
                 Ok(Self::Value { value: contents })
             }
         }
@@ -605,15 +639,7 @@ impl ResolvableSecret {
             Self::Value { value } => Ok(redact::Secret::from(value.clone())),
             Self::FilePath { path } => {
                 tracing::info!("Read {} (********) from {} for {}", field_name, path, label);
-                let contents = std::fs::read_to_string(path).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to read {} from {} for {}: {}",
-                        field_name,
-                        path,
-                        label,
-                        e
-                    )
-                })?;
+                let contents = UnresolvableCredential::read(field_name, path, label)?;
                 Ok(redact::Secret::from(contents))
             }
         }
@@ -625,15 +651,7 @@ impl ResolvableSecret {
             Self::Value { .. } => Ok(self.clone()),
             Self::FilePath { path } => {
                 tracing::info!("Read {} (********) from {} for {}", field_name, path, label);
-                let contents = std::fs::read_to_string(path).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to read {} from {} for {}: {}",
-                        field_name,
-                        path,
-                        label,
-                        e
-                    )
-                })?;
+                let contents = UnresolvableCredential::read(field_name, path, label)?;
                 Ok(Self::Value { value: contents })
             }
         }

@@ -811,10 +811,21 @@ pub async fn try_snmp_with_credential_on_port(
         Ok(session) => session,
         // v3 authenticates during engine discovery, so a failure here *is* the credential's
         // answer. v1/v2c carry no handshake — a failure is the socket, not the community.
-        Err(e) if matches!(credential.version, SnmpVersion::V3) => {
-            return SnmpProbeOutcome::Failed(AttemptOutcome::Rejected, e.to_string());
+        //
+        // Both readings assume the credential reached the wire. `for_credential_error` is what
+        // says when it did not: a field we could not read fails before the socket is opened, and
+        // carries no verdict on the device at all (GH #668).
+        Err(e) => {
+            let otherwise = if matches!(credential.version, SnmpVersion::V3) {
+                AttemptOutcome::Rejected
+            } else {
+                AttemptOutcome::Unreachable
+            };
+            return SnmpProbeOutcome::Failed(
+                AttemptOutcome::for_credential_error(&e, otherwise),
+                e.to_string(),
+            );
         }
-        Err(e) => return SnmpProbeOutcome::Failed(AttemptOutcome::Unreachable, e.to_string()),
     };
 
     match timeout(Duration::from_millis(2000), session.get(&sys_descr_oid)).await {
@@ -1072,6 +1083,85 @@ pub async fn test_bacnet_service(ip: IpAddr) -> Result<Option<u16>, Error> {
         }
         Ok(Err(_)) => Ok(None),
         Err(_) => Ok(None), // Timeout
+    }
+}
+
+/// A credential the daemon cannot read at all, and what it is reported as.
+///
+/// GH #668. The reporter's SNMP credential held `{"mode":"FilePath","path":"public"}` — a
+/// community string typed into a file-path field — and every host in the scan reported
+/// `outcome=Unreachable`, which is a verdict about the network. Nothing about the network was
+/// wrong: `os error 2` is a missing file, the probe never opened a socket, and the fix is one edit
+/// in Scanopy rather than anything on the switch.
+///
+/// No network is involved in either test: `create_session` resolves the credential's fields before
+/// it binds anything, so an unresolvable one fails before the address is ever contacted. That is
+/// also the reason this is worth classifying — the failure carries no information about the host.
+#[cfg(test)]
+mod unreadable_credential_tests {
+    use super::*;
+    use crate::server::credentials::r#impl::mapping::{ResolvableSecret, SnmpV3Params};
+    use crate::server::credentials::r#impl::types::{SnmpV3AuthProtocol, SnmpV3PrivProtocol};
+
+    fn missing_file() -> ResolvableSecret {
+        ResolvableSecret::FilePath {
+            path: "/nonexistent/scanopy-test/community".to_string(),
+        }
+    }
+
+    fn ip() -> IpAddr {
+        "192.0.2.1".parse().unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_community_that_cannot_be_read_is_a_configuration_fault_not_an_unreachable_device() {
+        let credential = SnmpQueryCredential {
+            version: SnmpVersion::V2c,
+            community: missing_file(),
+            v3: None,
+        };
+
+        let outcome = try_snmp_with_credential_on_port(ip(), &credential, 161).await;
+
+        let SnmpProbeOutcome::Failed(outcome, _) = outcome else {
+            panic!("a credential that cannot be read cannot have answered");
+        };
+        assert_eq!(
+            outcome,
+            AttemptOutcome::Malformed,
+            "reporting this as Unreachable sends an operator to check that a device is online, \
+             when what is wrong is the credential we never managed to read"
+        );
+    }
+
+    /// The v3 path reaches the same verdict by a different route. A v3 credential *does*
+    /// authenticate during engine discovery, so a `create_session` failure is normally the
+    /// device's answer and is reported as `Rejected` — but not when the failure happened before
+    /// the handshake, resolving a password file that is not there. "Check the username and
+    /// password" is the wrong instruction for a password nobody could read.
+    #[tokio::test]
+    async fn a_v3_password_file_that_cannot_be_read_is_not_reported_as_a_refused_credential() {
+        let credential = SnmpQueryCredential {
+            version: SnmpVersion::V3,
+            community: ResolvableSecret::Value {
+                value: String::new(),
+            },
+            v3: Some(SnmpV3Params {
+                security_name: "monitor".to_string(),
+                auth_protocol: SnmpV3AuthProtocol::Sha1,
+                auth_password: missing_file(),
+                priv_protocol: SnmpV3PrivProtocol::Aes128,
+                priv_password: missing_file(),
+                context_name: None,
+            }),
+        };
+
+        let outcome = try_snmp_with_credential_on_port(ip(), &credential, 161).await;
+
+        let SnmpProbeOutcome::Failed(outcome, _) = outcome else {
+            panic!("a credential that cannot be read cannot have answered");
+        };
+        assert_eq!(outcome, AttemptOutcome::Malformed);
     }
 }
 

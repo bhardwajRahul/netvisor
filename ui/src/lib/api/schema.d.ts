@@ -6791,6 +6791,14 @@ export interface components {
         } | {
             address: string;
             /** @enum {string} */
+            code: "LldpLocalPortDroppedReadCutShort";
+            /** Format: int32 */
+            dropped: number;
+            /** Format: int32 */
+            total: number;
+        } | {
+            address: string;
+            /** @enum {string} */
             code: "LldpLocalPortMisplaced";
             /** Format: int32 */
             misplaced: number;

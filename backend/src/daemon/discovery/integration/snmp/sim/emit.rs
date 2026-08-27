@@ -20,6 +20,7 @@ pub const DATA_DIR: &str = "/etc/snmp-test/data";
 const HANDLER: &str = "/etc/snmp-test/snmp-pass-handler.sh";
 const HANDLER_UNSORTED: &str = "/etc/snmp-test/snmp-pass-handler-unsorted.sh";
 const HANDLER_STUCK: &str = "/etc/snmp-test/snmp-pass-handler-stuck.sh";
+const HANDLER_SLOW: &str = "/etc/snmp-test/snmp-pass-handler-slow.sh";
 
 /// The loopback back end holding `switch-cisco-01`'s VLAN 20 bridge table.
 pub const CONTEXT_BACKEND_ADDR: &str = "127.0.0.1:16151";
@@ -34,6 +35,7 @@ fn handler_path(handler: Handler) -> &'static str {
         Handler::Normal => HANDLER,
         Handler::Positional => HANDLER_UNSORTED,
         Handler::Stuck => HANDLER_STUCK,
+        Handler::Slow => HANDLER_SLOW,
     }
 }
 

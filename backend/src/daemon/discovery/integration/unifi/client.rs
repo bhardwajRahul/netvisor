@@ -143,11 +143,15 @@ impl UnifiClient {
     /// always carries a `reqwest::Error` and is classified from it (self-signed certificate,
     /// connection refused, timeout).
     pub fn classify_connect_error(error: &Error) -> AttemptOutcome {
-        error
+        let observed = error
             .chain()
             .find_map(|cause| cause.downcast_ref::<reqwest::Error>())
             .map(AttemptOutcome::from)
-            .unwrap_or(AttemptOutcome::Rejected)
+            .unwrap_or(AttemptOutcome::Rejected);
+        // A credential field we could not read never reached the network, so neither the transport
+        // reading nor the fallback applies to it — telling an operator their password was refused,
+        // when the file holding it is missing, points them at the wrong thing entirely (GH #668).
+        AttemptOutcome::for_credential_error(error, observed)
     }
 
     /// Log in (if the transport is stateful) and confirm the requested site exists.

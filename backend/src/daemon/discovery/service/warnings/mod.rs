@@ -27,7 +27,9 @@ use std::net::IpAddr;
 // two value enums are wire types now and live with the codes.
 pub use crate::daemon::discovery::types::warnings::{ClaimSource, SnmpWalkGroup};
 
-use crate::server::credentials::r#impl::mapping::CredentialQueryPayloadDiscriminants;
+use crate::server::credentials::r#impl::mapping::{
+    CredentialQueryPayloadDiscriminants, is_unresolvable_credential,
+};
 use crate::server::ports::r#impl::base::PortType;
 
 // ============================================================================
@@ -100,6 +102,40 @@ pub enum DeviceClaim {
 /// all. The second is the common case on a device whose `lldpLocPortTable` is absent or unreadable,
 /// and it was the outcome this warning previously described as "may be drawn against the wrong
 /// port".
+/// Whether a placement failure is attributable to the device's numbering or to our read of it.
+///
+/// The two call for opposite things and were reported as one sentence offering both, which left
+/// the operator to guess (GH #668). A device that numbers its LLDP ports in a space of its own has
+/// told us everything it has and no rescan changes it; a device whose port table we only half read
+/// may well place its neighbours next time.
+///
+/// Derived from the reads rather than stored per neighbour: it is a property of what the walk got,
+/// not of any one row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalPortPlacementReason {
+    /// Both `lldpLocPortTable` and the interface set were read to their end, so what did not line
+    /// up genuinely does not line up.
+    ReadsComplete,
+    /// One of them stopped early, so part of the numbering was never read.
+    ReadCutShort,
+}
+
+impl LocalPortPlacementReason {
+    /// Which of the two this is, from the completeness of the reads the placement used.
+    ///
+    /// Both tables, because either one being short costs a placement: the port table names the
+    /// port and the interface set is what a name is matched against, and a neighbour cannot be
+    /// placed if either half is missing. `if_set_complete` rather than the attribute columns —
+    /// pruning and placement both turn on the *set*, and a blank `ifAlias` costs neither.
+    pub fn from_reads(local_ports_complete: bool, if_set_complete: bool) -> Self {
+        if local_ports_complete && if_set_complete {
+            Self::ReadsComplete
+        } else {
+            Self::ReadCutShort
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnresolvedLldpPorts {
     pub ip: IpAddr,
@@ -111,6 +147,9 @@ pub struct UnresolvedLldpPorts {
     pub dropped: usize,
     /// How many neighbours the device reported in total, so a figure has a denominator.
     pub total: usize,
+    /// Whether this is the device's numbering or our read of it. Decides which of the two
+    /// warnings the operator gets, because the sentence covering both was wrong half the time.
+    pub reason: LocalPortPlacementReason,
 }
 
 /// A device that answered the credential and then produced nothing at all.
@@ -490,6 +529,28 @@ pub enum AttemptOutcome {
     Cancelled,
 }
 
+impl AttemptOutcome {
+    /// Reclassify a credential error as a configuration fault when the credential itself could not
+    /// be read.
+    ///
+    /// Applied at each integration's probe boundary rather than at each `resolve` call, so an
+    /// integration gets the right verdict without having to remember to ask for it — the answer
+    /// depends only on the error, and the error already carries it. `otherwise` is whatever that
+    /// integration would have concluded, which stays correct for every failure that did reach the
+    /// network.
+    ///
+    /// The distinction is not cosmetic. [`Self::Unreachable`] and [`Self::Rejected`] both send an
+    /// operator to the device — check it is online, check the password — and neither is where the
+    /// problem is when the daemon never managed to read the credential at all (GH #668).
+    pub fn for_credential_error(error: &anyhow::Error, otherwise: Self) -> Self {
+        if is_unresolvable_credential(error) {
+            Self::Malformed
+        } else {
+            otherwise
+        }
+    }
+}
+
 /// Why an IP-targeted credential produced nothing.
 ///
 /// Only credentials the user deliberately assigned to a host are reported. A network-default
@@ -552,7 +613,15 @@ pub fn issue_for_attempt(
     message: String,
     user_assigned: bool,
 ) -> Option<CredentialIssue> {
-    if !user_assigned || outcome == AttemptOutcome::Cancelled {
+    if outcome == AttemptOutcome::Cancelled {
+        return None;
+    }
+    // The network-default rule is about a credential that reached a device and did not work. A
+    // malformed one reached nothing: it is wrong in our own configuration, wrong identically at
+    // every address, and stays wrong until someone re-enters it — so being a default is no reason
+    // to keep quiet, and being quiet is what left GH #668's reporter with a scan that said nothing
+    // at all. `warn_credential_issues` collapses these to one finding so this cannot flood.
+    if !user_assigned && outcome != AttemptOutcome::Malformed {
         return None;
     }
     Some(CredentialIssue {
@@ -930,6 +999,28 @@ mod tests {
     fn a_failing_network_default_is_not_a_finding() {
         assert!(decide(AttemptOutcome::Rejected, false).is_none());
         assert!(decide(AttemptOutcome::TlsFailed, false).is_none());
+    }
+
+    /// GH #668: except when the credential could not be read at all.
+    ///
+    /// The network-default rule is about a credential that reached a device and did not work —
+    /// broadcast at every address, so failing at most of them is its job. A credential we cannot
+    /// resolve never reaches anything: it is broken in our own configuration, it is broken
+    /// identically at every address, and it will stay broken until someone re-enters it. The
+    /// reporter's community string was typed into a file-path field and the scan said nothing at
+    /// all, on any host, for exactly this reason.
+    #[test]
+    fn a_credential_that_could_not_be_read_is_a_finding_even_as_a_network_default() {
+        let issue = decide(AttemptOutcome::Malformed, false)
+            .expect("a credential that cannot be read is a configuration fault, not a sweep miss");
+
+        assert!(matches!(
+            issue.reason,
+            CredentialIssueReason::Attempted {
+                outcome: AttemptOutcome::Malformed,
+                ..
+            }
+        ));
     }
 
     /// The operator stopped the scan. This used to be reported as a rejected credential — the

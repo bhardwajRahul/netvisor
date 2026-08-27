@@ -61,7 +61,9 @@ impl DiscoveryWarningCode {
                 &["address", "source", "group"]
             }
 
-            Self::LldpLocalPortDropped => &["addresses", "dropped", "total"],
+            Self::LldpLocalPortDropped | Self::LldpLocalPortDroppedReadCutShort => {
+                &["addresses", "dropped", "total"]
+            }
             Self::LldpLocalPortMisplaced => &["addresses", "misplaced"],
 
             Self::MalformedNeighboursWalkCutShort
@@ -105,6 +107,7 @@ impl DiscoveryWarningCode {
             Self::SnmpWalkPartialDiscarded
             | Self::VlanRecordingFailed
             | Self::LldpLocalPortDropped
+            | Self::LldpLocalPortDroppedReadCutShort
             | Self::MalformedNeighboursWalkCutShort
             | Self::MalformedNeighboursGhostRows
             | Self::MalformedNeighboursIncompleteRecords
@@ -193,6 +196,7 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
             Self::ClaimedCapabilityReadCutShort => "Claimed capability, read cut short",
             Self::ClaimedCapabilityEmpty => "Claimed capability, nothing served",
             Self::LldpLocalPortDropped => "LLDP neighbours discarded",
+            Self::LldpLocalPortDroppedReadCutShort => "LLDP port table read cut short",
             Self::LldpLocalPortMisplaced => "LLDP neighbours possibly misplaced",
             Self::MalformedNeighboursWalkCutShort => "Neighbour identifiers cut short",
             Self::MalformedNeighboursGhostRows => "Neighbour rows without identifiers",
@@ -269,6 +273,9 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
             }
             Self::LldpLocalPortDropped => {
                 "{addresses} reported LLDP neighbours on a local port that matches no interface on the device ({dropped} of {total}), so they are discarded and draw no links — those devices will look as though they have no LLDP neighbours. This usually means the switch numbers its LLDP ports separately from its interfaces, or did not answer for its LLDP port table."
+            }
+            Self::LldpLocalPortDroppedReadCutShort => {
+                "{addresses} reported LLDP neighbours on a local port that matches no interface on the device ({dropped} of {total}), so they are discarded and draw no links — those devices will look as though they have no LLDP neighbours. The read of their own port numbering did not finish, so the numbering could not be matched up; the incomplete-walk line for each device says which table stopped and why. A complete scan may place these neighbours."
             }
             Self::LldpLocalPortMisplaced => {
                 "{addresses} reported LLDP neighbours whose local port could not be identified but does match an interface number ({misplaced} in total), so they are drawn against a port that may not be the right one."

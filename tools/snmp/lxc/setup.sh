@@ -261,6 +261,72 @@ echo "$LINE" | awk '{ print $1; print $2; $1=""; $2=""; sub(/^  */, ""); print }
 PASSEOF
 chmod +x "$CONF_DIR/snmp-pass-handler-stuck.sh"
 
+# A fourth handler: one that answers correctly and too slowly to be asked in bulk.
+#
+# snmpd assembles a GETBULK of n over a `pass` script by invoking it n times, so a handler that
+# takes t to answer costs n*t for a bulk page and t for a single GETNEXT. At 3s against the
+# daemon's 5s SNMP_TIMEOUT that splits the two cleanly: every bulk page the walk asks for — 20,
+# 10, 5, 2 — exceeds the timeout, and one GETNEXT returns with two seconds to spare.
+#
+# That is the GH #668 device. Its columns are readable and were being reported empty, because the
+# walk halved its page size on each timeout and ran out of retries three shrinks before halving
+# would have reached GETNEXT. Registered on one subtree only, so the device serves the rest of its
+# tables at full speed — the reporter's switch answered its ifTable and ARP table fine.
+#
+# `sleep` is the whole difference from snmp-pass-handler.sh; the answer is identical.
+cat > "$CONF_DIR/snmp-pass-handler-slow.sh" << 'PASSEOF'
+#!/bin/bash
+DATA_FILE="$1"
+REQUEST="$2"
+OID="$3"
+
+# Long enough that no multi-varbind bulk page fits in the client's 5s, short enough that a single
+# GETNEXT does. Raising this past 5 makes the device unreadable rather than bulk-unreadable, which
+# is a different fixture; lowering it past 2.5 lets a 2-repetition page through and the device
+# stops reproducing the defect.
+sleep 3
+
+if [ ! -f "$DATA_FILE" ]; then
+    echo "NONE"
+    exit 0
+fi
+
+case "$REQUEST" in
+    -g)
+        LINE=$(awk -v oid="$OID" '$1 == oid { print; exit }' "$DATA_FILE")
+        ;;
+    -n)
+        LINE=$(awk -v oid="$OID" '
+            {
+                if (oid_gt($1, oid)) {
+                    print
+                    exit
+                }
+            }
+            function oid_gt(a, b,    na, nb, sa, sb, i) {
+                na = split(a, sa, ".")
+                nb = split(b, sb, ".")
+                for (i = 1; i <= (na > nb ? na : nb); i++) {
+                    ai = (i <= na) ? sa[i]+0 : -1
+                    bi = (i <= nb) ? sb[i]+0 : -1
+                    if (ai > bi) return 1
+                    if (ai < bi) return 0
+                }
+                return 0
+            }
+        ' "$DATA_FILE")
+        ;;
+    *)  echo "NONE"; exit 0 ;;
+esac
+
+if [ -z "$LINE" ]; then
+    echo "NONE"
+    exit 0
+fi
+echo "$LINE" | awk '{ print $1; print $2; $1=""; $2=""; sub(/^  */, ""); print }'
+PASSEOF
+chmod +x "$CONF_DIR/snmp-pass-handler-slow.sh"
+
 
 # ── 4. Install the generated devices ─────────────────────────────────
 #

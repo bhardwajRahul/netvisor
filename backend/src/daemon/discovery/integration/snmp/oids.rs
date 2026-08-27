@@ -181,6 +181,14 @@ pub mod lldp {
         // textual port id, which we resolve back to the real ifIndex. Some vendors
         // (e.g. ExtremeXOS) use a lldpLocPortNum space distinct from ifIndex.
 
+        /// lldpLocPortTable — the three columns below, as one subtree.
+        ///
+        /// The counterpart of [`super::remote::LLDP_REM_TABLE`], and needed for the same reason:
+        /// an agent can serve the local-port table and the remote table from separate handlers,
+        /// so the simulator has to be able to register them apart. No walk asks for this root —
+        /// each column is walked on its own.
+        pub const LLDP_LOC_PORT_TABLE: &str = "1.0.8802.1.1.2.1.3.7";
+
         /// lldpLocPortIdSubtype — how to read lldpLocPortId. 5 = interfaceName and
         /// 2 = interfaceIndex identify the interface directly; 3 = macAddress gives the
         /// port's own MAC as six raw octets, which matches an interface only through

@@ -138,11 +138,15 @@ impl InstantOnClient {
     /// Everything raised here directly is a credential or protocol problem, hence the `Rejected`
     /// fallback; genuine transport failures carry a `reqwest::Error` and classify from it.
     pub fn classify_connect_error(error: &Error) -> AttemptOutcome {
-        error
+        let observed = error
             .chain()
             .find_map(|cause| cause.downcast_ref::<reqwest::Error>())
             .map(AttemptOutcome::from)
-            .unwrap_or(AttemptOutcome::Rejected)
+            .unwrap_or(AttemptOutcome::Rejected);
+        // A credential field we could not read never reached the network, so neither the transport
+        // reading nor the fallback applies to it — telling an operator their password was refused,
+        // when the file holding it is missing, points them at the wrong thing entirely (GH #668).
+        AttemptOutcome::for_credential_error(error, observed)
     }
 
     /// The four-step OAuth2 PKCE exchange the portal's web client performs.

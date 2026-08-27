@@ -13,6 +13,7 @@
 //! left *abbreviated* (`0:4:96:1:e0:0`) as the standing guard on the unpadded form. Changing any
 //! of those removes coverage rather than fixing anything.
 
+use super::transport::Handler;
 use super::wire::{MacEncoding, PassValue, Row};
 use crate::daemon::discovery::integration::snmp::oids::lldp;
 use crate::server::lldp::{LldpChassisId, LldpPortId};
@@ -33,6 +34,13 @@ use crate::server::lldp::{LldpChassisId, LldpPortId};
 pub struct SimLldpMib {
     /// Subtree the agent registers, and the whole of what a walk of this MIB can reach.
     pub root: &'static str,
+    /// `lldpLocPortTable`, and [`Self::remote_root`] the remote tables. Both sit under
+    /// [`Self::root`] and are registered separately only by a device that serves one of them
+    /// differently — a slow or stuck handler on the port table while the neighbours answer
+    /// normally, which is the GH #668 shape. Values here rather than derived, because a MIB
+    /// revision is free to move them and `wire_rows` already treats every other column that way.
+    pub local_port_table: &'static str,
+    pub remote_root: &'static str,
     /// Distinguishes this MIB's data file from another's on the same device.
     pub file_suffix: &'static str,
     pub local: SimLldpLocalColumns,
@@ -69,6 +77,11 @@ pub struct SimLldpRemoteColumns {
 /// The classic LLDP-MIB, `1.0.8802.1.1.2`.
 pub static CLASSIC: SimLldpMib = SimLldpMib {
     root: lldp::LLDP_MIB,
+    local_port_table: lldp::local::LLDP_LOC_PORT_TABLE,
+    // The remote *tables*: `lldpRemTable` at `…1.4.1` and `lldpRemManAddrTable` at `…1.4.2`, so
+    // the root of both rather than `LLDP_REM_TABLE` — a registration stopping at `…1.4.1` would
+    // leave the management-address walk unserved.
+    remote_root: "1.0.8802.1.1.2.1.4",
     file_suffix: "lldp",
     local: SimLldpLocalColumns {
         chassis_id_subtype: lldp::local::LLDP_LOC_CHASSIS_ID_SUBTYPE,
@@ -359,6 +372,25 @@ pub struct LldpTable {
     pub sys_desc: Option<String>,
     pub local_ports: Vec<LocalPort>,
     pub neighbours: Vec<RemoteNeighbour>,
+    /// Which `pass` handler serves `lldpLocPortTable`, and which serves the remote tables.
+    ///
+    /// One field per sub-table rather than one for the MIB, because the devices that need this
+    /// misbehave on exactly one of them: GH #668's switch3 went silent on the neighbour columns
+    /// while its port table answered, and its switch4 truncated the port table while the
+    /// neighbours read clean. A single handler could describe neither.
+    ///
+    /// Both `Normal` is the ordinary case and costs nothing: the table is then registered under
+    /// the MIB root as one line, exactly as before this existed.
+    pub local_port_handler: Handler,
+    pub remote_handler: Handler,
+}
+
+impl LldpTable {
+    /// Whether this table needs its sub-tables registered apart, which is true only when one of
+    /// them is served differently from the other.
+    pub fn splits_registrations(&self) -> bool {
+        self.local_port_handler != Handler::Normal || self.remote_handler != Handler::Normal
+    }
 }
 
 impl LldpTable {
@@ -370,7 +402,21 @@ impl LldpTable {
             sys_desc: None,
             local_ports: Vec::new(),
             neighbours: Vec::new(),
+            local_port_handler: Handler::Normal,
+            remote_handler: Handler::Normal,
         }
+    }
+
+    /// Serve `lldpLocPortTable` through a handler of its own.
+    pub fn local_ports_served_by(mut self, handler: Handler) -> Self {
+        self.local_port_handler = handler;
+        self
+    }
+
+    /// Serve `lldpRemTable` and `lldpRemManAddrTable` through a handler of their own.
+    pub fn neighbours_served_by(mut self, handler: Handler) -> Self {
+        self.remote_handler = handler;
+        self
     }
 
     /// Serve this table under a MIB other than the classic one.
