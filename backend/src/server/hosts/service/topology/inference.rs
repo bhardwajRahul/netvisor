@@ -33,11 +33,10 @@ impl HostService {
         network_id: Uuid,
         far_ends: Vec<UnplacedFarEnd>,
         limit_ctx: Option<&HostLimitContext>,
-    ) -> Result<Vec<DiscoveryWarning>> {
-        if far_ends.is_empty() {
-            return Ok(Vec::new());
-        }
-
+    ) -> Result<InferenceOutcome> {
+        // No early return on an empty far-end list: the standing report below covers ranges the
+        // ingest path inferred, and a scan that placed every neighbour is exactly when those are
+        // the only ones left to tell an operator about.
         let live = self
             .subnet_service
             .get_all(StorableFilter::<Subnet>::new_from_network_ids(&[network_id]).live())
@@ -45,6 +44,8 @@ impl HostService {
         let live_cidrs: Vec<IpCidr> = live.iter().map(|s| s.base.cidr).collect();
 
         let mut warnings = Vec::new();
+        // Evidence per range this pass created, folded into the standing report below.
+        let mut evidence: HashMap<Uuid, ProvisionalSubnet> = HashMap::new();
         for range in infer_ranges(far_ends, &live_cidrs) {
             let mut subnet = Subnet::new(SubnetBase {
                 cidr: range.cidr,
@@ -93,7 +94,8 @@ impl HostService {
             self.mint_far_end_hosts(network_id, &created, &range.far_ends, limit_ctx)
                 .await;
 
-            warnings.push(DiscoveryWarning::ProvisionalSubnetInferred(
+            evidence.insert(
+                created.id,
                 ProvisionalSubnet {
                     cidr: range.cidr.to_string(),
                     subnet_id: created.id,
@@ -110,11 +112,65 @@ impl HostService {
                     seen_by_host_ids: range.far_ends.iter().map(|f| f.host_id).collect(),
                     widened_by_vlan: range.widened_by_vlan,
                 },
-            ));
+            );
         }
 
-        Ok(warnings)
+        // Only ranges *created here* make a re-resolution worth running; the standing report below
+        // says nothing new about what this pass can place.
+        let minted = !evidence.is_empty();
+        warnings.extend(
+            self.provisional_subnet_warnings(network_id, evidence)
+                .await?,
+        );
+        Ok(InferenceOutcome { minted, warnings })
     }
+
+    /// Report every range on this network still waiting to be confirmed, not only the ones this
+    /// pass created.
+    ///
+    /// A provisional CIDR is a standing state, not a per-scan delta — the same reasoning that makes
+    /// `LldpNeighbourNotFound` a standing population. Reporting only new ones would mean an
+    /// operator who did not act on the scan that proposed a range never hears about it again, and
+    /// would leave ranges inferred on the ingest path silent entirely: nothing there has a
+    /// `session_id`, and `append_historical_warnings` needs one.
+    ///
+    /// Far-end evidence is attached where this pass has it and omitted where it does not, which is
+    /// the honest shape: a range inferred from a controller-reported address has no neighbour that
+    /// advertised it.
+    async fn provisional_subnet_warnings(
+        &self,
+        network_id: Uuid,
+        mut evidence: HashMap<Uuid, ProvisionalSubnet>,
+    ) -> Result<Vec<DiscoveryWarning>> {
+        let live = self
+            .subnet_service
+            .get_all(StorableFilter::<Subnet>::new_from_network_ids(&[network_id]).live())
+            .await?;
+
+        Ok(live
+            .into_iter()
+            .filter(|s| s.base.cidr_source == SubnetCidrSource::Inferred)
+            .map(|s| {
+                let detail = evidence.remove(&s.id).unwrap_or(ProvisionalSubnet {
+                    cidr: s.base.cidr.to_string(),
+                    subnet_id: s.id,
+                    addresses: Vec::new(),
+                    sys_names: Vec::new(),
+                    seen_by_host_ids: Vec::new(),
+                    widened_by_vlan: false,
+                });
+                DiscoveryWarning::ProvisionalSubnetInferred(detail)
+            })
+            .collect())
+    }
+}
+
+/// What one inference step produced.
+pub(super) struct InferenceOutcome {
+    /// Whether this step created a range, and so whether re-resolving can place anything new.
+    pub minted: bool,
+    /// Every range on the network still waiting to be confirmed, not only the ones created here.
+    pub warnings: Vec<DiscoveryWarning>,
 }
 
 impl HostService {

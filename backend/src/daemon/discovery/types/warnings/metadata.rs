@@ -355,7 +355,7 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
                 "LLDP/CDP neighbours resolved to a device but several of its ports match the advertised port id ({count} in total), so it identifies none and Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
             }
             Self::ProvisionalSubnetInferred => {
-                "LLDP/CDP neighbours publish addresses in {count} range(s) no device this network has scanned holds, so those ranges have been added as subnets and the devices placed in them. LLDP carries no netmask, so the range around each address is assumed rather than read — confirm or correct it on the subnet, and note that no daemon has an interface on it. {examples}"
+                "{count} subnet(s) on this network have a range Scanopy assumed rather than read, because devices reported addresses in them that nothing scanned holds. Nothing advertises a netmask, so the range around an address is a convention — confirm or correct it on the subnet. No daemon has an interface on these ranges, and they are reported on every scan until confirmed. {examples}"
             }
             Self::WarningsTruncated => {
                 "{elided} further warnings from this scan were not recorded, because it produced more than the scan record holds. Narrow what the scan covers to see the rest."

@@ -361,6 +361,12 @@ function describeProvisionalSubnet(
 	w: WarningOf<'ProvisionalSubnetInferred'>,
 	hostName: HostNameLookup
 ): string {
+	// A range is reported for as long as it is unconfirmed, so most of them arrive without the
+	// far-end evidence that produced them — the pass that inferred it may have been scans ago, and
+	// one inferred while placing a controller-reported address never had a neighbour at all. The
+	// range alone is still the actionable part.
+	if (!w.addresses.length) return w.cidr;
+
 	// Paired positionally where both are present: `sys_names` omits far ends that sent none, so a
 	// group where only some did would otherwise misalign names against addresses.
 	const named =

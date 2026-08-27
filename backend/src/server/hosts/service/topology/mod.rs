@@ -495,10 +495,14 @@ impl HostService {
             .infer_far_end_subnets(network_id, first.unplaced, limit_ctx.as_ref())
             .await?;
 
-        if inferred.is_empty() {
+        // A pass that created nothing has nothing new to resolve against, whatever the standing
+        // report says about ranges awaiting confirmation.
+        if !inferred.minted {
+            let mut warnings = first.warnings;
+            warnings.extend(inferred.warnings);
             return Ok(LldpResolutionOutcome {
                 stats: first.stats,
-                warnings: first.warnings,
+                warnings,
             });
         }
 
@@ -506,7 +510,7 @@ impl HostService {
         // cannot place is one no further pass would place either.
         let second = self.resolve_neighbours_once(network_id).await?;
         let mut warnings = second.warnings;
-        warnings.extend(inferred);
+        warnings.extend(inferred.warnings);
 
         Ok(LldpResolutionOutcome {
             stats: second.stats,
