@@ -268,7 +268,11 @@ chmod +x "$CONF_DIR/snmp-pass-handler-stuck.sh"
 # while the client gives up after 5s. The GETNEXT the walk sends next queues behind that bulk and
 # times out as well, so the device fails both ways instead of failing one and answering the other.
 # The script is left in place because the fix is a different refusal mechanism, not a different
-# sleep; nothing registers this handler until then.
+# sleep. switch-slowbulk-01 does still register it, so that device does not currently reproduce the
+# defect on the VM: its LLDP walk comes back empty and the scan reports SnmpWalkNoAnswer for it.
+#
+# Measured 2026-08-27, second lab scan: a full GETNEXT walk of that device's remote tables takes
+# 66.6s against the daemon's 60s SNMP_WALK_TIMEOUT, so even reaching the fallback is not enough.
 #
 # snmpd assembles a GETBULK of n over a `pass` script by invoking it n times, so a handler that
 # takes t to answer costs n*t for a bulk page and t for a single GETNEXT. At 3s against the
