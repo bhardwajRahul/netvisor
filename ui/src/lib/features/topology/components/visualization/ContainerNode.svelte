@@ -356,12 +356,14 @@
 		: undefined}
 >
 	<!-- TITLE: External (card/pill above container) -->
+	<!-- While collapsed the box names itself, so the pill drops its text and stays purely as the
+	     expand affordance — it is the only click target a collapsed root container has. -->
 	{#if titleStyle === 'External' && (headerText || isCollapsible)}
 		<ContainerHeader
 			variant="external"
 			{isCollapsed}
 			{isCollapsible}
-			{headerText}
+			headerText={isCollapsed ? '' : headerText}
 			{iconComponent}
 			{logoComponent}
 			{fillIcon}

@@ -122,7 +122,7 @@ impl ViewBuilder for WorkloadsBuilder {
                 },
                 position: Default::default(),
                 size: Default::default(),
-                header: Some(host.base.name.to_string()),
+                header: ctx.host_container_header(host),
             });
         }
 

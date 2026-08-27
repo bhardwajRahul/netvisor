@@ -202,10 +202,14 @@ impl TypeMetadataProvider for ContainerType {
             TitleStyle::External
         };
         let padding_top = if is_subcontainer { 50 } else { 25 };
+        // A collapsed root container names itself *and* summarises its contents, so its box is
+        // three stacked lines (name, element count, grouping chips) where a collapsed
+        // subcontainer is one. ELK spaces collapsed nodes by this value, so it has to cover the
+        // taller card or neighbours crowd it.
         let (collapsed_width, collapsed_height) = if is_subcontainer {
             (250, 40)
         } else {
-            (200, 80)
+            (200, 120)
         };
         let fill_icon = matches!(self, ContainerType::PortOpStatus);
         let collapsed_by_default = matches!(

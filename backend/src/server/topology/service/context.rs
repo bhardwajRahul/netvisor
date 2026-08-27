@@ -98,6 +98,38 @@ impl<'a> TopologyContext<'a> {
             .collect()
     }
 
+    /// Heading for a container that stands for `host`: the host's name, or the best identifying
+    /// evidence we hold when it has none.
+    ///
+    /// `None` rather than `Some("")` when nothing identifies the host. A `HostName::Unnamed`
+    /// formats as the empty string, so `Some(host.base.name.to_string())` put a header on the node
+    /// that every consumer's `??` fallback then read as present — a container titled with nothing
+    /// at all. Absence has to be expressible for those fallbacks to fire.
+    ///
+    /// The rungs below `name` are what a device that never got one still carries: a switch known
+    /// only through LLDP has a chassis id, and a controller-imported device has a sysName.
+    pub fn host_container_header(&self, host: &Host) -> Option<String> {
+        fn non_blank(value: &str) -> Option<String> {
+            let trimmed = value.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        }
+
+        if !host.base.name.is_blank() {
+            return Some(host.base.name.to_string());
+        }
+        host.base
+            .hostname
+            .as_deref()
+            .and_then(non_blank)
+            .or_else(|| host.base.sys_name.as_deref().and_then(non_blank))
+            .or_else(|| host.base.chassis_id.as_deref().and_then(non_blank))
+            .or_else(|| {
+                self.get_ip_addresses_for_host(host.id)
+                    .first()
+                    .map(|ip| ip.base.ip_address.to_string())
+            })
+    }
+
     pub fn get_services_for_host(&self, host_id: Uuid) -> Vec<&'a Service> {
         self.services
             .iter()
