@@ -414,20 +414,17 @@ pub async fn execute(
     let bridge_subnets = scanner.create_bridge_subnets().await?;
     ctx.ops.report_progress(10).await.ok();
 
-    let all_subnets: Vec<_> = ctx
-        .known_subnets
-        .iter()
-        .cloned()
-        .chain(bridge_subnets.iter().cloned())
-        .collect();
-
     let containers = scanner.get_containers_and_summaries().await?;
     let container_count = containers.len();
     ctx.ops.report_progress(20).await.ok();
 
     let mut host_interfaces = host_data.ip_addresses.clone();
-    let containers_interfaces_and_subnets =
-        scanner.get_container_interfaces(&containers, &all_subnets, &mut host_interfaces);
+    let containers_interfaces_and_subnets = scanner.get_container_interfaces(
+        &containers,
+        &bridge_subnets,
+        ctx.known_subnets,
+        &mut host_interfaces,
+    );
 
     let scan = scanner
         .scan_and_process_containers(
