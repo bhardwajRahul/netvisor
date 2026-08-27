@@ -800,6 +800,22 @@ impl HostService {
                     let existing_by_mac: Vec<IPAddress> =
                         self.ip_address_service.get_all(mac_filter).await?;
                     if existing_by_mac.len() == 1 {
+                        // Needed to ask whether the old subnet still holds the new address.
+                        if network_live_subnets.is_none() {
+                            network_live_subnets = Some(
+                                self.subnet_service
+                                    .get_all(
+                                        StorableFilter::<Subnet>::new_from_network_ids(&[
+                                            created_host.base.network_id,
+                                        ])
+                                        .live(),
+                                    )
+                                    .await?,
+                            );
+                        }
+                        let live_subnets_for_move =
+                            network_live_subnets.as_ref().expect("loaded above");
+
                         let mut existing_iface = existing_by_mac.into_iter().next().unwrap();
                         tracing::debug!(
                             interface_ip = %ip_address.base.ip_address,
@@ -808,6 +824,19 @@ impl HostService {
                             incoming_subnet_id = %ip_address.base.subnet_id,
                             "Found existing ip_address by MAC address (subnet_id differs, 1:1 MAC match)"
                         );
+                        // The block was written for an interface that *moved*, and then only
+                        // refreshed the timestamp — so the reported address was discarded and the
+                        // row kept its old one, looking freshly confirmed. Carry the move through.
+                        if interface_moved(&existing_iface, &ip_address, live_subnets_for_move) {
+                            tracing::info!(
+                                host_id = %ip_address.base.host_id,
+                                from = %existing_iface.base.ip_address,
+                                to = %ip_address.base.ip_address,
+                                "Re-homed an interface that changed address"
+                            );
+                            existing_iface.base.ip_address = ip_address.base.ip_address;
+                            existing_iface.base.subnet_id = ip_address.base.subnet_id;
+                        }
                         existing_iface.set_last_seen_at(ip_address.last_seen_at);
                         ip_addresses_to_refresh.push(existing_iface.clone());
                         created_ip_addresses.push(existing_iface);
@@ -1447,6 +1476,28 @@ impl HostService {
     }
 }
 
+/// Whether a MAC-matched row is the *same* interface at a new address, or a second address on the
+/// same MAC.
+///
+/// The two are indistinguishable from the uniqueness guards alone — a host gaining a second address
+/// on one MAC still presents as exactly one existing row the first time it appears — so this asks
+/// the one question that separates them: has the interface left the range it used to be in? If the
+/// old subnet still contains the new address, nothing says the old address is gone, and collapsing
+/// them would silently discard a genuine second address (a VLAN sub-interface, an IP alias).
+///
+/// Deliberately conservative in the DHCP-within-one-subnet case, which stays exactly as it was:
+/// this fixes the case the block was written for and invents no new behaviour for the one it
+/// cannot tell apart.
+fn interface_moved(existing: &IPAddress, incoming: &IPAddress, live_subnets: &[Subnet]) -> bool {
+    if existing.base.subnet_id == incoming.base.subnet_id {
+        return false;
+    }
+    live_subnets
+        .iter()
+        .find(|s| s.id == existing.base.subnet_id)
+        .is_none_or(|s| !s.base.cidr.contains(&incoming.base.ip_address))
+}
+
 /// Whether this address needs the server to choose its subnet.
 ///
 /// True when the id names no live subnet at all — nil, or a row this server never minted — which
@@ -1533,6 +1584,72 @@ mod tests {
     #[allow(dead_code)]
     fn ip(s: &str) -> std::net::IpAddr {
         s.parse().expect("valid test IP")
+    }
+
+    fn ip_address_at(subnet_id: Uuid, ip: &str) -> IPAddress {
+        IPAddress {
+            base: IPAddressBase {
+                subnet_id,
+                ip_address: ip.parse().expect("valid test IP"),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    /// The case the block was written for and never carried out: the interface left the range it
+    /// was in, so the row must follow it rather than keep an address that is gone while its
+    /// `last_seen_at` advances and makes the stale value look current.
+    #[test]
+    fn an_interface_that_left_its_range_counts_as_moved() {
+        let old_subnet = Uuid::new_v4();
+        let live = vec![subnet(old_subnet, "10.0.0.0/24")];
+
+        let existing = ip_address_at(old_subnet, "10.0.0.5");
+        let incoming = ip_address_at(Uuid::new_v4(), "192.168.1.7");
+
+        assert!(interface_moved(&existing, &incoming, &live));
+    }
+
+    /// And the case the uniqueness guards cannot tell apart from it: a host gaining a *second*
+    /// address on one MAC presents as exactly one existing row the first time it appears. The old
+    /// subnet still holds the new address, so nothing says the old one is gone, and treating it as
+    /// a move would silently discard a genuine VLAN sub-interface or IP alias.
+    #[test]
+    fn a_second_address_inside_the_same_range_is_not_a_move() {
+        let old_subnet = Uuid::new_v4();
+        let live = vec![subnet(old_subnet, "10.0.0.0/24")];
+
+        let existing = ip_address_at(old_subnet, "10.0.0.5");
+        // A different subnet row covering the same range — the shape a re-created subnet takes.
+        let incoming = ip_address_at(Uuid::new_v4(), "10.0.0.9");
+
+        assert!(!interface_moved(&existing, &incoming, &live));
+    }
+
+    /// Re-reporting the same subnet is never a move, whatever the address does — that is the
+    /// DHCP-within-one-subnet case, left exactly as it was.
+    #[test]
+    fn the_same_subnet_is_never_a_move() {
+        let same = Uuid::new_v4();
+        let live = vec![subnet(same, "10.0.0.0/24")];
+
+        assert!(!interface_moved(
+            &ip_address_at(same, "10.0.0.5"),
+            &ip_address_at(same, "10.0.0.9"),
+            &live
+        ));
+    }
+
+    /// An existing row whose subnet no longer exists has nothing to say about where the interface
+    /// was, so the reported address is the better answer.
+    #[test]
+    fn a_vanished_old_subnet_counts_as_moved() {
+        assert!(interface_moved(
+            &ip_address_at(Uuid::new_v4(), "10.0.0.5"),
+            &ip_address_at(Uuid::new_v4(), "192.168.1.7"),
+            &[]
+        ));
     }
 
     /// The trigger, not the rule: an id naming no live subnet is the server's to choose — a nil
