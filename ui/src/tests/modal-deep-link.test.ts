@@ -222,3 +222,48 @@ describe('resolveModalDeepLink', () => {
 		});
 	});
 });
+
+/**
+ * Opening one modal from inside another.
+ *
+ * The registry is a single slot, so opening B while A is on screen makes A close — and a close
+ * handler that calls `closeModal()` unconditionally then clears B as well. That is the ordinary
+ * shape of a close handler and it is right when the user dismissed A, so the repair belongs at the
+ * point that knows A is being *superseded* rather than dismissed: `GenericModal`'s effect captures
+ * the incoming state and puts it back if the handler cleared it.
+ *
+ * Without that, a chip or an action that navigates from inside one modal to another entity's
+ * editor lands on the destination tab with nothing open — the deep-link effect that would have
+ * opened it finds an empty registry, which `resolveModalDeepLink` correctly declines to act on.
+ */
+describe('a modal opened from inside another modal', () => {
+	it('is not resolvable once a close handler has cleared the registry', () => {
+		// What the destination tab's deep-link effect saw before the fix.
+		const cleared = state(null);
+		expect(
+			resolveModalDeepLink(cleared, 'credential-editor', entities, false, null)
+		).toBeUndefined();
+	});
+
+	it('resolves once the superseding state is restored', () => {
+		// What it sees now: the state that was captured before the handler ran, put back intact.
+		const superseding = state('credential-editor', 'bbb');
+		const restored: ModalState = { ...superseding };
+
+		expect(resolveModalDeepLink(restored, 'credential-editor', entities, false, null)).toEqual(
+			entities[1]
+		);
+	});
+
+	it('still resolves from entityData when the destination list has not loaded', () => {
+		// The other half of the same click: the reader arrives from another tab, so the
+		// destination's own query may not have settled. Carrying the entity makes the open
+		// independent of that timing.
+		const carried = { id: 'zzz', name: 'Zulu' };
+		const restored = state('credential-editor', 'zzz', carried);
+
+		expect(resolveModalDeepLink(restored, 'credential-editor', entities, false, null)).toEqual(
+			carried
+		);
+	});
+});
