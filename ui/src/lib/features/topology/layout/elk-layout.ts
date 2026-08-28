@@ -11,6 +11,7 @@ import { getOrgUseCase } from '../queries';
 import { getTopologyIndex } from '../entity-index';
 import * as perf from '../perf';
 import { resolveCollapsedAncestor } from '../collapse';
+import { noteElkRun } from '../diagnostics';
 
 /**
  * The port-constraint a container's own ports can honour.
@@ -1609,6 +1610,7 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 	graph1 = builtGraph1;
 	build1Done();
 	const elkPass1Done = perf.stage('elk.layout.pass1');
+	noteElkRun();
 	// Only the children array is bound, never the root: the root is unreferenced the moment this
 	// expression completes, and clearing this one binding after extraction drops the entire pass-1
 	// tree. Binding the result itself would keep the tree alive through `.children` anyway.
@@ -1665,6 +1667,7 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 	);
 	build2Done();
 	const elkPass2Done = perf.stage('elk.layout.pass2');
+	noteElkRun();
 	const result2 = await elk.layout(graph2);
 	elkPass2Done();
 

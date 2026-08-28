@@ -19,6 +19,13 @@
 		topology_parseFailed
 	} from '$lib/paraglide/messages';
 	import { type Node, type Edge } from '@xyflow/svelte';
+	import { getViewportForBounds, type Rect } from '@xyflow/system';
+	import {
+		ABSOLUTE_MIN_ZOOM,
+		DEFAULT_MIN_ZOOM,
+		boundsOfNodes,
+		zoomFloorFor
+	} from '../../viewport-fit';
 	import '@xyflow/svelte/dist/style.css';
 	import './topology-viewer.css';
 	import { pushError } from '$lib/shared/stores/feedback';
@@ -180,12 +187,64 @@
 	/** Empty handle map for measurement builds, whose handles `stripSizeSeed` removes anyway. */
 	const NO_HANDLES: Map<string, Set<string>> = new Map();
 
+	/**
+	 * SvelteFlow's own default, stated so the fit measurement and the canvas use one number.
+	 *
+	 * Passed to the flow as well as to `getViewportForBounds` below. Left implicit, the two could
+	 * be given different ceilings and the measured "required zoom" would stop describing the fit
+	 * the canvas actually performs.
+	 */
+	const MAX_ZOOM = 2;
+
 	// Track viewport panning state
 	let viewportMoved = false;
 	let viewportMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
-	const { fitView, getNodes, getInternalNode } = useSvelteFlow();
+	const { fitView, setViewport, getNodes, getInternalNode, getViewport } = useSvelteFlow();
 	let containerElement: HTMLDivElement;
+
+	/**
+	 * Bounds of the graph the pipeline last wrote, in graph coordinates.
+	 *
+	 * Read from `$nodes` rather than `getNodes()`: on a view switch SvelteFlow has not adopted the
+	 * new set yet, and the bounds are wanted exactly then.
+	 */
+	function getLayoutBounds(): Rect | null {
+		return boundsOfNodes($nodes);
+	}
+
+	/**
+	 * The viewport that frames `bounds`, at a given zoom floor.
+	 *
+	 * One helper for both the fit and the measurement of what the fit wanted, so the two cannot
+	 * disagree about padding, pane size or what "fits" means — they are the same call with a
+	 * different floor.
+	 */
+	function viewportFor(bounds: Rect, minZoom: number) {
+		return getViewportForBounds(
+			bounds,
+			containerElement?.clientWidth ?? 0,
+			containerElement?.clientHeight ?? 0,
+			minZoom,
+			MAX_ZOOM,
+			getFitViewPadding()
+		);
+	}
+
+	/**
+	 * The zoom a fit needs, measured at the absolute floor so no clamp can hide the answer.
+	 *
+	 * `null` until the pane has a size. `containerElement` is a `bind:this`, so for the first
+	 * render or two it is unbound and reads 0×0 — against which every graph "needs" the absolute
+	 * floor, which would drop the zoom floor to its minimum on a graph that fits comfortably and
+	 * report a required zoom that describes nothing.
+	 */
+	function requiredFitZoom(bounds: Rect): number | null {
+		const paneWidth = containerElement?.clientWidth ?? 0;
+		const paneHeight = containerElement?.clientHeight ?? 0;
+		if (paneWidth <= 0 || paneHeight <= 0) return null;
+		return viewportFor(bounds, ABSOLUTE_MIN_ZOOM).zoom;
+	}
 
 	/**
 	 * Returns fitView padding that accounts for overlays (options panel, minimap).
@@ -292,8 +351,25 @@
 		};
 	}
 
-	export function triggerFitView() {
-		requestAnimationFrame(() => fitView({ padding: getFitViewPadding() }));
+	/**
+	 * Fit the whole graph, without waiting for SvelteFlow to decide the nodes are ready.
+	 *
+	 * `fitView()` does not move the viewport. It sets `fitViewQueued` and the fit is applied from
+	 * the `nodesInitialized` derived, which is false while *any* node lacks `measured` — and the
+	 * only other way through is `updateNodeInternals`, which needs a node to mount and measure.
+	 * With culling on, a transform left over from the previous view can select nothing at all, and
+	 * then nothing mounts, so nothing measures, so the queued fit never runs and the transform
+	 * never moves. That is a closed loop: a blank canvas where `F` does nothing, which is how this
+	 * was reported.
+	 *
+	 * Computing the viewport and pushing it through `setViewport` is what `fitView` would
+	 * eventually have done, minus the wait for a condition the blank state prevents. We already
+	 * know the bounds — the pipeline just laid them out.
+	 */
+	export async function triggerFitView() {
+		const bounds = getLayoutBounds();
+		if (!bounds) return;
+		await setViewport(viewportFor(bounds, derivedMinZoom));
 	}
 
 	export function fitViewToNodes(nodeIds: string[]) {
@@ -377,6 +453,20 @@
 		coldLoadMeasure = false;
 	}
 
+	/**
+	 * The zoom floor, derived from the graph rather than fixed.
+	 *
+	 * A hard-coded `0.1` is what made a large estate unfittable: every fit clamped, so `F` appeared
+	 * to do nothing and the canvas showed a fraction of the graph at a tenth scale. Recomputed as
+	 * the store changes, since the graph a collapse press produces is a different size.
+	 */
+	let derivedMinZoom = $derived.by(() => {
+		const bounds = boundsOfNodes($nodes);
+		if (!bounds) return DEFAULT_MIN_ZOOM;
+		const required = requiredFitZoom(bounds);
+		return required === null ? DEFAULT_MIN_ZOOM : zoomFloorFor(required);
+	});
+
 	// Cull off-screen nodes once the graph is big enough — see
 	// `pipeline/render-mode.ts` for why measuring and exporting must suspend it.
 	let cullOffscreen = $derived(
@@ -402,7 +492,19 @@
 		internalNodes: () => $nodes.map((n) => getInternalNode(n.id)),
 		// The payload as the server sent it, so a report can tell "few edges arrived" from "many
 		// arrived and were dropped in rendering" — the two causes `store.edges` cannot separate.
-		payload: () => topology ?? null
+		payload: () => topology ?? null,
+		// The zoom a fit wants against the zoom it is allowed. Lazy, because it walks the store.
+		fitZoom: () => {
+			const bounds = boundsOfNodes($nodes);
+			if (!bounds) return null;
+			const required = requiredFitZoom(bounds);
+			if (required === null) return null;
+			return {
+				required,
+				applied: getViewport().zoom,
+				clampedAtFloor: required < derivedMinZoom
+			};
+		}
 	});
 	installDiagnostics(diagnosticInputs);
 
@@ -1092,6 +1194,13 @@
 				}
 				layoutState.lastRenderedTopoKey = prep.topoKey;
 				layoutState.lastRenderedView = prep.currentView;
+				// The recursion is a second full pipeline run — two more `elk.layout()` calls —
+				// inside the run record the first one opened. Without its own record it wrote its
+				// details over the outer run's, and the outer `durationMs` silently reported both
+				// passes as one, while `pipelineRuns` climbed past `runs.length` with nothing to
+				// say where the extra runs went.
+				noteRunEnd();
+				noteRunStart('post-render-relayout');
 				await loadTopologyData();
 				return;
 			}
@@ -1103,23 +1212,40 @@
 
 		if (prep.viewChanged || prep.topologyChanged || isFirstRender || layoutState.fitViewPending) {
 			layoutState.fitViewPending = false;
-			// Double rAF: first lets SvelteFlow process node positions, second triggers fitView
+			// Double rAF: first lets SvelteFlow process node positions, second triggers the fit
 			requestAnimationFrame(() =>
-				requestAnimationFrame(() => {
-					fitView({ padding: getFitViewPadding() });
-					// fitView is the last thing a cold load does, so this is the
+				requestAnimationFrame(async () => {
+					await triggerFitView();
+					// The fit is the last thing a cold load does, so this is the
 					// point the harness treats as "interactive".
 					perf.count('fit-view');
 					perf.endRun();
-					// …and the first moment the canvas is final, so the honest place to ask
-					// whether anything is actually on it.
-					recordAfterRun(diagnosticInputs());
+					await sampleOnNextFrame();
 				})
 			);
 		} else {
 			perf.endRun();
-			recordAfterRun(diagnosticInputs());
+			// Not awaited: the run is finished, and holding its promise open for a frame would add
+			// that frame to the `durationMs` this record exists to report.
+			void sampleOnNextFrame();
 		}
+	}
+
+	/**
+	 * Take a diagnostics sample once the frame the user is looking at has actually been drawn.
+	 *
+	 * Every field in a sample that matters for blankness — `mounted`, `withSize`, `bounds`,
+	 * `intersectsPane`, `transform` — is read out of the DOM, and the DOM lags a viewport change by
+	 * a frame. Sampling in the same turn as the fit therefore described the *previous* viewport
+	 * applied to the new layout, which reads as a blank canvas: a capture showed `mounted: 0` on a
+	 * 3,228-node store and 804 mounted 755ms later with nothing else having happened, and a blank
+	 * row carrying a `transform` byte-identical to the previous view's. Worse, the first such row
+	 * latched the one-shot `firstBlank` capture, so the report spent its evidence on a frame that
+	 * was never on screen.
+	 */
+	async function sampleOnNextFrame(): Promise<void> {
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+		recordAfterRun(diagnosticInputs());
 	}
 
 	// --- Event handlers ---
@@ -1420,7 +1546,8 @@
 		onmoveend={handleMoveEnd}
 		fitView={true}
 		onlyRenderVisibleElements={cullOffscreen}
-		minZoom={0.1}
+		minZoom={derivedMinZoom}
+		maxZoom={MAX_ZOOM}
 		noPanClass="nopan"
 		snapGrid={[25, 25]}
 		nodesDraggable={!readonly}
