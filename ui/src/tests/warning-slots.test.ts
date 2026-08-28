@@ -4,8 +4,9 @@ import warningRemedies from '$lib/data/warning-remedies.json';
 import discoveryIntegrations from '$lib/data/discovery-integrations.json';
 import {
 	buildWarningReport,
+	credentialIdsOf,
 	type DiscoveryWarning,
-	type HostNameLookup
+	type EntityNameLookup
 } from '$lib/features/discovery/utils/warnings';
 
 /**
@@ -42,6 +43,7 @@ describe('discovery warning rendering', () => {
 			hours: 4,
 			hosts_not_scanned: 12,
 			minutes_remaining: 40,
+			credential_id: '00000000-0000-0000-0000-0000000000c1',
 			host_id: '00000000-0000-0000-0000-000000000001',
 			remote_host_id: '00000000-0000-0000-0000-000000000002',
 			if_descr: 'Gi1/0/1',
@@ -64,8 +66,8 @@ describe('discovery warning rendering', () => {
 	 * The report is grouped now — sections of rows, each row holding its code's sentences — but
 	 * the slot contract these tests pin is about the sentences themselves, so they read them flat.
 	 */
-	const sentences = (warnings: DiscoveryWarning[], hostName?: HostNameLookup): string[] =>
-		buildWarningReport(warnings, hostName)
+	const sentences = (warnings: DiscoveryWarning[], names?: EntityNameLookup): string[] =>
+		buildWarningReport(warnings, names)
 			.flatMap((section) => section.entries)
 			.flatMap((entry) => entry.details)
 			.map((statement) => statement.sentence);
@@ -251,6 +253,100 @@ describe('discovery warning rendering', () => {
 		expect(section.entries[0].details[0].sentence).toContain('192.168.7.252');
 		expect(section.entries[0].details[1].sentence).toContain('192.168.7.236');
 		expect(section.entries[0].details[1].sentence).not.toContain('192.168.7.248');
+	});
+
+	/**
+	 * The gap this closes: a *Fix in Scanopy* row asks the reader to change something, and until
+	 * the warning carried an id the row could only offer the credential list to go and find it in.
+	 * On a network with two SNMP communities the address does not narrow it to one.
+	 */
+	describe('naming the credential a row is about', () => {
+		const CREDENTIAL = '00000000-0000-0000-0000-0000000000c1';
+		const OTHER_CREDENTIAL = '00000000-0000-0000-0000-0000000000c2';
+
+		/** Names only the credentials, so an unresolved one is distinguishable from a missing id. */
+		const credentialNames: EntityNameLookup = (type, id) =>
+			type === 'Credential' && id === CREDENTIAL ? 'Core switches SNMP' : undefined;
+
+		/**
+		 * A credential warning with exactly the fields its variant carries.
+		 *
+		 * Not the maximal `sample()`: that object holds every field of every variant, including a
+		 * `host_id`, and a chip is read off the payload — so a credential row built from it would
+		 * take the host branch and prove nothing about credentials.
+		 */
+		const credentialWarning = (
+			code: string,
+			extra: Record<string, unknown> = {}
+		): DiscoveryWarning =>
+			({
+				code,
+				address: '10.0.0.1',
+				integration: 'Snmp',
+				detail: 'diagnostic',
+				credential_id: CREDENTIAL,
+				...extra
+			}) as unknown as DiscoveryWarning;
+
+		const rowFor = (warnings: DiscoveryWarning[]) =>
+			buildWarningReport(warnings, credentialNames).flatMap((s) => s.entries)[0];
+
+		it('chips the credential alongside the address it failed at', () => {
+			const row = rowFor([credentialWarning('CredentialMalformed')]);
+
+			// Both, not one: the address says which device was being reached, the credential says
+			// which record is wrong. Dropping either leaves the reader a lookup to do.
+			expect(row.subjects.map((s) => s.label)).toEqual(['10.0.0.1', 'Core switches SNMP']);
+			expect(row.subjects[1].entity).toEqual({ type: 'Credential', id: CREDENTIAL });
+			// The address is a label, not a link — there is no entity behind it.
+			expect(row.subjects[0].entity).toBeUndefined();
+		});
+
+		it('renders a warning recorded before ids existed with the address alone', () => {
+			// A historical row. The field is absent rather than null, which is what an older
+			// daemon posts too — neither may lose the row or leak a placeholder chip.
+			const withoutId = { ...(credentialWarning('CredentialMalformed') as object) } as Record<
+				string,
+				unknown
+			>;
+			delete withoutId.credential_id;
+			const row = rowFor([withoutId as unknown as DiscoveryWarning]);
+
+			expect(row.subjects.map((s) => s.label)).toEqual(['10.0.0.1']);
+			expect(row.details[0].sentence).not.toMatch(/\{\w+\}/);
+			expect(credentialIdsOf(row)).toEqual([]);
+		});
+
+		it('drops a credential chip whose id resolves to nothing', () => {
+			// Deleted since the scan, or a viewer who cannot read credentials. Same policy as an
+			// unresolvable host id: no chip, never a raw UUID on screen.
+			const row = rowFor([
+				credentialWarning('CredentialMalformed', { credential_id: OTHER_CREDENTIAL })
+			]);
+
+			expect(row.subjects.map((s) => s.label)).toEqual(['10.0.0.1']);
+			expect(row.subjects.some((s) => s.entity?.type === 'Credential')).toBe(false);
+			// Still reachable as an action target, though — the id is good even if the name is not
+			// loaded, and the editor resolves it itself.
+			expect(credentialIdsOf(row)).toEqual([OTHER_CREDENTIAL]);
+		});
+
+		it('offers one credential to open, and falls back to the list for several', () => {
+			// The rule `ProvisionalSubnetInferred` already applies to inferred ranges: one is a
+			// destination, several is a list, because the row stands for all of them.
+			const at = (address: string, credential_id: string) =>
+				credentialWarning('CredentialRejected', { address, credential_id });
+
+			expect(credentialIdsOf(rowFor([at('10.0.0.1', CREDENTIAL)]))).toEqual([CREDENTIAL]);
+
+			const several = rowFor([at('10.0.0.1', CREDENTIAL), at('10.0.0.2', OTHER_CREDENTIAL)]);
+			expect(credentialIdsOf(several)).toEqual([CREDENTIAL, OTHER_CREDENTIAL]);
+
+			// Deduped: one broken credential met at twenty addresses is still one credential, and
+			// would otherwise be sent to the list for looking like several.
+			const repeated = rowFor([at('10.0.0.1', CREDENTIAL), at('10.0.0.2', CREDENTIAL)]);
+			expect(credentialIdsOf(repeated)).toEqual([CREDENTIAL]);
+		});
 	});
 
 	it('merges credential failures that returned the same diagnostic', () => {

@@ -12,7 +12,7 @@ use anyhow::Error;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::daemon::discovery::credentials::resolve_credentials_for_ip;
+use crate::daemon::discovery::credentials::{ApplicableCredential, resolve_credentials_for_ip};
 use crate::daemon::discovery::service::ops::{DiscoveryOps, HostData};
 use crate::daemon::discovery::service::warnings::{
     AttemptOutcome, CredentialIssue, CredentialIssueReason, issue_for_attempt,
@@ -47,6 +47,7 @@ async fn attempt_credential(
     ctx: &ProbeContext<'_>,
     discriminant: CredentialQueryPayloadDiscriminants,
     user_assigned: bool,
+    credential_id: Option<Uuid>,
 ) -> Result<ProbeSuccess, Option<CredentialIssue>> {
     let failure = match integration.probe(ctx).await {
         Ok(success) => return Ok(success),
@@ -64,6 +65,7 @@ async fn attempt_credential(
         outcome,
         failure.message().to_string(),
         user_assigned,
+        credential_id,
     );
 
     if issue.is_none() {
@@ -119,6 +121,9 @@ struct DispositionEntry {
     discriminant: CredentialQueryPayloadDiscriminants,
     /// Whether the user pinned this to a host, which decides if a failure is a finding.
     user_assigned: bool,
+    /// The stored credential this mapping is for, so a ledger-reported failure can name it. The
+    /// mapping is built per credential, so one id covers the whole slot.
+    credential_id: Option<Uuid>,
     disposition: Disposition,
 }
 
@@ -158,6 +163,7 @@ fn resolve_ledger(ledger: Vec<DispositionEntry>, ip: IpAddr) -> Vec<CredentialIs
                     outcome,
                     message,
                     entry.user_assigned,
+                    entry.credential_id,
                 ));
             }
         }
@@ -223,7 +229,7 @@ pub async fn probe_integrations(
         entry: usize,
         discriminant: CredentialQueryPayloadDiscriminants,
         integration: Box<dyn DiscoveryIntegration>,
-        credentials: Vec<(&'a CredentialQueryPayload, Option<Uuid>)>,
+        credentials: Vec<ApplicableCredential<'a>>,
     }
     let mut tasks: Vec<ProbeTask> = Vec::new();
     let mut ledger: Vec<DispositionEntry> = Vec::new();
@@ -251,9 +257,19 @@ pub async fn probe_integrations(
             .ip_overrides
             .iter()
             .any(|o| o.ip == ip && o.credential_id != Uuid::nil());
+        // The credential this mapping stands for at this address: the override pinned here if
+        // there is one, otherwise the broadcast default. A mapping is built per credential, so
+        // these are the same row in every case where both are present.
+        let credential_id = mapping
+            .ip_overrides
+            .iter()
+            .find(|o| o.ip == ip && o.credential_id != Uuid::nil())
+            .map(|o| o.credential_id)
+            .or(mapping.default_credential_id);
         ledger.push(DispositionEntry {
             discriminant,
             user_assigned,
+            credential_id,
             disposition: Disposition::Unresolved,
         });
 
@@ -275,18 +291,23 @@ pub async fn probe_integrations(
             continue;
         }
         if !skip_gate {
-            let gate_ports = integration.probe_gate_ports(credentials[0].0);
+            let gate_ports = integration.probe_gate_ports(credentials[0].credential);
             if !gate_ports.is_empty() && !gate_ports.iter().all(|gp| all_open_ports.contains(gp)) {
                 // Silent until now, and the single likeliest reason a working credential
                 // appears to do nothing: the port on the credential does not match the port
                 // the service actually listens on, so no connection is ever attempted.
-                if credentials.iter().any(|(_, id)| id.is_some()) {
+                //
+                // Reported only for a credential the user pinned here: a broadcast default whose
+                // port is closed is routine on a sweep, and it now carries an id too, so presence
+                // of an id no longer distinguishes the two.
+                if let Some(applicable) = credentials.iter().find(|c| c.user_assigned) {
                     results.credential_issues.push(CredentialIssue {
                         integration: discriminant,
                         ip,
                         reason: CredentialIssueReason::GateClosed {
                             ports: gate_ports.clone(),
                         },
+                        credential_id: applicable.credential_id,
                     });
                     ledger[entry].disposition =
                         Disposition::Suppressed("gate closed; reported as GateClosed");
@@ -327,7 +348,7 @@ pub async fn probe_integrations(
             // assigned to one host are all attempted and the first success wins, so the ones
             // tried before it "failed" without anything being wrong.
             let mut targeted_failures: Vec<CredentialIssue> = Vec::new();
-            for (credential, cred_id) in &credentials {
+            for applicable in &credentials {
                 if cancel.is_cancelled() {
                     return (
                         entry,
@@ -336,25 +357,32 @@ pub async fn probe_integrations(
                         Disposition::Suppressed("the scan was cancelled"),
                     );
                 }
+                let cred_id = applicable.credential_id;
                 match attempt_credential(
                     integration.as_ref(),
                     &ProbeContext {
                         ip,
-                        credential,
-                        credential_id: *cred_id,
+                        credential: applicable.credential,
+                        credential_id: cred_id,
                         cancel,
                         utils,
                         accept_invalid_certs,
                     },
                     discriminant,
-                    cred_id.is_some(),
+                    applicable.user_assigned,
+                    cred_id,
                 )
                 .await
                 {
                     Ok(success) => {
                         return (
                             entry,
-                            Some((discriminant, *cred_id, (*credential).clone(), success)),
+                            Some((
+                                discriminant,
+                                cred_id,
+                                applicable.credential.clone(),
+                                success,
+                            )),
                             Vec::new(),
                             Disposition::Probed,
                         );
@@ -542,6 +570,7 @@ pub async fn execute_integrations(
                         associated_service.name()
                     ),
                     true,
+                    *cred_id,
                 )
                 .await;
             continue;
@@ -623,6 +652,7 @@ pub async fn execute_integrations(
                     e.outcome(),
                     e.message().to_string(),
                     true,
+                    *cred_id,
                 )
                 .await;
         }
@@ -683,7 +713,7 @@ mod tests {
     fn snmp_mapping() -> CredentialMapping<CredentialQueryPayload> {
         CredentialMapping {
             default_credential: Some(CredentialQueryPayload::default()), // Snmp
-            ip_overrides: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -692,7 +722,7 @@ mod tests {
             default_credential: Some(CredentialQueryPayload::DockerSocket(
                 ContainerSocketQueryCredential { socket_path: None },
             )),
-            ip_overrides: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -830,6 +860,7 @@ mod ledger_tests {
         DispositionEntry {
             discriminant: CredentialQueryPayloadDiscriminants::Snmp,
             user_assigned,
+            credential_id: None,
             disposition,
         }
     }

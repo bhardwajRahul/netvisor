@@ -22,6 +22,7 @@ pub use coding::{
 };
 
 use std::net::IpAddr;
+use uuid::Uuid;
 
 // Re-exported so the SNMP integration keeps building records against one path, even though the
 // two value enums are wire types now and live with the codes.
@@ -590,6 +591,13 @@ pub struct CredentialIssue {
     pub integration: CredentialQueryPayloadDiscriminants,
     pub ip: IpAddr,
     pub reason: CredentialIssueReason,
+    /// The stored credential behind the issue, where the dispatch that found it had one.
+    ///
+    /// Carried on the issue rather than looked up later because this is the only point at which
+    /// the credential that was actually tried is still identified — by the time the warning is
+    /// read back, address and integration are all that remain, and neither picks one record out
+    /// of a network with two SNMP communities.
+    pub credential_id: Option<Uuid>,
 }
 
 /// Whether a finished credential attempt is worth telling the operator about, and as what.
@@ -612,6 +620,7 @@ pub fn issue_for_attempt(
     outcome: AttemptOutcome,
     message: String,
     user_assigned: bool,
+    credential_id: Option<Uuid>,
 ) -> Option<CredentialIssue> {
     if outcome == AttemptOutcome::Cancelled {
         return None;
@@ -628,6 +637,7 @@ pub fn issue_for_attempt(
         integration,
         ip,
         reason: CredentialIssueReason::Attempted { outcome, message },
+        credential_id,
     })
 }
 #[cfg(test)]
@@ -982,6 +992,12 @@ mod tests {
         assert_eq!(contradicted_claims(addr, outcome).len(), 1);
     }
 
+    /// The credential the fixture attempts under, so the tests can tell "carried through"
+    /// from "happens to be None".
+    fn tried_credential() -> Uuid {
+        Uuid::from_u128(0x5ca0)
+    }
+
     fn decide(outcome: AttemptOutcome, user_assigned: bool) -> Option<CredentialIssue> {
         issue_for_attempt(
             CredentialQueryPayloadDiscriminants::Snmp,
@@ -989,6 +1005,7 @@ mod tests {
             outcome,
             "detail from the integration".to_string(),
             user_assigned,
+            Some(tried_credential()),
         )
     }
 
@@ -1037,6 +1054,9 @@ mod tests {
         let issue = decide(AttemptOutcome::Rejected, true).expect("should be reported");
         assert_eq!(issue.ip, ip("10.0.0.1"));
         assert_eq!(issue.integration, CredentialQueryPayloadDiscriminants::Snmp);
+        // Which record to go and fix — the address alone does not say, on a network with two
+        // communities configured.
+        assert_eq!(issue.credential_id, Some(tried_credential()));
         match issue.reason {
             CredentialIssueReason::Attempted { outcome, message } => {
                 assert_eq!(outcome, AttemptOutcome::Rejected);

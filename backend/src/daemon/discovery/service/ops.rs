@@ -847,10 +847,16 @@ impl DiscoveryOps {
         outcome: warnings::AttemptOutcome,
         message: String,
         user_assigned: bool,
+        credential_id: Option<uuid::Uuid>,
     ) {
-        let Some(issue) =
-            warnings::issue_for_attempt(integration, ip, outcome, message, user_assigned)
-        else {
+        let Some(issue) = warnings::issue_for_attempt(
+            integration,
+            ip,
+            outcome,
+            message,
+            user_assigned,
+            credential_id,
+        ) else {
             return;
         };
         if let Ok(session) = self.get_session().await

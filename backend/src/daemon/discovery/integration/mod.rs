@@ -567,6 +567,7 @@ async fn report_shortfall(ctx: &IntegrationContext<'_>, shortfall: &CollectionSh
                 shortfall.collected, shortfall.expected, shortfall.what
             ),
             true,
+            ctx.credential_id,
         )
         .await;
 }
