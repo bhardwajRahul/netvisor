@@ -5,7 +5,12 @@
  * its `parseCIDR`/`match` pair the shape the callers want, so nobody hand-rolls prefix maths.
  */
 
-import { parseCIDR, isValidCIDR } from 'ipaddr.js';
+// Default import, then destructure. `ipaddr.js` is CommonJS, so Vite's SSR transform cannot bind
+// named exports from it and a `import { parseCIDR }` form fails at run time rather than at build.
+// `shared/components/forms/validators.ts` takes the same shape against the same package.
+import pkg from 'ipaddr.js';
+
+const { parseCIDR, isValidCIDR } = pkg;
 
 /**
  * Whether `outer` covers every address in `inner`. A range contains itself.
