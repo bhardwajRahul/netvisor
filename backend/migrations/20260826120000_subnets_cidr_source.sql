@@ -7,8 +7,8 @@
 -- and a guess that cannot be told apart from an observation is worse than no guess at all.
 --
 -- `cidr_source` is an `AttributeSource`, the same shared ladder every provenanced value uses —
--- values are serde's adjacently tagged form, so a fieldless source is `{"type":"Manual"}` and one
--- carrying a probe is `{"type":"Probe","probe":"Snmp"}`. It started life as a private three-rung
+-- values are serde's externally tagged form, so a fieldless source is the bare name `"Manual"` and
+-- one carrying a probe is `{"Probe":"Snmp"}`. It started life as a private three-rung
 -- `SubnetCidrSource`; this migration is edited in place rather than followed by a second one
 -- because it has shipped in no release, so the column has never existed anywhere as the old shape.
 --
@@ -29,13 +29,13 @@ SET lock_timeout = '5s';
 SET statement_timeout = '30s';
 
 ALTER TABLE subnets
-    ADD COLUMN IF NOT EXISTS cidr_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
+    ADD COLUMN IF NOT EXISTS cidr_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
 
 -- A subnet a person created is one they asserted, which is the top rung and is never displaced by
 -- anything a scan reads. Single statement rather than a batched loop: `subnets` is small by nature
 -- (one row per segment, not per host), and the predicate is indexed by the table's own size rather
 -- than needing one.
 UPDATE subnets
-   SET cidr_source = '{"type":"Manual"}'::jsonb
+   SET cidr_source = '"Manual"'::jsonb
  WHERE source->>'type' = 'Manual'
-   AND cidr_source = '{"type":"Unspecified"}'::jsonb;
+   AND cidr_source = '"Unspecified"'::jsonb;

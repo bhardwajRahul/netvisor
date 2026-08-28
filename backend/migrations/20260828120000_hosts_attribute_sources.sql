@@ -13,9 +13,11 @@
 -- `<field>_source` records what produced each value, and the merge compares rungs instead of
 -- asking whether the field was still empty.
 --
--- The values here are `AttributeSource` as serde writes it: adjacently tagged, so a fieldless
--- source is `{"type":"Manual"}` and one carrying a probe is `{"type":"Probe","probe":"Snmp"}` —
--- the same shape `hosts.virtualization_metadata` and `interfaces.lldp_chassis_id` already use.
+-- The values here are `AttributeSource` as serde writes it: externally tagged, so a fieldless source
+-- is the bare name `"Manual"` and one carrying a probe is `{"Probe":"Snmp"}`. Thirty-three of the
+-- thirty-five carry nothing, and a tag on a variant with no content distinguishes nothing — hence
+-- the bare string rather than the adjacently tagged object `hosts.virtualization_metadata` and
+-- `interfaces.lldp_chassis_id` use, which have payloads on every variant.
 --
 -- Deploy sequence: stop the server, run migrations, start the new server. `name_source` changes
 -- type and its whole vocabulary, and an old container would read neither — so this release ships
@@ -42,24 +44,24 @@ SET statement_timeout = '0';
 --    renders them read-only), so there is nothing to protect and everything to let discovery
 --    improve. A row left at `Unspecified` is displaced by the first real reading, which is the
 --    outcome we want.
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS sys_descr_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS sys_object_id_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS sys_location_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS sys_contact_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS management_url_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS chassis_id_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS sys_name_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS manufacturer_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS model_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS serial_number_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS firmware_revision_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS sys_descr_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS sys_object_id_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS sys_location_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS sys_contact_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS management_url_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS chassis_id_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS sys_name_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS manufacturer_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS model_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS serial_number_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS firmware_revision_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
 
 -- 2. The name's replacement column.
 --
 --    `Manual` is the default here, keeping the asymmetry 20260819120000 reasoned about for any row
 --    the backfill below does not reach: choosing wrong in that direction leaves a name stale, and
 --    choosing wrong the other way silently renames something a user named.
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS name_source_jsonb JSONB NOT NULL DEFAULT '{"type":"Manual"}'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS name_source_jsonb JSONB NOT NULL DEFAULT '"Manual"'::jsonb;
 
 -- 3. One batched pass, doing both jobs.
 --
@@ -116,43 +118,43 @@ BEGIN
 
         UPDATE hosts h
            SET name_source_jsonb = CASE h.name_source
-                   WHEN 'Unnamed'         THEN '{"type":"Unspecified"}'::jsonb
-                   WHEN 'Unspecified'     THEN '{"type":"Unspecified"}'::jsonb
-                   WHEN 'Ip'              THEN '{"type":"OwnAddress"}'::jsonb
-                   WHEN 'DetectedService' THEN '{"type":"ServiceMatch"}'::jsonb
-                   WHEN 'Hostname'        THEN '{"type":"ReverseDns"}'::jsonb
-                   WHEN 'DnsSd'           THEN '{"type":"DnsSdInstanceName"}'::jsonb
-                   WHEN 'Integration'     THEN '{"type":"Authored","probe":"UnifiController"}'::jsonb
-                   ELSE '{"type":"Manual"}'::jsonb
+                   WHEN 'Unnamed'         THEN '"Unspecified"'::jsonb
+                   WHEN 'Unspecified'     THEN '"Unspecified"'::jsonb
+                   WHEN 'Ip'              THEN '"OwnAddress"'::jsonb
+                   WHEN 'DetectedService' THEN '"ServiceMatch"'::jsonb
+                   WHEN 'Hostname'        THEN '"ReverseDns"'::jsonb
+                   WHEN 'DnsSd'           THEN '"DnsSdInstanceName"'::jsonb
+                   WHEN 'Integration'     THEN '{"Authored":"UnifiController"}'::jsonb
+                   ELSE '"Manual"'::jsonb
                END,
                sys_descr_source = CASE
                    WHEN h.source->>'type' = 'Manual' AND h.sys_descr IS NOT NULL
-                       THEN '{"type":"Manual"}'::jsonb
+                       THEN '"Manual"'::jsonb
                    ELSE h.sys_descr_source
                END,
                sys_object_id_source = CASE
                    WHEN h.source->>'type' = 'Manual' AND h.sys_object_id IS NOT NULL
-                       THEN '{"type":"Manual"}'::jsonb
+                       THEN '"Manual"'::jsonb
                    ELSE h.sys_object_id_source
                END,
                sys_location_source = CASE
                    WHEN h.source->>'type' = 'Manual' AND h.sys_location IS NOT NULL
-                       THEN '{"type":"Manual"}'::jsonb
+                       THEN '"Manual"'::jsonb
                    ELSE h.sys_location_source
                END,
                sys_contact_source = CASE
                    WHEN h.source->>'type' = 'Manual' AND h.sys_contact IS NOT NULL
-                       THEN '{"type":"Manual"}'::jsonb
+                       THEN '"Manual"'::jsonb
                    ELSE h.sys_contact_source
                END,
                management_url_source = CASE
                    WHEN h.source->>'type' = 'Manual' AND h.management_url IS NOT NULL
-                       THEN '{"type":"Manual"}'::jsonb
+                       THEN '"Manual"'::jsonb
                    ELSE h.management_url_source
                END,
                chassis_id_source = CASE
                    WHEN h.source->>'type' = 'Manual' AND h.chassis_id IS NOT NULL
-                       THEN '{"type":"Manual"}'::jsonb
+                       THEN '"Manual"'::jsonb
                    ELSE h.chassis_id_source
                END
          WHERE h.id = ANY(batch);

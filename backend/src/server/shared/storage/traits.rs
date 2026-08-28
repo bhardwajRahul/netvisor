@@ -13,7 +13,7 @@ use crate::server::dependencies::r#impl::base::Dependency;
 use crate::server::lldp::{LldpChassisId, LldpPortId};
 use crate::server::services::r#impl::base::Service;
 use crate::server::services::r#impl::patterns::ClientProbe;
-use crate::server::shared::attribution::{AttributeSource, AttributeSourceKind};
+use crate::server::shared::attribution::{AttributeSource, AttributeSourceDiscriminants};
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::entity_metadata::EntityCategory;
 use crate::server::shared::events::types::{BillingOperation, OnboardingOperationDiscriminants};
@@ -515,17 +515,18 @@ impl DbEnumContributor for RunType {
 
 /// `AttributeSource` is the second composite whose nested enum is reachable nowhere else.
 ///
-/// Two of its variants carry a [`ClientProbe`] in the persisted JSON (`{"type":"Probe",
-/// "probe":"Snmp"}`), so the probe names are values written to the database that
+/// Two of its variants carry a [`ClientProbe`] in the persisted JSON (`{"Probe":"Snmp"}`), so the
+/// probe names are values written to the database that
 /// `strum::VariantNames` on `AttributeSource` alone cannot see. Same delegation, same reason, as
 /// `RunType` above: without it, adding a probe would slip past both coexistence gates while being
 /// written to every `*_source` column.
 impl DbEnumContributor for AttributeSource {
     fn contribute(out: &mut std::collections::BTreeMap<&'static str, Vec<String>>) {
-        let variants: Vec<String> = <AttributeSourceKind as ::strum::VariantNames>::VARIANTS
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let variants: Vec<String> =
+            <AttributeSourceDiscriminants as ::strum::VariantNames>::VARIANTS
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
         out.insert(db_enum_key_for::<AttributeSource>(), variants);
 
         ClientProbe::contribute(out);
