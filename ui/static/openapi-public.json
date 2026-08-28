@@ -12238,19 +12238,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-08-28T15:33:32.433081Z",
+              "created_at": "2026-08-28T17:38:51.810513Z",
               "first_discovery_id": null,
-              "id": "9f3e3260-31cb-4aa1-b498-ae9d836b9d8b",
+              "id": "87f8357f-f822-4878-9cc1-6021943da111",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-28T15:33:32.433081Z",
+              "last_seen_at": "2026-08-28T17:38:51.810513Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-28T15:33:32.433081Z",
-              "valid_from": "2026-08-28T15:33:32.433081Z",
+              "updated_at": "2026-08-28T17:38:51.810513Z",
+              "valid_from": "2026-08-28T17:38:51.810513Z",
               "valid_to": null
             }
           },
@@ -13291,6 +13291,7 @@
               "hidden",
               "tags",
               "firmware_revision",
+              "software_revision",
               "ip_addresses",
               "ports",
               "services",
@@ -13340,7 +13341,8 @@
                   "string",
                   "null"
                 ],
-                "description": "Firmware or software revision of the device."
+                "description": "ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above.",
+                "readOnly": true
               },
               "firmware_revision_source": {
                 "$ref": "#/components/schemas/AttributeSource",
@@ -13454,6 +13456,18 @@
                   "$ref": "#/components/schemas/Service"
                 },
                 "description": "Services running on this host."
+              },
+              "software_revision": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above.",
+                "readOnly": true
+              },
+              "software_revision_source": {
+                "$ref": "#/components/schemas/AttributeSource",
+                "description": "What produced the software revision. Read-only: decided by whichever source read it."
               },
               "source": {
                 "$ref": "#/components/schemas/EntitySource",
@@ -13648,19 +13662,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-08-28T15:33:32.412433Z",
+                      "created_at": "2026-08-28T17:38:51.790255Z",
                       "first_discovery_id": null,
-                      "id": "46c768fc-45d3-4293-8c4c-20a06d0409c4",
+                      "id": "b22d4a8e-f821-42b1-b21a-14ece5da7ccb",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-08-28T15:33:32.412433Z",
+                      "last_seen_at": "2026-08-28T17:38:51.790255Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-08-28T15:33:32.412433Z",
-                      "valid_from": "2026-08-28T15:33:32.412433Z",
+                      "updated_at": "2026-08-28T17:38:51.790255Z",
+                      "valid_from": "2026-08-28T17:38:51.790255Z",
                       "valid_to": null
                     }
                   ],
@@ -13674,7 +13688,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Ollama",
+                  "service_definition": "Prometheus Node Exporter",
                   "source": {
                     "type": "Manual"
                   },
@@ -13686,6 +13700,8 @@
                   "virtualization_service_id": null
                 }
               ],
+              "software_revision": null,
+              "software_revision_source": "Unspecified",
               "source": {
                 "type": "Manual"
               },
@@ -14883,19 +14899,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-08-28T15:33:32.428193Z",
+                  "created_at": "2026-08-28T17:38:51.805529Z",
                   "first_discovery_id": null,
-                  "id": "33b2d3a8-3b40-4faf-a7f0-f44c40786c03",
+                  "id": "d3b99148-32f5-4303-b6cd-5ab10d221ff1",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-28T15:33:32.428193Z",
+                  "last_seen_at": "2026-08-28T17:38:51.805529Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-28T15:33:32.428193Z",
-                  "valid_from": "2026-08-28T15:33:32.428193Z",
+                  "updated_at": "2026-08-28T17:38:51.805529Z",
+                  "valid_from": "2026-08-28T17:38:51.805529Z",
                   "valid_to": null
                 }
               ],
@@ -14909,7 +14925,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Ollama",
+              "service_definition": "Prometheus Node Exporter",
               "source": {
                 "type": "Manual"
               },
@@ -17085,19 +17101,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-08-28T15:33:32.412863Z",
+          "created_at": "2026-08-28T17:38:51.790651Z",
           "first_discovery_id": null,
-          "id": "f3f19d5a-a7bc-4d75-a4f7-b8cb03746670",
+          "id": "d65589fa-e08c-4d01-b306-85947344f90b",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-08-28T15:33:32.412863Z",
+          "last_seen_at": "2026-08-28T17:38:51.790651Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-08-28T15:33:32.412863Z",
-          "valid_from": "2026-08-28T15:33:32.412863Z",
+          "updated_at": "2026-08-28T17:38:51.790651Z",
+          "valid_from": "2026-08-28T17:38:51.790651Z",
           "valid_to": null
         }
       },
@@ -17760,7 +17776,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Ollama",
+              "service_definition": "Prometheus Node Exporter",
               "tags": [],
               "virtualization_metadata": null,
               "virtualization_service_id": null
@@ -22142,7 +22158,11 @@
           },
           {
             "$ref": "#/components/schemas/HostFirmwareRevision",
-            "description": "Firmware or software revision of the device as a whole.\n\nWritten by whichever source read it — a controller's REST inventory, an industrial probe's\nidentity response, and (once ENTITY-MIB revisions land) `entPhysicalFirmwareRev`. Before\nthis column existed each of those had nowhere to put a version it had already read, and two\nof them flattened it into `sys_descr` as prose.\n\nDevice-level rather than per-module: everything downstream is host-shaped, and the NCCoE\nasset-inventory minimum says \"product version\", singular."
+            "description": "Firmware revision of the device as a whole — ENTITY-MIB `entPhysicalFirmwareRev`.\n\nWritten by whichever source read it — a controller's REST inventory, an industrial probe's\nidentity response, and `entPhysicalFirmwareRev`. Before this column existed each of those\nhad nowhere to put a version it had already read, and two of them flattened it into\n`sys_descr` as prose.\n\nDevice-level rather than per-module: everything downstream is host-shaped, and the NCCoE\nasset-inventory minimum says \"product version\", singular."
+          },
+          {
+            "$ref": "#/components/schemas/HostSoftwareRevision",
+            "description": "Software revision of the device as a whole — ENTITY-MIB `entPhysicalSoftwareRev`.\n\nIts own field rather than sharing `firmware_revision`, because RFC 4133 defines `.9` and\n`.10` as distinct objects: on a Cisco chassis they are the bootloader and the IOS version,\nand one column holding either with nothing recording which cannot tell them apart. Only\nENTITY-MIB writes it — every other source reports a single version, which is the firmware."
           },
           {
             "type": "object",
@@ -22241,7 +22261,7 @@
         "properties": {
           "firmware_revision": {
             "type": "string",
-            "description": "Firmware or software revision of the device as a whole"
+            "description": "ENTITY-MIB entPhysicalFirmwareRev - firmware revision of the device as a whole"
           },
           "firmware_revision_source": {
             "$ref": "#/components/schemas/AttributeSource"
@@ -22334,6 +22354,7 @@
           "hidden",
           "tags",
           "firmware_revision",
+          "software_revision",
           "ip_addresses",
           "ports",
           "services",
@@ -22383,7 +22404,8 @@
               "string",
               "null"
             ],
-            "description": "Firmware or software revision of the device."
+            "description": "ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above.",
+            "readOnly": true
           },
           "firmware_revision_source": {
             "$ref": "#/components/schemas/AttributeSource",
@@ -22497,6 +22519,18 @@
               "$ref": "#/components/schemas/Service"
             },
             "description": "Services running on this host."
+          },
+          "software_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above.",
+            "readOnly": true
+          },
+          "software_revision_source": {
+            "$ref": "#/components/schemas/AttributeSource",
+            "description": "What produced the software revision. Read-only: decided by whichever source read it."
           },
           "source": {
             "$ref": "#/components/schemas/EntitySource",
@@ -22691,19 +22725,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-08-28T15:33:32.411967Z",
+                  "created_at": "2026-08-28T17:38:51.789802Z",
                   "first_discovery_id": null,
-                  "id": "d44ca112-09cb-4199-afcc-df4f255f6b55",
+                  "id": "562bc62d-c84a-4e0e-ad50-dfc7bd408313",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-28T15:33:32.411967Z",
+                  "last_seen_at": "2026-08-28T17:38:51.789802Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-28T15:33:32.411967Z",
-                  "valid_from": "2026-08-28T15:33:32.411967Z",
+                  "updated_at": "2026-08-28T17:38:51.789802Z",
+                  "valid_from": "2026-08-28T17:38:51.789802Z",
                   "valid_to": null
                 }
               ],
@@ -22717,7 +22751,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Ollama",
+              "service_definition": "Prometheus Node Exporter",
               "source": {
                 "type": "Manual"
               },
@@ -22729,6 +22763,8 @@
               "virtualization_service_id": null
             }
           ],
+          "software_revision": null,
+          "software_revision_source": "Unspecified",
           "source": {
             "type": "Manual"
           },
@@ -22751,6 +22787,18 @@
             "description": "ENTITY-MIB entPhysicalSerialNum - hardware serial number"
           },
           "serial_number_source": {
+            "$ref": "#/components/schemas/AttributeSource"
+          }
+        }
+      },
+      "HostSoftwareRevision": {
+        "type": "object",
+        "properties": {
+          "software_revision": {
+            "type": "string",
+            "description": "ENTITY-MIB entPhysicalSoftwareRev - software revision of the device as a whole"
+          },
+          "software_revision_source": {
             "$ref": "#/components/schemas/AttributeSource"
           }
         }
@@ -25592,6 +25640,7 @@
                 "hidden",
                 "tags",
                 "firmware_revision",
+                "software_revision",
                 "ip_addresses",
                 "ports",
                 "services",
@@ -25641,7 +25690,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Firmware or software revision of the device."
+                  "description": "ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above.",
+                  "readOnly": true
                 },
                 "firmware_revision_source": {
                   "$ref": "#/components/schemas/AttributeSource",
@@ -25755,6 +25805,18 @@
                     "$ref": "#/components/schemas/Service"
                   },
                   "description": "Services running on this host."
+                },
+                "software_revision": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above.",
+                  "readOnly": true
+                },
+                "software_revision_source": {
+                  "$ref": "#/components/schemas/AttributeSource",
+                  "description": "What produced the software revision. Read-only: decided by whichever source read it."
                 },
                 "source": {
                   "$ref": "#/components/schemas/EntitySource",
@@ -25949,19 +26011,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-08-28T15:33:32.402548Z",
+                        "created_at": "2026-08-28T17:38:51.780864Z",
                         "first_discovery_id": null,
-                        "id": "fdd816d3-0fe0-4eaa-a105-f5ff88f20465",
+                        "id": "570e3b97-8dbd-4866-82ca-4e2c48bd0e24",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-08-28T15:33:32.402548Z",
+                        "last_seen_at": "2026-08-28T17:38:51.780864Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-08-28T15:33:32.402548Z",
-                        "valid_from": "2026-08-28T15:33:32.402548Z",
+                        "updated_at": "2026-08-28T17:38:51.780864Z",
+                        "valid_from": "2026-08-28T17:38:51.780864Z",
                         "valid_to": null
                       }
                     ],
@@ -25975,7 +26037,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Ollama",
+                    "service_definition": "Prometheus Node Exporter",
                     "source": {
                       "type": "Manual"
                     },
@@ -25987,6 +26049,8 @@
                     "virtualization_service_id": null
                   }
                 ],
+                "software_revision": null,
+                "software_revision_source": "Unspecified",
                 "source": {
                   "type": "Manual"
                 },
@@ -26116,19 +26180,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-08-28T15:33:32.427330Z",
+                    "created_at": "2026-08-28T17:38:51.804661Z",
                     "first_discovery_id": null,
-                    "id": "4d273df6-af01-48e5-a49d-153a07dcbd97",
+                    "id": "e3d12bc8-546b-4c7e-9342-ac92a8795784",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-08-28T15:33:32.427330Z",
+                    "last_seen_at": "2026-08-28T17:38:51.804661Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-08-28T15:33:32.427330Z",
-                    "valid_from": "2026-08-28T15:33:32.427330Z",
+                    "updated_at": "2026-08-28T17:38:51.804661Z",
+                    "valid_from": "2026-08-28T17:38:51.804661Z",
                     "valid_to": null
                   }
                 ],
@@ -26142,7 +26206,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Ollama",
+                "service_definition": "Prometheus Node Exporter",
                 "source": {
                   "type": "Manual"
                 },
@@ -28173,19 +28237,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-08-28T15:33:32.412769Z",
+              "created_at": "2026-08-28T17:38:51.790566Z",
               "first_discovery_id": null,
-              "id": "26436e69-492e-480a-beaa-cea92fdb3d9c",
+              "id": "0a32aed6-a86d-4b44-83ee-86a6a73a3206",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-28T15:33:32.412769Z",
+              "last_seen_at": "2026-08-28T17:38:51.790566Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-28T15:33:32.412769Z",
-              "valid_from": "2026-08-28T15:33:32.412769Z",
+              "updated_at": "2026-08-28T17:38:51.790566Z",
+              "valid_from": "2026-08-28T17:38:51.790566Z",
               "valid_to": null
             }
           ],
@@ -28199,7 +28263,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Ollama",
+          "service_definition": "Prometheus Node Exporter",
           "source": {
             "type": "Manual"
           },
@@ -29436,7 +29500,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "247f5454-ab9a-42ce-a52e-8e294ac474ff",
+                  "id": "a9606eb6-49a3-41ca-9ad1-d4452170d342",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -29446,23 +29510,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "85144b01-b9c7-4fc7-8b9a-5a838a1e1761",
+                  "id": "822649c2-7e8b-4e04-a72d-72d29a59355f",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "27618d09-3058-4a40-ba7b-10af58042070",
+                  "id": "2c5f6c95-6c9a-4473-b8f8-01f99bf17414",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "ae59e694-c34d-4e51-b12d-145d8e565749",
+                  "id": "8ef45320-6193-458e-ad6d-8e4164f7a342",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "85144b01-b9c7-4fc7-8b9a-5a838a1e1761",
+                  "id": "822649c2-7e8b-4e04-a72d-72d29a59355f",
                   "rule": "ByHost"
                 }
               ]
@@ -29492,19 +29556,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "b510c633-035f-4530-a43e-38ca94d063bd",
+                "id": "9552cdd1-1654-4eda-a58e-b7455e3ef5b3",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "d7f6edfc-b064-45d8-910e-447713c98584",
+                "id": "9a1c4fb5-0b3d-4ff2-8d1e-7c338c34afea",
                 "rule": "ByVLAN"
               },
               {
-                "id": "2e821c83-afb4-488a-8983-88dc3a217dbe",
+                "id": "38b65b21-f943-408d-b0ef-90890751b72d",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "e2f77348-9be2-4e32-9200-57f8866ac625",
+                "id": "f68c15cb-5363-4465-a581-d186867a4ba5",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -29522,7 +29586,7 @@
                 }
               },
               {
-                "id": "69fb8aa7-6899-4858-b1b1-e6cdf0701261",
+                "id": "d83d83fb-b833-4fce-b13d-a750d3095783",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -29531,15 +29595,15 @@
                 }
               },
               {
-                "id": "cf58bdc9-8be6-4a7b-b0c9-64cbdf7ac664",
+                "id": "122a9ed2-28cb-4816-8a18-8c048c13eb33",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "b6864464-6c80-4b77-bd3e-e0ad17ab39ef",
+                "id": "7be1c923-28c3-4cb9-aa98-7d21fe293e17",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "c06c301e-c91e-4547-ac1d-753a818dfb54",
+                "id": "0d80b781-fc54-4f70-98d9-dc54d77b203a",
                 "rule": "ByStack"
               }
             ]
