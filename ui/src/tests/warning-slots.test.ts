@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import warningCodes from '$lib/data/warning-codes.json';
+import warningRemedies from '$lib/data/warning-remedies.json';
 import discoveryIntegrations from '$lib/data/discovery-integrations.json';
-import { renderWarnings, type DiscoveryWarning } from '$lib/features/discovery/utils/warnings';
+import {
+	buildWarningReport,
+	type DiscoveryWarning,
+	type HostNameLookup
+} from '$lib/features/discovery/utils/warnings';
 
 /**
  * The frontend half of the slot contract.
@@ -53,11 +58,22 @@ describe('discovery warning rendering', () => {
 			elided: 7
 		}) as unknown as DiscoveryWarning;
 
+	/**
+	 * Every sentence a run renders, in reading order.
+	 *
+	 * The report is grouped now — sections of rows, each row holding its code's sentences — but
+	 * the slot contract these tests pin is about the sentences themselves, so they read them flat.
+	 */
+	const sentences = (warnings: DiscoveryWarning[], hostName?: HostNameLookup): string[] =>
+		buildWarningReport(warnings, hostName)
+			.flatMap((section) => section.entries)
+			.flatMap((entry) => entry.details);
+
 	it('renders every code the backend can send, with no slot left unfilled', () => {
 		const unfilled: string[] = [];
 
 		for (const entry of warningCodes) {
-			const rendered = renderWarnings([sample(entry.id)]);
+			const rendered = sentences([sample(entry.id)]);
 
 			expect(rendered, `${entry.id} rendered nothing`).toHaveLength(1);
 			// A `{slot}` surviving into the output is a parameter the renderer did not supply.
@@ -81,7 +97,7 @@ describe('discovery warning rendering', () => {
 			(address) => sample('InterfaceSetCutShort') && { ...sample('InterfaceSetCutShort'), address }
 		);
 
-		const rendered = renderWarnings(warnings as DiscoveryWarning[]);
+		const rendered = sentences(warnings as DiscoveryWarning[]);
 
 		// The reported problem this aggregation exists for: fifteen switches produced fifteen
 		// paragraphs. One sentence per code, always — and no device silently dropped from it.
@@ -91,7 +107,7 @@ describe('discovery warning rendering', () => {
 	});
 
 	it('keeps devices that failed differently in separate sentences', () => {
-		const rendered = renderWarnings([
+		const rendered = sentences([
 			sample('SnmpWalkNoAnswer'),
 			{ ...sample('SnmpWalkUnsupported'), address: '10.0.0.2' } as DiscoveryWarning
 		]);
@@ -110,7 +126,7 @@ describe('discovery warning rendering', () => {
 
 		for (const id of integrations) {
 			const w = { ...sample('CredentialRejected'), integration: id } as unknown as DiscoveryWarning;
-			const [line] = renderWarnings([w]);
+			const [line] = sentences([w]);
 			const name = discoveryIntegrations.find((i) => i.id === id)?.name;
 			expect(line, `${id} has no display name`).toContain(name);
 			// The raw value may only appear when it is also the display name.
@@ -122,7 +138,7 @@ describe('discovery warning rendering', () => {
 		const at = (address: string, detail: string) =>
 			({ ...sample('CredentialRejected'), address, detail }) as unknown as DiscoveryWarning;
 
-		const rendered = renderWarnings([
+		const rendered = sentences([
 			at('10.0.0.1', 'wrong community'),
 			at('10.0.0.2', 'authentication failure')
 		]);
@@ -152,7 +168,7 @@ describe('discovery warning rendering', () => {
 		]) {
 			// The worst case: no host name *and* a device that reported no interface description.
 			const w = { ...sample(code), if_descr: '' } as unknown as DiscoveryWarning;
-			const [line] = renderWarnings([w], noNames);
+			const [line] = sentences([w], noNames);
 
 			expect(line, `${code} left a dangling arrow`).not.toMatch(/(^|[,:.] |\band )+->/);
 			expect(line, `${code} left a trailing arrow`).not.toMatch(/->\s*$/);
@@ -171,8 +187,50 @@ describe('discovery warning rendering', () => {
 
 		// Historical sessions hold bare sentences, and they have to keep reading exactly as they
 		// did before warnings were coded.
-		expect(renderWarnings([legacy])).toEqual([
-			'Scan hit its time limit (4h) — 12 host(s) not scanned.'
-		]);
+		expect(sentences([legacy])).toEqual(['Scan hit its time limit (4h) — 12 host(s) not scanned.']);
+	});
+
+	it('files every code under a rung the remedy registry defines', () => {
+		// Two fixtures have to agree for the report to render at all: a code names its rung in
+		// `category`, and the rung supplies the heading. A code filed under a rung that is not
+		// there renders in no section and vanishes from the list without an error.
+		const rungs = new Set(warningRemedies.map((r) => r.id));
+		expect(rungs.size).toBeGreaterThan(0);
+
+		const orphaned = warningCodes
+			.filter((code) => !code.category || !rungs.has(code.category))
+			.map((code) => `  ${code.id}: ${code.category ?? 'no category'}`);
+
+		if (orphaned.length > 0) {
+			expect.fail(
+				`Warning codes filed under a rung warning-remedies.json does not define:\n\n` +
+					`${orphaned.join('\n')}\n\nRe-run \`make generate-fixtures\`.`
+			);
+		}
+	});
+
+	it('collapses one problem on many devices into one row that still names each of them', () => {
+		// The wall of text this replaced: four switches restricting the same SNMP view produced
+		// four near-identical paragraphs. One row now, with every device on it and every sentence
+		// still behind it — a per-occurrence code keeps its per-device diagnostics.
+		const devices = ['192.168.7.248', '192.168.7.252', '192.168.7.253', '192.168.7.254'];
+		// Written out rather than taken from `sample`, which carries every field any variant can
+		// hold: this code carries no host id, and the chips prefer one where there is one.
+		const report = buildWarningReport(
+			devices.map(
+				(address) =>
+					({
+						code: 'ClaimedCapabilityEmpty',
+						address,
+						group: 'BridgePortNumbering',
+						source: 'SysServicesBridgeBit'
+					}) as unknown as DiscoveryWarning
+			)
+		);
+
+		expect(report).toHaveLength(1);
+		expect(report[0].entries).toHaveLength(1);
+		expect(report[0].entries[0].subjects).toEqual(devices);
+		expect(report[0].entries[0].details).toHaveLength(devices.length);
 	});
 });

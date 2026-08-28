@@ -111,7 +111,14 @@
 	];
 </script>
 
-<GenericModal title={subnets_resolveRange()} {isOpen} {onClose} size="md">
+<GenericModal
+	name="provisional-range"
+	entityId={subnet?.id}
+	title={subnets_resolveRange()}
+	{isOpen}
+	{onClose}
+	size="md"
+>
 	{#if subnet}
 		<!-- `modal-content` supplies no padding of its own, so a body has to bring the same
 		     scrollable, padded container every other modal wraps its content in. -->

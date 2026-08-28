@@ -105,6 +105,30 @@
 		}
 	});
 
+	/**
+	 * Deep-link: resolve an assumed range from anywhere that names one.
+	 *
+	 * A scan warning is the other place an operator meets a guessed range, and it is where they
+	 * meet it first — this is what lets that row hand off to the same four-way choice instead of
+	 * growing a second copy of it. Same shape as the editor's deep link above.
+	 */
+	$effect(() => {
+		const result = resolveModalDeepLink(
+			$modalState,
+			'provisional-range',
+			subnetsData,
+			showProvisionalRange,
+			resolvingSubnet?.id,
+			isProvisionalCidr
+		);
+		// Create mode is meaningless here — there is no range to resolve without a subnet — so a
+		// link that names none is ignored rather than opening an empty modal.
+		if (result) {
+			resolvingSubnet = result;
+			showProvisionalRange = true;
+		}
+	});
+
 	function handleCreateSubnet() {
 		editingSubnet = null;
 		showSubnetEditor = true;

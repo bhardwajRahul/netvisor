@@ -30,6 +30,7 @@ use uuid::Uuid;
 
 use crate::server::credentials::r#impl::mapping::CredentialQueryPayloadDiscriminants;
 
+pub use metadata::WarningRemedy;
 pub use values::{ClaimSource, MalformedNeighbourConsequence, SnmpWalkGroup};
 
 /// A single non-fatal finding from one discovery run, about one device, neighbour, or the scan

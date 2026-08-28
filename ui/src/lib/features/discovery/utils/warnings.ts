@@ -20,9 +20,12 @@ import discoveryIntegrations from '$lib/data/discovery-integrations.json';
 import malformedNeighbourConsequences from '$lib/data/malformed-neighbour-consequences.json';
 import snmpWalkGroups from '$lib/data/snmp-walk-groups.json';
 import warningCodes from '$lib/data/warning-codes.json';
-import { metaDescriptionWith, metaName } from '$lib/i18n/metadata';
+import warningRemedies from '$lib/data/warning-remedies.json';
+import { metaDescription, metaDescriptionWith, metaName } from '$lib/i18n/metadata';
+import { toColor, type Color } from '$lib/shared/utils/styling';
 import {
 	common_andNMore,
+	common_moreItems,
 	discovery_warningNoFurtherDetail,
 	discovery_warningAtAddress,
 	discovery_warningInferredFrom,
@@ -32,6 +35,32 @@ import {
 
 export type DiscoveryWarning = components['schemas']['DiscoveryWarning'];
 export type DiscoveryWarningCode = DiscoveryWarning['code'];
+
+/** One warning code's worth of a run, as a row in the report. */
+export interface WarningEntry {
+	code: DiscoveryWarningCode;
+	/** The code's short name — "Credential incomplete" — which is what the row is headed by. */
+	title: string;
+	/** Severity, as the fixture already publishes it. */
+	color: Color;
+	icon: string;
+	/** The devices, ranges or addresses this row concerns. */
+	subjects: string[];
+	/** The full sentences, shown on disclosure: one per group, or one per occurrence. */
+	details: string[];
+	/** Every occurrence behind the row, so an action can read ids off the payload. */
+	warnings: DiscoveryWarning[];
+}
+
+/** One rung of the report: what the reader has to do about everything under it. */
+export interface WarningSection {
+	/** The `WarningRemedy` id, which is what an action keys off. */
+	remedy: string;
+	title: string;
+	description: string;
+	icon: string;
+	entries: WarningEntry[];
+}
 
 /** How many items a list names before eliding the rest. A line long enough to scroll is not read. */
 const MAX_LISTED = 10;
@@ -445,11 +474,97 @@ const PER_OCCURRENCE = new Set<DiscoveryWarningCode>([
  * Group a run's warnings by code and render one sentence per group, in the order the codes first
  * appear — which is the order the producers emitted them, so the shortfall for a device still
  * precedes the contradiction that explains it.
+ *
+ * One string per sentence, the way they are read: a code in {@link PER_OCCURRENCE} gets one per
+ * occurrence, everything else one for the group.
  */
-export function renderWarnings(
+function renderSentences(
+	code: DiscoveryWarningCode,
+	group_: DiscoveryWarning[],
+	hostName: HostNameLookup
+): string[] {
+	const build = WARNING_PARAMS[code] as (w: DiscoveryWarning[], lookup: HostNameLookup) => Params;
+	const fallback = warningCodes.find((c) => c.id === code)?.description;
+	if (!fallback) return [];
+
+	if (PER_OCCURRENCE.has(code)) {
+		return group_.map((warning) =>
+			metaDescriptionWith('warning_codes', code, build([warning], hostName), fallback)
+		);
+	}
+	return [metaDescriptionWith('warning_codes', code, build(group_, hostName), fallback)];
+}
+
+/**
+ * What a warning is *about*, as the chips on its row.
+ *
+ * Read off the wire payload rather than out of the sentence: every variant carries a host id, a
+ * range, or an address, and taking the subject out of the prose is what lets a row say who it
+ * concerns before the reader has read anything. Scan-level codes carry none and get no chips.
+ *
+ * The host id is preferred where a warning has both. An unmatched neighbour carries the address the
+ * *far* end published, and the device an operator would go and look at is the near one that
+ * reported it. An id that resolves to nothing is dropped rather than shown raw, the same policy the
+ * sentences use — a host deleted since the scan reads as no chip, not as a UUID.
+ */
+function subjectsOf(warnings: DiscoveryWarning[], hostName: HostNameLookup): string[] {
+	const labels = warnings.flatMap((w) => {
+		if ('host_id' in w) {
+			const name = hostName(w.host_id);
+			return name ? [name] : [];
+		}
+		if ('cidr' in w) return [w.cidr];
+		if ('address' in w) return [w.address];
+		return [];
+	});
+
+	const unique = [...new Set(labels)];
+	const listed = unique.slice(0, MAX_LISTED);
+	const elided = unique.length - listed.length;
+	// Capped like the sentences are, and for the same reason: a row that wraps to five lines of
+	// chips is a wall of text with rounded corners.
+	if (elided > 0) listed.push(common_moreItems({ count: elided }));
+	return listed;
+}
+
+/** The rung a code sits on, as the backend filed it. */
+function remedyOf(code: DiscoveryWarningCode): string | null {
+	return warningCodes.find((c) => c.id === code)?.category ?? null;
+}
+
+/**
+ * Whether this run is asking the reader for something.
+ *
+ * The one bit the scan-history table and the modal's tab dot both need, and the reason they agree:
+ * "needs you" means the same thing on every surface because it is the same question of the same
+ * backend metadata.
+ */
+export function warningsNeedAttention(warnings: DiscoveryWarning[]): boolean {
+	return warnings.some((w) => remedyOf(w.code) === NEEDS_ATTENTION_REMEDY);
+}
+
+/** The rung that means a person has to do something in Scanopy. */
+const NEEDS_ATTENTION_REMEDY = 'FixInScanopy';
+
+/**
+ * A run's warnings, grouped into the sections an operator reads them in.
+ *
+ * The sections are the rungs of `warning-remedies.json` — what the reader has to do — in fixture
+ * order, most demanding first. That, and not severity, is the top-level cut: severity measures what
+ * the scan lost, and the two come apart badly enough that a thirty-second credential fix and a
+ * permanently malformed LLDP table are both `Lost`/Red. Severity stays on the row, as its icon and
+ * colour, which is the job it was written for.
+ *
+ * Within a section a row is one *code*, not one occurrence. The wall of text this replaced came
+ * from every occurrence carrying its own full explanation — four devices restricting the same SNMP
+ * view produced four near-identical paragraphs. Here they are one row naming four devices, with the
+ * four sentences still intact behind its disclosure. Nothing the backend kept apart is merged;
+ * `PER_OCCURRENCE` still decides how many sentences a row holds.
+ */
+export function buildWarningReport(
 	warnings: DiscoveryWarning[],
 	hostName: HostNameLookup = NO_HOST_NAMES
-): string[] {
+): WarningSection[] {
 	const byCode = new Map<DiscoveryWarningCode, DiscoveryWarning[]>();
 	for (const warning of warnings) {
 		const existing = byCode.get(warning.code);
@@ -460,16 +575,31 @@ export function renderWarnings(
 		}
 	}
 
-	return [...byCode].flatMap(([code, group_]) => {
-		const build = WARNING_PARAMS[code] as (w: DiscoveryWarning[], lookup: HostNameLookup) => Params;
-		const fallback = warningCodes.find((c) => c.id === code)?.description;
-		if (!fallback) return [];
+	const entries: WarningEntry[] = [];
+	for (const [code, group_] of byCode) {
+		const meta = warningCodes.find((c) => c.id === code);
+		// A code this build has no fixture entry for renders nothing, as it did before: there is no
+		// sentence to show and no rung to file it under.
+		if (!meta) continue;
 
-		if (PER_OCCURRENCE.has(code)) {
-			return group_.map((warning) =>
-				metaDescriptionWith('warning_codes', code, build([warning], hostName), fallback)
-			);
-		}
-		return [metaDescriptionWith('warning_codes', code, build(group_, hostName), fallback)];
-	});
+		entries.push({
+			code,
+			title: metaName('warning_codes', code, meta.name ?? code),
+			color: toColor(meta.color),
+			icon: meta.icon,
+			subjects: subjectsOf(group_, hostName),
+			details: renderSentences(code, group_, hostName),
+			warnings: group_
+		});
+	}
+
+	return warningRemedies
+		.map((remedy) => ({
+			remedy: remedy.id,
+			title: metaName('warning_remedies', remedy.id, remedy.name ?? remedy.id),
+			description: metaDescription('warning_remedies', remedy.id, remedy.description ?? ''),
+			icon: remedy.icon,
+			entries: entries.filter((entry) => remedyOf(entry.code) === remedy.id)
+		}))
+		.filter((section) => section.entries.length > 0);
 }
