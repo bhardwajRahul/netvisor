@@ -19,6 +19,8 @@
 	import DiscoveryScheduleForm from './DiscoveryScheduleForm.svelte';
 	import type { Discovery } from '../../types/base';
 	import DiscoveryHistoricalSummary from './DiscoveryHistoricalSummary.svelte';
+	import WarningReport from './WarningReport.svelte';
+	import { warningsNeedAttention } from '../../utils/warnings';
 	import { uuidv4Sentinel } from '$lib/shared/utils/formatting';
 	import { createEmptyDiscoveryFormData, parseDayTimeCronSchedule } from '../../queries';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
@@ -36,7 +38,8 @@
 		Gauge,
 		Calendar,
 		ArrowRight,
-		KeyRound
+		KeyRound,
+		TriangleAlert
 	} from 'lucide-svelte';
 	import CredentialsStep, {
 		type PendingCredential
@@ -51,6 +54,7 @@
 		common_delete,
 		common_deleting,
 		common_details,
+		common_warnings,
 		common_next,
 		common_saving,
 		common_schedule,
@@ -125,6 +129,10 @@
 
 	let isEditing = $derived(discovery !== null);
 	let isHistoricalRun = $derived(discovery?.run_type.type === 'Historical');
+	let historicalWarnings = $derived(
+		discovery?.run_type.type === 'Historical' ? (discovery.run_type.results.warnings ?? []) : []
+	);
+	let historicalNeedsAttention = $derived(warningsNeedAttention(historicalWarnings));
 	let readOnly = $derived(formData.run_type.type == 'Historical');
 
 	let title = $derived(
@@ -278,9 +286,25 @@
 	let hasCredentialsTab = $derived(formData.discovery_type.type === 'Unified');
 	let hasScheduleTab = $derived(formData.run_type.type === 'Scheduled');
 
+	/**
+	 * A completed run has warnings and it has details, and they are read for different reasons —
+	 * "did this need me" before "what did it do". Two tabs rather than the warnings stapled to the
+	 * top of the details, which is what made a run with fourteen of them unreadable.
+	 *
+	 * The dot is on Warnings when something in the run is asking for the reader, which is the same
+	 * question the scan-history count column colours itself by.
+	 */
 	let tabs: ModalTab[] = $derived(
 		isHistoricalRun
-			? []
+			? [
+					{
+						id: 'warnings',
+						label: common_warnings(),
+						icon: TriangleAlert,
+						notification: historicalNeedsAttention
+					},
+					{ id: 'details', label: common_details(), icon: Info }
+				]
 			: [
 					{ id: 'details', label: common_details(), icon: Info },
 					...(hasTargetsTab
@@ -533,7 +557,9 @@
 	}));
 
 	function handleOpen() {
-		activeTab = 'details';
+		// A run with warnings opens on them; a clean one opens on its details. The Warnings tab
+		// still exists either way, so the modal does not change shape between runs.
+		activeTab = historicalWarnings.length > 0 ? 'warnings' : 'details';
 		appliedJunctionFingerprint = '';
 		furthestReached = discovery ? Infinity : 0;
 		formData = getDefaultFormData();
@@ -671,7 +697,7 @@
 	showCloseButton={true}
 	{tabs}
 	bind:activeTab
-	tabStyle={isEditing ? 'tabs' : 'stepper'}
+	tabStyle={isEditing || isHistoricalRun ? 'tabs' : 'stepper'}
 	onTabChange={(id) => (activeTab = id)}
 >
 	{#snippet headerIcon()}
@@ -694,7 +720,11 @@
 		>
 			{#if isHistoricalRun && discovery?.run_type.type === 'Historical'}
 				<div class="space-y-8 p-6">
-					<DiscoveryHistoricalSummary payload={discovery.run_type.results} />
+					{#if activeTab === 'warnings'}
+						<WarningReport payload={discovery.run_type.results} />
+					{:else}
+						<DiscoveryHistoricalSummary payload={discovery.run_type.results} />
+					{/if}
 				</div>
 			{:else if activeTab === 'details'}
 				<div class="space-y-8 p-6">

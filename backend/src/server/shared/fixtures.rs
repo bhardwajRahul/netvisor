@@ -3,7 +3,7 @@
 
 use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::daemon::discovery::types::warnings::{
-    ClaimSource, DiscoveryWarningCode, MalformedNeighbourConsequence, SnmpWalkGroup,
+    ClaimSource, DiscoveryWarningCode, MalformedNeighbourConsequence, SnmpWalkGroup, WarningRemedy,
 };
 use crate::server::billing::plans::get_website_fixture_plans;
 use crate::server::billing::types::base::{BillingPlan, CancelReason, PlanStatus, SaveOffer};
@@ -97,6 +97,12 @@ pub fn generate_ui_data_fixtures(output_dir: &Path) {
         .map(|c| c.to_metadata())
         .collect();
     write_fixture(&warning_codes, output_dir, "warning-codes.json");
+
+    // The rungs the codes above are filed under, in the order the warning list renders them. Each
+    // code names one through its `category`; this is where that name resolves to a heading.
+    let warning_remedies: Vec<TypeMetadata> =
+        WarningRemedy::iter().map(|r| r.to_metadata()).collect();
+    write_fixture(&warning_remedies, output_dir, "warning-remedies.json");
 
     let snmp_walk_groups: Vec<TypeMetadata> =
         SnmpWalkGroup::iter().map(|g| g.to_metadata()).collect();

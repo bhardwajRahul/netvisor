@@ -15,7 +15,10 @@
 //! `Intl.ListFormat` in the reader's locale, which is strictly better than the English "A, B, and
 //! C" this code used to build.
 
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use strum::{EnumIter, IntoStaticStr, VariantNames};
+use utoipa::ToSchema;
 
 use super::DiscoveryWarningCode;
 use crate::server::shared::types::{
@@ -24,6 +27,12 @@ use crate::server::shared::types::{
 };
 
 /// How much a warning cost the scan, which is what its colour and icon say at a glance.
+///
+/// Deliberately *not* the hierarchy the warning list is organised by. It measures what the scan
+/// lost, which is a different question from what the reader has to do about it, and the two come
+/// apart hard: every credential failure is `Lost`, and so is every malformed-neighbour record
+/// whose own sentence ends "Rescanning will not change this". [`WarningRemedy`] is the axis that
+/// orders the list; this one stays the glyph on each row, which is what it was written for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Severity {
     /// Data is missing or a credential does not work. Acting on it changes the next scan.
@@ -32,6 +41,94 @@ enum Severity {
     Degraded,
     /// A fact about the device, not a fault. Nothing to fix.
     Informational,
+}
+
+/// What a warning asks of the person reading it.
+///
+/// The rung a code sits on *is* its instruction, which is why the warning list is grouped by this
+/// and not by [`Severity`]: a reader scanning a completed run needs to know whether they are being
+/// asked for something before they need to know how much data was lost. It reaches the UI as each
+/// code's `category`, with this enum's own registry supplying the heading — the same shape
+/// `service-definitions.json` and `service-categories.json` use.
+///
+/// Declaration order is the order the sections render in, most demanding first.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    EnumIter,
+    IntoStaticStr,
+    VariantNames,
+)]
+pub enum WarningRemedy {
+    /// A credential or a scan setting has to change, and both live in Scanopy.
+    FixInScanopy,
+    /// The device answered and served less than it claims to. Scanopy has no setting for it.
+    CheckTheDevice,
+    /// A read stopped before it finished. The values already held were kept.
+    ClearsOnTheNextScan,
+    /// True of the device, or of data that arrived malformed. No scan will change it.
+    NothingToDo,
+}
+
+impl HasId for WarningRemedy {
+    fn id(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl EntityMetadataProvider for WarningRemedy {
+    /// Grey throughout, so the section heading cannot compete with the row it heads. Colour in
+    /// this list means severity and only severity; a second coloured vocabulary stacked on top of
+    /// it would leave an amber heading over a red row saying two things at once.
+    fn color(&self) -> Color {
+        Color::Gray
+    }
+
+    fn icon(&self) -> Icon {
+        match self {
+            Self::FixInScanopy => Icon::Wrench,
+            Self::CheckTheDevice => Icon::ScanSearch,
+            Self::ClearsOnTheNextScan => Icon::RefreshCw,
+            Self::NothingToDo => Icon::Info,
+        }
+    }
+}
+
+impl TypeMetadataProvider for WarningRemedy {
+    /// The section heading. An instruction, not a category label — it is the whole point of the
+    /// grouping that a reader can act on the heading alone.
+    fn name(&self) -> &'static str {
+        match self {
+            Self::FixInScanopy => "Fix in Scanopy",
+            Self::CheckTheDevice => "Check the device",
+            Self::ClearsOnTheNextScan => "Should clear on the next full scan",
+            Self::NothingToDo => "Nothing to do",
+        }
+    }
+
+    /// The sub-line under the heading, saying why everything below it shares a response.
+    fn description(&self) -> &'static str {
+        match self {
+            Self::FixInScanopy => {
+                "A credential or a scan setting has to change. The next scan reads what this one could not."
+            }
+            Self::CheckTheDevice => {
+                "The device answered, but served less than it says it holds. Nothing in Scanopy changes that — the agent's SNMP view or VLAN context has to."
+            }
+            Self::ClearsOnTheNextScan => {
+                "A read stopped before it finished. Previously discovered values were kept, and a complete scan should replace these."
+            }
+            Self::NothingToDo => {
+                "True of the device, or of the data it returned. Rescanning will not change it."
+            }
+        }
+    }
 }
 
 impl DiscoveryWarningCode {
@@ -156,6 +253,79 @@ impl DiscoveryWarningCode {
             // is being asked to confirm it, which is a different thing from something going wrong.
             | Self::ProvisionalSubnetInferred
             | Self::Unknown => Severity::Informational,
+        }
+    }
+
+    /// What this code asks of the person reading it.
+    ///
+    /// Exhaustive, so a new code cannot ship without someone deciding whether it is work for the
+    /// reader — which is the question the warning list is organised around and the one the old
+    /// flat list never answered.
+    fn remedy(&self) -> WarningRemedy {
+        match self {
+            // The credential family stays whole. Several of these sentences straddle Scanopy and
+            // the far end ("check the address and port, and that the service is listening"), and
+            // splitting them on where the fault lies would be a guess the diagnostic cannot
+            // support. What they share is certain: a person has to look at that credential, and
+            // the credential is a Scanopy record.
+            Self::CredentialTargetNotScanned
+            | Self::CredentialTargetNotResponding
+            | Self::CredentialGateClosed
+            | Self::CredentialRejected
+            | Self::CredentialMalformed
+            | Self::CredentialTlsFailed
+            | Self::CredentialNotThisService
+            | Self::CredentialCollectionFailed
+            | Self::CredentialCollectionTimedOut
+            | Self::CredentialUnreachable
+            | Self::CredentialTimedOut
+            // Scan settings: the duration to raise, or the coverage to narrow.
+            | Self::ScanTimeLimitWithEstimate
+            | Self::ScanTimeLimit
+            | Self::WarningsTruncated
+            // The one warning with a resolution flow of its own, and the one that repeats on
+            // every scan until someone answers it.
+            | Self::ProvisionalSubnetInferred
+            // Duplicate host records are a Scanopy-side data problem, and consolidating them is a
+            // shipped action.
+            | Self::LldpNeighbourAmbiguous => WarningRemedy::FixInScanopy,
+
+            // The device says one thing and serves another. No Scanopy setting reaches these:
+            // what has to change is the agent's view of its own tables.
+            Self::ClaimedCapabilityEmpty
+            | Self::ClaimedCountUnderRead
+            | Self::SnmpCollectedNothing => WarningRemedy::CheckTheDevice,
+
+            // A read that stopped early or a write that failed once. Their own sentences already
+            // say the values held were kept.
+            Self::InterfaceSetCutShort
+            | Self::InterfaceDetailsCutShort
+            | Self::SnmpWalkDesynchronised
+            | Self::SnmpWalkNoAnswer
+            | Self::SnmpWalkPartialDiscarded
+            | Self::SnmpWalkPartialRecorded
+            | Self::ClaimedCountReadCutShort
+            | Self::ClaimedCapabilityReadCutShort
+            | Self::LldpLocalPortDroppedReadCutShort
+            | Self::MalformedNeighboursWalkCutShort
+            | Self::VlanRecordingFailed => WarningRemedy::ClearsOnTheNextScan,
+
+            // Facts about a device, or about data that arrived malformed and stays that way.
+            Self::SnmpWalkUnsupported
+            | Self::SnmpWalkEntryCap
+            | Self::SnmpWalkBridgeMibAbsent
+            | Self::LldpLocalPortDropped
+            | Self::LldpLocalPortMisplaced
+            | Self::MalformedNeighboursGhostRows
+            | Self::MalformedNeighboursIncompleteRecords
+            | Self::MalformedNeighboursUnexpectedType
+            | Self::MalformedNeighboursUnreadableIndex
+            | Self::LldpNeighbourNotFound
+            | Self::LldpPortNotFound
+            | Self::LldpPortAmbiguous
+            | Self::LldpPortNoStrategy
+            // Carries whatever a newer binary sent, so there is nothing here to classify.
+            | Self::Unknown => WarningRemedy::NothingToDo,
         }
     }
 }
@@ -350,7 +520,7 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
                 "LLDP/CDP neighbours name devices this network has not discovered ({count} in total), so they draw no links. This is expected where the far end is an endpoint or unmanaged device; a device that should have been scanned means the identifier it advertises is not one this network holds. {examples}"
             }
             Self::LldpNeighbourAmbiguous => {
-                "LLDP/CDP neighbours advertise an identifier that several hosts on this network hold ({count} in total), so none of them can be picked and no link is drawn. This is usually duplicate records for one device rather than a device that was missed. {examples}"
+                "LLDP/CDP neighbours advertise an identifier that several hosts on this network hold ({count} in total), so none of them can be picked and no link is drawn. This is usually duplicate records for one device rather than a device that was missed — consolidate the duplicates and the link resolves. {examples}"
             }
             Self::LldpPortNoStrategy => {
                 "LLDP/CDP neighbours resolved to a device but advertise a port id of a subtype there is no lookup for ({count} in total), so Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
@@ -372,6 +542,14 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
     }
 
     /// Publishes the slot contract to the UI, which builds its parameters from the same list.
+    /// The rung this code sits on, which is the section the UI files it under.
+    ///
+    /// `category` rather than a new field: `TypeMetadata` already has one, documented as the group
+    /// a type is listed under, and warning codes were the registry leaving it null.
+    fn category(&self) -> &'static str {
+        self.remedy().id()
+    }
+
     fn metadata(&self) -> serde_json::Value {
         json!({ "slots": self.slots() })
     }

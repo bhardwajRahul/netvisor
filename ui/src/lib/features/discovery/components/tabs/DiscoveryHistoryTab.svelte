@@ -6,6 +6,7 @@
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import type { Discovery } from '../../types/base';
 	import DiscoveryEditModal from '../DiscoveryModal/DiscoveryEditModal.svelte';
+	import { warningsNeedAttention } from '../../utils/warnings';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
 	import { defineFields } from '$lib/shared/components/data/types';
@@ -207,10 +208,11 @@
 		if (!phase) return null;
 
 		switch (phase) {
+			// Warnings have a column of their own. A tag here said only that the run had some,
+			// which made a single informational note look like a broken credential and pushed the
+			// outcome this column exists for out of the way.
 			case 'Complete':
-				return results?.warnings && results.warnings.length > 0
-					? { label: common_warnings(), color: toColor('yellow') }
-					: null;
+				return null;
 			case 'Failed':
 				return { label: common_failed(), color: toColor('red') };
 			case 'Cancelled':
@@ -219,6 +221,13 @@
 				// Still running, so worth showing — the phase names its stage.
 				return { label: phase, color: toColor('blue') };
 		}
+	}
+
+	/** A run's recorded warnings, or none for a row that is not a completed run. */
+	function warningsOf(discovery: Discovery) {
+		return discovery.run_type.type === 'Historical'
+			? (discovery.run_type.results.warnings ?? [])
+			: [];
 	}
 
 	/** Row actions for table mode, matching what the card offers. */
@@ -332,6 +341,30 @@
 						return common_unknown();
 					},
 					display: { order: 4 }
+				},
+				{
+					// How much the run had to say, as a number. Red when any of it is work for the
+					// reader — the same question the run modal's Warnings tab puts its dot on, so
+					// the table and the modal cannot disagree about whether a run needs anyone.
+					key: 'warnings',
+					label: common_warnings(),
+					type: 'string',
+					getValue: (item) => String(warningsOf(item).length),
+					display: {
+						order: 5,
+						getItems: (item) => {
+							const warnings = warningsOf(item);
+							if (warnings.length === 0) return undefined;
+							if (!warningsNeedAttention(warnings)) return undefined;
+							return [
+								{
+									id: 'warnings-need-attention',
+									label: String(warnings.length),
+									color: toColor('red')
+								}
+							];
+						}
+					}
 				}
 			]
 		)
