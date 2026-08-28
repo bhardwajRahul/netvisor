@@ -72,6 +72,13 @@ describe('discovery warning rendering', () => {
 			.flatMap((entry) => entry.details)
 			.map((statement) => statement.sentence);
 
+	/** Every example line a run renders, flattened. */
+	const examplesOf = (warnings: DiscoveryWarning[], names?: EntityNameLookup) =>
+		buildWarningReport(warnings, names)
+			.flatMap((section) => section.entries)
+			.flatMap((entry) => entry.details)
+			.flatMap((statement) => statement.examples);
+
 	it('renders every code the backend can send, with no slot left unfilled', () => {
 		const unfilled: string[] = [];
 
@@ -180,6 +187,38 @@ describe('discovery warning rendering', () => {
 			);
 			expect(line).not.toMatch(/\{\w+\}/);
 		}
+	});
+
+	it('names a host deleted since the scan instead of dropping its chip', () => {
+		// A historical record outlives the hosts it names, and deleting one used to make its chip
+		// vanish — eight unresolved pairs rendered as eight bare port descriptions with nothing to
+		// say which devices they concerned. `null` is the lookup saying it ran and the host is gone.
+		const gone = () => null;
+
+		for (const code of ['LldpNeighbourNotFound', 'LldpPortNotFound']) {
+			const [line] = examplesOf([sample(code)], gone);
+
+			expect(line.near?.label, `${code} dropped its near device`).toMatch(/unknown/i);
+			// No entity: there is nothing left to navigate to, so it reads as a label.
+			expect(line.near?.entity).toBeUndefined();
+			expect(JSON.stringify(line), `${code} leaked a host id`).not.toMatch(
+				/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/
+			);
+		}
+
+		// Both ends of a resolved-port pair, so a line never half-names itself.
+		const [pair] = examplesOf([sample('LldpPortNotFound')], gone);
+		expect(pair.far?.label).toMatch(/unknown/i);
+	});
+
+	it('still omits a chip while the host lookup is in flight', () => {
+		// The distinction the tri-state exists for: `undefined` is "not known yet", and must not
+		// flash "unknown" on the way to a name.
+		const notYet = () => undefined;
+		const [line] = examplesOf([sample('LldpPortNotFound')], notYet);
+
+		expect(line.near).toBeNull();
+		expect(line.far).toBeNull();
 	});
 
 	it('renders a legacy string warning as its own text', () => {

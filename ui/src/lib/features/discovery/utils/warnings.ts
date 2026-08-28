@@ -26,7 +26,9 @@ import { metaDescription, metaDescriptionWith, metaName } from '$lib/i18n/metada
 import { toColor, type Color } from '$lib/shared/utils/styling';
 import {
 	common_andNMore,
+	common_host,
 	common_moreItems,
+	common_unknownEntity,
 	discovery_warningNoFurtherDetail,
 	discovery_warningAtAddress,
 	discovery_warningInferredFrom,
@@ -120,23 +122,47 @@ type Params = Record<string, string | number>;
 type WarningOf<C extends DiscoveryWarningCode> = Extract<DiscoveryWarning, { code: C }>;
 
 /**
- * Resolve a host id to its name, or `undefined` when it cannot be resolved.
+ * Resolve a host id to its name.
  *
  * Passed in rather than queried here: the warnings carry ids, and the component already holds the
- * host query that turns them into names. Returning `undefined` is a normal outcome — the query may
- * still be in flight, and a historical scan can name a host that has since been deleted.
+ * host query that turns them into names. Three outcomes, and the difference between the last two
+ * is what the reader sees:
+ *
+ * - a **name** — the device is there and is named;
+ * - **`null`** — the lookup ran and this id is not among the results, so the device is gone. A
+ *   historical scan outlives the hosts it names, and deleting one used to make its chip vanish,
+ *   which quietly changed what the line said it was about;
+ * - **`undefined`** — nothing is known yet, because the query is still in flight or was never
+ *   made. Distinct from `null` so a chip does not flash "unknown" on its way to a name.
  */
-export type HostNameLookup = (hostId: string) => string | undefined;
+export type HostNameLookup = (hostId: string) => string | null | undefined;
 
 /**
  * Resolve any entity a warning names to its display name, or `undefined` when it cannot be.
  *
- * The generalization of {@link HostNameLookup}: credentials are named the same way hosts are, and
- * from the same place — the component holds the queries, the warnings hold the ids. `undefined`
- * stays a normal outcome for the same reasons, plus one more for credentials: a viewer without
- * permission to read them resolves nothing, and the row falls back to the address alone.
+ * The generalization of {@link HostNameLookup}, with the same three outcomes. Credentials
+ * deliberately never return `null`: a viewer without permission to read them resolves nothing, and
+ * labelling every credential "unknown" for that reader would be a worse lie than saying nothing.
  */
-export type EntityNameLookup = (type: EntityDiscriminants, id: string) => string | undefined;
+export type EntityNameLookup = (type: EntityDiscriminants, id: string) => string | null | undefined;
+
+/**
+ * The chip for a host a warning named.
+ *
+ * A device deleted since the scan is still part of what the line is about, so it is named rather
+ * than dropped: eight unresolved pairs used to render as eight bare port descriptions with nothing
+ * to say which devices they concerned. No `entity` on it, because there is nothing left to
+ * navigate to — it reads as a label, the same as an address does.
+ *
+ * `null` back means the lookup has not run yet, and the caller omits the segment exactly as it did
+ * before, so nothing flashes "unknown" on its way to a name.
+ */
+function hostSubject(hostId: string, hostName: HostNameLookup): WarningSubject | null {
+	const label = hostName(hostId);
+	if (label) return { label, entity: { type: 'Host', id: hostId } };
+	if (label === null) return { label: common_unknownEntity({ entity: common_host() }) };
+	return null;
+}
 
 /** No names available: every named segment is omitted, which is how this rendered before names. */
 const NO_ENTITY_NAMES: EntityNameLookup = () => undefined;
@@ -387,10 +413,9 @@ function describeNeighbour(
 	},
 	hostName: HostNameLookup
 ): WarningExample {
-	const label = hostName(w.host_id);
 	const named = `${w.identifier}${w.sys_name ? ` (${w.sys_name})` : ''}`;
 	return {
-		near: label ? { label, entity: { type: 'Host', id: w.host_id } } : null,
+		near: hostSubject(w.host_id, hostName),
 		nearText: w.if_descr,
 		// The far end is the whole point of this warning: nothing on this network matched it, so
 		// there is no device to tag, only the identifier it advertised.
@@ -423,16 +448,14 @@ function describePort(
 	},
 	hostName: HostNameLookup
 ): WarningExample {
-	const nearLabel = hostName(w.host_id);
-	const farLabel = hostName(w.remote_host_id);
 	const desc = w.port_desc ? ` (${w.port_desc})` : '';
 	// "via <id>" when the device advertised one, "with no port id" when it did not — the
 	// distinction the tiers turn on, and the phrasing the prose these replaced used.
 	const id = w.port_id ? `via ${w.port_id}${desc}` : `${discovery_warningNoPortId()}${desc}`;
 	return {
-		near: nearLabel ? { label: nearLabel, entity: { type: 'Host', id: w.host_id } } : null,
+		near: hostSubject(w.host_id, hostName),
 		nearText: w.if_descr,
-		far: farLabel ? { label: farLabel, entity: { type: 'Host', id: w.remote_host_id } } : null,
+		far: hostSubject(w.remote_host_id, hostName),
 		farText: id
 	};
 }
@@ -602,8 +625,8 @@ function subjectsOf(
 ): WarningSubject[] {
 	const subjects = warnings.flatMap((w): WarningSubject[] => {
 		if ('host_id' in w) {
-			const label = nameOfEntity('Host', w.host_id);
-			return label ? [{ label, entity: { type: 'Host', id: w.host_id } }] : [];
+			const subject = hostSubject(w.host_id, (id) => nameOfEntity('Host', id));
+			return subject ? [subject] : [];
 		}
 		if ('cidr' in w) return [{ label: w.cidr }];
 
