@@ -17,8 +17,10 @@ impl ServiceDefinition for InfluxDB {
     fn category(&self) -> ServiceCategory {
         ServiceCategory::Database
     }
+    /// `X-Influxdb-Version` is added by middleware to *every* response, so this needs no
+    /// particular path and holds for both the OSS and enterprise builds.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::Port(PortType::InfluxDb)
+        Pattern::Header(Some(PortType::InfluxDb), "x-influxdb-version", "", None)
     }
     fn logo_url(&self) -> &'static str {
         "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/influxdb.svg"

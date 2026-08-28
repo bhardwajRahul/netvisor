@@ -17,9 +17,10 @@ impl ServiceDefinition for ESPHome {
     fn category(&self) -> ServiceCategory {
         ServiceCategory::HomeAutomation
     }
+    /// 6052 is the dashboard, which serves HTML naming the project. The native API is 6053 and
+    /// needs the device's encryption key, so it is not probed.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        // ESPHome API port
-        Pattern::Port(PortType::new_tcp(6052))
+        Pattern::Endpoint(PortType::new_tcp(6052), "/", "esphome", None)
     }
     fn logo_url(&self) -> &'static str {
         "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/esphome.svg"

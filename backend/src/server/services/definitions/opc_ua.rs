@@ -21,8 +21,8 @@ impl ServiceDefinition for OpcUa {
     fn discovery_pattern(&self) -> Pattern<'_> {
         probe_pattern(&OpcUaProbe)
     }
-    fn app_probe(&self) -> Option<Box<dyn AppProbe>> {
-        Some(Box::new(OpcUaProbe))
+    fn app_probes(&self) -> Vec<Box<dyn AppProbe>> {
+        vec![Box::new(OpcUaProbe)]
     }
     fn is_generic(&self) -> bool {
         true

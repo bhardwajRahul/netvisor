@@ -21,8 +21,8 @@ impl ServiceDefinition for EtherNetIp {
     fn discovery_pattern(&self) -> Pattern<'_> {
         probe_pattern(&EtherNetIpProbe)
     }
-    fn app_probe(&self) -> Option<Box<dyn AppProbe>> {
-        Some(Box::new(EtherNetIpProbe))
+    fn app_probes(&self) -> Vec<Box<dyn AppProbe>> {
+        vec![Box::new(EtherNetIpProbe)]
     }
     fn is_generic(&self) -> bool {
         true

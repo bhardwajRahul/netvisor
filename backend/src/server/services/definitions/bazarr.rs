@@ -18,8 +18,9 @@ impl ServiceDefinition for Bazarr {
         ServiceCategory::Media
     }
 
+    /// The login page is served unauthenticated and carries the application name in its title.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::Port(PortType::new_tcp(6767))
+        Pattern::Endpoint(PortType::new_tcp(6767), "/", "<title>Bazarr</title>", None)
     }
 
     fn logo_url(&self) -> &'static str {

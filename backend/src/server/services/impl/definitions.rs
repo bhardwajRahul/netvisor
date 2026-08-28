@@ -23,6 +23,34 @@ use utoipa::openapi::schema::{ObjectBuilder, SchemaType};
 use utoipa::openapi::{RefOr, Schema};
 use utoipa::{PartialSchema, ToSchema};
 
+/// Why a service definition cannot validate what answered on its port.
+///
+/// Each variant names something that stops a probe existing, not how much work one would be.
+/// "Nobody got round to it" is not among them, which is the point: the set is meant to shrink, and
+/// the guard test in `services/impl/tests.rs` is what keeps it from growing quietly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConnectOnly {
+    /// Writing to this port has side effects on the device.
+    ///
+    /// The raw-socket printer ports are the case: bytes sent to 9100 are printed. See
+    /// [`crate::server::ports::r#impl::base::PortType::is_raw_socket`].
+    ProbeUnsafe,
+    /// No unauthenticated exchange distinguishes this service from any other listener.
+    ///
+    /// Encrypted or authenticated-first control channels: mutual TLS, CurveZMQ, a client
+    /// certificate, CRAM-MD5 before anything identifying is sent.
+    NoDistinguishingHandshake,
+    /// There is no public implementation to check a match against.
+    ///
+    /// Commercial software with no pullable image and no published source. A match string written
+    /// from vendor documentation alone is a guess, and a guess that happens to match any HTTP
+    /// server is worse than the bare port it replaced — so the honest position is to say we could
+    /// not verify one. Unlike the two above this is a statement about our access rather than about
+    /// the protocol, which is why it is worth being able to tell apart: it becomes removable the
+    /// day someone can point the probe at a real instance.
+    NoVerifiableImplementation,
+}
+
 // Main trait used in service definition implementation
 pub trait ServiceDefinition: HasId + DynClone + DynHash + DynEq + Send + Sync {
     /// Service name, will also be used as unique identifier. < 40 characters.
@@ -42,12 +70,32 @@ pub trait ServiceDefinition: HasId + DynClone + DynHash + DynEq + Send + Sync {
         false
     }
 
-    /// The non-credentialed application probe that confirms this service, if it has one.
+    /// The non-credentialed application probes that confirm this service.
     ///
-    /// Default `None`: most definitions match on ports and HTTP endpoints alone. Hanging the probe
-    /// here rather than on a registry of its own is what makes "a probe cannot exist without a
+    /// Empty by default: most definitions match on ports and HTTP endpoints alone. Hanging probes
+    /// here rather than on a registry of their own is what makes "a probe cannot exist without a
     /// service definition" structural — see [`crate::daemon::utils::app_probe`].
-    fn app_probe(&self) -> Option<Box<dyn AppProbe>> {
+    ///
+    /// A list rather than one, because a service can speak more than one transport and each needs
+    /// its own exchange. DNS is the case that forced it: UDP/53 resolves a name through a library
+    /// client and TCP/53 sends a length-prefixed query, and a definition able to declare only one
+    /// of them would leave the other port scanned but never validated.
+    fn app_probes(&self) -> Vec<Box<dyn AppProbe>> {
+        Vec::new()
+    }
+
+    /// Why this definition is allowed to match on a completed TCP connection alone.
+    ///
+    /// `None` is the rule: a definition validates what answered, by reading a protocol response
+    /// (`app_probe`) or an HTTP body or header (`Pattern::Endpoint`, `Pattern::Header`). A bare
+    /// `Pattern::Port` names a service on evidence any middlebox in the path can manufacture, which
+    /// is how a FortiGate SIP session helper became a "SIP Server" on every remote VLAN.
+    ///
+    /// Declaring a reason here is the deliberate exception, and it is checked: a test holds the set
+    /// of definitions that declare one equal to the set
+    /// [`Pattern::matches_on_connect_alone`] derives, so a new bare-port definition fails until its
+    /// author either writes a probe or says here why they cannot.
+    fn connect_only_rationale(&self) -> Option<ConnectOnly> {
         None
     }
 
@@ -105,8 +153,12 @@ impl ServiceDefinition for Box<dyn ServiceDefinition> {
         ServiceDefinition::logo_needs_white_background(&**self)
     }
 
-    fn app_probe(&self) -> Option<Box<dyn AppProbe>> {
-        ServiceDefinition::app_probe(&**self)
+    fn app_probes(&self) -> Vec<Box<dyn AppProbe>> {
+        ServiceDefinition::app_probes(&**self)
+    }
+
+    fn connect_only_rationale(&self) -> Option<ConnectOnly> {
+        ServiceDefinition::connect_only_rationale(&**self)
     }
 }
 

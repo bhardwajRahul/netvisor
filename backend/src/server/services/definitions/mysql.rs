@@ -1,8 +1,9 @@
-use crate::server::ports::r#impl::base::PortType;
+use crate::daemon::utils::app_probe::AppProbe;
+use crate::daemon::utils::app_probe::mysql::MySqlProbe;
 use crate::server::services::definitions::{ServiceDefinitionFactory, create_service};
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
-use crate::server::services::r#impl::patterns::Pattern;
+use crate::server::services::r#impl::patterns::{Pattern, probe_pattern};
 
 #[derive(Default, Clone, Eq, PartialEq, Hash)]
 pub struct MySQL;
@@ -17,8 +18,13 @@ impl ServiceDefinition for MySQL {
     fn category(&self) -> ServiceCategory {
         ServiceCategory::Database
     }
+    /// Derived from the probe, so a listener on this port that does not speak the protocol is
+    /// not claimed as this service.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::Port(PortType::MySql)
+        probe_pattern(&MySqlProbe)
+    }
+    fn app_probes(&self) -> Vec<Box<dyn AppProbe>> {
+        vec![Box::new(MySqlProbe)]
     }
     fn logo_url(&self) -> &'static str {
         "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/mysql.svg"

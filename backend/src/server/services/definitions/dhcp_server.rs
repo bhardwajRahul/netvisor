@@ -32,8 +32,8 @@ impl ServiceDefinition for DhcpServer {
     /// `probe_pattern` would be equivalent here, but the four migrated probes contribute no
     /// `ClientProbe`, so the only thing that would change is the shape of the pattern — and this
     /// migration is supposed to change nothing that a scan can observe.
-    fn app_probe(&self) -> Option<Box<dyn AppProbe>> {
-        Some(Box::new(DhcpProbe))
+    fn app_probes(&self) -> Vec<Box<dyn AppProbe>> {
+        vec![Box::new(DhcpProbe)]
     }
 }
 

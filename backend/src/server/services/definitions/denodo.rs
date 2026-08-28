@@ -1,7 +1,7 @@
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::definitions::{ServiceDefinitionFactory, create_service};
 use crate::server::services::r#impl::categories::ServiceCategory;
-use crate::server::services::r#impl::definitions::ServiceDefinition;
+use crate::server::services::r#impl::definitions::{ConnectOnly, ServiceDefinition};
 use crate::server::services::r#impl::patterns::Pattern;
 
 #[derive(Default, Clone, Eq, PartialEq, Hash)]
@@ -16,6 +16,12 @@ impl ServiceDefinition for Denodo {
     }
     fn category(&self) -> ServiceCategory {
         ServiceCategory::Database
+    }
+
+    /// Denodo is commercial, with no pullable image and no published source, so a match string for
+    /// its web consoles would be a guess.
+    fn connect_only_rationale(&self) -> Option<ConnectOnly> {
+        Some(ConnectOnly::NoVerifiableImplementation)
     }
 
     fn discovery_pattern(&self) -> Pattern<'_> {
