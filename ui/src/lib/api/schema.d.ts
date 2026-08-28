@@ -3880,6 +3880,8 @@ export interface components {
              *           "virtualization_service_id": null
              *         }
              *       ],
+             *       "software_revision": null,
+             *       "software_revision_source": "Unspecified",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -3919,8 +3921,8 @@ export interface components {
                  *     list and another on the map.
                  */
                 readonly display_name?: string | null;
-                /** @description Firmware or software revision of the device. */
-                firmware_revision: string | null;
+                /** @description ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above. */
+                readonly firmware_revision: string | null;
                 /** @description What produced the firmware revision. Read-only: decided by whichever source read it. */
                 firmware_revision_source?: components["schemas"]["AttributeSource"];
                 /** @description Whether the host is hidden from topology views. */
@@ -3975,6 +3977,10 @@ export interface components {
                 serial_number_source?: components["schemas"]["AttributeSource"];
                 /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
+                /** @description ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above. */
+                readonly software_revision: string | null;
+                /** @description What produced the software revision. Read-only: decided by whichever source read it. */
+                software_revision_source?: components["schemas"]["AttributeSource"];
                 /** @description How this host came to be known — discovered, imported, or created by hand. */
                 source: components["schemas"]["EntitySource"];
                 /** @description SNMP sysContact — administrative contact as configured on the device. */
@@ -4995,7 +5001,7 @@ export interface components {
                     [key: string]: components["schemas"]["Edge"][];
                 };
                 /** @description Hosts included in this topology. */
-                hosts: components["schemas"]["Host"][];
+                hosts: components["schemas"]["TopologyHost"][];
                 /** @description Interfaces included in this topology. */
                 interfaces: components["schemas"]["Interface"][];
                 /** @description IP addresses included in this topology. */
@@ -7587,7 +7593,7 @@ export interface components {
          *     Child entities (ip_addresses, ports, services) are stored in their own tables
          *     and queried by `host_id`. They are NOT stored on the host.
          */
-        HostBase: components["schemas"]["HostName"] & components["schemas"]["HostSysDescr"] & components["schemas"]["HostSysObjectId"] & components["schemas"]["HostSysLocation"] & components["schemas"]["HostSysContact"] & components["schemas"]["HostManagementUrl"] & components["schemas"]["HostChassisId"] & components["schemas"]["HostSysName"] & components["schemas"]["HostManufacturer"] & components["schemas"]["HostModel"] & components["schemas"]["HostSerialNumber"] & components["schemas"]["HostFirmwareRevision"] & {
+        HostBase: components["schemas"]["HostName"] & components["schemas"]["HostSysDescr"] & components["schemas"]["HostSysObjectId"] & components["schemas"]["HostSysLocation"] & components["schemas"]["HostSysContact"] & components["schemas"]["HostManagementUrl"] & components["schemas"]["HostChassisId"] & components["schemas"]["HostSysName"] & components["schemas"]["HostManufacturer"] & components["schemas"]["HostModel"] & components["schemas"]["HostSerialNumber"] & components["schemas"]["HostFirmwareRevision"] & components["schemas"]["HostSoftwareRevision"] & {
             /** @description Credential assignments for this host (hydrated from junction table). */
             credential_assignments: components["schemas"]["CredentialAssignment"][];
             /** @description Free-text notes about the host. */
@@ -7795,6 +7801,8 @@ export interface components {
          *           "virtualization_service_id": null
          *         }
          *       ],
+         *       "software_revision": null,
+         *       "software_revision_source": "Unspecified",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7834,8 +7842,8 @@ export interface components {
              *     list and another on the map.
              */
             readonly display_name?: string | null;
-            /** @description Firmware or software revision of the device. */
-            firmware_revision: string | null;
+            /** @description ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above. */
+            readonly firmware_revision: string | null;
             /** @description What produced the firmware revision. Read-only: decided by whichever source read it. */
             firmware_revision_source?: components["schemas"]["AttributeSource"];
             /** @description Whether the host is hidden from topology views. */
@@ -7890,6 +7898,10 @@ export interface components {
             serial_number_source?: components["schemas"]["AttributeSource"];
             /** @description Services running on this host. */
             services: components["schemas"]["Service"][];
+            /** @description ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above. */
+            readonly software_revision: string | null;
+            /** @description What produced the software revision. Read-only: decided by whichever source read it. */
+            software_revision_source?: components["schemas"]["AttributeSource"];
             /** @description How this host came to be known — discovered, imported, or created by hand. */
             source: components["schemas"]["EntitySource"];
             /** @description SNMP sysContact — administrative contact as configured on the device. */
@@ -7933,6 +7945,11 @@ export interface components {
             /** @description ENTITY-MIB entPhysicalSerialNum - hardware serial number */
             serial_number?: string;
             serial_number_source?: components["schemas"]["AttributeSource"];
+        };
+        HostSoftwareRevision: {
+            /** @description ENTITY-MIB entPhysicalSoftwareRev - software revision of the device as a whole */
+            software_revision?: string;
+            software_revision_source?: components["schemas"]["AttributeSource"];
         };
         HostSysContact: {
             /** @description SNMP sysContact.0 - admin contact info */
@@ -9250,8 +9267,8 @@ export interface components {
                  *     list and another on the map.
                  */
                 readonly display_name?: string | null;
-                /** @description Firmware or software revision of the device. */
-                firmware_revision: string | null;
+                /** @description ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above. */
+                readonly firmware_revision: string | null;
                 /** @description What produced the firmware revision. Read-only: decided by whichever source read it. */
                 firmware_revision_source?: components["schemas"]["AttributeSource"];
                 /** @description Whether the host is hidden from topology views. */
@@ -9306,6 +9323,10 @@ export interface components {
                 serial_number_source?: components["schemas"]["AttributeSource"];
                 /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
+                /** @description ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above. */
+                readonly software_revision: string | null;
+                /** @description What produced the software revision. Read-only: decided by whichever source read it. */
+                software_revision_source?: components["schemas"]["AttributeSource"];
                 /** @description How this host came to be known — discovered, imported, or created by hand. */
                 source: components["schemas"]["EntitySource"];
                 /** @description SNMP sysContact — administrative contact as configured on the device. */
@@ -11030,7 +11051,7 @@ export interface components {
                 [key: string]: components["schemas"]["Edge"][];
             };
             /** @description Hosts included in this topology. */
-            hosts: components["schemas"]["Host"][];
+            hosts: components["schemas"]["TopologyHost"][];
             /** @description Interfaces included in this topology. */
             interfaces: components["schemas"]["Interface"][];
             /** @description IP addresses included in this topology. */
@@ -11053,6 +11074,31 @@ export interface components {
             tags: components["schemas"]["Tag"][];
             /** @description VLANs included in this topology. */
             vlans: components["schemas"]["Vlan"][];
+        };
+        /**
+         * @description A [`Host`] as the topology bundle ships it: the domain row plus the title every surface has to
+         *     agree on.
+         *
+         *     The ladder itself stays on [`Host::display_name`] — this only carries its result. The bundle
+         *     has to carry it per host because the frontend looks a host up *by id* at sites where no node
+         *     for that host is guaranteed to be in the current view (a service card naming its parent, a
+         *     `hostA ↔ hostB` edge label, a dependency target), so [`Node::header`] cannot be the only place
+         *     the name exists.
+         *
+         *     A wrapper rather than a field on [`Host`] itself: `Host` is the row every other endpoint and
+         *     the daemon protocol serialize, where a computed title would always be absent and read as "this
+         *     host has no name".
+         */
+        TopologyHost: components["schemas"]["Host"] & {
+            /**
+             * @description What to call this host when `name` is empty: its hostname, sysName, chassis id or first
+             *     address, whichever it has. `None` when nothing identifies it.
+             *
+             *     The same ladder, and the same value, as `HostResponse.display_name` and the host
+             *     container's `header` — a host cannot be called one thing on the map and another in the
+             *     list.
+             */
+            readonly display_name?: string | null;
         };
         TopologyLocalOptions: {
             /**

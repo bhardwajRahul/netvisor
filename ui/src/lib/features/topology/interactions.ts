@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import type { Edge } from '@xyflow/svelte';
 import type { Node } from '@xyflow/svelte';
 import { edgeTypes, entities, views, serviceDefinitions } from '$lib/shared/stores/metadata';
+import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 import type { TopologyEdge, TopologyNode, RenderableTopology } from './types/base';
 import {
 	isDisabledEdge,
@@ -1130,7 +1131,10 @@ export function updateSearchFilter(
 
 	// Search hosts
 	for (const host of topology.hosts) {
-		const nameMatch = host.name.toLowerCase().includes(q);
+		// The title, not the stored name — a host labelled `core-sw-01` on the canvas because that
+		// is its sysName has to be findable by typing what is drawn on it. Checking `name` as well
+		// would be redundant: it is the ladder's first rung, so a named host's title *is* its name.
+		const nameMatch = hostDisplayName(host).toLowerCase().includes(q);
 		const hostnameMatch = host.hostname?.toLowerCase().includes(q) ?? false;
 		if (nameMatch || hostnameMatch) {
 			addResolved('Host', host.id);

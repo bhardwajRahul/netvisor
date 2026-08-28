@@ -13,6 +13,7 @@ import {
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import { pushSuccess } from '$lib/shared/stores/feedback';
+import { hostDisplayName } from './host-display-name';
 import { hosts_consolidatedToast, hosts_rescanStartedToast } from '$lib/paraglide/messages';
 import { discoverySSEManager } from '$lib/features/discovery/queries';
 import type { DiscoveryUpdatePayload } from '$lib/features/discovery/types/api';
@@ -717,7 +718,12 @@ export function useConsolidateHostsMutation() {
 			});
 
 			if (otherHostName) {
-				pushSuccess(hosts_consolidatedToast({ source: otherHostName, destination: response.name }));
+				pushSuccess(
+					hosts_consolidatedToast({
+						source: otherHostName,
+						destination: hostDisplayName(response)
+					})
+				);
 			}
 		}
 	}));

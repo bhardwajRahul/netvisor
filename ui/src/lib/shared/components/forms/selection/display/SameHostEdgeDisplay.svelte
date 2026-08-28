@@ -1,13 +1,15 @@
 <script lang="ts" module>
 	import { edgeTypes } from '$lib/shared/stores/metadata';
 	import type { RenderableTopology, TopologyEdge } from '$lib/features/topology/types/base';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
+	import { common_host, common_unknownEntity } from '$lib/paraglide/messages';
 
 	export const SameHostEdgeDisplay: EntityDisplayComponent<TopologyEdge, EdgeDisplayContext> = {
 		getId: (edge) => edge.id,
 		getLabel: (edge, context) => {
 			if (!context?.topology || !('host_id' in edge)) return 'Interface';
 			const host = context.topology.hosts.find((h) => h.id === edge.host_id);
-			return host?.name ?? 'Unknown Host';
+			return host ? hostDisplayName(host) : common_unknownEntity({ entity: common_host() });
 		},
 		getDescription: (edge, context) => {
 			if (!context?.topology) return '';

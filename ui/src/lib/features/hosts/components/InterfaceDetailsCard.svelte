@@ -2,6 +2,7 @@
 	import type { Interface, IPAddress } from '$lib/features/hosts/types/base';
 	import type { Subnet } from '$lib/features/subnets/types/base';
 	import type { Host } from '$lib/features/hosts/types/base';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import { getAdminStatusLabels, getOperStatusLabels } from '$lib/features/credentials/types/base';
 	import CollapsibleCard from '$lib/shared/components/data/CollapsibleCard.svelte';
 	import InfoRow from '$lib/shared/components/data/InfoRow.svelte';
@@ -166,7 +167,7 @@
 				{#if neighborHost}
 					<EntityTag
 						entityRef={entityRef('Host', neighborHost.id, neighborHost)}
-						label={neighborHost.name}
+						label={hostDisplayName(neighborHost)}
 						icon={entities.getIconComponent('Host')}
 						color={entities.getColorHelper('Host').color}
 					/>

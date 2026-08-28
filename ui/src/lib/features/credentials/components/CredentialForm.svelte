@@ -16,6 +16,7 @@
 	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
 	import type { Credential, CredentialType } from '../types/base';
 	import type { Host } from '$lib/features/hosts/types/base';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import { createDefaultCredential } from '../types/base';
 	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
 	import { entityRef } from '$lib/shared/components/data/types';
@@ -652,7 +653,7 @@
 					{#each lockedHosts as host (host.id)}
 						<EntityTag
 							entityRef={entityRef('Host', host.id, host)}
-							label={host.name}
+							label={hostDisplayName(host)}
 							icon={entities.getIconComponent('Host')}
 							color={entities.getColorHelper('Host').color}
 						/>

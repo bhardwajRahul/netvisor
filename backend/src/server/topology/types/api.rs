@@ -1,3 +1,6 @@
+use crate::server::topology::types::views::{
+    FilterValueContext, HasFilterValues, MetadataFilterType,
+};
 use crate::server::{
     bindings::r#impl::base::Binding,
     dependencies::r#impl::base::Dependency,
@@ -12,8 +15,81 @@ use crate::server::{
     vlans::r#impl::base::Vlan,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use utoipa::ToSchema;
+use uuid::Uuid;
+
+/// A [`Host`] as the topology bundle ships it: the domain row plus the title every surface has to
+/// agree on.
+///
+/// The ladder itself stays on [`Host::display_name`] — this only carries its result. The bundle
+/// has to carry it per host because the frontend looks a host up *by id* at sites where no node
+/// for that host is guaranteed to be in the current view (a service card naming its parent, a
+/// `hostA ↔ hostB` edge label, a dependency target), so [`Node::header`] cannot be the only place
+/// the name exists.
+///
+/// A wrapper rather than a field on [`Host`] itself: `Host` is the row every other endpoint and
+/// the daemon protocol serialize, where a computed title would always be absent and read as "this
+/// host has no name".
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TopologyHost {
+    #[serde(flatten)]
+    pub host: Host,
+    /// What to call this host when `name` is empty: its hostname, sysName, chassis id or first
+    /// address, whichever it has. `None` when nothing identifies it.
+    ///
+    /// The same ladder, and the same value, as `HostResponse.display_name` and the host
+    /// container's `header` — a host cannot be called one thing on the map and another in the
+    /// list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(read_only)]
+    pub display_name: Option<String>,
+}
+
+impl TopologyHost {
+    /// Title every host in the bundle against the bundle's own addresses.
+    ///
+    /// Groups the addresses by host first. [`TopologyContext::get_ip_addresses_for_host`] answers
+    /// the same question by rescanning the whole address list per host, and reusing it here would
+    /// make titling a bundle quadratic in a place that already holds every address. Order within
+    /// a host is preserved, so the ladder's "first address" rung picks the address the container
+    /// header picks — by construction, not by luck.
+    ///
+    /// [`TopologyContext::get_ip_addresses_for_host`]: crate::server::topology::service::context::TopologyContext::get_ip_addresses_for_host
+    pub fn wrap_all(hosts: Vec<Host>, ip_addresses: &[IPAddress]) -> Vec<Self> {
+        let mut by_host: HashMap<Uuid, Vec<&IPAddress>> = HashMap::new();
+        for ip in ip_addresses {
+            by_host.entry(ip.base.host_id).or_default().push(ip);
+        }
+
+        hosts
+            .into_iter()
+            .map(|host| {
+                let display_name =
+                    host.display_name(by_host.get(&host.id).into_iter().flatten().copied());
+                Self { host, display_name }
+            })
+            .collect()
+    }
+}
+
+/// Read-through to the host: the wrapper adds a title, it does not hide the entity. This is what
+/// keeps the graph builders reading `h.id` and `h.base.*` off a bundle host unchanged.
+impl std::ops::Deref for TopologyHost {
+    type Target = Host;
+
+    fn deref(&self) -> &Host {
+        &self.host
+    }
+}
+
+/// Server-side metadata filters run over the bundle, which holds wrapped hosts. The values they
+/// filter on are the host's own.
+impl HasFilterValues for TopologyHost {
+    fn filter_values(&self, ctx: &FilterValueContext) -> BTreeMap<MetadataFilterType, String> {
+        self.host.filter_values(ctx)
+    }
+}
 
 /// Bundle of entities + the built graph that feed the topology render, export,
 /// and share pipelines.
@@ -26,8 +102,8 @@ use utoipa::ToSchema;
 /// active view's slice client-side.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct TopologyData {
-    /// Hosts included in this topology.
-    pub hosts: Vec<Host>,
+    /// Hosts included in this topology, each carrying the title the map and the host list share.
+    pub hosts: Vec<TopologyHost>,
     /// IP addresses included in this topology.
     pub ip_addresses: Vec<IPAddress>,
     /// Subnets included in this topology.

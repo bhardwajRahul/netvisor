@@ -1,6 +1,7 @@
 <script lang="ts" module>
 	import { edgeTypes, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import type { RenderableTopology, TopologyEdge } from '$lib/features/topology/types/base';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 
 	export const HypervisorEdgeDisplay: EntityDisplayComponent<TopologyEdge, EdgeDisplayContext> = {
 		getId: (edge) => edge.id,
@@ -18,7 +19,7 @@
 			const parts: string[] = [];
 			const defName = serviceDefinitions.getName(vmService.service_definition);
 			if (defName && defName !== vmService.name) parts.push(defName);
-			if (hypervisorHost) parts.push(`on ${hypervisorHost.name}`);
+			if (hypervisorHost) parts.push(`on ${hostDisplayName(hypervisorHost)}`);
 			return parts.join(' · ');
 		},
 		getIcon: (edge, context) => {

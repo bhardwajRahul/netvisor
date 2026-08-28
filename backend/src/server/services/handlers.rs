@@ -1,5 +1,5 @@
 use crate::server::auth::middleware::permissions::{Authorized, Member, Viewer};
-use crate::server::hosts::r#impl::base::Host;
+use crate::server::hosts::r#impl::base::{Host, host_display_name_sql, host_primary_address_join};
 use crate::server::services::definitions::ServiceDefinitionRegistry;
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::shared::handlers::ordering::OrderField;
@@ -39,7 +39,16 @@ pub enum ServiceOrderField {
     CreatedAt,
     Name,
     UpdatedAt,
-    /// Sort by host name. Requires JOIN to hosts table.
+    /// Sort by the parent host's title — the full [`Host::display_name`] ladder, so the Host
+    /// column on the Services tab orders by the same strings it draws. Requires a JOIN to `hosts`
+    /// and, for the ladder's last rung, to the primary-address subquery.
+    ///
+    /// The address rung is not optional here despite that extra join. This column is `groupable`,
+    /// and the client renders its group headers from the full ladder: stopping at the chassis id
+    /// would group an address-titled host together with one that has no title at all, interleave
+    /// their services, and leave the client drawing two alternating headers over the mixture.
+    ///
+    /// [`Host::display_name`]: crate::server::hosts::r#impl::base::Host::display_name
     Host,
     NetworkId,
     Position,
@@ -60,15 +69,16 @@ impl OrderField for ServiceOrderField {
             Self::Position => "services.position",
             Self::ServiceDefinition => "services.service_definition",
             Self::LastSeenAt => "services.last_seen_at",
-            Self::Host => "COALESCE(service_host.name, '')",
+            Self::Host => host_display_name_sql!("service_host", "primary_interface"),
         }
     }
 
     fn join_sql(&self) -> Option<&'static str> {
         match self {
-            Self::Host => {
-                Some("LEFT JOIN hosts AS service_host ON services.host_id = service_host.id")
-            }
+            Self::Host => Some(concat!(
+                "LEFT JOIN hosts AS service_host ON services.host_id = service_host.id ",
+                host_primary_address_join!("service_host")
+            )),
             _ => None,
         }
     }

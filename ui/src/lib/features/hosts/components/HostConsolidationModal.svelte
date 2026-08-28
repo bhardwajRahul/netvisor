@@ -1,6 +1,7 @@
 <script lang="ts">
 	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
 	import type { Host } from '../types/base';
+	import { hostDisplayName } from '../host-display-name';
 	import { useHostSummariesQuery } from '../queries';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import EntityDisplay from '$lib/shared/components/forms/selection/display/EntityDisplayWrapper.svelte';
@@ -75,7 +76,13 @@
 					.filter((host) => host.id !== otherHost.id)
 					.filter((host) => host.network_id == otherHost.network_id)
 			: []
-		).sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+		)
+			// Sorted by the same title the dropdown renders, not the stored name — otherwise every
+			// host that has never been named sorts to the top under the empty string, in a list
+			// where each of them is visibly labelled.
+			.sort((a, b) =>
+				hostDisplayName(a).toLowerCase().localeCompare(hostDisplayName(b).toLowerCase())
+			)
 	);
 
 	// Get the selected target host
@@ -98,7 +105,7 @@
 			const actions = [
 				{
 					id: 'delete',
-					name: hosts_consolidateModal_hostWillBeDeleted({ name: otherHost.name })
+					name: hosts_consolidateModal_hostWillBeDeleted({ name: hostDisplayName(otherHost) })
 				}
 			];
 
@@ -107,8 +114,8 @@
 					id: 'services',
 					name: hosts_consolidateModal_servicesMigrated({
 						count: services.length,
-						source: otherHost.name,
-						destination: selectedTargetHost.name
+						source: hostDisplayName(otherHost),
+						destination: hostDisplayName(selectedTargetHost)
 					})
 				});
 			}
@@ -118,8 +125,8 @@
 					id: 'interfaces',
 					name: hosts_consolidateModal_interfacesMigrated({
 						count: interfaces.length,
-						source: otherHost.name,
-						destination: selectedTargetHost.name
+						source: hostDisplayName(otherHost),
+						destination: hostDisplayName(selectedTargetHost)
 					})
 				});
 			}
@@ -129,8 +136,8 @@
 					id: 'ports',
 					name: hosts_consolidateModal_portsMigrated({
 						count: ports.length,
-						source: otherHost.name,
-						destination: selectedTargetHost.name
+						source: hostDisplayName(otherHost),
+						destination: hostDisplayName(selectedTargetHost)
 					})
 				});
 			}
@@ -141,8 +148,8 @@
 					id: 'credentials',
 					name: hosts_consolidateModal_credentialsMigrated({
 						count: credentialCount,
-						source: otherHost.name,
-						destination: selectedTargetHost.name
+						source: hostDisplayName(otherHost),
+						destination: hostDisplayName(selectedTargetHost)
 					})
 				});
 			}
@@ -230,7 +237,9 @@
 				<!-- Target selection -->
 				<div>
 					<RichSelect
-						label={hosts_consolidateModal_selectHost({ hostName: otherHost?.name ?? '' })}
+						label={hosts_consolidateModal_selectHost({
+							hostName: otherHost ? hostDisplayName(otherHost) : ''
+						})}
 						placeholder={hosts_consolidateModal_chooseHost()}
 						selectedValue={selectedDestinationHostId}
 						options={availableHosts}

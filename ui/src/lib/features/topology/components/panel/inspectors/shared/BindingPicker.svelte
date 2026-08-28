@@ -3,6 +3,7 @@
 	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
 	import { entityRef } from '$lib/shared/components/data/types';
 	import { entities } from '$lib/shared/stores/metadata';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import type { AnyFieldApi } from '@tanstack/svelte-form';
 	import EntityTagSelect, {
 		type EntityTagOption
@@ -206,7 +207,7 @@
 			<p class="text-danger text-xs">
 				{dependencies_noOpenPortsError({
 					serviceName: backing.name,
-					hostName: host?.name ?? ''
+					hostName: host ? hostDisplayName(host) : ''
 				})}
 			</p>
 		{:else}

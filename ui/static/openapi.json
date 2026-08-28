@@ -6134,7 +6134,7 @@
           {
             "name": "search",
             "in": "query",
-            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname and description, and against its IP addresses and the\nnames of services running on it.",
+            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname, sysName, chassis id and description, and against its IP\naddresses and the names of services running on it.\n\nsysName and chassis id are in there because they are rungs of the title\nladder: a host with no name of its own is *shown* under one of them, and\na title you can read but cannot search for is a dead end.",
             "required": false,
             "schema": {
               "type": [
@@ -6501,7 +6501,7 @@
           {
             "name": "search",
             "in": "query",
-            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname and description, and against its IP addresses and the\nnames of services running on it.",
+            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname, sysName, chassis id and description, and against its IP\naddresses and the names of services running on it.\n\nsysName and chassis id are in there because they are rungs of the title\nladder: a host with no name of its own is *shown* under one of them, and\na title you can read but cannot search for is a dead end.",
             "required": false,
             "schema": {
               "type": [
@@ -6704,7 +6704,7 @@
           {
             "name": "search",
             "in": "query",
-            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname and description, and against its IP addresses and the\nnames of services running on it.",
+            "description": "Free-text search. Case-insensitive substring match against the host's\nname, hostname, sysName, chassis id and description, and against its IP\naddresses and the names of services running on it.\n\nsysName and chassis id are in there because they are rungs of the title\nladder: a host with no name of its own is *shown* under one of them, and\na title you can read but cannot search for is a dead end.",
             "required": false,
             "schema": {
               "type": [
@@ -15543,6 +15543,7 @@
               "hidden",
               "tags",
               "firmware_revision",
+              "software_revision",
               "ip_addresses",
               "ports",
               "services",
@@ -15706,6 +15707,18 @@
                   "$ref": "#/components/schemas/Service"
                 },
                 "description": "Services running on this host."
+              },
+              "software_revision": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above.",
+                "readOnly": true
+              },
+              "software_revision_source": {
+                "$ref": "#/components/schemas/AttributeSource",
+                "description": "What produced the software revision. Read-only: decided by whichever source read it."
               },
               "source": {
                 "$ref": "#/components/schemas/EntitySource",
@@ -15938,6 +15951,8 @@
                   "virtualization_service_id": null
                 }
               ],
+              "software_revision": null,
+              "software_revision_source": "Unspecified",
               "source": {
                 "type": "Manual"
               },
@@ -17861,7 +17876,7 @@
               "hosts": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/Host"
+                  "$ref": "#/components/schemas/TopologyHost"
                 },
                 "description": "Hosts included in this topology."
               },
@@ -24394,7 +24409,11 @@
           },
           {
             "$ref": "#/components/schemas/HostFirmwareRevision",
-            "description": "Firmware or software revision of the device as a whole.\n\nWritten by whichever source read it — a controller's REST inventory, an industrial probe's\nidentity response, and (once ENTITY-MIB revisions land) `entPhysicalFirmwareRev`. Before\nthis column existed each of those had nowhere to put a version it had already read, and two\nof them flattened it into `sys_descr` as prose.\n\nDevice-level rather than per-module: everything downstream is host-shaped, and the NCCoE\nasset-inventory minimum says \"product version\", singular."
+            "description": "Firmware revision of the device as a whole — ENTITY-MIB `entPhysicalFirmwareRev`.\n\nWritten by whichever source read it — a controller's REST inventory, an industrial probe's\nidentity response, and `entPhysicalFirmwareRev`. Before this column existed each of those\nhad nowhere to put a version it had already read, and two of them flattened it into\n`sys_descr` as prose.\n\nDevice-level rather than per-module: everything downstream is host-shaped, and the NCCoE\nasset-inventory minimum says \"product version\", singular."
+          },
+          {
+            "$ref": "#/components/schemas/HostSoftwareRevision",
+            "description": "Software revision of the device as a whole — ENTITY-MIB `entPhysicalSoftwareRev`.\n\nIts own field rather than sharing `firmware_revision`, because RFC 4133 defines `.9` and\n`.10` as distinct objects: on a Cisco chassis they are the bootloader and the IOS version,\nand one column holding either with nothing recording which cannot tell them apart. Only\nENTITY-MIB writes it — every other source reports a single version, which is the firmware."
           },
           {
             "type": "object",
@@ -24586,6 +24605,7 @@
           "hidden",
           "tags",
           "firmware_revision",
+          "software_revision",
           "ip_addresses",
           "ports",
           "services",
@@ -24749,6 +24769,18 @@
               "$ref": "#/components/schemas/Service"
             },
             "description": "Services running on this host."
+          },
+          "software_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above.",
+            "readOnly": true
+          },
+          "software_revision_source": {
+            "$ref": "#/components/schemas/AttributeSource",
+            "description": "What produced the software revision. Read-only: decided by whichever source read it."
           },
           "source": {
             "$ref": "#/components/schemas/EntitySource",
@@ -24981,6 +25013,8 @@
               "virtualization_service_id": null
             }
           ],
+          "software_revision": null,
+          "software_revision_source": "Unspecified",
           "source": {
             "type": "Manual"
           },
@@ -25003,6 +25037,18 @@
             "description": "ENTITY-MIB entPhysicalSerialNum - hardware serial number"
           },
           "serial_number_source": {
+            "$ref": "#/components/schemas/AttributeSource"
+          }
+        }
+      },
+      "HostSoftwareRevision": {
+        "type": "object",
+        "properties": {
+          "software_revision": {
+            "type": "string",
+            "description": "ENTITY-MIB entPhysicalSoftwareRev - software revision of the device as a whole"
+          },
+          "software_revision_source": {
             "$ref": "#/components/schemas/AttributeSource"
           }
         }
@@ -27844,6 +27890,7 @@
                 "hidden",
                 "tags",
                 "firmware_revision",
+                "software_revision",
                 "ip_addresses",
                 "ports",
                 "services",
@@ -28007,6 +28054,18 @@
                     "$ref": "#/components/schemas/Service"
                   },
                   "description": "Services running on this host."
+                },
+                "software_revision": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above.",
+                  "readOnly": true
+                },
+                "software_revision_source": {
+                  "$ref": "#/components/schemas/AttributeSource",
+                  "description": "What produced the software revision. Read-only: decided by whichever source read it."
                 },
                 "source": {
                   "$ref": "#/components/schemas/EntitySource",
@@ -28239,6 +28298,8 @@
                     "virtualization_service_id": null
                   }
                 ],
+                "software_revision": null,
+                "software_revision_source": "Unspecified",
                 "source": {
                   "type": "Manual"
                 },
@@ -31544,7 +31605,7 @@
           "hosts": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Host"
+              "$ref": "#/components/schemas/TopologyHost"
             },
             "description": "Hosts included in this topology."
           },
@@ -31618,6 +31679,27 @@
             "description": "VLANs included in this topology."
           }
         }
+      },
+      "TopologyHost": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Host"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "display_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "What to call this host when `name` is empty: its hostname, sysName, chassis id or first\naddress, whichever it has. `None` when nothing identifies it.\n\nThe same ladder, and the same value, as `HostResponse.display_name` and the host\ncontainer's `header` — a host cannot be called one thing on the map and another in the\nlist.",
+                "readOnly": true
+              }
+            }
+          }
+        ],
+        "description": "A [`Host`] as the topology bundle ships it: the domain row plus the title every surface has to\nagree on.\n\nThe ladder itself stays on [`Host::display_name`] — this only carries its result. The bundle\nhas to carry it per host because the frontend looks a host up *by id* at sites where no node\nfor that host is guaranteed to be in the current view (a service card naming its parent, a\n`hostA ↔ hostB` edge label, a dependency target), so [`Node::header`] cannot be the only place\nthe name exists.\n\nA wrapper rather than a field on [`Host`] itself: `Host` is the row every other endpoint and\nthe daemon protocol serialize, where a computed title would always be absent and read as \"this\nhost has no name\"."
       },
       "TopologyLocalOptions": {
         "type": "object",

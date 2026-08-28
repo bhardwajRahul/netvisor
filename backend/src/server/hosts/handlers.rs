@@ -35,7 +35,7 @@ use crate::server::{
     daemons::r#impl::{base::Daemon, version::pre_interface_to_ip_address_rename},
     hosts::r#impl::{
         api::{CreateHostRequest, DiscoveryHostRequest, HostResponse, UpdateHostRequest},
-        base::Host,
+        base::{Host, PRIMARY_INTERFACE_JOIN, host_display_name_sql},
         legacy::{HostCreateRequestBody, HostCreateResponse, LegacyHostWithServicesResponse},
     },
     shared::types::api::{ApiError, ApiResponse, ApiResult, PaginatedApiResponse},
@@ -66,6 +66,9 @@ use zip::write::SimpleFileOptions;
 pub enum HostOrderField {
     #[default]
     CreatedAt,
+    /// Sort by the host's *title* — the [`Host::display_name`] ladder, not the stored `name`
+    /// column, so the order matches what the Name column draws. Requires the primary-address
+    /// JOIN for the ladder's last rung.
     Name,
     Hostname,
     UpdatedAt,
@@ -82,7 +85,7 @@ impl OrderField for HostOrderField {
     fn to_sql(&self) -> &'static str {
         match self {
             Self::CreatedAt => "hosts.created_at",
-            Self::Name => "hosts.name",
+            Self::Name => host_display_name_sql!("hosts", "primary_interface"),
             Self::Hostname => "hosts.hostname",
             Self::UpdatedAt => "hosts.updated_at",
             Self::NetworkId => "hosts.network_id",
@@ -96,15 +99,12 @@ impl OrderField for HostOrderField {
         match self {
             Self::VirtualizedBy => Some(
                 "LEFT JOIN services AS virt_service ON \
-                 (hosts.virtualization->'details'->>'service_id')::uuid = virt_service.id",
+                 hosts.virtualization_service_id = virt_service.id",
             ),
-            Self::InterfaceIp => Some(
-                "LEFT JOIN (\
-                    SELECT DISTINCT ON (host_id) host_id, ip_address \
-                    FROM ip_addresses \
-                    ORDER BY host_id, position ASC\
-                ) AS primary_interface ON hosts.id = primary_interface.host_id",
-            ),
+            // One const shared by both: grouping by interface ip while ordering by name must
+            // produce a single `primary_interface` join. `apply_ordering` drops the second when
+            // the two are equal, so what matters is that they cannot stop being equal.
+            Self::Name | Self::InterfaceIp => Some(PRIMARY_INTERFACE_JOIN),
             _ => None,
         }
     }
@@ -124,8 +124,12 @@ pub struct HostFilterQuery {
     /// Filter by tag IDs (returns hosts that have ANY of the specified tags)
     pub tag_ids: Option<Vec<Uuid>>,
     /// Free-text search. Case-insensitive substring match against the host's
-    /// name, hostname and description, and against its IP addresses and the
-    /// names of services running on it.
+    /// name, hostname, sysName, chassis id and description, and against its IP
+    /// addresses and the names of services running on it.
+    ///
+    /// sysName and chassis id are in there because they are rungs of the title
+    /// ladder: a host with no name of its own is *shown* under one of them, and
+    /// a title you can read but cannot search for is a dead end.
     pub search: Option<String>,
     /// Primary ordering field (used for grouping). Always sorts ASC to keep groups together.
     pub group_by: Option<HostOrderField>,

@@ -27,6 +27,7 @@
 <script lang="ts">
 	import { ChevronRight } from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import CollapsibleCard from '$lib/shared/components/data/CollapsibleCard.svelte';
@@ -107,7 +108,8 @@
 		// Credentials never report "gone": a viewer without permission to read them resolves
 		// nothing, and labelling each one unknown for that reader would be a worse lie.
 		if (type === 'Credential') return credentialsData.find((c) => c.id === id)?.name;
-		return hostsData.find((h) => h.id === id)?.name ?? (hostsResolved ? null : undefined);
+		const host = hostsData.find((h) => h.id === id);
+		return host ? hostDisplayName(host) : hostsResolved ? null : undefined;
 	});
 
 	let sections = $derived(buildWarningReport(warnings, nameOfEntity));
