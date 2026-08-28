@@ -25,7 +25,7 @@
 	row it belongs to, past the chevron that opened it.
 -->
 <script lang="ts">
-	import { ChevronRight, Copy } from 'lucide-svelte';
+	import { ChevronRight } from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
@@ -39,13 +39,9 @@
 	import { entities } from '$lib/shared/stores/metadata';
 	import { createColorHelper, createIconComponent } from '$lib/shared/utils/styling';
 	import type { IconComponent } from '$lib/shared/utils/types';
-	import { pushSuccess, pushWarning } from '$lib/shared/stores/feedback';
 	import {
-		common_copied,
 		common_credentials,
-		common_failedToCopy,
 		common_warnings,
-		discovery_copyWarningData,
 		discovery_noWarnings,
 		discovery_noWarningsSubtitle,
 		discovery_scanSettings,
@@ -98,9 +94,20 @@
 	const credentialsQuery = useCredentialsQuery();
 	let credentialsData = $derived(credentialsQuery.data ?? []);
 
+	/**
+	 * Whether an unresolved host id means "gone" rather than "not fetched yet".
+	 *
+	 * Only once the fetch has actually succeeded. While it is in flight the answer is unknown, and
+	 * on an error it is still unknown — calling every device deleted because one request failed
+	 * would be worse than saying nothing.
+	 */
+	let hostsResolved = $derived(hostsQuery.isSuccess);
+
 	let nameOfEntity = $derived((type: EntityDiscriminants, id: string) => {
+		// Credentials never report "gone": a viewer without permission to read them resolves
+		// nothing, and labelling each one unknown for that reader would be a worse lie.
 		if (type === 'Credential') return credentialsData.find((c) => c.id === id)?.name;
-		return hostsData.find((h) => h.id === id)?.name;
+		return hostsData.find((h) => h.id === id)?.name ?? (hostsResolved ? null : undefined);
 	});
 
 	let sections = $derived(buildWarningReport(warnings, nameOfEntity));
@@ -198,50 +205,6 @@
 
 		return null;
 	}
-
-	/**
-	 * Put the run's warnings on the clipboard as recorded, for pasting into an issue or a thread.
-	 *
-	 * The rendered report is the wrong thing to share: its sentences are this build's copy in the
-	 * reader's locale, its rows merge occurrences the backend deliberately kept apart, and its
-	 * chips show names resolved live rather than what the scan recorded. The payload is the
-	 * durable artefact — every code with its own fields, one object per occurrence.
-	 *
-	 * `navigator.clipboard` is gated to secure contexts, and Scanopy supports plain-HTTP
-	 * self-hosts — the same trap `crypto.randomUUID` carries — so it is used only where it exists
-	 * and a selection-based copy stands in elsewhere. That is the deployment most likely to be
-	 * sharing warnings with us, so failing there would miss the point of the button.
-	 */
-	async function copyWarningData() {
-		const raw = JSON.stringify(warnings, null, 2);
-		try {
-			if (window.isSecureContext && navigator.clipboard) {
-				await navigator.clipboard.writeText(raw);
-			} else if (!copyViaSelection(raw)) {
-				throw new Error('the browser refused the copy');
-			}
-			pushSuccess(common_copied());
-		} catch (error) {
-			pushWarning(common_failedToCopy({ error: String(error) }));
-		}
-	}
-
-	/** The pre-`navigator.clipboard` path, for a page served over plain HTTP. */
-	function copyViaSelection(text: string): boolean {
-		const field = document.createElement('textarea');
-		field.value = text;
-		// Off-screen rather than `display: none`: a hidden field cannot be selected.
-		field.setAttribute('readonly', '');
-		field.style.position = 'fixed';
-		field.style.opacity = '0';
-		document.body.appendChild(field);
-		try {
-			field.select();
-			return document.execCommand('copy');
-		} finally {
-			field.remove();
-		}
-	}
 </script>
 
 <!--
@@ -267,23 +230,6 @@
 	<EmptyState title={discovery_noWarnings()} subtitle={discovery_noWarningsSubtitle()} />
 {:else}
 	<div class="space-y-4" aria-label={common_warnings()}>
-		<!--
-			The payload as recorded, for handing to someone else. The report is built to be read, and
-			everything that makes it readable — the rungs, the merged sentences, the resolved names —
-			is the wrong thing to paste into an issue: it is this build's rendering of the run, not
-			what the run recorded. The codes and their fields are.
-		-->
-		<div class="flex justify-end">
-			<button
-				type="button"
-				class="btn-secondary flex items-center gap-1 py-1 text-xs"
-				onclick={copyWarningData}
-			>
-				<Copy class="h-3.5 w-3.5" />
-				<span>{discovery_copyWarningData()}</span>
-			</button>
-		</div>
-
 		{#each sections as section (section.remedy)}
 			<CollapsibleCard
 				title={section.title}

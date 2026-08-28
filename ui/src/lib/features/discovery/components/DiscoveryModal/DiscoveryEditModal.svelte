@@ -24,7 +24,7 @@
 	import { createEmptyDiscoveryFormData, parseDayTimeCronSchedule } from '../../queries';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
-	import { pushError } from '$lib/shared/stores/feedback';
+	import { pushError, pushSuccess, pushWarning } from '$lib/shared/stores/feedback';
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import type { Host } from '$lib/features/hosts/types/base';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
@@ -38,7 +38,8 @@
 		Calendar,
 		ArrowRight,
 		KeyRound,
-		TriangleAlert
+		TriangleAlert,
+		Copy
 	} from 'lucide-svelte';
 	import CredentialsStep, {
 		type PendingCredential
@@ -49,10 +50,12 @@
 		common_back,
 		common_cancel,
 		common_close,
+		common_copied,
 		common_credentials,
 		common_delete,
 		common_deleting,
 		common_details,
+		common_failedToCopy,
 		common_warnings,
 		common_next,
 		common_saving,
@@ -61,6 +64,7 @@
 		common_performance,
 		common_targets,
 		daemons_credentialWizardTargetRequired,
+		discovery_copyWarningData,
 		discovery_couldNotGetNetworkId,
 		discovery_createDiscovery,
 		discovery_createScheduled,
@@ -132,6 +136,50 @@
 		discovery?.run_type.type === 'Historical' ? (discovery.run_type.results.warnings ?? []) : []
 	);
 	let readOnly = $derived(formData.run_type.type == 'Historical');
+
+	/**
+	 * Put the run's warnings on the clipboard as recorded, for pasting into an issue or a thread.
+	 *
+	 * The rendered report is the wrong thing to share: its sentences are this build's copy in the
+	 * reader's locale, its rows merge occurrences the backend deliberately kept apart, and its
+	 * chips show names resolved live rather than what the scan recorded. The payload is the
+	 * durable artefact — every code with its own fields, one object per occurrence.
+	 *
+	 * `navigator.clipboard` is gated to secure contexts, and Scanopy supports plain-HTTP
+	 * self-hosts — the same trap `crypto.randomUUID` carries — so it is used only where it exists
+	 * and a selection-based copy stands in elsewhere. That is the deployment most likely to be
+	 * sharing warnings with us, so failing there would miss the point of the button.
+	 */
+	async function copyWarningData() {
+		const raw = JSON.stringify(historicalWarnings, null, 2);
+		try {
+			if (window.isSecureContext && navigator.clipboard) {
+				await navigator.clipboard.writeText(raw);
+			} else if (!copyViaSelection(raw)) {
+				throw new Error('the browser refused the copy');
+			}
+			pushSuccess(common_copied());
+		} catch (error) {
+			pushWarning(common_failedToCopy({ error: String(error) }));
+		}
+	}
+
+	/** The pre-`navigator.clipboard` path, for a page served over plain HTTP. */
+	function copyViaSelection(text: string): boolean {
+		const field = document.createElement('textarea');
+		field.value = text;
+		// Off-screen rather than `display: none`: a hidden field cannot be selected.
+		field.setAttribute('readonly', '');
+		field.style.position = 'fixed';
+		field.style.opacity = '0';
+		document.body.appendChild(field);
+		try {
+			field.select();
+			return document.execCommand('copy');
+		} finally {
+			field.remove();
+		}
+	}
 
 	let title = $derived(
 		isEditing
@@ -808,6 +856,18 @@
 					{/if}
 				</div>
 				<div class="flex items-center gap-3">
+					<!-- Beside Close rather than above the report: it acts on the whole run, not on
+					     any one row, and the footer is where a modal's whole-record actions live. -->
+					{#if activeTab === 'warnings' && historicalWarnings.length > 0}
+						<button
+							type="button"
+							class="btn-secondary flex items-center gap-1"
+							onclick={copyWarningData}
+						>
+							<Copy class="h-4 w-4" />
+							<span>{discovery_copyWarningData()}</span>
+						</button>
+					{/if}
 					{#if isEditing || isHistoricalRun}
 						<button
 							type="button"
