@@ -30,4 +30,4 @@ SET lock_timeout = '5s';
 SET statement_timeout = '30s';
 
 ALTER TABLE hosts ADD COLUMN IF NOT EXISTS software_revision TEXT;
-ALTER TABLE hosts ADD COLUMN IF NOT EXISTS software_revision_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS software_revision_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
