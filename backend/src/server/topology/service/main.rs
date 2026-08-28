@@ -38,7 +38,7 @@ use crate::server::{
     topology::{
         service::{context::TopologyContext, edge_builder::EdgeBuilder},
         types::{
-            api::TopologyData,
+            api::{TopologyData, TopologyHost},
             base::{Topology, TopologyOptions},
             edges::Edge,
             grouping::{ContainerRule, ElementRule, GroupingConfig},
@@ -341,6 +341,11 @@ impl TopologyService {
             .filter(|v| v.is_supported(&support))
             .collect();
 
+        // Title the hosts once, here, from the addresses this same bundle carries — so the map,
+        // the host list and every by-id lookup on the frontend read one value rather than each
+        // re-deriving the ladder. Last, because `get_entity_tags` above wants plain `&[Host]`.
+        let hosts = TopologyHost::wrap_all(hosts, &ip_addresses);
+
         Ok(TopologyData {
             hosts,
             ip_addresses,
@@ -569,9 +574,14 @@ impl TopologyService {
         let mut nodes_by_view = HashMap::new();
         let mut edges_by_view = HashMap::new();
 
+        // The builders take plain domain hosts; the bundle carries them wrapped with the title
+        // computed at load. Unwrap once here rather than threading the wrapper through
+        // `TopologyContext` and every builder — and once for all views, not once each.
+        let hosts: Vec<Host> = data.hosts.iter().map(|h| h.host.clone()).collect();
+
         for view in TopologyView::iter() {
             let (nodes, edges) = self.build_graph(BuildGraphParams {
-                hosts: &data.hosts,
+                hosts: &hosts,
                 ip_addresses: &data.ip_addresses,
                 services: &data.services,
                 subnets: &data.subnets,

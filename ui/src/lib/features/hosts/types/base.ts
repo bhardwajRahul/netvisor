@@ -2,7 +2,19 @@
 import type { components } from '$lib/api/schema';
 
 // Entity primitive types
-export type Host = components['schemas']['Host'];
+/**
+ * A host row plus the computed title every surface has to agree on.
+ *
+ * `display_name` lives on the *response* schemas (`HostResponse`, and the topology bundle's
+ * `TopologyHost`) rather than on `Host`, because it is derived, not stored. But every list, picker,
+ * table and topology consumer holds a `Host`, and `toHostPrimitive` already carries the field
+ * through at runtime — so without this it is present in the payload and invisible to the compiler.
+ *
+ * Both halves come from the generated schema. Read it with `hostDisplayName()`, never directly, and
+ * never read `name` for display.
+ */
+export type Host = components['schemas']['Host'] &
+	Pick<components['schemas']['HostResponse'], 'display_name'>;
 export type HostVirtualization = components['schemas']['HostVirtualization'];
 export type ProxmoxVirtualization = components['schemas']['ProxmoxVirtualization'];
 export type IPAddress = components['schemas']['IPAddress'];

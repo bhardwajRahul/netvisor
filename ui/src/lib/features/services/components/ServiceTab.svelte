@@ -33,6 +33,7 @@
 		type ServicesQueryParams
 	} from '../queries';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import type { TabProps } from '$lib/shared/types';
@@ -422,11 +423,18 @@
 					searchable: true,
 					filterable: true,
 					groupable: true,
-					// The server groups on the host's name, coalescing services
-					// with no host to an empty string.
-					getGroupValue: (service) => serviceHosts.get(service.id)?.name ?? '',
-					getValue: (service) =>
-						serviceHosts.get(service.id)?.name || common_unknownEntity({ entity: common_host() }),
+					// The server groups on the host's title — the same full ladder rendered below —
+					// coalescing services with no host to an empty string. Both sides have to walk
+					// every rung or two hosts the server lumps into one group get two alternating
+					// headers drawn over their interleaved rows.
+					getGroupValue: (service) => {
+						const host = serviceHosts.get(service.id);
+						return host ? hostDisplayName(host) : '';
+					},
+					getValue: (service) => {
+						const host = serviceHosts.get(service.id);
+						return host ? hostDisplayName(host) : common_unknownEntity({ entity: common_host() });
+					},
 					display: {
 						order: 3,
 						getItems: (service) => {
@@ -435,7 +443,7 @@
 							return [
 								{
 									id: host.id,
-									label: host.name,
+									label: hostDisplayName(host),
 									color: entities.getColorHelper('Host').color,
 									entityRef: entityRef('Host', host.id, host)
 								}

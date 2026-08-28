@@ -3,6 +3,7 @@
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import InfoRow from '$lib/shared/components/data/InfoRow.svelte';
 	import InlineSuccess from '$lib/shared/components/feedback/InlineSuccess.svelte';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
@@ -106,9 +107,11 @@
 	// Hoisted: narrowing on `payload.discovery_type` doesn't survive into the
 	// nested callback, and `ports` is optional in the generated type.
 	let rescan = $derived(payload.discovery_type.type === 'Rescan' ? payload.discovery_type : null);
-	let rescanHostName = $derived(
-		rescan ? (hostsData.find((h) => h.id === rescan.target_host_id)?.name ?? null) : null
-	);
+	let rescanHostName = $derived.by(() => {
+		if (!rescan) return null;
+		const host = hostsData.find((h) => h.id === rescan.target_host_id);
+		return host ? hostDisplayName(host) : null;
+	});
 
 	let hostNamingLabel = $derived(
 		payload.discovery_type.type === 'Unified'

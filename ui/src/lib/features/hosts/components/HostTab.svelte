@@ -9,6 +9,7 @@
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import HostEditor from './HostEditModal/HostEditor.svelte';
 	import HostConsolidationModal from './HostConsolidationModal.svelte';
 	import HostExportModal from './HostExportModal.svelte';
@@ -294,6 +295,14 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
+					// The title, not the stored `name`. `getValue` rather than `display.cell`
+					// because this one accessor also feeds the row header cell, the row
+					// checkbox's accessible name and the card title — a `cell` snippet would fix
+					// the table and leave those three rendering an empty string.
+					//
+					// The key stays `name`: it is the `HostOrderField` sent to the server, which
+					// now orders by the same ladder this renders.
+					getValue: (host) => hostDisplayName(host),
 					display: { primary: true, width: 220, order: 0 }
 				},
 				hostname: {
@@ -562,11 +571,11 @@
 	}
 
 	function handleRescanHost(host: Host) {
-		rescanHostMutation.mutate({ id: host.id, name: host.name });
+		rescanHostMutation.mutate({ id: host.id, name: hostDisplayName(host) });
 	}
 
 	function handleDeleteHost(host: Host) {
-		if (confirm(common_confirmDeleteName({ name: host.name }))) {
+		if (confirm(common_confirmDeleteName({ name: hostDisplayName(host) }))) {
 			deleteHostMutation.mutate(host.id);
 		}
 	}
@@ -596,7 +605,7 @@
 			await consolidateHostsMutation.mutateAsync({
 				destinationHostId,
 				otherHostId,
-				otherHostName: otherHost?.name
+				otherHostName: otherHost ? hostDisplayName(otherHost) : undefined
 			});
 			showHostConsolidationModal = false;
 			otherHost = null;

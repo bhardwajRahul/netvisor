@@ -227,6 +227,79 @@ impl Host {
     }
 }
 
+/// SQL mirror of [`Host::display_name`], for ordering and grouping a host list by the title it
+/// actually renders.
+///
+/// A column labelled Name that sorts on `hosts.name` while showing the ladder's result puts every
+/// nameless-but-titled host under the empty string — visibly ordering on something other than what
+/// it draws. Sorting has to walk the same rungs, and the database is the only place that can do it
+/// across a page it hasn't sent yet.
+///
+/// One macro rather than a literal per call site: this is the ladder written a second time, in a
+/// second language, and the two can only be kept honest by there being exactly one of the second.
+/// **Same rungs, same order as [`Host::display_name`] — change both or neither.**
+///
+/// Takes the alias of the `hosts` row and the alias of its primary-address join; the caller must
+/// put [`host_primary_address_join`] for the same host alias in scope.
+///
+/// **All five rungs, always.** A four-rung variant that skipped the address join was tempting for
+/// secondary sorts, but grouping is what makes it wrong: a host titled by its address would group
+/// under the empty string alongside a host with no title at all, the two sets of rows would
+/// interleave, and the client — which renders group headers from the full ladder — would draw two
+/// alternating headers over them.
+///
+/// `NULLIF(…, '')` on every text rung because a host's `name` is stored as the empty string when
+/// [`HostName::Unnamed`], not as NULL — `COALESCE` alone would stop at the first rung every time.
+macro_rules! host_display_name_sql {
+    ($hosts:literal, $primary_ip:literal) => {
+        concat!(
+            "COALESCE(NULLIF(",
+            $hosts,
+            ".name, ''), NULLIF(",
+            $hosts,
+            ".hostname, ''), ",
+            "NULLIF(",
+            $hosts,
+            ".sys_name, ''), NULLIF(",
+            $hosts,
+            ".chassis_id, ''), ",
+            "host(",
+            $primary_ip,
+            ".ip_address), '')"
+        )
+    };
+}
+pub(crate) use host_display_name_sql;
+
+/// The primary-address subquery [`host_display_name_sql`]'s last rung resolves through, joined
+/// against whichever alias holds the `hosts` row.
+///
+/// `position ASC` is what makes the SQL faithful: it is the order
+/// `IPAddressService::get_for_hosts` loads addresses in, so "first address" means the same address
+/// here as it does when [`Host::display_name`] walks a loaded host's own list.
+macro_rules! host_primary_address_join {
+    ($hosts:literal) => {
+        concat!(
+            "LEFT JOIN (\
+                SELECT DISTINCT ON (host_id) host_id, ip_address \
+                FROM ip_addresses \
+                ORDER BY host_id, position ASC\
+            ) AS primary_interface ON ",
+            $hosts,
+            ".id = primary_interface.host_id"
+        )
+    };
+}
+pub(crate) use host_primary_address_join;
+
+/// The join for a query whose `hosts` row is the `hosts` table itself.
+///
+/// A shared `const` so the two order fields that need it cannot drift into two subqueries that
+/// claim the same `primary_interface` alias while selecting different rows. `apply_ordering`
+/// compares the two `join_sql()` results for equality before adding the second, so a copy-pasted
+/// duplicate would still dedupe today — but only for exactly as long as the copies stay identical.
+pub const PRIMARY_INTERFACE_JOIN: &str = host_primary_address_join!("hosts");
+
 impl HostBase {
     /// Assign the host's name if `candidate` is at least as authoritative as what is stored.
     /// Returns whether anything changed.
@@ -446,11 +519,93 @@ impl ChangeTriggersTopologyStaleness<Host> for Host {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::hosts::r#impl::attributes::HostModelValue;
+    use crate::server::hosts::r#impl::attributes::{
+        HostChassisIdValue, HostModelValue, HostSysNameValue,
+    };
     use crate::server::services::r#impl::patterns::ClientProbe;
 
     fn controller_name(name: &str) -> HostName {
         HostName::from_controller(name.to_string(), ClientProbe::UnifiController)
+    }
+
+    /// A host carrying nothing but the rungs under test, so a fall-through cannot be masked by a
+    /// leftover value from a fuller fixture.
+    fn nameless_host() -> Host {
+        let mut host = crate::server::shared::types::examples::host();
+        host.base.name = HostName::unnamed();
+        host.base.hostname = None;
+        host
+    }
+
+    fn probed<V>(value: V) -> Attributed<V>
+    where
+        V: crate::server::shared::attribution::AttributeValue,
+    {
+        Attributed::new(value, AttributeSource::Probe(ClientProbe::Snmp))
+    }
+
+    /// The ladder descends only as far as it has to.
+    ///
+    /// Written as one walk down rather than a case per rung: what matters is the *ordering* between
+    /// them — that a sysName never displaces a hostname, and an address never displaces either —
+    /// and an assertion per rung in isolation would pass even if the `or_else` chain were shuffled.
+    #[test]
+    fn display_name_stops_at_the_highest_rung_the_host_carries() {
+        let addresses = [crate::server::shared::types::examples::ip_address()];
+        let mut host = nameless_host();
+
+        // Nothing at all: absence, not `Some("")`. This is what every caller's fallback hangs on —
+        // a blank title would be read as a name the host actually has.
+        assert_eq!(host.display_name(&addresses[..0]), None);
+
+        // The bottom rung, reached only because the four above are empty.
+        assert_eq!(
+            host.display_name(&addresses),
+            Some("192.168.1.100".to_string())
+        );
+
+        host.base.chassis_id = Some(probed(HostChassisIdValue("00:1a:2b:3c:4d:5e".to_string())));
+        assert_eq!(
+            host.display_name(&addresses),
+            Some("00:1a:2b:3c:4d:5e".to_string())
+        );
+
+        host.base.sys_name = Some(probed(HostSysNameValue("core-sw-01".to_string())));
+        assert_eq!(
+            host.display_name(&addresses),
+            Some("core-sw-01".to_string())
+        );
+
+        host.base.hostname = Some("switch.lan".to_string());
+        assert_eq!(
+            host.display_name(&addresses),
+            Some("switch.lan".to_string())
+        );
+
+        host.base.name = HostName::manual("Core Switch".to_string());
+        assert_eq!(
+            host.display_name(&addresses),
+            Some("Core Switch".to_string())
+        );
+    }
+
+    /// A rung holding whitespace is not a rung.
+    ///
+    /// SNMP agents and controllers return `" "` and `""` for fields they don't populate, and a
+    /// host titled with a space is indistinguishable on screen from one titled with nothing —
+    /// except that it silently outranks the real evidence below it.
+    #[test]
+    fn display_name_treats_a_blank_rung_as_absent() {
+        let addresses = [crate::server::shared::types::examples::ip_address()];
+        let mut host = nameless_host();
+        host.base.hostname = Some("   ".to_string());
+        host.base.sys_name = Some(probed(HostSysNameValue(String::new())));
+        host.base.chassis_id = Some(probed(HostChassisIdValue("  ".to_string())));
+
+        assert_eq!(
+            host.display_name(&addresses),
+            Some("192.168.1.100".to_string())
+        );
     }
 
     /// `apply_name`'s return value is what `upsert_host` uses to decide whether the host actually

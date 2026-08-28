@@ -1,5 +1,6 @@
 <script lang="ts" context="module">
 	import type { Host, Interface, Port, Service } from '$lib/features/hosts/types/base';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import { entities, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import { entityRef } from '$lib/shared/components/data/types';
 
@@ -25,8 +26,12 @@
 		getId: (host) => host.id,
 		getDisabled: (_host, context) => !!context?.disabledReason,
 		getDisabledReason: (_host, context) => context?.disabledReason ?? null,
-		getLabel: (host) => host.name,
-		getDescription: (host) => host.hostname || 'No Hostname',
+		getLabel: (host) => hostDisplayName(host),
+		// Empty rather than a placeholder: the label is already the best identifier this host has,
+		// and once the ladder has fallen through to the hostname, repeating it underneath says
+		// nothing. A picker row with one line is the correct rendering of a host with one name.
+		getDescription: (host) =>
+			host.hostname && host.hostname !== hostDisplayName(host) ? host.hostname : '',
 		getIcon: (host, context) => {
 			const services = context?.services?.filter((s) => s.host_id == host.id) ?? [];
 			const firstService = services.length > 0 ? services[0] : null;

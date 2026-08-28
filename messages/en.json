@@ -1159,6 +1159,7 @@
 	"hosts_snmp_sysName": "System Name",
 	"hosts_snmp_sysObjectId": "System OID",
 	"hosts_snmp_systemInfo": "SNMP System Information",
+	"hosts_unnamedHost": "Unnamed host",
 	"hosts_unnamedInterface": "Unnamed interface",
 	"hosts_validation_interfaceIndex": "Interface {index}",
 	"hosts_validation_portField": "Port {index}: {field}",

@@ -4,6 +4,7 @@
 	import type { Host, IPAddress, Port } from '$lib/features/hosts/types/base';
 	import { formatPort } from '$lib/shared/utils/formatting';
 	import { ALL_IP_ADDRESSES } from '$lib/features/hosts/types/base';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 
 	// Context for binding display - needs access to services, hosts, interfaces, ports
 	export interface BindingWithServiceContext {
@@ -84,7 +85,7 @@
 			const host = hostsData.find((h) => h.id === service.host_id);
 			if (!host) return null;
 
-			return host.name;
+			return hostDisplayName(host);
 		}
 	};
 </script>

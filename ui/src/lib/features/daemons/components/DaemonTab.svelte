@@ -24,6 +24,7 @@
 	} from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import {
 		modalState,
 		openModal,
@@ -320,9 +321,10 @@
 					searchable: true,
 					filterable: true,
 					groupable: true,
-					getValue: (daemon) =>
-						daemonHosts.find((h) => h.id === daemon.host_id)?.name ??
-						common_unknownEntity({ entity: common_host() }),
+					getValue: (daemon) => {
+						const host = daemonHosts.find((h) => h.id === daemon.host_id);
+						return host ? hostDisplayName(host) : common_unknownEntity({ entity: common_host() });
+					},
 					display: {
 						hiddenByDefault: true,
 						getItems: (daemon) => {
@@ -331,7 +333,7 @@
 							return [
 								{
 									id: host.id,
-									label: host.name,
+									label: hostDisplayName(host),
 									color: entities.getColorHelper('Host').color,
 									entityRef: entityRef('Host', host.id, host)
 								}

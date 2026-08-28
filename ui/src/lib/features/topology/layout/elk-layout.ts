@@ -1,6 +1,7 @@
 import type { ElkNode, ElkExtendedEdge } from 'elkjs';
 import type { TopologyNode } from '../types/base';
 import { affectsLayout } from './edge-classification';
+import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 import {
 	containerTypes,
 	getIrrelevantServiceCategories,
@@ -928,11 +929,16 @@ function buildElkGraph(
 			}
 		}
 
-		// Map host name → count, then sort containers by header (= host name)
+		// Map host title → count, then sort containers by header (= the same title).
+		//
+		// Keyed on `hostDisplayName`, not the raw `name`: the join below is against
+		// `node.header`, which is the server-resolved title. Every host that has never been named
+		// keys as the empty string under `name`, so none of them ever matched their own container
+		// and the density sort silently degraded for exactly the hosts it mattered for.
 		const countByHostName = new Map<string, number>();
 		for (const host of input.topology.hosts ?? []) {
 			const count = countByHostId.get(host.id) ?? 0;
-			countByHostName.set(host.name, count);
+			countByHostName.set(hostDisplayName(host), count);
 		}
 
 		// Names resolved once per container. Two linear scans per comparison over 19,095 nodes made

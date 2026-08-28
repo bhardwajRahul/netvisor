@@ -63,15 +63,24 @@ impl Storable for Host {
     /// name/hostname, a snippet of its description, an IP, or the name of
     /// something running on it.
     ///
+    /// Every rung of the [`Host::display_name`] ladder is in here, which is why
+    /// `sys_name` and `chassis_id` are covered even though no column shows them
+    /// by default: a host that never got a name is *listed* under one of them,
+    /// and searching for the title on screen has to find the host wearing it.
+    ///
     /// Children are matched with `EXISTS` rather than a JOIN so a host with
     /// many IPs or services is not duplicated in the result set — which would
     /// also corrupt the paginated `COUNT(*)`. The `valid_to IS NULL` guards
     /// keep closed SCD2 copies from matching, so a host stops being findable
     /// by an IP it no longer holds.
+    ///
+    /// [`Host::display_name`]: crate::server::hosts::r#impl::base::Host::display_name
     fn search_predicates() -> &'static [&'static str] {
         &[
             "hosts.name ILIKE {}",
             "hosts.hostname ILIKE {}",
+            "hosts.sys_name ILIKE {}",
+            "hosts.chassis_id ILIKE {}",
             "hosts.description ILIKE {}",
             "EXISTS (SELECT 1 FROM ip_addresses ia WHERE ia.host_id = hosts.id \
              AND ia.valid_to IS NULL AND host(ia.ip_address) ILIKE {})",
