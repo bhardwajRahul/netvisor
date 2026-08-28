@@ -46,7 +46,7 @@ impl HostService {
             .iter()
             .map(|h| HostCandidate {
                 id: h.id,
-                chassis_id: h.base.chassis_id.clone(),
+                chassis_id: crate::server::shared::attribution::text_of(&h.base.chassis_id),
                 ip_addresses: ip_addresses_by_host.remove(&h.id).unwrap_or_default(),
             })
             .collect();
@@ -126,14 +126,16 @@ impl HostService {
             has_updates = true;
         }
         if let Some(hostname) = existing_host.base.hostname.clone()
-            && existing_host.base.apply_name(HostName::Hostname(hostname))
+            && existing_host
+                .base
+                .apply_name(HostName::from_hostname(hostname))
         {
             has_updates = true;
         }
 
         if existing_host
             .base
-            .fill_missing_attributes_from(&new_host_data.base)
+            .apply_attributes_from(&new_host_data.base)
         {
             has_updates = true;
         }
@@ -248,14 +250,14 @@ impl HostService {
         // incorrectly collapse distinct sub-interfaces during the merge.
         let dest_mac_counts: HashMap<MacAddress, usize> = dest_interfaces
             .iter()
-            .filter_map(|i| i.base.mac_address)
+            .filter_map(|i| mac_of(&i.base.mac_address))
             .fold(HashMap::new(), |mut acc, mac| {
                 *acc.entry(mac).or_insert(0) += 1;
                 acc
             });
         let other_mac_counts: HashMap<MacAddress, usize> = other_interfaces
             .iter()
-            .filter_map(|i| i.base.mac_address)
+            .filter_map(|i| mac_of(&i.base.mac_address))
             .fold(HashMap::new(), |mut acc, mac| {
                 *acc.entry(mac).or_insert(0) += 1;
                 acc
@@ -276,6 +278,8 @@ impl HostService {
                         && dest_iface
                             .base
                             .mac_address
+                            .as_ref()
+                            .map(|e| e.value().0)
                             .map(|mac| {
                                 dest_mac_counts.get(&mac).copied().unwrap_or(0) == 1
                                     && other_mac_counts.get(&mac).copied().unwrap_or(0) == 1

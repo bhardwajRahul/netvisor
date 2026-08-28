@@ -16,15 +16,17 @@ use crate::server::credentials::r#impl::mapping::{
 use crate::server::discovery::r#impl::scan_settings::defaults;
 use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::base::{Service, ServiceMatchBaselineParams};
+use crate::server::shared::attribution::AttributeSource;
 use crate::server::shared::types::entities::EntitySource;
 use crate::server::{
     daemons::r#impl::base::DaemonMode,
     hosts::r#impl::{
         api::{DiscoveryHostRequest, HostResponse},
         base::{Host, HostBase},
-        name::HostName,
+        name::{HostName, HostNameSources},
     },
     subnets::r#impl::base::Subnet,
 };
@@ -273,7 +275,7 @@ impl NetworkScan {
                 HashMap::new();
             for subnet in &interfaced_subnets {
                 let entry = subnet_to_ips
-                    .entry(subnet.base.cidr)
+                    .entry(*subnet.base.cidr)
                     .or_insert_with(|| (subnet.clone(), Vec::new()));
                 for addr in subnet.base.cidr.iter().map(|a| a.address()) {
                     if !is_targeted(&addr) {
@@ -801,7 +803,7 @@ impl NetworkScan {
                                         source: EntitySource::Discovery,
                                         ..Default::default()
                                     });
-                                    host.base.apply_name(HostName::Ip(ip));
+                                    host.base.apply_name(HostName::from_ip(ip));
                                     let host_id = host.id;
                                     let ip_address = IPAddress::new(IPAddressBase {
                                         network_id: early_subnet.base.network_id,
@@ -809,7 +811,9 @@ impl NetworkScan {
                                         name: None,
                                         subnet_id: early_subnet.id,
                                         ip_address: ip,
-                                        mac_address: mac,
+                                        // We broadcast for this address and something answered claiming it.
+                mac_address: mac
+                    .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::ArpReply)),
                                         position: 0,
                                     });
                                     let request = DiscoveryHostRequest {
@@ -1441,7 +1445,7 @@ impl NetworkScan {
         // credentialed integrations have had their say.
         let probe_ctx = ProbeContext {
             ip,
-            subnet_cidr: subnet.base.cidr,
+            subnet_cidr: *subnet.base.cidr,
             is_gateway: gateway_ips.contains(&ip),
             cancel: cancel.clone(),
             scan_controller: scan_controller.clone(),
@@ -1556,8 +1560,12 @@ impl NetworkScan {
             subnet_id: subnet.id,
             ip_address: ip,
             // Only ARP yields one; an ICMP-discovered host records no MAC, exactly as a
-            // TCP-responsive one on a non-interfaced subnet always has.
-            mac_address: evidence.mac(),
+            // TCP-responsive one on a non-interfaced subnet always has. We broadcast for this
+            // address and something answered claiming it, which is the strongest evidence a MAC
+            // gets — and what §6's minting rule will ask for.
+            mac_address: evidence
+                .mac()
+                .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::ArpReply)),
             position: 0,
         });
 
@@ -1923,15 +1931,19 @@ pub(crate) fn unanswered_credential_targets(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::shared::attribution::AttributeSource;
     use crate::server::shared::storage::traits::Storable;
     use crate::server::subnets::r#impl::base::SubnetBase;
-    use crate::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
+    use crate::server::subnets::r#impl::types::SubnetType;
     use std::str::FromStr;
 
     fn subnet(cidr: &str) -> Subnet {
         Subnet::new(SubnetBase {
-            cidr_source: SubnetCidrSource::Observed,
-            cidr: cidr::IpCidr::from_str(cidr).unwrap(),
+            cidr: SubnetCidr::new(
+                SubnetCidrValue(cidr::IpCidr::from_str(cidr).unwrap()),
+                AttributeSource::DaemonSelfReport,
+            ),
             network_id: uuid::Uuid::new_v4(),
             name: cidr.to_string(),
             description: None,

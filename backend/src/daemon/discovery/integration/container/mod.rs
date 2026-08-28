@@ -28,13 +28,14 @@ use crate::server::services::r#impl::virtualization::{
 };
 use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::entities::EntitySource;
-use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
-use crate::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
+use crate::server::subnets::r#impl::base::{Subnet, SubnetBase, SubnetCidr, SubnetCidrValue};
+use crate::server::subnets::r#impl::types::SubnetType;
 
 use super::{
     Checkpoint, CollectionShortfall, Completeness, ProbeContext, ProbeFailure, ProbeSuccess,
 };
 use crate::daemon::discovery::service::warnings::AttemptOutcome;
+use crate::server::shared::attribution::AttributeSource;
 
 const CONTAINER_PROBE_MAX_ATTEMPTS: u32 = 3;
 
@@ -127,8 +128,12 @@ impl ContainerRuntime {
             (subnet_type == bridge_subnet_type).then_some(runtime_service_id);
 
         Some(Subnet::new(SubnetBase {
-            cidr_source: SubnetCidrSource::Observed,
-            cidr,
+            // The runtime's own IPAM config: it defined this bridge, but it is describing
+            // something it manages rather than itself, which is what `Probe` means here.
+            cidr: SubnetCidr::new(
+                SubnetCidrValue(cidr),
+                AttributeSource::Probe(self.client_probe()),
+            ),
             description: None,
             tags: Vec::new(),
             network_id,

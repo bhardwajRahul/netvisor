@@ -111,7 +111,7 @@ impl SubnetGraphBuilder {
     ) -> Option<String> {
         let host_interfaces = ctx.get_ip_addresses_for_host(host.id);
         // The "Unknown Device" seed this used to also test for is gone: `build_host_from_scan`
-        // now starts a host at `HostName::Unnamed` and every branch applies a real rung.
+        // now starts a host at `HostName::unnamed()` and every branch applies a real rung.
         let host_has_name = !host.base.name.is_blank();
 
         // P1: container-bridge interfaces — always show "<Runtime> @", never VM header
@@ -143,11 +143,12 @@ impl SubnetGraphBuilder {
         // and if it also isn't just the interface IP
         let host_services = ctx.get_services_for_host(host.id);
         let first_service_name_matches_host_name = match host_services.first() {
-            Some(first_service) => first_service.base.name == host.base.name,
+            Some(first_service) => first_service.base.name == host.base.name.value().as_str(),
             None => false,
         };
 
-        let host_name_is_interface_ip = ip_address.base.ip_address.to_string() == host.base.name;
+        let host_name_is_interface_ip =
+            ip_address.base.ip_address.to_string() == host.base.name.value().as_str();
 
         // Count of other ip_addresses that will actually have a node (ie services on that interface > 0)
         // so an interface edge will be created
@@ -467,7 +468,7 @@ impl SubnetGraphBuilder {
 mod tests {
     use super::*;
     use crate::server::hosts::r#impl::base::{Host, HostBase};
-    use crate::server::hosts::r#impl::name::HostName;
+    use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
     use crate::server::services::r#impl::base::{Service, ServiceBase};
     use crate::server::services::r#impl::categories::ServiceCategory;
     use crate::server::services::r#impl::definitions::ServiceDefinition;
@@ -504,7 +505,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: HostName::Manual(name.to_string()),
+                name: HostName::manual(name.to_string()),
                 tags,
                 ..Default::default()
             },

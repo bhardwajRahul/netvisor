@@ -7,11 +7,14 @@ use cidr::{IpCidr, Ipv4Cidr};
 use reqwest::StatusCode;
 use scanopy::server::hosts::r#impl::api::CreateHostRequest;
 use scanopy::server::hosts::r#impl::base::{Host, HostBase};
+use scanopy::server::hosts::r#impl::name::HostNameSources;
 use scanopy::server::networks::r#impl::{Network, NetworkBase};
+use scanopy::server::shared::attribution::AttributeSource;
 use scanopy::server::shared::storage::traits::Storable;
 use scanopy::server::shared::types::entities::EntitySource;
 use scanopy::server::subnets::r#impl::base::{Subnet, SubnetBase};
-use scanopy::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
+use scanopy::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
+use scanopy::server::subnets::r#impl::types::SubnetType;
 use std::net::Ipv4Addr;
 use uuid::Uuid;
 
@@ -87,7 +90,7 @@ async fn test_cannot_read_host_on_other_network(
 
     // Create a host directly in the database on the other network
     let host = Host::new(HostBase {
-        name: scanopy::server::hosts::r#impl::name::HostName::Manual("Secret Host".to_string()),
+        name: scanopy::server::hosts::r#impl::name::HostName::manual("Secret Host".to_string()),
         network_id: other_network_id,
         source: EntitySource::System,
         ..Default::default()
@@ -170,11 +173,15 @@ async fn test_cannot_create_subnet_on_other_network(
     println!("Testing: Cannot create subnet on inaccessible network...");
 
     let subnet = Subnet::new(SubnetBase {
-        cidr_source: SubnetCidrSource::Observed,
         name: "Unauthorized Subnet".to_string(),
         description: None,
         network_id: other_network_id, // Network user doesn't have access to
-        cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap()),
+        cidr: SubnetCidr::new(
+            SubnetCidrValue(IpCidr::V4(
+                Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap(),
+            )),
+            AttributeSource::DaemonSelfReport,
+        ),
         subnet_type: SubnetType::Lan,
         source: EntitySource::System,
         tags: Vec::new(),

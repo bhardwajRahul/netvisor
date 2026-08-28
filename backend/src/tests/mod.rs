@@ -1,4 +1,6 @@
-use crate::server::hosts::r#impl::name::HostName;
+use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
+use crate::server::shared::attribution::AttributeSource;
+use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
 use crate::server::{
     config::{AppState, ServerConfig},
     daemons::r#impl::base::{Daemon, DaemonBase, DaemonMode},
@@ -22,7 +24,7 @@ use crate::server::{
     },
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
-        types::{SubnetCidrSource, SubnetType},
+        types::SubnetType,
     },
     topology::types::edges::EdgeStyle,
     users::r#impl::base::{User, UserBase},
@@ -122,7 +124,7 @@ pub fn network(organization_id: &Uuid) -> Network {
 
 pub fn host(network_id: &Uuid) -> Host {
     Host::new(HostBase {
-        name: HostName::Manual("Test Host".to_string()),
+        name: HostName::manual("Test Host".to_string()),
         hostname: Some("test.local".to_string()),
         network_id: *network_id,
         description: None,
@@ -157,11 +159,15 @@ pub fn port(network_id: &Uuid, host_id: &Uuid) -> Port {
 
 pub fn subnet(network_id: &Uuid) -> Subnet {
     Subnet::new(SubnetBase {
-        cidr_source: SubnetCidrSource::Observed,
         name: "Test Subnet".to_string(),
         description: None,
         network_id: *network_id,
-        cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
+        cidr: SubnetCidr::new(
+            SubnetCidrValue(IpCidr::V4(
+                Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap(),
+            )),
+            AttributeSource::DaemonSelfReport,
+        ),
         subnet_type: SubnetType::Lan,
         virtualization_service_id: None,
         source: EntitySource::System,

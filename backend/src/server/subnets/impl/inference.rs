@@ -3,7 +3,7 @@
 //! **LLDP carries no prefix.** There is no netmask TLV in IEEE 802.1AB — `lldpRemManAddrTable`
 //! gives an address, its family, and the interface it sits on, and nothing about the range around
 //! it. So every CIDR here is a guess, which is why the rows it produces carry
-//! [`SubnetCidrSource::Inferred`] and ask an operator to confirm them.
+//! [`AttributeSource::LldpNeighbourAddress`] and ask an operator to confirm them.
 //!
 //! What *is* evidence:
 //!
@@ -250,7 +250,7 @@ pub fn infer_range_for(address: IpAddr, live: &[Subnet]) -> Option<IpCidr> {
 fn held_ranges(live: &[Subnet]) -> Vec<IpCidr> {
     live.iter()
         .filter(|s| !s.is_organizational_subnet())
-        .map(|s| s.base.cidr)
+        .map(|s| *s.base.cidr)
         .collect()
 }
 
@@ -378,7 +378,9 @@ pub(crate) fn overlaps(a: &IpCidr, b: &IpCidr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::shared::attribution::AttributeSource;
     use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
 
     fn far_end(address: &str, vlan_id: Option<Uuid>) -> UnplacedFarEnd {
         UnplacedFarEnd {
@@ -415,7 +417,10 @@ mod tests {
             .iter()
             .map(|c| Subnet {
                 base: SubnetBase {
-                    cidr: c.parse().expect("valid test CIDR"),
+                    cidr: SubnetCidr::new(
+                        SubnetCidrValue(c.parse().expect("valid test CIDR")),
+                        AttributeSource::DaemonSelfReport,
+                    ),
                     ..Default::default()
                 },
                 ..Default::default()

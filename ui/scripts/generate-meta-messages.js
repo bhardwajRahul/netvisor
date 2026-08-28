@@ -59,6 +59,9 @@ export const COVERED_FIXTURES = [
 	{ file: 'cancel-reasons.json', key: 'cancel_reasons', kind: 'typeMetadata' },
 	{ file: 'save-offers.json', key: 'save_offers', kind: 'typeMetadata' },
 	{ file: 'plan-statuses.json', key: 'plan_statuses', kind: 'typeMetadata' },
+	// Provenance tiers. The `metadata.sources` list under each is data the UI looks values up in,
+	// not copy — only the name and description are translated.
+	{ file: 'attribute-methods.json', key: 'attribute_methods', kind: 'typeMetadata' },
 	// Scan warnings. Descriptions here are templates with `{named}` slots, unlike every other
 	// entry above: the values are copied through verbatim, paraglide compiles them into functions
 	// that take an inputs object, and `metaDescriptionWith` in src/lib/i18n/metadata.ts is what

@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::daemon::discovery::integration::snmp::sim::harness::{self, Collected};
 use crate::daemon::discovery::integration::snmp::types::{IfTableEntry, LldpNeighbor};
-use crate::server::hosts::r#impl::name::HostName;
+use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
 use crate::server::{
     hosts::r#impl::base::Host,
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
@@ -30,6 +30,14 @@ use crate::server::{
 };
 
 use super::{host, network, organization, subnet, test_services};
+use crate::server::hosts::r#impl::attributes::{HostChassisIdValue, HostSysNameValue};
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue, mac_of};
+use crate::server::services::r#impl::patterns::ClientProbe;
+use crate::server::shared::attribution::{AttributeSource, Attributed};
+
+/// What a credentialed SNMP walk claims for the fields these fixtures stand in for. Named once so
+/// a fixture cannot accidentally assert a provenance no real scan produces.
+const SNMP_READ: AttributeSource = AttributeSource::Probe(ClientProbe::Snmp);
 
 /// A network holding simulated devices as scanned hosts, and a resolver pointed at the same
 /// database.
@@ -83,9 +91,14 @@ impl Lab {
         let chassis_id = LldpChassisId::from_snmp(subtype, &value).map(|id| id.identifier());
 
         let mut record = host(&self.network_id);
-        record.base.name = HostName::Manual(name.to_string());
-        record.base.chassis_id = chassis_id;
-        record.base.sys_name = device.system.sys_name.clone();
+        record.base.name = HostName::manual(name.to_string());
+        record.base.chassis_id =
+            chassis_id.map(|v| Attributed::new(HostChassisIdValue(v), SNMP_READ));
+        record.base.sys_name = device
+            .system
+            .sys_name
+            .clone()
+            .map(|v| Attributed::new(HostSysNameValue(v), SNMP_READ));
         self.storage.hosts.create(&record).await.unwrap();
 
         for entry in &collected.if_table.entries {
@@ -110,9 +123,10 @@ impl Lab {
     /// serving none is the whole point.
     async fn mute_host(&self, name: &str, address: IpAddr, sys_name: Option<&str>) -> Host {
         let mut record = host(&self.network_id);
-        record.base.name = HostName::Manual(name.to_string());
+        record.base.name = HostName::manual(name.to_string());
         record.base.chassis_id = None;
-        record.base.sys_name = sys_name.map(str::to_string);
+        record.base.sys_name =
+            sys_name.map(|v| Attributed::new(HostSysNameValue(v.into()), SNMP_READ));
         self.storage.hosts.create(&record).await.unwrap();
 
         let mut ip = super::ip_address(&self.network_id, &self._subnet_id);
@@ -132,7 +146,9 @@ impl Lab {
             if_name: entry.if_name.clone(),
             if_alias: entry.if_alias.clone(),
             if_type: Some(entry.if_type.unwrap_or_default()),
-            mac_address: entry.if_phys_address,
+            mac_address: entry
+                .if_phys_address
+                .map(|m| MacEvidence::new(MacEvidenceValue(m), SNMP_READ)),
             admin_status: Some(IfAdminStatus::Up),
             oper_status: Some(IfOperStatus::Up),
             ..Default::default()
@@ -472,7 +488,7 @@ async fn a_mac_that_identifies_exactly_one_port_still_resolves() {
         .unwrap()
         .expect("the interface exists");
     assert_eq!(
-        interface.base.mac_address,
+        mac_of(&interface.base.mac_address),
         Some("00:07:7c:20:01:e3".parse::<MacAddress>().unwrap()),
         "it must land on the port that actually carries that address"
     );

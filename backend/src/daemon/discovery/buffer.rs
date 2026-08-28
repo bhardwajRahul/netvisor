@@ -388,11 +388,12 @@ impl Default for EntityBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::shared::attribution::AttributeSource;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use crate::server::{
         hosts::r#impl::{
             base::{Host, HostBase},
-            name::HostName,
-            name::HostNameSource,
+            name::{HostName, HostNameSources},
         },
         shared::types::entities::EntitySource,
     };
@@ -404,7 +405,7 @@ mod tests {
         // Push a host
         let host = DiscoveryHostRequest {
             host: Host::new(HostBase {
-                name: HostName::Manual("test-host".to_string()),
+                name: HostName::manual("test-host".to_string()),
                 hostname: None,
                 tags: vec![],
                 network_id: Uuid::new_v4(),
@@ -460,7 +461,7 @@ mod tests {
                 tokio::spawn(async move {
                     let host = DiscoveryHostRequest {
                         host: Host::new(HostBase {
-                            name: HostName::Manual(format!("host-{}", i)),
+                            name: HostName::manual(format!("host-{}", i)),
                             hostname: None,
                             tags: vec![],
                             network_id: Uuid::new_v4(),
@@ -505,10 +506,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_entity_buffer_lifecycle() {
-        use crate::server::subnets::r#impl::{
-            base::SubnetBase,
-            types::{SubnetCidrSource, SubnetType},
-        };
+        use crate::server::subnets::r#impl::{base::SubnetBase, types::SubnetType};
         use chrono::Utc;
         use cidr::{IpCidr, Ipv4Cidr};
         use std::net::Ipv4Addr;
@@ -529,9 +527,13 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
                 name: "test-subnet".to_string(),
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 description: None,
                 subnet_type: SubnetType::Unknown,
@@ -561,10 +563,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_pending_only_returns_pending() {
-        use crate::server::subnets::r#impl::{
-            base::SubnetBase,
-            types::{SubnetCidrSource, SubnetType},
-        };
+        use crate::server::subnets::r#impl::{base::SubnetBase, types::SubnetType};
         use chrono::Utc;
         use cidr::{IpCidr, Ipv4Cidr};
         use std::net::Ipv4Addr;
@@ -585,9 +584,13 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
                 name: "subnet-1".to_string(),
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 description: None,
                 subnet_type: SubnetType::Unknown,
@@ -607,9 +610,13 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
                 name: "subnet-2".to_string(),
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 2, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(192, 168, 2, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 description: None,
                 subnet_type: SubnetType::Unknown,
@@ -639,10 +646,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_clear_all_removes_pending_and_created() {
-        use crate::server::subnets::r#impl::{
-            base::SubnetBase,
-            types::{SubnetCidrSource, SubnetType},
-        };
+        use crate::server::subnets::r#impl::{base::SubnetBase, types::SubnetType};
         use chrono::Utc;
         use cidr::{IpCidr, Ipv4Cidr};
         use std::net::Ipv4Addr;
@@ -663,9 +667,13 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
                 name: "subnet-1".to_string(),
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 description: None,
                 subnet_type: SubnetType::Unknown,
@@ -685,9 +693,13 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
                 name: "subnet-2".to_string(),
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 2, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(192, 168, 2, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 description: None,
                 subnet_type: SubnetType::Unknown,
@@ -728,10 +740,7 @@ mod tests {
         // 5. await_subnet() can now find the created subnet
         // 6. clear_created() removes confirmed entities
 
-        use crate::server::subnets::r#impl::{
-            base::SubnetBase,
-            types::{SubnetCidrSource, SubnetType},
-        };
+        use crate::server::subnets::r#impl::{base::SubnetBase, types::SubnetType};
         use chrono::Utc;
         use cidr::{IpCidr, Ipv4Cidr};
         use std::net::Ipv4Addr;
@@ -754,9 +763,13 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
                 name: "discovered-subnet".to_string(),
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 description: None,
                 subnet_type: SubnetType::Unknown,
@@ -833,7 +846,7 @@ mod tests {
         // First push: host with 2 ip_addresses
         let host1 = DiscoveryHostRequest {
             host: Host::new(HostBase {
-                name: HostName::Manual("daemon-host".to_string()),
+                name: HostName::manual("daemon-host".to_string()),
                 hostname: None,
                 tags: vec![],
                 network_id,
@@ -928,7 +941,7 @@ mod tests {
         // Second push: same host_id with 1 different interface and 1 different service
         let host2 = DiscoveryHostRequest {
             host: Host::new(HostBase {
-                name: HostName::Manual("daemon-host".to_string()),
+                name: HostName::manual("daemon-host".to_string()),
                 hostname: None,
                 tags: vec![],
                 network_id,
@@ -1042,10 +1055,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_scanned_ids_excludes_pending_only_includes_created() {
-        use crate::server::subnets::r#impl::{
-            base::SubnetBase,
-            types::{SubnetCidrSource, SubnetType},
-        };
+        use crate::server::subnets::r#impl::{base::SubnetBase, types::SubnetType};
         use chrono::Utc;
         use cidr::{IpCidr, Ipv4Cidr};
         use std::net::Ipv4Addr;
@@ -1066,9 +1076,13 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
                 name: "pending".to_string(),
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 1, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(10, 0, 1, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 description: None,
                 subnet_type: SubnetType::Unknown,
@@ -1090,9 +1104,13 @@ mod tests {
             last_discovery_id: None,
             first_discovery_id: None,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
                 name: "created".to_string(),
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 2, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(10, 0, 2, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 description: None,
                 subnet_type: SubnetType::Unknown,
@@ -1133,7 +1151,7 @@ mod tests {
 
         let host_req = DiscoveryHostRequest {
             host: Host::new(HostBase {
-                name: HostName::Manual("test-host".to_string()),
+                name: HostName::manual("test-host".to_string()),
                 hostname: None,
                 tags: vec![],
                 network_id,

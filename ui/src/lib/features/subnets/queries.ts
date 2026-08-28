@@ -226,7 +226,7 @@ export function createEmptySubnetFormData(defaultNetworkId?: string): Subnet {
 		updated_at: utcTimeZoneSentinel,
 		// A range a person is about to type is theirs to assert; the server stamps this too when it
 		// marks the row Manual, and setting it here keeps the form's own value honest in between.
-		cidr_source: 'Confirmed',
+		cidr_source: { type: 'Manual' },
 		tags: [],
 		name: '',
 		network_id: defaultNetworkId ?? '',

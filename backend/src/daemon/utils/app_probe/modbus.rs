@@ -25,10 +25,13 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-use crate::daemon::utils::app_probe::{AppProbe, AppProbeOutcome, DeviceIdentity, ProbeContext};
+use crate::daemon::utils::app_probe::{
+    AppProbe, AppProbeOutcome, DeviceIdentity, ProbeContext, identity_field,
+};
 use crate::daemon::utils::scanner::SCAN_TIMEOUT;
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::patterns::ClientProbe;
+use crate::server::shared::attribution::AttributeSource;
 
 /// Encapsulated Interface Transport.
 const FUNCTION_READ_DEVICE_ID: u8 = 0x2B;
@@ -240,17 +243,23 @@ fn parse_identity(pdu: &[u8]) -> Option<DeviceIdentity> {
         return None;
     }
 
+    // Modbus function 0x2B returns the vendor's own name for itself, over the device's own
+    // protocol — the strongest reading there is for these fields.
+    let source = AttributeSource::Probe(ClientProbe::ModbusTcp);
     Some(DeviceIdentity {
-        manufacturer: vendor_name,
-        model: product_code,
+        manufacturer: identity_field(vendor_name, source),
+        model: identity_field(product_code, source),
         serial_number: None,
-        firmware_revision: revision,
+        firmware_revision: identity_field(revision, source),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a Modbus `0x2B` reply claims: the vendor's own words, over the device's own protocol.
+    const MODBUS: AttributeSource = AttributeSource::Probe(ClientProbe::ModbusTcp);
 
     const TXID: u16 = 0x5CA1;
 
@@ -300,10 +309,10 @@ mod tests {
         assert_eq!(
             reply,
             ModbusReply::Identity(DeviceIdentity {
-                manufacturer: Some("Schneider Electric".to_string()),
-                model: Some("BMXP342020".to_string()),
+                manufacturer: identity_field(Some("Schneider Electric".to_string()), MODBUS),
+                model: identity_field(Some("BMXP342020".to_string()), MODBUS),
                 serial_number: None,
-                firmware_revision: Some("2.70".to_string()),
+                firmware_revision: identity_field(Some("2.70".to_string()), MODBUS),
             })
         );
     }
@@ -358,7 +367,7 @@ mod tests {
         assert_eq!(
             reply,
             ModbusReply::Identity(DeviceIdentity {
-                manufacturer: Some("Schneider Electric".to_string()),
+                manufacturer: identity_field(Some("Schneider Electric".to_string()), MODBUS),
                 model: None,
                 serial_number: None,
                 firmware_revision: None,

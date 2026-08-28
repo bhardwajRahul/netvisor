@@ -374,7 +374,7 @@ impl DaemonService {
             network_id: effective_network_id,
             // Placeholder identity: the daemon's own reported name, which sits at the same rung
             // as a hostname, so a later scan of the machine can improve on it.
-            name: HostName::default(),
+            name: HostName::unnamed(),
             hostname: None,
             description: None,
             source: EntitySource::Discovery,
@@ -397,7 +397,7 @@ impl DaemonService {
         });
         dummy_host
             .base
-            .apply_name(HostName::Hostname(request.name.clone()));
+            .apply_name(HostName::from_hostname(request.name.clone()));
 
         let host_response = host_service
             .discover_host(
@@ -717,7 +717,7 @@ impl DaemonService {
         // Process discovered subnets - continue on failure to avoid blocking entire batch
         for subnet in entities.subnets {
             let pending_id = subnet.id;
-            let cidr = subnet.base.cidr;
+            let cidr = *subnet.base.cidr;
             match self.subnet_service.create(subnet, auth.clone()).await {
                 Ok(actual_subnet) => {
                     created_subnets.push((pending_id, actual_subnet));

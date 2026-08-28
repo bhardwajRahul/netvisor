@@ -1,4 +1,6 @@
+use crate::server::shared::attribution::AttributeSource;
 use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
+use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     ip_addresses::service::IPAddressService,
@@ -17,7 +19,7 @@ use crate::server::{
         base::{Subnet, SubnetBase},
         correction_events::{SubnetCorrection, SubnetCorrectionScope},
         inference::{infer_range_for, overlaps, placeable_subnet},
-        types::{SubnetCidrSource, SubnetType},
+        types::SubnetType,
     },
     tags::entity_tags::EntityTagService,
 };
@@ -69,12 +71,12 @@ impl SubnetService {
     async fn report_correction(
         &self,
         corrected: &Subnet,
-        before: (IpCidr, SubnetCidrSource),
+        before: (IpCidr, AttributeSource),
         authentication: AuthenticatedEntity,
     ) {
         let (from_cidr, from_source) = before;
 
-        let kind = if from_cidr == corrected.base.cidr {
+        let kind = if from_cidr == *corrected.base.cidr {
             SubnetCorrection::Promoted
         } else if corrected.base.cidr.contains(&from_cidr.first_address())
             && corrected.base.cidr.network_length() < from_cidr.network_length()
@@ -94,7 +96,7 @@ impl SubnetService {
                     from_cidr: from_cidr.to_string(),
                     to_cidr: corrected.base.cidr.to_string(),
                     from_source,
-                    to_source: corrected.base.cidr_source,
+                    to_source: corrected.base.cidr.source(),
                 },
                 kind,
                 authentication,
@@ -214,7 +216,7 @@ impl SubnetService {
             .map(|s| {
                 let mut s = s.clone();
                 if s.id == existing.id {
-                    s.base.cidr = new_cidr;
+                    s.base.cidr = SubnetCidr::new(SubnetCidrValue(new_cidr), s.base.cidr.source());
                 }
                 s
             })
@@ -407,7 +409,7 @@ impl CrudService<Subnet> for SubnetService {
         let correctable = match correctable {
             Some(existing)
                 if self
-                    .narrowing_would_strand(existing, subnet.base.cidr, &all_subnets)
+                    .narrowing_would_strand(existing, *subnet.base.cidr, &all_subnets)
                     .await =>
             {
                 tracing::info!(
@@ -464,8 +466,11 @@ impl CrudService<Subnet> for SubnetService {
                 // authoritative than what is stored, so an inference never displaces a reading and
                 // nothing displaces a range a person confirmed. Without this the incoming rung was
                 // dropped on the floor here and `Inferred` could only ever be cleared by hand.
-                let before = (existing_subnet.base.cidr, existing_subnet.base.cidr_source);
-                let corrected = refreshed.apply_cidr(subnet.base.cidr, subnet.base.cidr_source);
+                let before = (
+                    *existing_subnet.base.cidr,
+                    existing_subnet.base.cidr.source(),
+                );
+                let corrected = refreshed.apply_cidr(*subnet.base.cidr, subnet.base.cidr.source());
 
                 self.storage.update(&mut refreshed).await?;
 
@@ -534,7 +539,7 @@ pub enum Placement {
     /// A subnet this network already holds contains it.
     Existing(Uuid),
     /// Nothing held it, so a range was inferred and created. The row carries
-    /// [`SubnetCidrSource::Inferred`], so it badges and asks an operator to confirm it.
+    /// [`AttributeSource::LldpNeighbourAddress`], so it badges and asks an operator to confirm it.
     Inferred(Uuid),
     /// Nothing holds it and nothing may be invented for it — a public address, or IPv6 global
     /// unicast, neither of which is a segment of this network to create. The caller decides.
@@ -566,9 +571,8 @@ impl SubnetService {
         };
 
         let mut subnet = Subnet::new(SubnetBase {
-            cidr,
             // A range nothing read, only inferred — the whole reason this rung exists.
-            cidr_source: SubnetCidrSource::Inferred,
+            cidr: SubnetCidr::new(SubnetCidrValue(cidr), AttributeSource::LldpNeighbourAddress),
             network_id,
             name: cidr.to_string(),
             description: None,
@@ -613,10 +617,12 @@ mod tests {
     use super::*;
     use crate::server::subnets::r#impl::base::SubnetBase;
 
-    fn subnet(cidr: &str, source: EntitySource, cidr_source: SubnetCidrSource) -> Subnet {
+    fn subnet(cidr: &str, source: EntitySource, cidr_source: AttributeSource) -> Subnet {
         Subnet::new(SubnetBase {
-            cidr: cidr.parse().expect("valid test CIDR"),
-            cidr_source,
+            cidr: SubnetCidr::new(
+                SubnetCidrValue(cidr.parse().expect("valid test CIDR")),
+                cidr_source,
+            ),
             source,
             network_id: Uuid::nil(),
             ..Default::default()
@@ -624,11 +630,19 @@ mod tests {
     }
 
     fn discovered(cidr: &str) -> Subnet {
-        subnet(cidr, EntitySource::Discovery, SubnetCidrSource::Observed)
+        subnet(
+            cidr,
+            EntitySource::Discovery,
+            AttributeSource::DaemonSelfReport,
+        )
     }
 
     fn inferred(cidr: &str) -> Subnet {
-        subnet(cidr, EntitySource::Discovery, SubnetCidrSource::Inferred)
+        subnet(
+            cidr,
+            EntitySource::Discovery,
+            AttributeSource::LldpNeighbourAddress,
+        )
     }
 
     fn bridge(cidr: &str, owner: Option<Uuid>) -> Subnet {
@@ -696,7 +710,7 @@ mod tests {
         let internet = subnet(
             "0.0.0.0/0",
             EntitySource::System,
-            SubnetCidrSource::Observed,
+            AttributeSource::DaemonSelfReport,
         );
         assert!(!matches_existing_subnet(
             &discovered("0.0.0.0/0"),

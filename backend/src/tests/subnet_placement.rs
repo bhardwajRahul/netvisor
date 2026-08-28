@@ -13,6 +13,7 @@
 
 use uuid::Uuid;
 
+use crate::server::shared::attribution::AttributeSource;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     shared::{
@@ -21,7 +22,7 @@ use crate::server::{
         types::entities::EntitySource,
     },
     subnets::{
-        r#impl::{base::Subnet, types::SubnetCidrSource},
+        r#impl::base::{Subnet, SubnetCidr, SubnetCidrValue},
         service::Placement,
     },
 };
@@ -52,7 +53,10 @@ async fn network_holding(
 
     for cidr in cidrs {
         let mut subnet = super::subnet(&net.id);
-        subnet.base.cidr = cidr.parse().expect("valid test CIDR");
+        subnet.base.cidr = SubnetCidr::new(
+            SubnetCidrValue(cidr.parse().expect("valid test CIDR")),
+            AttributeSource::DaemonSelfReport,
+        );
         subnet.base.name = (*cidr).to_string();
         services
             .subnet_service
@@ -68,9 +72,12 @@ async fn network_holding(
 /// Both reach the server through `Subnet::from_discovery`, which stamps `Observed`.
 async fn observe(services: &ServiceFactory, network_id: Uuid, cidr: &str) {
     let mut subnet = super::subnet(&network_id);
-    subnet.base.cidr = cidr.parse().expect("valid test CIDR");
+    subnet.base.cidr = SubnetCidr::new(
+        SubnetCidrValue(cidr.parse().expect("valid test CIDR")),
+        // What `Subnet::from_discovery` stamps: a daemon reading its own interface.
+        AttributeSource::DaemonSelfReport,
+    );
     subnet.base.name = cidr.to_string();
-    subnet.base.cidr_source = SubnetCidrSource::Observed;
     subnet.base.source = EntitySource::Discovery;
     services
         .subnet_service
@@ -102,7 +109,7 @@ async fn inferred_ranges(services: &ServiceFactory, network_id: Uuid) -> Vec<Sub
     all_live(services, network_id)
         .await
         .into_iter()
-        .filter(|s| s.base.cidr_source == SubnetCidrSource::Inferred)
+        .filter(|s| s.base.cidr.source() == AttributeSource::LldpNeighbourAddress)
         .collect()
 }
 
@@ -187,7 +194,10 @@ async fn an_address_in_no_held_range_infers_one_despite_the_catch_alls() {
         .unwrap()
         .expect("the inferred subnet");
     assert_eq!(created.base.cidr.to_string(), "10.20.30.0/24");
-    assert_eq!(created.base.cidr_source, SubnetCidrSource::Inferred);
+    assert_eq!(
+        created.base.cidr.source(),
+        AttributeSource::LldpNeighbourAddress
+    );
 }
 
 /// A real subnet still wins, and is never displaced by a catch-all that also contains the address.
@@ -251,7 +261,7 @@ async fn two_addresses_in_one_unknown_range_converge_on_one_subnet() {
         .await
         .unwrap()
         .into_iter()
-        .filter(|s| s.base.cidr_source == SubnetCidrSource::Inferred)
+        .filter(|s| s.base.cidr.source() == AttributeSource::LldpNeighbourAddress)
         .collect();
     assert_eq!(inferred.len(), 1, "one range, not one per address");
 }
@@ -296,7 +306,10 @@ async fn a_reading_of_the_same_range_settles_it() {
 
     let settled = live_subnet(&services, subnet_id).await;
     assert_eq!(settled.base.cidr.to_string(), "10.20.30.0/24");
-    assert_eq!(settled.base.cidr_source, SubnetCidrSource::Observed);
+    assert_eq!(
+        settled.base.cidr.source(),
+        AttributeSource::DaemonSelfReport
+    );
     assert_eq!(
         inferred_ranges(&services, network_id).await.len(),
         0,
@@ -323,7 +336,10 @@ async fn a_reading_that_covers_the_guess_widens_it_in_place() {
 
     let widened = live_subnet(&services, subnet_id).await;
     assert_eq!(widened.base.cidr.to_string(), "10.20.30.0/23");
-    assert_eq!(widened.base.cidr_source, SubnetCidrSource::Observed);
+    assert_eq!(
+        widened.base.cidr.source(),
+        AttributeSource::DaemonSelfReport
+    );
     assert_eq!(
         held_ranges(&services, network_id).await,
         vec!["10.20.30.0/23".to_string()],
@@ -354,7 +370,10 @@ async fn a_reading_inside_the_guess_narrows_it_and_refiles_the_rest() {
 
     let narrowed = live_subnet(&services, subnet_id).await;
     assert_eq!(narrowed.base.cidr.to_string(), "10.20.30.0/25");
-    assert_eq!(narrowed.base.cidr_source, SubnetCidrSource::Observed);
+    assert_eq!(
+        narrowed.base.cidr.source(),
+        AttributeSource::DaemonSelfReport
+    );
 
     assert_eq!(
         live_ip(&services, inside).await.base.subnet_id,
@@ -544,7 +563,10 @@ async fn a_narrowing_that_would_strand_an_address_is_declined() {
         "10.20.30.0/24",
         "the guess is left alone rather than narrowed onto its own addresses"
     );
-    assert_eq!(untouched.base.cidr_source, SubnetCidrSource::Inferred);
+    assert_eq!(
+        untouched.base.cidr.source(),
+        AttributeSource::LldpNeighbourAddress
+    );
 
     let mut held = held_ranges(&services, network_id).await;
     held.sort();

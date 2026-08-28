@@ -53,15 +53,17 @@ use crate::{
         },
         hosts::r#impl::{
             base::{Host, HostBase},
-            name::HostName,
+            name::{HostName, HostNameSources},
         },
         interfaces::r#impl::base::{
             IfAdminStatus, IfOperStatus, Interface, InterfaceBase, InterfaceDataComplete, if_type,
         },
         ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
+        ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue},
         lldp::{LldpChassisId, LldpPortId},
         ports::r#impl::base::PortType,
         services::r#impl::patterns::ClientProbe,
+        shared::attribution::AttributeSource,
         shared::types::entities::EntitySource,
         subnets::r#impl::base::Subnet,
     },
@@ -686,25 +688,33 @@ impl DiscoveryIntegration for SnmpIntegration {
                 mac = ?mac,
                 "ipAddrTable MAC enrichment"
             );
-            host_data.with_mac_for_ip(ip, mac);
+            // The device's own ipAddrTable, matched to its own ifPhysAddress.
+            host_data.with_mac_for_ip(ip, mac, AttributeSource::Probe(ClientProbe::Snmp));
         }
 
         // --- Enrich host fields from SNMP system info ---
+        //
+        // Two sources over one session. `sysDescr`, `sysObjectID` and `sysName` are what the
+        // device says about itself; `sysLocation` and `sysContact` are what an operator typed
+        // into it, which we are only relaying — so they carry a person's intent and outrank
+        // anything a machine emitted, including the rest of this same walk.
         if let Some(ref info) = system_info {
+            let probe = AttributeSource::Probe(ClientProbe::Snmp);
+            let authored = AttributeSource::Authored(ClientProbe::Snmp);
             if let Some(ref v) = info.sys_descr {
-                host_data.with_sys_descr(v.clone());
+                host_data.with_sys_descr(v.clone(), probe);
             }
             if let Some(ref v) = info.sys_object_id {
-                host_data.with_sys_object_id(v.clone());
+                host_data.with_sys_object_id(v.clone(), probe);
             }
             if let Some(ref v) = info.sys_location {
-                host_data.with_sys_location(v.clone());
+                host_data.with_sys_location(v.clone(), authored);
             }
             if let Some(ref v) = info.sys_contact {
-                host_data.with_sys_contact(v.clone());
+                host_data.with_sys_contact(v.clone(), authored);
             }
             if let Some(ref v) = info.sys_name {
-                host_data.with_sys_name(v.clone());
+                host_data.with_sys_name(v.clone(), probe);
             }
         }
 
@@ -715,19 +725,23 @@ impl DiscoveryIntegration for SnmpIntegration {
         {
             // Same canonical form the server matches a *neighbor's* chassis ID against, so a
             // device whose chassis MAC appears on none of its ports is still identifiable.
-            host_data.with_chassis_id(chassis.identifier());
+            host_data.with_chassis_id(
+                chassis.identifier(),
+                AttributeSource::Probe(ClientProbe::Snmp),
+            );
         }
 
         // --- Add ENTITY-MIB hardware inventory ---
         if let Some(ref inventory) = device_inventory {
+            let probe = AttributeSource::Probe(ClientProbe::Snmp);
             if let Some(ref v) = inventory.manufacturer {
-                host_data.with_manufacturer(v.clone());
+                host_data.with_manufacturer(v.clone(), probe);
             }
             if let Some(ref v) = inventory.model {
-                host_data.with_model(v.clone());
+                host_data.with_model(v.clone(), probe);
             }
             if let Some(ref v) = inventory.serial_number {
-                host_data.with_serial_number(v.clone());
+                host_data.with_serial_number(v.clone(), probe);
             }
         }
 
@@ -947,7 +961,13 @@ impl DiscoveryIntegration for SnmpIntegration {
                             name: None,
                             subnet_id: created_subnet.id,
                             ip_address: *entry_ip,
-                            mac_address: if_mac,
+                            // The device reporting its own `ifPhysAddress`: we asked it and it answered.
+                            mac_address: if_mac.map(|m| {
+                                MacEvidence::new(
+                                    MacEvidenceValue(m),
+                                    AttributeSource::Probe(ClientProbe::Snmp),
+                                )
+                            }),
                             position: 0,
                         }));
 
@@ -1022,7 +1042,12 @@ impl DiscoveryIntegration for SnmpIntegration {
                     name: None,
                     subnet_id: remote_subnet.id,
                     ip_address: arp_entry.ip_address,
-                    mac_address: Some(arp_entry.mac_address),
+                    // A router's own ARP cache: a known speaker, about somebody else. Weaker than an
+                    // ARP reply we solicited, and the distinction §6's minting rule turns on.
+                    mac_address: Some(MacEvidence::new(
+                        MacEvidenceValue(arp_entry.mac_address),
+                        AttributeSource::ForwardingTable,
+                    )),
                     position: 0,
                 });
 
@@ -1034,7 +1059,9 @@ impl DiscoveryIntegration for SnmpIntegration {
                 // An ARP entry carries an address and nothing else. Naming the host after it
                 // beats the blank label these used to render as, and sits at the bottom of the
                 // ladder so anything that later learns a real name replaces it.
-                arp_host.base.apply_name(HostName::Ip(arp_entry.ip_address));
+                arp_host
+                    .base
+                    .apply_name(HostName::from_ip(arp_entry.ip_address));
 
                 tracing::info!(
                     ip = %arp_entry.ip_address,
@@ -1444,9 +1471,15 @@ fn convert_snmp_if_entry(
         speed_bps: entry.if_speed.map(|s| s as i64),
         admin_status: Some(IfAdminStatus::from(entry.if_admin_status.unwrap_or(1))),
         oper_status: Some(IfOperStatus::from(entry.if_oper_status.unwrap_or(1))),
-        mac_address: entry.if_phys_address, // MAC from SNMP ifPhysAddress
-        ip_address_id: None,                // Linked server-side via MAC matching
-        neighbor: None,                     // Resolved server-side from LLDP/CDP data
+        // `ifPhysAddress` for one of the device's own interfaces.
+        mac_address: entry.if_phys_address.map(|m| {
+            MacEvidence::new(
+                MacEvidenceValue(m),
+                AttributeSource::Probe(ClientProbe::Snmp),
+            )
+        }),
+        ip_address_id: None, // Linked server-side via MAC matching
+        neighbor: None,      // Resolved server-side from LLDP/CDP data
         // Stamped server-side from the evidence carried in this payload, on ingest.
         neighbor_seen_at: None,
         // LLDP raw data

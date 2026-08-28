@@ -100,7 +100,7 @@
 				name: subnet.name,
 				subnet_id: subnetId,
 				ip_address: '203.0.113.' + (Math.floor(Math.random() * 255) + 1).toString(),
-				mac_address: null,
+				mac_address: undefined,
 				created_at: new Date().toISOString(),
 				updated_at: new Date().toISOString()
 			};
@@ -115,7 +115,7 @@
 				name: null,
 				subnet_id: subnetId,
 				ip_address: '',
-				mac_address: null,
+				mac_address: undefined,
 				created_at: new Date().toISOString(),
 				updated_at: new Date().toISOString()
 			};

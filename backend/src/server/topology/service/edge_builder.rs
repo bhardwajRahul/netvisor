@@ -720,13 +720,15 @@ mod tests {
     use super::*;
     use crate::server::bindings::r#impl::base::Binding;
     use crate::server::hosts::r#impl::base::{Host, HostBase};
-    use crate::server::hosts::r#impl::name::HostName;
+    use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
     use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
     use crate::server::services::r#impl::base::{Service, ServiceBase};
     use crate::server::services::r#impl::virtualization::{
         DockerVirtualization, ServiceVirtualization,
     };
+    use crate::server::shared::attribution::AttributeSource;
     use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use crate::server::subnets::r#impl::types::SubnetType;
     use crate::server::topology::service::context::TopologyContext;
     use crate::server::topology::types::base::TopologyOptions;
@@ -794,7 +796,12 @@ mod tests {
         Subnet {
             id: Uuid::new_v4(),
             base: SubnetBase {
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, third_octet, 0, 0), 16).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(172, third_octet, 0, 0), 16).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 name: name.to_string(),
                 subnet_type,
@@ -842,7 +849,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: HostName::Manual("docker-host".to_string()),
+                name: HostName::manual("docker-host".to_string()),
                 network_id,
                 ..Default::default()
             },
@@ -967,7 +974,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: HostName::Manual("docker-host".to_string()),
+                name: HostName::manual("docker-host".to_string()),
                 network_id,
                 ..Default::default()
             },
@@ -1056,7 +1063,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: HostName::Manual("docker-host".to_string()),
+                name: HostName::manual("docker-host".to_string()),
                 network_id,
                 ..Default::default()
             },
@@ -1123,7 +1130,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: HostName::Manual("docker-host".to_string()),
+                name: HostName::manual("docker-host".to_string()),
                 network_id,
                 ..Default::default()
             },
@@ -1220,7 +1227,7 @@ mod tests {
             id: host_id,
             base: HostBase {
                 network_id,
-                name: HostName::Manual("docker-host".to_string()),
+                name: HostName::manual("docker-host".to_string()),
                 ..Default::default()
             },
             ..Default::default()
@@ -1325,7 +1332,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: HostName::Manual("docker-host".to_string()),
+                name: HostName::manual("docker-host".to_string()),
                 network_id,
                 ..Default::default()
             },

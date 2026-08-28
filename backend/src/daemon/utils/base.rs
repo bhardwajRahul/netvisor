@@ -2,7 +2,10 @@ use crate::daemon::discovery::integration::container::ContainerRuntime;
 use crate::server::interfaces::r#impl::base::{
     IfAdminStatus, IfOperStatus, Interface, InterfaceBase, if_type,
 };
-use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
+use crate::server::ip_addresses::r#impl::base::{
+    IPAddress, IPAddressBase, MacEvidence, MacEvidenceValue, mac_of,
+};
+use crate::server::shared::attribution::AttributeSource;
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::subnets::r#impl::types::SubnetType;
 use anyhow::Error;
@@ -157,7 +160,9 @@ fn nic_to_interface(
         } else {
             IfOperStatus::Down
         }),
-        mac_address: nic_mac(nic),
+        // The daemon reading its own NIC — the host it runs on, not one it asked about.
+        mac_address: nic_mac(nic)
+            .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::DaemonSelfReport)),
         // Never set from here, exactly as the SNMP path doesn't (`snmp/mod.rs`). The ids the
         // daemon mints for its own `IPAddress` rows do not survive submission — the server matches
         // incoming addresses to the rows it already holds and keeps *their* ids. It builds an
@@ -265,11 +270,13 @@ pub trait DaemonUtils {
 
         // First pass: collect all interface data and potential subnets
         let mut potential_subnets: Vec<(String, IpNetwork)> = Vec::new();
-        let mut interface_data: Vec<(String, IpAddr, Option<MacAddress>)> = Vec::new();
+        let mut interface_data: Vec<(String, IpAddr, Option<MacEvidence>)> = Vec::new();
 
         for ip_address in ip_addresses.into_iter() {
             let name = ip_address.name.clone();
-            let mac_address = nic_mac(&ip_address);
+            // The daemon reading its own NIC.
+            let mac_address = nic_mac(&ip_address)
+                .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::DaemonSelfReport));
 
             for ip in ip_address.ips.iter() {
                 // APIPA (169.254.x.x) is defined as exactly /16 by RFC 3927.
@@ -289,7 +296,7 @@ pub trait DaemonUtils {
                     }
                     other => *other,
                 };
-                interface_data.push((name.clone(), ip.ip(), mac_address));
+                interface_data.push((name.clone(), ip.ip(), mac_address.clone()));
                 potential_subnets.push((name.clone(), ip));
             }
         }
@@ -299,7 +306,7 @@ pub trait DaemonUtils {
 
         for (interface_name, ip_network) in potential_subnets {
             if let Some(subnet) = Subnet::from_discovery(interface_name, &ip_network, network_id) {
-                subnet_map.entry(subnet.base.cidr).or_insert(subnet);
+                subnet_map.entry(*subnet.base.cidr).or_insert(subnet);
             }
         }
 
@@ -315,14 +322,14 @@ pub trait DaemonUtils {
                 .max_by_key(|s| s.base.cidr.network_length())
             {
                 cidr_to_mac
-                    .entry(subnet.base.cidr)
+                    .entry(*subnet.base.cidr)
                     .and_modify(|existing: &mut Option<MacAddress>| {
                         // Prefer a valid MAC over None
                         if existing.is_none() && mac_address.is_some() {
-                            *existing = mac_address;
+                            *existing = mac_of(&mac_address);
                         }
                     })
-                    .or_insert(mac_address);
+                    .or_insert(mac_of(&mac_address));
 
                 ip_addresses.push(IPAddress::new(IPAddressBase {
                     network_id: subnet.base.network_id,
@@ -650,7 +657,7 @@ pub fn merge_host_and_docker_subnets(
     host_subnets: Vec<Subnet>,
     docker_subnets: Vec<Subnet>,
 ) -> Vec<Subnet> {
-    let host_cidrs: HashSet<IpCidr> = host_subnets.iter().map(|s| s.base.cidr).collect();
+    let host_cidrs: HashSet<IpCidr> = host_subnets.iter().map(|s| *s.base.cidr).collect();
 
     let mut authoritative: HashMap<IpCidr, (SubnetType, Option<Uuid>)> = HashMap::new();
 
@@ -666,7 +673,7 @@ pub fn merge_host_and_docker_subnets(
                 );
                 if s.base.subnet_type.is_container_bridge() {
                     authoritative.insert(
-                        s.base.cidr,
+                        *s.base.cidr,
                         (s.base.subnet_type, s.base.virtualization_service_id),
                     );
                 }
@@ -718,17 +725,20 @@ pub fn create_system_utils() -> PlatformDaemonUtils {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::shared::attribution::AttributeSource;
     use crate::server::shared::storage::traits::Storable;
     use crate::server::shared::types::entities::EntitySource;
     use crate::server::subnets::r#impl::base::SubnetBase;
-    use crate::server::subnets::r#impl::types::SubnetCidrSource;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use pnet::datalink::NetworkInterface;
     use std::str::FromStr;
 
     fn make_subnet(cidr: &str, subnet_type: SubnetType) -> Subnet {
         Subnet::new(SubnetBase {
-            cidr_source: SubnetCidrSource::Observed,
-            cidr: IpCidr::from_str(cidr).unwrap(),
+            cidr: SubnetCidr::new(
+                SubnetCidrValue(IpCidr::from_str(cidr).unwrap()),
+                AttributeSource::DaemonSelfReport,
+            ),
             network_id: Uuid::nil(),
             name: String::new(),
             description: None,
@@ -810,7 +820,7 @@ mod tests {
 
         let entry = nic_to_interface(&nic, Uuid::new_v4(), Uuid::new_v4());
 
-        assert_eq!(entry.base.mac_address, Some(MacAddress::new(mac)));
+        assert_eq!(mac_of(&entry.base.mac_address), Some(MacAddress::new(mac)));
         assert_eq!(entry.base.if_index, Some(7));
         assert_eq!(entry.base.if_name.as_deref(), Some("ens1f0np0"));
     }

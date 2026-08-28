@@ -8,12 +8,12 @@
 
 use crate::daemon::discovery::types::warnings::ProvisionalSubnet;
 use crate::server::interfaces::r#impl::base::InterfaceBase;
-use crate::server::ip_addresses::r#impl::base::IPAddressBase;
+use crate::server::ip_addresses::r#impl::base::{IPAddressBase, MacEvidence, MacEvidenceValue};
 use crate::server::networks::r#impl::Network;
 use crate::server::subnets::r#impl::{
-    base::SubnetBase,
+    base::{SubnetBase, SubnetCidr, SubnetCidrValue},
     inference::{UnplacedFarEnd, infer_ranges},
-    types::{SubnetCidrSource, SubnetType},
+    types::SubnetType,
 };
 
 use super::*;
@@ -50,10 +50,12 @@ impl HostService {
         let mut placements: HashMap<String, Uuid> = HashMap::new();
         for range in infer_ranges(&far_ends, &live) {
             let mut subnet = Subnet::new(SubnetBase {
-                cidr: range.cidr,
                 // The whole point: a range nothing read, only inferred, so the row asks to be
                 // confirmed rather than asserting itself.
-                cidr_source: SubnetCidrSource::Inferred,
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(range.cidr),
+                    AttributeSource::LldpNeighbourAddress,
+                ),
                 network_id,
                 name: range.cidr.to_string(),
                 description: None,
@@ -160,7 +162,7 @@ impl HostService {
 
         Ok(live
             .into_iter()
-            .filter(|s| s.base.cidr_source == SubnetCidrSource::Inferred)
+            .filter(|s| s.base.cidr.source() == AttributeSource::LldpNeighbourAddress)
             .map(|s| {
                 let detail = evidence.remove(&s.id).unwrap_or(ProvisionalSubnet {
                     cidr: s.base.cidr.to_string(),
@@ -263,20 +265,28 @@ impl HostService {
                 // The neighbour's advertised sysName is matched against this column by the
                 // resolution ladder, so recording it is what lets the *next* pass place this far
                 // end without re-deriving anything.
-                sys_name: far_end.sys_name.clone(),
-                chassis_id: Some(far_end.chassis_id.clone()),
+                // Announced, not queried: a neighbour published these about itself on a link
+                // anything could have spoken on, and nothing here has contacted the far end.
+                sys_name: far_end
+                    .sys_name
+                    .clone()
+                    .map(|v| Attributed::new(HostSysNameValue(v), AttributeSource::LldpChassisId)),
+                chassis_id: Some(Attributed::new(
+                    HostChassisIdValue(far_end.chassis_id.clone()),
+                    AttributeSource::LldpChassisId,
+                )),
                 ..Default::default()
             });
             // Ranked, not assigned: a sysName is reverse-DNS-grade evidence, so a real scan's
             // hostname or a name a person types still outranks it.
             //
-            // A far end with neither is left `Unnamed` rather than named after its chassis id.
+            // A far end with neither is left unnamed rather than named after its chassis id.
             // The chassis id is already a column, and `TopologyContext::host_container_header`
             // reads it as the last rung of the *display* ladder — copying it into the name would
             // duplicate the evidence and then have to be displaced when a real name arrives.
             match (&far_end.sys_name, far_end.address) {
-                (Some(name), _) => host.base.apply_name(HostName::Hostname(name.clone())),
-                (None, Some(address)) => host.base.apply_name(HostName::Ip(address)),
+                (Some(name), _) => host.base.apply_name(HostName::from_hostname(name.clone())),
+                (None, Some(address)) => host.base.apply_name(HostName::from_ip(address)),
                 (None, None) => false,
             };
             host.last_seen_at = Utc::now();
@@ -327,7 +337,9 @@ impl HostService {
                     host_id: Uuid::nil(), // Server assigns.
                     if_descr: port_name.clone(),
                     if_name: Some(port_name.clone()),
-                    mac_address: mac,
+                    mac_address: mac.map(|m| {
+                        MacEvidence::new(MacEvidenceValue(m), AttributeSource::LldpChassisId)
+                    }),
                     ..Default::default()
                 })],
                 // Identified by its MAC and nothing else — a `MacAddress` port id, which is a real
@@ -338,7 +350,10 @@ impl HostService {
                     network_id,
                     host_id: Uuid::nil(), // Server assigns.
                     if_descr: mac.to_string(),
-                    mac_address: Some(mac),
+                    mac_address: Some(MacEvidence::new(
+                        MacEvidenceValue(mac),
+                        AttributeSource::LldpChassisId,
+                    )),
                     ..Default::default()
                 })],
                 (None, None) => Vec::new(),

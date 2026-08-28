@@ -1,6 +1,8 @@
+use crate::server::ip_addresses::r#impl::base::MacEvidence;
 use crate::server::lldp::{
     AdvertisedFarEndPort, AdvertisedIdentity, LldpChassisId, LldpPortId, is_usable_identity_address,
 };
+use crate::server::shared::attribution;
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::types::{
     Color, Icon,
@@ -10,7 +12,6 @@ use crate::server::topology::types::views::{
     FilterValueContext, HasFilterValues, MetadataFilterType,
 };
 use chrono::{DateTime, Utc};
-use mac_address::MacAddress;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Display;
@@ -337,10 +338,10 @@ pub struct InterfaceBase {
     pub oper_status: Option<IfOperStatus>,
 
     // Local links
-    /// MAC address from SNMP ifPhysAddress - immutable once set
-    #[serde(default)]
-    #[schema(value_type = Option<String>, pattern = r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$", example = "a4:bb:6d:12:34:56")]
-    pub mac_address: Option<MacAddress>,
+    /// MAC address, usually from SNMP `ifPhysAddress`, with the evidence for it.
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = MacEvidence)]
+    pub mac_address: Option<MacEvidence>,
     /// FK to IPAddress entity - this port's IP assignment (must be on same host).
     /// Old daemons send this as "interface_id".
     #[serde(alias = "interface_id")]

@@ -6,12 +6,13 @@
 //! re-implements those semantics in Rust, so it cannot fail the way the database did. A resolver
 //! test that never touches a query plan proves the resolver agrees with itself.
 
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
+use crate::server::shared::attribution::{AttributeSource, Attributed};
 use std::net::{IpAddr, Ipv4Addr};
 
-use mac_address::MacAddress;
 use uuid::Uuid;
 
-use crate::server::hosts::r#impl::name::HostName;
+use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
 use crate::server::{
     hosts::r#impl::base::Host,
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase, if_type},
@@ -24,6 +25,12 @@ use crate::server::{
 };
 
 use super::{host, network, organization, subnet, test_services};
+use crate::server::hosts::r#impl::attributes::{HostChassisIdValue, HostSysNameValue};
+use crate::server::services::r#impl::patterns::ClientProbe;
+
+/// What a credentialed SNMP walk claims for the fields these fixtures stand in for. Named once so
+/// a fixture cannot accidentally assert a provenance no real scan produces.
+const SNMP_READ: AttributeSource = AttributeSource::Probe(ClientProbe::Snmp);
 
 /// Everything a resolution test needs: a network with hosts and interfaces in it, and a resolver
 /// pointed at the same database.
@@ -63,7 +70,7 @@ impl Lab {
 
     async fn host(&self, name: &str) -> Host {
         let mut h = host(&self.network_id);
-        h.base.name = HostName::Manual(name.to_string());
+        h.base.name = HostName::manual(name.to_string());
         self.storage.hosts.create(&h).await.unwrap();
         h
     }
@@ -75,9 +82,10 @@ impl Lab {
         sys_name: Option<&str>,
     ) -> Host {
         let mut h = host(&self.network_id);
-        h.base.name = HostName::Manual(name.to_string());
-        h.base.chassis_id = chassis_id.map(str::to_string);
-        h.base.sys_name = sys_name.map(str::to_string);
+        h.base.name = HostName::manual(name.to_string());
+        h.base.chassis_id =
+            chassis_id.map(|v| Attributed::new(HostChassisIdValue(v.into()), SNMP_READ));
+        h.base.sys_name = sys_name.map(|v| Attributed::new(HostSysNameValue(v.into()), SNMP_READ));
         self.storage.hosts.create(&h).await.unwrap();
         h
     }
@@ -102,7 +110,12 @@ impl Lab {
             if_name: if_name.map(str::to_string),
             if_alias: if_alias.map(str::to_string),
             if_type: Some(if_type),
-            mac_address: mac.map(|m| m.parse::<MacAddress>().unwrap()),
+            mac_address: mac.map(|m| {
+                MacEvidence::new(
+                    MacEvidenceValue(m.parse().unwrap()),
+                    AttributeSource::ArpReply,
+                )
+            }),
             admin_status: Some(IfAdminStatus::Up),
             oper_status: Some(IfOperStatus::Up),
             ..Default::default()
@@ -136,7 +149,12 @@ impl Lab {
             network_id: self.network_id,
             subnet_id: self.subnet_id,
             ip_address: IpAddr::V4(addr),
-            mac_address: mac.map(|m| m.parse::<MacAddress>().unwrap()),
+            mac_address: mac.map(|m| {
+                MacEvidence::new(
+                    MacEvidenceValue(m.parse().unwrap()),
+                    AttributeSource::ArpReply,
+                )
+            }),
             position: 0,
             name: Some("eth0".to_string()),
             host_id,

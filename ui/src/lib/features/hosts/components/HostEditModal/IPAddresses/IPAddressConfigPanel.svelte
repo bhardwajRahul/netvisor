@@ -51,7 +51,9 @@
 	}
 
 	function handleMacChange(value: string) {
-		onChange({ ...iface, mac_address: value || null });
+		// Absence is `undefined` now that the MAC carries its source: the pair is either present
+		// with a provenance or not present at all, so there is no null in between.
+		onChange({ ...iface, mac_address: value || undefined });
 	}
 </script>
 

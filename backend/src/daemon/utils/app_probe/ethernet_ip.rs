@@ -20,10 +20,13 @@ use async_trait::async_trait;
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
 
-use crate::daemon::utils::app_probe::{AppProbe, AppProbeOutcome, DeviceIdentity, ProbeContext};
+use crate::daemon::utils::app_probe::{
+    AppProbe, AppProbeOutcome, DeviceIdentity, ProbeContext, identity_field,
+};
 use crate::daemon::utils::scanner::SCAN_TIMEOUT;
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::patterns::ClientProbe;
+use crate::server::shared::attribution::AttributeSource;
 
 /// Encapsulation command: ListIdentity.
 const COMMAND_LIST_IDENTITY: u16 = 0x0063;
@@ -162,14 +165,26 @@ fn parse_identity_item(data: &[u8]) -> Option<DeviceIdentity> {
         .map(|bytes| String::from_utf8_lossy(bytes).trim().to_string())
         .filter(|name| !name.is_empty());
 
+    let probe = AttributeSource::Probe(ClientProbe::EtherNetIp);
     Some(DeviceIdentity {
         // The number, not a name. Recording it as an explicit CIP vendor reference is honest about
         // what it is; resolving it would need the ODVA registry, which is deliberately not shipped.
-        manufacturer: Some(format!("CIP vendor {vendor_id}")),
-        model: product_name,
+        //
+        // Hence `CipVendorId` rather than the probe: this string is our construction from an
+        // identifier, not something the device said, so it ranks as the inference it is and cannot
+        // displace a manufacturer name read off the device — which the probe rung, being the
+        // device's own protocol, otherwise would.
+        manufacturer: identity_field(
+            Some(format!("CIP vendor {vendor_id}")),
+            AttributeSource::CipVendorId,
+        ),
+        model: identity_field(product_name, probe),
         // CIP serial numbers are conventionally written as eight hex digits.
-        serial_number: Some(format!("{serial_number:08X}")),
-        firmware_revision: Some(format!("{revision_major}.{revision_minor}")),
+        serial_number: identity_field(Some(format!("{serial_number:08X}")), probe),
+        firmware_revision: identity_field(
+            Some(format!("{revision_major}.{revision_minor}")),
+            probe,
+        ),
     })
 }
 
@@ -225,13 +240,22 @@ mod tests {
         let identity = parse_reply(&reply(&[(ITEM_CIP_IDENTITY, item)], SENDER_CONTEXT, 0))
             .expect("a well-formed reply parses");
 
-        assert_eq!(identity.manufacturer.as_deref(), Some("CIP vendor 1"));
         assert_eq!(
-            identity.model.as_deref(),
+            crate::server::shared::attribution::text_of(&identity.manufacturer).as_deref(),
+            Some("CIP vendor 1")
+        );
+        assert_eq!(
+            crate::server::shared::attribution::text_of(&identity.model).as_deref(),
             Some("1769-L18ER-BB1B/A LOGIX5318ER")
         );
-        assert_eq!(identity.serial_number.as_deref(), Some("0060F4A2"));
-        assert_eq!(identity.firmware_revision.as_deref(), Some("32.11"));
+        assert_eq!(
+            crate::server::shared::attribution::text_of(&identity.serial_number).as_deref(),
+            Some("0060F4A2")
+        );
+        assert_eq!(
+            crate::server::shared::attribution::text_of(&identity.firmware_revision).as_deref(),
+            Some("32.11")
+        );
     }
 
     /// The echoed sender context is what ties a reply to this request rather than to a broadcast
@@ -266,13 +290,19 @@ mod tests {
         let padded = identity_item(1, 0xABCD, (2, 5), "  PowerFlex 525  ");
         let identity =
             parse_reply(&reply(&[(ITEM_CIP_IDENTITY, padded)], SENDER_CONTEXT, 0)).expect("parses");
-        assert_eq!(identity.model.as_deref(), Some("PowerFlex 525"));
+        assert_eq!(
+            crate::server::shared::attribution::text_of(&identity.model).as_deref(),
+            Some("PowerFlex 525")
+        );
 
         let unnamed = identity_item(1, 0xABCD, (2, 5), "");
         let identity = parse_reply(&reply(&[(ITEM_CIP_IDENTITY, unnamed)], SENDER_CONTEXT, 0))
             .expect("parses");
         assert_eq!(identity.model, None);
-        assert_eq!(identity.serial_number.as_deref(), Some("0000ABCD"));
+        assert_eq!(
+            crate::server::shared::attribution::text_of(&identity.serial_number).as_deref(),
+            Some("0000ABCD")
+        );
     }
 
     /// A device may list other item types first; the CIP Identity item is found rather than
@@ -288,8 +318,14 @@ mod tests {
         ))
         .expect("parses past an unknown item");
 
-        assert_eq!(identity.manufacturer.as_deref(), Some("CIP vendor 283"));
-        assert_eq!(identity.model.as_deref(), Some("Turck TBEN-S"));
+        assert_eq!(
+            crate::server::shared::attribution::text_of(&identity.manufacturer).as_deref(),
+            Some("CIP vendor 283")
+        );
+        assert_eq!(
+            crate::server::shared::attribution::text_of(&identity.model).as_deref(),
+            Some("Turck TBEN-S")
+        );
     }
 
     /// An item claiming more bytes than arrived must not panic or read past the buffer.
@@ -313,8 +349,14 @@ mod tests {
             parse_reply(&reply(&[(ITEM_CIP_IDENTITY, item)], SENDER_CONTEXT, 0)).expect("parses");
 
         assert_eq!(identity.model, None);
-        assert_eq!(identity.serial_number.as_deref(), Some("00000001"));
-        assert_eq!(identity.firmware_revision.as_deref(), Some("1.2"));
+        assert_eq!(
+            crate::server::shared::attribution::text_of(&identity.serial_number).as_deref(),
+            Some("00000001")
+        );
+        assert_eq!(
+            crate::server::shared::attribution::text_of(&identity.firmware_revision).as_deref(),
+            Some("1.2")
+        );
     }
 
     #[test]

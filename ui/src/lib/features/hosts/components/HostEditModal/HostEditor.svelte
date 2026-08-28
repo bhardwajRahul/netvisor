@@ -128,7 +128,7 @@
 				const dataIface = formData.ip_addresses[i];
 				if (formIface && dataIface) {
 					dataIface.ip_address = formIface.ip_address ?? '';
-					dataIface.mac_address = formIface.mac_address ?? null;
+					dataIface.mac_address = formIface.mac_address ?? undefined;
 					dataIface.name = formIface.name ?? null;
 				}
 			}
