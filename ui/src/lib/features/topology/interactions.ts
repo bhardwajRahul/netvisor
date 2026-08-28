@@ -26,6 +26,15 @@ export const groupHoverState = writable<Map<string, boolean>>(new Map());
 export const edgeHoverState = writable<Map<string, boolean>>(new Map());
 export const connectedNodeIds = writable<Set<string>>(new Set());
 export const isExporting = writable(false);
+/**
+ * A DOM measurement pass is mounting every node to read its real card height.
+ *
+ * A store rather than viewer-local state because node components have to see it: a simplified card
+ * measures its pinned height instead of its content's, so a measure pass running below the
+ * level-of-detail threshold would confirm whatever the last measurement happened to be and hand
+ * ELK the result. `shouldSimplify` suspends on it for the same reason `shouldCull` does.
+ */
+export const isMeasuring = writable(false);
 export const newNodeIds = writable<Set<string>>(new Set());
 
 // Tag filter stores - nodes/services hidden by tag filter

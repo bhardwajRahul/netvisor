@@ -16,9 +16,15 @@
 --   docker exec -i scanopy-postgres psql -U postgres -d scanopy -v ON_ERROR_STOP=1 \
 --     < backend/scripts/seed-l2-perf.sql
 --
--- Idempotent: every id is derived from md5(<stable key>), so re-running updates
--- the same rows rather than duplicating them. To undo, see the DELETE at the
--- bottom of this file (commented out).
+-- Idempotent *per network*: every id is derived from md5(<target network> ||
+-- <stable key>), so re-running against the same network updates the same rows
+-- rather than duplicating them, and seeding a second network produces a
+-- disjoint set. The network has to be part of the key — without it the ids
+-- collide across networks and `ON CONFLICT ... DO UPDATE` quietly refreshes the
+-- *first* network's rows in place, leaving the one you asked for empty and the
+-- `network_id` knob below doing nothing at all.
+--
+-- To undo, see the DELETE at the bottom of this file (commented out).
 --
 -- Shape produced (edit these three numbers to change the scale):
 --   n_switches            core switches, each a Host container in the L2 view
@@ -147,7 +153,7 @@ INSERT INTO hosts (
     created_at, updated_at, sys_name, manufacturer, model
 )
 SELECT
-    md5('l2perf:switch:' || s)::uuid,
+    md5(t.network_id || ':l2perf:switch:' || s)::uuid,
     t.network_id,
     'l2perf-switch-' || lpad(s::text, 2, '0'),
     'l2perf-switch-' || lpad(s::text, 2, '0'),
@@ -170,7 +176,7 @@ INSERT INTO hosts (
     created_at, updated_at, sys_name, manufacturer, model
 )
 SELECT
-    md5('l2perf:host:' || s || ':' || p)::uuid,
+    md5(t.network_id || ':l2perf:host:' || s || ':' || p)::uuid,
     t.network_id,
     'l2perf-host-' || lpad(s::text, 2, '0') || '-' || lpad(p::text, 3, '0'),
     'l2perf-host-' || lpad(s::text, 2, '0') || '-' || lpad(p::text, 3, '0'),
@@ -195,8 +201,8 @@ INSERT INTO interfaces (
     speed_bps, admin_status, oper_status, created_at, updated_at
 )
 SELECT
-    md5('l2perf:switchport:' || s || ':' || p)::uuid,
-    md5('l2perf:switch:' || s)::uuid,
+    md5(t.network_id || ':l2perf:switchport:' || s || ':' || p)::uuid,
+    md5(t.network_id || ':l2perf:switch:' || s)::uuid,
     t.network_id,
     p,
     'Port 1/0/' || p,
@@ -230,8 +236,8 @@ INSERT INTO interfaces (
     lldp_sys_name, lldp_port_desc, created_at, updated_at
 )
 SELECT
-    md5('l2perf:uplink:' || s || ':' || p)::uuid,
-    md5('l2perf:host:' || s || ':' || p)::uuid,
+    md5(t.network_id || ':l2perf:uplink:' || s || ':' || p)::uuid,
+    md5(t.network_id || ':l2perf:host:' || s || ':' || p)::uuid,
     t.network_id,
     1,
     'eth0',
@@ -240,9 +246,9 @@ SELECT
     1000000000,
     1, 1,
     CASE WHEN p > (:hosts_per_switch * :device_level_pct) / 100
-         THEN md5('l2perf:switchport:' || s || ':' || p)::uuid END,
+         THEN md5(t.network_id || ':l2perf:switchport:' || s || ':' || p)::uuid END,
     CASE WHEN p <= (:hosts_per_switch * :device_level_pct) / 100
-         THEN md5('l2perf:switch:' || s)::uuid END,
+         THEN md5(t.network_id || ':l2perf:switch:' || s)::uuid END,
     'l2perf-switch-' || lpad(s::text, 2, '0'),
     'Port 1/0/' || p,
     now(), now()
@@ -264,8 +270,8 @@ INSERT INTO interfaces (
     speed_bps, admin_status, oper_status, created_at, updated_at
 )
 SELECT
-    md5('l2perf:extra:' || s || ':' || p || ':' || e)::uuid,
-    md5('l2perf:host:' || s || ':' || p)::uuid,
+    md5(t.network_id || ':l2perf:extra:' || s || ':' || p || ':' || e)::uuid,
+    md5(t.network_id || ':l2perf:host:' || s || ':' || p)::uuid,
     t.network_id,
     e + 1,
     'eth' || e,
@@ -307,5 +313,9 @@ COMMIT;
 -- Undo
 -- ---------------------------------------------------------------------------
 -- Interfaces cascade from hosts, so removing the synthetic hosts is enough.
+-- Note this matches by name across *every* network, which is what you want when
+-- clearing up but not if you are keeping one seeded network and dropping
+-- another — scope it by network_id in that case, or just drop the throwaway
+-- network row and let the cascade take everything with it.
 --
 --   DELETE FROM hosts WHERE name LIKE 'l2perf-%';

@@ -33,6 +33,7 @@ import {
 	hoveredMetadata,
 	hoveredTag,
 	isExporting,
+	isMeasuring,
 	newNodeIds,
 	searchHiddenNodeIds,
 	searchMatchContainerMap,
@@ -44,6 +45,7 @@ import { collapsedContainers } from './collapse';
 export const connectedNodes = fromStore(connectedNodeIds);
 export const edgeHandles = fromStore(edgeHandlesByNode);
 export const exporting = fromStore(isExporting);
+export const measuring = fromStore(isMeasuring);
 export const searchHiddenNodes = fromStore(searchHiddenNodeIds);
 export const searchContainerMatches = fromStore(searchMatchContainerMap);
 export const hiddenEntities = fromStore(hiddenEntityIds);
