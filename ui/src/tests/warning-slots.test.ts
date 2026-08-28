@@ -70,13 +70,6 @@ describe('discovery warning rendering', () => {
 			.flatMap((entry) => entry.details)
 			.map((statement) => statement.sentence);
 
-	/** Every example line a run renders, flattened the same way. */
-	const examples = (warnings: DiscoveryWarning[], hostName?: HostNameLookup) =>
-		buildWarningReport(warnings, hostName)
-			.flatMap((section) => section.entries)
-			.flatMap((entry) => entry.details)
-			.flatMap((statement) => statement.examples);
-
 	it('renders every code the backend can send, with no slot left unfilled', () => {
 		const unfilled: string[] = [];
 
