@@ -16,7 +16,11 @@ import { Radio } from 'lucide-svelte';
 
 import type { components } from '$lib/api/schema';
 import type { CardFieldItem, TagProps } from '$lib/shared/components/data/types';
-import { hosts_neverContacted, hosts_neverContactedDetail } from '$lib/paraglide/messages';
+import {
+	hosts_neverContacted,
+	hosts_neverContactedDetail,
+	hosts_neverContactedWithName
+} from '$lib/paraglide/messages';
 import { toColor } from '$lib/shared/utils/styling';
 
 /** Derived from the backend enum rather than restated, so a new variant cannot drift out of sync. */
@@ -25,8 +29,13 @@ export type EntitySource = components['schemas']['EntitySource'];
 /**
  * Optional, so a payload predating the rung reads as an ordinary discovered host rather than
  * throwing — an absent source is not a claim that nothing contacted it.
+ *
+ * `display_name` is the server's answer to "what do we call this device" — its name, or the
+ * hostname, sysName, chassis id or address it still carries when it has none. Read from the
+ * payload rather than re-derived here: topology titles a host container from the same ladder
+ * (`Host::display_name`), and a second copy in TypeScript is how the two start disagreeing.
  */
-type WithSource = { source?: EntitySource };
+type WithSource = { source?: EntitySource; name?: string | null; display_name?: string | null };
 
 /** Whether this host is known only at second hand. */
 export function isInferredHost(host: WithSource): boolean {
@@ -54,15 +63,23 @@ export function getHostSourceTag(host: WithSource): TagProps | null {
  *
  * Beside the name rather than in a column of its own: it qualifies what the row *is*, and a
  * separate column would read as an attribute to sort by rather than a caveat on the host.
+ *
+ * **The name goes inside the label**, as `lastSeenItems` does with its date. A cell renders chips
+ * *or* its plain value and never both, so a badge that did not carry the name would replace it —
+ * the row would say "Never contacted" and never say which device. A host with no name at all gets
+ * the bare badge rather than a stray bracket.
  */
 export function hostSourceItems<T extends WithSource>(): (host: T) => CardFieldItem[] | undefined {
 	return (host) => {
 		const tag = getHostSourceTag(host);
 		if (!tag) return undefined;
+		// A far end that advertised neither a sysName nor an address has an empty `name`; the
+		// server's fallback ladder is what still identifies it.
+		const name = (host.display_name ?? host.name)?.trim();
 		return [
 			{
 				id: 'never-contacted',
-				label: tag.label,
+				label: name ? hosts_neverContactedWithName({ name }) : tag.label,
 				color: tag.color,
 				icon: tag.icon,
 				title: tag.title

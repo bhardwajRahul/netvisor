@@ -383,7 +383,7 @@ fn plan_interface_ip_links(
         .iter()
         .filter(|i| i.base.ip_address_id.is_none())
         .filter_map(|i| {
-            let target = if i.base.if_type == if_type::SOFTWARE_LOOPBACK {
+            let target = if i.base.if_type == Some(if_type::SOFTWARE_LOOPBACK) {
                 loopback_ip_id
             } else {
                 i.base
@@ -404,7 +404,7 @@ mod tests {
 
     fn iface(if_index: i32, mac: &str) -> Interface {
         let mut base = InterfaceBase::default();
-        base.if_index = if_index;
+        base.if_index = Some(if_index);
         base.if_descr = format!("Slot0/{if_index}");
         base.mac_address = Some(mac.parse::<MacAddress>().unwrap());
         Interface::new(base)

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { lastSeenItems } from '$lib/shared/utils/freshness';
-	import { cidrSourceItems } from '$lib/shared/utils/cidr-source';
+	import { cidrSourceItems, isProvisionalCidr } from '$lib/shared/utils/cidr-source';
 	import SubnetEditModal from './SubnetEditModal/SubnetEditModal.svelte';
+	import ProvisionalRangeModal from './ProvisionalRangeModal.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
@@ -11,7 +12,7 @@
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
-	import { Plus, Trash2, Edit } from 'lucide-svelte';
+	import { Plus, Trash2, Edit, HelpCircle } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import {
@@ -45,6 +46,7 @@
 		common_unknownNetwork,
 		common_updated,
 		daemons_installPromptSubnets,
+		subnets_resolveRange,
 		subnets_subnetType
 	} from '$lib/paraglide/messages';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
@@ -85,6 +87,8 @@
 
 	let showSubnetEditor = $state(false);
 	let editingSubnet = $state<Subnet | null>(null);
+	let showProvisionalRange = $state(false);
+	let resolvingSubnet = $state<Subnet | null>(null);
 
 	// Deep-link: open subnet editor from URL (handles both fresh open and entity switch)
 	$effect(() => {
@@ -110,7 +114,20 @@
 	function subnetActions(subnet: Subnet): CardAction[] {
 		if (isReadOnly) return [];
 
-		return [
+		const actions: CardAction[] = [];
+
+		// Only where there is something to resolve. A badge that says a range was guessed and
+		// offers no way to settle it leaves the operator with the question and no answer.
+		if (isProvisionalCidr(subnet)) {
+			actions.push({
+				label: subnets_resolveRange(),
+				icon: HelpCircle,
+				class: 'btn-icon-info',
+				onClick: () => handleResolveRange(subnet)
+			});
+		}
+
+		actions.push(
 			{ label: common_edit(), icon: Edit, onClick: () => handleEditSubnet(subnet) },
 			{
 				label: common_delete(),
@@ -118,7 +135,38 @@
 				class: 'btn-icon-danger',
 				onClick: () => handleDeleteSubnet(subnet)
 			}
-		];
+		);
+
+		return actions;
+	}
+
+	function handleResolveRange(subnet: Subnet) {
+		resolvingSubnet = subnet;
+		showProvisionalRange = true;
+	}
+
+	function handleCloseProvisionalRange() {
+		showProvisionalRange = false;
+		resolvingSubnet = null;
+	}
+
+	/**
+	 * Keep the range as it stands. The server takes the higher rung of the ladder on update, so
+	 * `Confirmed` sticks and the next scan cannot put the row back to `Inferred`.
+	 */
+	async function handleConfirmRange(subnet: Subnet) {
+		try {
+			await updateSubnetMutation.mutateAsync({ ...subnet, cidr_source: 'Confirmed' });
+			handleCloseProvisionalRange();
+		} catch {
+			// Error handled by mutation
+		}
+	}
+
+	/** Straight into the editor, which is where a corrected CIDR is typed. */
+	function handleCorrectRange(subnet: Subnet) {
+		handleCloseProvisionalRange();
+		handleEditSubnet(subnet);
 	}
 
 	function handleEditSubnet(subnet: Subnet) {
@@ -312,4 +360,12 @@
 				handleCloseSubnetEditor();
 			}
 		: null}
+/>
+
+<ProvisionalRangeModal
+	isOpen={showProvisionalRange}
+	subnet={resolvingSubnet}
+	onConfirm={handleConfirmRange}
+	onCorrect={handleCorrectRange}
+	onClose={handleCloseProvisionalRange}
 />

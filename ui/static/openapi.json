@@ -24300,6 +24300,14 @@
             ],
             "description": "Free-text notes about the host."
           },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What to call this host when `name` is empty: its hostname, sysName, chassis id or first\naddress, whichever it has. `None` when nothing identifies it.\n\nRead-only and separate from `name` rather than folded into it. `name` is what a person\ntyped and what the editor writes back, so filling it with a fallback would turn a chassis\nid into a name the next save persists. Computed from [`Host::display_name`], the same\nladder topology titles a host container with, so a host cannot be called one thing in the\nlist and another on the map.",
+            "readOnly": true
+          },
           "firmware_revision": {
             "type": [
               "string",
@@ -25354,16 +25362,19 @@
         "required": [
           "host_id",
           "network_id",
-          "if_index",
-          "if_descr",
-          "if_type",
-          "admin_status",
-          "oper_status"
+          "if_descr"
         ],
         "properties": {
           "admin_status": {
-            "$ref": "#/components/schemas/IfAdminStatus",
-            "description": "SNMP ifAdminStatus: 1=up, 2=down, 3=testing"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IfAdminStatus",
+                "description": "SNMP ifAdminStatus: 1=up, 2=down, 3=testing, or `None` where nothing read it.\n\nOptional rather than defaulting to `Up`: an advertisement carries no status, and recording\none as up would be a claim nothing made."
+              }
+            ]
           },
           "cdp_address": {
             "type": [
@@ -25421,9 +25432,12 @@
             "description": "SNMP ifDescr - interface description (e.g., GigabitEthernet0/1)"
           },
           "if_index": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
-            "description": "SNMP ifIndex - stable identifier within device"
+            "description": "SNMP ifIndex — stable identifier within device, where one was read.\n\n`None` for a port learned from a neighbour's LLDP/CDP advertisement rather than from the\ndevice's own ifTable: the far end tells us the port exists and what it is called, never its\nindex. `0` used to stand in for that, which is a real ifIndex on some agents and made\n\"never read\" indistinguishable from \"read as zero\".\n\nNot the identity of the row. `match_existing_interface` tries `(host_id, if_name)` first\nand the live unique index is on that pair; the index tier only runs for a row that has one."
           },
           "if_name": {
             "type": [
@@ -25433,9 +25447,12 @@
             "description": "SNMP ifName - short interface name (e.g., Gi1/0/1)"
           },
           "if_type": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
-            "description": "SNMP ifType - IANAifType integer (6=ethernet, 24=loopback, etc.)"
+            "description": "SNMP ifType - IANAifType integer (6=ethernet, 24=loopback, etc.), where one was read.\n\n`None` is *unknown*, never a type. Everything that filters on this must treat unknown as\nincluded — a port at the far end of a cable is physical by construction, and excluding it\nfor lack of a number would drop the row from resolution and from the map."
           },
           "ip_address_id": {
             "type": [
@@ -25539,8 +25556,15 @@
             "description": "The network this entity belongs to."
           },
           "oper_status": {
-            "$ref": "#/components/schemas/IfOperStatus",
-            "description": "SNMP ifOperStatus: 1=up, 2=down, 3=testing, 4=unknown, 5=dormant, 6=notPresent, 7=lowerLayerDown"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IfOperStatus",
+                "description": "SNMP ifOperStatus: 1=up, 2=down, 3=testing, 4=unknown, 5=dormant, 6=notPresent,\n7=lowerLayerDown — or `None` where nothing read it.\n\nDeliberately not `IfOperStatus::Unknown`, which is the MIB's value 4 and means *the device\nsaid it does not know*. \"We never asked\" is a different statement, and folding the two\nwould make an inferred port indistinguishable from one that reported unknown."
+              }
+            ]
           },
           "speed_bps": {
             "type": [

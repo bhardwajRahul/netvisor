@@ -3869,6 +3869,18 @@ export interface components {
                 credential_assignments?: components["schemas"]["CredentialAssignment"][];
                 /** @description Free-text notes about the host. */
                 description?: string | null;
+                /**
+                 * @description What to call this host when `name` is empty: its hostname, sysName, chassis id or first
+                 *     address, whichever it has. `None` when nothing identifies it.
+                 *
+                 *     Read-only and separate from `name` rather than folded into it. `name` is what a person
+                 *     typed and what the editor writes back, so filling it with a fallback would turn a chassis
+                 *     id into a name the next save persists. Computed from [`Host::display_name`], the same
+                 *     ladder topology titles a host container with, so a host cannot be called one thing in the
+                 *     list and another on the map.
+                 */
+                readonly display_name?: string | null;
+
                 /** @description Firmware or software revision of the device. */
                 firmware_revision: string | null;
                 /** @description Whether the host is hidden from topology views. */
@@ -7685,6 +7697,18 @@ export interface components {
             credential_assignments?: components["schemas"]["CredentialAssignment"][];
             /** @description Free-text notes about the host. */
             description?: string | null;
+            /**
+             * @description What to call this host when `name` is empty: its hostname, sysName, chassis id or first
+             *     address, whichever it has. `None` when nothing identifies it.
+             *
+             *     Read-only and separate from `name` rather than folded into it. `name` is what a person
+             *     typed and what the editor writes back, so filling it with a fallback would turn a chassis
+             *     id into a name the next save persists. Computed from [`Host::display_name`], the same
+             *     ladder topology titles a host container with, so a host cannot be called one thing in the
+             *     list and another on the map.
+             */
+            readonly display_name?: string | null;
+
             /** @description Firmware or software revision of the device. */
             firmware_revision: string | null;
             /** @description Whether the host is hidden from topology views. */
@@ -8123,8 +8147,7 @@ export interface components {
             readonly valid_to?: string | null;
         };
         InterfaceBase: {
-            /** @description SNMP ifAdminStatus: 1=up, 2=down, 3=testing */
-            admin_status: components["schemas"]["IfAdminStatus"];
+            admin_status?: null | components["schemas"]["IfAdminStatus"];
             /**
              * @description Remote management IP from CDP (cdpCacheAddress). IPv4 or IPv6.
              * @example 192.168.1.1
@@ -8155,14 +8178,14 @@ export interface components {
              * Format: int32
              * @description SNMP ifIndex - stable identifier within device
              */
-            if_index: number;
+            if_index?: number | null;
             /** @description SNMP ifName - short interface name (e.g., Gi1/0/1) */
             if_name?: string | null;
             /**
              * Format: int32
              * @description SNMP ifType - IANAifType integer (6=ethernet, 24=loopback, etc.)
              */
-            if_type: number;
+            if_type?: number | null;
             /**
              * Format: uuid
              * @description FK to IPAddress entity - this port's IP assignment (must be on same host).
@@ -8211,8 +8234,7 @@ export interface components {
              * @description The network this entity belongs to.
              */
             network_id: string;
-            /** @description SNMP ifOperStatus: 1=up, 2=down, 3=testing, 4=unknown, 5=dormant, 6=notPresent, 7=lowerLayerDown */
-            oper_status: components["schemas"]["IfOperStatus"];
+            oper_status?: null | components["schemas"]["IfOperStatus"];
             /**
              * Format: int64
              * @description Interface speed from ifSpeed/ifHighSpeed in bits per second
@@ -9021,6 +9043,18 @@ export interface components {
                 credential_assignments?: components["schemas"]["CredentialAssignment"][];
                 /** @description Free-text notes about the host. */
                 description?: string | null;
+                /**
+                 * @description What to call this host when `name` is empty: its hostname, sysName, chassis id or first
+                 *     address, whichever it has. `None` when nothing identifies it.
+                 *
+                 *     Read-only and separate from `name` rather than folded into it. `name` is what a person
+                 *     typed and what the editor writes back, so filling it with a fallback would turn a chassis
+                 *     id into a name the next save persists. Computed from [`Host::display_name`], the same
+                 *     ladder topology titles a host container with, so a host cannot be called one thing in the
+                 *     list and another on the map.
+                 */
+                readonly display_name?: string | null;
+
                 /** @description Firmware or software revision of the device. */
                 firmware_revision: string | null;
                 /** @description Whether the host is hidden from topology views. */

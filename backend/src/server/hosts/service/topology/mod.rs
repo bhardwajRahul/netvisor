@@ -63,12 +63,17 @@ fn unmatched_neighbour_warning(
     }
 }
 
-/// The far end behind a `NotFound` warning, where it published somewhere it lives.
+/// The far end behind a `NotFound` warning.
 ///
-/// Derived at exactly the sites that warn, so what an operator is told and what a range is inferred
-/// from can never be two different populations. `Ambiguous` is excluded on purpose: it means the
-/// identifier names several hosts this network already holds, so the range is known and the problem
-/// is duplicate records.
+/// Derived at exactly the sites that warn, so what an operator is told and what is minted can never
+/// be two different populations. `Ambiguous` is excluded on purpose: it means the identifier names
+/// several hosts this network already holds, so the problem is duplicate records, not a missing
+/// device.
+///
+/// An address is *not* required. Most far ends publish none — a chassis id and nothing else is the
+/// common shape — and one is still a device nothing has contacted, which is the whole of what
+/// `EntitySource::Inferred` claims. An address only decides whether the minted host can be placed
+/// in a subnet, and that question belongs to range inference rather than to this gate.
 fn unplaced_far_end(interface: &Interface, reason: UnresolvedReason) -> Option<UnplacedFarEnd> {
     if reason != UnresolvedReason::NotFound {
         return None;
@@ -84,6 +89,7 @@ fn unplaced_far_end(interface: &Interface, reason: UnresolvedReason) -> Option<U
         .or_else(|| interface.base.cdp_device_id.clone())
         .filter(|id| !id.trim().is_empty())?;
 
+    let far_end_port = interface.advertised_far_end_port();
     Some(UnplacedFarEnd {
         host_id: interface.base.host_id,
         if_descr: interface.base.if_descr.clone(),
@@ -93,7 +99,9 @@ fn unplaced_far_end(interface: &Interface, reason: UnresolvedReason) -> Option<U
             .clone()
             .or_else(|| interface.base.cdp_device_id.clone()),
         chassis_id,
-        address: interface.advertised_identity().address?,
+        address: interface.advertised_identity().address,
+        port_name: far_end_port.name.map(str::to_string),
+        port_mac: far_end_port.mac.map(str::to_string),
         vlan_id: interface.base.native_vlan_id,
     })
 }

@@ -448,6 +448,23 @@ impl SimDevice {
         Some(SimAgent::new(&files, self.context_registrations()))
     }
 
+    /// How many LLDP neighbours this device is *expected* to lose to a local port that names no
+    /// interface, because losing them is the defect it reproduces.
+    ///
+    /// Zero for every device but one, and the default is what makes the lab-wide check strict: a
+    /// new fixture that drops a neighbour fails rather than being quietly excused. The exemption
+    /// is a count rather than a flag so the fixture still has to lose *exactly* what it claims —
+    /// if `switch-shortports-01` ever stops truncating its `lldpLocPortTable`, the check notices.
+    pub fn expected_unplaceable_neighbours(&self) -> usize {
+        match self.name {
+            // GH #668's switch4. Its `lldpLocPortTable` read stops part way, which is the whole
+            // defect: the ports its two neighbours sit on are in the half that never arrives, so
+            // both reach no interface. A device that placed them would not reproduce the report.
+            "switch-shortports-01" => 2,
+            _ => 0,
+        }
+    }
+
     /// `ifNumber.0` as this device publishes it, or `None` where it serves no ifTable.
     pub fn declared_if_number(&self) -> Option<i32> {
         self.tables
@@ -635,9 +652,12 @@ mod tests {
     /// to be covered end to end.
     ///
     /// Lab-wide rather than per device, because the mistake is in adding a fixture and every future
-    /// fixture can make it. No device is exempt: the two that exercise a *namespace* mismatch
+    /// fixture can make it. The two that exercise a *namespace* mismatch
     /// (`switch-exos-01`'s 1001+ ifIndexes, `switch-voss-01`'s identity mapping) resolve their
-    /// neighbours through `lldpLocPortTable` and drop none, which is the point of both.
+    /// neighbours through `lldpLocPortTable` and drop none, which is the point of both. The one
+    /// device that does drop declares how many through
+    /// [`SimDevice::expected_unplaceable_neighbours`] — losing them is the defect it reproduces,
+    /// so the check pins the count rather than waiving it.
     #[tokio::test]
     async fn no_lab_device_drops_an_lldp_neighbour() {
         for device in lab() {
@@ -647,7 +667,7 @@ mod tests {
             }
             assert_eq!(
                 scan.dropped_neighbours,
-                0,
+                device.expected_unplaceable_neighbours(),
                 "{} serves {} LLDP neighbour(s) and {} reach no interface — a local port in \
                  lldp() with no matching row in if_table() is discarded before the server sees it",
                 device.name,

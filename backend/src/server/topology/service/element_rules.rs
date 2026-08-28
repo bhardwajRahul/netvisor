@@ -704,24 +704,37 @@ fn compute_port_op_status_placements(ctx: &PlacementContext) -> RulePlacement {
             continue;
         }
 
-        let mut by_status: HashMap<IfOperStatus, Vec<Uuid>> = HashMap::new();
+        // Keyed on `Option`, so a port whose status was never read gets a group of its own
+        // rather than falling out of the rule. Dropping it would remove the port from the view
+        // entirely — every element this rule does not place is left unclaimed and unshown — and a
+        // port learned from a neighbour's advertisement has no status by construction.
+        //
+        // Distinct from `IfOperStatus::Unknown`, which is the MIB's own value 4: that is the
+        // device saying it does not know, and merging the two would claim a reading nothing made.
+        let mut by_status: HashMap<Option<IfOperStatus>, Vec<Uuid>> = HashMap::new();
         for id in &unclaimed {
-            if let Some(status) = ctx.match_data.get(id).and_then(|d| d.oper_status) {
-                by_status.entry(status).or_default().push(*id);
-            }
+            let status = ctx.match_data.get(id).and_then(|d| d.oper_status);
+            by_status.entry(status).or_default().push(*id);
         }
 
         for (status, ids) in by_status {
-            let status_name = format!("{:?}", status);
-            let group_key = format!("{parent_id}:{}:status:{}", ctx.rule_id, status as i32);
+            let status_name = match status {
+                Some(status) => format!("{status:?}"),
+                None => "Not reported".to_string(),
+            };
+            let group_key = format!(
+                "{parent_id}:{}:status:{}",
+                ctx.rule_id,
+                status.map_or(-1, |s| s as i32)
+            );
             let group_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, group_key.as_bytes());
 
             let color = match status {
-                IfOperStatus::Up => Color::Green,
-                IfOperStatus::Down | IfOperStatus::LowerLayerDown => Color::Red,
-                IfOperStatus::Testing => Color::Amber,
-                IfOperStatus::Dormant => Color::Blue,
-                IfOperStatus::Unknown | IfOperStatus::NotPresent => Color::Gray,
+                Some(IfOperStatus::Up) => Color::Green,
+                Some(IfOperStatus::Down | IfOperStatus::LowerLayerDown) => Color::Red,
+                Some(IfOperStatus::Testing) => Color::Amber,
+                Some(IfOperStatus::Dormant) => Color::Blue,
+                Some(IfOperStatus::Unknown | IfOperStatus::NotPresent) | None => Color::Gray,
             };
 
             result.containers.push(Node {

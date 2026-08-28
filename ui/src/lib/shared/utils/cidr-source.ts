@@ -16,7 +16,11 @@ import { HelpCircle } from 'lucide-svelte';
 
 import type { components } from '$lib/api/schema';
 import type { CardFieldItem, TagProps } from '$lib/shared/components/data/types';
-import { subnets_rangeAssumed, subnets_rangeAssumedDetail } from '$lib/paraglide/messages';
+import {
+	subnets_rangeAssumed,
+	subnets_rangeAssumedDetail,
+	subnets_rangeAssumedWithCidr
+} from '$lib/paraglide/messages';
 import { toColor } from '$lib/shared/utils/styling';
 
 /** Derived from the backend enum rather than restated, so a new rung cannot drift out of sync. */
@@ -56,15 +60,27 @@ export function getCidrSourceTag(subnet: WithCidrSource): TagProps | null {
  *
  * Sits beside the range rather than in a column of its own: the claim is about *that value*, and a
  * separate column would read as an attribute of the subnet instead of a caveat on its CIDR.
+ *
+ * **The CIDR goes inside the label**, the way `lastSeenItems` puts the date inside its stale tag.
+ * A cell renders chips *or* its plain value, never both — returning a chip here replaces the
+ * column's value — so a badge that did not carry the CIDR would leave the row saying "Range
+ * assumed" and never saying which range. Returning `undefined` (not `[]`) is what makes a settled
+ * row fall back to the plain value.
  */
-export function cidrSourceItems<T extends WithCidrSource>(): (
+export function cidrSourceItems<T extends WithCidrSource & { cidr?: string }>(): (
 	subnet: T
 ) => CardFieldItem[] | undefined {
 	return (subnet) => {
 		const tag = getCidrSourceTag(subnet);
-		if (!tag) return undefined;
+		if (!tag || !subnet.cidr) return undefined;
 		return [
-			{ id: 'inferred-cidr', label: tag.label, color: tag.color, icon: tag.icon, title: tag.title }
+			{
+				id: 'inferred-cidr',
+				label: subnets_rangeAssumedWithCidr({ cidr: subnet.cidr }),
+				color: tag.color,
+				icon: tag.icon,
+				title: tag.title
+			}
 		];
 	};
 }

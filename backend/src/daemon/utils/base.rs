@@ -145,18 +145,18 @@ fn nic_to_interface(
     Interface::new(InterfaceBase {
         host_id,
         network_id,
-        if_index: nic.index as i32,
+        if_index: Some(nic.index as i32),
         if_descr: nic.name.clone(),
         if_name: Some(nic.name.clone()),
         if_alias: None,
-        if_type,
+        if_type: Some(if_type),
         speed_bps: None,
-        admin_status: IfAdminStatus::Up,
-        oper_status: if nic.is_up() {
+        admin_status: Some(IfAdminStatus::Up),
+        oper_status: Some(if nic.is_up() {
             IfOperStatus::Up
         } else {
             IfOperStatus::Down
-        },
+        }),
         mac_address: nic_mac(nic),
         // Never set from here, exactly as the SNMP path doesn't (`snmp/mod.rs`). The ids the
         // daemon mints for its own `IPAddress` rows do not survive submission — the server matches
@@ -811,7 +811,7 @@ mod tests {
         let entry = nic_to_interface(&nic, Uuid::new_v4(), Uuid::new_v4());
 
         assert_eq!(entry.base.mac_address, Some(MacAddress::new(mac)));
-        assert_eq!(entry.base.if_index, 7);
+        assert_eq!(entry.base.if_index, Some(7));
         assert_eq!(entry.base.if_name.as_deref(), Some("ens1f0np0"));
     }
 
@@ -839,8 +839,11 @@ mod tests {
                 host_id,
             );
             assert!(
-                if_type::EXCLUDED_IF_TYPES.contains(&entry.base.if_type),
-                "{name} was typed {} — the daemon cannot know a NIC is a physical port",
+                entry
+                    .base
+                    .if_type
+                    .is_some_and(|t| if_type::EXCLUDED_IF_TYPES.contains(&t)),
+                "{name} was typed {:?} — the daemon cannot know a NIC is a physical port",
                 entry.base.if_type
             );
         }

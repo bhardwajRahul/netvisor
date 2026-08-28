@@ -97,14 +97,14 @@ impl Lab {
         let entry = Interface::new(InterfaceBase {
             host_id,
             network_id: self.network_id,
-            if_index,
+            if_index: Some(if_index),
             if_descr: if_descr.to_string(),
             if_name: if_name.map(str::to_string),
             if_alias: if_alias.map(str::to_string),
-            if_type,
+            if_type: Some(if_type),
             mac_address: mac.map(|m| m.parse::<MacAddress>().unwrap()),
-            admin_status: IfAdminStatus::Up,
-            oper_status: IfOperStatus::Up,
+            admin_status: Some(IfAdminStatus::Up),
+            oper_status: Some(IfOperStatus::Up),
             ..Default::default()
         });
         self.storage.interfaces.create(&entry).await.unwrap();
@@ -566,12 +566,12 @@ async fn a_port_resolves_by_the_ip_bound_to_it() {
     let entry = Interface::new(InterfaceBase {
         host_id: switch.id,
         network_id: lab.network_id,
-        if_index: 1,
+        if_index: Some(1),
         if_descr: "Vlan10".to_string(),
-        if_type: if_type::ETHERNET_CSMA_CD,
+        if_type: Some(if_type::ETHERNET_CSMA_CD),
         ip_address_id: Some(addr.id),
-        admin_status: IfAdminStatus::Up,
-        oper_status: IfOperStatus::Up,
+        admin_status: Some(IfAdminStatus::Up),
+        oper_status: Some(IfOperStatus::Up),
         ..Default::default()
     });
     lab.storage.interfaces.create(&entry).await.unwrap();

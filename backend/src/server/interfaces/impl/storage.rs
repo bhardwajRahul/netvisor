@@ -19,16 +19,24 @@ use crate::server::{
 };
 
 /// CSV row representation for Interface export
+/// A status column for CSV export: the variant's name, or blank where nothing read it.
+///
+/// Blank rather than the string "None", because a spreadsheet column reading `None` looks like a
+/// status the device reported. An empty cell is how every other unknown in this export reads.
+fn csv_status<S: std::fmt::Debug>(status: Option<S>) -> String {
+    status.map_or_else(String::new, |s| format!("{s:?}"))
+}
+
 #[derive(Serialize)]
 pub struct InterfaceCsvRow {
     pub id: Uuid,
     pub host_id: Uuid,
     pub network_id: Uuid,
-    pub if_index: i32,
+    pub if_index: Option<i32>,
     pub if_descr: String,
     pub if_name: Option<String>,
     pub if_alias: Option<String>,
-    pub if_type: i32,
+    pub if_type: Option<i32>,
     pub speed_bps: Option<i64>,
     pub admin_status: String,
     pub oper_status: String,
@@ -180,14 +188,14 @@ impl Storable for Interface {
             SqlValue::Uuid(id),
             SqlValue::Uuid(host_id),
             SqlValue::Uuid(network_id),
-            SqlValue::I32(if_index),
+            SqlValue::OptionalI32(if_index),
             SqlValue::String(if_descr),
             SqlValue::OptionalString(if_name),
             SqlValue::OptionalString(if_alias),
-            SqlValue::I32(if_type),
+            SqlValue::OptionalI32(if_type),
             SqlValue::OptionalI64(speed_bps),
-            SqlValue::I32(i32::from(admin_status)),
-            SqlValue::I32(i32::from(oper_status)),
+            SqlValue::OptionalI32(admin_status.map(i32::from)),
+            SqlValue::OptionalI32(oper_status.map(i32::from)),
             SqlValue::OptionalMacAddress(mac_address),
             SqlValue::OptionalUuid(ip_address_id),
             SqlValue::OptionalUuid(neighbor_interface_id),
@@ -222,8 +230,11 @@ impl Storable for Interface {
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error> {
         use crate::server::lldp::{LldpChassisId, LldpPortId};
 
-        let admin_status_raw: i32 = row.get("admin_status");
-        let oper_status_raw: i32 = row.get("oper_status");
+        // Read as `Option` because the columns are nullable: a port learned from a neighbour's
+        // advertisement carries no status, and `row.get::<i32>` *panics* on NULL rather than
+        // returning an error, so a non-optional read here would take the request down.
+        let admin_status_raw: Option<i32> = row.get("admin_status");
+        let oper_status_raw: Option<i32> = row.get("oper_status");
 
         // Handle speed_bps which might be NULL or a large value
         let speed_bps: Option<i64> = row.get("speed_bps");
@@ -287,8 +298,8 @@ impl Storable for Interface {
                 if_alias: row.get("if_alias"),
                 if_type: row.get("if_type"),
                 speed_bps,
-                admin_status: IfAdminStatus::from(admin_status_raw),
-                oper_status: IfOperStatus::from(oper_status_raw),
+                admin_status: admin_status_raw.map(IfAdminStatus::from),
+                oper_status: oper_status_raw.map(IfOperStatus::from),
                 mac_address,
                 ip_address_id: row.get("ip_address_id"),
                 neighbor,
@@ -349,8 +360,8 @@ impl Entity for Interface {
             if_alias: self.base.if_alias.clone(),
             if_type: self.base.if_type,
             speed_bps: self.base.speed_bps,
-            admin_status: format!("{:?}", self.base.admin_status),
-            oper_status: format!("{:?}", self.base.oper_status),
+            admin_status: csv_status(self.base.admin_status),
+            oper_status: csv_status(self.base.oper_status),
             mac_address: self.base.mac_address.map(|m| m.to_string()),
             ip_address_id: self.base.ip_address_id,
             neighbor: self.base.neighbor.as_ref().map(|n| match n {
@@ -570,7 +581,7 @@ mod tests {
         let mut base = InterfaceBase::default();
         base.host_id = Uuid::new_v4();
         base.network_id = Uuid::new_v4();
-        base.if_index = if_index;
+        base.if_index = Some(if_index);
         base.if_name = if_name.map(String::from);
         base.mac_address = mac.map(|s| s.parse::<MacAddress>().unwrap());
         Interface::new(base)

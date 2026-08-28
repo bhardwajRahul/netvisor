@@ -294,11 +294,18 @@ pub(crate) fn match_existing_interface(
         return Some(found.id);
     }
 
-    // Tier 2: (host_id, if_index)
-    if let Some(found) = existing
-        .iter()
-        .filter(available)
-        .find(|e| e.base.if_index == entry.base.if_index)
+    // Tier 2: (host_id, if_index), and only for a row that has one.
+    //
+    // The `Some` matters more than it looks. `if_index` is nullable — a port learned from a
+    // neighbour's advertisement has none — and a bare `==` would make `None == None` true, so
+    // every such port on a host would match the first other index-less row and overwrite it.
+    // That is GH #614's collapse (a whole ifTable folding onto one row) reintroduced by a
+    // comparison that still compiles.
+    if let Some(if_index) = entry.base.if_index
+        && let Some(found) = existing
+            .iter()
+            .filter(available)
+            .find(|e| e.base.if_index == Some(if_index))
     {
         return Some(found.id);
     }
@@ -329,10 +336,18 @@ mod tests {
     use mac_address::MacAddress;
 
     fn make_iface(if_index: i32, if_name: Option<&str>, mac: Option<&str>) -> Interface {
+        let mut entry = make_indexless_iface(if_name, mac);
+        entry.base.if_index = Some(if_index);
+        entry.base.if_descr = format!("ifIndex {if_index}");
+        entry
+    }
+
+    /// A port with no ifIndex — the shape a neighbour advertisement produces, where the far end
+    /// names its port and nothing has read that device's ifTable.
+    fn make_indexless_iface(if_name: Option<&str>, mac: Option<&str>) -> Interface {
         let mut base = InterfaceBase::default();
         base.host_id = Uuid::nil();
-        base.if_index = if_index;
-        base.if_descr = format!("ifIndex {if_index}");
+        base.if_descr = if_name.unwrap_or_default().to_string();
         base.if_name = if_name.map(String::from);
         base.mac_address = mac.map(|s| s.parse::<MacAddress>().unwrap());
         Interface::new(base)
@@ -392,9 +407,10 @@ mod tests {
         let persisted = run_batch_from(Vec::new(), omada_iftable(), true);
         assert_eq!(persisted.len(), 17, "all 17 interfaces must persist");
 
-        let mut indexes: Vec<i32> = persisted.iter().map(|e| e.base.if_index).collect();
+        let mut indexes: Vec<Option<i32>> = persisted.iter().map(|e| e.base.if_index).collect();
         indexes.sort();
-        let mut expected: Vec<i32> = std::iter::once(1).chain(49153..=49168).collect();
+        let mut expected: Vec<Option<i32>> =
+            std::iter::once(1).chain(49153..=49168).map(Some).collect();
         expected.sort();
         assert_eq!(indexes, expected, "every ifIndex must be represented once");
     }
@@ -445,7 +461,7 @@ mod tests {
                 .expect("every ifIndex is still represented");
             assert_eq!(
                 iface.id, original.id,
-                "ifIndex {} must keep its own row across a rescan",
+                "ifIndex {:?} must keep its own row across a rescan",
                 iface.base.if_index
             );
         }
@@ -484,5 +500,58 @@ mod tests {
             None,
             "ambiguous shared MAC must not collapse onto a sibling"
         );
+    }
+
+    /// Two ports that never had an ifIndex read do not collapse onto each other.
+    ///
+    /// The index tier compares `entry.base.if_index` against each candidate's, and `if_index` is
+    /// nullable — a port learned from an LLDP or CDP advertisement has none. A bare `==` makes
+    /// `None == None` true, so the first index-less row on a host would swallow every other one:
+    /// GH #614's collapse (a whole ifTable folding onto a single row) reintroduced by a
+    /// comparison that still compiles and still passes every existing test.
+    ///
+    /// The names differ, so the name tier cannot save this — reaching the index tier at all is
+    /// the bug.
+    #[test]
+    fn ports_with_no_if_index_do_not_collapse_onto_one_another() {
+        // Both already stored and neither claimed by this batch, so the newcomer reaches the index
+        // tier with unclaimed index-less rows in front of it — which is the only way the defect
+        // bites, and the reason a batch whose names all match cannot expose it.
+        let persisted = vec![
+            make_indexless_iface(Some("Ten-GigabitEthernet1/0/1"), None),
+            make_indexless_iface(Some("GigabitEthernet1/0/8"), None),
+        ];
+        let incoming = vec![make_indexless_iface(Some("eth0"), None)];
+
+        let persisted = run_batch_from(persisted, incoming, true);
+
+        let mut names: Vec<&str> = persisted
+            .iter()
+            .filter_map(|e| e.base.if_name.as_deref())
+            .collect();
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            vec!["GigabitEthernet1/0/8", "Ten-GigabitEthernet1/0/1", "eth0"],
+            "a third advertised port must not overwrite the first index-less row"
+        );
+    }
+
+    /// An advertised port is upgraded in place when the device is finally walked, rather than
+    /// duplicated beside the real ifTable row.
+    ///
+    /// This is why the minted row is keyed on the name the far end published: an SNMP walk of that
+    /// device returns the same string as `ifName`, so the name tier matches and the row gains its
+    /// ifIndex, type and statuses instead of the host ending up with two ports called `eth0`.
+    #[test]
+    fn a_real_walk_upgrades_the_port_a_neighbour_advertised() {
+        let persisted = vec![make_indexless_iface(Some("eth0"), None)];
+        let inferred_id = persisted[0].id;
+
+        let persisted = run_batch_from(persisted, vec![make_iface(3, Some("eth0"), None)], true);
+
+        assert_eq!(persisted.len(), 1, "the walk must not add a second eth0");
+        assert_eq!(persisted[0].id, inferred_id, "same row, upgraded");
+        assert_eq!(persisted[0].base.if_index, Some(3));
     }
 }

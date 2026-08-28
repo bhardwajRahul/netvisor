@@ -127,14 +127,14 @@ impl Lab {
         let interface = Interface::new(InterfaceBase {
             host_id,
             network_id: self.network_id,
-            if_index: entry.if_index,
+            if_index: Some(entry.if_index),
             if_descr: entry.if_descr.clone().unwrap_or_default(),
             if_name: entry.if_name.clone(),
             if_alias: entry.if_alias.clone(),
-            if_type: entry.if_type.unwrap_or_default(),
+            if_type: Some(entry.if_type.unwrap_or_default()),
             mac_address: entry.if_phys_address,
-            admin_status: IfAdminStatus::Up,
-            oper_status: IfOperStatus::Up,
+            admin_status: Some(IfAdminStatus::Up),
+            oper_status: Some(IfOperStatus::Up),
             ..Default::default()
         });
         self.storage.interfaces.create(&interface).await.unwrap();

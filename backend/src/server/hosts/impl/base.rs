@@ -1,6 +1,7 @@
 use crate::server::credentials::r#impl::types::CredentialAssignment;
 use crate::server::hosts::r#impl::name::{HostName, HostNameSource};
 use crate::server::hosts::r#impl::virtualization::HostVirtualization;
+use crate::server::ip_addresses::r#impl::base::IPAddress;
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::types::api::deserialize_empty_string_as_none;
 use crate::server::shared::types::entities::EntitySource;
@@ -137,6 +138,51 @@ impl Default for HostBase {
             firmware_revision: None,
             credential_assignments: Vec::new(),
         }
+    }
+}
+
+impl Host {
+    /// What to call this host: its name, or the best identifying evidence we hold when it has
+    /// none.
+    ///
+    /// `None` rather than `Some("")` when nothing identifies it. A `HostName::Unnamed` formats as
+    /// the empty string, so returning it would put a name on the host that every consumer's `??`
+    /// fallback then reads as present — a row or a node titled with nothing at all. Absence has to
+    /// be expressible for those fallbacks to fire.
+    ///
+    /// The rungs below `name` are what a device that never got one still carries: a far end known
+    /// only through LLDP has a chassis id, and a controller-imported device has a sysName. They are
+    /// deliberately *not* rungs of [`HostName`] — that ladder decides what is stored in `name`, and
+    /// copying a chassis id into it would duplicate a column this reads from and then have to be
+    /// displaced when a real name arrives.
+    ///
+    /// On `Host` rather than on the topology context that first needed it, because the host list
+    /// and the same host drawn in topology must not disagree about what it is called. One ladder,
+    /// every surface.
+    pub fn display_name<'a>(
+        &self,
+        addresses: impl IntoIterator<Item = &'a IPAddress>,
+    ) -> Option<String> {
+        fn non_blank(value: &str) -> Option<String> {
+            let trimmed = value.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        }
+
+        if !self.base.name.is_blank() {
+            return Some(self.base.name.to_string());
+        }
+        self.base
+            .hostname
+            .as_deref()
+            .and_then(non_blank)
+            .or_else(|| self.base.sys_name.as_deref().and_then(non_blank))
+            .or_else(|| self.base.chassis_id.as_deref().and_then(non_blank))
+            .or_else(|| {
+                addresses
+                    .into_iter()
+                    .next()
+                    .map(|ip| ip.base.ip_address.to_string())
+            })
     }
 }
 

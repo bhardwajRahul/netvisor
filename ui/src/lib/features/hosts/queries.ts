@@ -789,7 +789,9 @@ export function hydrateHostToFormData(
 			.toSorted((a, b) => a.position - b.position),
 		interfaces: allInterfaces
 			.filter((e) => e.host_id === host.id)
-			.toSorted((a, b) => a.if_index - b.if_index),
+			// Unread indexes sort last, matching the `if_index ASC` the server orders by: a port
+			// learned from a neighbour's advertisement has none.
+			.toSorted((a, b) => (a.if_index ?? Infinity) - (b.if_index ?? Infinity)),
 		// SNMP fields from host
 		sys_descr: host.sys_descr ?? null,
 		sys_object_id: host.sys_object_id ?? null,
