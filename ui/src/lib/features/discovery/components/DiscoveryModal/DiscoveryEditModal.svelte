@@ -20,7 +20,6 @@
 	import type { Discovery } from '../../types/base';
 	import DiscoveryHistoricalSummary from './DiscoveryHistoricalSummary.svelte';
 	import WarningReport from './WarningReport.svelte';
-	import { warningsNeedAttention } from '../../utils/warnings';
 	import { uuidv4Sentinel } from '$lib/shared/utils/formatting';
 	import { createEmptyDiscoveryFormData, parseDayTimeCronSchedule } from '../../queries';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
@@ -132,7 +131,6 @@
 	let historicalWarnings = $derived(
 		discovery?.run_type.type === 'Historical' ? (discovery.run_type.results.warnings ?? []) : []
 	);
-	let historicalNeedsAttention = $derived(warningsNeedAttention(historicalWarnings));
 	let readOnly = $derived(formData.run_type.type == 'Historical');
 
 	let title = $derived(
@@ -291,8 +289,8 @@
 	 * "did this need me" before "what did it do". Two tabs rather than the warnings stapled to the
 	 * top of the details, which is what made a run with fourteen of them unreadable.
 	 *
-	 * The dot is on Warnings when something in the run is asking for the reader, which is the same
-	 * question the scan-history count column colours itself by.
+	 * The tab carries no status dot. Landing on Warnings already says the run has some, and the
+	 * count that says how many belongs on the row in scan history, where runs are compared.
 	 */
 	let tabs: ModalTab[] = $derived(
 		isHistoricalRun
@@ -300,8 +298,7 @@
 					{
 						id: 'warnings',
 						label: common_warnings(),
-						icon: TriangleAlert,
-						notification: historicalNeedsAttention
+						icon: TriangleAlert
 					},
 					{ id: 'details', label: common_details(), icon: Info }
 				]

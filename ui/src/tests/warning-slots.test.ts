@@ -209,28 +209,65 @@ describe('discovery warning rendering', () => {
 		}
 	});
 
-	it('collapses one problem on many devices into one row that still names each of them', () => {
+	it('collapses one problem on many devices into a single sentence naming each of them', () => {
 		// The wall of text this replaced: four switches restricting the same SNMP view produced
-		// four near-identical paragraphs. One row now, with every device on it and every sentence
-		// still behind it — a per-occurrence code keeps its per-device diagnostics.
+		// four near-identical paragraphs differing only in the address. The claim carries no
+		// per-device figure, so there is nothing to keep them apart.
 		const devices = ['192.168.7.248', '192.168.7.252', '192.168.7.253', '192.168.7.254'];
-		// Written out rather than taken from `sample`, which carries every field any variant can
-		// hold: this code carries no host id, and the chips prefer one where there is one.
+		const claim = (address: string, source: string, group: string) =>
+			({ code: 'ClaimedCapabilityEmpty', address, source, group }) as unknown as DiscoveryWarning;
+
 		const report = buildWarningReport(
-			devices.map(
-				(address) =>
-					({
-						code: 'ClaimedCapabilityEmpty',
-						address,
-						group: 'BridgePortNumbering',
-						source: 'SysServicesBridgeBit'
-					}) as unknown as DiscoveryWarning
-			)
+			devices.map((address) => claim(address, 'SysServicesBridgeBit', 'BridgePortNumbering'))
 		);
 
 		expect(report).toHaveLength(1);
 		expect(report[0].entries).toHaveLength(1);
-		expect(report[0].entries[0].subjects).toEqual(devices);
-		expect(report[0].entries[0].details).toHaveLength(devices.length);
+		expect(report[0].entries[0].subjects.map((s) => s.label)).toEqual(devices);
+		expect(report[0].entries[0].details).toHaveLength(1);
+		for (const device of devices) {
+			expect(report[0].entries[0].details[0]).toContain(device);
+		}
+	});
+
+	it('keeps a device apart when its statement differs, not just its address', () => {
+		// The other half of the same rule. A device that advertised a different capability, or
+		// reported different figures, is making a different statement — merging those would let
+		// one set of numbers speak for a device that never reported them.
+		const claim = (address: string, source: string, group: string) =>
+			({ code: 'ClaimedCapabilityEmpty', address, source, group }) as unknown as DiscoveryWarning;
+
+		const [section] = buildWarningReport([
+			claim('192.168.7.248', 'SysServicesBridgeBit', 'BridgePortNumbering'),
+			claim('192.168.7.252', 'SysServicesBridgeBit', 'BridgePortNumbering'),
+			claim('192.168.7.236', 'LldpLocalIdentity', 'Lldp')
+		]);
+
+		// Still one row — it is one code — but two sentences under it.
+		expect(section.entries).toHaveLength(1);
+		expect(section.entries[0].details).toHaveLength(2);
+		expect(section.entries[0].details[0]).toContain('192.168.7.248');
+		expect(section.entries[0].details[0]).toContain('192.168.7.252');
+		expect(section.entries[0].details[1]).toContain('192.168.7.236');
+		expect(section.entries[0].details[1]).not.toContain('192.168.7.248');
+	});
+
+	it('merges credential failures that returned the same diagnostic', () => {
+		// The complement of "each failing credential gets its own diagnostic": when the diagnostic
+		// is identical there is nothing per-address left to lose, and repeating the sentence once
+		// per host is the batching this grouping exists to undo.
+		const at = (address: string, detail: string) =>
+			({ ...sample('CredentialRejected'), address, detail }) as unknown as DiscoveryWarning;
+
+		const rendered = sentences([
+			at('10.0.0.1', 'wrong community'),
+			at('10.0.0.2', 'wrong community'),
+			at('10.0.0.3', 'authentication failure')
+		]);
+
+		expect(rendered).toHaveLength(2);
+		expect(rendered[0]).toContain('10.0.0.1');
+		expect(rendered[0]).toContain('10.0.0.2');
+		expect(rendered[1]).toContain('10.0.0.3');
 	});
 });
