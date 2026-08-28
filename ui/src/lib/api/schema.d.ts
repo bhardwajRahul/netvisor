@@ -3205,19 +3205,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-08-28T14:13:35.676373Z",
+             *       "created_at": "2026-08-28T15:12:48.195572Z",
              *       "first_discovery_id": null,
-             *       "id": "e03bdb2e-7efa-48b0-b1fe-1990c926f2fa",
+             *       "id": "45e47166-6ec9-4d7e-8831-870e5551611e",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-08-28T14:13:35.676373Z",
+             *       "last_seen_at": "2026-08-28T15:12:48.195572Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-08-28T14:13:35.676373Z",
-             *       "valid_from": "2026-08-28T14:13:35.676373Z",
+             *       "updated_at": "2026-08-28T15:12:48.195572Z",
+             *       "valid_from": "2026-08-28T15:12:48.195572Z",
              *       "valid_to": null
              *     }
              */
@@ -3860,19 +3860,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-08-28T14:13:35.652664Z",
+             *               "created_at": "2026-08-28T15:12:48.171147Z",
              *               "first_discovery_id": null,
-             *               "id": "a5655bb7-9490-475f-b6dd-9b36e82ee96c",
+             *               "id": "bea39dc9-391a-488a-83dc-aedb5f4787c7",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-08-28T14:13:35.652664Z",
+             *               "last_seen_at": "2026-08-28T15:12:48.171147Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-08-28T14:13:35.652664Z",
-             *               "valid_from": "2026-08-28T14:13:35.652664Z",
+             *               "updated_at": "2026-08-28T15:12:48.171147Z",
+             *               "valid_from": "2026-08-28T15:12:48.171147Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3886,7 +3886,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Modbus TCP",
+             *           "service_definition": "Komga",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3898,6 +3898,10 @@ export interface components {
              *           "virtualization_service_id": null
              *         }
              *       ],
+             *       "software_revision": null,
+             *       "software_revision_source": {
+             *         "type": "Unspecified"
+             *       },
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -3947,8 +3951,8 @@ export interface components {
                  *     list and another on the map.
                  */
                 readonly display_name?: string | null;
-                /** @description Firmware or software revision of the device. */
-                firmware_revision: string | null;
+                /** @description ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above. */
+                readonly firmware_revision: string | null;
                 /** @description What produced the firmware revision. Read-only: decided by whichever source read it. */
                 firmware_revision_source?: components["schemas"]["AttributeSource"];
                 /** @description Whether the host is hidden from topology views. */
@@ -4003,6 +4007,10 @@ export interface components {
                 serial_number_source?: components["schemas"]["AttributeSource"];
                 /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
+                /** @description ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above. */
+                readonly software_revision: string | null;
+                /** @description What produced the software revision. Read-only: decided by whichever source read it. */
+                software_revision_source?: components["schemas"]["AttributeSource"];
                 /** @description How this host came to be known — discovered, imported, or created by hand. */
                 source: components["schemas"]["EntitySource"];
                 /** @description SNMP sysContact — administrative contact as configured on the device. */
@@ -4607,19 +4615,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-08-28T14:13:35.671523Z",
+             *           "created_at": "2026-08-28T15:12:48.190057Z",
              *           "first_discovery_id": null,
-             *           "id": "8ea8c0ef-8659-4278-9ca9-2bc237eaccfd",
+             *           "id": "047248f9-b2db-4d2c-8b7b-c0b02810c23e",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-08-28T14:13:35.671523Z",
+             *           "last_seen_at": "2026-08-28T15:12:48.190057Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-08-28T14:13:35.671523Z",
-             *           "valid_from": "2026-08-28T14:13:35.671523Z",
+             *           "updated_at": "2026-08-28T15:12:48.190057Z",
+             *           "valid_from": "2026-08-28T15:12:48.190057Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4633,7 +4641,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Modbus TCP",
+             *       "service_definition": "Komga",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -5504,19 +5512,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-08-28T14:13:35.653152Z",
+         *       "created_at": "2026-08-28T15:12:48.171874Z",
          *       "first_discovery_id": null,
-         *       "id": "1f5fa5ca-6099-486b-b6a6-b8fefb9ffe99",
+         *       "id": "3582b609-679f-4dc3-ac30-23e66c8884f6",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-08-28T14:13:35.653152Z",
+         *       "last_seen_at": "2026-08-28T15:12:48.171874Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-08-28T14:13:35.653152Z",
-         *       "valid_from": "2026-08-28T14:13:35.653152Z",
+         *       "updated_at": "2026-08-28T15:12:48.171874Z",
+         *       "valid_from": "2026-08-28T15:12:48.171874Z",
          *       "valid_to": null
          *     }
          */
@@ -5830,7 +5838,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Modbus TCP",
+         *           "service_definition": "Komga",
          *           "tags": [],
          *           "virtualization_metadata": null,
          *           "virtualization_service_id": null
@@ -7655,7 +7663,7 @@ export interface components {
          *     Child entities (ip_addresses, ports, services) are stored in their own tables
          *     and queried by `host_id`. They are NOT stored on the host.
          */
-        HostBase: components["schemas"]["HostName"] & components["schemas"]["HostSysDescr"] & components["schemas"]["HostSysObjectId"] & components["schemas"]["HostSysLocation"] & components["schemas"]["HostSysContact"] & components["schemas"]["HostManagementUrl"] & components["schemas"]["HostChassisId"] & components["schemas"]["HostSysName"] & components["schemas"]["HostManufacturer"] & components["schemas"]["HostModel"] & components["schemas"]["HostSerialNumber"] & components["schemas"]["HostFirmwareRevision"] & {
+        HostBase: components["schemas"]["HostName"] & components["schemas"]["HostSysDescr"] & components["schemas"]["HostSysObjectId"] & components["schemas"]["HostSysLocation"] & components["schemas"]["HostSysContact"] & components["schemas"]["HostManagementUrl"] & components["schemas"]["HostChassisId"] & components["schemas"]["HostSysName"] & components["schemas"]["HostManufacturer"] & components["schemas"]["HostModel"] & components["schemas"]["HostSerialNumber"] & components["schemas"]["HostFirmwareRevision"] & components["schemas"]["HostSoftwareRevision"] & {
             /** @description Credential assignments for this host (hydrated from junction table). */
             credential_assignments: components["schemas"]["CredentialAssignment"][];
             /** @description Free-text notes about the host. */
@@ -7691,7 +7699,7 @@ export interface components {
             chassis_id_source?: components["schemas"]["AttributeSource"];
         };
         HostFirmwareRevision: {
-            /** @description Firmware or software revision of the device as a whole */
+            /** @description ENTITY-MIB entPhysicalFirmwareRev - firmware revision of the device as a whole */
             firmware_revision?: string;
             firmware_revision_source?: components["schemas"]["AttributeSource"];
         };
@@ -7843,19 +7851,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-08-28T14:13:35.652051Z",
+         *               "created_at": "2026-08-28T15:12:48.170379Z",
          *               "first_discovery_id": null,
-         *               "id": "391dea5d-11e2-463e-b9d8-e0ac858ea89a",
+         *               "id": "3ee57db4-9558-4573-8cfb-0d8ad5b23953",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-08-28T14:13:35.652051Z",
+         *               "last_seen_at": "2026-08-28T15:12:48.170379Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-08-28T14:13:35.652051Z",
-         *               "valid_from": "2026-08-28T14:13:35.652051Z",
+         *               "updated_at": "2026-08-28T15:12:48.170379Z",
+         *               "valid_from": "2026-08-28T15:12:48.170379Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -7869,7 +7877,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Modbus TCP",
+         *           "service_definition": "Komga",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -7881,6 +7889,10 @@ export interface components {
          *           "virtualization_service_id": null
          *         }
          *       ],
+         *       "software_revision": null,
+         *       "software_revision_source": {
+         *         "type": "Unspecified"
+         *       },
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7930,8 +7942,8 @@ export interface components {
              *     list and another on the map.
              */
             readonly display_name?: string | null;
-            /** @description Firmware or software revision of the device. */
-            firmware_revision: string | null;
+            /** @description ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above. */
+            readonly firmware_revision: string | null;
             /** @description What produced the firmware revision. Read-only: decided by whichever source read it. */
             firmware_revision_source?: components["schemas"]["AttributeSource"];
             /** @description Whether the host is hidden from topology views. */
@@ -7986,6 +7998,10 @@ export interface components {
             serial_number_source?: components["schemas"]["AttributeSource"];
             /** @description Services running on this host. */
             services: components["schemas"]["Service"][];
+            /** @description ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above. */
+            readonly software_revision: string | null;
+            /** @description What produced the software revision. Read-only: decided by whichever source read it. */
+            software_revision_source?: components["schemas"]["AttributeSource"];
             /** @description How this host came to be known — discovered, imported, or created by hand. */
             source: components["schemas"]["EntitySource"];
             /** @description SNMP sysContact — administrative contact as configured on the device. */
@@ -8029,6 +8045,11 @@ export interface components {
             /** @description ENTITY-MIB entPhysicalSerialNum - hardware serial number */
             serial_number?: string;
             serial_number_source?: components["schemas"]["AttributeSource"];
+        };
+        HostSoftwareRevision: {
+            /** @description ENTITY-MIB entPhysicalSoftwareRev - software revision of the device as a whole */
+            software_revision?: string;
+            software_revision_source?: components["schemas"]["AttributeSource"];
         };
         HostSysContact: {
             /** @description SNMP sysContact.0 - admin contact info */
@@ -9348,8 +9369,8 @@ export interface components {
                  *     list and another on the map.
                  */
                 readonly display_name?: string | null;
-                /** @description Firmware or software revision of the device. */
-                firmware_revision: string | null;
+                /** @description ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above. */
+                readonly firmware_revision: string | null;
                 /** @description What produced the firmware revision. Read-only: decided by whichever source read it. */
                 firmware_revision_source?: components["schemas"]["AttributeSource"];
                 /** @description Whether the host is hidden from topology views. */
@@ -9404,6 +9425,10 @@ export interface components {
                 serial_number_source?: components["schemas"]["AttributeSource"];
                 /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
+                /** @description ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above. */
+                readonly software_revision: string | null;
+                /** @description What produced the software revision. Read-only: decided by whichever source read it. */
+                software_revision_source?: components["schemas"]["AttributeSource"];
                 /** @description How this host came to be known — discovered, imported, or created by hand. */
                 source: components["schemas"]["EntitySource"];
                 /** @description SNMP sysContact — administrative contact as configured on the device. */
@@ -10523,19 +10548,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-08-28T14:13:35.653048Z",
+         *           "created_at": "2026-08-28T15:12:48.171740Z",
          *           "first_discovery_id": null,
-         *           "id": "b7d077c8-9d25-4510-89aa-aa363fb43290",
+         *           "id": "ab5cc35d-c1ee-4159-8529-b72f2dd46396",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-08-28T14:13:35.653048Z",
+         *           "last_seen_at": "2026-08-28T15:12:48.171740Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-08-28T14:13:35.653048Z",
-         *           "valid_from": "2026-08-28T14:13:35.653048Z",
+         *           "updated_at": "2026-08-28T15:12:48.171740Z",
+         *           "valid_from": "2026-08-28T15:12:48.171740Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -10549,7 +10574,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Modbus TCP",
+         *       "service_definition": "Komga",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -11198,7 +11223,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "f83eb173-ef0d-4912-b3f3-5938a233ac69",
+             *           "id": "33ec95c3-eeab-4fb0-b2cf-4dbb2c4380bc",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -11208,23 +11233,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "47171668-293c-4061-87d7-2046ec785459",
+             *           "id": "74d33e8f-ac63-4632-9a77-e07c6494a31a",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "e1dc01c1-2581-422a-8bae-dbf8fdfb1e31",
+             *           "id": "bb058bf4-17ab-4a78-9bb1-6e2afad158f8",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "731e7f37-4449-4099-8e8f-5f103ee4ca75",
+             *           "id": "50209634-c46f-4f64-9e9f-c3a965f5fa22",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "47171668-293c-4061-87d7-2046ec785459",
+             *           "id": "74d33e8f-ac63-4632-9a77-e07c6494a31a",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -11237,19 +11262,19 @@ export interface components {
              * @description Rules deciding how entities are placed and inlined within containers.
              * @default [
              *       {
-             *         "id": "7cef45a9-a1b4-4557-8bdb-dea413f7bbc3",
+             *         "id": "165074d3-8272-4cfa-abbe-0191f4197370",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "64641f1b-fa39-465b-af58-86fdd838bd40",
+             *         "id": "4ee4b89e-7d52-45fe-86fd-3e4ce86adfa2",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "1294c64a-7f03-4a05-ad81-7152b7fc7697",
+             *         "id": "7a4055cd-2cb6-4dfd-8798-1f332591baec",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "2f7c27d2-f026-4c9c-a039-082ea54b50a8",
+             *         "id": "adaea639-b4c8-404b-8799-d8b723d99e12",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -11267,7 +11292,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "d056e064-7691-4d46-b5f9-8713f8894829",
+             *         "id": "7f8e6629-e5b1-47e2-95e1-bc43685fe7c9",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -11276,15 +11301,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "dba1b953-b2aa-494c-b58a-9f30ea06c521",
+             *         "id": "18b04120-6d8a-4aa8-a722-e444390618e0",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "431642ff-911b-4787-ad61-8194469c3d16",
+             *         "id": "ce28e2d7-2536-4d66-ba6d-9a60e43db7c0",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "a70a6dcf-4ba8-41a6-82f9-0b42149a64ef",
+             *         "id": "6c7ede85-c8f6-487f-b9f6-d1da95d82cca",
              *         "rule": "ByStack"
              *       }
              *     ]

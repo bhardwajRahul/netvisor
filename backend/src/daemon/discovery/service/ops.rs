@@ -39,8 +39,9 @@ use crate::{
             api::{DiscoveryHostRequest, HostResponse},
             attributes::{
                 HostChassisIdValue, HostFirmwareRevisionValue, HostManagementUrlValue,
-                HostManufacturerValue, HostModelValue, HostSerialNumberValue, HostSysContactValue,
-                HostSysDescrValue, HostSysLocationValue, HostSysNameValue, HostSysObjectIdValue,
+                HostManufacturerValue, HostModelValue, HostSerialNumberValue,
+                HostSoftwareRevisionValue, HostSysContactValue, HostSysDescrValue,
+                HostSysLocationValue, HostSysNameValue, HostSysObjectIdValue,
             },
             base::{Host, HostBase},
             name::{HostName, HostNameSources},
@@ -253,6 +254,14 @@ impl HostData {
         Attributed::apply(
             &mut self.host.base.firmware_revision,
             Attributed::new(HostFirmwareRevisionValue(v), source),
+        );
+        self
+    }
+
+    pub fn with_software_revision(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.software_revision,
+            Attributed::new(HostSoftwareRevisionValue(v), source),
         );
         self
     }
@@ -1404,6 +1413,7 @@ impl DiscoveryOps {
             model: None,
             serial_number: None,
             firmware_revision: None,
+            software_revision: None,
             credential_assignments: vec![],
         });
 

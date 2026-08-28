@@ -977,6 +977,7 @@ fn create_host(
             model: None,
             serial_number: None,
             firmware_revision: None,
+            software_revision: None,
             credential_assignments: vec![],
         },
     };
@@ -1978,6 +1979,7 @@ fn generate_hosts_and_services(
                 model: None,
                 serial_number: None,
                 firmware_revision: None,
+                software_revision: None,
                 credential_assignments: docker_proxy_cred
                     .into_iter()
                     .map(|id| CredentialAssignment {
@@ -3106,6 +3108,7 @@ fn generate_hosts_and_services(
                 model: None,
                 serial_number: None,
                 firmware_revision: None,
+                software_revision: None,
                 credential_assignments: docker_proxy_cred
                     .into_iter()
                     .map(|id| CredentialAssignment {

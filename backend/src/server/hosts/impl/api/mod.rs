@@ -22,8 +22,9 @@ use crate::server::{
     hosts::r#impl::{
         attributes::{
             HostChassisIdValue, HostFirmwareRevisionValue, HostManagementUrlValue,
-            HostManufacturerValue, HostModelValue, HostSerialNumberValue, HostSysContactValue,
-            HostSysDescrValue, HostSysLocationValue, HostSysNameValue, HostSysObjectIdValue,
+            HostManufacturerValue, HostModelValue, HostSerialNumberValue,
+            HostSoftwareRevisionValue, HostSysContactValue, HostSysDescrValue,
+            HostSysLocationValue, HostSysNameValue, HostSysObjectIdValue,
         },
         base::{Host, HostBase},
         name::host_name_from_parts,
@@ -880,13 +881,20 @@ pub struct HostResponse {
     #[serde(default)]
     #[schema(read_only)]
     pub serial_number_source: AttributeSource,
-    /// Firmware or software revision of the device.
-    #[schema(required)]
+    /// ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above.
+    #[schema(required, read_only)]
     pub firmware_revision: Option<String>,
     /// What produced the firmware revision. Read-only: decided by whichever source read it.
     #[serde(default)]
     #[schema(read_only)]
     pub firmware_revision_source: AttributeSource,
+    /// ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above.
+    #[schema(required, read_only)]
+    pub software_revision: Option<String>,
+    /// What produced the software revision. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub software_revision_source: AttributeSource,
     /// Credentials assigned to scan this host.
     #[serde(default)]
     pub credential_assignments: Vec<CredentialAssignment>,

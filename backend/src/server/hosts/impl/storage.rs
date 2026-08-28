@@ -47,6 +47,7 @@ pub struct HostCsvRow {
     pub model: Option<String>,
     pub serial_number: Option<String>,
     pub firmware_revision: Option<String>,
+    pub software_revision: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -139,6 +140,7 @@ impl Storable for Host {
                     model,
                     serial_number,
                     firmware_revision,
+                    software_revision,
                     credential_assignments: _, // Stored in host_credentials junction table
                 },
         } = self.clone();
@@ -161,6 +163,8 @@ impl Storable for Host {
             attributed::optional_params(&serial_number);
         let [firmware_revision_value, firmware_revision_source] =
             attributed::optional_params(&firmware_revision);
+        let [software_revision_value, software_revision_source] =
+            attributed::optional_params(&software_revision);
 
         Ok((
             vec![
@@ -198,6 +202,8 @@ impl Storable for Host {
                 "serial_number_source",
                 "firmware_revision",
                 "firmware_revision_source",
+                "software_revision",
+                "software_revision_source",
                 "valid_from",
                 "valid_to",
                 "lineage_id",
@@ -240,6 +246,8 @@ impl Storable for Host {
                 serial_number_source,
                 firmware_revision_value,
                 firmware_revision_source,
+                software_revision_value,
+                software_revision_source,
                 SqlValue::Timestamp(valid_from),
                 SqlValue::OptionTimestamp(valid_to),
                 SqlValue::OptionalUuid(lineage_id),
@@ -304,6 +312,7 @@ impl Storable for Host {
                 model: attributed::read_optional(row)?,
                 serial_number: attributed::read_optional(row)?,
                 firmware_revision: attributed::read_optional(row)?,
+                software_revision: attributed::read_optional(row)?,
                 credential_assignments: Vec::new(), // Hydrated from host_credentials junction table
             },
         })
@@ -349,6 +358,7 @@ impl Entity for Host {
             model: attribution::text_of(&self.base.model),
             serial_number: attribution::text_of(&self.base.serial_number),
             firmware_revision: attribution::text_of(&self.base.firmware_revision),
+            software_revision: attribution::text_of(&self.base.software_revision),
             created_at: self.created_at,
             updated_at: self.updated_at,
         }

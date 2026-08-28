@@ -743,6 +743,15 @@ impl DiscoveryIntegration for SnmpIntegration {
             if let Some(ref v) = inventory.serial_number {
                 host_data.with_serial_number(v.clone(), probe);
             }
+            // Two columns, two fields. `entPhysicalFirmwareRev` and `entPhysicalSoftwareRev` are
+            // distinct objects in RFC 4133 — on a Cisco chassis the bootloader and the IOS
+            // version — so neither is folded into the other.
+            if let Some(ref v) = inventory.firmware_revision {
+                host_data.with_firmware_revision(v.clone(), probe);
+            }
+            if let Some(ref v) = inventory.software_revision {
+                host_data.with_software_revision(v.clone(), probe);
+            }
         }
 
         // --- Credential assignment for the working SNMP credential ---

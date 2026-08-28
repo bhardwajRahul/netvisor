@@ -2,8 +2,8 @@ use crate::server::credentials::r#impl::types::CredentialAssignment;
 use crate::server::hosts::r#impl::attributes::{
     HostChassisIdAttributed, HostFirmwareRevisionAttributed, HostManagementUrlAttributed,
     HostManufacturerAttributed, HostModelAttributed, HostSerialNumberAttributed,
-    HostSysContactAttributed, HostSysDescrAttributed, HostSysLocationAttributed,
-    HostSysNameAttributed, HostSysObjectIdAttributed,
+    HostSoftwareRevisionAttributed, HostSysContactAttributed, HostSysDescrAttributed,
+    HostSysLocationAttributed, HostSysNameAttributed, HostSysObjectIdAttributed,
 };
 use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
 use crate::server::hosts::r#impl::virtualization::HostVirtualization;
@@ -118,18 +118,27 @@ pub struct HostBase {
     #[serde(flatten, deserialize_with = "attribution::optional")]
     #[schema(value_type = HostSerialNumberAttributed)]
     pub serial_number: Option<HostSerialNumberAttributed>,
-    /// Firmware or software revision of the device as a whole.
+    /// Firmware revision of the device as a whole — ENTITY-MIB `entPhysicalFirmwareRev`.
     ///
     /// Written by whichever source read it — a controller's REST inventory, an industrial probe's
-    /// identity response, and (once ENTITY-MIB revisions land) `entPhysicalFirmwareRev`. Before
-    /// this column existed each of those had nowhere to put a version it had already read, and two
-    /// of them flattened it into `sys_descr` as prose.
+    /// identity response, and `entPhysicalFirmwareRev`. Before this column existed each of those
+    /// had nowhere to put a version it had already read, and two of them flattened it into
+    /// `sys_descr` as prose.
     ///
     /// Device-level rather than per-module: everything downstream is host-shaped, and the NCCoE
     /// asset-inventory minimum says "product version", singular.
     #[serde(flatten, deserialize_with = "attribution::optional")]
     #[schema(value_type = HostFirmwareRevisionAttributed)]
     pub firmware_revision: Option<HostFirmwareRevisionAttributed>,
+    /// Software revision of the device as a whole — ENTITY-MIB `entPhysicalSoftwareRev`.
+    ///
+    /// Its own field rather than sharing `firmware_revision`, because RFC 4133 defines `.9` and
+    /// `.10` as distinct objects: on a Cisco chassis they are the bootloader and the IOS version,
+    /// and one column holding either with nothing recording which cannot tell them apart. Only
+    /// ENTITY-MIB writes it — every other source reports a single version, which is the firmware.
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostSoftwareRevisionAttributed)]
+    pub software_revision: Option<HostSoftwareRevisionAttributed>,
     /// Credential assignments for this host (hydrated from junction table).
     #[serde(default)]
     #[schema(required)]
@@ -159,6 +168,7 @@ impl Default for HostBase {
             model: None,
             serial_number: None,
             firmware_revision: None,
+            software_revision: None,
             credential_assignments: Vec::new(),
         }
     }
@@ -277,6 +287,7 @@ impl HostBase {
             model,
             serial_number,
             firmware_revision,
+            software_revision,
         } = incoming;
 
         // A macro rather than a closure: each field is a different carrier type, so every call is
@@ -305,6 +316,7 @@ impl HostBase {
             model,
             serial_number,
             firmware_revision,
+            software_revision,
         );
         changed
     }

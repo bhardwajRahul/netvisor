@@ -3,8 +3,8 @@
 use crate::server::hosts::r#impl::api::HostResponse;
 use crate::server::hosts::r#impl::attributes::{
     HostChassisIdValue, HostFirmwareRevisionValue, HostManagementUrlValue, HostManufacturerValue,
-    HostModelValue, HostSerialNumberValue, HostSysContactValue, HostSysDescrValue,
-    HostSysLocationValue, HostSysNameValue, HostSysObjectIdValue,
+    HostModelValue, HostSerialNumberValue, HostSoftwareRevisionValue, HostSysContactValue,
+    HostSysDescrValue, HostSysLocationValue, HostSysNameValue, HostSysObjectIdValue,
 };
 use crate::server::services::r#impl::patterns::ClientProbe;
 use crate::server::shared::attribution::{AttributeSource, Attributed};
@@ -68,7 +68,11 @@ fn host_response_round_trip_preserves_every_base_field() {
         probe,
     ));
     host.base.firmware_revision = Some(Attributed::new(
-        HostFirmwareRevisionValue("15.0(2)SE11".to_string()),
+        HostFirmwareRevisionValue("15.0(4)".to_string()),
+        probe,
+    ));
+    host.base.software_revision = Some(Attributed::new(
+        HostSoftwareRevisionValue("15.0(2)SE11".to_string()),
         probe,
     ));
 

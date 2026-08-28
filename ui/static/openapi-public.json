@@ -12238,19 +12238,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-08-28T14:13:35.675308Z",
+              "created_at": "2026-08-28T15:12:48.195571Z",
               "first_discovery_id": null,
-              "id": "2ba69bf6-aa57-40a0-a316-cd0ec42ce8d0",
+              "id": "13dd6e45-a770-4f6c-85c2-074fa5810426",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-28T14:13:35.675308Z",
+              "last_seen_at": "2026-08-28T15:12:48.195571Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-28T14:13:35.675308Z",
-              "valid_from": "2026-08-28T14:13:35.675308Z",
+              "updated_at": "2026-08-28T15:12:48.195571Z",
+              "valid_from": "2026-08-28T15:12:48.195571Z",
               "valid_to": null
             }
           },
@@ -13291,6 +13291,7 @@
               "hidden",
               "tags",
               "firmware_revision",
+              "software_revision",
               "ip_addresses",
               "ports",
               "services",
@@ -13340,7 +13341,8 @@
                   "string",
                   "null"
                 ],
-                "description": "Firmware or software revision of the device."
+                "description": "ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above.",
+                "readOnly": true
               },
               "firmware_revision_source": {
                 "$ref": "#/components/schemas/AttributeSource",
@@ -13454,6 +13456,18 @@
                   "$ref": "#/components/schemas/Service"
                 },
                 "description": "Services running on this host."
+              },
+              "software_revision": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above.",
+                "readOnly": true
+              },
+              "software_revision_source": {
+                "$ref": "#/components/schemas/AttributeSource",
+                "description": "What produced the software revision. Read-only: decided by whichever source read it."
               },
               "source": {
                 "$ref": "#/components/schemas/EntitySource",
@@ -13666,19 +13680,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-08-28T14:13:35.651654Z",
+                      "created_at": "2026-08-28T15:12:48.171129Z",
                       "first_discovery_id": null,
-                      "id": "5f00aad1-0d61-4ea1-9484-42c6d9fa39d0",
+                      "id": "109a984d-057e-4d73-bd92-98014a4405cb",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-08-28T14:13:35.651654Z",
+                      "last_seen_at": "2026-08-28T15:12:48.171129Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-08-28T14:13:35.651654Z",
-                      "valid_from": "2026-08-28T14:13:35.651654Z",
+                      "updated_at": "2026-08-28T15:12:48.171129Z",
+                      "valid_from": "2026-08-28T15:12:48.171129Z",
                       "valid_to": null
                     }
                   ],
@@ -13692,7 +13706,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Modbus TCP",
+                  "service_definition": "Komga",
                   "source": {
                     "type": "Manual"
                   },
@@ -13704,6 +13718,10 @@
                   "virtualization_service_id": null
                 }
               ],
+              "software_revision": null,
+              "software_revision_source": {
+                "type": "Unspecified"
+              },
               "source": {
                 "type": "Manual"
               },
@@ -14913,19 +14931,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-08-28T14:13:35.669601Z",
+                  "created_at": "2026-08-28T15:12:48.190058Z",
                   "first_discovery_id": null,
-                  "id": "cae4ac66-5378-48ce-b80f-d4c75189197c",
+                  "id": "71aae2f7-1acd-4d17-9b98-8abd0420bccb",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-28T14:13:35.669601Z",
+                  "last_seen_at": "2026-08-28T15:12:48.190058Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-28T14:13:35.669601Z",
-                  "valid_from": "2026-08-28T14:13:35.669601Z",
+                  "updated_at": "2026-08-28T15:12:48.190058Z",
+                  "valid_from": "2026-08-28T15:12:48.190058Z",
                   "valid_to": null
                 }
               ],
@@ -14939,7 +14957,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Modbus TCP",
+              "service_definition": "Komga",
               "source": {
                 "type": "Manual"
               },
@@ -17241,19 +17259,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-08-28T14:13:35.652192Z",
+          "created_at": "2026-08-28T15:12:48.171854Z",
           "first_discovery_id": null,
-          "id": "f622b144-b1e6-48d6-a434-0de4cc7dcc48",
+          "id": "c8912b28-8174-4d42-8090-806f1ff2ab24",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-08-28T14:13:35.652192Z",
+          "last_seen_at": "2026-08-28T15:12:48.171854Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-08-28T14:13:35.652192Z",
-          "valid_from": "2026-08-28T14:13:35.652192Z",
+          "updated_at": "2026-08-28T15:12:48.171854Z",
+          "valid_from": "2026-08-28T15:12:48.171854Z",
           "valid_to": null
         }
       },
@@ -17916,7 +17934,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Modbus TCP",
+              "service_definition": "Komga",
               "tags": [],
               "virtualization_metadata": null,
               "virtualization_service_id": null
@@ -22300,7 +22318,11 @@
           },
           {
             "$ref": "#/components/schemas/HostFirmwareRevision",
-            "description": "Firmware or software revision of the device as a whole.\n\nWritten by whichever source read it — a controller's REST inventory, an industrial probe's\nidentity response, and (once ENTITY-MIB revisions land) `entPhysicalFirmwareRev`. Before\nthis column existed each of those had nowhere to put a version it had already read, and two\nof them flattened it into `sys_descr` as prose.\n\nDevice-level rather than per-module: everything downstream is host-shaped, and the NCCoE\nasset-inventory minimum says \"product version\", singular."
+            "description": "Firmware revision of the device as a whole — ENTITY-MIB `entPhysicalFirmwareRev`.\n\nWritten by whichever source read it — a controller's REST inventory, an industrial probe's\nidentity response, and `entPhysicalFirmwareRev`. Before this column existed each of those\nhad nowhere to put a version it had already read, and two of them flattened it into\n`sys_descr` as prose.\n\nDevice-level rather than per-module: everything downstream is host-shaped, and the NCCoE\nasset-inventory minimum says \"product version\", singular."
+          },
+          {
+            "$ref": "#/components/schemas/HostSoftwareRevision",
+            "description": "Software revision of the device as a whole — ENTITY-MIB `entPhysicalSoftwareRev`.\n\nIts own field rather than sharing `firmware_revision`, because RFC 4133 defines `.9` and\n`.10` as distinct objects: on a Cisco chassis they are the bootloader and the IOS version,\nand one column holding either with nothing recording which cannot tell them apart. Only\nENTITY-MIB writes it — every other source reports a single version, which is the firmware."
           },
           {
             "type": "object",
@@ -22399,7 +22421,7 @@
         "properties": {
           "firmware_revision": {
             "type": "string",
-            "description": "Firmware or software revision of the device as a whole"
+            "description": "ENTITY-MIB entPhysicalFirmwareRev - firmware revision of the device as a whole"
           },
           "firmware_revision_source": {
             "$ref": "#/components/schemas/AttributeSource"
@@ -22492,6 +22514,7 @@
           "hidden",
           "tags",
           "firmware_revision",
+          "software_revision",
           "ip_addresses",
           "ports",
           "services",
@@ -22541,7 +22564,8 @@
               "string",
               "null"
             ],
-            "description": "Firmware or software revision of the device."
+            "description": "ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above.",
+            "readOnly": true
           },
           "firmware_revision_source": {
             "$ref": "#/components/schemas/AttributeSource",
@@ -22655,6 +22679,18 @@
               "$ref": "#/components/schemas/Service"
             },
             "description": "Services running on this host."
+          },
+          "software_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above.",
+            "readOnly": true
+          },
+          "software_revision_source": {
+            "$ref": "#/components/schemas/AttributeSource",
+            "description": "What produced the software revision. Read-only: decided by whichever source read it."
           },
           "source": {
             "$ref": "#/components/schemas/EntitySource",
@@ -22867,19 +22903,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-08-28T14:13:35.651080Z",
+                  "created_at": "2026-08-28T15:12:48.170373Z",
                   "first_discovery_id": null,
-                  "id": "3d583392-d500-4ac7-b26d-f058394a8fee",
+                  "id": "5dcdd8ec-ee1a-4e69-bc0b-f7e4873e000b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-28T14:13:35.651080Z",
+                  "last_seen_at": "2026-08-28T15:12:48.170373Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-28T14:13:35.651080Z",
-                  "valid_from": "2026-08-28T14:13:35.651080Z",
+                  "updated_at": "2026-08-28T15:12:48.170373Z",
+                  "valid_from": "2026-08-28T15:12:48.170373Z",
                   "valid_to": null
                 }
               ],
@@ -22893,7 +22929,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Modbus TCP",
+              "service_definition": "Komga",
               "source": {
                 "type": "Manual"
               },
@@ -22905,6 +22941,10 @@
               "virtualization_service_id": null
             }
           ],
+          "software_revision": null,
+          "software_revision_source": {
+            "type": "Unspecified"
+          },
           "source": {
             "type": "Manual"
           },
@@ -22937,6 +22977,18 @@
             "description": "ENTITY-MIB entPhysicalSerialNum - hardware serial number"
           },
           "serial_number_source": {
+            "$ref": "#/components/schemas/AttributeSource"
+          }
+        }
+      },
+      "HostSoftwareRevision": {
+        "type": "object",
+        "properties": {
+          "software_revision": {
+            "type": "string",
+            "description": "ENTITY-MIB entPhysicalSoftwareRev - software revision of the device as a whole"
+          },
+          "software_revision_source": {
             "$ref": "#/components/schemas/AttributeSource"
           }
         }
@@ -25780,6 +25832,7 @@
                 "hidden",
                 "tags",
                 "firmware_revision",
+                "software_revision",
                 "ip_addresses",
                 "ports",
                 "services",
@@ -25829,7 +25882,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Firmware or software revision of the device."
+                  "description": "ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above.",
+                  "readOnly": true
                 },
                 "firmware_revision_source": {
                   "$ref": "#/components/schemas/AttributeSource",
@@ -25943,6 +25997,18 @@
                     "$ref": "#/components/schemas/Service"
                   },
                   "description": "Services running on this host."
+                },
+                "software_revision": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above.",
+                  "readOnly": true
+                },
+                "software_revision_source": {
+                  "$ref": "#/components/schemas/AttributeSource",
+                  "description": "What produced the software revision. Read-only: decided by whichever source read it."
                 },
                 "source": {
                   "$ref": "#/components/schemas/EntitySource",
@@ -26155,19 +26221,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-08-28T14:13:35.637595Z",
+                        "created_at": "2026-08-28T15:12:48.153303Z",
                         "first_discovery_id": null,
-                        "id": "79112bd4-3ef6-44df-b193-4a63f2ae6392",
+                        "id": "e8a0acd1-f051-45ec-9e18-d4503703bef5",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-08-28T14:13:35.637595Z",
+                        "last_seen_at": "2026-08-28T15:12:48.153303Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-08-28T14:13:35.637595Z",
-                        "valid_from": "2026-08-28T14:13:35.637595Z",
+                        "updated_at": "2026-08-28T15:12:48.153303Z",
+                        "valid_from": "2026-08-28T15:12:48.153303Z",
                         "valid_to": null
                       }
                     ],
@@ -26181,7 +26247,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Modbus TCP",
+                    "service_definition": "Komga",
                     "source": {
                       "type": "Manual"
                     },
@@ -26193,6 +26259,10 @@
                     "virtualization_service_id": null
                   }
                 ],
+                "software_revision": null,
+                "software_revision_source": {
+                  "type": "Unspecified"
+                },
                 "source": {
                   "type": "Manual"
                 },
@@ -26332,19 +26402,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-08-28T14:13:35.668609Z",
+                    "created_at": "2026-08-28T15:12:48.189045Z",
                     "first_discovery_id": null,
-                    "id": "7eb34a0e-c7e4-4b28-8958-f98ed75fdc85",
+                    "id": "013d7fde-762f-4d84-af55-60680e2dd09d",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-08-28T14:13:35.668609Z",
+                    "last_seen_at": "2026-08-28T15:12:48.189045Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-08-28T14:13:35.668609Z",
-                    "valid_from": "2026-08-28T14:13:35.668609Z",
+                    "updated_at": "2026-08-28T15:12:48.189045Z",
+                    "valid_from": "2026-08-28T15:12:48.189045Z",
                     "valid_to": null
                   }
                 ],
@@ -26358,7 +26428,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Modbus TCP",
+                "service_definition": "Komga",
                 "source": {
                   "type": "Manual"
                 },
@@ -28391,19 +28461,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-08-28T14:13:35.652081Z",
+              "created_at": "2026-08-28T15:12:48.171721Z",
               "first_discovery_id": null,
-              "id": "5c5876e8-bcee-4c2a-bc4a-e2f26ce9fb47",
+              "id": "c34e7d31-3cd0-44c1-b775-23a01adb518a",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-28T14:13:35.652081Z",
+              "last_seen_at": "2026-08-28T15:12:48.171721Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-28T14:13:35.652081Z",
-              "valid_from": "2026-08-28T14:13:35.652081Z",
+              "updated_at": "2026-08-28T15:12:48.171721Z",
+              "valid_from": "2026-08-28T15:12:48.171721Z",
               "valid_to": null
             }
           ],
@@ -28417,7 +28487,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Modbus TCP",
+          "service_definition": "Komga",
           "source": {
             "type": "Manual"
           },
@@ -29656,7 +29726,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "06ec8357-2fa8-4bee-8296-2aca9b149e90",
+                  "id": "dd104f44-b3c9-4aec-b9e0-0a0ed5d9d20d",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -29666,23 +29736,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "6f28e66a-e706-4cdb-b4fa-8cd47b1c50c4",
+                  "id": "0f430f05-62d7-4c4c-8e77-6eca6ca3343a",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "0e71e1fb-7ccc-4f57-a191-e8fb140a2789",
+                  "id": "45faaae6-fea6-4dd4-aeb3-43bf821fc288",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "c06f8d5b-53d1-4de1-ab00-fdaa9c2f16df",
+                  "id": "9acf752d-fbd2-43b8-9a3e-979e3a348c8d",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "6f28e66a-e706-4cdb-b4fa-8cd47b1c50c4",
+                  "id": "0f430f05-62d7-4c4c-8e77-6eca6ca3343a",
                   "rule": "ByHost"
                 }
               ]
@@ -29712,19 +29782,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "74fe1993-589f-4ffb-9860-05f14bfb0c68",
+                "id": "bdce10f3-a259-498a-bc99-f0d0eca18021",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "dcececa1-7fc1-4a3b-b953-d85994ba7a86",
+                "id": "51994c1f-7d93-41be-9896-466ae0a4a41e",
                 "rule": "ByVLAN"
               },
               {
-                "id": "f3089b16-0d84-4451-90b9-6a9fa0829d93",
+                "id": "e0120ba3-9b56-4875-95eb-8a147950d547",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "4574e3bf-1d73-422d-9633-ba706a74b34f",
+                "id": "24878c16-1d6b-40a5-b32f-8b375f0a21f6",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -29742,7 +29812,7 @@
                 }
               },
               {
-                "id": "4e233456-adf3-4649-8e46-69f04527bf4b",
+                "id": "f4dff0c1-deb0-4c3d-b1bf-bd628dafc4af",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -29751,15 +29821,15 @@
                 }
               },
               {
-                "id": "0eb82d0f-990a-419f-bbc7-6f8b67691350",
+                "id": "2f3101fb-a550-4635-afe7-86d7a1c4d131",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "b14b71d6-85e0-48fb-8c9e-7bc0723c61bb",
+                "id": "adfd5148-0539-40af-a925-adc2234ed402",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "fdc5fd08-5fd9-402e-b0c7-4dbf6ba55844",
+                "id": "fcb25c22-7eab-4d5c-926b-caabb96f9b0e",
                 "rule": "ByStack"
               }
             ]

@@ -150,16 +150,43 @@ attributed_value! {
 }
 
 attributed_value! {
-    /// Firmware or software revision of the device as a whole.
+    /// Firmware revision of the device as a whole — ENTITY-MIB `entPhysicalFirmwareRev`.
     ///
     /// Refreshable, and the field that most needs to be: it changes on every upgrade, which is the
-    /// point of tracking it. Four sources already write it and ENTITY-MIB will be the fifth.
+    /// point of tracking it.
+    ///
+    /// Firmware alone, not "firmware or software". It was the latter until ENTITY-MIB arrived as
+    /// the fifth writer and the first able to report two versions at once — `.9` here and `.10` in
+    /// [`HostSoftwareRevisionValue`]. A column holding either with nothing recording which is a
+    /// union with no discriminator, so on a Cisco chassis a stored `15.0(2)SE11` could be the
+    /// bootloader or the IOS version and nothing could tell them apart. The other four writers
+    /// (UniFi, Instant On, Modbus, EtherNet/IP) each report one version and it is this one.
     pub struct HostFirmwareRevisionValue(String) as HostFirmwareRevisionAttributed {
         key: "firmware_revision",
         source_key: "firmware_revision_source",
         schema_name: "HostFirmwareRevision",
         refreshable: true,
         blank: blank,
-        schema: string_schema("Firmware or software revision of the device as a whole"),
+        schema: string_schema("ENTITY-MIB entPhysicalFirmwareRev - firmware revision of the device as a whole"),
+    }
+}
+
+attributed_value! {
+    /// Software revision of the device as a whole — ENTITY-MIB `entPhysicalSoftwareRev`.
+    ///
+    /// Refreshable for the same reason as the firmware: an OS upgrade changing it is the point of
+    /// tracking it.
+    ///
+    /// Separate from [`HostFirmwareRevisionValue`] rather than folded into it, because RFC 4133
+    /// defines `.9` and `.10` as distinct objects and a chassis with a bootloader and an OS
+    /// genuinely has two versions. Only ENTITY-MIB writes this today; every other source reports a
+    /// single version, which is the firmware.
+    pub struct HostSoftwareRevisionValue(String) as HostSoftwareRevisionAttributed {
+        key: "software_revision",
+        source_key: "software_revision_source",
+        schema_name: "HostSoftwareRevision",
+        refreshable: true,
+        blank: blank,
+        schema: string_schema("ENTITY-MIB entPhysicalSoftwareRev - software revision of the device as a whole"),
     }
 }

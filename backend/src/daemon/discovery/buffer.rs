@@ -425,6 +425,7 @@ mod tests {
                 model: None,
                 serial_number: None,
                 firmware_revision: None,
+                software_revision: None,
                 credential_assignments: vec![],
             }),
             ip_addresses: vec![],
@@ -481,6 +482,7 @@ mod tests {
                             model: None,
                             serial_number: None,
                             firmware_revision: None,
+                            software_revision: None,
                             credential_assignments: vec![],
                         }),
                         ip_addresses: vec![],
@@ -866,6 +868,7 @@ mod tests {
                 model: None,
                 serial_number: None,
                 firmware_revision: None,
+                software_revision: None,
                 credential_assignments: vec![],
             }),
             ip_addresses: vec![
@@ -961,6 +964,7 @@ mod tests {
                 model: None,
                 serial_number: None,
                 firmware_revision: None,
+                software_revision: None,
                 credential_assignments: vec![],
             }),
             ip_addresses: vec![IPAddress {
@@ -1171,6 +1175,7 @@ mod tests {
                 model: None,
                 serial_number: None,
                 firmware_revision: None,
+                software_revision: None,
                 credential_assignments: vec![],
             }),
             ip_addresses: vec![IPAddress {

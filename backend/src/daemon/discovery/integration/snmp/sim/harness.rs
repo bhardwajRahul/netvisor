@@ -15,12 +15,14 @@ use std::net::IpAddr;
 use super::SimDevice;
 use crate::daemon::discovery::integration::snmp::queries::{IfTableWalk, SnmpCollection};
 use crate::daemon::discovery::integration::snmp::types::{
-    ArpEntry, BridgeFdbEntry, CdpNeighbor, IfTableEntry, LldpLocalPort, LldpNeighbor, SystemInfo,
+    ArpEntry, BridgeFdbEntry, CdpNeighbor, DeviceInventory, IfTableEntry, LldpLocalPort,
+    LldpNeighbor, SystemInfo,
 };
 use crate::daemon::discovery::integration::snmp::{
     LocalPortOutcome, count_dropped_neighbours, query_arp_table, query_bridge_fdb,
-    query_bridge_port_mapping, query_cdp_neighbors, query_ip_addr_table, query_lldp_local_ports,
-    query_lldp_neighbors, query_system_info, remap_lldp_local_ports, walk_if_table,
+    query_bridge_port_mapping, query_cdp_neighbors, query_entity_physical, query_ip_addr_table,
+    query_lldp_local_ports, query_lldp_neighbors, query_system_info, remap_lldp_local_ports,
+    walk_if_table,
 };
 
 /// Everything one scan of a device reads.
@@ -46,6 +48,10 @@ pub struct Collected {
     pub cdp: SnmpCollection<Vec<CdpNeighbor>>,
     pub bridge_ports: HashMap<i32, i32>,
     pub fdb: SnmpCollection<Vec<BridgeFdbEntry>>,
+    /// The `entPhysicalTable` collapsed to one device, the way `SnmpIntegration::execute` reads it.
+    /// Collected here because until it was, `query_entity_physical` was referenced by no test at
+    /// all — every column the fixtures emitted for it proved only that it had been written.
+    pub entity: SnmpCollection<Option<DeviceInventory>>,
     pub ip_addresses: usize,
 }
 
@@ -134,6 +140,9 @@ pub async fn collect(device: &SimDevice) -> Collected {
         .await
         .unwrap_or_default();
     let bridge_ports = bridge_mapping.records;
+    let entity = query_entity_physical(&mut agent, ip)
+        .await
+        .unwrap_or_default();
     let ip_addresses = query_ip_addr_table(&mut agent, ip)
         .await
         .map(|c| c.records.len())
@@ -151,6 +160,7 @@ pub async fn collect(device: &SimDevice) -> Collected {
         cdp,
         bridge_ports,
         fdb,
+        entity,
         ip_addresses,
     }
 }

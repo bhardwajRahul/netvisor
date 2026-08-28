@@ -52,6 +52,7 @@
 			model: host.model,
 			serial_number: host.serial_number,
 			firmware_revision: host.firmware_revision,
+			software_revision: host.software_revision,
 			credential_assignments: host.credential_assignments ?? [],
 			interfaces: [] // Interfaces not available in this context
 		};

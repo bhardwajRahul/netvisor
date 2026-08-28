@@ -294,6 +294,15 @@ pub mod entity {
         /// entPhysicalName - Entity name
         pub const ENT_PHYSICAL_NAME: &str = "1.3.6.1.2.1.47.1.1.1.1.7";
 
+        /// entPhysicalFirmwareRev - Firmware revision
+        ///
+        /// Distinct from the software revision below, per RFC 4133: on a chassis carrying both,
+        /// this is the bootloader and `.10` is the operating system.
+        pub const ENT_PHYSICAL_FIRMWARE_REV: &str = "1.3.6.1.2.1.47.1.1.1.1.9";
+
+        /// entPhysicalSoftwareRev - Software revision
+        pub const ENT_PHYSICAL_SOFTWARE_REV: &str = "1.3.6.1.2.1.47.1.1.1.1.10";
+
         /// entPhysicalSerialNum - Serial number
         pub const ENT_PHYSICAL_SERIAL_NUM: &str = "1.3.6.1.2.1.47.1.1.1.1.11";
 

@@ -242,6 +242,8 @@ impl DaemonResponse for HostResponse {
             serial_number_source: _,
             firmware_revision: _,
             firmware_revision_source: _,
+            software_revision: _,
+            software_revision_source: _,
             credential_assignments: _,
             ip_addresses: _,
             ports: _,
