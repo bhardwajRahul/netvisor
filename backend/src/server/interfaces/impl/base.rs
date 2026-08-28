@@ -947,4 +947,61 @@ mod tests {
         );
         assert_eq!(incoming.base.neighbor_seen_at, Some(previous));
     }
+
+    /// A port id that names a port becomes a name; one that encodes a MAC becomes a MAC.
+    ///
+    /// The split decides whether a far end gets an interface at all and what keys it: a name lands
+    /// on `if_name` and the name tier, a MAC lands on `mac_address` and the MAC tier. Stringifying
+    /// a MAC into `if_name` would key a row on something no ifTable would ever return, so it would
+    /// never match the real port and would be inserted again on every scan.
+    #[test]
+    fn a_port_id_that_encodes_a_mac_is_not_read_as_a_name() {
+        let named = interface(|b| {
+            b.lldp_port_id = Some(LldpPortId::InterfaceName("Ten-GigabitEthernet1/0/1".into()));
+        });
+        let port = named.advertised_far_end_port();
+        assert_eq!(port.name, Some("Ten-GigabitEthernet1/0/1"));
+        assert_eq!(port.mac, None);
+
+        let by_mac = interface(|b| {
+            b.lldp_port_id = Some(LldpPortId::MacAddress("e8:80:88:be:30:e7".into()));
+        });
+        let port = by_mac.advertised_far_end_port();
+        assert_eq!(
+            port.name, None,
+            "a MAC identifies the port without naming it"
+        );
+        assert_eq!(port.mac, Some("e8:80:88:be:30:e7"));
+    }
+
+    /// The sources are tried by how closely each matches the `ifName` a real walk would return, and
+    /// a port id that carries no name at all falls through to the ones that do.
+    #[test]
+    fn a_far_end_port_falls_back_past_an_id_that_does_not_name_it() {
+        let cdp = interface(|b| {
+            b.lldp_port_id = Some(LldpPortId::MacAddress("e8:80:88:be:30:e7".into()));
+            b.cdp_port_id = Some("GigabitEthernet1/0/8".into());
+        });
+        assert_eq!(
+            cdp.advertised_far_end_port().name,
+            Some("GigabitEthernet1/0/8"),
+            "a CDP port id is the same statement under another protocol"
+        );
+
+        let desc_only = interface(|b| {
+            b.lldp_port_desc = Some("  eth0  ".into());
+        });
+        assert_eq!(
+            desc_only.advertised_far_end_port().name,
+            Some("eth0"),
+            "the description is last, and trimmed"
+        );
+
+        let blank = interface(|b| b.lldp_port_desc = Some("   ".into()));
+        assert_eq!(
+            blank.advertised_far_end_port().name,
+            None,
+            "whitespace is not a port name, and a row keyed on it would match nothing forever"
+        );
+    }
 }
