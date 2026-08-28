@@ -64,10 +64,50 @@ pub struct UnplacedFarEnd {
     /// `lldpLocChassisId` is stored — which is what lets the minted host merge with the real one
     /// on `select_matching_host`'s chassis tier the moment anything scans it.
     pub chassis_id: String,
-    /// The address it published. Already filtered by `is_usable_identity_address`.
-    pub address: IpAddr,
+    /// The address it published, where it published one. Already filtered by
+    /// `is_usable_identity_address`.
+    ///
+    /// Optional because most far ends publish none: 23 of the 24 unresolved neighbours on the dev
+    /// lab advertise a chassis id and nothing else. A far end without one is still a device nothing
+    /// has contacted — it simply cannot be placed in a subnet, so it is minted with no address
+    /// rather than skipped. Only [`AddressedFarEnd`] reaches range inference.
+    pub address: Option<IpAddr>,
+    /// What the far end calls its *own* port on this cable, from `lldpRemPortId`, `cdpCachePortId`
+    /// or the port description — whichever names a port rather than encoding an address or a MAC.
+    ///
+    /// This is the identity of the interface minted for the far end, and it is the reason that
+    /// interface merges rather than duplicating: `match_existing_interface` tries `(host_id,
+    /// if_name)` first, so when a real SNMP walk finally reaches this device its ifTable row for
+    /// the same port carries the same name and upgrades the inferred row in place.
+    pub port_name: Option<String>,
+    /// The far end port's own MAC, when the port id carried one. Real evidence, so it is recorded
+    /// even though it is not a name.
+    pub port_mac: Option<String>,
     /// The VLAN the seeing port carries, where the bridge tables gave one.
     pub vlan_id: Option<Uuid>,
+}
+
+/// An [`UnplacedFarEnd`] that published an address.
+///
+/// A separate type rather than an `unwrap` inside the range code: a range is a statement about
+/// address space, so a far end with no address has nothing to contribute to one and must not be
+/// reachable there. Constructed only by [`UnplacedFarEnd::addressed`], which is the same
+/// compile-enforcement [`held_ranges`] uses for the organizational catch-alls — the rule lives in
+/// the type rather than in something a call site has to remember.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddressedFarEnd {
+    pub address: IpAddr,
+    pub far_end: UnplacedFarEnd,
+}
+
+impl UnplacedFarEnd {
+    /// This far end paired with its address, or `None` where it published none.
+    pub fn addressed(&self) -> Option<AddressedFarEnd> {
+        Some(AddressedFarEnd {
+            address: self.address?,
+            far_end: self.clone(),
+        })
+    }
 }
 
 /// A range this network probably has, and the evidence that says so.
@@ -75,7 +115,7 @@ pub struct UnplacedFarEnd {
 pub struct InferredRange {
     pub cidr: IpCidr,
     /// Every far end that placed itself inside it, in the order observed.
-    pub far_ends: Vec<UnplacedFarEnd>,
+    pub far_ends: Vec<AddressedFarEnd>,
     /// Whether a shared VLAN widened this past the conventional prefix.
     pub widened_by_vlan: bool,
 }
@@ -225,20 +265,23 @@ fn held_ranges(live: &[Subnet]) -> Vec<IpCidr> {
 /// Grouping is **network-wide, not per device**. Two switches naming far ends in the same range
 /// must produce one subnet, and only the server sees both: a network can have several daemons, each
 /// scanning a slice, and the pair may never appear in one daemon's report.
-pub fn infer_ranges(far_ends: Vec<UnplacedFarEnd>, live: &[Subnet]) -> Vec<InferredRange> {
+pub fn infer_ranges(far_ends: &[UnplacedFarEnd], live: &[Subnet]) -> Vec<InferredRange> {
     let held = held_ranges(live);
-    let candidates: Vec<UnplacedFarEnd> = far_ends
-        .into_iter()
+    // Borrowed rather than consumed: the caller mints a host for every far end, addressed or not,
+    // so it still needs the whole list after this has taken the slice it can place.
+    let candidates: Vec<AddressedFarEnd> = far_ends
+        .iter()
+        .filter_map(UnplacedFarEnd::addressed)
         .filter(|f| is_inferrable_space(&f.address))
         .filter(|f| !held.iter().any(|c| c.contains(&f.address)))
         .collect();
 
     // VLAN first: a shared broadcast domain is the only evidence that can widen a range past the
     // conventional prefix. Everything else falls back to its own bucket.
-    let mut by_vlan: BTreeMap<Uuid, Vec<UnplacedFarEnd>> = BTreeMap::new();
-    let mut loose: Vec<UnplacedFarEnd> = Vec::new();
+    let mut by_vlan: BTreeMap<Uuid, Vec<AddressedFarEnd>> = BTreeMap::new();
+    let mut loose: Vec<AddressedFarEnd> = Vec::new();
     for far_end in candidates {
-        match far_end.vlan_id {
+        match far_end.far_end.vlan_id {
             Some(vlan) => by_vlan.entry(vlan).or_default().push(far_end),
             None => loose.push(far_end),
         }
@@ -274,7 +317,7 @@ pub fn infer_ranges(far_ends: Vec<UnplacedFarEnd>, live: &[Subnet]) -> Vec<Infer
 ///
 /// A group spanning more than [`WIDEST_INFERRED_V4`] is not one segment reported from several
 /// ports, so it degrades to conventional buckets rather than claiming a range nobody has.
-fn widen_within_vlan(group: Vec<UnplacedFarEnd>) -> Vec<InferredRange> {
+fn widen_within_vlan(group: Vec<AddressedFarEnd>) -> Vec<InferredRange> {
     let addresses: Vec<IpAddr> = group.iter().map(|f| f.address).collect();
     let conventional = addresses.first().map(conventional_prefix);
 
@@ -339,8 +382,19 @@ mod tests {
             if_descr: "Gi0/1".to_string(),
             sys_name: Some("far-end".to_string()),
             chassis_id: "00:ad:24:89:cc:f0".to_string(),
-            address: address.parse().unwrap(),
+            address: Some(address.parse().unwrap()),
+            port_name: Some("Ten-GigabitEthernet1/0/1".to_string()),
+            port_mac: None,
             vlan_id,
+        }
+    }
+
+    /// A far end that advertised a chassis id and nothing else — the common shape, and the one
+    /// range inference must ignore rather than choke on.
+    fn far_end_without_an_address(vlan_id: Option<Uuid>) -> UnplacedFarEnd {
+        UnplacedFarEnd {
+            address: None,
+            ..far_end("10.0.0.1", vlan_id)
         }
     }
 
@@ -449,7 +503,7 @@ mod tests {
     /// The convention rung: one address, nothing else, a `/24`.
     #[test]
     fn a_lone_address_becomes_the_conventional_prefix() {
-        let ranges = infer_ranges(vec![far_end("10.20.30.11", None)], &live(&[]));
+        let ranges = infer_ranges(&[far_end("10.20.30.11", None)], &live(&[]));
         assert_eq!(cidrs(&ranges), vec!["10.20.30.0/24"]);
     }
 
@@ -458,7 +512,7 @@ mod tests {
     #[test]
     fn far_ends_in_one_range_seen_by_different_devices_produce_one_subnet() {
         let ranges = infer_ranges(
-            vec![
+            &[
                 far_end("10.20.30.11", None),
                 far_end("10.20.30.240", None),
                 far_end("10.20.30.24", None),
@@ -475,7 +529,7 @@ mod tests {
     #[test]
     fn adjacent_ranges_without_vlan_evidence_stay_separate() {
         let ranges = infer_ranges(
-            vec![far_end("10.20.30.11", None), far_end("10.20.31.5", None)],
+            &[far_end("10.20.30.11", None), far_end("10.20.31.5", None)],
             &live(&[]),
         );
         assert_eq!(cidrs(&ranges), vec!["10.20.30.0/24", "10.20.31.0/24"]);
@@ -487,7 +541,7 @@ mod tests {
     fn a_shared_vlan_widens_past_the_conventional_prefix() {
         let vlan = Some(Uuid::new_v4());
         let ranges = infer_ranges(
-            vec![far_end("10.20.30.11", vlan), far_end("10.20.31.5", vlan)],
+            &[far_end("10.20.30.11", vlan), far_end("10.20.31.5", vlan)],
             &live(&[]),
         );
 
@@ -502,7 +556,7 @@ mod tests {
     fn a_vlan_spanning_more_than_the_cap_degrades_to_conventional_buckets() {
         let vlan = Some(Uuid::new_v4());
         let ranges = infer_ranges(
-            vec![far_end("10.20.30.11", vlan), far_end("10.20.99.5", vlan)],
+            &[far_end("10.20.30.11", vlan), far_end("10.20.99.5", vlan)],
             &live(&[]),
         );
 
@@ -515,18 +569,56 @@ mod tests {
     /// their subnet list.
     #[test]
     fn a_public_address_infers_nothing() {
-        let ranges = infer_ranges(vec![far_end("8.8.8.8", None)], &live(&[]));
+        let ranges = infer_ranges(&[far_end("8.8.8.8", None)], &live(&[]));
         assert!(ranges.is_empty());
+    }
+
+    /// A far end that published no address contributes nothing to a range, and does not stop the
+    /// ones that did from producing theirs.
+    ///
+    /// Most far ends are this shape — a chassis id and nothing else. They are still minted as
+    /// hosts; they simply have no address space to be evidence about, which is why only
+    /// `AddressedFarEnd` reaches this function.
+    #[test]
+    fn a_far_end_without_an_address_is_not_evidence_of_a_range() {
+        let ranges = infer_ranges(
+            &[
+                far_end_without_an_address(None),
+                far_end("10.20.30.11", None),
+                far_end_without_an_address(None),
+            ],
+            &live(&[]),
+        );
+
+        assert_eq!(cidrs(&ranges), vec!["10.20.30.0/24"]);
+        assert_eq!(
+            ranges[0].far_ends.len(),
+            1,
+            "only the addressed one is evidence"
+        );
+    }
+
+    /// Nothing but address-less far ends means nothing to infer — not an empty range, and not a
+    /// panic reaching for an address that is not there.
+    #[test]
+    fn address_less_far_ends_alone_infer_nothing() {
+        assert!(
+            infer_ranges(
+                &[
+                    far_end_without_an_address(None),
+                    far_end_without_an_address(Some(Uuid::new_v4())),
+                ],
+                &live(&[]),
+            )
+            .is_empty()
+        );
     }
 
     /// The range is already known; only the *host* at that address is missing. Inferring here
     /// would create a duplicate of a subnet the network already holds.
     #[test]
     fn an_address_inside_a_known_subnet_infers_nothing() {
-        let ranges = infer_ranges(
-            vec![far_end("192.168.7.99", None)],
-            &live(&["192.168.7.0/24"]),
-        );
+        let ranges = infer_ranges(&[far_end("192.168.7.99", None)], &live(&["192.168.7.0/24"]));
         assert!(ranges.is_empty());
     }
 
@@ -542,13 +634,13 @@ mod tests {
         let far_ends = vec![far_end("10.20.30.11", vlan), far_end("10.20.31.5", vlan)];
 
         assert_eq!(
-            cidrs(&infer_ranges(far_ends.clone(), &live(&[]))),
+            cidrs(&infer_ranges(&far_ends, &live(&[]))),
             vec!["10.20.30.0/23"],
             "without the known subnet the pair widens, or this proves nothing"
         );
 
         // Contains neither address, and sits inside the `/23` they span.
-        assert!(infer_ranges(far_ends, &live(&["10.20.30.128/25"])).is_empty());
+        assert!(infer_ranges(&far_ends, &live(&["10.20.30.128/25"])).is_empty());
     }
 
     /// The narrower half of the same case: an address already inside a known subnet is not evidence
@@ -557,7 +649,7 @@ mod tests {
     fn a_known_address_drops_out_without_suppressing_its_neighbours() {
         let vlan = Some(Uuid::new_v4());
         let ranges = infer_ranges(
-            vec![far_end("10.20.30.11", vlan), far_end("10.20.31.5", vlan)],
+            &[far_end("10.20.30.11", vlan), far_end("10.20.31.5", vlan)],
             &live(&["10.20.31.0/24"]),
         );
 
@@ -571,7 +663,7 @@ mod tests {
     fn ipv6_far_ends_bucket_at_the_slaac_prefix() {
         let vlan = Some(Uuid::new_v4());
         let ranges = infer_ranges(
-            vec![
+            &[
                 far_end("fd00:1234:5678:9abc::11", vlan),
                 far_end("fd00:1234:5678:9abc::24", vlan),
             ],
@@ -585,7 +677,7 @@ mod tests {
     #[test]
     fn the_same_evidence_in_a_different_order_produces_the_same_ranges() {
         let one = infer_ranges(
-            vec![
+            &[
                 far_end("10.20.30.11", None),
                 far_end("10.20.40.5", None),
                 far_end("10.20.30.99", None),
@@ -593,7 +685,7 @@ mod tests {
             &live(&[]),
         );
         let other = infer_ranges(
-            vec![
+            &[
                 far_end("10.20.30.99", None),
                 far_end("10.20.30.11", None),
                 far_end("10.20.40.5", None),

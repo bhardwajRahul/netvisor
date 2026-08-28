@@ -7,6 +7,7 @@
 //! for them.
 
 use crate::daemon::discovery::types::warnings::ProvisionalSubnet;
+use crate::server::interfaces::r#impl::base::InterfaceBase;
 use crate::server::ip_addresses::r#impl::base::IPAddressBase;
 use crate::server::networks::r#impl::Network;
 use crate::server::subnets::r#impl::{
@@ -44,7 +45,10 @@ impl HostService {
         let mut warnings = Vec::new();
         // Evidence per range this pass created, folded into the standing report below.
         let mut evidence: HashMap<Uuid, ProvisionalSubnet> = HashMap::new();
-        for range in infer_ranges(far_ends, &live) {
+        // Which subnet each far end's address landed in, keyed the way minting dedups. Far ends
+        // that published no address never appear here and are minted without one.
+        let mut placements: HashMap<String, Uuid> = HashMap::new();
+        for range in infer_ranges(&far_ends, &live) {
             let mut subnet = Subnet::new(SubnetBase {
                 cidr: range.cidr,
                 // The whole point: a range nothing read, only inferred, so the row asks to be
@@ -89,8 +93,9 @@ impl HostService {
                 "Inferred a subnet from far-end addresses"
             );
 
-            self.mint_far_end_hosts(network_id, &created, &range.far_ends, limit_ctx)
-                .await;
+            for addressed in &range.far_ends {
+                placements.insert(addressed.far_end.chassis_id.clone(), created.id);
+            }
 
             evidence.insert(
                 created.id,
@@ -105,17 +110,25 @@ impl HostService {
                     sys_names: range
                         .far_ends
                         .iter()
-                        .filter_map(|f| f.sys_name.clone())
+                        .filter_map(|f| f.far_end.sys_name.clone())
                         .collect(),
-                    seen_by_host_ids: range.far_ends.iter().map(|f| f.host_id).collect(),
+                    seen_by_host_ids: range.far_ends.iter().map(|f| f.far_end.host_id).collect(),
                     widened_by_vlan: range.widened_by_vlan,
                 },
             );
         }
 
-        // Only ranges *created here* make a re-resolution worth running; the standing report below
-        // says nothing new about what this pass can place.
-        let minted = !evidence.is_empty();
+        // Every far end, not only those a range was created for. A device that published no address
+        // is still one nothing has contacted, and minting it is what turns an unresolved neighbour
+        // into a host the next pass can place and the topology can draw.
+        let minted = self
+            .mint_far_end_hosts(network_id, &far_ends, &placements, limit_ctx)
+            .await;
+
+        // A re-resolution is worth running only when a *host* was minted, which is what makes a
+        // previously unresolved neighbour resolve. A range created without one changes nothing the
+        // second pass would see, and the standing report below says nothing new either way.
+        let minted = minted > 0;
         warnings.extend(
             self.provisional_subnet_warnings(network_id, evidence)
                 .await?,
@@ -225,16 +238,19 @@ impl HostService {
     async fn mint_far_end_hosts(
         &self,
         network_id: Uuid,
-        subnet: &Subnet,
         far_ends: &[UnplacedFarEnd],
+        placements: &HashMap<String, Uuid>,
         limit_ctx: Option<&HostLimitContext>,
-    ) {
-        // One host per address: several ports naming the same far end is one device, and minting
-        // per sighting would put a row on the map for every cable.
-        let mut minted: HashSet<IpAddr> = HashSet::new();
+    ) -> usize {
+        // One host per chassis id, not per address: several ports naming the same far end is one
+        // device, and minting per sighting would put a row on the map for every cable. The chassis
+        // id rather than the address because every far end has one — it is the hard gate in
+        // `unplaced_far_end` — and because it is what `select_matching_host` later merges on.
+        let mut seen: HashSet<&str> = HashSet::new();
+        let mut minted = 0usize;
 
         for far_end in far_ends {
-            if !minted.insert(far_end.address) {
+            if !seen.insert(far_end.chassis_id.as_str()) {
                 continue;
             }
 
@@ -253,29 +269,67 @@ impl HostService {
             });
             // Ranked, not assigned: a sysName is reverse-DNS-grade evidence, so a real scan's
             // hostname or a name a person types still outranks it.
-            host.base.apply_name(match &far_end.sys_name {
-                Some(name) => HostName::Hostname(name.clone()),
-                None => HostName::Ip(far_end.address),
-            });
+            //
+            // A far end with neither is left `Unnamed` rather than named after its chassis id.
+            // The chassis id is already a column, and `TopologyContext::host_container_header`
+            // reads it as the last rung of the *display* ladder — copying it into the name would
+            // duplicate the evidence and then have to be displaced when a real name arrives.
+            match (&far_end.sys_name, far_end.address) {
+                (Some(name), _) => host.base.apply_name(HostName::Hostname(name.clone())),
+                (None, Some(address)) => host.base.apply_name(HostName::Ip(address)),
+                (None, None) => false,
+            };
             host.last_seen_at = Utc::now();
 
-            let ip_address = IPAddress::new(IPAddressBase {
-                network_id,
-                host_id: Uuid::nil(), // Server assigns.
-                subnet_id: subnet.id,
-                ip_address: far_end.address,
-                mac_address: None,
-                name: None,
-                position: 0,
-            });
+            // An address only where a range was actually created for it. A far end that published
+            // none, or whose range was refused, becomes a host with no address — legal, and what
+            // `select_matching_host`'s chassis-id branch exists to match.
+            let ip_addresses = match far_end
+                .address
+                .zip(placements.get(&far_end.chassis_id).copied())
+            {
+                Some((address, subnet_id)) => vec![IPAddress::new(IPAddressBase {
+                    network_id,
+                    host_id: Uuid::nil(), // Server assigns.
+                    subnet_id,
+                    ip_address: address,
+                    mac_address: None,
+                    name: None,
+                    position: 0,
+                })],
+                None => Vec::new(),
+            };
+
+            // The port the far end says it answers on. Only where it published a name for it:
+            // `if_name` is what `match_existing_interface` matches on first and what the live
+            // unique index covers, and a row with no name, no ifIndex and no MAC has no key at
+            // all — it would match nothing on the next scan and be inserted again, forever.
+            let interfaces = match &far_end.port_name {
+                Some(port_name) => vec![Interface::new(InterfaceBase {
+                    network_id,
+                    host_id: Uuid::nil(), // Server assigns.
+                    // Both, and both the advertised name: `if_descr` is NOT NULL and validated
+                    // non-empty, and `if_name` is the identity. A later SNMP walk of this device
+                    // returns the same string as `ifName`, which is what upgrades this row in
+                    // place instead of adding a second one beside it.
+                    if_descr: port_name.clone(),
+                    if_name: Some(port_name.clone()),
+                    mac_address: far_end.port_mac.as_deref().and_then(|mac| mac.parse().ok()),
+                    // if_index, if_type, admin_status and oper_status stay `None`. An
+                    // advertisement carries none of them, and the columns are nullable precisely
+                    // so this does not have to guess.
+                    ..Default::default()
+                })],
+                None => Vec::new(),
+            };
 
             if let Err(e) = self
                 .create_with_children(
                     host,
-                    vec![ip_address],
+                    ip_addresses,
                     vec![],
                     vec![],
-                    vec![],
+                    interfaces,
                     vec![],
                     ConflictBehavior::Upsert,
                     AuthenticatedEntity::System,
@@ -290,11 +344,16 @@ impl HostService {
             {
                 tracing::warn!(
                     network_id = %network_id,
-                    address = %far_end.address,
+                    chassis_id = %far_end.chassis_id,
+                    address = ?far_end.address,
                     error = %e,
                     "Could not mint a host for an unplaceable far end"
                 );
+            } else {
+                minted += 1;
             }
         }
+
+        minted
     }
 }

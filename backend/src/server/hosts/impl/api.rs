@@ -556,14 +556,16 @@ impl InterfaceInput {
             base: InterfaceBase {
                 host_id,
                 network_id,
-                if_index: self.if_index,
+                if_index: Some(self.if_index),
                 if_descr: self.if_descr,
                 if_name: None,
                 if_alias: self.if_alias,
-                if_type: self.if_type.unwrap_or(1), // 1 = other
+                // Straight through. These were coerced to "other"/Up/Up, which recorded a
+                // guess as though the caller had reported it; absent now means absent.
+                if_type: self.if_type,
                 speed_bps: self.speed_bps,
-                admin_status: self.admin_status.unwrap_or_default(),
-                oper_status: self.oper_status.unwrap_or_default(),
+                admin_status: self.admin_status,
+                oper_status: self.oper_status,
                 mac_address: self.mac_address,
                 ip_address_id: self.ip_address_id,
                 // Neighbor resolution fields - not set from API, resolved server-side
@@ -741,6 +743,17 @@ pub struct HostResponse {
     // Host fields
     /// Human-facing name for the host.
     pub name: String,
+    /// What to call this host when `name` is empty: its hostname, sysName, chassis id or first
+    /// address, whichever it has. `None` when nothing identifies it.
+    ///
+    /// Read-only and separate from `name` rather than folded into it. `name` is what a person
+    /// typed and what the editor writes back, so filling it with a fallback would turn a chassis
+    /// id into a name the next save persists. Computed from [`Host::display_name`], the same
+    /// ladder topology titles a host container with, so a host cannot be called one thing in the
+    /// list and another on the map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(read_only)]
+    pub display_name: Option<String>,
     /// Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever
     /// supplied the name, not by the caller.
     #[serde(default)]
@@ -833,6 +846,8 @@ impl HostResponse {
             updated_at,
             last_seen_at,
             name,
+            // Derived from the fields below on the way out; nothing to carry back in.
+            display_name: _,
             name_source,
             network_id,
             hostname,
@@ -909,6 +924,11 @@ impl HostResponse {
         services: Vec<Service>,
         interfaces: Vec<Interface>,
     ) -> Self {
+        // Before the destructure below consumes `host`. The same ladder topology titles a host
+        // container with, so the two surfaces cannot disagree about what a nameless device is
+        // called.
+        let display_name = host.display_name(ip_addresses.iter());
+
         // Exhaustive destructuring of Host
         let Host {
             id,
@@ -960,6 +980,7 @@ impl HostResponse {
             last_seen_at,
             name_source: name.source(),
             name: name.value().to_string(),
+            display_name,
             network_id,
             hostname,
             description,

@@ -1434,14 +1434,16 @@ fn convert_snmp_if_entry(
     Interface::new(InterfaceBase {
         host_id: Uuid::nil(), // Placeholder - server will set correct host_id
         network_id,
-        if_index: entry.if_index,
+        if_index: Some(entry.if_index),
         if_descr: entry.if_descr.clone().unwrap_or_default(),
         if_name: entry.if_name.clone(),
         if_alias: entry.if_alias.clone(),
-        if_type: entry.if_type.unwrap_or(1), // 1 = "other"
+        // Straight through: an ifTable that omitted ifType said nothing about it, and `1`
+        // ("other") is a type the agent could have reported.
+        if_type: entry.if_type,
         speed_bps: entry.if_speed.map(|s| s as i64),
-        admin_status: IfAdminStatus::from(entry.if_admin_status.unwrap_or(1)),
-        oper_status: IfOperStatus::from(entry.if_oper_status.unwrap_or(1)),
+        admin_status: Some(IfAdminStatus::from(entry.if_admin_status.unwrap_or(1))),
+        oper_status: Some(IfOperStatus::from(entry.if_oper_status.unwrap_or(1))),
         mac_address: entry.if_phys_address, // MAC from SNMP ifPhysAddress
         ip_address_id: None,                // Linked server-side via MAC matching
         neighbor: None,                     // Resolved server-side from LLDP/CDP data
@@ -1567,10 +1569,10 @@ mod tests {
         );
 
         // ifTable data survives the enrichment-free conversion.
-        assert_eq!(interface.base.if_index, 7);
+        assert_eq!(interface.base.if_index, Some(7));
         assert_eq!(interface.base.if_descr, "Port 7");
         assert_eq!(interface.base.if_name.as_deref(), Some("swp7"));
-        assert_eq!(interface.base.if_type, 6);
+        assert_eq!(interface.base.if_type, Some(6));
         assert_eq!(interface.base.speed_bps, Some(1_000_000_000));
         assert_eq!(interface.base.network_id, network_id);
 

@@ -174,7 +174,15 @@ impl ViewBuilder for L2Builder {
                 // `interfaces.neighbor` with no type check at all (see the loop above), so a
                 // neighbour that resolved onto a switch's VLAN or bridge interface used to produce
                 // an edge pointing at a node that was never created.
-                if EXCLUDED_IF_TYPES.contains(&entry.base.if_type) && !entry.has_neighbor() {
+                // An unread type is not an excluded one. A port learned from a neighbour's
+                // advertisement has no ifType, and dropping it for that would remove exactly the
+                // far ends this view exists to draw.
+                if entry
+                    .base
+                    .if_type
+                    .is_some_and(|if_type| EXCLUDED_IF_TYPES.contains(&if_type))
+                    && !entry.has_neighbor()
+                {
                     continue;
                 }
 
@@ -226,7 +234,7 @@ impl ViewBuilder for L2Builder {
                         is_trunk_port: interface
                             .and_then(|e| e.base.vlan_ids.as_ref())
                             .is_some_and(|v| !v.is_empty()),
-                        oper_status: interface.map(|e| e.base.oper_status),
+                        oper_status: interface.and_then(|e| e.base.oper_status),
                     })
                 } else {
                     None
@@ -285,10 +293,10 @@ mod tests {
             updated_at: Utc::now(),
             base: InterfaceBase {
                 host_id,
-                if_index,
+                if_index: Some(if_index),
                 if_descr: format!("GigabitEthernet0/{if_index}"),
                 if_name: Some(format!("Gi0/{if_index}")),
-                if_type,
+                if_type: Some(if_type),
                 speed_bps: Some(1_000_000_000),
                 neighbor,
                 ..Default::default()

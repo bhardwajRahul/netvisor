@@ -171,12 +171,12 @@ fn map_interfaces(
         interfaces.push(Interface::new(InterfaceBase {
             host_id: Uuid::nil(),
             network_id,
-            if_index: 1,
+            if_index: Some(1),
             if_descr: name.clone(),
             if_name: Some(name),
-            if_type: IF_TYPE_ETHERNET,
-            admin_status: IfAdminStatus::Up,
-            oper_status: IfOperStatus::Up,
+            if_type: Some(IF_TYPE_ETHERNET),
+            admin_status: Some(IfAdminStatus::Up),
+            oper_status: Some(IfOperStatus::Up),
             ..Default::default()
         }));
     }
@@ -241,22 +241,22 @@ fn port_to_interface(port: &InstantOnPort, position: usize, network_id: Uuid) ->
     Interface::new(InterfaceBase {
         host_id: Uuid::nil(),
         network_id,
-        if_index,
+        if_index: Some(if_index),
         if_descr: name.clone(),
         if_name: Some(name),
-        if_type: IF_TYPE_ETHERNET,
+        if_type: Some(IF_TYPE_ETHERNET),
         speed_bps: port
             .speed
             .map(|s| s.as_i64() * 1_000_000)
             .filter(|s| *s > 0),
-        admin_status: match port.enabled.map(|e| e.as_bool()) {
+        admin_status: Some(match port.enabled.map(|e| e.as_bool()) {
             Some(false) => IfAdminStatus::Down,
             _ => IfAdminStatus::Up,
-        },
-        oper_status: match port.up.map(|u| u.as_bool()) {
+        }),
+        oper_status: Some(match port.up.map(|u| u.as_bool()) {
             Some(true) => IfOperStatus::Up,
             _ => IfOperStatus::Down,
-        },
+        }),
         // The portal's per-port `vlanId` is deliberately not mapped. `InterfaceBase`'s VLAN
         // columns hold VLAN *entity* ids, not raw tags, so recording one would mean resolving it
         // to a VLAN entity — and an access VLAN is not the membership list SNMP walks anyway.
@@ -284,7 +284,7 @@ fn apply_uplink(
     };
     let Some(interface) = interfaces
         .iter_mut()
-        .find(|i| i.base.if_index == local_index)
+        .find(|i| i.base.if_index == Some(local_index))
     else {
         return;
     };
@@ -360,7 +360,10 @@ fn apply_client_macs(
         let Some(index) = index_of_port(device, port_id) else {
             continue;
         };
-        let Some(interface) = interfaces.iter_mut().find(|i| i.base.if_index == index) else {
+        let Some(interface) = interfaces
+            .iter_mut()
+            .find(|i| i.base.if_index == Some(index))
+        else {
             continue;
         };
 
@@ -525,7 +528,7 @@ mod tests {
         device
             .interfaces
             .iter()
-            .find(|i| i.base.if_index == if_index)
+            .find(|i| i.base.if_index == Some(if_index))
             .unwrap_or_else(|| panic!("expected an interface at index {if_index}"))
     }
 
@@ -539,7 +542,7 @@ mod tests {
         let stack = find(&devices, "Core Stack");
 
         assert_eq!(stack.interfaces.len(), 4);
-        let indexes: std::collections::HashSet<i32> =
+        let indexes: std::collections::HashSet<Option<i32>> =
             stack.interfaces.iter().map(|i| i.base.if_index).collect();
         assert_eq!(indexes.len(), 4, "every stack port needs its own if_index");
 
@@ -655,20 +658,20 @@ mod tests {
         // "up": "true" and "enabled": 1 both read as up.
         assert_eq!(
             interface(stack, 2_001_001).base.oper_status,
-            IfOperStatus::Up
+            Some(IfOperStatus::Up)
         );
         assert_eq!(
             interface(stack, 2_001_001).base.admin_status,
-            IfAdminStatus::Up
+            Some(IfAdminStatus::Up)
         );
         // A down port is reported honestly.
         assert_eq!(
             interface(stack, 2_001_002).base.oper_status,
-            IfOperStatus::Down
+            Some(IfOperStatus::Down)
         );
         assert_eq!(
             interface(stack, 2_001_002).base.admin_status,
-            IfAdminStatus::Down
+            Some(IfAdminStatus::Down)
         );
     }
 

@@ -339,7 +339,7 @@ pub(crate) async fn insert_demo_data(
             .map(|h| (h.id, h.base.name.to_string()))
             .collect();
 
-        let mut if_entry_lookup: HashMap<(String, i32), Uuid> = HashMap::new();
+        let mut if_entry_lookup: HashMap<(String, Option<i32>), Uuid> = HashMap::new();
         for entry in &demo_data.interfaces {
             if let Some(host_name) = host_id_to_name.get(&entry.base.host_id) {
                 if_entry_lookup.insert((host_name.clone(), entry.base.if_index), entry.id);
@@ -351,11 +351,11 @@ pub(crate) async fn insert_demo_data(
         for neighbor_update in &demo_data.neighbor_updates {
             let source_key = (
                 neighbor_update.source_host_name.clone(),
-                neighbor_update.source_if_index,
+                Some(neighbor_update.source_if_index),
             );
             let target_key = (
                 neighbor_update.target_host_name.clone(),
-                neighbor_update.target_if_index,
+                Some(neighbor_update.target_if_index),
             );
             if let (Some(&source_id), Some(&target_id)) = (
                 if_entry_lookup.get(&source_key),

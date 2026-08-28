@@ -1,5 +1,5 @@
 use crate::server::lldp::{
-    AdvertisedIdentity, LldpChassisId, LldpPortId, is_usable_identity_address,
+    AdvertisedFarEndPort, AdvertisedIdentity, LldpChassisId, LldpPortId, is_usable_identity_address,
 };
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::types::{
@@ -298,8 +298,16 @@ pub struct InterfaceBase {
     pub host_id: Uuid,
     /// The network this entity belongs to.
     pub network_id: Uuid,
-    /// SNMP ifIndex - stable identifier within device
-    pub if_index: i32,
+    /// SNMP ifIndex — stable identifier within device, where one was read.
+    ///
+    /// `None` for a port learned from a neighbour's LLDP/CDP advertisement rather than from the
+    /// device's own ifTable: the far end tells us the port exists and what it is called, never its
+    /// index. `0` used to stand in for that, which is a real ifIndex on some agents and made
+    /// "never read" indistinguishable from "read as zero".
+    ///
+    /// Not the identity of the row. `match_existing_interface` tries `(host_id, if_name)` first
+    /// and the live unique index is on that pair; the index tier only runs for a row that has one.
+    pub if_index: Option<i32>,
     /// SNMP ifDescr - interface description (e.g., GigabitEthernet0/1)
     #[validate(length(min = 1, message = "Interface description is required"))]
     pub if_descr: String,
@@ -307,14 +315,26 @@ pub struct InterfaceBase {
     pub if_name: Option<String>,
     /// SNMP ifAlias - user-configured description
     pub if_alias: Option<String>,
-    /// SNMP ifType - IANAifType integer (6=ethernet, 24=loopback, etc.)
-    pub if_type: i32,
+    /// SNMP ifType - IANAifType integer (6=ethernet, 24=loopback, etc.), where one was read.
+    ///
+    /// `None` is *unknown*, never a type. Everything that filters on this must treat unknown as
+    /// included — a port at the far end of a cable is physical by construction, and excluding it
+    /// for lack of a number would drop the row from resolution and from the map.
+    pub if_type: Option<i32>,
     /// Interface speed from ifSpeed/ifHighSpeed in bits per second
     pub speed_bps: Option<i64>,
-    /// SNMP ifAdminStatus: 1=up, 2=down, 3=testing
-    pub admin_status: IfAdminStatus,
-    /// SNMP ifOperStatus: 1=up, 2=down, 3=testing, 4=unknown, 5=dormant, 6=notPresent, 7=lowerLayerDown
-    pub oper_status: IfOperStatus,
+    /// SNMP ifAdminStatus: 1=up, 2=down, 3=testing, or `None` where nothing read it.
+    ///
+    /// Optional rather than defaulting to `Up`: an advertisement carries no status, and recording
+    /// one as up would be a claim nothing made.
+    pub admin_status: Option<IfAdminStatus>,
+    /// SNMP ifOperStatus: 1=up, 2=down, 3=testing, 4=unknown, 5=dormant, 6=notPresent,
+    /// 7=lowerLayerDown — or `None` where nothing read it.
+    ///
+    /// Deliberately not `IfOperStatus::Unknown`, which is the MIB's value 4 and means *the device
+    /// said it does not know*. "We never asked" is a different statement, and folding the two
+    /// would make an inferred port indistinguishable from one that reported unknown.
+    pub oper_status: Option<IfOperStatus>,
 
     // Local links
     /// MAC address from SNMP ifPhysAddress - immutable once set
@@ -388,14 +408,14 @@ impl Default for InterfaceBase {
         Self {
             host_id: Uuid::nil(),
             network_id: Uuid::nil(),
-            if_index: 0,
+            if_index: None,
             if_descr: String::new(),
             if_name: None,
             if_alias: None,
-            if_type: 1, // other
+            if_type: None,
             speed_bps: None,
-            admin_status: IfAdminStatus::Up,
-            oper_status: IfOperStatus::Up,
+            admin_status: None,
+            oper_status: None,
             mac_address: None,
             ip_address_id: None,
             neighbor: None,
@@ -477,11 +497,15 @@ impl ChangeTriggersTopologyStaleness<Interface> for Interface {
 
 impl Display for Interface {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Interface {} (ifIndex {}): {}",
-            self.id, self.base.if_index, self.base.if_descr
-        )
+        match self.base.if_index {
+            Some(if_index) => write!(
+                f,
+                "Interface {} (ifIndex {}): {}",
+                self.id, if_index, self.base.if_descr
+            ),
+            // A port learned from a neighbour's advertisement has no index to name it by.
+            None => write!(f, "Interface {}: {}", self.id, self.base.if_descr),
+        }
     }
 }
 
@@ -502,14 +526,17 @@ impl Interface {
         }
     }
 
-    /// Returns true if interface is operationally up
+    /// Returns true if interface is operationally up.
+    ///
+    /// An unread status is not up. "We never asked" is not evidence of health, and reporting it
+    /// as up is the failure mode the nullable column exists to prevent.
     pub fn is_up(&self) -> bool {
-        self.base.oper_status == IfOperStatus::Up
+        self.base.oper_status == Some(IfOperStatus::Up)
     }
 
-    /// Returns true if interface is administratively up
+    /// Returns true if interface is administratively up. Unread is not up — see [`Self::is_up`].
     pub fn is_admin_up(&self) -> bool {
-        self.base.admin_status == IfAdminStatus::Up
+        self.base.admin_status == Some(IfAdminStatus::Up)
     }
 
     /// Get display name - prefer ifAlias if set, otherwise ifDescr
@@ -577,6 +604,30 @@ impl Interface {
                 .or(port_id_address)
                 .or(self.base.cdp_address)
                 .filter(is_usable_identity_address),
+        }
+    }
+
+    /// What the far end published about its *own* port on this cable.
+    ///
+    /// A sibling of [`Self::advertised_identity`], and split from it for the same reason that one
+    /// exists: the device and the port it answers on are two different subjects, and folding the
+    /// port into the identity object would invite resolving a device by a port's name.
+    ///
+    /// The name is what an interface minted for the far end is keyed on, so the order is by how
+    /// closely each source matches the `ifName` a real walk of that device would return.
+    /// `lldpRemPortId` with a naming subtype is that column outright; a CDP port id is the same
+    /// thing under another protocol; `lldpRemPortDesc` is `ifDescr`, which is a description before
+    /// it is a name and so goes last.
+    pub fn advertised_far_end_port(&self) -> AdvertisedFarEndPort<'_> {
+        let port_id = self.base.lldp_port_id.as_ref();
+        AdvertisedFarEndPort {
+            name: port_id
+                .and_then(LldpPortId::port_name)
+                .or(self.base.cdp_port_id.as_deref())
+                .or(self.base.lldp_port_desc.as_deref())
+                .map(str::trim)
+                .filter(|name| !name.is_empty()),
+            mac: port_id.and_then(LldpPortId::port_mac),
         }
     }
 

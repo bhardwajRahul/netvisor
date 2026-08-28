@@ -435,14 +435,14 @@ pub fn interface() -> Interface {
         base: InterfaceBase {
             host_id: ids::HOST,
             network_id: ids::NETWORK,
-            if_index: 1,
+            if_index: Some(1),
             if_descr: "GigabitEthernet0/1".to_string(),
             if_name: Some("Gi0/1".to_string()),
             if_alias: Some("Uplink to Core Switch".to_string()),
-            if_type: 6,                     // ethernet
+            if_type: Some(6),               // ethernet
             speed_bps: Some(1_000_000_000), // 1 Gbps
-            admin_status: IfAdminStatus::Up,
-            oper_status: IfOperStatus::Up,
+            admin_status: Some(IfAdminStatus::Up),
+            oper_status: Some(IfOperStatus::Up),
             mac_address: Some(MacAddress::new([0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE])),
             ip_address_id: Some(ids::INTERFACE),
             neighbor: None,

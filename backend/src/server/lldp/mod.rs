@@ -151,6 +151,19 @@ pub struct AdvertisedIdentity<'a> {
     pub address: Option<IpAddr>,
 }
 
+/// What a neighbour advertised about its *own* port, as opposed to about itself.
+///
+/// Separate from [`AdvertisedIdentity`] deliberately. A port name is not an identity — resolving a
+/// device by one is how a far end ends up merged with whatever else happens to have a port called
+/// `eth0` — and keeping the two apart means neither can be passed where the other is wanted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AdvertisedFarEndPort<'a> {
+    /// The far end's name for the port, where it published one that names rather than encodes.
+    pub name: Option<&'a str>,
+    /// The port's own MAC, where the port id carried one.
+    pub mac: Option<&'a str>,
+}
+
 impl AdvertisedIdentity<'_> {
     /// Resolve a far-end *device* from what it published about itself, independent of any chassis
     /// id.
@@ -405,6 +418,31 @@ impl LldpPortId {
             5 => Some(Self::InterfaceName(decode_tlv_text(value))),
             6 => Some(Self::AgentCircuitId(decode_tlv_text(value))),
             7 => Some(Self::LocallyAssigned(decode_tlv_text(value))),
+            _ => None,
+        }
+    }
+
+    /// The far end's own name for this port, where the subtype names a port at all.
+    ///
+    /// `None` for the two subtypes that encode something else entirely: a MAC identifies the port
+    /// without naming it (see [`Self::port_mac`]), and a network address names the device. Both
+    /// would look like names if stringified, and an interface row keyed on one would never match
+    /// the ifTable row it stands for. `AgentCircuitId` is excluded for the same reason — a DHCP
+    /// relay circuit id is an access-loop identifier, not the port's name.
+    pub fn port_name(&self) -> Option<&str> {
+        match self {
+            Self::InterfaceName(s)
+            | Self::InterfaceAlias(s)
+            | Self::PortComponent(s)
+            | Self::LocallyAssigned(s) => Some(s.as_str()),
+            Self::MacAddress(_) | Self::NetworkAddress(_) | Self::AgentCircuitId(_) => None,
+        }
+    }
+
+    /// The port's own MAC, where the subtype carried one. Evidence, though not a name.
+    pub fn port_mac(&self) -> Option<&str> {
+        match self {
+            Self::MacAddress(mac) => Some(mac.as_str()),
             _ => None,
         }
     }

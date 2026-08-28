@@ -143,12 +143,12 @@ fn map_interfaces(
         interfaces.push(Interface::new(InterfaceBase {
             host_id: Uuid::nil(),
             network_id,
-            if_index,
+            if_index: Some(if_index),
             if_descr: name.clone(),
             if_name: Some(name),
-            if_type: IF_TYPE_ETHERNET,
-            admin_status: IfAdminStatus::Up,
-            oper_status: IfOperStatus::Up,
+            if_type: Some(IF_TYPE_ETHERNET),
+            admin_status: Some(IfAdminStatus::Up),
+            oper_status: Some(IfOperStatus::Up),
             // Unlike a switch's repeated port MACs this is the device's own distinct
             // interface address, so it is safe (and useful) to record.
             mac_address: uplink
@@ -197,22 +197,22 @@ fn port_to_interface(port: &UnifiPort, network_id: Uuid, device_mac: Option<&str
     Interface::new(InterfaceBase {
         host_id: Uuid::nil(),
         network_id,
-        if_index,
+        if_index: Some(if_index),
         if_descr: name.clone(),
         if_name: Some(name),
-        if_type: IF_TYPE_ETHERNET,
+        if_type: Some(IF_TYPE_ETHERNET),
         speed_bps: port
             .speed
             .map(|s| s.as_i64() * 1_000_000)
             .filter(|s| *s > 0),
-        admin_status: match port.enable.map(|e| e.as_bool()) {
+        admin_status: Some(match port.enable.map(|e| e.as_bool()) {
             Some(false) => IfAdminStatus::Down,
             _ => IfAdminStatus::Up,
-        },
-        oper_status: match port.up.map(|u| u.as_bool()) {
+        }),
+        oper_status: Some(match port.up.map(|u| u.as_bool()) {
             Some(true) => IfOperStatus::Up,
             _ => IfOperStatus::Down,
-        },
+        }),
         mac_address,
         // `None` rather than an empty vec: the server's unresolved-FDB filter keys on the
         // column being non-NULL.
@@ -230,7 +230,10 @@ fn apply_uplink(interfaces: &mut [Interface], device: &UnifiDevice) {
     let Some(port_idx) = uplink.port_idx.map(|p| p.as_i32()) else {
         return;
     };
-    let Some(interface) = interfaces.iter_mut().find(|i| i.base.if_index == port_idx) else {
+    let Some(interface) = interfaces
+        .iter_mut()
+        .find(|i| i.base.if_index == Some(port_idx))
+    else {
         return;
     };
 
@@ -261,7 +264,10 @@ fn apply_downlinks(
         let Some(port_idx) = downlink.port_idx.map(|p| p.as_i32()) else {
             continue;
         };
-        let Some(interface) = interfaces.iter_mut().find(|i| i.base.if_index == port_idx) else {
+        let Some(interface) = interfaces
+            .iter_mut()
+            .find(|i| i.base.if_index == Some(port_idx))
+        else {
             continue;
         };
 
@@ -293,7 +299,10 @@ fn apply_lldp_table(interfaces: &mut [Interface], device: &UnifiDevice) {
         let Some(local_idx) = entry.local_port_idx.map(|p| p.as_i32()) else {
             continue;
         };
-        let Some(interface) = interfaces.iter_mut().find(|i| i.base.if_index == local_idx) else {
+        let Some(interface) = interfaces
+            .iter_mut()
+            .find(|i| i.base.if_index == Some(local_idx))
+        else {
             continue;
         };
 
@@ -466,7 +475,7 @@ mod tests {
         device
             .interfaces
             .iter()
-            .find(|i| i.base.if_index == if_index)
+            .find(|i| i.base.if_index == Some(if_index))
             .unwrap_or_else(|| panic!("expected an interface at index {if_index}"))
     }
 
@@ -485,8 +494,8 @@ mod tests {
         let switch = find(&devices, "Core Switch");
         let port = interface(switch, 5);
         assert_eq!(port.base.speed_bps, Some(1_000_000_000));
-        assert_eq!(port.base.oper_status, IfOperStatus::Up);
-        assert_eq!(port.base.admin_status, IfAdminStatus::Up);
+        assert_eq!(port.base.oper_status, Some(IfOperStatus::Up));
+        assert_eq!(port.base.admin_status, Some(IfAdminStatus::Up));
         // "port_idx": "24" on the uplink still lands the neighbor on port 24.
         assert!(interface(switch, 24).base.lldp_chassis_id.is_some());
     }
@@ -682,7 +691,7 @@ mod tests {
         let ap = find(&devices, "Office AP");
         assert_eq!(ap.interfaces.len(), 1);
         let uplink = &ap.interfaces[0];
-        assert_eq!(uplink.base.if_index, 1);
+        assert_eq!(uplink.base.if_index, Some(1));
         assert_eq!(
             uplink
                 .base

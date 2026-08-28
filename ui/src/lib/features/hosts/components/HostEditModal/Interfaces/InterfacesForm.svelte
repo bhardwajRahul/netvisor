@@ -21,8 +21,10 @@
 
 	let { interfaces, targetEntityId = $bindable(null) }: Props = $props();
 
-	// Sort interfaces by if_index
-	let sortedIfEntries = $derived([...interfaces].sort((a, b) => a.if_index - b.if_index));
+	// Sorted by if_index, with ports that never had one read sorting last.
+	let sortedIfEntries = $derived(
+		[...interfaces].sort((a, b) => (a.if_index ?? Infinity) - (b.if_index ?? Infinity))
+	);
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col">
