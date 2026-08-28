@@ -12,7 +12,7 @@
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
-	import { Plus, Trash2, Edit, HelpCircle } from 'lucide-svelte';
+	import { Plus, Trash2, Edit, CloudAlert } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import {
@@ -119,10 +119,12 @@
 		// Only where there is something to resolve. A badge that says a range was guessed and
 		// offers no way to settle it leaves the operator with the question and no answer.
 		if (isProvisionalCidr(subnet)) {
+			// Neutral, like Edit. The badge in the row already carries the colour, and the two
+			// variants that would stand out are spoken for: amber means stale and red means broken,
+			// which is exactly what an assumed range is not.
 			actions.push({
 				label: subnets_resolveRange(),
-				icon: HelpCircle,
-				class: 'btn-icon-info',
+				icon: CloudAlert,
 				onClick: () => handleResolveRange(subnet)
 			});
 		}
