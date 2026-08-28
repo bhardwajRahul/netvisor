@@ -187,13 +187,15 @@ impl DiscoveryWarningCode {
             Self::ScanTimeLimitWithEstimate => &["hours", "hosts_not_scanned", "minutes_remaining"],
             Self::ScanTimeLimit => &["hours", "hosts_not_scanned"],
 
+            // No `examples` slot: the pairs these name are a list, and the UI renders them as one
+            // under the sentence rather than joining eight of them into its last clause.
             Self::LldpNeighbourNotFound
             | Self::LldpNeighbourAmbiguous
             | Self::LldpPortNoStrategy
             | Self::LldpPortNotFound
-            | Self::LldpPortAmbiguous => &["count", "examples"],
+            | Self::LldpPortAmbiguous => &["count"],
 
-            Self::ProvisionalSubnetInferred => &["count", "examples"],
+            Self::ProvisionalSubnetInferred => &["count"],
 
             Self::WarningsTruncated => &["elided"],
             Self::Unknown => &["detail"],
@@ -517,22 +519,22 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
                 "Scan hit its time limit ({hours}h) — {hosts_not_scanned} host(s) not scanned. Raise Max Discovery Duration or rescan."
             }
             Self::LldpNeighbourNotFound => {
-                "LLDP/CDP neighbours name devices this network has not discovered ({count} in total), so they draw no links. This is expected where the far end is an endpoint or unmanaged device; a device that should have been scanned means the identifier it advertises is not one this network holds. {examples}"
+                "LLDP/CDP neighbours name devices this network has not discovered ({count} in total), so they draw no links. This is expected where the far end is an endpoint or unmanaged device; a device that should have been scanned means the identifier it advertises is not one this network holds."
             }
             Self::LldpNeighbourAmbiguous => {
-                "LLDP/CDP neighbours advertise an identifier that several hosts on this network hold ({count} in total), so none of them can be picked and no link is drawn. This is usually duplicate records for one device rather than a device that was missed — consolidate the duplicates and the link resolves. {examples}"
+                "LLDP/CDP neighbours advertise an identifier that several hosts on this network hold ({count} in total), so none of them can be picked and no link is drawn. This is usually duplicate records for one device rather than a device that was missed — consolidate the duplicates and the link resolves."
             }
             Self::LldpPortNoStrategy => {
-                "LLDP/CDP neighbours resolved to a device but advertise a port id of a subtype there is no lookup for ({count} in total), so Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
+                "LLDP/CDP neighbours resolved to a device but advertise a port id of a subtype there is no lookup for ({count} in total), so Physical Topology draws a dashed device-level link instead of a port-to-port one."
             }
             Self::LldpPortNotFound => {
-                "LLDP/CDP neighbours resolved to a device but no port on it matches the advertised port id ({count} in total), so Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
+                "LLDP/CDP neighbours resolved to a device but no port on it matches the advertised port id ({count} in total), so Physical Topology draws a dashed device-level link instead of a port-to-port one."
             }
             Self::LldpPortAmbiguous => {
-                "LLDP/CDP neighbours resolved to a device but several of its ports match the advertised port id ({count} in total), so it identifies none and Physical Topology draws a dashed device-level link instead of a port-to-port one. {examples}"
+                "LLDP/CDP neighbours resolved to a device but several of its ports match the advertised port id ({count} in total), so it identifies none and Physical Topology draws a dashed device-level link instead of a port-to-port one."
             }
             Self::ProvisionalSubnetInferred => {
-                "{count} subnet(s) on this network have a range Scanopy assumed rather than read, because devices reported addresses in them that nothing scanned holds. Nothing advertises a netmask, so the range around an address is a convention — confirm or correct it on the subnet. No daemon has an interface on these ranges, and they are reported on every scan until confirmed. {examples}"
+                "{count} subnet(s) on this network have a range Scanopy assumed rather than read, because devices reported addresses in them that nothing scanned holds. Nothing advertises a netmask, so the range around an address is a convention — confirm or correct it on the subnet. No daemon has an interface on these ranges, and they are reported on every scan until confirmed."
             }
             Self::WarningsTruncated => {
                 "{elided} further warnings from this scan were not recorded, because it produced more than the scan record holds. Narrow what the scan covers to see the rest."

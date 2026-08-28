@@ -21,9 +21,8 @@
 	different capability keeps a sentence of its own. `warnings.ts` decides that generically, by
 	comparing the slots that are not aggregates.
 
-	The nesting is drawn, not implied. Two levels of `└─` say which row belongs to which card and
-	which explanation belongs to which row, because a bare left margin stops reading as hierarchy
-	the moment a row's chips wrap onto a second line.
+	Nesting is carried by the card and by indentation: an explanation lines up under the title of the
+	row it belongs to, past the chevron that opened it.
 -->
 <script lang="ts">
 	import { ChevronRight } from 'lucide-svelte';
@@ -48,7 +47,7 @@
 		subnets_resolveRange
 	} from '$lib/paraglide/messages';
 	import type { DiscoveryUpdatePayload } from '../../types/api';
-	import { buildWarningReport, type WarningEntry } from '../../utils/warnings';
+	import { buildWarningReport, type WarningEntry, type WarningSubject } from '../../utils/warnings';
 
 	interface Props {
 		payload: DiscoveryUpdatePayload;
@@ -163,6 +162,15 @@
 	const hostColor = entities.getColorHelper('Host').color;
 </script>
 
+{#snippet deviceTag(subject: WarningSubject)}
+	<EntityTag
+		entityRef={entityRef('Host', subject.hostId ?? '', { id: subject.hostId, name: subject.label })}
+		label={subject.label}
+		icon={HostIcon}
+		color={hostColor}
+	/>
+{/snippet}
+
 {#if sections.length === 0}
 	<EmptyState title={discovery_noWarnings()} subtitle={discovery_noWarningsSubtitle()} />
 {:else}
@@ -183,13 +191,8 @@
 						{@const colors = createColorHelper(entry.color)}
 						{@const action = actionFor(entry)}
 						{@const isOpen = openRows.has(entry.code)}
-						<li class="flex items-start gap-2">
-							<!-- The branch into this row, from the card that heads it. -->
-							<span
-								class="text-tertiary/60 mt-1.5 shrink-0 select-none font-mono text-xs leading-5"
-								aria-hidden="true">└─</span
-							>
-							<div class="min-w-0 flex-1">
+						<li>
+							<div class="min-w-0">
 								<div class="flex items-start gap-2">
 									<button
 										type="button"
@@ -208,15 +211,7 @@
 											<span class="flex flex-wrap items-center gap-1">
 												{#each entry.subjects as subject (subject.label)}
 													{#if subject.hostId}
-														<EntityTag
-															entityRef={entityRef('Host', subject.hostId, {
-																id: subject.hostId,
-																name: subject.label
-															})}
-															label={subject.label}
-															icon={HostIcon}
-															color={hostColor}
-														/>
+														{@render deviceTag(subject)}
 													{:else}
 														<!-- No entity to point at, so no colour and no hover state:
 														     an address here is a label, not a link. -->
@@ -240,15 +235,32 @@
 								</div>
 
 								{#if isOpen}
-									<div class="space-y-1 pb-2">
-										{#each entry.details as detail, i (i)}
-											<div class="flex items-start gap-2">
-												<!-- The branch into an explanation, from the row it explains. -->
-												<span
-													class="text-tertiary/60 shrink-0 select-none pl-5 font-mono text-xs leading-5"
-													aria-hidden="true">└─</span
-												>
-												<p class="text-tertiary min-w-0 text-sm">{detail}</p>
+									<div class="space-y-2 pb-2 pl-6">
+										{#each entry.details as statement, i (i)}
+											<div class="space-y-1">
+												<p class="text-tertiary text-sm">{statement.sentence}</p>
+												{#if statement.examples.length > 0}
+													<ul class="space-y-0.5">
+														{#each statement.examples as example, j (j)}
+															<li class="text-tertiary flex flex-wrap items-center gap-1 text-xs">
+																{#if example.near}
+																	{@render deviceTag(example.near)}
+																{/if}
+																{#if example.nearText}<span>{example.nearText}</span>{/if}
+																<!-- The arrow is only drawn with something on both sides: a
+																     far end nothing matched, or a host deleted since the scan,
+																     would otherwise leave it pointing at nothing. -->
+																{#if (example.near || example.nearText) && (example.far || example.farText)}
+																	<span class="text-tertiary/60" aria-hidden="true">→</span>
+																{/if}
+																{#if example.far}
+																	{@render deviceTag(example.far)}
+																{/if}
+																{#if example.farText}<span>{example.farText}</span>{/if}
+															</li>
+														{/each}
+													</ul>
+												{/if}
 											</div>
 										{/each}
 									</div>
