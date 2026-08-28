@@ -70,16 +70,28 @@ export function shouldCull({ renderedCount, measuring, exporting }: CullingCondi
 /**
  * Zoom below which a node stops rendering its contents.
  *
- * A card's own text is 12px, so this is the point it renders at 6px — the floor of legible. Below
- * here the text is decoration that costs DOM, and on a large estate the fitted zoom is far below
- * it anyway: the 5,936-node reproduction fits at 0.0108, where a 250px card is 2.7px wide.
+ * A card mixes four type sizes, so there is no single point where "the text" stops being readable.
+ * Measured against a 6px floor — roughly where glyphs stop resolving at all — and an 8px
+ * comfortable-reading mark:
  *
- * This is deliberately the *only* question answered by zoom alone. What a reduced node then draws
- * depends on how big that particular node is, which `nodeDetail` decides — a switch container and
- * a port-status group are 211px and 2.7px at the same zoom, and treating them alike is what made
- * the first attempt at this render a grid of blank pills with one label floating over them.
+ *   text            used by                                6px at   8px at
+ *   8.8px @ 70%     the MAC address line                     0.68     0.91
+ *   12px            headers, port/speed, status, tags        0.50     0.67
+ *   14px            subtitles, container titles              0.43     0.57
+ *   16px            the largest container title              0.38     0.50
+ *
+ * Set below the 12px floor on purpose. Keeping detail to 0.50 would cut it off exactly as the bulk
+ * text stopped resolving, which is the defensible reading of the arithmetic but the wrong reading
+ * of how the view is used: an operator scanning at 0.4 wants to see which card is which and can
+ * lean in, and having the whole graph turn to boxes at the moment they were still getting something
+ * from it is worse than a few hundred milliseconds of frame time. At 0.35 the container titles are
+ * ~5px and still shaped like words, while the smallest line — the MAC, which has been illegible
+ * since 0.68 — is long past useful either way.
+ *
+ * The trade is stated rather than hidden: below this the graph is boxes, and the indicator in the
+ * viewer says so, because a view that silently drops what it was showing reads as a bug.
  */
-export const DETAIL_ZOOM = 0.5;
+export const DETAIL_ZOOM = 0.35;
 
 /** Below this on-screen width a box is too small to be worth drawing structure inside. */
 export const BOX_MIN_PX = 12;

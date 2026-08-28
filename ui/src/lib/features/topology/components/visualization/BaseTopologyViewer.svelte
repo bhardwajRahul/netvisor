@@ -6,6 +6,7 @@
 		Background,
 		BackgroundVariant,
 		useNodesInitialized,
+		useViewport,
 		type Connection,
 		useSvelteFlow
 	} from '@xyflow/svelte';
@@ -16,10 +17,12 @@
 		topology_levelContainersExpanded,
 		topology_levelSubcontainersExpanded,
 		topology_levelFullyExpanded,
-		topology_parseFailed
+		topology_parseFailed,
+		topology_detailHiddenByZoom
 	} from '$lib/paraglide/messages';
 	import { type Node, type Edge } from '@xyflow/svelte';
 	import { getViewportForBounds, type Rect } from '@xyflow/system';
+	import { shouldSimplify } from '../../pipeline/render-mode';
 	import {
 		ABSOLUTE_MIN_ZOOM,
 		DEFAULT_MIN_ZOOM,
@@ -201,6 +204,7 @@
 	let viewportMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const { fitView, setViewport, getNodes, getInternalNode, getViewport } = useSvelteFlow();
+	const viewerViewport = useViewport();
 	let containerElement: HTMLDivElement;
 
 	/**
@@ -471,6 +475,25 @@
 
 	// Cull off-screen nodes once the graph is big enough — see
 	// `pipeline/render-mode.ts` for why measuring and exporting must suspend it.
+	/**
+	 * Whether the canvas is currently drawing boxes instead of contents.
+	 *
+	 * Read once here for the badge below, rather than inferred from anything the nodes do. A view
+	 * that silently stops showing what it was showing reads as a bug — the original report this
+	 * whole line of work came from was someone describing exactly that — so the drop in detail is
+	 * stated on screen rather than left to be discovered.
+	 *
+	 * Reading the viewport reactively costs one component here, and the value is a boolean, so the
+	 * badge appears and disappears on threshold crossings rather than on every pan frame.
+	 */
+	let detailHidden = $derived(
+		shouldSimplify({
+			zoom: viewerViewport.current.zoom,
+			measuring: measurePassActive,
+			exporting: $isExporting
+		})
+	);
+
 	let cullOffscreen = $derived(
 		shouldCull({
 			renderedCount: $nodes.length,
@@ -1600,6 +1623,12 @@
 			/>
 		{/if}
 
+		{#if detailHidden}
+			<!-- Positioned in flow chrome rather than in the graph, so it is a property of the view
+			     and not of any node. Hidden during export by `shouldSimplify` itself. -->
+			<div class="detail-hidden-badge">{topology_detailHiddenByZoom()}</div>
+		{/if}
+
 		{#if showBranding}
 			<a
 				href="https://scanopy.net?utm_source={isEmbed
@@ -1617,6 +1646,31 @@
 </div>
 
 <style>
+	/*
+	 * Says the canvas is drawing boxes rather than contents.
+	 *
+	 * Bottom-centre: out of the way of the minimap (bottom-left), the sidebar controls (right) and
+	 * the branding badge, and in the one place nothing else claims. Non-interactive — it reports a
+	 * state, it is not a control, and it must not eat pointer events over the graph.
+	 */
+	.detail-hidden-badge {
+		position: absolute;
+		bottom: 12px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 5;
+		padding: 4px 10px;
+		border-radius: 9999px;
+		font-size: 0.75rem;
+		line-height: 1.2;
+		white-space: nowrap;
+		pointer-events: none;
+		color: var(--color-text-tertiary, #64748b);
+		background: var(--color-topology-node-bg, #fff);
+		border: 1px solid var(--color-border, #e2e8f0);
+		box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+	}
+
 	.branding-badge {
 		position: absolute;
 		bottom: 10px;
