@@ -15,6 +15,7 @@
 
 import { getLocale } from '$lib/paraglide/runtime';
 import type { components } from '$lib/api/schema';
+import type { EntityDiscriminants } from '$lib/api/entities';
 import claimSources from '$lib/data/claim-sources.json';
 import discoveryIntegrations from '$lib/data/discovery-integrations.json';
 import malformedNeighbourConsequences from '$lib/data/malformed-neighbour-consequences.json';
@@ -37,15 +38,19 @@ export type DiscoveryWarning = components['schemas']['DiscoveryWarning'];
 export type DiscoveryWarningCode = DiscoveryWarning['code'];
 
 /**
- * What a row is about: a device, a range, or a bare address.
+ * What a row is about: a device, a credential, a range, or a bare address.
  *
- * `hostId` is present only where the warning carried one, which is the LLDP/CDP resolution family.
- * Those render as entity tags that navigate to the device; an address on its own has no entity to
- * point at and renders as plain text.
+ * `entity` is present only where the warning carried an id — the LLDP/CDP resolution family for a
+ * host, the credential family for a credential. Those render as entity tags that navigate to the
+ * record; an address on its own has no entity to point at and renders as plain text.
+ *
+ * Typed by entity rather than by a `hostId` field, which is what it was when only hosts could be
+ * named. A parallel `credentialId` beside it would have meant every consumer growing a second
+ * branch that does the same thing.
  */
 export interface WarningSubject {
 	label: string;
-	hostId?: string;
+	entity?: { type: EntityDiscriminants; id: string };
 }
 
 /**
@@ -123,8 +128,18 @@ type WarningOf<C extends DiscoveryWarningCode> = Extract<DiscoveryWarning, { cod
  */
 export type HostNameLookup = (hostId: string) => string | undefined;
 
-/** No names available: every host segment is omitted, which is how this rendered before names. */
-const NO_HOST_NAMES: HostNameLookup = () => undefined;
+/**
+ * Resolve any entity a warning names to its display name, or `undefined` when it cannot be.
+ *
+ * The generalization of {@link HostNameLookup}: credentials are named the same way hosts are, and
+ * from the same place — the component holds the queries, the warnings hold the ids. `undefined`
+ * stays a normal outcome for the same reasons, plus one more for credentials: a viewer without
+ * permission to read them resolves nothing, and the row falls back to the address alone.
+ */
+export type EntityNameLookup = (type: EntityDiscriminants, id: string) => string | undefined;
+
+/** No names available: every named segment is omitted, which is how this rendered before names. */
+const NO_ENTITY_NAMES: EntityNameLookup = () => undefined;
 
 /** Metadata lookup for a slot value, falling back to the fixture's own English. */
 function nameOf(fixture: { id: string; name: string | null }[], fixtureKey: string, id: string) {
@@ -375,7 +390,7 @@ function describeNeighbour(
 	const label = hostName(w.host_id);
 	const named = `${w.identifier}${w.sys_name ? ` (${w.sys_name})` : ''}`;
 	return {
-		near: label ? { label, hostId: w.host_id } : null,
+		near: label ? { label, entity: { type: 'Host', id: w.host_id } } : null,
 		nearText: w.if_descr,
 		// The far end is the whole point of this warning: nothing on this network matched it, so
 		// there is no device to tag, only the identifier it advertised.
@@ -415,9 +430,9 @@ function describePort(
 	// distinction the tiers turn on, and the phrasing the prose these replaced used.
 	const id = w.port_id ? `via ${w.port_id}${desc}` : `${discovery_warningNoPortId()}${desc}`;
 	return {
-		near: nearLabel ? { label: nearLabel, hostId: w.host_id } : null,
+		near: nearLabel ? { label: nearLabel, entity: { type: 'Host', id: w.host_id } } : null,
 		nearText: w.if_descr,
-		far: farLabel ? { label: farLabel, hostId: w.remote_host_id } : null,
+		far: farLabel ? { label: farLabel, entity: { type: 'Host', id: w.remote_host_id } } : null,
 		farText: id
 	};
 }
@@ -575,16 +590,33 @@ function renderStatements(
  * *far* end published, and the device an operator would go and look at is the near one that
  * reported it. An id that resolves to nothing is dropped rather than shown raw, the same policy the
  * sentences use — a host deleted since the scan reads as no chip, not as a UUID.
+ *
+ * A credential warning is the one case that yields *two* chips, and deliberately: the address says
+ * which device was being reached and the credential says which record is wrong. Naming only the
+ * address is the gap this exists to close — on a network with two SNMP communities it does not
+ * identify one — and dropping the address in favour of the credential would lose where it failed.
  */
-function subjectsOf(warnings: DiscoveryWarning[], hostName: HostNameLookup): WarningSubject[] {
+function subjectsOf(
+	warnings: DiscoveryWarning[],
+	nameOfEntity: EntityNameLookup
+): WarningSubject[] {
 	const subjects = warnings.flatMap((w): WarningSubject[] => {
 		if ('host_id' in w) {
-			const label = hostName(w.host_id);
-			return label ? [{ label, hostId: w.host_id }] : [];
+			const label = nameOfEntity('Host', w.host_id);
+			return label ? [{ label, entity: { type: 'Host', id: w.host_id } }] : [];
 		}
 		if ('cidr' in w) return [{ label: w.cidr }];
-		if ('address' in w) return [{ label: w.address }];
-		return [];
+
+		const chips: WarningSubject[] = 'address' in w ? [{ label: w.address }] : [];
+		// Historical rows and older daemons carry no id, so this is absent rather than empty —
+		// those rows keep rendering exactly as they did, with the address alone.
+		if ('credential_id' in w && w.credential_id) {
+			const label = nameOfEntity('Credential', w.credential_id);
+			if (label) {
+				chips.push({ label, entity: { type: 'Credential', id: w.credential_id } });
+			}
+		}
+		return chips;
 	});
 
 	const unique = [...new Map(subjects.map((s) => [s.label, s])).values()];
@@ -616,6 +648,31 @@ export function warningsNeedAttention(warnings: DiscoveryWarning[]): boolean {
 const NEEDS_ATTENTION_REMEDY = 'FixInScanopy';
 
 /**
+ * The distinct stored credentials a row implicates, in first-seen order.
+ *
+ * What turns *Fix in Scanopy* from a signpost into a destination: with exactly one, the row can
+ * open that credential; with several, the list is the honest answer, because the row covers all of
+ * them and there is no single record to open — the same rule `ProvisionalSubnetInferred` already
+ * applies to inferred ranges.
+ *
+ * Empty is the ordinary case for a warning recorded before ids were carried, or posted by a daemon
+ * that predates them, so an empty result means "no better destination than the list", never "this
+ * is not a credential row".
+ *
+ * Lives here rather than in the component so it can be tested: everything in `WarningReport.svelte`
+ * is reachable only by mounting it, and there are no component tests in this suite.
+ */
+export function credentialIdsOf(entry: WarningEntry): string[] {
+	return [
+		...new Set(
+			entry.warnings.flatMap((w) =>
+				'credential_id' in w && w.credential_id ? [w.credential_id] : []
+			)
+		)
+	];
+}
+
+/**
  * A run's warnings, grouped into the sections an operator reads them in.
  *
  * The sections are the rungs of `warning-remedies.json` — what the reader has to do — in fixture
@@ -633,8 +690,12 @@ const NEEDS_ATTENTION_REMEDY = 'FixInScanopy';
  */
 export function buildWarningReport(
 	warnings: DiscoveryWarning[],
-	hostName: HostNameLookup = NO_HOST_NAMES
+	nameOfEntity: EntityNameLookup = NO_ENTITY_NAMES
 ): WarningSection[] {
+	// The example and sentence builders below only ever name hosts, so they keep taking the
+	// narrower lookup rather than every one of them growing an entity-type argument it would
+	// always pass the same value for.
+	const hostName: HostNameLookup = (id) => nameOfEntity('Host', id);
 	const byCode = new Map<DiscoveryWarningCode, DiscoveryWarning[]>();
 	for (const warning of warnings) {
 		const existing = byCode.get(warning.code);
@@ -657,7 +718,7 @@ export function buildWarningReport(
 			title: metaName('warning_codes', code, meta.name ?? code),
 			color: toColor(meta.color),
 			icon: meta.icon,
-			subjects: subjectsOf(group_, hostName),
+			subjects: subjectsOf(group_, nameOfEntity),
 			details: renderStatements(code, group_, hostName),
 			warnings: group_
 		});

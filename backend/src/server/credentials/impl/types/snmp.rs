@@ -424,7 +424,7 @@ mod tests {
     fn exposed_serialization_contains_plaintext() {
         let original = SnmpCredentialMapping {
             default_credential: Some(cred("my-secret")),
-            ip_overrides: vec![],
+            ..Default::default()
         };
 
         let exposed = SnmpCredentialMappingExposed::from(&original);
@@ -468,6 +468,7 @@ mod tests {
                 credential: cred("override-community"),
                 credential_id: cred_id,
             }],
+            ..Default::default()
         };
 
         // IP with override: override first, then default, then public
@@ -499,6 +500,7 @@ mod tests {
                 credential: cred("public"),
                 credential_id: Uuid::nil(),
             }],
+            ..Default::default()
         };
 
         let creds = mapping.get_credentials_by_specificity(&ip);
@@ -513,12 +515,12 @@ mod tests {
         let ip: IpAddr = "10.0.0.1".parse().unwrap();
 
         let mapping = SnmpCredentialMapping {
-            default_credential: None,
             ip_overrides: vec![IpOverride {
                 ip,
                 credential: cred("secret"),
                 credential_id: Uuid::nil(),
             }],
+            ..Default::default()
         };
 
         let creds = mapping.get_credentials_by_specificity(&ip);

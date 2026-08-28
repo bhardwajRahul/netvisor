@@ -452,7 +452,7 @@ mod tests {
     fn snmp_mapping() -> CredentialMapping<CredentialQueryPayload> {
         CredentialMapping {
             default_credential: Some(CredentialQueryPayload::default()), // Snmp
-            ip_overrides: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -461,7 +461,7 @@ mod tests {
             default_credential: Some(CredentialQueryPayload::DockerSocket(
                 ContainerSocketQueryCredential { socket_path: None },
             )),
-            ip_overrides: Vec::new(),
+            ..Default::default()
         }
     }
 

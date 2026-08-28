@@ -638,6 +638,10 @@ impl CredentialService {
 
         Ok(SnmpCredentialMapping {
             default_credential: network_snmp_credential,
+            // Legacy pre-v0.15.0 path: this mapping is built per network rather than per
+            // credential, so there is no single id for its default to carry, and the daemons it
+            // serves predate coded warnings anyway.
+            default_credential_id: None,
             ip_overrides: overrides,
         })
     }
@@ -781,6 +785,9 @@ impl TypedCredentialMapping {
             discriminant,
             mapping: CredentialMapping {
                 default_credential: None,
+                // Stamped from the accumulator key in `order_mappings_for_dispatch`, which is the
+                // one place that knows which credential this mapping belongs to.
+                default_credential_id: None,
                 ip_overrides: vec![],
             },
         }
@@ -849,8 +856,18 @@ fn order_mappings_for_dispatch(
     mappings: BTreeMap<Uuid, TypedCredentialMapping>,
 ) -> Vec<CredentialMapping<CredentialQueryPayload>> {
     let (broadcast_only, with_overrides): (Vec<_>, Vec<_>) = mappings
-        .into_values()
-        .map(|typed| typed.mapping)
+        .into_iter()
+        .map(|(credential_id, typed)| {
+            // The key is the credential this whole mapping belongs to, and dropping it here is
+            // what used to leave a broadcast default unattributable on the daemon. Stamped rather
+            // than set at build time so all three accumulator paths — network default, host
+            // override, integration target — get it from the one place they are keyed by.
+            let mut mapping = typed.mapping;
+            if mapping.default_credential.is_some() {
+                mapping.default_credential_id = Some(credential_id);
+            }
+            mapping
+        })
         .partition(|mapping| mapping.ip_overrides.is_empty());
 
     broadcast_only.into_iter().chain(with_overrides).collect()
@@ -1240,6 +1257,69 @@ mod integration_target_tests {
             .map(payload_community)
             .collect();
         assert_eq!(communities, vec!["netdefault", "secret42"]);
+    }
+
+    /// A broadcast default must reach the daemon knowing which credential it is.
+    ///
+    /// The accumulator is keyed by credential id, and this is the only place that key can be put
+    /// on the mapping — it was dropped here, which left a malformed network-wide credential able
+    /// to say what failed but not which record to open. A malformed default is the one attempt
+    /// outcome that is reported for a broadcast credential (see `issue_for_attempt`), so this is
+    /// the whole path by which that warning gets an id.
+    #[test]
+    fn a_broadcast_default_carries_the_credential_it_came_from() {
+        let mut map: Mappings = Mappings::new();
+        let first = Uuid::from_u128(1);
+        let second = Uuid::from_u128(2);
+
+        for (id, community) in [(first, "netdefault"), (second, "secret42")] {
+            let cred_type = snmp_v2c(community);
+            mapping_for(&mut map, id, &cred_type).default_credential =
+                Some(cred_type.to_query_payload());
+        }
+
+        let dispatched = order_mappings_for_dispatch(map);
+
+        // Paired against the community, not just asserted non-None: two defaults of the same type
+        // are exactly the case address alone cannot tell apart, so an id on the wrong mapping
+        // would send the operator to the wrong record.
+        let pairs: Vec<(String, Option<Uuid>)> = dispatched
+            .iter()
+            .filter_map(|m| {
+                m.default_credential
+                    .as_ref()
+                    .map(|c| (payload_community(c), m.default_credential_id))
+            })
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![
+                ("netdefault".to_string(), Some(first)),
+                ("secret42".to_string(), Some(second)),
+            ]
+        );
+    }
+
+    /// A mapping with no default has nothing to attribute, so the id stays absent rather than
+    /// naming a credential that was never broadcast.
+    #[test]
+    fn a_mapping_without_a_default_carries_no_default_id() {
+        let mut map: Mappings = Mappings::new();
+        let host_id = Uuid::from_u128(7);
+
+        let specific = snmp_v2c("host-specific");
+        mapping_for(&mut map, host_id, &specific)
+            .ip_overrides
+            .push(IpOverride {
+                ip: "10.0.0.5".parse().unwrap(),
+                credential: specific.to_query_payload(),
+                credential_id: host_id,
+            });
+
+        let dispatched = order_mappings_for_dispatch(map);
+
+        assert_eq!(dispatched.len(), 1);
+        assert_eq!(dispatched[0].default_credential_id, None);
     }
 
     /// The version gate has to run on the 7-way credential type, not the 5-way wire tag: SnmpV1

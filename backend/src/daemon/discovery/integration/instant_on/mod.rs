@@ -196,6 +196,7 @@ impl DiscoveryIntegration for InstantOnIntegration {
                                 site.name.as_deref().unwrap_or(site_id)
                             ),
                             true,
+                            ctx.credential_id,
                         )
                         .await;
                 }
@@ -217,6 +218,7 @@ impl DiscoveryIntegration for InstantOnIntegration {
                      credential to one of the Instant On devices it reports on"
                         .to_string(),
                     true,
+                    ctx.credential_id,
                 )
                 .await;
         }
@@ -348,6 +350,7 @@ impl InstantOnIntegration {
                         if devices.len() == 1 { "" } else { "s" }
                     ),
                     true,
+                    ctx.credential_id,
                 )
                 .await;
         }

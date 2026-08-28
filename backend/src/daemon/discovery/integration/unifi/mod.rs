@@ -164,6 +164,7 @@ impl DiscoveryIntegration for UnifiIntegration {
                         if devices.len() == 1 { "" } else { "s" }
                     ),
                     true,
+                    ctx.credential_id,
                 )
                 .await;
         }

@@ -5836,6 +5836,16 @@ export interface components {
             /** @description The address the credential was tried against. */
             address: string;
             /**
+             * Format: uuid
+             * @description The stored credential this attempt used, so the report can open it rather than sending the
+             *     reader to the list to find it. `integration` narrows to a type; on a network with two SNMP
+             *     communities the address does not narrow to a record, which is what this is for.
+             *
+             *     `None` on a warning written before the id was carried, on one from a daemon that predates
+             *     it, and on the daemon's own injected "public" fallback, which has no stored row.
+             */
+            credential_id: string | null;
+            /**
              * @description The library's own diagnostic — free text, so it can only ever be displayed. It is the one
              *     thing the code cannot supersede: the code says which failure mode, this says what actually
              *     came back ("connection refused (os error 111)"), and it is now attributable to this one
@@ -6924,18 +6934,33 @@ export interface components {
             address: string;
             /** @enum {string} */
             code: "CredentialTargetNotScanned";
+            /**
+             * Format: uuid
+             * @description The stored credential bound to that address. See [`CredentialAttempt::credential_id`].
+             */
+            credential_id: string | null;
             integration: components["schemas"]["CredentialQueryPayloadDiscriminants"];
         } | {
             /** @description The address the credential is bound to. */
             address: string;
             /** @enum {string} */
             code: "CredentialTargetNotResponding";
+            /**
+             * Format: uuid
+             * @description The stored credential bound to that address. See [`CredentialAttempt::credential_id`].
+             */
+            credential_id: string | null;
             integration: components["schemas"]["CredentialQueryPayloadDiscriminants"];
         } | {
             /** @description The address the credential is bound to. */
             address: string;
             /** @enum {string} */
             code: "CredentialGateClosed";
+            /**
+             * Format: uuid
+             * @description The stored credential that needed those ports. See [`CredentialAttempt::credential_id`].
+             */
+            credential_id: string | null;
             integration: components["schemas"]["CredentialQueryPayloadDiscriminants"];
             /** @description The ports that had to be open for the probe to run. */
             ports: number[];

@@ -17776,12 +17776,21 @@
         "required": [
           "address",
           "integration",
+          "credential_id",
           "detail"
         ],
         "properties": {
           "address": {
             "type": "string",
             "description": "The address the credential was tried against."
+          },
+          "credential_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The stored credential this attempt used, so the report can open it rather than sending the\nreader to the list to find it. `integration` narrows to a type; on a network with two SNMP\ncommunities the address does not narrow to a record, which is what this is for.\n\n`None` on a warning written before the id was carried, on one from a daemon that predates\nit, and on the daemon's own injected \"public\" fallback, which has no stored row."
           },
           "detail": {
             "type": [
@@ -20329,6 +20338,7 @@
             "required": [
               "address",
               "integration",
+              "credential_id",
               "code"
             ],
             "properties": {
@@ -20342,6 +20352,14 @@
                   "CredentialTargetNotScanned"
                 ]
               },
+              "credential_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "The stored credential bound to that address. See [`CredentialAttempt::credential_id`]."
+              },
               "integration": {
                 "$ref": "#/components/schemas/CredentialQueryPayloadDiscriminants"
               }
@@ -20354,6 +20372,7 @@
             "required": [
               "address",
               "integration",
+              "credential_id",
               "code"
             ],
             "properties": {
@@ -20366,6 +20385,14 @@
                 "enum": [
                   "CredentialTargetNotResponding"
                 ]
+              },
+              "credential_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "The stored credential bound to that address. See [`CredentialAttempt::credential_id`]."
               },
               "integration": {
                 "$ref": "#/components/schemas/CredentialQueryPayloadDiscriminants"
@@ -20380,6 +20407,7 @@
               "address",
               "integration",
               "ports",
+              "credential_id",
               "code"
             ],
             "properties": {
@@ -20392,6 +20420,14 @@
                 "enum": [
                   "CredentialGateClosed"
                 ]
+              },
+              "credential_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "The stored credential that needed those ports. See [`CredentialAttempt::credential_id`]."
               },
               "integration": {
                 "$ref": "#/components/schemas/CredentialQueryPayloadDiscriminants"

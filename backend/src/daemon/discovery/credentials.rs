@@ -9,32 +9,65 @@ use crate::server::credentials::r#impl::mapping::{
 };
 use crate::server::hosts::r#impl::base::Host;
 
+/// One credential to try at an address, and where it came from.
+///
+/// `user_assigned` is deliberately its own field rather than `credential_id.is_some()`. It used to
+/// be derivable that way only because a network default arrived with no id at all; now that it
+/// carries one, the two questions have come apart. Conflating them would start reporting every
+/// broadcast default that failed to answer — one finding per unresponsive host on a /24 sweep —
+/// which is exactly what [`issue_for_attempt`] exists to suppress.
+///
+/// [`issue_for_attempt`]: crate::daemon::discovery::service::warnings::issue_for_attempt
+pub struct ApplicableCredential<'a> {
+    pub credential: &'a CredentialQueryPayload,
+    /// The stored credential row this came from, where there is one.
+    pub credential_id: Option<Uuid>,
+    /// Whether the user pinned this credential to this address, as opposed to it being a network
+    /// broadcast default. This is what decides whether a failure is a finding.
+    pub user_assigned: bool,
+}
+
 /// Resolve applicable credentials for a target IP from credential mappings.
 ///
 /// Returns credentials in specificity order: every matching IP override first
 /// (in `ip_overrides` declaration order), then the network default as fallback.
-/// Each entry includes the credential and its optional server-side ID (for
-/// auto-assignment tracking). The caller is expected to try them in order and
+/// Each entry includes the credential, its optional server-side ID (for
+/// auto-assignment tracking and for naming the record in a warning), and whether
+/// the user pinned it here. The caller is expected to try them in order and
 /// stop at the first successful probe.
 pub fn resolve_credentials_for_ip(
     mapping: &CredentialMapping<CredentialQueryPayload>,
     ip: IpAddr,
-) -> Vec<(&CredentialQueryPayload, Option<Uuid>)> {
+) -> Vec<ApplicableCredential<'_>> {
     let mut creds = Vec::new();
 
     // Every IP-specific override, in declaration order. A host assigned
     // multiple credentials for the same IP should have all of them tried.
     for o in mapping.ip_overrides.iter().filter(|o| o.ip == ip) {
         let cred_id = (o.credential_id != Uuid::nil()).then_some(o.credential_id);
-        creds.push((&o.credential, cred_id));
+        creds.push(ApplicableCredential {
+            credential: &o.credential,
+            credential_id: cred_id,
+            // A nil id is the pre-`IntegrationTarget` sentinel for "no stored credential", and an
+            // override without one is not something the user pinned.
+            user_assigned: cred_id.is_some(),
+        });
     }
 
     // Network default as fallback — always tried after overrides when present.
     // The probe loop breaks on first success, so a working override short-circuits
     // the default automatically; the default only actually runs when every
     // override failed (wrong community, auth error, timeout, etc.).
+    //
+    // Its id comes along where the server sent one. A default that fails is deliberately silent,
+    // but a *malformed* one is not (see `issue_for_attempt`), so this is the one path on which a
+    // broadcast credential reaches a warning — and it is the path that used to arrive anonymous.
     if let Some(default) = &mapping.default_credential {
-        creds.push((default, None));
+        creds.push(ApplicableCredential {
+            credential: default,
+            credential_id: mapping.default_credential_id,
+            user_assigned: false,
+        });
     }
 
     creds
@@ -119,25 +152,48 @@ mod tests {
         s.parse().unwrap()
     }
 
+    /// A mapping with no default and no overrides, to be filled in by each test.
+    ///
+    /// Built through `Default` rather than a struct literal so a new field on `CredentialMapping`
+    /// does not have to be repeated in every fixture below — which is what adding
+    /// `default_credential_id` would otherwise have cost.
+    fn mapping() -> CredentialMapping<CredentialQueryPayload> {
+        CredentialMapping::default()
+    }
+
+    fn over(
+        addr: &str,
+        community: &str,
+        credential_id: Uuid,
+    ) -> IpOverride<CredentialQueryPayload> {
+        IpOverride {
+            ip: ip(addr),
+            credential: snmp(community),
+            credential_id,
+        }
+    }
+
     #[test]
     fn resolve_credentials_for_ip_single_override_then_default() {
         let override_id = Uuid::new_v4();
+        let default_id = Uuid::new_v4();
         let mapping = CredentialMapping {
             default_credential: Some(snmp("netdefault")),
-            ip_overrides: vec![IpOverride {
-                ip: ip("10.0.0.5"),
-                credential: snmp("secret42"),
-                credential_id: override_id,
-            }],
+            default_credential_id: Some(default_id),
+            ip_overrides: vec![over("10.0.0.5", "secret42", override_id)],
         };
 
         let creds = resolve_credentials_for_ip(&mapping, ip("10.0.0.5"));
 
         assert_eq!(creds.len(), 2, "expected override + default fallback");
-        assert_eq!(snmp_community(creds[0].0), "secret42");
-        assert_eq!(creds[0].1, Some(override_id));
-        assert_eq!(snmp_community(creds[1].0), "netdefault");
-        assert_eq!(creds[1].1, None);
+        assert_eq!(snmp_community(creds[0].credential), "secret42");
+        assert_eq!(creds[0].credential_id, Some(override_id));
+        assert!(creds[0].user_assigned);
+        assert_eq!(snmp_community(creds[1].credential), "netdefault");
+        // The default now names its credential too, and is still not something the user pinned
+        // here — the two facts have come apart and must stay apart.
+        assert_eq!(creds[1].credential_id, Some(default_id));
+        assert!(!creds[1].user_assigned);
     }
 
     #[test]
@@ -147,94 +203,84 @@ mod tests {
         // declaration order, then fall back to the network default.
         let id_a = Uuid::new_v4();
         let id_b = Uuid::new_v4();
-        let target = ip("10.0.0.5");
         let mapping = CredentialMapping {
             default_credential: Some(snmp("netdefault")),
+            default_credential_id: Some(Uuid::new_v4()),
             ip_overrides: vec![
-                IpOverride {
-                    ip: target,
-                    credential: snmp("override_a"),
-                    credential_id: id_a,
-                },
-                IpOverride {
-                    ip: target,
-                    credential: snmp("override_b"),
-                    credential_id: id_b,
-                },
+                over("10.0.0.5", "override_a", id_a),
+                over("10.0.0.5", "override_b", id_b),
                 // A different IP's override must NOT be returned here.
-                IpOverride {
-                    ip: ip("10.0.0.99"),
-                    credential: snmp("other_host"),
-                    credential_id: Uuid::new_v4(),
-                },
+                over("10.0.0.99", "other_host", Uuid::new_v4()),
             ],
         };
 
-        let creds = resolve_credentials_for_ip(&mapping, target);
+        let creds = resolve_credentials_for_ip(&mapping, ip("10.0.0.5"));
 
         assert_eq!(creds.len(), 3, "two overrides + default fallback");
-        assert_eq!(snmp_community(creds[0].0), "override_a");
-        assert_eq!(creds[0].1, Some(id_a));
-        assert_eq!(snmp_community(creds[1].0), "override_b");
-        assert_eq!(creds[1].1, Some(id_b));
-        assert_eq!(snmp_community(creds[2].0), "netdefault");
-        assert_eq!(creds[2].1, None);
+        assert_eq!(snmp_community(creds[0].credential), "override_a");
+        assert_eq!(creds[0].credential_id, Some(id_a));
+        assert_eq!(snmp_community(creds[1].credential), "override_b");
+        assert_eq!(creds[1].credential_id, Some(id_b));
+        assert_eq!(snmp_community(creds[2].credential), "netdefault");
     }
 
     #[test]
     fn resolve_credentials_for_ip_multiple_overrides_no_default() {
         let id_a = Uuid::new_v4();
         let id_b = Uuid::new_v4();
-        let target = ip("10.0.0.5");
         let mapping = CredentialMapping {
-            default_credential: None,
             ip_overrides: vec![
-                IpOverride {
-                    ip: target,
-                    credential: snmp("override_a"),
-                    credential_id: id_a,
-                },
-                IpOverride {
-                    ip: target,
-                    credential: snmp("override_b"),
-                    credential_id: id_b,
-                },
+                over("10.0.0.5", "override_a", id_a),
+                over("10.0.0.5", "override_b", id_b),
             ],
+            ..mapping()
         };
 
-        let creds = resolve_credentials_for_ip(&mapping, target);
+        let creds = resolve_credentials_for_ip(&mapping, ip("10.0.0.5"));
 
         assert_eq!(creds.len(), 2, "both overrides, no default");
-        assert_eq!(snmp_community(creds[0].0), "override_a");
-        assert_eq!(snmp_community(creds[1].0), "override_b");
+        assert_eq!(snmp_community(creds[0].credential), "override_a");
+        assert_eq!(snmp_community(creds[1].credential), "override_b");
     }
 
     #[test]
     fn resolve_credentials_for_ip_default_only_when_no_matching_override() {
+        let default_id = Uuid::new_v4();
         let mapping = CredentialMapping {
             default_credential: Some(snmp("netdefault")),
-            ip_overrides: vec![IpOverride {
-                ip: ip("10.0.0.99"),
-                credential: snmp("other_host"),
-                credential_id: Uuid::new_v4(),
-            }],
+            default_credential_id: Some(default_id),
+            ip_overrides: vec![over("10.0.0.99", "other_host", Uuid::new_v4())],
         };
 
         let creds = resolve_credentials_for_ip(&mapping, ip("10.0.0.5"));
 
         assert_eq!(creds.len(), 1);
-        assert_eq!(snmp_community(creds[0].0), "netdefault");
-        assert_eq!(creds[0].1, None);
+        assert_eq!(snmp_community(creds[0].credential), "netdefault");
+        assert_eq!(creds[0].credential_id, Some(default_id));
+        assert!(!creds[0].user_assigned);
+    }
+
+    #[test]
+    fn resolve_credentials_for_ip_default_from_an_older_server_carries_no_id() {
+        // A server too old to send `default_credential_id` leaves it absent, and the daemon's own
+        // injected "public" fallback has no stored row at all. Both have to stay reportable
+        // without one rather than becoming un-nameable.
+        let mapping = CredentialMapping {
+            default_credential: Some(snmp("public")),
+            ..mapping()
+        };
+
+        let creds = resolve_credentials_for_ip(&mapping, ip("10.0.0.5"));
+
+        assert_eq!(creds.len(), 1);
+        assert_eq!(creds[0].credential_id, None);
+        assert!(!creds[0].user_assigned);
     }
 
     #[test]
     fn resolve_credentials_for_ip_returns_empty_when_both_absent() {
-        let mapping: CredentialMapping<CredentialQueryPayload> = CredentialMapping {
-            default_credential: None,
-            ip_overrides: vec![],
-        };
-
-        let creds = resolve_credentials_for_ip(&mapping, ip("10.0.0.5"));
+        let empty = mapping();
+        let creds = resolve_credentials_for_ip(&empty, ip("10.0.0.5"));
 
         assert!(creds.is_empty());
     }
@@ -245,17 +291,15 @@ mod tests {
         // to a server-side credential entity and shouldn't leak into
         // assignment tracking. The helper maps nil → None.
         let mapping = CredentialMapping {
-            default_credential: None,
-            ip_overrides: vec![IpOverride {
-                ip: ip("10.0.0.5"),
-                credential: snmp("bootstrap"),
-                credential_id: Uuid::nil(),
-            }],
+            ip_overrides: vec![over("10.0.0.5", "bootstrap", Uuid::nil())],
+            ..mapping()
         };
 
         let creds = resolve_credentials_for_ip(&mapping, ip("10.0.0.5"));
 
         assert_eq!(creds.len(), 1);
-        assert_eq!(creds[0].1, None);
+        assert_eq!(creds[0].credential_id, None);
+        // Nothing was pinned here, so a failure is not a finding.
+        assert!(!creds[0].user_assigned);
     }
 }

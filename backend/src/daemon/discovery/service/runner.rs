@@ -45,6 +45,9 @@ impl DiscoveryRunner {
             default_credential: Some(CredentialQueryPayload::Snmp(
                 crate::server::credentials::r#impl::mapping::SnmpQueryCredential::public_default(),
             )),
+            // Synthesized here, not stored anywhere, so there is no record for a warning about it
+            // to point at.
+            default_credential_id: None,
             ip_overrides: vec![],
         });
 

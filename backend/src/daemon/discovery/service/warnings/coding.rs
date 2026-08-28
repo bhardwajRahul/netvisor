@@ -261,6 +261,7 @@ pub fn warn_credential_issues(issues: &[CredentialIssue]) -> Vec<DiscoveryWarnin
             warnings.push(DiscoveryWarning::CredentialTargetNotScanned {
                 address: issue.ip,
                 integration: issue.integration,
+                credential_id: issue.credential_id,
             });
         }
     }
@@ -269,6 +270,7 @@ pub fn warn_credential_issues(issues: &[CredentialIssue]) -> Vec<DiscoveryWarnin
             warnings.push(DiscoveryWarning::CredentialTargetNotResponding {
                 address: issue.ip,
                 integration: issue.integration,
+                credential_id: issue.credential_id,
             });
         }
     }
@@ -277,6 +279,7 @@ pub fn warn_credential_issues(issues: &[CredentialIssue]) -> Vec<DiscoveryWarnin
             warnings.push(DiscoveryWarning::CredentialGateClosed {
                 address: issue.ip,
                 integration: issue.integration,
+                credential_id: issue.credential_id,
                 ports: ports
                     .iter()
                     .map(|p| p.number())
@@ -317,6 +320,7 @@ pub fn warn_credential_issues(issues: &[CredentialIssue]) -> Vec<DiscoveryWarnin
                 address: issue.ip,
                 integration: issue.integration,
                 detail,
+                credential_id: issue.credential_id,
             };
             let Some(warning) = warning_for_outcome(outcome, attempt) else {
                 continue;
@@ -441,6 +445,7 @@ mod tests {
     use crate::server::ports::r#impl::base::PortType;
     use std::net::IpAddr;
     use strum::IntoEnumIterator;
+    use uuid::Uuid;
 
     fn ip(s: &str) -> IpAddr {
         s.parse().unwrap()
@@ -791,6 +796,7 @@ mod tests {
                 outcome: AttemptOutcome::Malformed,
                 message: detail.to_string(),
             },
+            credential_id: None,
         };
         let unreadable = "Failed to read community from public for SNMP: No such file or directory";
         let sweep: Vec<CredentialIssue> = (1..=20)
@@ -954,6 +960,7 @@ mod tests {
                 outcome,
                 message: "diagnostic".to_string(),
             },
+            credential_id: None,
         }
     }
 
@@ -1008,12 +1015,14 @@ mod tests {
                     outcome: AttemptOutcome::CollectionTimedOut,
                     message: "Integration timed out after 300s".to_string(),
                 },
+                credential_id: None,
             },
             // An address-level warning for the same address, which is what suppresses `TimedOut`.
             CredentialIssue {
                 integration: CredentialQueryPayloadDiscriminants::Snmp,
                 ip: address,
                 reason: CredentialIssueReason::TargetNotResponding,
+                credential_id: None,
             },
         ]);
 
@@ -1040,6 +1049,7 @@ mod tests {
                 integration: CredentialQueryPayloadDiscriminants::Snmp,
                 ip: ip("10.0.0.1"),
                 reason: CredentialIssueReason::TargetNotResponding,
+                credential_id: None,
             },
         ]);
         assert_eq!(
@@ -1061,11 +1071,16 @@ mod tests {
     /// subnet is a discovery-scope problem, and a closed gate is a port problem.
     #[test]
     fn each_credential_reason_gets_its_own_code() {
+        // Distinct ids, so a warning built from the wrong issue would not go unnoticed. The id is
+        // what lets the report open the offending credential instead of the credential list.
+        let unscanned_id = Uuid::new_v4();
+        let gated_id = Uuid::new_v4();
         let warnings = warn_credential_issues(&[
             CredentialIssue {
                 integration: CredentialQueryPayloadDiscriminants::UnifiController,
                 ip: ip("10.9.0.1"),
                 reason: CredentialIssueReason::TargetNotScanned,
+                credential_id: Some(unscanned_id),
             },
             CredentialIssue {
                 integration: CredentialQueryPayloadDiscriminants::UnifiController,
@@ -1073,6 +1088,7 @@ mod tests {
                 reason: CredentialIssueReason::GateClosed {
                     ports: vec![PortType::new_tcp(443)],
                 },
+                credential_id: Some(gated_id),
             },
         ]);
 
@@ -1082,11 +1098,13 @@ mod tests {
                 DiscoveryWarning::CredentialTargetNotScanned {
                     address: ip("10.9.0.1"),
                     integration: CredentialQueryPayloadDiscriminants::UnifiController,
+                    credential_id: Some(unscanned_id),
                 },
                 DiscoveryWarning::CredentialGateClosed {
                     address: ip("10.0.0.7"),
                     integration: CredentialQueryPayloadDiscriminants::UnifiController,
                     ports: vec![443],
+                    credential_id: Some(gated_id),
                 },
             ]
         );
@@ -1103,6 +1121,7 @@ mod tests {
                 outcome: AttemptOutcome::Rejected,
                 message: message.to_string(),
             },
+            credential_id: None,
         };
 
         let warnings = warn_credential_issues(&[

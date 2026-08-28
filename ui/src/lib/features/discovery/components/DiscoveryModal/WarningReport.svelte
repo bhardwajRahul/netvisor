@@ -34,7 +34,8 @@
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import { entityRef } from '$lib/shared/components/data/types';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
-	import { openModal } from '$lib/shared/stores/modal-registry';
+	import { useCredentialsQuery } from '$lib/features/credentials/queries';
+	import { navigateToEntity, openModal } from '$lib/shared/stores/modal-registry';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { createColorHelper, createIconComponent } from '$lib/shared/utils/styling';
 	import type { IconComponent } from '$lib/shared/utils/types';
@@ -46,8 +47,14 @@
 		discovery_scanSettings,
 		subnets_resolveRange
 	} from '$lib/paraglide/messages';
+	import type { EntityDiscriminants } from '$lib/api/entities';
 	import type { DiscoveryUpdatePayload } from '../../types/api';
-	import { buildWarningReport, type WarningEntry, type WarningSubject } from '../../utils/warnings';
+	import {
+		buildWarningReport,
+		credentialIdsOf,
+		type WarningEntry,
+		type WarningSubject
+	} from '../../utils/warnings';
 
 	interface Props {
 		payload: DiscoveryUpdatePayload;
@@ -75,9 +82,24 @@
 	]);
 	const hostsQuery = useHostsByIds(() => neededHostIds);
 	let hostsData = $derived(hostsQuery.data ?? []);
-	let hostNameById = $derived((id: string) => hostsData.find((h) => h.id === id)?.name);
 
-	let sections = $derived(buildWarningReport(warnings, hostNameById));
+	/**
+	 * The credentials a warning names, for the chip and for the row's action.
+	 *
+	 * The whole list rather than a by-ids fetch: credentials number in the tens where hosts number
+	 * in the thousands, this is the query the credentials tab already runs, and TanStack serves
+	 * both from one cache entry. A viewer who cannot read them resolves nothing, which the lookup
+	 * already treats as a normal outcome.
+	 */
+	const credentialsQuery = useCredentialsQuery();
+	let credentialsData = $derived(credentialsQuery.data ?? []);
+
+	let nameOfEntity = $derived((type: EntityDiscriminants, id: string) => {
+		if (type === 'Credential') return credentialsData.find((c) => c.id === id)?.name;
+		return hostsData.find((h) => h.id === id)?.name;
+	});
+
+	let sections = $derived(buildWarningReport(warnings, nameOfEntity));
 
 	/** Which rows are showing their explanation. Keyed by code, which is unique within a run. */
 	const openRows = new SvelteSet<string>();
@@ -143,31 +165,44 @@
 		}
 
 		if (entry.warnings.some((w) => 'integration' in w)) {
+			const credentialIds = credentialIdsOf(entry);
 			return {
 				label: common_credentials(),
 				icon: createIconComponent('key-round'),
 				run: () => {
-					// The list, not a create-mode editor: the credential exists and is wrong, and
-					// the warning carries no id to open it by.
-					window.location.hash = 'credentials';
+					// One implicated credential opens that credential; several is a trip to the
+					// list, for the same reason an inferred range is above — the row stands for all
+					// of them and there is no "all of them" editor. A row from before ids were
+					// carried has none, and still lands on the list as it always did.
+					if (credentialIds.length === 1) {
+						navigateToEntity('Credential', credentialIds[0]);
+					} else {
+						window.location.hash = 'credentials';
+					}
 				}
 			};
 		}
 
 		return null;
 	}
-
-	/** A named device is a real entity, so its chip is drawn the way one is drawn everywhere. */
-	const HostIcon = entities.getIconComponent('Host');
-	const hostColor = entities.getColorHelper('Host').color;
 </script>
 
-{#snippet deviceTag(subject: WarningSubject)}
+<!--
+	A named entity is a real entity, so its chip is drawn the way one is drawn everywhere — and its
+	icon and colour come from the entity metadata rather than being fixed to Host, which is what
+	lets a credential use the same snippet instead of a near-copy of it.
+-->
+{#snippet entityChip(subject: WarningSubject)}
+	{@const type = subject.entity?.type ?? 'Host'}
+	{@const Icon = entities.getIconComponent(type)}
 	<EntityTag
-		entityRef={entityRef('Host', subject.hostId ?? '', { id: subject.hostId, name: subject.label })}
+		entityRef={entityRef(type, subject.entity?.id ?? '', {
+			id: subject.entity?.id,
+			name: subject.label
+		})}
 		label={subject.label}
-		icon={HostIcon}
-		color={hostColor}
+		icon={Icon}
+		color={entities.getColorHelper(type).color}
 	/>
 {/snippet}
 
@@ -210,8 +245,8 @@
 										{#if entry.subjects.length > 0}
 											<span class="flex flex-wrap items-center gap-1">
 												{#each entry.subjects as subject (subject.label)}
-													{#if subject.hostId}
-														{@render deviceTag(subject)}
+													{#if subject.entity}
+														{@render entityChip(subject)}
 													{:else}
 														<!-- No entity to point at, so no colour and no hover state:
 														     an address here is a label, not a link. -->
@@ -244,7 +279,7 @@
 														{#each statement.examples as example, j (j)}
 															<li class="text-tertiary flex flex-wrap items-center gap-1 text-xs">
 																{#if example.near}
-																	{@render deviceTag(example.near)}
+																	{@render entityChip(example.near)}
 																{/if}
 																{#if example.nearText}<span>{example.nearText}</span>{/if}
 																<!-- The arrow is only drawn with something on both sides: a
@@ -254,7 +289,7 @@
 																	<span class="text-tertiary/60" aria-hidden="true">→</span>
 																{/if}
 																{#if example.far}
-																	{@render deviceTag(example.far)}
+																	{@render entityChip(example.far)}
 																{/if}
 																{#if example.farText}<span>{example.farText}</span>{/if}
 															</li>

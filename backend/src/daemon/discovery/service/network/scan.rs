@@ -1739,6 +1739,7 @@ pub(crate) fn unreachable_credential_targets(
             integration: (&o.credential).into(),
             ip: o.ip,
             reason: CredentialIssueReason::TargetNotScanned,
+            credential_id: (o.credential_id != Uuid::nil()).then_some(o.credential_id),
         })
         .collect()
 }
@@ -1867,6 +1868,7 @@ pub(crate) fn unanswered_credential_targets(
             integration: (&o.credential).into(),
             ip: o.ip,
             reason: CredentialIssueReason::TargetNotResponding,
+            credential_id: (o.credential_id != Uuid::nil()).then_some(o.credential_id),
         })
         .collect()
 }
@@ -1931,12 +1933,12 @@ mod tests {
     fn mapping_targeting(addr: &str) -> CredentialMapping<CredentialQueryPayload> {
         use crate::server::credentials::r#impl::mapping::IpOverride;
         CredentialMapping {
-            default_credential: None,
             ip_overrides: vec![IpOverride {
                 ip: ip(addr),
                 credential: CredentialQueryPayload::default(), // Snmp
                 credential_id: Uuid::new_v4(),
             }],
+            ..Default::default()
         }
     }
 
@@ -2019,7 +2021,7 @@ mod tests {
         let subnets = [subnet("10.0.5.0/24")];
         let mappings = [CredentialMapping {
             default_credential: Some(CredentialQueryPayload::default()),
-            ip_overrides: Vec::new(),
+            ..Default::default()
         }];
         assert!(unreachable_credential_targets(&mappings, &subnets).is_empty());
     }
