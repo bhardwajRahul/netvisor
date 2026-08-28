@@ -159,6 +159,7 @@ impl HostService {
             model: None,
             serial_number: None,
             firmware_revision: None,
+            software_revision: None,
             credential_assignments,
         };
         host_base.apply_name(HostName::manual(name.clone()));

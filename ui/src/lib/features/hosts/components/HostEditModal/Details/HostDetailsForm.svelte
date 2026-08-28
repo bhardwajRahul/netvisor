@@ -21,6 +21,7 @@
 		common_model,
 		common_serialNumber,
 		common_firmwareRevision,
+		common_softwareRevision,
 		hosts_hardwareInfo,
 		hosts_snmp_chassisId,
 		hosts_snmp_managementUrl,
@@ -60,8 +61,18 @@
 
 	// Hardware identity gets its own card: manufacturer/model/serial also arrive from controller
 	// integrations (UniFi, HPE Instant On), so they must not sit under an SNMP heading.
+	// The revisions count towards the card too. A device can report a version and nothing else —
+	// an industrial probe reads a firmware revision without a model, and ENTITY-MIB rows populate
+	// the revision columns far more reliably than entPhysicalMfgName — and leaving them out of
+	// this test hid the only field such a host had.
 	let hasHardwareInfo = $derived(
-		!!(formData.manufacturer || formData.model || formData.serial_number)
+		!!(
+			formData.manufacturer ||
+			formData.model ||
+			formData.serial_number ||
+			formData.firmware_revision ||
+			formData.software_revision
+		)
 	);
 
 	// The side column exists if either card has something to show.
@@ -141,6 +152,9 @@
 						<InfoRow label={common_serialNumber()} mono>{formData.serial_number || '-'}</InfoRow>
 						<InfoRow label={common_firmwareRevision()} mono
 							>{formData.firmware_revision || '-'}</InfoRow
+						>
+						<InfoRow label={common_softwareRevision()} mono
+							>{formData.software_revision || '-'}</InfoRow
 						>
 					</InfoCard>
 				{/if}

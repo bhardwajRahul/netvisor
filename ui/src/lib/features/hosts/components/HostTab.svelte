@@ -48,6 +48,7 @@
 		common_rescan,
 		common_serialNumber,
 		common_firmwareRevision,
+		common_softwareRevision,
 		common_service,
 		common_services,
 		common_tags,
@@ -429,6 +430,12 @@
 				{
 					key: 'firmware_revision',
 					label: common_firmwareRevision(),
+					type: 'string',
+					display: { hiddenByDefault: true }
+				},
+				{
+					key: 'software_revision',
+					label: common_softwareRevision(),
 					type: 'string',
 					display: { hiddenByDefault: true }
 				},

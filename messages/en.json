@@ -453,6 +453,7 @@
 	"common_showTrue": "Show True",
 	"common_showingRange": "Showing {start}-{end} of {total} {itemLabel}",
 	"common_showingTotal": "Showing {count} of {total} {itemLabel}",
+	"common_softwareRevision": "Software Revision",
 	"common_somethingWentWrong": "Something went wrong. Please try again.",
 	"common_sortByColumn": "Sort by {column}",
 	"common_sortByLabel": "Sort By",

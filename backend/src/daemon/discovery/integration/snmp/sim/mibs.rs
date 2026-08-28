@@ -362,73 +362,119 @@ impl IpAddrTable {
     }
 }
 
-/// `entPhysicalTable`, chassis row only — which is all any fixture here serves.
+/// One `entPhysicalTable` row.
+///
+/// Separate from [`DeviceInventory`] because the table's index and class are what the collapse
+/// selects *on*, and the inventory type carries neither — it is the collapse's output, one row
+/// wide, and cannot express the several rows a real chassis serves.
+#[derive(Debug, Clone)]
+pub struct EntityRow {
+    /// `entPhysicalIndex`. The collapse prefers the lowest among the rows of the strongest class,
+    /// so a fixture serving more than one is what proves that tiebreak exists.
+    pub index: u64,
+    /// `entPhysicalClass`: chassis(3), module(9), stack(11).
+    pub class: i64,
+    /// `entPhysicalName`, which [`DeviceInventory`] has no field for because the collection reads
+    /// it only as a fallback description.
+    pub name: Option<String>,
+    pub inventory: DeviceInventory,
+}
+
+impl EntityRow {
+    pub fn new(index: u64, class: i64, name: &str, inventory: DeviceInventory) -> Self {
+        Self {
+            index,
+            class,
+            name: Some(name.to_string()),
+            inventory,
+        }
+    }
+}
+
+/// `entPhysicalTable`.
+///
+/// Multi-row: a stacked switch serves one chassis row per member, and until it could express that
+/// no fixture could exercise which row the collapse picks.
 #[derive(Debug, Clone, Default)]
 pub struct EntityTable {
-    pub chassis: Option<DeviceInventory>,
-    /// `entPhysicalName`, which [`DeviceInventory`] has no field for because the collection does
-    /// not read it.
-    pub name: Option<String>,
+    pub rows: Vec<EntityRow>,
 }
 
 impl EntityTable {
+    /// The single-chassis case, at `entPhysicalIndex` 1 — what most devices serve.
     pub fn chassis(inventory: DeviceInventory, name: &str) -> Self {
         Self {
-            chassis: Some(inventory),
-            name: Some(name.to_string()),
+            rows: vec![EntityRow::new(1, 3, name, inventory)],
         }
+    }
+
+    pub fn new(rows: Vec<EntityRow>) -> Self {
+        Self { rows }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.chassis.is_none()
+        self.rows.is_empty()
     }
 
     pub fn wire_rows(&self) -> Vec<Row> {
-        let Some(chassis) = &self.chassis else {
-            return Vec::new();
-        };
-        let idx = [1u64];
         let mut rows = Vec::new();
-        if let Some(descr) = &chassis.description {
+        for entry in &self.rows {
+            let idx = [entry.index];
+            let inventory = &entry.inventory;
+            if let Some(descr) = &inventory.description {
+                rows.push(Row::at(
+                    entity::entry::ENT_PHYSICAL_DESCR,
+                    &idx,
+                    PassValue::Str(descr.clone()),
+                ));
+            }
             rows.push(Row::at(
-                entity::entry::ENT_PHYSICAL_DESCR,
+                entity::entry::ENT_PHYSICAL_CLASS,
                 &idx,
-                PassValue::Str(descr.clone()),
+                PassValue::Integer(entry.class),
             ));
-        }
-        // entPhysicalClass chassis(3).
-        rows.push(Row::at(
-            entity::entry::ENT_PHYSICAL_CLASS,
-            &idx,
-            PassValue::Integer(3),
-        ));
-        if let Some(name) = &self.name {
-            rows.push(Row::at(
-                entity::entry::ENT_PHYSICAL_NAME,
-                &idx,
-                PassValue::Str(name.clone()),
-            ));
-        }
-        if let Some(serial) = &chassis.serial_number {
-            rows.push(Row::at(
-                entity::entry::ENT_PHYSICAL_SERIAL_NUM,
-                &idx,
-                PassValue::Str(serial.clone()),
-            ));
-        }
-        if let Some(mfg) = &chassis.manufacturer {
-            rows.push(Row::at(
-                entity::entry::ENT_PHYSICAL_MFG_NAME,
-                &idx,
-                PassValue::Str(mfg.clone()),
-            ));
-        }
-        if let Some(model) = &chassis.model {
-            rows.push(Row::at(
-                entity::entry::ENT_PHYSICAL_MODEL_NAME,
-                &idx,
-                PassValue::Str(model.clone()),
-            ));
+            if let Some(name) = &entry.name {
+                rows.push(Row::at(
+                    entity::entry::ENT_PHYSICAL_NAME,
+                    &idx,
+                    PassValue::Str(name.clone()),
+                ));
+            }
+            if let Some(serial) = &inventory.serial_number {
+                rows.push(Row::at(
+                    entity::entry::ENT_PHYSICAL_SERIAL_NUM,
+                    &idx,
+                    PassValue::Str(serial.clone()),
+                ));
+            }
+            if let Some(mfg) = &inventory.manufacturer {
+                rows.push(Row::at(
+                    entity::entry::ENT_PHYSICAL_MFG_NAME,
+                    &idx,
+                    PassValue::Str(mfg.clone()),
+                ));
+            }
+            if let Some(model) = &inventory.model {
+                rows.push(Row::at(
+                    entity::entry::ENT_PHYSICAL_MODEL_NAME,
+                    &idx,
+                    PassValue::Str(model.clone()),
+                ));
+            }
+            if let Some(firmware) = &inventory.firmware_revision {
+                rows.push(Row::at(
+                    entity::entry::ENT_PHYSICAL_FIRMWARE_REV,
+                    &idx,
+                    PassValue::Str(firmware.clone()),
+                ));
+            }
+            if let Some(software) = &inventory.software_revision {
+                rows.push(Row::at(
+                    entity::entry::ENT_PHYSICAL_SOFTWARE_REV,
+                    &idx,
+                    PassValue::Str(software.clone()),
+                ));
+            }
         }
         rows
     }

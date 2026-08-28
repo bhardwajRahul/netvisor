@@ -68,6 +68,7 @@ export interface HostFormData {
 	model?: string;
 	serial_number?: string;
 	firmware_revision?: string;
+	software_revision?: string;
 
 	// Credential assignments (user-editable, from junction table)
 	credential_assignments: CredentialAssignment[];

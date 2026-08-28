@@ -90,6 +90,7 @@ impl HostService {
                 model: existing.base.model.clone(),
                 serial_number: existing.base.serial_number.clone(),
                 firmware_revision: existing.base.firmware_revision.clone(),
+                software_revision: existing.base.software_revision.clone(),
                 credential_assignments: credential_assignments
                     .unwrap_or_else(|| existing.base.credential_assignments.clone()),
             },

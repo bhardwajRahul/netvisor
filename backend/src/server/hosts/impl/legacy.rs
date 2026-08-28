@@ -387,6 +387,7 @@ impl LegacyHostWithServicesRequest {
                 model: None,
                 serial_number: None,
                 firmware_revision: None,
+                software_revision: None,
                 credential_assignments: vec![],
             },
         };
