@@ -97,15 +97,38 @@ fn if_table() -> IfTable {
         .speed(1000000000)
         .name("Gi0/3")
         .high_speed(),
+        IfRow::port(
+            4,
+            "GigabitEthernet0/4",
+            Some("00:1a:2b:00:fc:04".parse().unwrap()),
+        )
+        .speed(1000000000)
+        .name("Gi0/4")
+        .high_speed(),
+        IfRow::port(
+            5,
+            "GigabitEthernet0/5",
+            Some("00:1a:2b:00:fc:05".parse().unwrap()),
+        )
+        .speed(1000000000)
+        .name("Gi0/5")
+        .high_speed(),
     ])
 }
 
-/// Three uplinks, and the three shapes the address tier has to tell apart.
+/// Five uplinks, and the shapes the address tier has to tell apart.
 ///
 /// Ports 1 and 2 name far ends that publish a management address, both in the same `10.20.30.0/24`
 /// — that pair is what the server-side bucketing folds into one inferred subnet. Port 3 names a far
 /// end that publishes none, which stays unplaceable no matter how much of the network is scanned
-/// and is the control the other two are read against.
+/// and is the control the other two are read against. Port 4 is GH #668 itself and port 5 carries
+/// the address-as-identity subtypes; both are described at their neighbour below.
+///
+/// Every port here needs a row in [`if_table`] as well. A neighbour whose local port resolves to no
+/// interface is discarded whole by `count_dropped_neighbours` before the server ever sees it —
+/// silently, since the fixture still serves it and the device's own LLDP assertions still pass.
+/// Ports 4 and 5 were added here and not there, so the two cases they exist to cover never reached
+/// a scan; `no_lab_device_drops_an_lldp_neighbour` is what now holds the two tables together.
 fn lldp() -> LldpTable {
     LldpTable::new(
         Advertised::octets(LldpChassisId::MacAddress("00:1a:2b:00:fc:00".to_string())),

@@ -142,6 +142,5 @@ mod tests {
             );
         }
         assert_eq!(scan.local_port_outcome.unmatched, 0);
-        assert_eq!(scan.dropped_neighbours, 0);
     }
 }

@@ -133,6 +133,5 @@ mod tests {
                 "the advertised 1..N number survived the remap"
             );
         }
-        assert_eq!(scan.dropped_neighbours, 0);
     }
 }

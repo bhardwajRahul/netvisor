@@ -620,4 +620,40 @@ mod tests {
             }
         }
     }
+
+    /// No device in the lab loses an LLDP neighbour to a local port that names no interface.
+    ///
+    /// `count_dropped_neighbours` discards such a neighbour whole: no `lldp_chassis_id` is ever
+    /// written, so the far end it names contributes nothing and the server has nothing to resolve.
+    /// From the fixture's side this is invisible — the LLDP table still serves the neighbour, and a
+    /// device test asserting on `neighbour_named` still passes, because the drop happens after the
+    /// walk and before interfaces are built.
+    ///
+    /// That is how `switch-offsite-01` shipped serving two neighbours nothing could ever read: the
+    /// GH #668 "Switch1" shape on port 4 and the address-as-identity subtypes on port 5 were added
+    /// to `lldp()` and not to `if_table()`. Both cases existed only in unit tests while appearing
+    /// to be covered end to end.
+    ///
+    /// Lab-wide rather than per device, because the mistake is in adding a fixture and every future
+    /// fixture can make it. No device is exempt: the two that exercise a *namespace* mismatch
+    /// (`switch-exos-01`'s 1001+ ifIndexes, `switch-voss-01`'s identity mapping) resolve their
+    /// neighbours through `lldpLocPortTable` and drop none, which is the point of both.
+    #[tokio::test]
+    async fn no_lab_device_drops_an_lldp_neighbour() {
+        for device in lab() {
+            let scan = harness::collect(&device).await;
+            if scan.neighbours.records.is_empty() {
+                continue;
+            }
+            assert_eq!(
+                scan.dropped_neighbours,
+                0,
+                "{} serves {} LLDP neighbour(s) and {} reach no interface — a local port in \
+                 lldp() with no matching row in if_table() is discarded before the server sees it",
+                device.name,
+                scan.neighbours.records.len(),
+                scan.dropped_neighbours,
+            );
+        }
+    }
 }
