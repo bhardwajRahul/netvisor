@@ -534,7 +534,13 @@
 
 		return [
 			{ label: common_edit(), icon: Edit, onClick: () => handleEditHost(host) },
-			{ label: common_rescan(), icon: RefreshCw, onClick: () => handleRescanHost(host) },
+			// A rescan targets the host's known addresses, so a host with none has nothing to
+			// scan and the endpoint answers 400. Offering the action anyway meant the only way to
+			// find that out was to trigger it and read the error toast. Devices identified purely
+			// by a MAC are the reason such a host exists at all.
+			...(hostIPAddresses(host).length > 0
+				? [{ label: common_rescan(), icon: RefreshCw, onClick: () => handleRescanHost(host) }]
+				: []),
 			{ label: common_consolidate(), icon: Replace, onClick: () => handleStartConsolidate(host) },
 			{
 				label: common_hide(),

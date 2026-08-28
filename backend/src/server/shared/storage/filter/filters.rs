@@ -289,6 +289,24 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// Rows whose MAC is one of these, for looking a device up by identity across a network.
+    ///
+    /// An empty list matches nothing rather than everything: the caller asked for the rows bearing
+    /// a specific set of addresses, and a set with nothing in it is answered by no rows. Dropping
+    /// the condition instead would silently widen the query to the whole table — the same trap
+    /// `search` guards at `:331`.
+    pub fn mac_address_in(mut self, macs: &[MacAddress]) -> Self {
+        if macs.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+        let col = self.qualify_column("mac_address");
+        self.conditions
+            .push(format!("{} = ANY(${})", col, self.values.len() + 1));
+        self.values.push(SqlValue::MacAddressArray(macs.to_vec()));
+        self
+    }
+
     pub fn password_reset_token(mut self, token: &str) -> Self {
         let col = self.qualify_column("password_reset_token");
         self.conditions

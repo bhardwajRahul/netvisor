@@ -227,7 +227,13 @@ impl DiscoveryDigestService {
         }
         let host_buckets: Vec<HostBucket> = all_hosts
             .into_iter()
-            .filter(|h| coverage.covers_host(h.id, host_subnets.get(&h.id)))
+            .filter(|h| {
+                coverage.covers_host(
+                    h.id,
+                    host_subnets.get(&h.id),
+                    scanned_host_ids.contains(&h.id),
+                )
+            })
             .map(|h| {
                 let (status, is_fresh) = compute_digest_status(&h, &scanned_host_ids, &window);
                 HostBucket {
@@ -597,11 +603,31 @@ impl ScanCoverage {
     }
 
     /// Whether this session's silence about `host_id` is meaningful.
-    fn covers_host(&self, host_id: Uuid, host_subnets: Option<&HashSet<Uuid>>) -> bool {
+    ///
+    /// `observed` is whether the session actually reported this host. It only matters to the
+    /// subnet arm, and it is there because a host's subnets are derived from its addresses: a host
+    /// with none belongs to no swept subnet, so the arithmetic dropped it before it was ever
+    /// bucketed — and a device the scan had just discovered produced no digest line at all, not
+    /// even as an addition. A session that saw a host covers that host, whatever placing it in a
+    /// subnet would have concluded.
+    ///
+    /// It deliberately does not widen the `SingleHost` arm. Those sessions name the one host they
+    /// speak for, and a Docker or self-report run touches several while claiming authority over
+    /// exactly one.
+    ///
+    /// Silence about an address-less host stays un-asserted, which is the honest reading: an
+    /// address sweep cannot conclude anything about a device that has no address to sweep.
+    fn covers_host(
+        &self,
+        host_id: Uuid,
+        host_subnets: Option<&HashSet<Uuid>>,
+        observed: bool,
+    ) -> bool {
         match self {
             Self::SingleHost(id) => *id == host_id,
             Self::Subnets(swept) => {
-                host_subnets.is_some_and(|subnets| subnets.iter().any(|s| swept.contains(s)))
+                observed
+                    || host_subnets.is_some_and(|subnets| subnets.iter().any(|s| swept.contains(s)))
             }
         }
     }
@@ -1027,14 +1053,43 @@ mod tests {
 
         let in_scope = Uuid::new_v4();
         let out_of_scope = Uuid::new_v4();
-        assert!(coverage.covers_host(in_scope, Some(&subnets(&[swept]))));
+        assert!(coverage.covers_host(in_scope, Some(&subnets(&[swept])), false));
         assert!(
-            !coverage.covers_host(out_of_scope, Some(&subnets(&[untouched]))),
+            !coverage.covers_host(out_of_scope, Some(&subnets(&[untouched])), false),
             "a host in an unswept subnet must be left out of the digest entirely"
         );
         assert!(
-            !coverage.covers_host(Uuid::new_v4(), None),
+            !coverage.covers_host(Uuid::new_v4(), None, false),
             "a host with no IPs cannot be placed in a swept subnet"
+        );
+    }
+
+    /// A host's subnets come from its addresses, so a host with none is placed in nothing and the
+    /// subnet arm concluded it was out of scope. That dropped it before bucketing — so a device
+    /// the scan had just discovered produced no digest line at all, not even as an addition.
+    /// Seeing it is the coverage; the subnet arithmetic is only how coverage is inferred for the
+    /// hosts it can speak for.
+    #[test]
+    fn a_scan_that_saw_an_address_less_host_still_reports_it() {
+        let swept = Uuid::new_v4();
+        let coverage = ScanCoverage::for_session(
+            &DiscoveryType::Unified {
+                host_id: Uuid::new_v4(),
+                subnet_ids: Some(vec![swept]),
+                host_naming_fallback: Default::default(),
+                scan_settings: Default::default(),
+            },
+            &ScannedEntityIds::default(),
+        );
+
+        let mac_only_host = Uuid::new_v4();
+        assert!(
+            coverage.covers_host(mac_only_host, None, true),
+            "a session that observed a host covers it, whatever placing it in a subnet concludes"
+        );
+        assert!(
+            !coverage.covers_host(Uuid::new_v4(), None, false),
+            "an address-less host this session never saw stays un-asserted, not stale"
         );
     }
 
@@ -1057,9 +1112,9 @@ mod tests {
             },
         );
 
-        assert!(coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[daemon_a_subnet]))));
+        assert!(coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[daemon_a_subnet])), false));
         assert!(
-            !coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[daemon_b_subnet]))),
+            !coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[daemon_b_subnet])), false),
             "daemon A's silence about daemon B's subnet carries no information"
         );
     }
@@ -1080,9 +1135,9 @@ mod tests {
             },
         ] {
             let coverage = ScanCoverage::for_session(&discovery_type, &ScannedEntityIds::default());
-            assert!(coverage.covers_host(daemon_host, Some(&any_subnet)));
+            assert!(coverage.covers_host(daemon_host, Some(&any_subnet), false));
             assert!(
-                !coverage.covers_host(other_host, Some(&any_subnet)),
+                !coverage.covers_host(other_host, Some(&any_subnet), false),
                 "a container/self-report run never swept the network"
             );
             assert!(
@@ -1103,7 +1158,7 @@ mod tests {
             },
             &ScannedEntityIds::default(),
         );
-        assert!(!coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[Uuid::new_v4()]))));
+        assert!(!coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[Uuid::new_v4()])), false));
         assert!(!coverage.swept_subnets());
     }
 }

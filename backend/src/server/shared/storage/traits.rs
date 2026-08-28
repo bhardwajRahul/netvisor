@@ -382,6 +382,7 @@ pub enum SqlValue {
     CredentialType(CredentialType),
     MacAddress(MacAddress),
     OptionalMacAddress(Option<MacAddress>),
+    MacAddressArray(Vec<MacAddress>),
     Interfaces(Vec<Interface>),
     Tags(Vec<Tag>),
     Vlans(Vec<Vlan>),
@@ -706,9 +707,9 @@ impl SqlValue {
             SqlValueDiscriminants::IpAddr | SqlValueDiscriminants::OptionalIpAddr => {
                 IpAddr::contribute(out)
             }
-            SqlValueDiscriminants::MacAddress | SqlValueDiscriminants::OptionalMacAddress => {
-                MacAddress::contribute(out)
-            }
+            SqlValueDiscriminants::MacAddress
+            | SqlValueDiscriminants::OptionalMacAddress
+            | SqlValueDiscriminants::MacAddressArray => MacAddress::contribute(out),
             SqlValueDiscriminants::EntitySource => EntitySource::contribute(out),
             SqlValueDiscriminants::AttributeSource => AttributeSource::contribute(out),
             SqlValueDiscriminants::EntityDiscriminant => EntityDiscriminants::contribute(out),

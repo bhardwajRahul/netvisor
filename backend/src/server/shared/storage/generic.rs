@@ -207,6 +207,7 @@ where
             Bound::IpNet(v) => query.bind(v),
             Bound::OptIpNet(v) => query.bind(v),
             Bound::Mac(v) => query.bind(v),
+            Bound::MacArray(v) => query.bind(v),
             Bound::OptMac(v) => query.bind(v),
         })
     }

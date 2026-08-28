@@ -381,6 +381,7 @@ impl HostService {
             .find_matching_host_by_ip_addresses(
                 &host.base.network_id,
                 &ip_addresses,
+                &interfaces,
                 host.base.chassis_id.as_ref().map(|c| c.value().0.as_str()),
             )
             .await?;
@@ -413,6 +414,28 @@ impl HostService {
                     }
                 }
             }
+        }
+
+        // A payload whose only identity is a MAC may not conjure a host on a weak claim.
+        //
+        // Everything with an address or a chassis id is untouched: those are the identities every
+        // existing path carries, and this gate never sees them. What it does see is a device known
+        // only at the link layer, where the two failure modes §6 separates both land on a row an
+        // operator then has to disprove — a weak *value* mints a fresh host on every MAC rotation,
+        // and a weak *provenance* mints a ghost for a device nothing has ever contacted, which is
+        // GH #668 from the LLDP side.
+        //
+        // Discovery only. A person creating a host with no addresses is asserting it themselves,
+        // which is the top of the ladder, not a claim to be graded.
+        if is_new_host
+            && host.base.source.is_from_discovery()
+            && !mac_identity::identity_permits_minting(&host, &ip_addresses, &interfaces)
+        {
+            return Err(anyhow!(
+                "Refusing to create a host identified only by a MAC address that cannot anchor \
+                 one. Minting needs a vendor-assigned unicast address read from the device \
+                 itself; this payload carries neither that nor an IP address or chassis id."
+            ));
         }
 
         // Check host limit for new hosts (not upserts)

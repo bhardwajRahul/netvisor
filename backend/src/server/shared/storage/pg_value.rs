@@ -180,6 +180,7 @@ pub enum Bound<'q> {
     OptIpNet(Option<IpNetwork>),
     Mac(MacAddress),
     OptMac(Option<MacAddress>),
+    MacArray(Vec<MacAddress>),
 }
 
 impl Bound<'_> {
@@ -343,6 +344,7 @@ impl SqlValue {
             // sqlx's mac_address feature supports MacAddress directly.
             Self::MacAddress(v) => Bound::Mac(*v),
             Self::OptionalMacAddress(v) => Bound::OptMac(*v),
+            Self::MacAddressArray(v) => Bound::MacArray(v.clone()),
         })
     }
 }

@@ -1,5 +1,6 @@
 //! IP/MAC-based host matching, locking, upsert, and consolidation.
 use super::*;
+use crate::server::ip_addresses::r#impl::base::MacEvidence;
 
 impl HostService {
     /// Find an existing host that matches based on IP-address data (subnet+IP or MAC address).
@@ -15,10 +16,19 @@ impl HostService {
         &self,
         network_id: &Uuid,
         incoming_ip_addresses: &[IPAddress],
+        incoming_interfaces: &[Interface],
         incoming_chassis_id: Option<&str>,
     ) -> Result<Option<(Host, Vec<IPAddress>)>> {
-        // A payload with neither an address nor a chassis id carries no identity to match on.
-        if incoming_ip_addresses.is_empty() && incoming_chassis_id.is_none() {
+        // Every identity this payload offers, in the order the tiers below consult them. A MAC is
+        // the last of the three and the only one that survives a device having no address at all,
+        // which is the whole reason it is here.
+        let incoming_macs = mac_identity::payload_macs(incoming_ip_addresses, incoming_interfaces);
+
+        // A payload with no address, no chassis id and no MAC carries no identity to match on.
+        if incoming_ip_addresses.is_empty()
+            && incoming_chassis_id.is_none()
+            && incoming_macs.is_empty()
+        {
             return Ok(None);
         }
 
@@ -51,11 +61,21 @@ impl HostService {
             })
             .collect();
 
-        let Some(matched_id) =
-            select_matching_host(incoming_ip_addresses, incoming_chassis_id, &candidates)
-        else {
-            return Ok(None);
-        };
+        let matched_id =
+            match select_matching_host(incoming_ip_addresses, incoming_chassis_id, &candidates) {
+                Some(id) => id,
+                // The MAC tier, consulted only once addresses and the chassis id have both failed.
+                // That ordering is what keeps MAC off the fleet-wide identity path: a device with an
+                // address matches on IP and subnet long before it reaches here, so nothing changes for
+                // it. What arrives is a device with no address at all, or one whose address moved.
+                None => match self
+                    .find_host_id_by_mac(network_id, &incoming_macs, &candidates)
+                    .await?
+                {
+                    Some(id) => id,
+                    None => return Ok(None),
+                },
+            };
 
         let host_ip_addresses = candidates
             .into_iter()
@@ -74,6 +94,73 @@ impl HostService {
                 );
                 (host, host_ip_addresses)
             }))
+    }
+
+    /// The host on this network already carrying one of these MACs, or `None`.
+    ///
+    /// Looked up by targeted query rather than by widening the candidate load above. That load
+    /// already fetches every live host and all their addresses, and this function runs twice per
+    /// host per scan — once for `previous_subnets` and again inside `create_with_children` — so
+    /// pulling every interface in the network alongside it would multiply the most-repeated read
+    /// in discovery by the port count of the biggest switch on it. Two indexed reads keyed on the
+    /// handful of addresses actually in the payload cost the same whatever the fleet looks like.
+    ///
+    /// Both tables, because a MAC-identified device may carry its address on either: one reached
+    /// by an address puts it on an `ip_addresses` row, one known only at the link layer on an
+    /// interface. Both are the same claim about the same NIC.
+    ///
+    /// Restricted to the candidate set so a row belonging to a host this network no longer holds
+    /// live cannot resolve, and via each entity's service rather than its storage.
+    async fn find_host_id_by_mac(
+        &self,
+        network_id: &Uuid,
+        incoming_macs: &[MacEvidence],
+        candidates: &[HostCandidate],
+    ) -> Result<Option<Uuid>> {
+        // Only the addresses that may anchor identity are worth a query — a locally administered
+        // or virtual-router MAC would be discarded by the matcher anyway.
+        let anchors: Vec<MacAddress> = incoming_macs
+            .iter()
+            .filter(|e| mac_identity::may_match(e))
+            .map(|e| e.value().0)
+            .collect();
+        if anchors.is_empty() {
+            return Ok(None);
+        }
+
+        let ip_rows = self
+            .ip_address_service
+            .get_all(
+                StorableFilter::<IPAddress>::new_from_network_ids(&[*network_id])
+                    .mac_address_in(&anchors)
+                    .live(),
+            )
+            .await?;
+        let interface_rows = self
+            .interface_service
+            .get_all(
+                StorableFilter::<Interface>::new_from_network_ids(&[*network_id])
+                    .mac_address_in(&anchors)
+                    .live(),
+            )
+            .await?;
+
+        let live_host_ids: HashSet<Uuid> = candidates.iter().map(|c| c.id).collect();
+        let carriers: Vec<(Uuid, MacAddress)> = ip_rows
+            .iter()
+            .filter_map(|r| mac_of(&r.base.mac_address).map(|m| (r.base.host_id, m)))
+            .chain(
+                interface_rows
+                    .iter()
+                    .filter_map(|r| mac_of(&r.base.mac_address).map(|m| (r.base.host_id, m))),
+            )
+            .filter(|(host_id, _)| live_host_ids.contains(host_id))
+            .collect();
+
+        Ok(mac_identity::select_matching_host_by_mac(
+            incoming_macs,
+            &carriers,
+        ))
     }
 
     /// Merge new discovery data with existing host
