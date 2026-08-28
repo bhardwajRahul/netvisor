@@ -200,6 +200,7 @@ mod create;
 mod delete;
 mod discovery;
 mod lifecycle;
+pub(crate) mod mac_identity;
 mod topology;
 mod update;
 
@@ -306,7 +307,7 @@ fn bindings_overlap(claim_iface: &Option<Uuid>, op_iface: &Option<Uuid>) -> bool
 /// Widening this predicate also widens the MAC exclusion in pass 1 of `select_matching_host`,
 /// so a newly covered range must always ship together with the pass-2 address fallback —
 /// otherwise hosts wearing that range lose MAC matching without gaining anything back.
-fn is_virtual_router_mac(mac: &MacAddress) -> bool {
+pub(crate) fn is_virtual_router_mac(mac: &MacAddress) -> bool {
     let bytes = mac.bytes();
     // VRRP IPv4 (RFC 5798 §7.3): 00:00:5e:00:01:XX where XX = VRID (0-255).
     // FreeBSD/OPNsense CARP reuses this range, keyed by vhid.
@@ -554,16 +555,23 @@ fn ip_addresses_match(
     || (incoming.id == existing.id
         && incoming.id != Uuid::nil()
         && existing.id != Uuid::nil())
-    // Tertiary: MAC match, gated on incoming MAC uniqueness
-    || (incoming.base.mac_address.is_some()
-        && incoming.base.mac_address == existing.base.mac_address
-        && incoming
-            .base
-            .mac_address
-            .as_ref()
-            .map(|e| e.value().0)
-            .map(|mac| incoming_mac_counts.get(&mac).copied().unwrap_or(0) == 1)
-            .unwrap_or(false))
+    // Tertiary: MAC match, gated on incoming MAC uniqueness.
+    //
+    // On the *value*, never on the evidence. `mac_address` carries its provenance since §7, and
+    // `Attributed` compares both halves — so a bare `==` on the field silently demanded that the
+    // two scans have learned the address the same way before it would call them the same NIC. A
+    // MAC first read from a router's forwarding table and later confirmed by our own ARP reply is
+    // one NIC, and the branch is asking whether it is the same hardware, not the same paperwork.
+    || (match (
+        mac_of(&incoming.base.mac_address),
+        mac_of(&existing.base.mac_address),
+    ) {
+        (Some(incoming_mac), Some(existing_mac)) => {
+            incoming_mac == existing_mac
+                && incoming_mac_counts.get(&incoming_mac).copied().unwrap_or(0) == 1
+        }
+        _ => false,
+    })
 }
 
 #[cfg(test)]
@@ -1098,6 +1106,38 @@ mod tests {
         assert_eq!(
             select_matching_host(&incoming, None, &candidates),
             Some(host)
+        );
+    }
+    /// The same rematch, when the two scans learned the MAC from different sources.
+    ///
+    /// `mac_address` is `Option<Attributed<MacEvidenceValue>>` and `Attributed` compares value
+    /// *and* source, so a bare `==` on the field makes the tertiary branch demand that a router's
+    /// ARP cache and our own ARP reply agree about provenance before it will call them the same
+    /// NIC. They are the same NIC. Every other test builds both sides with `ArpReply`, which is
+    /// why none of them can see this.
+    #[test]
+    fn a_host_rematches_by_mac_even_when_the_two_scans_learned_it_differently() {
+        let mac = MacAddress::new([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x22]);
+        let host = Uuid::new_v4();
+
+        // First scan: a router's ipNetToMediaTable told us about this MAC.
+        let mut existing = make_interface("10.0.0.5".parse().unwrap(), Uuid::new_v4(), Some(mac));
+        existing.base.mac_address = Some(MacEvidence::new(
+            MacEvidenceValue(mac),
+            AttributeSource::ForwardingTable,
+        ));
+
+        // Second scan, after DHCP moved it: we ARPed for it ourselves.
+        let incoming = vec![make_interface(
+            "10.0.0.9".parse().unwrap(),
+            Uuid::new_v4(),
+            Some(mac),
+        )];
+
+        assert_eq!(
+            select_matching_host(&incoming, None, &[candidate(host, vec![existing])]),
+            Some(host),
+            "a NIC is the same NIC however each scan came to hear about it"
         );
     }
 }

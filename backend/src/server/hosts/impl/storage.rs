@@ -60,8 +60,16 @@ impl Storable for Host {
     }
 
     /// Spans what an operator actually types when hunting for a host: its
-    /// name/hostname, a snippet of its description, an IP, or the name of
-    /// something running on it.
+    /// name/hostname, a snippet of its description, an IP, a MAC, or the name
+    /// of something running on it.
+    ///
+    /// The MAC predicates are not a convenience. A device identified only by
+    /// its MAC — one with no address at all — was unfindable by the single
+    /// identity it has, so the search box could not reach a host the fleet
+    /// holds. Both tables carry one, and which table depends on how the device
+    /// was found, so searching one would leave half of them unreachable.
+    /// Matched as text, so a partial address or a bare OUI prefix works the way
+    /// a partial IP already does.
     ///
     /// Every rung of the [`Host::display_name`] ladder is in here, which is why
     /// `sys_name` and `chassis_id` are covered even though no column shows them
@@ -84,6 +92,10 @@ impl Storable for Host {
             "hosts.description ILIKE {}",
             "EXISTS (SELECT 1 FROM ip_addresses ia WHERE ia.host_id = hosts.id \
              AND ia.valid_to IS NULL AND host(ia.ip_address) ILIKE {})",
+            "EXISTS (SELECT 1 FROM ip_addresses ia WHERE ia.host_id = hosts.id \
+             AND ia.valid_to IS NULL AND ia.mac_address::text ILIKE {})",
+            "EXISTS (SELECT 1 FROM interfaces i WHERE i.host_id = hosts.id \
+             AND i.valid_to IS NULL AND i.mac_address::text ILIKE {})",
             "EXISTS (SELECT 1 FROM services s WHERE s.host_id = hosts.id \
              AND s.valid_to IS NULL AND s.name ILIKE {})",
         ]

@@ -408,4 +408,31 @@ mod tests {
         assert_eq!(f.conditions, vec!["FALSE".to_string()]);
         assert_eq!(f.values.len(), 0);
     }
+    /// `find_if_entry_by_mac` narrows to physical ports with this filter, and the ports it exists
+    /// to find are the ones with no `if_type` at all — a port learned from a neighbour's
+    /// advertisement, or a device known only at the link layer, never had an ifTable walked.
+    ///
+    /// The hazard is that the obvious predicate is silently wrong rather than broken: in Postgres
+    /// `NULL NOT IN (...)` evaluates to NULL, not TRUE, so a bare `NOT IN` drops every row whose
+    /// type was never read. No compile error, no failing test, and the rows lost are exactly the
+    /// MAC-identified interfaces this narrowing is asked to return. Asserted on the emitted clause
+    /// because that is the layer the bug lives at, and asserted here rather than at the one call
+    /// site so a second caller cannot reintroduce it.
+    #[test]
+    fn physical_if_types_admits_an_interface_whose_type_was_never_read() {
+        let clause =
+            StorableFilter::<crate::server::interfaces::r#impl::base::Interface>::new_unfiltered()
+                .physical_if_types()
+                .to_where_clause();
+
+        assert!(
+            clause.contains("if_type IS NULL"),
+            "an unread if_type must survive the physical-port narrowing, or a MAC-identified \
+             port silently stops resolving. Clause was: {clause}"
+        );
+        assert!(
+            clause.contains("NOT IN"),
+            "the virtual families must still be excluded. Clause was: {clause}"
+        );
+    }
 }

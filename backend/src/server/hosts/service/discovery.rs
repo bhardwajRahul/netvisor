@@ -171,6 +171,7 @@ impl HostService {
             .find_matching_host_by_ip_addresses(
                 &host.base.network_id,
                 &ip_addresses,
+                &interfaces,
                 host.base.chassis_id.as_ref().map(|c| c.value().0.as_str()),
             )
             .await?

@@ -71,6 +71,28 @@ pub enum AttributeMethod {
     Manual,
 }
 
+impl AttributeMethod {
+    /// Whether the exchange tied the claim to the subject the claim names.
+    ///
+    /// The question minting asks, and deliberately not `rank() >= n`: rank is lexicographic with
+    /// authorship first, so a human-authored value a neighbour merely announced outranks a machine
+    /// value we queried — correct for deciding *which value wins*, and the wrong axis entirely for
+    /// deciding whether a claim is solid enough to conjure a record from. Here only the binding
+    /// matters.
+    ///
+    /// Exhaustive, so a new tier cannot be added without answering it.
+    pub fn binds_claim_to_subject(&self) -> bool {
+        match self {
+            // We chose the subject and the transport correlated the answer, the protocol was the
+            // subject's own, or a person asserted it here.
+            Self::Queried | Self::Native | Self::Manual => true,
+            // Nothing claimed it, nothing binds the frame to the subject, or the speaker is not
+            // the subject — a third party's say-so.
+            Self::Unspecified | Self::Inferred | Self::Announced | Self::Reported => false,
+        }
+    }
+}
+
 /// How a discovered value reached us.
 ///
 /// Every variant here has something that writes it. Sources with no producer are deliberately
