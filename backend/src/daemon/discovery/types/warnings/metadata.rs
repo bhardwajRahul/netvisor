@@ -349,7 +349,7 @@ impl EntityMetadataProvider for DiscoveryWarningCode {
 
     fn icon(&self) -> Icon {
         match self.severity() {
-            Severity::Lost => Icon::CircleAlert,
+            Severity::Lost => Icon::OctagonAlert,
             Severity::Degraded => Icon::TriangleAlert,
             Severity::Informational => Icon::Info,
         }

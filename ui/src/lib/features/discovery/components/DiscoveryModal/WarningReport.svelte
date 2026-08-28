@@ -213,17 +213,27 @@
 	lets a credential use the same snippet instead of a near-copy of it.
 -->
 {#snippet entityChip(subject: WarningSubject)}
-	{@const type = subject.entity?.type ?? 'Host'}
-	{@const Icon = entities.getIconComponent(type)}
-	<EntityTag
-		entityRef={entityRef(type, subject.entity?.id ?? '', {
-			id: subject.entity?.id,
-			name: subject.label
-		})}
-		label={subject.label}
-		icon={Icon}
-		color={entities.getColorHelper(type).color}
-	/>
+	{#if subject.entity}
+		{@const type = subject.entity.type}
+		<EntityTag
+			entityRef={entityRef(type, subject.entity.id, {
+				id: subject.entity.id,
+				name: subject.label
+			})}
+			label={subject.label}
+			icon={entities.getIconComponent(type)}
+			color={entities.getColorHelper(type).color}
+		/>
+	{:else}
+		<!--
+			Nothing to point at, so no colour, no hover state and no click: a bare address, or a
+			device deleted since the scan. The decision lives here rather than at each call site
+			because it used to live at one of the three — the evidence lines rendered a chip
+			unconditionally, and a subject with no entity fell through to an EntityTag carrying an
+			empty id, which is a link to nowhere dressed as a device.
+		-->
+		<Tag label={subject.label} color={null} />
+	{/if}
 {/snippet}
 
 {#if sections.length === 0}
@@ -265,13 +275,7 @@
 										{#if entry.subjects.length > 0}
 											<span class="flex flex-wrap items-center gap-1">
 												{#each entry.subjects as subject (subject.label)}
-													{#if subject.entity}
-														{@render entityChip(subject)}
-													{:else}
-														<!-- No entity to point at, so no colour and no hover state:
-														     an address here is a label, not a link. -->
-														<Tag label={subject.label} color={null} />
-													{/if}
+													{@render entityChip(subject)}
 												{/each}
 											</span>
 										{/if}
