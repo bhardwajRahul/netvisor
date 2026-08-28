@@ -33,6 +33,13 @@ const MUTE_NEIGHBOUR_SYS_NAME: &str = "Switch1";
 /// A far end that identifies itself *by address* — chassis subtype 5, port subtype 4.
 const ADDRESSED_NEIGHBOUR: &str = "10.20.30.40";
 
+/// A far end in a *second* range nothing holds, on a port carrying no VLAN the others share.
+///
+/// Without it every far end here sits in one `/24` and inference produces a single range, so the
+/// case where a later reading covers *several* assumed ranges — the one discovery deliberately
+/// declines, because resolving it means deleting rows — cannot be reached in the lab at all.
+const BRANCH_NEIGHBOUR: &str = "10.20.31.9";
+
 pub fn device() -> SimDevice {
     SimDevice {
         name: "switch-offsite-01",
@@ -113,16 +120,26 @@ fn if_table() -> IfTable {
         .speed(1000000000)
         .name("Gi0/5")
         .high_speed(),
+        IfRow::port(
+            6,
+            "GigabitEthernet0/6",
+            Some("00:1a:2b:00:fc:06".parse().unwrap()),
+        )
+        .speed(1000000000)
+        .name("Gi0/6")
+        .high_speed(),
     ])
 }
 
-/// Five uplinks, and the shapes the address tier has to tell apart.
+/// Six uplinks, and the shapes the address tier has to tell apart.
 ///
 /// Ports 1 and 2 name far ends that publish a management address, both in the same `10.20.30.0/24`
 /// — that pair is what the server-side bucketing folds into one inferred subnet. Port 3 names a far
 /// end that publishes none, which stays unplaceable no matter how much of the network is scanned
 /// and is the control the other two are read against. Port 4 is GH #668 itself and port 5 carries
-/// the address-as-identity subtypes; both are described at their neighbour below.
+/// the address-as-identity subtypes; both are described at their neighbour below. Port 6 sits in a
+/// *second* range, so the lab holds two assumed ranges rather than one — without it the case where
+/// a later reading covers several of them is unreachable.
 ///
 /// Every port here needs a row in [`if_table`] as well. A neighbour whose local port resolves to no
 /// interface is discarded whole by `count_dropped_neighbours` before the server ever sees it —
@@ -155,6 +172,10 @@ fn lldp() -> LldpTable {
         LocalPort::new(
             5,
             Advertised::octets(LldpPortId::InterfaceName("GigabitEthernet0/5".to_string())),
+        ),
+        LocalPort::new(
+            6,
+            Advertised::octets(LldpPortId::InterfaceName("GigabitEthernet0/6".to_string())),
         ),
     ])
     .neighbours(vec![
@@ -206,6 +227,18 @@ fn lldp() -> LldpTable {
             )),
         )
         .sys_name("offsite-addressed-01"),
+        // A second range. Inference buckets per `/24` and only widens on shared-VLAN evidence, so
+        // this produces a range of its own rather than joining the others — which is what makes the
+        // several-guesses-under-one-reading case reachable.
+        RemoteNeighbour::new(
+            6,
+            Advertised::octets(LldpChassisId::MacAddress("00:ad:24:c0:ff:e4".to_string())),
+            Advertised::octets(LldpPortId::InterfaceName(
+                "GigabitEthernet1/0/1".to_string(),
+            )),
+        )
+        .sys_name("offsite-branch-01")
+        .mgmt_addr(BRANCH_NEIGHBOUR.parse().unwrap()),
     ])
 }
 
