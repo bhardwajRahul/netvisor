@@ -304,23 +304,44 @@ impl HostService {
             // `if_name` is what `match_existing_interface` matches on first and what the live
             // unique index covers, and a row with no name, no ifIndex and no MAC has no key at
             // all — it would match nothing on the next scan and be inserted again, forever.
-            let interfaces = match &far_end.port_name {
-                Some(port_name) => vec![Interface::new(InterfaceBase {
+            // The port the far end says it answers on, recorded whenever the advertisement
+            // identifies it at all. A name and a MAC are both identities — they just key different
+            // tiers of `match_existing_interface`, which is what stops the row duplicating on the
+            // next scan. A far end that published neither gets no interface, because a row with no
+            // name, no MAC and no ifIndex would match nothing and be inserted again forever.
+            //
+            // if_index, if_type, admin_status and oper_status stay `None` throughout. An
+            // advertisement carries none of them, and the columns are nullable precisely so this
+            // does not have to guess.
+            let port_mac = far_end
+                .port_mac
+                .as_deref()
+                .and_then(|mac| mac.parse::<MacAddress>().ok());
+            let interfaces = match (&far_end.port_name, port_mac) {
+                // Named: `if_name` is the key, and a later walk of this device returns the same
+                // string as `ifName`, which upgrades this row in place rather than adding a second
+                // one beside it. `if_descr` takes the name too, being NOT NULL and validated
+                // non-empty.
+                (Some(port_name), mac) => vec![Interface::new(InterfaceBase {
                     network_id,
                     host_id: Uuid::nil(), // Server assigns.
-                    // Both, and both the advertised name: `if_descr` is NOT NULL and validated
-                    // non-empty, and `if_name` is the identity. A later SNMP walk of this device
-                    // returns the same string as `ifName`, which is what upgrades this row in
-                    // place instead of adding a second one beside it.
                     if_descr: port_name.clone(),
                     if_name: Some(port_name.clone()),
-                    mac_address: far_end.port_mac.as_deref().and_then(|mac| mac.parse().ok()),
-                    // if_index, if_type, admin_status and oper_status stay `None`. An
-                    // advertisement carries none of them, and the columns are nullable precisely
-                    // so this does not have to guess.
+                    mac_address: mac,
                     ..Default::default()
                 })],
-                None => Vec::new(),
+                // Identified by its MAC and nothing else — a `MacAddress` port id, which is a real
+                // identity but not a name, so `if_name` stays empty and the MAC tier is what
+                // matches it. `if_descr` carries the address because something has to, and it is
+                // what the device gave us to call this port by.
+                (None, Some(mac)) => vec![Interface::new(InterfaceBase {
+                    network_id,
+                    host_id: Uuid::nil(), // Server assigns.
+                    if_descr: mac.to_string(),
+                    mac_address: Some(mac),
+                    ..Default::default()
+                })],
+                (None, None) => Vec::new(),
             };
 
             if let Err(e) = self
