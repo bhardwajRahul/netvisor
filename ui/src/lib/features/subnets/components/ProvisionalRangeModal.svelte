@@ -11,11 +11,12 @@
 	a deployment, and the docs for pointing an existing daemon at a segment it can route to.
 -->
 <script lang="ts">
-	import { Check, Edit, HardDrive, Route } from 'lucide-svelte';
+	import { Check, Crosshair, Edit } from 'lucide-svelte';
 
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import { createColorHelper, type Color } from '$lib/shared/utils/styling';
 	import { openModal } from '$lib/shared/stores/modal-registry';
+	import { entities } from '$lib/shared/stores/metadata';
 	import { docsUrl } from '$lib/shared/utils/docs';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import type { Subnet } from '../types/base';
@@ -43,6 +44,12 @@
 	}
 
 	let { subnet, isOpen = false, onConfirm, onCorrect, onClose }: Props = $props();
+
+	/**
+	 * From the entity metadata rather than picked here, so a daemon is drawn with the same icon in
+	 * this modal as everywhere else it appears and a change to it reaches all of them at once.
+	 */
+	const DaemonIcon = entities.getIconComponent('Daemon');
 
 	/**
 	 * The guide for pointing a daemon at a segment it can route to but has no interface on — which
@@ -81,7 +88,7 @@
 			id: 'deploy-daemon',
 			title: subnets_deployDaemonHere(),
 			description: subnets_deployDaemonHereDetail(),
-			icon: HardDrive,
+			icon: DaemonIcon,
 			color: 'Indigo',
 			// The daemon modal lives in the daemons tab, so the hash has to move with it.
 			run: () => {
@@ -94,7 +101,7 @@
 			id: 'make-routable',
 			title: subnets_makeRoutable(),
 			description: subnets_makeRoutableDetail(),
-			icon: Route,
+			icon: Crosshair,
 			color: 'Gray',
 			run: () => {
 				onClose();
@@ -106,28 +113,34 @@
 
 <GenericModal title={subnets_resolveRange()} {isOpen} {onClose} size="md">
 	{#if subnet}
-		<div class="space-y-4">
-			<p class="text-secondary text-sm">
-				{subnets_resolveRangeIntro({ cidr: subnet.cidr })}
-			</p>
+		<!-- `modal-content` supplies no padding of its own, so a body has to bring the same
+		     scrollable, padded container every other modal wraps its content in. -->
+		<div class="flex min-h-0 flex-1 flex-col">
+			<div class="flex-1 overflow-auto p-6">
+				<div class="space-y-4">
+					<p class="text-secondary text-sm">
+						{subnets_resolveRangeIntro({ cidr: subnet.cidr })}
+					</p>
 
-			<div class="grid gap-3 sm:grid-cols-2">
-				{#each OPTIONS as option (option.id)}
-					{@const colors = createColorHelper(option.color)}
-					<button onclick={() => option.run(subnet)} class="card w-full text-left">
-						<div class="flex items-center gap-3">
-							<div
-								class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg {colors.bg}"
-							>
-								<option.icon class="h-5 w-5 {colors.icon}" />
-							</div>
-							<div class="min-w-0 flex-1">
-								<p class="text-primary text-sm font-medium">{option.title}</p>
-								<p class="text-secondary text-xs">{option.description}</p>
-							</div>
-						</div>
-					</button>
-				{/each}
+					<div class="grid gap-3 sm:grid-cols-2">
+						{#each OPTIONS as option (option.id)}
+							{@const colors = createColorHelper(option.color)}
+							<button onclick={() => option.run(subnet)} class="card w-full text-left">
+								<div class="flex items-center gap-3">
+									<div
+										class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg {colors.bg}"
+									>
+										<option.icon class="h-5 w-5 {colors.icon}" />
+									</div>
+									<div class="min-w-0 flex-1">
+										<p class="text-primary text-sm font-medium">{option.title}</p>
+										<p class="text-secondary text-xs">{option.description}</p>
+									</div>
+								</div>
+							</button>
+						{/each}
+					</div>
+				</div>
 			</div>
 		</div>
 	{/if}

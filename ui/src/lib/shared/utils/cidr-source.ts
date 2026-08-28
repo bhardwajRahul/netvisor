@@ -12,7 +12,7 @@
  * label carries the meaning without relying on colour.
  */
 
-import { HelpCircle } from 'lucide-svelte';
+import { CloudAlert } from 'lucide-svelte';
 
 import type { components } from '$lib/api/schema';
 import type { CardFieldItem, TagProps } from '$lib/shared/components/data/types';
@@ -50,7 +50,7 @@ export function getCidrSourceTag(subnet: WithCidrSource): TagProps | null {
 	return {
 		label: subnets_rangeAssumed(),
 		color: toColor('indigo'),
-		icon: HelpCircle,
+		icon: CloudAlert,
 		title: subnets_rangeAssumedDetail()
 	};
 }
