@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { type NodeProps, type ResizeDragEvent, type ResizeParams } from '@xyflow/svelte';
+	import {
+		type NodeProps,
+		type ResizeDragEvent,
+		type ResizeParams,
+		useViewport
+	} from '@xyflow/svelte';
 	import NodeHandles from './NodeHandles.svelte';
 	// NodeResizeControl — unused while the resize controls below are commented out.
 	// import { NodeResizeControl } from '@xyflow/svelte';
@@ -31,12 +36,27 @@
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import ContainerHeader, { type SubgroupRow } from './ContainerHeader.svelte';
 	import { CONTAINER_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
+	import { nodeDetail, shouldSimplify } from '../../pipeline/render-mode';
 
 	// Shared, refcounted views over the module-level stores — see
 	// `reactive-stores.svelte.ts`. One subscription serves every node component.
 	let connectedNodes = $derived(sharedStores.connectedNodes.current);
 	let edgeHandles = $derived(sharedStores.edgeHandles.current);
 	let isExportingValue = $derived(sharedStores.exporting.current);
+
+	/**
+	 * Drop the header chrome once it is too small to read — see `shouldSimplify`.
+	 *
+	 * The container's own box is drawn by the expanded-state div below and by the collapsed
+	 * variants, so hiding the title costs no geometry: the header is a pill positioned outside the
+	 * container, or padding-area text inside it, and neither is what ELK sized.
+	 *
+	 * Note the comment further down about resize controls, which once tested `viewport.zoom > 0.5`
+	 * and were changed because it "subscribed every container node to every pan/zoom frame". The
+	 * difference here is that this derives a *boolean*: it recomputes per frame but only propagates
+	 * when the threshold is crossed, so no DOM work happens in between. Measured before relying on it.
+	 */
+	const viewport = useViewport();
 	let searchHiddenNodes = $derived(sharedStores.searchHiddenNodes.current);
 	let searchContainerMap = $derived(sharedStores.searchContainerMatches.current);
 	let currentHoveredTag = $derived(sharedStores.currentHoveredTag.current);
@@ -130,6 +150,30 @@
 
 	// Title text: from node header (set by backend graph builder)
 	let headerText = $derived((data as TopologyNode).header ?? '');
+
+	/**
+	 * What this container draws — see `nodeDetail`.
+	 *
+	 * Keyed on this container's own on-screen box, not on zoom alone. At the zoom a large L2 graph
+	 * fits at, a switch is 211px and the port-status group inside a host is 2.7px; the first cut at
+	 * this used one global boolean and gave both of them the same 12px label, so a grouping box
+	 * ended up wearing a name four times wider than itself.
+	 *
+	 * Nothing is named below full detail — see `nodeDetail` for why a container cannot draw its own
+	 * label inside its box. Names return with the real header at `DETAIL_ZOOM`.
+	 */
+	let detailTier = $derived(
+		nodeDetail({
+			detail: !shouldSimplify({
+				zoom: viewport.current.zoom,
+				measuring: sharedStores.measuring.current,
+				exporting: isExportingValue
+			}),
+			screenWidth: (width ?? 0) * viewport.current.zoom,
+			isSubcontainer
+		})
+	);
+	let simplified = $derived(detailTier !== 'full');
 
 	// Icon and color: from node fields, falling back to ContainerType fixture icon when fillIcon
 	let nodeIcon = $derived((data as Record<string, unknown>)?.icon as string | undefined);
@@ -357,7 +401,7 @@
 >
 	<!-- TITLE: External (card/pill above container) -->
 	<!-- Rendered in both states: the pill is where a root container is named, collapsed or not. -->
-	{#if titleStyle === 'External' && (headerText || isCollapsible)}
+	{#if !simplified && titleStyle === 'External' && (headerText || isCollapsible)}
 		<ContainerHeader
 			variant="external"
 			{isCollapsed}
@@ -375,7 +419,7 @@
 	{/if}
 
 	<!-- TITLE: Inline (inside container top padding) -->
-	{#if titleStyle === 'Inline' && !isCollapsed && (headerText || groupLabels.length > 0)}
+	{#if !simplified && titleStyle === 'Inline' && !isCollapsed && (headerText || groupLabels.length > 0)}
 		<ContainerHeader
 			variant="inline"
 			{isCollapsed}
@@ -393,7 +437,22 @@
 	{/if}
 
 	<!-- COLLAPSED STATE -->
-	{#if isCollapsed}
+	{#if detailTier === 'hidden'}
+		<!-- Nothing: a grouping box a few pixels across is noise inside its parent. The root div
+		     stays so the node keeps its box and its handles — dropping those would strand every
+		     edge that names them (`NodeHandles.svelte`). -->
+	{:else if isCollapsed && simplified}
+		<!--
+			A collapsed container draws its own box through `ContainerHeader`, so unlike the expanded
+			case there is no separate body div to fall back on — dropping the header would leave
+			nothing at all. This is that box: the same rounded surface and top rule, with the name
+			supplied by the shell label above.
+		-->
+		<div
+			class="rounded-lg"
+			style="background: var(--color-topology-node-bg); width: 100%; height: 100%; border-top: 2px solid {colorHelper.rgb};"
+		></div>
+	{:else if isCollapsed}
 		{#if isSubcontainer}
 			<ContainerHeader
 				variant="collapsed-sub"

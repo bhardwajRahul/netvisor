@@ -341,3 +341,101 @@ test('cost of a fitted graph at every collapse level', async ({ page, context })
 
 	console.log('\n' + rows.join('\n') + '\n');
 });
+
+/**
+ * Frame cost of a continuous pan and a zoom sweep, at full graph size.
+ *
+ * The measurement that decides how level-of-detail rendering should read the zoom.
+ * `ContainerNode.svelte:450-453` records that resize handles once tested `viewport.zoom > 0.5` and
+ * that it was removed as "a per-frame invalidation of the whole graph" — but SvelteFlow's viewport
+ * is `$state.raw` replaced wholesale on every pan frame, so whether that is expensive depends
+ * entirely on whether the node's read sits behind an equality-checked `$derived`. A boolean that
+ * only flips at a threshold should cost one comparison per node per frame and no DOM work at all.
+ *
+ * That distinction is not decidable by reading, so this measures it. Run once as a baseline, then
+ * again with a no-op `$derived` over `useViewport()` in the node components, and compare. The
+ * numbers that matter are p95 frame time and the count of frames over 50ms, not the mean — a
+ * per-frame invalidation of 5,936 components shows up as a long tail, not a shifted average.
+ */
+test('frame cost of panning and zooming a full graph', async ({ page, context }) => {
+	const pageErrors: string[] = [];
+	page.on('pageerror', (e) => pageErrors.push(e.message));
+	page.on('console', (m) => {
+		if (m.type() === 'error') pageErrors.push(m.text());
+	});
+	page.on('framenavigated', (f) => {
+		if (f === page.mainFrame()) pageErrors.push(`NAVIGATED to ${f.url()}`);
+	});
+
+	await setup(page, context);
+
+	for (let i = 0; i < 4; i++) {
+		await page.keyboard.press(']');
+		await waitForStableLayout(page, 180_000);
+	}
+	const at4 = await read(page, 'level 4');
+	expect(at4.storeNodes, 'estate too small to be worth timing').toBeGreaterThan(1000);
+
+	// Sample frame deltas across the interaction rather than timing it end to end: a pan that
+	// drops six frames and one that is uniformly slow take the same wall-clock time and mean very
+	// different things.
+	await page.evaluate(() => {
+		const w = window as unknown as { __frames?: number[] };
+		w.__frames = [];
+		let last = performance.now();
+		const tick = () => {
+			const now = performance.now();
+			w.__frames!.push(now - last);
+			last = now;
+			requestAnimationFrame(tick);
+		};
+		requestAnimationFrame(tick);
+	});
+
+	// Continuous pan: many small steps, so the viewport is rewritten on essentially every frame.
+	await page.mouse.move(1000, 500);
+	await page.mouse.down();
+	for (let i = 0; i < 60; i++) {
+		await page.mouse.move(1000 + i * 6, 500 + i * 3);
+	}
+	await page.mouse.up();
+
+	// Zoom sweep across the threshold a simplification would use, in both directions.
+	await page.mouse.move(1000, 500);
+	for (let i = 0; i < 25; i++) await page.mouse.wheel(0, -120);
+	for (let i = 0; i < 25; i++) await page.mouse.wheel(0, 120);
+	await page.waitForTimeout(500);
+
+	const stats = await page.evaluate(() => {
+		const raw = (window as unknown as { __frames?: number[] }).__frames;
+		if (!raw) return { error: '__frames missing — the page reloaded mid-test' } as const;
+		const frames = raw.slice(1).sort((a, b) => a - b);
+		if (frames.length === 0) return { error: `only ${raw.length} frame(s) sampled` } as const;
+		const at = (q: number) => frames[Math.min(frames.length - 1, Math.floor(frames.length * q))];
+		return {
+			frames: frames.length,
+			mean: frames.reduce((a, b) => a + b, 0) / frames.length,
+			p50: at(0.5),
+			p95: at(0.95),
+			max: frames[frames.length - 1],
+			over50ms: frames.filter((f) => f > 50).length,
+			over100ms: frames.filter((f) => f > 100).length
+		};
+	});
+
+	if (stats && 'error' in stats) {
+		console.log(`\nframe cost: NOT MEASURED — ${stats.error}\n`);
+	} else if (stats) {
+		console.log(
+			`\nframe cost @ ${at4.storeNodes} store / ${at4.mounted} mounted (zoom ${at4.zoom}):\n` +
+				`  frames=${stats.frames}  mean=${stats.mean.toFixed(1)}ms  p50=${stats.p50.toFixed(1)}ms  ` +
+				`p95=${stats.p95.toFixed(1)}ms  max=${stats.max.toFixed(1)}ms  ` +
+				`>50ms=${stats.over50ms}  >100ms=${stats.over100ms}\n`
+		);
+	}
+	if (pageErrors.length > 0) {
+		console.log(`  page errors/navigations (${pageErrors.length}):`);
+		for (const e of pageErrors.slice(0, 8)) console.log(`    ${e.slice(0, 160)}`);
+	}
+	expect(stats && !('error' in stats), 'frame sampling failed').toBe(true);
+});

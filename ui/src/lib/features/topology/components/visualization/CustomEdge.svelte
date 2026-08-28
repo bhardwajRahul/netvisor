@@ -6,14 +6,16 @@
 		EdgeLabel,
 		getBezierPath,
 		getStraightPath,
-		EdgeReconnectAnchor
+		EdgeReconnectAnchor,
+		useViewport
 	} from '@xyflow/svelte';
 	import { topologyOptions } from '../../queries';
 	import { useTopology, selectedTopologyId } from '../../context';
 	import { edgeTypes } from '$lib/shared/stores/metadata';
 	import { createColorHelper, type Color } from '$lib/shared/utils/styling';
 	import type { TopologyEdge, RenderableTopology } from '../../types/base';
-	import { isExporting, hoveredEdgeType } from '../../interactions';
+	import { isExporting, isMeasuring, hoveredEdgeType } from '../../interactions';
+	import { shouldSimplify } from '../../pipeline/render-mode';
 	import {
 		getLinkEvidenceTag,
 		isDottedEdge,
@@ -110,11 +112,31 @@
 		return null;
 	});
 
+	/**
+	 * Edges go with the card detail below the zoom threshold — see `shouldSimplify`.
+	 *
+	 * At the zoom a large graph fits at, an edge is a hairline between two nodes that are
+	 * themselves a couple of pixels wide: it conveys nothing and there are as many of them as
+	 * there are links. Folded into the existing `hideEdge` gate rather than filtering the store,
+	 * because the store is also what `getLayoutedEdges` reads to decide which endpoints to force
+	 * into the mounted set — dropping edges from it would change what is culled, not just what is
+	 * drawn.
+	 */
+	const viewport = useViewport();
+	let simplified = $derived(
+		shouldSimplify({
+			zoom: viewport.current.zoom,
+			measuring: $isMeasuring,
+			exporting: $isExporting
+		})
+	);
+
 	let hideEdge = $derived(
-		edgeData
-			? $topologyOptions.local.hide_edge_types.includes(edgeData.edge_type) &&
+		simplified ||
+			(edgeData
+				? $topologyOptions.local.hide_edge_types.includes(edgeData.edge_type) &&
 					!(edgeData as Record<string, unknown>).is_preview
-			: false
+				: false)
 	);
 
 	// Any non-solid stroke gets the overlay treatment (thinner, dimmed until highlighted); the

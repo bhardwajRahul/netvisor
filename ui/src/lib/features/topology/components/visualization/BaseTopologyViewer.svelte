@@ -48,7 +48,7 @@
 		topologyOptionsHydrated,
 		activeView
 	} from '../../queries';
-	import { isExporting, expandedPortNodeIds } from '../../interactions';
+	import { isExporting, isMeasuring, expandedPortNodeIds } from '../../interactions';
 
 	// Import custom node/edge components
 	import ContainerNode from './ContainerNode.svelte';
@@ -426,7 +426,9 @@
 	 * a culled node never mounts, so measurement would silently return sizes for the on-screen
 	 * subset and hand ELK fallbacks for the rest. Set on *every* measure pass, not just the first.
 	 */
-	let measurePassActive = $state(false);
+	// A store, not component state: node components need to see it too — a card simplified for
+	// low zoom would otherwise be measured at its pinned height instead of its content's.
+	let measurePassActive = $derived($isMeasuring);
 
 	/**
 	 * The cold load is measuring, which additionally suppresses the expand animation.
@@ -449,7 +451,7 @@
 
 	/** Both flags down: no pass is measuring and the pane may show. */
 	function endMeasurePass(): void {
-		measurePassActive = false;
+		isMeasuring.set(false);
 		coldLoadMeasure = false;
 	}
 
@@ -854,7 +856,7 @@
 						// Culling is suspended for every measurement pass, unconditionally —
 						// the pass reads heights out of the DOM, so a culled node measures as
 						// absent and ELK gets a fallback size for it.
-						measurePassActive = v;
+						isMeasuring.set(v);
 						// Only hide viewport during measurement for initial load
 						// (no nodes on screen). For subsequent measurements (e.g.
 						// cacheMisses on collapse), nodes keep their current positions
@@ -958,7 +960,7 @@
 			// the cold-load one ends with `endMeasurePass()`. A measure pass on an already-rendered
 			// graph — every expand at scale — therefore left the flag set for the rest of the
 			// session, suspending culling permanently and mounting the whole graph on every run.
-			measurePassActive = false;
+			isMeasuring.set(false);
 			if (!elementNodeSizes) {
 				endMeasurePass();
 				return;
