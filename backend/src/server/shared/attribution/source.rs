@@ -5,8 +5,10 @@
 //! several near-copies of one list — and the two that already existed, `HostNameSource` and
 //! `SubnetCidrSource`, had begun to diverge in exactly that way.
 
+use std::borrow::Cow;
 use std::fmt;
 
+use serde::de::{self, IgnoredAny, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use strum::IntoEnumIterator;
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, IntoStaticStr, VariantNames};
@@ -77,75 +79,65 @@ pub enum AttributeMethod {
 ///
 /// **Do not derive `Ord`.** A derive compares the variant and then the payload, which would make
 /// `Probe(Docker) < Probe(Snmp)` on declaration order alone. Ordering is only ever [`Self::rank`].
+///
+/// **Externally tagged**, which is serde's default and is left unstated for that reason. Thirty-three
+/// of these variants carry nothing, and a tag on a variant with no content is a key that distinguishes
+/// nothing — `"Unspecified"`, not `{"type":"Unspecified"}`, in every row of fifteen columns. The two
+/// that do carry a [`ClientProbe`] keep it under their own name, `{"Probe":"Snmp"}`, which tells them
+/// apart from each other and from every bare name.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, EnumDiscriminants, ToSchema,
 )]
-#[strum_discriminants(name(AttributeSourceKind))]
 #[strum_discriminants(derive(Hash, EnumIter, EnumString, IntoStaticStr, VariantNames))]
-#[serde(tag = "type", content = "probe")]
 pub enum AttributeSource {
     /// Provenance unknown: a payload from a daemon predating the rung, a row predating the column,
     /// or a source this binary does not recognise. Below everything, so it never displaces a value
     /// we know the origin of and anything may improve on it.
     #[default]
-    #[schema(title = "Unspecified")]
     Unspecified,
 
     // --- Derivations we perform ourselves. ---
     /// The host's own address, standing in for a name it does not have.
-    #[schema(title = "OwnAddress")]
     OwnAddress,
     /// Implied by a matched service definition.
-    #[schema(title = "ServiceMatch")]
     ServiceMatch,
     /// A /24 (or /64) convention around an address a neighbour advertised. LLDP carries no netmask
     /// TLV, so the range is our invention rather than the neighbour's claim.
-    #[schema(title = "LldpNeighbourAddress")]
     LldpNeighbourAddress,
     /// A manufacturer string synthesised from a numeric CIP vendor ID, because we ship no ODVA
     /// vendor table. Distinct from [`Self::Probe`] over the same transport for the reason the
     /// module doc gives: the variant names what was read, not how it arrived, and `"CIP vendor 1"`
     /// is our own construction rather than anything the device emitted.
-    #[schema(title = "CipVendorId")]
     CipVendorId,
 
     // --- Claims that arrive on the link without a directed exchange. ---
     /// A DNS-SD instance label — the Chromecast `fn=Living Room TV`, typed by a person during
     /// device setup.
-    #[schema(title = "DnsSdInstanceName")]
     DnsSdInstanceName,
     /// A chassis ID a neighbour advertised for itself.
-    #[schema(title = "LldpChassisId")]
     LldpChassisId,
 
     // --- Somebody else, about the subject. ---
     /// Reverse DNS. A known speaker that is not the subject.
-    #[schema(title = "ReverseDns")]
     ReverseDns,
     /// A router's `ipNetToMediaTable` cache, or a switch's bridge FDB. One variant for both: each
     /// is "a device telling us about a MAC that is not its own", with no basis to rank one above
     /// the other.
-    #[schema(title = "ForwardingTable")]
     ForwardingTable,
 
     // --- Exchanges we direct ourselves. ---
     /// We broadcast an ARP request for a specific address and something replied claiming it.
-    #[schema(title = "ArpReply")]
     ArpReply,
     /// The daemon reading its own host: NIC and routing configuration, and its own hostname.
-    #[schema(title = "DaemonSelfReport")]
     DaemonSelfReport,
 
     /// A value the thing emitted about itself, over whatever transport [`ClientProbe`] names.
-    #[schema(title = "Probe")]
     Probe(ClientProbe),
     /// A value a person entered into the thing we read it from, carried back over the same
     /// transport: SNMP `sysLocation`, a name set in a controller.
-    #[schema(title = "Authored")]
     Authored(ClientProbe),
 
     /// A person asserted it in Scanopy. Nothing discovery reads displaces it.
-    #[schema(title = "Manual")]
     Manual,
 }
 
@@ -230,36 +222,93 @@ impl AttributeSource {
     /// the build until it says how it enumerates. Used to invert the source→tier table into
     /// [`AttributeMethod`]'s metadata for the UI.
     pub fn all() -> Vec<Self> {
-        AttributeSourceKind::iter()
-            .flat_map(|kind| match kind {
-                AttributeSourceKind::Probe => ClientProbe::iter().map(Self::Probe).collect(),
-                AttributeSourceKind::Authored => ClientProbe::iter().map(Self::Authored).collect(),
-                AttributeSourceKind::Unspecified => vec![Self::Unspecified],
-                AttributeSourceKind::OwnAddress => vec![Self::OwnAddress],
-                AttributeSourceKind::ServiceMatch => vec![Self::ServiceMatch],
-                AttributeSourceKind::LldpNeighbourAddress => vec![Self::LldpNeighbourAddress],
-                AttributeSourceKind::CipVendorId => vec![Self::CipVendorId],
-                AttributeSourceKind::DnsSdInstanceName => vec![Self::DnsSdInstanceName],
-                AttributeSourceKind::LldpChassisId => vec![Self::LldpChassisId],
-                AttributeSourceKind::ReverseDns => vec![Self::ReverseDns],
-                AttributeSourceKind::ForwardingTable => vec![Self::ForwardingTable],
-                AttributeSourceKind::ArpReply => vec![Self::ArpReply],
-                AttributeSourceKind::DaemonSelfReport => vec![Self::DaemonSelfReport],
-                AttributeSourceKind::Manual => vec![Self::Manual],
+        AttributeSourceDiscriminants::iter()
+            .flat_map(|variant| match variant {
+                AttributeSourceDiscriminants::Probe => {
+                    ClientProbe::iter().map(Self::Probe).collect()
+                }
+                AttributeSourceDiscriminants::Authored => {
+                    ClientProbe::iter().map(Self::Authored).collect()
+                }
+                AttributeSourceDiscriminants::Unspecified => vec![Self::Unspecified],
+                AttributeSourceDiscriminants::OwnAddress => vec![Self::OwnAddress],
+                AttributeSourceDiscriminants::ServiceMatch => vec![Self::ServiceMatch],
+                AttributeSourceDiscriminants::LldpNeighbourAddress => {
+                    vec![Self::LldpNeighbourAddress]
+                }
+                AttributeSourceDiscriminants::CipVendorId => vec![Self::CipVendorId],
+                AttributeSourceDiscriminants::DnsSdInstanceName => vec![Self::DnsSdInstanceName],
+                AttributeSourceDiscriminants::LldpChassisId => vec![Self::LldpChassisId],
+                AttributeSourceDiscriminants::ReverseDns => vec![Self::ReverseDns],
+                AttributeSourceDiscriminants::ForwardingTable => vec![Self::ForwardingTable],
+                AttributeSourceDiscriminants::ArpReply => vec![Self::ArpReply],
+                AttributeSourceDiscriminants::DaemonSelfReport => vec![Self::DaemonSelfReport],
+                AttributeSourceDiscriminants::Manual => vec![Self::Manual],
             })
             .collect()
+    }
+
+    /// A name, and the probe that rode with it, resolved into a source.
+    ///
+    /// The one place an identifier from outside this binary becomes a variant, so the two shapes
+    /// [`SourceVisitor`] reads cannot come to different conclusions about the same name. The
+    /// `match` is exhaustive on the discriminant, so a new variant cannot be added without saying
+    /// how it reads.
+    fn resolve(name: &str, probe: Option<&str>) -> Self {
+        use std::str::FromStr;
+
+        let Ok(variant) = AttributeSourceDiscriminants::from_str(name) else {
+            tracing::warn!(
+                source = name,
+                "Unrecognized AttributeSource; degrading to Unspecified"
+            );
+            return Self::Unspecified;
+        };
+
+        // `Probe` and `Authored` are the only variants carrying one, and one that needs a probe
+        // without one is as unreadable as an unknown name.
+        let carried = || {
+            let parsed = probe.and_then(|p| ClientProbe::from_str(p).ok());
+            if parsed.is_none() {
+                tracing::warn!(
+                    source = name,
+                    probe = ?probe,
+                    "Unrecognized probe on an AttributeSource; degrading to Unspecified"
+                );
+            }
+            parsed
+        };
+
+        match variant {
+            AttributeSourceDiscriminants::Probe => carried().map_or(Self::Unspecified, Self::Probe),
+            AttributeSourceDiscriminants::Authored => {
+                carried().map_or(Self::Unspecified, Self::Authored)
+            }
+            AttributeSourceDiscriminants::Unspecified => Self::Unspecified,
+            AttributeSourceDiscriminants::OwnAddress => Self::OwnAddress,
+            AttributeSourceDiscriminants::ServiceMatch => Self::ServiceMatch,
+            AttributeSourceDiscriminants::LldpNeighbourAddress => Self::LldpNeighbourAddress,
+            AttributeSourceDiscriminants::CipVendorId => Self::CipVendorId,
+            AttributeSourceDiscriminants::DnsSdInstanceName => Self::DnsSdInstanceName,
+            AttributeSourceDiscriminants::LldpChassisId => Self::LldpChassisId,
+            AttributeSourceDiscriminants::ReverseDns => Self::ReverseDns,
+            AttributeSourceDiscriminants::ForwardingTable => Self::ForwardingTable,
+            AttributeSourceDiscriminants::ArpReply => Self::ArpReply,
+            AttributeSourceDiscriminants::DaemonSelfReport => Self::DaemonSelfReport,
+            AttributeSourceDiscriminants::Manual => Self::Manual,
+        }
     }
 }
 
 /// Human-readable for logs and warnings only — the persisted form is the JSON above, never this.
 impl fmt::Display for AttributeSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let kind: &'static str = AttributeSourceKind::from(self).into();
+        let name: &'static str = AttributeSourceDiscriminants::from(self).into();
         match self {
             Self::Probe(p) | Self::Authored(p) => {
-                write!(f, "{kind}({})", <&'static str>::from(*p))
+                write!(f, "{name}({})", <&'static str>::from(*p))
             }
-            _ => f.write_str(kind),
+            _ => f.write_str(name),
         }
     }
 }
@@ -267,74 +316,53 @@ impl fmt::Display for AttributeSource {
 /// The wire and column shape, read leniently.
 ///
 /// Hand-written rather than derived so that an identifier this binary does not recognise degrades
-/// to [`AttributeSource::Unspecified`] instead of failing the row it sits in. `#[serde(other)]`
-/// would cover an unknown `type` but not an unknown `probe` inside a known one, and adding a probe
-/// is the common case.
+/// to [`AttributeSource::Unspecified`] instead of failing the row it sits in. The derive rejects an
+/// unknown variant name outright, and `#[serde(other)]` — which is not available to an externally
+/// tagged enum anyway — would not cover an unknown probe inside a known variant, which is the common
+/// case: adding a probe is how this enum grows.
 ///
-/// This tolerates exactly two things — an unrecognised variant name and an unrecognised probe name.
-/// Malformed JSON is still an error, so it is not a blanket `.ok()`.
-#[derive(Deserialize)]
-struct WireSource {
-    #[serde(rename = "type")]
-    kind: String,
-    #[serde(default)]
-    probe: Option<String>,
-}
-
+/// A [`Visitor`] states what is tolerated rather than a second type restating the wire form. The two
+/// arms are the two shapes a source has, so an unrecognised *identifier* inside either is ours to
+/// degrade while a wrong *type* — a number, an array, a probe that is not a string — reaches no arm
+/// and errors with the wording of `expecting`. That is the difference between this and a blanket
+/// `.ok()`.
 impl<'de> Deserialize<'de> for AttributeSource {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use std::str::FromStr;
-
-        let wire = WireSource::deserialize(deserializer)?;
-
-        let Ok(kind) = AttributeSourceKind::from_str(&wire.kind) else {
-            tracing::warn!(
-                source = %wire.kind,
-                "Unrecognized AttributeSource; degrading to Unspecified"
-            );
-            return Ok(Self::Unspecified);
-        };
-
-        // `Probe` and `Authored` are the only kinds carrying one, and a kind that needs a probe
-        // without one is as unreadable as an unknown name.
-        let probe = || {
-            wire.probe
-                .as_deref()
-                .and_then(|p| ClientProbe::from_str(p).ok())
-        };
-
-        Ok(match kind {
-            AttributeSourceKind::Probe => match probe() {
-                Some(p) => Self::Probe(p),
-                None => degrade(&wire),
-            },
-            AttributeSourceKind::Authored => match probe() {
-                Some(p) => Self::Authored(p),
-                None => degrade(&wire),
-            },
-            AttributeSourceKind::Unspecified => Self::Unspecified,
-            AttributeSourceKind::OwnAddress => Self::OwnAddress,
-            AttributeSourceKind::ServiceMatch => Self::ServiceMatch,
-            AttributeSourceKind::LldpNeighbourAddress => Self::LldpNeighbourAddress,
-            AttributeSourceKind::CipVendorId => Self::CipVendorId,
-            AttributeSourceKind::DnsSdInstanceName => Self::DnsSdInstanceName,
-            AttributeSourceKind::LldpChassisId => Self::LldpChassisId,
-            AttributeSourceKind::ReverseDns => Self::ReverseDns,
-            AttributeSourceKind::ForwardingTable => Self::ForwardingTable,
-            AttributeSourceKind::ArpReply => Self::ArpReply,
-            AttributeSourceKind::DaemonSelfReport => Self::DaemonSelfReport,
-            AttributeSourceKind::Manual => Self::Manual,
-        })
+        deserializer.deserialize_any(SourceVisitor)
     }
 }
 
-fn degrade(wire: &WireSource) -> AttributeSource {
-    tracing::warn!(
-        source = %wire.kind,
-        probe = ?wire.probe,
-        "Unrecognized probe on an AttributeSource; degrading to Unspecified"
-    );
-    AttributeSource::Unspecified
+struct SourceVisitor;
+
+impl<'de> Visitor<'de> for SourceVisitor {
+    type Value = AttributeSource;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(r#"a source name, or a single-entry object such as {"Probe":"Snmp"}"#)
+    }
+
+    /// A variant with no inner value: the bare name.
+    fn visit_str<E: de::Error>(self, name: &str) -> Result<Self::Value, E> {
+        Ok(AttributeSource::resolve(name, None))
+    }
+
+    /// A variant carrying a probe. Externally tagged, so the one entry is the variant name and its
+    /// content.
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let Some((name, probe)) = map.next_entry::<Cow<'_, str>, Cow<'_, str>>()? else {
+            tracing::warn!(
+                "Empty object where an AttributeSource was expected; degrading to Unspecified"
+            );
+            return Ok(AttributeSource::Unspecified);
+        };
+
+        // Drain rather than reject: a second entry means this is not a shape we write — an object
+        // from a newer binary, say — and the name we already read is the better guess at what it
+        // meant. `resolve` degrades it if it is not one we know.
+        while map.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
+
+        Ok(AttributeSource::resolve(&name, Some(&probe)))
+    }
 }
 
 impl HasId for AttributeMethod {

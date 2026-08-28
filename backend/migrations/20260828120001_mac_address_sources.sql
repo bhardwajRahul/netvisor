@@ -11,8 +11,8 @@
 -- so minting needs `Queried`-or-better provenance, and there is no way to ask for that until the
 -- column exists.
 --
--- Values are `AttributeSource` as serde writes it, adjacently tagged, matching the columns added by
--- 20260828120000_hosts_attribute_sources.sql.
+-- Values are `AttributeSource` as serde writes it, externally tagged — a fieldless source is the
+-- bare name — matching the columns added by 20260828120000_hosts_attribute_sources.sql.
 --
 -- `Unspecified` is the right default rather than `Manual`, and unlike the host attributes there is
 -- nothing to backfill: every MAC on file came from discovery, and none of them recorded which
@@ -26,7 +26,7 @@ SET lock_timeout = '5s';
 SET statement_timeout = '30s';
 
 ALTER TABLE ip_addresses
-    ADD COLUMN IF NOT EXISTS mac_address_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
+    ADD COLUMN IF NOT EXISTS mac_address_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;
 
 ALTER TABLE interfaces
-    ADD COLUMN IF NOT EXISTS mac_address_source JSONB NOT NULL DEFAULT '{"type":"Unspecified"}'::jsonb;
+    ADD COLUMN IF NOT EXISTS mac_address_source JSONB NOT NULL DEFAULT '"Unspecified"'::jsonb;

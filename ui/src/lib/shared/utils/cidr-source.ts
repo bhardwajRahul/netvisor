@@ -51,10 +51,16 @@ const INFERRED_SOURCES: ReadonlySet<string> = new Set(
 	).map(sourceKey)
 );
 
-/** A stable key for a source, so the two halves are compared together rather than by `type` alone. */
+/**
+ * A stable key for a source, so a probe is compared along with the variant that carries it.
+ *
+ * Externally tagged: a source with nothing to carry is its own bare name, and the two that carry a
+ * probe are a single-entry object keyed by the variant — `{ Probe: 'Snmp' }`.
+ */
 function sourceKey(source: AttributeSource): string {
-	const probe = 'probe' in source ? source.probe : undefined;
-	return probe ? `${source.type}:${probe}` : source.type;
+	if (typeof source === 'string') return source;
+	const [[variant, probe]] = Object.entries(source);
+	return `${variant}:${probe}`;
 }
 
 /** Whether this subnet's range is a guess awaiting confirmation. */

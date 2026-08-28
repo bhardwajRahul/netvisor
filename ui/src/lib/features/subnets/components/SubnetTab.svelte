@@ -223,7 +223,7 @@
 	 */
 	async function handleConfirmRange(subnet: Subnet) {
 		try {
-			await updateSubnetMutation.mutateAsync({ ...subnet, cidr_source: { type: 'Manual' } });
+			await updateSubnetMutation.mutateAsync({ ...subnet, cidr_source: 'Manual' });
 			handleCloseProvisionalRange();
 		} catch {
 			// Error handled by mutation

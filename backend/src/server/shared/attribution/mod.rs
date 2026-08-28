@@ -15,7 +15,7 @@ mod carrier;
 mod source;
 
 pub use carrier::{AttributeValue, Attributed, optional, required, string_schema, text_of};
-pub use source::{AttributeMethod, AttributeSource, AttributeSourceKind, Authorship};
+pub use source::{AttributeMethod, AttributeSource, AttributeSourceDiscriminants, Authorship};
 
 /// Declare a provenanced value: its newtype, its [`AttributeValue`] impl and the alias every
 /// field must be declared through.

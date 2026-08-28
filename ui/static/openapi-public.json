@@ -12238,19 +12238,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-08-28T14:13:35.675308Z",
+              "created_at": "2026-08-28T15:33:32.433081Z",
               "first_discovery_id": null,
-              "id": "2ba69bf6-aa57-40a0-a316-cd0ec42ce8d0",
+              "id": "9f3e3260-31cb-4aa1-b498-ae9d836b9d8b",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-28T14:13:35.675308Z",
+              "last_seen_at": "2026-08-28T15:33:32.433081Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-28T14:13:35.675308Z",
-              "valid_from": "2026-08-28T14:13:35.675308Z",
+              "updated_at": "2026-08-28T15:33:32.433081Z",
+              "valid_from": "2026-08-28T15:33:32.433081Z",
               "valid_to": null
             }
           },
@@ -13549,17 +13549,13 @@
               }
             },
             "example": {
-              "chassis_id_source": {
-                "type": "Unspecified"
-              },
+              "chassis_id_source": "Unspecified",
               "created_at": "2026-01-15T10:30:00Z",
               "credential_assignments": [],
               "description": "Primary web server",
               "display_name": "web-server-01",
               "firmware_revision": null,
-              "firmware_revision_source": {
-                "type": "Unspecified"
-              },
+              "firmware_revision_source": "Unspecified",
               "hidden": false,
               "hostname": "web-server-01.local",
               "id": "550e8400-e29b-41d4-a716-446655440003",
@@ -13590,9 +13586,7 @@
                   "lldp_sys_desc": null,
                   "lldp_sys_name": null,
                   "mac_address": "DE:AD:BE:EF:CA:FE",
-                  "mac_address_source": {
-                    "type": "ArpReply"
-                  },
+                  "mac_address_source": "ArpReply",
                   "neighbor": null,
                   "neighbor_seen_at": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
@@ -13614,9 +13608,7 @@
                   "last_seen_at": "2026-01-15T10:30:00Z",
                   "lineage_id": null,
                   "mac_address": "DE:AD:BE:EF:CA:FE",
-                  "mac_address_source": {
-                    "type": "ArpReply"
-                  },
+                  "mac_address_source": "ArpReply",
                   "name": "eth0",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
@@ -13627,19 +13619,11 @@
                 }
               ],
               "last_seen_at": "2026-01-15T10:30:00Z",
-              "management_url_source": {
-                "type": "Unspecified"
-              },
-              "manufacturer_source": {
-                "type": "Unspecified"
-              },
-              "model_source": {
-                "type": "Unspecified"
-              },
+              "management_url_source": "Unspecified",
+              "manufacturer_source": "Unspecified",
+              "model_source": "Unspecified",
               "name": "web-server-01",
-              "name_source": {
-                "type": "Manual"
-              },
+              "name_source": "Manual",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "ports": [
                 {
@@ -13659,26 +13643,24 @@
                   "valid_to": null
                 }
               ],
-              "serial_number_source": {
-                "type": "Unspecified"
-              },
+              "serial_number_source": "Unspecified",
               "services": [
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-08-28T14:13:35.651654Z",
+                      "created_at": "2026-08-28T15:33:32.412433Z",
                       "first_discovery_id": null,
-                      "id": "5f00aad1-0d61-4ea1-9484-42c6d9fa39d0",
+                      "id": "46c768fc-45d3-4293-8c4c-20a06d0409c4",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-08-28T14:13:35.651654Z",
+                      "last_seen_at": "2026-08-28T15:33:32.412433Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-08-28T14:13:35.651654Z",
-                      "valid_from": "2026-08-28T14:13:35.651654Z",
+                      "updated_at": "2026-08-28T15:33:32.412433Z",
+                      "valid_from": "2026-08-28T15:33:32.412433Z",
                       "valid_to": null
                     }
                   ],
@@ -13692,7 +13674,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Modbus TCP",
+                  "service_definition": "Ollama",
                   "source": {
                     "type": "Manual"
                   },
@@ -13707,21 +13689,11 @@
               "source": {
                 "type": "Manual"
               },
-              "sys_contact_source": {
-                "type": "Unspecified"
-              },
-              "sys_descr_source": {
-                "type": "Unspecified"
-              },
-              "sys_location_source": {
-                "type": "Unspecified"
-              },
-              "sys_name_source": {
-                "type": "Unspecified"
-              },
-              "sys_object_id_source": {
-                "type": "Unspecified"
-              },
+              "sys_contact_source": "Unspecified",
+              "sys_descr_source": "Unspecified",
+              "sys_location_source": "Unspecified",
+              "sys_name_source": "Unspecified",
+              "sys_object_id_source": "Unspecified",
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z",
               "virtualization_metadata": null,
@@ -13845,9 +13817,7 @@
               "last_seen_at": "2026-01-15T10:30:00Z",
               "lineage_id": null,
               "mac_address": "DE:AD:BE:EF:CA:FE",
-              "mac_address_source": {
-                "type": "ArpReply"
-              },
+              "mac_address_source": "ArpReply",
               "name": "eth0",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
@@ -14913,19 +14883,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-08-28T14:13:35.669601Z",
+                  "created_at": "2026-08-28T15:33:32.428193Z",
                   "first_discovery_id": null,
-                  "id": "cae4ac66-5378-48ce-b80f-d4c75189197c",
+                  "id": "33b2d3a8-3b40-4faf-a7f0-f44c40786c03",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-28T14:13:35.669601Z",
+                  "last_seen_at": "2026-08-28T15:33:32.428193Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-28T14:13:35.669601Z",
-                  "valid_from": "2026-08-28T14:13:35.669601Z",
+                  "updated_at": "2026-08-28T15:33:32.428193Z",
+                  "valid_from": "2026-08-28T15:33:32.428193Z",
                   "valid_to": null
                 }
               ],
@@ -14939,7 +14909,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Modbus TCP",
+              "service_definition": "Ollama",
               "source": {
                 "type": "Manual"
               },
@@ -15326,9 +15296,7 @@
             "description": "The result payload. Omitted on failure.",
             "example": {
               "cidr": "192.168.1.0/24",
-              "cidr_source": {
-                "type": "DaemonSelfReport"
-              },
+              "cidr_source": "DaemonSelfReport",
               "created_at": "2026-01-15T10:30:00Z",
               "description": "Local area network",
               "first_discovery_id": null,
@@ -16668,241 +16636,117 @@
       "AttributeSource": {
         "oneOf": [
           {
-            "type": "object",
-            "title": "Unspecified",
+            "type": "string",
             "description": "Provenance unknown: a payload from a daemon predating the rung, a row predating the column,\nor a source this binary does not recognise. Below everything, so it never displaces a value\nwe know the origin of and anything may improve on it.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "Unspecified"
-                ]
-              }
-            }
+            "enum": [
+              "Unspecified"
+            ]
           },
           {
-            "type": "object",
-            "title": "OwnAddress",
+            "type": "string",
             "description": "The host's own address, standing in for a name it does not have.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "OwnAddress"
-                ]
-              }
-            }
+            "enum": [
+              "OwnAddress"
+            ]
           },
           {
-            "type": "object",
-            "title": "ServiceMatch",
+            "type": "string",
             "description": "Implied by a matched service definition.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "ServiceMatch"
-                ]
-              }
-            }
+            "enum": [
+              "ServiceMatch"
+            ]
           },
           {
-            "type": "object",
-            "title": "LldpNeighbourAddress",
+            "type": "string",
             "description": "A /24 (or /64) convention around an address a neighbour advertised. LLDP carries no netmask\nTLV, so the range is our invention rather than the neighbour's claim.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "LldpNeighbourAddress"
-                ]
-              }
-            }
+            "enum": [
+              "LldpNeighbourAddress"
+            ]
           },
           {
-            "type": "object",
-            "title": "CipVendorId",
+            "type": "string",
             "description": "A manufacturer string synthesised from a numeric CIP vendor ID, because we ship no ODVA\nvendor table. Distinct from [`Self::Probe`] over the same transport for the reason the\nmodule doc gives: the variant names what was read, not how it arrived, and `\"CIP vendor 1\"`\nis our own construction rather than anything the device emitted.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "CipVendorId"
-                ]
-              }
-            }
+            "enum": [
+              "CipVendorId"
+            ]
           },
           {
-            "type": "object",
-            "title": "DnsSdInstanceName",
+            "type": "string",
             "description": "A DNS-SD instance label — the Chromecast `fn=Living Room TV`, typed by a person during\ndevice setup.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "DnsSdInstanceName"
-                ]
-              }
-            }
+            "enum": [
+              "DnsSdInstanceName"
+            ]
           },
           {
-            "type": "object",
-            "title": "LldpChassisId",
+            "type": "string",
             "description": "A chassis ID a neighbour advertised for itself.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "LldpChassisId"
-                ]
-              }
-            }
+            "enum": [
+              "LldpChassisId"
+            ]
           },
           {
-            "type": "object",
-            "title": "ReverseDns",
+            "type": "string",
             "description": "Reverse DNS. A known speaker that is not the subject.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "ReverseDns"
-                ]
-              }
-            }
+            "enum": [
+              "ReverseDns"
+            ]
           },
           {
-            "type": "object",
-            "title": "ForwardingTable",
+            "type": "string",
             "description": "A router's `ipNetToMediaTable` cache, or a switch's bridge FDB. One variant for both: each\nis \"a device telling us about a MAC that is not its own\", with no basis to rank one above\nthe other.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "ForwardingTable"
-                ]
-              }
-            }
+            "enum": [
+              "ForwardingTable"
+            ]
           },
           {
-            "type": "object",
-            "title": "ArpReply",
+            "type": "string",
             "description": "We broadcast an ARP request for a specific address and something replied claiming it.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "ArpReply"
-                ]
-              }
-            }
+            "enum": [
+              "ArpReply"
+            ]
           },
           {
-            "type": "object",
-            "title": "DaemonSelfReport",
+            "type": "string",
             "description": "The daemon reading its own host: NIC and routing configuration, and its own hostname.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "DaemonSelfReport"
-                ]
-              }
-            }
+            "enum": [
+              "DaemonSelfReport"
+            ]
           },
           {
             "type": "object",
-            "title": "Probe",
             "description": "A value the thing emitted about itself, over whatever transport [`ClientProbe`] names.",
             "required": [
-              "probe",
-              "type"
+              "Probe"
             ],
             "properties": {
-              "probe": {
+              "Probe": {
                 "$ref": "#/components/schemas/ClientProbe",
                 "description": "A value the thing emitted about itself, over whatever transport [`ClientProbe`] names."
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "Probe"
-                ]
               }
             }
           },
           {
             "type": "object",
-            "title": "Authored",
             "description": "A value a person entered into the thing we read it from, carried back over the same\ntransport: SNMP `sysLocation`, a name set in a controller.",
             "required": [
-              "probe",
-              "type"
+              "Authored"
             ],
             "properties": {
-              "probe": {
+              "Authored": {
                 "$ref": "#/components/schemas/ClientProbe",
                 "description": "A value a person entered into the thing we read it from, carried back over the same\ntransport: SNMP `sysLocation`, a name set in a controller."
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "Authored"
-                ]
               }
             }
           },
           {
-            "type": "object",
-            "title": "Manual",
+            "type": "string",
             "description": "A person asserted it in Scanopy. Nothing discovery reads displaces it.",
-            "required": [
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "Manual"
-                ]
-              }
-            }
+            "enum": [
+              "Manual"
+            ]
           }
         ],
-        "description": "How a discovered value reached us.\n\nEvery variant here has something that writes it. Sources with no producer are deliberately\nabsent: a rung the applier can never see is a rung nothing can be tested against, and the tier\ndecision is better made by whoever writes the reader than guessed in advance.\n\n**Do not derive `Ord`.** A derive compares the variant and then the payload, which would make\n`Probe(Docker) < Probe(Snmp)` on declaration order alone. Ordering is only ever [`Self::rank`]."
+        "description": "How a discovered value reached us.\n\nEvery variant here has something that writes it. Sources with no producer are deliberately\nabsent: a rung the applier can never see is a rung nothing can be tested against, and the tier\ndecision is better made by whoever writes the reader than guessed in advance.\n\n**Do not derive `Ord`.** A derive compares the variant and then the payload, which would make\n`Probe(Docker) < Probe(Snmp)` on declaration order alone. Ordering is only ever [`Self::rank`].\n\n**Externally tagged**, which is serde's default and is left unstated for that reason. Thirty-three\nof these variants carry nothing, and a tag on a variant with no content is a key that distinguishes\nnothing — `\"Unspecified\"`, not `{\"type\":\"Unspecified\"}`, in every row of fifteen columns. The two\nthat do carry a [`ClientProbe`] keep it under their own name, `{\"Probe\":\"Snmp\"}`, which tells them\napart from each other and from every bare name."
       },
       "BillingPlan": {
         "oneOf": [
@@ -17241,19 +17085,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-08-28T14:13:35.652192Z",
+          "created_at": "2026-08-28T15:33:32.412863Z",
           "first_discovery_id": null,
-          "id": "f622b144-b1e6-48d6-a434-0de4cc7dcc48",
+          "id": "f3f19d5a-a7bc-4d75-a4f7-b8cb03746670",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-08-28T14:13:35.652192Z",
+          "last_seen_at": "2026-08-28T15:33:32.412863Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-08-28T14:13:35.652192Z",
-          "valid_from": "2026-08-28T14:13:35.652192Z",
+          "updated_at": "2026-08-28T15:33:32.412863Z",
+          "valid_from": "2026-08-28T15:33:32.412863Z",
           "valid_to": null
         }
       },
@@ -17916,7 +17760,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Modbus TCP",
+              "service_definition": "Ollama",
               "tags": [],
               "virtualization_metadata": null,
               "virtualization_service_id": null
@@ -22237,9 +22081,7 @@
           "last_seen_at": "2026-01-15T10:30:00Z",
           "lineage_id": null,
           "name": "web-server-01",
-          "name_source": {
-            "type": "Manual"
-          },
+          "name_source": "Manual",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "source": {
             "type": "Manual"
@@ -22750,17 +22592,13 @@
           }
         },
         "example": {
-          "chassis_id_source": {
-            "type": "Unspecified"
-          },
+          "chassis_id_source": "Unspecified",
           "created_at": "2026-01-15T10:30:00Z",
           "credential_assignments": [],
           "description": "Primary web server",
           "display_name": "web-server-01",
           "firmware_revision": null,
-          "firmware_revision_source": {
-            "type": "Unspecified"
-          },
+          "firmware_revision_source": "Unspecified",
           "hidden": false,
           "hostname": "web-server-01.local",
           "id": "550e8400-e29b-41d4-a716-446655440003",
@@ -22791,9 +22629,7 @@
               "lldp_sys_desc": null,
               "lldp_sys_name": null,
               "mac_address": "DE:AD:BE:EF:CA:FE",
-              "mac_address_source": {
-                "type": "ArpReply"
-              },
+              "mac_address_source": "ArpReply",
               "neighbor": null,
               "neighbor_seen_at": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
@@ -22815,9 +22651,7 @@
               "last_seen_at": "2026-01-15T10:30:00Z",
               "lineage_id": null,
               "mac_address": "DE:AD:BE:EF:CA:FE",
-              "mac_address_source": {
-                "type": "ArpReply"
-              },
+              "mac_address_source": "ArpReply",
               "name": "eth0",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
@@ -22828,19 +22662,11 @@
             }
           ],
           "last_seen_at": "2026-01-15T10:30:00Z",
-          "management_url_source": {
-            "type": "Unspecified"
-          },
-          "manufacturer_source": {
-            "type": "Unspecified"
-          },
-          "model_source": {
-            "type": "Unspecified"
-          },
+          "management_url_source": "Unspecified",
+          "manufacturer_source": "Unspecified",
+          "model_source": "Unspecified",
           "name": "web-server-01",
-          "name_source": {
-            "type": "Manual"
-          },
+          "name_source": "Manual",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "ports": [
             {
@@ -22860,26 +22686,24 @@
               "valid_to": null
             }
           ],
-          "serial_number_source": {
-            "type": "Unspecified"
-          },
+          "serial_number_source": "Unspecified",
           "services": [
             {
               "bindings": [
                 {
-                  "created_at": "2026-08-28T14:13:35.651080Z",
+                  "created_at": "2026-08-28T15:33:32.411967Z",
                   "first_discovery_id": null,
-                  "id": "3d583392-d500-4ac7-b26d-f058394a8fee",
+                  "id": "d44ca112-09cb-4199-afcc-df4f255f6b55",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-28T14:13:35.651080Z",
+                  "last_seen_at": "2026-08-28T15:33:32.411967Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-28T14:13:35.651080Z",
-                  "valid_from": "2026-08-28T14:13:35.651080Z",
+                  "updated_at": "2026-08-28T15:33:32.411967Z",
+                  "valid_from": "2026-08-28T15:33:32.411967Z",
                   "valid_to": null
                 }
               ],
@@ -22893,7 +22717,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Modbus TCP",
+              "service_definition": "Ollama",
               "source": {
                 "type": "Manual"
               },
@@ -22908,21 +22732,11 @@
           "source": {
             "type": "Manual"
           },
-          "sys_contact_source": {
-            "type": "Unspecified"
-          },
-          "sys_descr_source": {
-            "type": "Unspecified"
-          },
-          "sys_location_source": {
-            "type": "Unspecified"
-          },
-          "sys_name_source": {
-            "type": "Unspecified"
-          },
-          "sys_object_id_source": {
-            "type": "Unspecified"
-          },
+          "sys_contact_source": "Unspecified",
+          "sys_descr_source": "Unspecified",
+          "sys_location_source": "Unspecified",
+          "sys_name_source": "Unspecified",
+          "sys_object_id_source": "Unspecified",
           "tags": [],
           "updated_at": "2026-01-15T10:30:00Z",
           "virtualization_metadata": null,
@@ -23155,9 +22969,7 @@
           "last_seen_at": "2026-01-15T10:30:00Z",
           "lineage_id": null,
           "mac_address": "DE:AD:BE:EF:CA:FE",
-          "mac_address_source": {
-            "type": "ArpReply"
-          },
+          "mac_address_source": "ArpReply",
           "name": "eth0",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
@@ -26038,17 +25850,13 @@
                 }
               },
               "example": {
-                "chassis_id_source": {
-                  "type": "Unspecified"
-                },
+                "chassis_id_source": "Unspecified",
                 "created_at": "2026-01-15T10:30:00Z",
                 "credential_assignments": [],
                 "description": "Primary web server",
                 "display_name": "web-server-01",
                 "firmware_revision": null,
-                "firmware_revision_source": {
-                  "type": "Unspecified"
-                },
+                "firmware_revision_source": "Unspecified",
                 "hidden": false,
                 "hostname": "web-server-01.local",
                 "id": "550e8400-e29b-41d4-a716-446655440003",
@@ -26079,9 +25887,7 @@
                     "lldp_sys_desc": null,
                     "lldp_sys_name": null,
                     "mac_address": "DE:AD:BE:EF:CA:FE",
-                    "mac_address_source": {
-                      "type": "ArpReply"
-                    },
+                    "mac_address_source": "ArpReply",
                     "neighbor": null,
                     "neighbor_seen_at": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
@@ -26103,9 +25909,7 @@
                     "last_seen_at": "2026-01-15T10:30:00Z",
                     "lineage_id": null,
                     "mac_address": "DE:AD:BE:EF:CA:FE",
-                    "mac_address_source": {
-                      "type": "ArpReply"
-                    },
+                    "mac_address_source": "ArpReply",
                     "name": "eth0",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
@@ -26116,19 +25920,11 @@
                   }
                 ],
                 "last_seen_at": "2026-01-15T10:30:00Z",
-                "management_url_source": {
-                  "type": "Unspecified"
-                },
-                "manufacturer_source": {
-                  "type": "Unspecified"
-                },
-                "model_source": {
-                  "type": "Unspecified"
-                },
+                "management_url_source": "Unspecified",
+                "manufacturer_source": "Unspecified",
+                "model_source": "Unspecified",
                 "name": "web-server-01",
-                "name_source": {
-                  "type": "Manual"
-                },
+                "name_source": "Manual",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "ports": [
                   {
@@ -26148,26 +25944,24 @@
                     "valid_to": null
                   }
                 ],
-                "serial_number_source": {
-                  "type": "Unspecified"
-                },
+                "serial_number_source": "Unspecified",
                 "services": [
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-08-28T14:13:35.637595Z",
+                        "created_at": "2026-08-28T15:33:32.402548Z",
                         "first_discovery_id": null,
-                        "id": "79112bd4-3ef6-44df-b193-4a63f2ae6392",
+                        "id": "fdd816d3-0fe0-4eaa-a105-f5ff88f20465",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-08-28T14:13:35.637595Z",
+                        "last_seen_at": "2026-08-28T15:33:32.402548Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-08-28T14:13:35.637595Z",
-                        "valid_from": "2026-08-28T14:13:35.637595Z",
+                        "updated_at": "2026-08-28T15:33:32.402548Z",
+                        "valid_from": "2026-08-28T15:33:32.402548Z",
                         "valid_to": null
                       }
                     ],
@@ -26181,7 +25975,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Modbus TCP",
+                    "service_definition": "Ollama",
                     "source": {
                       "type": "Manual"
                     },
@@ -26196,21 +25990,11 @@
                 "source": {
                   "type": "Manual"
                 },
-                "sys_contact_source": {
-                  "type": "Unspecified"
-                },
-                "sys_descr_source": {
-                  "type": "Unspecified"
-                },
-                "sys_location_source": {
-                  "type": "Unspecified"
-                },
-                "sys_name_source": {
-                  "type": "Unspecified"
-                },
-                "sys_object_id_source": {
-                  "type": "Unspecified"
-                },
+                "sys_contact_source": "Unspecified",
+                "sys_descr_source": "Unspecified",
+                "sys_location_source": "Unspecified",
+                "sys_name_source": "Unspecified",
+                "sys_object_id_source": "Unspecified",
                 "tags": [],
                 "updated_at": "2026-01-15T10:30:00Z",
                 "virtualization_metadata": null,
@@ -26332,19 +26116,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-08-28T14:13:35.668609Z",
+                    "created_at": "2026-08-28T15:33:32.427330Z",
                     "first_discovery_id": null,
-                    "id": "7eb34a0e-c7e4-4b28-8958-f98ed75fdc85",
+                    "id": "4d273df6-af01-48e5-a49d-153a07dcbd97",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-08-28T14:13:35.668609Z",
+                    "last_seen_at": "2026-08-28T15:33:32.427330Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-08-28T14:13:35.668609Z",
-                    "valid_from": "2026-08-28T14:13:35.668609Z",
+                    "updated_at": "2026-08-28T15:33:32.427330Z",
+                    "valid_from": "2026-08-28T15:33:32.427330Z",
                     "valid_to": null
                   }
                 ],
@@ -26358,7 +26142,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Modbus TCP",
+                "service_definition": "Ollama",
                 "source": {
                   "type": "Manual"
                 },
@@ -26484,9 +26268,7 @@
               ],
               "example": {
                 "cidr": "192.168.1.0/24",
-                "cidr_source": {
-                  "type": "DaemonSelfReport"
-                },
+                "cidr_source": "DaemonSelfReport",
                 "created_at": "2026-01-15T10:30:00Z",
                 "description": "Local area network",
                 "first_discovery_id": null,
@@ -28391,19 +28173,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-08-28T14:13:35.652081Z",
+              "created_at": "2026-08-28T15:33:32.412769Z",
               "first_discovery_id": null,
-              "id": "5c5876e8-bcee-4c2a-bc4a-e2f26ce9fb47",
+              "id": "26436e69-492e-480a-beaa-cea92fdb3d9c",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-28T14:13:35.652081Z",
+              "last_seen_at": "2026-08-28T15:33:32.412769Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-28T14:13:35.652081Z",
-              "valid_from": "2026-08-28T14:13:35.652081Z",
+              "updated_at": "2026-08-28T15:33:32.412769Z",
+              "valid_from": "2026-08-28T15:33:32.412769Z",
               "valid_to": null
             }
           ],
@@ -28417,7 +28199,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Modbus TCP",
+          "service_definition": "Ollama",
           "source": {
             "type": "Manual"
           },
@@ -29086,9 +28868,7 @@
         ],
         "example": {
           "cidr": "192.168.1.0/24",
-          "cidr_source": {
-            "type": "DaemonSelfReport"
-          },
+          "cidr_source": "DaemonSelfReport",
           "created_at": "2026-01-15T10:30:00Z",
           "description": "Local area network",
           "first_discovery_id": null,
@@ -29656,7 +29436,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "06ec8357-2fa8-4bee-8296-2aca9b149e90",
+                  "id": "247f5454-ab9a-42ce-a52e-8e294ac474ff",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -29666,23 +29446,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "6f28e66a-e706-4cdb-b4fa-8cd47b1c50c4",
+                  "id": "85144b01-b9c7-4fc7-8b9a-5a838a1e1761",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "0e71e1fb-7ccc-4f57-a191-e8fb140a2789",
+                  "id": "27618d09-3058-4a40-ba7b-10af58042070",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "c06f8d5b-53d1-4de1-ab00-fdaa9c2f16df",
+                  "id": "ae59e694-c34d-4e51-b12d-145d8e565749",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "6f28e66a-e706-4cdb-b4fa-8cd47b1c50c4",
+                  "id": "85144b01-b9c7-4fc7-8b9a-5a838a1e1761",
                   "rule": "ByHost"
                 }
               ]
@@ -29712,19 +29492,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "74fe1993-589f-4ffb-9860-05f14bfb0c68",
+                "id": "b510c633-035f-4530-a43e-38ca94d063bd",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "dcececa1-7fc1-4a3b-b953-d85994ba7a86",
+                "id": "d7f6edfc-b064-45d8-910e-447713c98584",
                 "rule": "ByVLAN"
               },
               {
-                "id": "f3089b16-0d84-4451-90b9-6a9fa0829d93",
+                "id": "2e821c83-afb4-488a-8983-88dc3a217dbe",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "4574e3bf-1d73-422d-9633-ba706a74b34f",
+                "id": "e2f77348-9be2-4e32-9200-57f8866ac625",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -29742,7 +29522,7 @@
                 }
               },
               {
-                "id": "4e233456-adf3-4649-8e46-69f04527bf4b",
+                "id": "69fb8aa7-6899-4858-b1b1-e6cdf0701261",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -29751,15 +29531,15 @@
                 }
               },
               {
-                "id": "0eb82d0f-990a-419f-bbc7-6f8b67691350",
+                "id": "cf58bdc9-8be6-4a7b-b0c9-64cbdf7ac664",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "b14b71d6-85e0-48fb-8c9e-7bc0723c61bb",
+                "id": "b6864464-6c80-4b77-bd3e-e0ad17ab39ef",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "fdc5fd08-5fd9-402e-b0c7-4dbf6ba55844",
+                "id": "c06c301e-c91e-4547-ac1d-753a818dfb54",
                 "rule": "ByStack"
               }
             ]

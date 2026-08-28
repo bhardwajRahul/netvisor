@@ -239,9 +239,10 @@ impl SqlValue {
             // `OptJson(None)` writes a SQL `NULL`. Both shapes existed before this refactor and
             // columns depend on which one they get, so each arm keeps the one it had.
             Self::EntitySource(v) => Bound::Json(PgJson::new(serde_json::to_value(v)?)),
-            // Adjacently tagged, like `HostVirtualization` and `LldpChassisId`: the payload variants
-            // carry a `ClientProbe`, which a bare string could not hold without a format both the
-            // migrations and the frontend would have to know.
+            // jsonb rather than text because two of the variants carry a `ClientProbe`, which a bare
+            // string could not hold without a format both the migrations and the frontend would have
+            // to know. The other thirty-three do write a bare string — externally tagged, so a
+            // variant with nothing to carry has no tag — and jsonb holds that as happily.
             Self::AttributeSource(v) => Bound::Json(PgJson::new(serde_json::to_value(v)?)),
             Self::OptionalServiceVirtualization(v) => {
                 Bound::Json(PgJson::new(serde_json::to_value(v)?))

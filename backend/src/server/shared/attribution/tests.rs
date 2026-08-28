@@ -416,10 +416,9 @@ fn each_pair_serialises_as_two_flat_keys_beside_its_siblings() {
 
     assert_eq!(json["plain"], "untouched");
     assert_eq!(json["value"], "Core Switch");
-    assert_eq!(json["value_source"]["type"], "Authored");
-    assert_eq!(json["value_source"]["probe"], "UnifiController");
+    assert_eq!(json["value_source"]["Authored"], "UnifiController");
     assert_eq!(json["fixed"], "FOC1234X5YZ");
-    assert_eq!(json["fixed_source"]["type"], "Probe");
+    assert_eq!(json["fixed_source"]["Probe"], "Snmp");
 }
 
 /// The mechanic the carrier's `deserialize_map` exists for: with several carriers flattened into
@@ -431,9 +430,9 @@ fn sibling_carriers_do_not_consume_each_others_keys() {
     let parent: Parent = serde_json::from_value(serde_json::json!({
         "plain": "untouched",
         "value": "Core Switch",
-        "value_source": { "type": "Authored", "probe": "UnifiController" },
+        "value_source": { "Authored": "UnifiController" },
         "fixed": "FOC1234X5YZ",
-        "fixed_source": { "type": "Probe", "probe": "Snmp" },
+        "fixed_source": { "Probe": "Snmp" },
     }))
     .expect("deserialises");
 
@@ -480,7 +479,7 @@ fn an_absent_or_blank_value_reads_as_nothing() {
     let blank: Parent = serde_json::from_value(serde_json::json!({
         "plain": "p",
         "value": "   ",
-        "value_source": { "type": "Manual" },
+        "value_source": "Manual",
     }))
     .expect("deserialises");
     assert_eq!(blank.value, None);
@@ -492,23 +491,31 @@ fn an_absent_or_blank_value_reads_as_nothing() {
 #[test]
 fn an_unrecognised_source_degrades_rather_than_failing_the_row() {
     let unknown_variant: AttributeSource =
-        serde_json::from_value(serde_json::json!({ "type": "SomethingLaterAdded" }))
-            .expect("degrades");
+        serde_json::from_value(serde_json::json!("SomethingLaterAdded")).expect("degrades");
     assert_eq!(unknown_variant, AttributeSource::Unspecified);
 
     // The likelier case, since adding a probe is how this enum grows.
     let unknown_probe: AttributeSource =
-        serde_json::from_value(serde_json::json!({ "type": "Probe", "probe": "SomeNewProtocol" }))
+        serde_json::from_value(serde_json::json!({ "Probe": "SomeNewProtocol" }))
             .expect("degrades");
     assert_eq!(unknown_probe, AttributeSource::Unspecified);
+
+    // A variant this binary knows only as fieldless, carrying something in a newer one.
+    let unknown_payload: AttributeSource =
+        serde_json::from_value(serde_json::json!({ "SomethingLaterAdded": "Whatever" }))
+            .expect("degrades");
+    assert_eq!(unknown_payload, AttributeSource::Unspecified);
 }
 
 /// Tolerating unknown identifiers is not the same as tolerating anything: a payload that is not a
 /// source at all is still an error, so the leniency above cannot hide a genuine bug.
 #[test]
 fn a_malformed_source_is_still_an_error() {
-    assert!(serde_json::from_value::<AttributeSource>(serde_json::json!("Manual")).is_err());
-    assert!(serde_json::from_value::<AttributeSource>(serde_json::json!({ "probe": 7 })).is_err());
+    // Neither of the two shapes a source has.
+    assert!(serde_json::from_value::<AttributeSource>(serde_json::json!(7)).is_err());
+    assert!(serde_json::from_value::<AttributeSource>(serde_json::json!(["Manual"])).is_err());
+    // The right shape carrying something that is not a probe name.
+    assert!(serde_json::from_value::<AttributeSource>(serde_json::json!({ "Probe": 7 })).is_err());
 }
 
 /// Round-trips through the shape the column holds, for every source the binary can write.
