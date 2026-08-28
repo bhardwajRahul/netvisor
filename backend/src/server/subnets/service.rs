@@ -172,6 +172,63 @@ impl SubnetService {
         Ok(target)
     }
 
+    /// Whether narrowing `existing` to `new_cidr` would leave one of its addresses with nowhere to
+    /// go.
+    ///
+    /// Asked against the subnet list *as it would be after* the correction, which is the whole
+    /// point: it is the corrected range itself that blocks the conventional bucket its own castoffs
+    /// would otherwise fall into. Narrowing `10.20.30.0/24` to `/28` strands `10.20.30.24` for
+    /// exactly that reason — the `/24` it would be filed under now overlaps the `/28`.
+    ///
+    /// The two arms are the two halves of [`Self::place_address`], asked without performing it, so
+    /// this cannot answer differently from the re-placement that follows.
+    async fn narrowing_would_strand(
+        &self,
+        existing: &Subnet,
+        new_cidr: IpCidr,
+        live: &[Subnet],
+    ) -> bool {
+        // Only a narrowing displaces anything. Widening adds space and a promotion moves the rung.
+        if new_cidr.contains(&existing.base.cidr.first_address())
+            && new_cidr.network_length() <= existing.base.cidr.network_length()
+        {
+            return false;
+        }
+
+        let addresses = match self.ip_address_service.get_for_subnet(&existing.id).await {
+            Ok(addresses) => addresses,
+            // Unreadable is not evidence of a stranding, and refusing the correction on a transient
+            // storage error would leave the guess in place for no reason.
+            Err(e) => {
+                tracing::warn!(
+                    subnet_id = %existing.id,
+                    error = %e,
+                    "Could not check what a narrowed range would displace"
+                );
+                return false;
+            }
+        };
+
+        let after: Vec<Subnet> = live
+            .iter()
+            .map(|s| {
+                let mut s = s.clone();
+                if s.id == existing.id {
+                    s.base.cidr = new_cidr;
+                }
+                s
+            })
+            .collect();
+
+        addresses
+            .iter()
+            .map(|a| a.base.ip_address)
+            .filter(|ip| !new_cidr.contains(ip))
+            .any(|ip| {
+                placeable_subnet(&after, ip).is_none() && infer_range_for(ip, &after).is_none()
+            })
+    }
+
     /// Move every address `corrected` no longer covers to wherever it now belongs. Returns how
     /// many moved.
     async fn replace_displaced_addresses(&self, corrected: &Subnet) -> usize {
@@ -343,6 +400,26 @@ impl CrudService<Subnet> for SubnetService {
                 );
                 None
             }
+        };
+
+        // A narrowing has to have somewhere to put what it displaces. Where it does not, the
+        // correction is declined and the reading is recorded beside the guess instead.
+        let correctable = match correctable {
+            Some(existing)
+                if self
+                    .narrowing_would_strand(existing, subnet.base.cidr, &all_subnets)
+                    .await =>
+            {
+                tracing::info!(
+                    network_id = %subnet.base.network_id,
+                    observed_cidr = %subnet.base.cidr,
+                    assumed_cidr = %existing.base.cidr,
+                    "A read range would leave an address of the range it narrows with nowhere to \
+                     go; recording it beside that range rather than stranding them"
+                );
+                None
+            }
+            other => other,
         };
 
         let subnet_from_storage = match all_subnets

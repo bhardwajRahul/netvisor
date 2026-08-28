@@ -510,3 +510,58 @@ async fn a_range_cannot_be_merged_into_one_that_does_not_contain_it() {
             .is_err()
     );
 }
+
+/// A narrowing with nowhere to put what it displaces is declined, not forced through.
+///
+/// `10.20.30.0/24` narrowed to `/28` strands `10.20.30.24`: the range it would be re-filed under is
+/// its conventional `/24`, and that now overlaps the corrected `/28`, so inference refuses it. The
+/// row would end up naming a subnet that does not contain it — stable, but wrong, and invisible to
+/// anything but `needs_placement`.
+///
+/// So the reading is recorded beside the guess instead. The person keeps the range they asked for,
+/// the guess stays assumed and still resolvable, and no address names a subnet without it.
+#[tokio::test]
+async fn a_narrowing_that_would_strand_an_address_is_declined() {
+    let (services, network_id, _container) = network_holding(&[]).await;
+
+    let Placement::Inferred(guess) = services
+        .subnet_service
+        .place_address(network_id, "10.20.30.11".parse().unwrap())
+        .await
+        .unwrap()
+    else {
+        panic!("expected a range to be inferred");
+    };
+    let low = ip_on(&services, network_id, guess, "10.20.30.11").await;
+    let high = ip_on(&services, network_id, guess, "10.20.30.24").await;
+
+    // Covers .11 but not .24, whose only home would be a /24 overlapping this very range.
+    observe(&services, network_id, "10.20.30.0/28").await;
+
+    let untouched = live_subnet(&services, guess).await;
+    assert_eq!(
+        untouched.base.cidr.to_string(),
+        "10.20.30.0/24",
+        "the guess is left alone rather than narrowed onto its own addresses"
+    );
+    assert_eq!(untouched.base.cidr_source, SubnetCidrSource::Inferred);
+
+    let mut held = held_ranges(&services, network_id).await;
+    held.sort();
+    assert_eq!(
+        held,
+        vec!["10.20.30.0/24".to_string(), "10.20.30.0/28".to_string()],
+        "the reading is recorded beside it"
+    );
+
+    for id in [low, high] {
+        let address = live_ip(&services, id).await;
+        let named = live_subnet(&services, address.base.subnet_id).await;
+        assert!(
+            named.base.cidr.contains(&address.base.ip_address),
+            "{} names {}, which does not contain it",
+            address.base.ip_address,
+            named.base.cidr
+        );
+    }
+}

@@ -14,6 +14,7 @@ use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::{
     ApiError, ApiErrorResponse, ApiJson, ApiResponse, ApiResult, PaginatedApiResponse,
 };
+use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::types::SubnetCidrSource;
 use crate::server::{config::AppState, subnets::r#impl::base::Subnet};
 use axum::extract::{Path, State};
@@ -259,7 +260,7 @@ async fn get_all_subnets(
 async fn create_subnet(
     state: State<Arc<AppState>>,
     auth: Authorized<Or<Member, IsDaemon>>,
-    ApiJson(request): ApiJson<Subnet>,
+    ApiJson(mut request): ApiJson<Subnet>,
 ) -> ApiResult<Json<ApiResponse<Subnet>>> {
     let network_ids = auth.network_ids();
     let entity = auth.into_entity();
@@ -309,6 +310,13 @@ async fn create_subnet(
                     request.base.network_id,
                 ));
             }
+            // A range a person typed is an assertion, not a reading: `set_source` settles the
+            // confidence ladder along with the source, so nothing a later scan reads displaces it.
+            // Every other entity gets this from `create_handler`; subnets miss it because this
+            // handler is written out longhand for the daemon case above, and never picked it up.
+            // Stamped server-side rather than trusted from the body, so a client cannot claim
+            // `Discovery` for a row it typed.
+            request.set_source(EntitySource::Manual);
             let service = Subnet::get_service(&state);
             let created = service.create(request, entity).await.map_err(|e| {
                 tracing::error!(error = %e, "Failed to create subnet");
