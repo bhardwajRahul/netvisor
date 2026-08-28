@@ -69,6 +69,19 @@ pub struct IpOverride<T> {
     /// Credential ID for tracking which credential was used during discovery.
     #[serde(default)]
     pub credential_id: Uuid,
+    /// The host this override was expanded from, where it came from a host assignment.
+    ///
+    /// A host assignment means "use this credential on this device", and it fans out to one
+    /// override per address the host holds. Flattened to addresses alone, the daemon could not
+    /// tell that two of them were the same device, and reported a multi-homed host's unscanned
+    /// address as an untried credential even though the credential had just worked at the host's
+    /// other address. Carrying the host is what lets those siblings be recognised.
+    ///
+    /// `None` where there is no host behind the override — an integration target names addresses
+    /// directly, and so does the legacy SNMP mapping — and on a mapping from an older server.
+    /// Those keep the per-address rule they have always had.
+    #[serde(default)]
+    pub host_id: Option<Uuid>,
 }
 
 impl<T> IpOverride<T> {
@@ -798,6 +811,7 @@ mod tests {
             ip,
             credential: make_snmp_cred("public"),
             credential_id: cred_id,
+            host_id: None,
         }
     }
 
@@ -879,6 +893,7 @@ mod tests {
                 ip,
                 credential: make_snmp_cred("override"),
                 credential_id: Uuid::new_v4(),
+                host_id: None,
             }],
             ..Default::default()
         };

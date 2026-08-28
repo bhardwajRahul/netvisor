@@ -23,6 +23,7 @@
 		modalState,
 		openModal,
 		closeModal,
+		restoreModal,
 		setModalTab,
 		goBack
 	} from '$lib/shared/stores/modal-registry';
@@ -158,7 +159,21 @@
 	$effect(() => {
 		const state = $modalState;
 		if (isOpen && name && state.name !== name) {
+			// Capture whatever superseded this modal before handing control to the parent.
+			//
+			// A close handler that calls `closeModal()` unconditionally is the ordinary shape, and
+			// it is right when the user dismissed this modal — but here the registry has already
+			// moved on to another modal, and clearing it throws that one away. The symptom is a
+			// chip or an action that navigates from inside one modal to another entity's editor
+			// landing on the destination tab with nothing open, because the deep-link effect that
+			// would have opened it found an empty registry. The branch above already applies this
+			// rule to its own `closeModal()`; this one could not, because the clearing happens
+			// inside the parent's handler.
+			const superseding = state.name ? { ...state } : null;
 			onClose?.();
+			if (superseding && get(modalState).name === null) {
+				restoreModal(superseding);
+			}
 		}
 	});
 

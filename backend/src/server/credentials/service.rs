@@ -622,6 +622,9 @@ impl CredentialService {
                             ip: i.base.ip_address,
                             credential: query_cred.clone(),
                             credential_id: cred.id,
+                            // Legacy pre-v0.15.0 path, serving daemons that predate host-aware
+                            // grouping — they get the per-address rule they have always had.
+                            host_id: None,
                         }));
                         break;
                     }
@@ -952,11 +955,24 @@ pub(crate) fn apply_host_assignment(
     let mapping = mapping_for(mappings_by_credential, credential.id, cred_type);
 
     let relevant_interfaces = ip_addresses.iter().filter(|i| {
-        i.base.host_id == host_id
-            && match &assignment.ip_address_ids {
-                Some(ids) => ids.contains(&i.id),
-                None => true,
-            }
+        if i.base.host_id != host_id {
+            return false;
+        }
+        match &assignment.ip_address_ids {
+            // Scoped to named addresses: honour exactly what was named, loopback included. That
+            // is how a promoted Docker/Podman socket credential comes back out on the daemon
+            // host's `127.0.0.1` — see `promoted_socket_credential_is_dispatched_over_loopback`.
+            Some(ids) => ids.contains(&i.id),
+            // Host-wide: every address the host holds, except a loopback one. A remote device's
+            // own `127.0.0.1` is an interface it reports, not a way to reach it — and it is not
+            // even unique, since every device reports the same one. Swept up here it produced a
+            // credential attempt against the daemon's own machine and an "unreachable" finding
+            // for a credential that was working fine at the host's real address.
+            //
+            // Only the incidental case is dropped: naming a loopback address explicitly still
+            // targets it, which is the difference between a swept-up interface and an intent.
+            None => !i.base.ip_address.is_loopback(),
+        }
     });
 
     mapping
@@ -965,6 +981,9 @@ pub(crate) fn apply_host_assignment(
             ip: i.base.ip_address,
             credential: payload.clone(),
             credential_id: credential.id,
+            // The device these addresses belong to, so the daemon can tell a multi-homed host's
+            // addresses apart from unrelated ones.
+            host_id: Some(host_id),
         }));
 }
 
@@ -985,6 +1004,9 @@ fn push_unique_override(
             ip,
             credential: payload,
             credential_id,
+            // An integration target names addresses directly; there is no host behind it to
+            // group its siblings by.
+            host_id: None,
         });
     }
 }
@@ -1314,6 +1336,7 @@ mod integration_target_tests {
                 ip: "10.0.0.5".parse().unwrap(),
                 credential: specific.to_query_payload(),
                 credential_id: host_id,
+                host_id: None,
             });
 
         let dispatched = order_mappings_for_dispatch(map);
@@ -1366,6 +1389,7 @@ mod integration_target_tests {
             ip: "10.0.0.5".parse().unwrap(),
             credential: specific.to_query_payload(),
             credential_id: host_id,
+            host_id: None,
         });
 
         let dispatched = order_mappings_for_dispatch(map);
@@ -1473,6 +1497,41 @@ mod integration_target_tests {
                 "10.0.0.5".parse::<IpAddr>().unwrap()
             ]
         );
+    }
+
+    /// A device's own loopback is an interface it reports, not a way to reach it — and every
+    /// device reports the same one, so it is not even a unique target. Swept into a host-wide
+    /// assignment it produced an SNMP attempt against the daemon's own machine and an
+    /// "unreachable" finding for a credential that was working at the host's real address.
+    ///
+    /// Only the incidental case goes: `promoted_socket_credential_is_dispatched_over_loopback`
+    /// covers the other side, where the assignment names a loopback address explicitly and must
+    /// still target it.
+    #[test]
+    fn a_host_wide_assignment_skips_the_hosts_own_loopback() {
+        let cred_id = Uuid::new_v4();
+        let host_id = Uuid::new_v4();
+        let cred = credential(cred_id, snmp_v2c("public"));
+        let assignment = CredentialAssignment {
+            credential_id: cred_id,
+            ip_address_ids: None,
+        };
+        let ip_addresses = vec![
+            ip_address(Uuid::new_v4(), host_id, localhost()),
+            ip_address(Uuid::new_v4(), host_id, "10.0.0.4".parse().unwrap()),
+        ];
+
+        let mut map: Mappings = Mappings::new();
+        apply_host_assignment(&mut map, host_id, &assignment, &cred, &ip_addresses);
+
+        let overrides = &only(&map).ip_overrides;
+        assert_eq!(
+            overrides.iter().map(|o| o.ip).collect::<Vec<_>>(),
+            vec!["10.0.0.4".parse::<IpAddr>().unwrap()]
+        );
+        // And the device it came from rides along, so the daemon can tell a multi-homed host's
+        // addresses apart from unrelated ones.
+        assert_eq!(overrides[0].host_id, Some(host_id));
     }
 
     /// A second `Network` target of the same credential type must not displace the first — the
