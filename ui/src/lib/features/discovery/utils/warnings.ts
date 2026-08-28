@@ -36,6 +36,18 @@ import {
 export type DiscoveryWarning = components['schemas']['DiscoveryWarning'];
 export type DiscoveryWarningCode = DiscoveryWarning['code'];
 
+/**
+ * What a row is about: a device, a range, or a bare address.
+ *
+ * `hostId` is present only where the warning carried one, which is the LLDP/CDP resolution family.
+ * Those render as entity tags that navigate to the device; an address on its own has no entity to
+ * point at and renders as plain text.
+ */
+export interface WarningSubject {
+	label: string;
+	hostId?: string;
+}
+
 /** One warning code's worth of a run, as a row in the report. */
 export interface WarningEntry {
 	code: DiscoveryWarningCode;
@@ -45,7 +57,7 @@ export interface WarningEntry {
 	color: Color;
 	icon: string;
 	/** The devices, ranges or addresses this row concerns. */
-	subjects: string[];
+	subjects: WarningSubject[];
 	/** The full sentences, shown on disclosure: one per group, or one per occurrence. */
 	details: string[];
 	/** Every occurrence behind the row, so an action can read ids off the payload. */
@@ -156,27 +168,28 @@ const WARNING_PARAMS = {
 	SnmpWalkBridgeMibAbsent: (w) => ({ addresses: addressesOf(w), groups: groupsOf(w) }),
 	SnmpWalkNoAnswer: (w) => ({ addresses: addressesOf(w), groups: groupsOf(w) }),
 
-	// The claim warnings name one device each: the figures are the substance of the sentence, and
-	// two switches disagreeing with themselves by different amounts share nothing but its shape.
+	// The figures are the substance of a claim warning, so two switches disagreeing with themselves
+	// by different amounts do not share a sentence — the bucketing below keeps them apart, and
+	// merges the ones that do agree.
 	ClaimedCountReadCutShort: (w) => ({
-		address: w[0].address,
+		addresses: addressesOf(w),
 		source: claimSource(w[0].source),
 		expected: w[0].expected,
 		observed: w[0].observed
 	}),
 	ClaimedCountUnderRead: (w) => ({
-		address: w[0].address,
+		addresses: addressesOf(w),
 		source: claimSource(w[0].source),
 		expected: w[0].expected,
 		observed: w[0].observed
 	}),
 	ClaimedCapabilityReadCutShort: (w) => ({
-		address: w[0].address,
+		addresses: addressesOf(w),
 		source: claimSource(w[0].source),
 		group: group(w[0].group)
 	}),
 	ClaimedCapabilityEmpty: (w) => ({
-		address: w[0].address,
+		addresses: addressesOf(w),
 		source: claimSource(w[0].source),
 		group: group(w[0].group)
 	}),
@@ -201,7 +214,7 @@ const WARNING_PARAMS = {
 	CredentialTargetNotResponding: credentialParams,
 	CredentialGateClosed: (w) => ({
 		credential: integration(w[0].integration),
-		address: w[0].address,
+		addresses: addressesOf(w),
 		ports: joinList(w[0].ports.map(String), 'conjunction')
 	}),
 	CredentialRejected: attemptParams,
@@ -282,7 +295,7 @@ function malformedParams(
 function credentialParams(
 	w: WarningOf<'CredentialTargetNotScanned' | 'CredentialTargetNotResponding'>[]
 ): Params {
-	return { credential: integration(w[0].integration), address: w[0].address };
+	return { credential: integration(w[0].integration), addresses: addressesOf(w) };
 }
 
 function attemptParams(
@@ -297,11 +310,12 @@ function attemptParams(
 		| 'CredentialTimedOut'
 	>[]
 ): Params {
-	// This address's own diagnostic. Grouping credential warnings would put one message against
-	// several addresses, which is exactly the batching the per-occurrence records exist to undo.
+	// The diagnostic the library returned, which is usually this address's alone — so the bucketing
+	// below leaves these apart. Addresses that failed with the *same* message share a sentence,
+	// which is the one case where merging loses nothing.
 	return {
 		credential: integration(w[0].integration),
-		address: w[0].address,
+		addresses: addressesOf(w),
 		detail: w[0].detail || discovery_warningNoFurtherDetail()
 	};
 }
@@ -437,46 +451,70 @@ function portParams(
 }
 
 /**
- * Codes that get one sentence per occurrence rather than one covering the group.
+ * The slots whose value is computed from a whole group rather than from one occurrence.
  *
- * Two reasons, both about the sentence being unshareable:
+ * This is what makes the grouping below general. Two warnings of the same code say the *same
+ * thing* when every slot outside this set matches: four switches that each advertised the bridge
+ * bit and served no bridge-port numbering differ only in which device it was, so they are one
+ * sentence naming four devices. Two credential attempts that failed with different diagnostics
+ * differ in `detail`, so they stay two sentences — which is what the per-occurrence records the
+ * backend keeps exist for.
  *
- * - the claim warnings are built around two figures a device published about *itself*, and two
- *   switches disagreeing with themselves by different amounts have nothing to share but the shape
- *   of the complaint;
- * - `Unknown` carries a whole pre-coded sentence as its detail, and merging several into one
- *   bullet turns a historical scan's warning list into the wall of text the aggregation exists to
- *   prevent. Before warnings were coded each of those strings was its own bullet, and it stays
- *   that way.
+ * A new aggregating slot missing from this set only costs grouping: those occurrences render as
+ * separate sentences, each correct. Listing an *identifying* slot here would be the harmful
+ * direction — it would merge two statements and let one set of figures speak for both — which is
+ * why the set is written this way round.
  */
-const PER_OCCURRENCE = new Set<DiscoveryWarningCode>([
-	'ClaimedCountReadCutShort',
-	'ClaimedCountUnderRead',
-	'ClaimedCapabilityReadCutShort',
-	'ClaimedCapabilityEmpty',
-	// Every credential warning: each carries the diagnostic the library returned for *that*
-	// address, and grouping them re-merges what the backend went to the trouble of keeping apart.
-	'CredentialTargetNotScanned',
-	'CredentialTargetNotResponding',
-	'CredentialGateClosed',
-	'CredentialRejected',
-	'CredentialMalformed',
-	'CredentialTlsFailed',
-	'CredentialNotThisService',
-	'CredentialCollectionFailed',
-	'CredentialCollectionTimedOut',
-	'CredentialUnreachable',
-	'CredentialTimedOut',
-	'Unknown'
+const AGGREGATING_SLOTS = new Set([
+	'addresses',
+	'groups',
+	'count',
+	'examples',
+	'dropped',
+	'total',
+	'misplaced',
+	'discarded',
+	'consequence',
+	'elided'
 ]);
 
 /**
- * Group a run's warnings by code and render one sentence per group, in the order the codes first
- * appear — which is the order the producers emitted them, so the shortfall for a device still
- * precedes the contradiction that explains it.
+ * Split one code's occurrences into the distinct statements they make.
  *
- * One string per sentence, the way they are read: a code in {@link PER_OCCURRENCE} gets one per
- * occurrence, everything else one for the group.
+ * Insertion-ordered, so the buckets come out in the order the producers emitted them.
+ */
+function bucketByStatement(
+	code: DiscoveryWarningCode,
+	group_: DiscoveryWarning[],
+	hostName: HostNameLookup
+): DiscoveryWarning[][] {
+	const build = WARNING_PARAMS[code] as (w: DiscoveryWarning[], lookup: HostNameLookup) => Params;
+	const buckets = new Map<string, DiscoveryWarning[]>();
+
+	for (const warning of group_) {
+		const params = build([warning], hostName);
+		const identity = Object.entries(params)
+			.filter(([slot]) => !AGGREGATING_SLOTS.has(slot))
+			.sort(([a], [b]) => a.localeCompare(b));
+		const key = JSON.stringify(identity);
+
+		const existing = buckets.get(key);
+		if (existing) {
+			existing.push(warning);
+		} else {
+			buckets.set(key, [warning]);
+		}
+	}
+
+	return [...buckets.values()];
+}
+
+/**
+ * One sentence per distinct statement a code's occurrences make.
+ *
+ * Usually one. Several when the occurrences genuinely differ — different credential diagnostics,
+ * different claimed figures — and the devices that made the *same* statement are named together
+ * inside a single sentence rather than repeating it once each.
  */
 function renderSentences(
 	code: DiscoveryWarningCode,
@@ -487,12 +525,9 @@ function renderSentences(
 	const fallback = warningCodes.find((c) => c.id === code)?.description;
 	if (!fallback) return [];
 
-	if (PER_OCCURRENCE.has(code)) {
-		return group_.map((warning) =>
-			metaDescriptionWith('warning_codes', code, build([warning], hostName), fallback)
-		);
-	}
-	return [metaDescriptionWith('warning_codes', code, build(group_, hostName), fallback)];
+	return bucketByStatement(code, group_, hostName).map((bucket) =>
+		metaDescriptionWith('warning_codes', code, build(bucket, hostName), fallback)
+	);
 }
 
 /**
@@ -507,23 +542,23 @@ function renderSentences(
  * reported it. An id that resolves to nothing is dropped rather than shown raw, the same policy the
  * sentences use — a host deleted since the scan reads as no chip, not as a UUID.
  */
-function subjectsOf(warnings: DiscoveryWarning[], hostName: HostNameLookup): string[] {
-	const labels = warnings.flatMap((w) => {
+function subjectsOf(warnings: DiscoveryWarning[], hostName: HostNameLookup): WarningSubject[] {
+	const subjects = warnings.flatMap((w): WarningSubject[] => {
 		if ('host_id' in w) {
-			const name = hostName(w.host_id);
-			return name ? [name] : [];
+			const label = hostName(w.host_id);
+			return label ? [{ label, hostId: w.host_id }] : [];
 		}
-		if ('cidr' in w) return [w.cidr];
-		if ('address' in w) return [w.address];
+		if ('cidr' in w) return [{ label: w.cidr }];
+		if ('address' in w) return [{ label: w.address }];
 		return [];
 	});
 
-	const unique = [...new Set(labels)];
+	const unique = [...new Map(subjects.map((s) => [s.label, s])).values()];
 	const listed = unique.slice(0, MAX_LISTED);
 	const elided = unique.length - listed.length;
 	// Capped like the sentences are, and for the same reason: a row that wraps to five lines of
 	// chips is a wall of text with rounded corners.
-	if (elided > 0) listed.push(common_moreItems({ count: elided }));
+	if (elided > 0) listed.push({ label: common_moreItems({ count: elided }) });
 	return listed;
 }
 
@@ -555,11 +590,12 @@ const NEEDS_ATTENTION_REMEDY = 'FixInScanopy';
  * permanently malformed LLDP table are both `Lost`/Red. Severity stays on the row, as its icon and
  * colour, which is the job it was written for.
  *
- * Within a section a row is one *code*, not one occurrence. The wall of text this replaced came
- * from every occurrence carrying its own full explanation — four devices restricting the same SNMP
- * view produced four near-identical paragraphs. Here they are one row naming four devices, with the
- * four sentences still intact behind its disclosure. Nothing the backend kept apart is merged;
- * `PER_OCCURRENCE` still decides how many sentences a row holds.
+ * Within a section a row is one *code*, not one occurrence, and inside a row the occurrences that
+ * say the same thing become one sentence naming every device — see {@link AGGREGATING_SLOTS}. The
+ * wall of text this replaced came from every occurrence carrying its own full explanation: four
+ * devices restricting the same SNMP view produced four near-identical paragraphs, and are now one
+ * row and one sentence. Occurrences that genuinely differ — a credential diagnostic, a device's own
+ * figures — still get a sentence each, so nothing the backend kept apart is merged.
  */
 export function buildWarningReport(
 	warnings: DiscoveryWarning[],

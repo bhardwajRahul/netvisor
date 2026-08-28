@@ -152,10 +152,10 @@ impl DiscoveryWarningCode {
             | Self::SnmpWalkNoAnswer => &["addresses", "groups"],
 
             Self::ClaimedCountReadCutShort | Self::ClaimedCountUnderRead => {
-                &["address", "source", "expected", "observed"]
+                &["addresses", "source", "expected", "observed"]
             }
             Self::ClaimedCapabilityReadCutShort | Self::ClaimedCapabilityEmpty => {
-                &["address", "source", "group"]
+                &["addresses", "source", "group"]
             }
 
             Self::LldpLocalPortDropped | Self::LldpLocalPortDroppedReadCutShort => {
@@ -172,9 +172,9 @@ impl DiscoveryWarningCode {
             }
 
             Self::CredentialTargetNotScanned | Self::CredentialTargetNotResponding => {
-                &["credential", "address"]
+                &["credential", "addresses"]
             }
-            Self::CredentialGateClosed => &["credential", "address", "ports"],
+            Self::CredentialGateClosed => &["credential", "addresses", "ports"],
             Self::CredentialRejected
             | Self::CredentialMalformed
             | Self::CredentialTlsFailed
@@ -182,7 +182,7 @@ impl DiscoveryWarningCode {
             | Self::CredentialCollectionFailed
             | Self::CredentialCollectionTimedOut
             | Self::CredentialUnreachable
-            | Self::CredentialTimedOut => &["credential", "address", "detail"],
+            | Self::CredentialTimedOut => &["credential", "addresses", "detail"],
 
             Self::ScanTimeLimitWithEstimate => &["hours", "hosts_not_scanned", "minutes_remaining"],
             Self::ScanTimeLimit => &["hours", "hosts_not_scanned"],
@@ -436,16 +436,16 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
                 "{addresses} returned no {groups} data at all — the device stopped answering rather than reporting that it has none. Previously discovered values were kept rather than overwritten and refresh on the next complete scan."
             }
             Self::ClaimedCountReadCutShort => {
-                "{address} reports {source} as {expected}, and the read ended at {observed} without finishing. That is how much of the table is missing — the incomplete-walk line for this device says why it ended. What was read is recorded."
+                "{addresses} reported {source} as {expected}, and the read ended at {observed} without finishing. That is how much of the table is missing — the incomplete-walk line for each device says why it ended. What was read is recorded."
             }
             Self::ClaimedCountUnderRead => {
-                "{address} reports {source} as {expected}, but only {observed} could be read. What was read is recorded; the device may be misreporting its own count, or may be declining to serve the rest of the table to this credential."
+                "{addresses} reported {source} as {expected}, but only {observed} could be read. What was read is recorded; a device may be misreporting its own count, or may be declining to serve the rest of the table to this credential."
             }
             Self::ClaimedCapabilityReadCutShort => {
-                "{address} advertises {source}, and the read of its {group} ended without returning any. The incomplete-walk line for this device says why it ended; what the device advertises is why it is worth reading again rather than treating as empty."
+                "{addresses} advertised {source}, and the read of that {group} ended without returning any. The incomplete-walk line for each device says why it ended; what a device advertises is why this is worth reading again rather than treating as empty."
             }
             Self::ClaimedCapabilityEmpty => {
-                "{address} advertises {source}, but returned no {group} at all. A device that says it does this and then reports none of it is usually restricting what the credential may see — an SNMP view, or a VLAN context the query has to name."
+                "{addresses} advertised {source}, but returned no {group} at all. A device that says it does this and then reports none of it is usually restricting what the credential may see — an SNMP view, or a VLAN context the query has to name."
             }
             Self::LldpLocalPortDropped => {
                 "{addresses} reported LLDP neighbours on a local port that matches no interface on the device ({dropped} of {total}), so they are discarded and draw no links — those devices will look as though they have no LLDP neighbours. This usually means the switch numbers its LLDP ports separately from its interfaces, or did not answer for its LLDP port table."
@@ -478,37 +478,37 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
                 "The VLANs reported by {addresses} could not be saved, so VLAN membership is missing from their interfaces. The devices answered correctly — this is a failure recording the result, and the daemon log has the underlying error."
             }
             Self::CredentialTargetNotScanned => {
-                "The {credential} credential for {address} was never contacted because its address is not on any subnet this scan covers — add the subnet to the discovery, or move the credential to a host inside it."
+                "The {credential} credential for {addresses} was never contacted, because no subnet this scan covers reaches there — add the subnet to the discovery, or move the credential to a host inside it."
             }
             Self::CredentialTargetNotResponding => {
-                "The {credential} credential for {address} was not tried because nothing answered at that address during the scan — check the address is right and the host is online."
+                "The {credential} credential for {addresses} was not tried, because nothing answered there during the scan — check the address is right and the host is online."
             }
             Self::CredentialGateClosed => {
-                "The {credential} credential for {address} was not tried because port {ports} was not open on it — check the port configured on the credential."
+                "The {credential} credential for {addresses} was not tried, because port {ports} was not open there — check the port configured on the credential."
             }
             Self::CredentialRejected => {
-                "The {credential} credential for {address} was refused — check the username, password or community string. ({detail})"
+                "The {credential} credential for {addresses} was refused — check the username, password or community string. ({detail})"
             }
             Self::CredentialMalformed => {
-                "The {credential} credential for {address} is incomplete and could not be used — re-enter it. ({detail})"
+                "The {credential} credential for {addresses} is incomplete and could not be used — re-enter it. ({detail})"
             }
             Self::CredentialTlsFailed => {
-                "The {credential} credential for {address} could not negotiate TLS — if the appliance serves a self-signed certificate, turn on \"accept invalid certificates\" in the daemon's scan settings. ({detail})"
+                "The {credential} credential for {addresses} could not negotiate TLS — if the appliance serves a self-signed certificate, turn on \"accept invalid certificates\" in the daemon's scan settings. ({detail})"
             }
             Self::CredentialNotThisService => {
-                "The {credential} credential for {address} reached something that is not the expected service — check the port on the credential. ({detail})"
+                "The {credential} credential for {addresses} reached something that is not the expected service — check the port on the credential. ({detail})"
             }
             Self::CredentialCollectionFailed => {
-                "The {credential} credential for {address} authenticated and then failed while collecting, so this host's data is missing rather than out of date. ({detail})"
+                "The {credential} credential for {addresses} authenticated and then failed while collecting, so that data is missing rather than out of date. ({detail})"
             }
             Self::CredentialCollectionTimedOut => {
-                "The {credential} credential for {address} authenticated and then ran out of time before it finished collecting — rescan this host on its own, or narrow what the scan covers. ({detail})"
+                "The {credential} credential for {addresses} authenticated and then ran out of time before it finished collecting — rescan separately, or narrow what the scan covers. ({detail})"
             }
             Self::CredentialUnreachable => {
-                "The {credential} credential for {address} could not be reached at that address — check the address, port and that the service is listening. ({detail})"
+                "The {credential} credential for {addresses} could not be reached — check the address, port and that the service is listening. ({detail})"
             }
             Self::CredentialTimedOut => {
-                "The {credential} credential for {address} timed out before anything answered — check the address and port, and that the service is listening rather than dropping the connection. ({detail})"
+                "The {credential} credential for {addresses} timed out before anything answered — check the address and port, and that the service is listening rather than dropping the connection. ({detail})"
             }
             Self::ScanTimeLimitWithEstimate => {
                 "Scan hit its time limit ({hours}h) — {hosts_not_scanned} host(s) not scanned (~{minutes_remaining} min of estimated work remaining). Raise Max Discovery Duration or rescan."

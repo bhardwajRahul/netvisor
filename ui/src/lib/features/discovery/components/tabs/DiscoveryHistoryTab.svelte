@@ -6,7 +6,6 @@
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import type { Discovery } from '../../types/base';
 	import DiscoveryEditModal from '../DiscoveryModal/DiscoveryEditModal.svelte';
-	import { warningsNeedAttention } from '../../utils/warnings';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
 	import { defineFields } from '$lib/shared/components/data/types';
@@ -257,7 +256,7 @@
 					getValue: (item) =>
 						daemonsData.find((d) => d.id === item.daemon_id)?.name ??
 						common_unknownEntity({ entity: common_daemon() }),
-					display: { order: 6, getItems: (item) => daemonItems(item.daemon_id, daemonsData) }
+					display: { order: 7, getItems: (item) => daemonItems(item.daemon_id, daemonsData) }
 				},
 				network_id: {
 					label: common_network(),
@@ -268,7 +267,7 @@
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
 						networksData.find((n) => n.id === item.network_id)?.name ?? common_unknownNetwork(),
-					display: { order: 5, getItems: (item) => networkItems(item.network_id, networksData) }
+					display: { order: 6, getItems: (item) => networkItems(item.network_id, networksData) }
 				},
 				discovery_type: {
 					label: common_type(),
@@ -315,7 +314,7 @@
 							? formatTimestamp(results.started_at)
 							: common_unknown();
 					},
-					display: { order: 2 }
+					display: { order: 3 }
 				},
 				{
 					key: 'finished_at',
@@ -327,7 +326,7 @@
 							? formatTimestamp(results.finished_at)
 							: common_unknown();
 					},
-					display: { order: 3 }
+					display: { order: 4 }
 				},
 				{
 					key: 'duration',
@@ -340,29 +339,23 @@
 						}
 						return common_unknown();
 					},
-					display: { order: 4 }
+					display: { order: 5 }
 				},
 				{
-					// How much the run had to say, as a number. Red when any of it is work for the
-					// reader — the same question the run modal's Warnings tab puts its dot on, so
-					// the table and the modal cannot disagree about whether a run needs anyone.
+					// How much the run had to say, next to how it ended — the two questions asked
+					// together. Always amber, never red: this column counts warnings, and a run
+					// that failed outright says so in Status. A clean run falls back to its plain
+					// 0 rather than wearing a chip that means nothing.
 					key: 'warnings',
 					label: common_warnings(),
 					type: 'string',
 					getValue: (item) => String(warningsOf(item).length),
 					display: {
-						order: 5,
+						order: 2,
 						getItems: (item) => {
-							const warnings = warningsOf(item);
-							if (warnings.length === 0) return undefined;
-							if (!warningsNeedAttention(warnings)) return undefined;
-							return [
-								{
-									id: 'warnings-need-attention',
-									label: String(warnings.length),
-									color: toColor('red')
-								}
-							];
+							const count = warningsOf(item).length;
+							if (count === 0) return undefined;
+							return [{ id: 'warnings', label: String(count), color: toColor('amber') }];
 						}
 					}
 				}

@@ -9,28 +9,34 @@
 
 	Two moves fix it, and they are separate.
 
-	**The sections are the instruction.** `WarningRemedy` on the backend files every code under one
-	of four rungs, and the heading a row appears under is what the reader is being asked to do about
-	it. Severity is deliberately not the cut: it measures what the scan lost, which is a different
+	**The cards are the instruction.** `WarningRemedy` on the backend files every code under one of
+	four rungs, and the card a row appears in is what the reader is being asked to do about it.
+	Severity is deliberately not the cut: it measures what the scan lost, which is a different
 	question, and it puts a thirty-second credential fix at the same weight as an LLDP table that
 	will never parse. It stays on the row as the icon and colour, which is what it was written for.
 
-	**A row is one code, not one occurrence.** The wall of text came from every occurrence carrying
-	its own copy of the explanation. Here the four switches restricting the same view are one row
-	naming four devices, with all four sentences intact behind its disclosure. Nothing the backend
-	kept apart is merged — `PER_OCCURRENCE` still decides how many sentences a row holds — and
-	nothing is thrown away.
+	**A row is one code, and inside it one sentence per distinct statement.** The wall of text came
+	from every occurrence carrying its own copy of the explanation. Four switches restricting the
+	same view are now one row and one sentence naming four devices; a fifth that restricted a
+	different capability keeps a sentence of its own. `warnings.ts` decides that generically, by
+	comparing the slots that are not aggregates.
 
-	The last two sections start closed. They are the ones whose answer is "nothing", and a reader
-	who wants them can say so.
+	The nesting is drawn, not implied. Two levels of `└─` say which row belongs to which card and
+	which explanation belongs to which row, because a bare left margin stops reading as hierarchy
+	the moment a row's chips wrap onto a second line.
 -->
 <script lang="ts">
 	import { ChevronRight } from 'lucide-svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
+	import CollapsibleCard from '$lib/shared/components/data/CollapsibleCard.svelte';
+	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
+	import { entityRef } from '$lib/shared/components/data/types';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import { openModal } from '$lib/shared/stores/modal-registry';
+	import { entities } from '$lib/shared/stores/metadata';
 	import { createColorHelper, createIconComponent } from '$lib/shared/utils/styling';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import {
@@ -74,8 +80,12 @@
 
 	let sections = $derived(buildWarningReport(warnings, hostNameById));
 
-	/** The rungs that open on arrival: the ones with something for the reader to do. */
-	const OPEN_BY_DEFAULT = new Set(['FixInScanopy', 'CheckTheDevice']);
+	/** Which rows are showing their explanation. Keyed by code, which is unique within a run. */
+	const openRows = new SvelteSet<string>();
+
+	function toggleRow(code: string) {
+		if (!openRows.delete(code)) openRows.add(code);
+	}
 
 	/** The codes whose answer is a scan setting rather than a credential. */
 	const SCAN_SETTING_CODES = new Set<WarningEntry['code']>([
@@ -147,67 +157,107 @@
 
 		return null;
 	}
+
+	/** A named device is a real entity, so its chip is drawn the way one is drawn everywhere. */
+	const HostIcon = entities.getIconComponent('Host');
+	const hostColor = entities.getColorHelper('Host').color;
 </script>
 
 {#if sections.length === 0}
 	<EmptyState title={discovery_noWarnings()} subtitle={discovery_noWarningsSubtitle()} />
 {:else}
-	<div class="space-y-6" aria-label={common_warnings()}>
+	<div class="space-y-4" aria-label={common_warnings()}>
 		{#each sections as section (section.remedy)}
-			{@const SectionIcon = createIconComponent(section.icon)}
-			<details class="group" open={OPEN_BY_DEFAULT.has(section.remedy)}>
-				<summary class="flex cursor-pointer list-none items-center gap-2">
-					<ChevronRight
-						class="text-tertiary h-4 w-4 shrink-0 transition-transform group-open:rotate-90"
-					/>
-					<SectionIcon class="text-secondary h-4 w-4 shrink-0" />
-					<span class="text-primary font-medium">{section.title}</span>
-					<span class="text-tertiary text-sm">{section.entries.length}</span>
-				</summary>
+			<CollapsibleCard
+				title={section.title}
+				description={section.description}
+				icon={createIconComponent(section.icon)}
+			>
+				{#snippet badge()}
+					<Tag label={String(section.entries.length)} color="Amber" pill />
+				{/snippet}
 
-				<p class="text-tertiary ml-10 mt-1 text-sm">{section.description}</p>
-
-				<div class="ml-10 mt-2 space-y-1">
+				<ul>
 					{#each section.entries as entry (entry.code)}
 						{@const EntryIcon = createIconComponent(entry.icon)}
 						{@const colors = createColorHelper(entry.color)}
 						{@const action = actionFor(entry)}
-						<div class="flex items-start gap-2">
-							<details class="group/entry min-w-0 flex-1">
-								<summary
-									class="flex cursor-pointer list-none items-start gap-2 rounded px-1 py-1 hover:bg-gray-100 dark:hover:bg-gray-800"
-								>
-									<EntryIcon class="mt-0.5 h-4 w-4 shrink-0 {colors.icon}" />
-									<span class="text-primary shrink-0 text-sm">{entry.title}</span>
-									{#if entry.subjects.length > 0}
-										<span class="flex flex-wrap gap-1">
-											{#each entry.subjects as subject (subject)}
-												<Tag label={subject} color={entry.color} faded pill />
-											{/each}
-										</span>
+						{@const isOpen = openRows.has(entry.code)}
+						<li class="flex items-start gap-2">
+							<!-- The branch into this row, from the card that heads it. -->
+							<span
+								class="text-tertiary/60 mt-1.5 shrink-0 select-none font-mono text-xs leading-5"
+								aria-hidden="true">└─</span
+							>
+							<div class="min-w-0 flex-1">
+								<div class="flex items-start gap-2">
+									<button
+										type="button"
+										class="hover:bg-tertiary/40 -mx-1 flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded px-1 py-1 text-left"
+										aria-expanded={isOpen}
+										onclick={() => toggleRow(entry.code)}
+									>
+										<ChevronRight
+											class="text-secondary mt-0.5 h-4 w-4 shrink-0 transition-transform {isOpen
+												? 'rotate-90'
+												: ''}"
+										/>
+										<EntryIcon class="mt-0.5 h-4 w-4 shrink-0 {colors.icon}" />
+										<span class="text-primary shrink-0 text-sm">{entry.title}</span>
+										{#if entry.subjects.length > 0}
+											<span class="flex flex-wrap items-center gap-1">
+												{#each entry.subjects as subject (subject.label)}
+													{#if subject.hostId}
+														<EntityTag
+															entityRef={entityRef('Host', subject.hostId, {
+																id: subject.hostId,
+																name: subject.label
+															})}
+															label={subject.label}
+															icon={HostIcon}
+															color={hostColor}
+														/>
+													{:else}
+														<!-- No entity to point at, so no colour and no hover state:
+														     an address here is a label, not a link. -->
+														<Tag label={subject.label} color={null} />
+													{/if}
+												{/each}
+											</span>
+										{/if}
+									</button>
+									{#if action}
+										{@const ActionIcon = action.icon}
+										<button
+											type="button"
+											class="btn-secondary flex shrink-0 items-center gap-1 py-1 text-xs"
+											onclick={action.run}
+										>
+											<ActionIcon class="h-3.5 w-3.5" />
+											<span>{action.label}</span>
+										</button>
 									{/if}
-								</summary>
-								<div class="text-tertiary ml-6 mt-1 space-y-1 text-sm">
-									{#each entry.details as detail, i (i)}
-										<p>{detail}</p>
-									{/each}
 								</div>
-							</details>
-							{#if action}
-								{@const ActionIcon = action.icon}
-								<button
-									type="button"
-									class="btn-icon flex shrink-0 items-center gap-1 text-sm"
-									onclick={action.run}
-								>
-									<ActionIcon class="h-4 w-4" />
-									<span>{action.label}</span>
-								</button>
-							{/if}
-						</div>
+
+								{#if isOpen}
+									<div class="space-y-1 pb-2">
+										{#each entry.details as detail, i (i)}
+											<div class="flex items-start gap-2">
+												<!-- The branch into an explanation, from the row it explains. -->
+												<span
+													class="text-tertiary/60 shrink-0 select-none pl-5 font-mono text-xs leading-5"
+													aria-hidden="true">└─</span
+												>
+												<p class="text-tertiary min-w-0 text-sm">{detail}</p>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						</li>
 					{/each}
-				</div>
-			</details>
+				</ul>
+			</CollapsibleCard>
 		{/each}
 	</div>
 {/if}
