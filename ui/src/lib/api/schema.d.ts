@@ -2644,6 +2644,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/subnets/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge a subnet into the range that contains it
+         * @description Moves every address to the covering subnet and removes this one. Offered for a range Scanopy
+         *     assumed that a later reading turned out to cover: discovery corrects such a range on its own
+         *     only where the answer is unambiguous, and folding several assumed ranges into one means deleting
+         *     rows, which is a person's call rather than a scan's.
+         */
+        post: operations["merge_subnet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tags": {
         parameters: {
             query?: never;
@@ -3723,6 +3746,7 @@ export interface components {
              *       "created_at": "2026-01-15T10:30:00Z",
              *       "credential_assignments": [],
              *       "description": "Primary web server",
+             *       "display_name": "web-server-01",
              *       "firmware_revision": null,
              *       "hidden": false,
              *       "hostname": "web-server-01.local",
@@ -3880,7 +3904,6 @@ export interface components {
                  *     list and another on the map.
                  */
                 readonly display_name?: string | null;
-
                 /** @description Firmware or software revision of the device. */
                 firmware_revision: string | null;
                 /** @description Whether the host is hidden from topology views. */
@@ -7551,6 +7574,7 @@ export interface components {
          *       "created_at": "2026-01-15T10:30:00Z",
          *       "credential_assignments": [],
          *       "description": "Primary web server",
+         *       "display_name": "web-server-01",
          *       "firmware_revision": null,
          *       "hidden": false,
          *       "hostname": "web-server-01.local",
@@ -7708,7 +7732,6 @@ export interface components {
              *     list and another on the map.
              */
             readonly display_name?: string | null;
-
             /** @description Firmware or software revision of the device. */
             firmware_revision: string | null;
             /** @description Whether the host is hidden from topology views. */
@@ -8176,14 +8199,26 @@ export interface components {
             if_descr: string;
             /**
              * Format: int32
-             * @description SNMP ifIndex - stable identifier within device
+             * @description SNMP ifIndex — stable identifier within device, where one was read.
+             *
+             *     `None` for a port learned from a neighbour's LLDP/CDP advertisement rather than from the
+             *     device's own ifTable: the far end tells us the port exists and what it is called, never its
+             *     index. `0` used to stand in for that, which is a real ifIndex on some agents and made
+             *     "never read" indistinguishable from "read as zero".
+             *
+             *     Not the identity of the row. `match_existing_interface` tries `(host_id, if_name)` first
+             *     and the live unique index is on that pair; the index tier only runs for a row that has one.
              */
             if_index?: number | null;
             /** @description SNMP ifName - short interface name (e.g., Gi1/0/1) */
             if_name?: string | null;
             /**
              * Format: int32
-             * @description SNMP ifType - IANAifType integer (6=ethernet, 24=loopback, etc.)
+             * @description SNMP ifType - IANAifType integer (6=ethernet, 24=loopback, etc.), where one was read.
+             *
+             *     `None` is *unknown*, never a type. Everything that filters on this must treat unknown as
+             *     included — a port at the far end of a cable is physical by construction, and excluding it
+             *     for lack of a number would drop the row from resolution and from the map.
              */
             if_type?: number | null;
             /**
@@ -8516,6 +8551,14 @@ export interface components {
             data: unknown[];
             /** @enum {string} */
             type: "container";
+        };
+        /** @description Request body for merging a subnet into the range that contains it. */
+        MergeSubnetRequest: {
+            /**
+             * Format: uuid
+             * @description The subnet to merge into. Must contain the range being merged.
+             */
+            into: string;
         };
         /**
          * @description The Windows MSI install method. The MSI itself is a static release asset the UI links to; only
@@ -9054,7 +9097,6 @@ export interface components {
                  *     list and another on the map.
                  */
                 readonly display_name?: string | null;
-
                 /** @description Firmware or software revision of the device. */
                 firmware_revision: string | null;
                 /** @description Whether the host is hidden from topology views. */
@@ -17874,6 +17916,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Subnet not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    merge_subnet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Subnet ID to merge away */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeSubnetRequest"];
+            };
+        };
+        responses: {
+            /** @description Subnet merged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_Subnet"];
+                };
+            };
+            /** @description The target does not contain this subnet */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
             /** @description Subnet not found */

@@ -336,13 +336,11 @@ impl Entity for Subnet {
         self.created_at = existing.created_at;
         self.updated_at = existing.updated_at;
 
-        // An edit that moves the range is the "confirm or correct" action: discovery never changes
-        // an existing subnet's CIDR — `SubnetService::create` dedups *by* CIDR and refreshes the
-        // row it matched — so a different value arriving here came from a person.
-        if self.base.cidr != existing.base.cidr {
-            self.base.cidr_source = SubnetCidrSource::Confirmed;
-        } else {
-            self.base.cidr_source = self.base.cidr_source.max(existing.base.cidr_source);
-        }
+        // The rung the caller supplied, never lower than the one already stored. This used to
+        // read a *changed* CIDR as proof a person had typed it, on the premise that discovery never
+        // moves an existing subnet's range. That premise no longer holds: a real netmask now
+        // corrects a range Scanopy only inferred. Deciding whose edit this was belongs to the layer
+        // that knows — `update_subnet` stamps `Confirmed`, and daemons cannot call it.
+        self.base.cidr_source = self.base.cidr_source.max(existing.base.cidr_source);
     }
 }

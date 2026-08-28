@@ -22,6 +22,7 @@ use crate::{
                 EventLogLevel, OnboardingOperation,
             },
         },
+        subnets::r#impl::correction_events::SubnetCorrection,
     },
 };
 
@@ -183,4 +184,26 @@ impl Subscriber<DiscoveryWarningCode> for LoggingService {
 inventory::submit!(SubscriberRegistration::new::<
     LoggingService,
     DiscoveryWarningCode,
+>());
+
+#[async_trait]
+impl Subscriber<SubnetCorrection> for LoggingService {
+    fn filter(&self) -> EventFilter<SubnetCorrection> {
+        EventFilter::all()
+    }
+
+    /// One line per corrected range, at `Warn`, carrying the range it used to be.
+    ///
+    /// Subnet rows are updated in place rather than versioned, so once the correction is written
+    /// nothing else remembers the old range. This line is the record.
+    async fn handle(&self, events: Vec<Event<SubnetCorrection>>) -> Result<(), Error> {
+        for event in events {
+            log_event(&event, event.flags.suppress_logs);
+        }
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    LoggingService,
+    SubnetCorrection,
 >());

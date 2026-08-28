@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { lastSeenItems } from '$lib/shared/utils/freshness';
 	import { cidrSourceItems, isProvisionalCidr } from '$lib/shared/utils/cidr-source';
+	import { cidrContains } from '$lib/shared/utils/cidr';
 	import SubnetEditModal from './SubnetEditModal/SubnetEditModal.svelte';
 	import ProvisionalRangeModal from './ProvisionalRangeModal.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
@@ -19,6 +20,7 @@
 		isUserManagedSubnet,
 		useSubnetsQuery,
 		useCreateSubnetMutation,
+		useMergeSubnetMutation,
 		useUpdateSubnetMutation,
 		useDeleteSubnetMutation,
 		useBulkDeleteSubnetsMutation
@@ -76,6 +78,7 @@
 	// Mutations
 	const createSubnetMutation = useCreateSubnetMutation();
 	const updateSubnetMutation = useUpdateSubnetMutation();
+	const mergeSubnetMutation = useMergeSubnetMutation();
 	const deleteSubnetMutation = useDeleteSubnetMutation();
 	const bulkDeleteSubnetsMutation = useBulkDeleteSubnetsMutation();
 
@@ -145,6 +148,40 @@
 	function handleResolveRange(subnet: Subnet) {
 		resolvingSubnet = subnet;
 		showProvisionalRange = true;
+	}
+
+	/**
+	 * A settled range that already covers the one being resolved, if the network holds one.
+	 *
+	 * This is the state discovery deliberately leaves alone: where a reading covers *several*
+	 * assumed ranges it corrects none of them, because folding them into one means deleting rows.
+	 * Offering the merge here is how that gets resolved, one deliberate click at a time.
+	 *
+	 * Searching `subnetsData` rather than the raw query is what keeps the `0.0.0.0/0` catch-alls
+	 * out: they are synthetic, so `isUserManagedSubnet` has already dropped them, and either would
+	 * otherwise "cover" every range on the network.
+	 */
+	let coveringSubnet = $derived.by(() => {
+		if (!resolvingSubnet) return null;
+		const target = resolvingSubnet;
+		return (
+			subnetsData.find(
+				(candidate) =>
+					candidate.id !== target.id &&
+					candidate.network_id === target.network_id &&
+					!isProvisionalCidr(candidate) &&
+					cidrContains(candidate.cidr, target.cidr)
+			) ?? null
+		);
+	});
+
+	async function handleMergeRange(subnet: Subnet, into: Subnet) {
+		try {
+			await mergeSubnetMutation.mutateAsync({ id: subnet.id, into: into.id });
+			handleCloseProvisionalRange();
+		} catch {
+			// Error handled by mutation
+		}
 	}
 
 	function handleCloseProvisionalRange() {
@@ -367,7 +404,9 @@
 <ProvisionalRangeModal
 	isOpen={showProvisionalRange}
 	subnet={resolvingSubnet}
+	coveredBy={coveringSubnet}
 	onConfirm={handleConfirmRange}
 	onCorrect={handleCorrectRange}
+	onMerge={handleMergeRange}
 	onClose={handleCloseProvisionalRange}
 />
