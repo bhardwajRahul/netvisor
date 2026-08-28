@@ -170,6 +170,7 @@ mod tests {
             ip: ip(addr),
             credential: snmp(community),
             credential_id,
+            host_id: None,
         }
     }
 

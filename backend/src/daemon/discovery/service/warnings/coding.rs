@@ -11,7 +11,8 @@
 //! summing is why `collected` counts never reached anyone and why a credential's diagnostic was
 //! only ever shown for the first address in a batch.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::net::IpAddr;
 
 use crate::server::credentials::r#impl::mapping::CredentialQueryPayloadDiscriminants;
 
@@ -290,6 +291,27 @@ pub fn warn_credential_issues(issues: &[CredentialIssue]) -> Vec<DiscoveryWarnin
         }
     }
 
+    // Which address stands for a collapsed group. It is arbitrary by definition — the credential
+    // is broken identically everywhere — so it is the lowest rather than whichever the scan
+    // happened to reach first. Scan order varies between runs, and taking the first made one
+    // unchanged broken credential name a different host every time (192.168.7.73, then
+    // 192.168.4.187, then 192.168.4.29), which reads as a new problem and makes two runs
+    // impossible to compare.
+    let mut stands_for: HashMap<(CredentialQueryPayloadDiscriminants, &str), IpAddr> =
+        HashMap::new();
+    for issue in issues {
+        let Some(outcome) = attempt_outcome(&issue.reason) else {
+            continue;
+        };
+        if !is_one_finding_per_credential(outcome) {
+            continue;
+        }
+        stands_for
+            .entry((issue.integration, attempt_message(&issue.reason)))
+            .and_modify(|ip| *ip = (*ip).min(issue.ip))
+            .or_insert(issue.ip);
+    }
+
     // One finding per broken credential, for the outcome where the address is not part of the
     // problem. See `is_one_finding_per_credential`.
     let mut reported_once: HashSet<(CredentialQueryPayloadDiscriminants, &str)> = HashSet::new();
@@ -302,10 +324,10 @@ pub fn warn_credential_issues(issues: &[CredentialIssue]) -> Vec<DiscoveryWarnin
                 continue;
             }
             if is_one_finding_per_credential(outcome) {
-                let message = match &issue.reason {
-                    CredentialIssueReason::Attempted { message, .. } => message.as_str(),
-                    _ => "",
-                };
+                let message = attempt_message(&issue.reason);
+                if stands_for.get(&(issue.integration, message)) != Some(&issue.ip) {
+                    continue;
+                }
                 if !reported_once.insert((issue.integration, message)) {
                     continue;
                 }
@@ -432,6 +454,15 @@ fn attempt_outcome(reason: &CredentialIssueReason) -> Option<AttemptOutcome> {
     match reason {
         CredentialIssueReason::Attempted { outcome, .. } => Some(*outcome),
         _ => None,
+    }
+}
+
+/// The library's diagnostic, which is half of what identifies a collapsed group — two credentials
+/// of one integration failing for different reasons stay two findings.
+fn attempt_message(reason: &CredentialIssueReason) -> &str {
+    match reason {
+        CredentialIssueReason::Attempted { message, .. } => message.as_str(),
+        _ => "",
     }
 }
 
@@ -820,6 +851,38 @@ mod tests {
             warn_credential_issues(&two_faults).len(),
             2,
             "two different fields the operator has to fix are two findings"
+        );
+    }
+
+    /// Which address stands for a collapsed group must not depend on the order the scan met them.
+    ///
+    /// The credential is broken identically everywhere, so the address is arbitrary — but taking
+    /// whichever arrived first made one unchanged broken credential name a different host every
+    /// run as scan order shifted, which reads as a new problem and makes two runs impossible to
+    /// compare. Asserted as the property (same input set, same finding) rather than by pinning a
+    /// literal, so it survives any future choice of representative.
+    #[test]
+    fn a_collapsed_finding_names_the_same_address_whatever_order_it_met_them() {
+        let at = |address: &str| CredentialIssue {
+            integration: CredentialQueryPayloadDiscriminants::Snmp,
+            ip: ip(address),
+            reason: CredentialIssueReason::Attempted {
+                outcome: AttemptOutcome::Malformed,
+                message: "Failed to read community from public".to_string(),
+            },
+            credential_id: None,
+        };
+        let addresses = ["192.168.7.73", "192.168.4.187", "192.168.4.29"];
+
+        let forwards = warn_credential_issues(&addresses.map(at));
+        let mut reversed = addresses;
+        reversed.reverse();
+        let backwards = warn_credential_issues(&reversed.map(at));
+
+        assert_eq!(forwards.len(), 1);
+        assert_eq!(
+            forwards, backwards,
+            "the same broken credential must produce the same finding regardless of scan order"
         );
     }
 

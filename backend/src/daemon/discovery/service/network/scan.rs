@@ -10,7 +10,9 @@ use crate::daemon::utils::base::{DaemonUtils, PlatformDaemonUtils};
 use crate::daemon::utils::scanner::{
     ScanConcurrencyController, can_arp_scan, probe_snmp_ports, scan_endpoints, scan_tcp_ports,
 };
-use crate::server::credentials::r#impl::mapping::{CredentialMapping, CredentialQueryPayload};
+use crate::server::credentials::r#impl::mapping::{
+    CredentialMapping, CredentialQueryPayload, IpOverride,
+};
 use crate::server::discovery::r#impl::scan_settings::defaults;
 use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
@@ -1730,11 +1732,17 @@ pub(crate) fn unreachable_credential_targets(
     mappings: &[CredentialMapping<CredentialQueryPayload>],
     subnets: &[Subnet],
 ) -> Vec<CredentialIssue> {
-    mappings
+    let overrides: Vec<_> = mappings
         .iter()
         .flat_map(|m| m.ip_overrides.iter())
+        .collect();
+    let in_scope = |ip: &IpAddr| subnets.iter().any(|s| s.base.cidr.contains(ip));
+
+    overrides
+        .iter()
         .filter(|o| !o.ip.is_loopback())
-        .filter(|o| !subnets.iter().any(|s| s.base.cidr.contains(&o.ip)))
+        .filter(|o| !in_scope(&o.ip))
+        .filter(|o| !sibling_address_qualifies(&overrides, o, &in_scope))
         .map(|o| CredentialIssue {
             integration: (&o.credential).into(),
             ip: o.ip,
@@ -1742,6 +1750,37 @@ pub(crate) fn unreachable_credential_targets(
             credential_id: (o.credential_id != Uuid::nil()).then_some(o.credential_id),
         })
         .collect()
+}
+
+/// Whether another address of the same host, under the same credential, already satisfies the test
+/// this override failed.
+///
+/// A host assignment means "use this credential on this device", and it fans out to one override
+/// per address the host holds. A multi-homed device — a wireless AP on a guest range and a
+/// management LAN, say — then produces an override the scan cannot use alongside one it can, and
+/// reporting the first reads as a misconfigured credential when the device was reached and the
+/// credential worked. The advice that comes with it ("add the subnet, or move the credential to a
+/// host inside it") is then wrong twice over: the credential is already on the right host.
+///
+/// Keyed on the host *and* the credential, so two different credentials on one device are still
+/// judged separately. An override with no `host_id` — an integration target, the legacy mapping,
+/// or any mapping from a server that predates the field — has no siblings and keeps the
+/// per-address rule unchanged, which is also what makes a genuinely mis-targeted credential on a
+/// single-homed host still report.
+fn sibling_address_qualifies(
+    overrides: &[&IpOverride<CredentialQueryPayload>],
+    subject: &IpOverride<CredentialQueryPayload>,
+    qualifies: &impl Fn(&IpAddr) -> bool,
+) -> bool {
+    let Some(host_id) = subject.host_id else {
+        return false;
+    };
+    overrides.iter().any(|other| {
+        other.host_id == Some(host_id)
+            && other.credential_id == subject.credential_id
+            && other.ip != subject.ip
+            && qualifies(&other.ip)
+    })
 }
 
 impl NetworkScan {
@@ -1857,13 +1896,21 @@ pub(crate) fn unanswered_credential_targets(
     target_ips: Option<&HashSet<IpAddr>>,
     answered: &HashSet<IpAddr>,
 ) -> Vec<CredentialIssue> {
-    mappings
+    let overrides: Vec<_> = mappings
         .iter()
         .flat_map(|m| m.ip_overrides.iter())
+        .collect();
+
+    overrides
+        .iter()
         .filter(|o| !o.ip.is_loopback())
         .filter(|o| subnets.iter().any(|s| s.base.cidr.contains(&o.ip)))
         .filter(|o| target_ips.is_none_or(|t| t.contains(&o.ip)))
         .filter(|o| !answered.contains(&o.ip))
+        // The same rule as the pre-scan check, against the addresses that answered rather than
+        // the ones in scope: a device that answered on one of its addresses was reached, and its
+        // silent second address is not an untried credential.
+        .filter(|o| !sibling_address_qualifies(&overrides, o, &|ip| answered.contains(ip)))
         .map(|o| CredentialIssue {
             integration: (&o.credential).into(),
             ip: o.ip,
@@ -1937,6 +1984,7 @@ mod tests {
                 ip: ip(addr),
                 credential: CredentialQueryPayload::default(), // Snmp
                 credential_id: Uuid::new_v4(),
+                host_id: None,
             }],
             ..Default::default()
         }
@@ -2024,5 +2072,113 @@ mod tests {
             ..Default::default()
         }];
         assert!(unreachable_credential_targets(&mappings, &subnets).is_empty());
+    }
+
+    /// One credential assigned to a multi-homed host, expanded to one override per address.
+    fn multi_homed(
+        cred: Uuid,
+        host: Uuid,
+        addrs: &[&str],
+    ) -> CredentialMapping<CredentialQueryPayload> {
+        use crate::server::credentials::r#impl::mapping::IpOverride;
+        CredentialMapping {
+            ip_overrides: addrs
+                .iter()
+                .map(|a| IpOverride {
+                    ip: ip(a),
+                    credential: CredentialQueryPayload::default(), // Snmp
+                    credential_id: cred,
+                    host_id: Some(host),
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    /// The shape a live scan produced: a wireless AP on a guest range and a management LAN, with
+    /// one credential assigned to the device. The scan covers the LAN, reaches the AP and uses the
+    /// credential successfully — and the guest address, which no scanned subnet holds, was then
+    /// reported as a credential that was never contacted. The advice was wrong twice over: the
+    /// credential is already on the right host, and it already worked.
+    #[test]
+    fn a_reached_hosts_out_of_scope_address_is_not_reported() {
+        let subnets = [subnet("192.168.4.0/22")];
+        let mappings = [multi_homed(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &["172.30.10.1", "192.168.7.235"],
+        )];
+
+        assert!(
+            unreachable_credential_targets(&mappings, &subnets).is_empty(),
+            "the device was reached at its LAN address; its guest address is not an untried credential"
+        );
+    }
+
+    /// The other side of the same rule, and the thing it must not swallow: a credential pinned to
+    /// a host the scan genuinely cannot reach has no sibling to vouch for it and still reports.
+    #[test]
+    fn a_host_with_no_in_scope_address_is_still_reported() {
+        let subnets = [subnet("192.168.4.0/22")];
+        let mappings = [multi_homed(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &["172.30.10.1", "172.30.10.2"],
+        )];
+
+        assert_eq!(unreachable_credential_targets(&mappings, &subnets).len(), 2);
+    }
+
+    /// Two addresses that merely share a scan are not siblings. Without the host id — an
+    /// integration target, the legacy mapping, or any mapping from a server that predates the
+    /// field — the per-address rule stands exactly as it did.
+    #[test]
+    fn addresses_of_different_hosts_do_not_vouch_for_each_other() {
+        let subnets = [subnet("192.168.4.0/22")];
+        let unrelated = [
+            mapping_targeting("172.30.10.1"),
+            mapping_targeting("192.168.7.235"),
+        ];
+        assert_eq!(
+            unreachable_credential_targets(&unrelated, &subnets).len(),
+            1,
+            "no host id means no siblings, so the out-of-scope address reports as it always did"
+        );
+
+        // Same two addresses, same host, but two different credentials: each is judged on its own.
+        let host = Uuid::new_v4();
+        let two_creds = [
+            multi_homed(Uuid::new_v4(), host, &["172.30.10.1"]),
+            multi_homed(Uuid::new_v4(), host, &["192.168.7.235"]),
+        ];
+        assert_eq!(
+            unreachable_credential_targets(&two_creds, &subnets).len(),
+            1,
+            "a second credential reaching the host says nothing about whether the first was tried"
+        );
+    }
+
+    /// The post-scan half, against the addresses that answered rather than the ones in scope: a
+    /// device that answered on one address was reached, and its silent second address is not an
+    /// untried credential.
+    #[test]
+    fn a_hosts_silent_address_is_not_reported_when_another_answered() {
+        let subnets = [subnet("192.168.4.0/22")];
+        let host = Uuid::new_v4();
+        let mappings = [multi_homed(
+            Uuid::new_v4(),
+            host,
+            &["192.168.4.10", "192.168.4.11"],
+        )];
+
+        let answered = HashSet::from([ip("192.168.4.10")]);
+        assert!(unanswered_credential_targets(&mappings, &subnets, None, &answered).is_empty());
+
+        // Nothing answered anywhere on the host, so both addresses are still reported.
+        let silent = HashSet::new();
+        assert_eq!(
+            unanswered_credential_targets(&mappings, &subnets, None, &silent).len(),
+            2
+        );
     }
 }

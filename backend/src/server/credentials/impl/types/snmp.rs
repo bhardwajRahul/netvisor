@@ -467,6 +467,7 @@ mod tests {
                 ip,
                 credential: cred("override-community"),
                 credential_id: cred_id,
+                host_id: None,
             }],
             ..Default::default()
         };
@@ -499,6 +500,7 @@ mod tests {
                 ip,
                 credential: cred("public"),
                 credential_id: Uuid::nil(),
+                host_id: None,
             }],
             ..Default::default()
         };
@@ -519,6 +521,7 @@ mod tests {
                 ip,
                 credential: cred("secret"),
                 credential_id: Uuid::nil(),
+                host_id: None,
             }],
             ..Default::default()
         };
