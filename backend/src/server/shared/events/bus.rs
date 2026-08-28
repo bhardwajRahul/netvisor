@@ -13,6 +13,7 @@ use crate::{
                 OnboardingOperation,
             },
         },
+        subnets::r#impl::correction_events::SubnetCorrection,
     },
 };
 
@@ -27,6 +28,10 @@ pub struct EventBus {
     /// One event per coded scan warning. Separate from `discovery_channel` because warnings arrive
     /// from two producers, one of which runs after the terminal phase event has already gone out.
     pub discovery_warning_channel: TypedChannel<DiscoveryWarningCode>,
+    /// One event per subnet range a reading corrected. Its own channel because it fires outside any
+    /// scan — a daemon's interfaced subnets arrive on status, not on a discovery submission — so it
+    /// has neither a session nor a daemon to hang off the warning scope.
+    pub subnet_correction_channel: TypedChannel<SubnetCorrection>,
 }
 
 impl Default for EventBus {
@@ -46,6 +51,7 @@ impl EventBus {
             discovery_channel: TypedChannel::new(),
             discovery_digest_channel: TypedChannel::new(),
             discovery_warning_channel: TypedChannel::new(),
+            subnet_correction_channel: TypedChannel::new(),
         }
     }
 
@@ -124,5 +130,11 @@ impl BusChannel<DiscoveryDigestOperation> for EventBus {
 impl BusChannel<DiscoveryWarningCode> for EventBus {
     fn channel(&self) -> &TypedChannel<DiscoveryWarningCode> {
         &self.discovery_warning_channel
+    }
+}
+
+impl BusChannel<SubnetCorrection> for EventBus {
+    fn channel(&self) -> &TypedChannel<SubnetCorrection> {
+        &self.subnet_correction_channel
     }
 }

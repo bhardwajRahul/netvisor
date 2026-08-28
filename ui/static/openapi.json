@@ -11988,6 +11988,78 @@
         ]
       }
     },
+    "/api/v1/subnets/{id}/merge": {
+      "post": {
+        "tags": [
+          "Subnets"
+        ],
+        "summary": "Merge a subnet into the range that contains it",
+        "description": "Moves every address to the covering subnet and removes this one. Offered for a range Scanopy\nassumed that a later reading turned out to cover: discovery corrects such a range on its own\nonly where the answer is unambiguous, and folding several assumed ranges into one means deleting\nrows, which is a person's call rather than a scan's.",
+        "operationId": "merge_subnet",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Subnet ID to merge away",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeSubnetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Subnet merged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Subnet"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The target does not contain this subnet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Subnet not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/tags": {
       "get": {
         "tags": [
@@ -15503,6 +15575,14 @@
                 ],
                 "description": "Free-text notes about the host."
               },
+              "display_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "What to call this host when `name` is empty: its hostname, sysName, chassis id or first\naddress, whichever it has. `None` when nothing identifies it.\n\nRead-only and separate from `name` rather than folded into it. `name` is what a person\ntyped and what the editor writes back, so filling it with a fallback would turn a chassis\nid into a name the next save persists. Computed from [`Host::display_name`], the same\nladder topology titles a host container with, so a host cannot be called one thing in the\nlist and another on the map.",
+                "readOnly": true
+              },
               "firmware_revision": {
                 "type": [
                   "string",
@@ -15680,6 +15760,7 @@
               "created_at": "2026-01-15T10:30:00Z",
               "credential_assignments": [],
               "description": "Primary web server",
+              "display_name": "web-server-01",
               "firmware_revision": null,
               "hidden": false,
               "hostname": "web-server-01.local",
@@ -24485,6 +24566,7 @@
           "created_at": "2026-01-15T10:30:00Z",
           "credential_assignments": [],
           "description": "Primary web server",
+          "display_name": "web-server-01",
           "firmware_revision": null,
           "hidden": false,
           "hostname": "web-server-01.local",
@@ -26261,6 +26343,20 @@
         ],
         "description": "Match reason - either a simple reason string or a container with nested reasons"
       },
+      "MergeSubnetRequest": {
+        "type": "object",
+        "description": "Request body for merging a subnet into the range that contains it.",
+        "required": [
+          "into"
+        ],
+        "properties": {
+          "into": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The subnet to merge into. Must contain the range being merged."
+          }
+        }
+      },
       "MsiInstall": {
         "type": "object",
         "description": "The Windows MSI install method. The MSI itself is a static release asset the UI links to; only\nthe per-daemon pre-fill data is tenant-specific.",
@@ -27399,6 +27495,14 @@
                   ],
                   "description": "Free-text notes about the host."
                 },
+                "display_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "What to call this host when `name` is empty: its hostname, sysName, chassis id or first\naddress, whichever it has. `None` when nothing identifies it.\n\nRead-only and separate from `name` rather than folded into it. `name` is what a person\ntyped and what the editor writes back, so filling it with a fallback would turn a chassis\nid into a name the next save persists. Computed from [`Host::display_name`], the same\nladder topology titles a host container with, so a host cannot be called one thing in the\nlist and another on the map.",
+                  "readOnly": true
+                },
                 "firmware_revision": {
                   "type": [
                     "string",
@@ -27576,6 +27680,7 @@
                 "created_at": "2026-01-15T10:30:00Z",
                 "credential_assignments": [],
                 "description": "Primary web server",
+                "display_name": "web-server-01",
                 "firmware_revision": null,
                 "hidden": false,
                 "hostname": "web-server-01.local",

@@ -64,6 +64,33 @@ export function useCreateSubnetMutation() {
 /**
  * Mutation hook for updating a subnet
  */
+/**
+ * Fold a subnet into the range that contains it.
+ *
+ * The resolution for a range Scanopy assumed that a later reading turned out to cover. Discovery
+ * corrects such a range on its own only where the answer is unambiguous; folding several assumed
+ * ranges into one means deleting rows, so it is a person's call and this is where they make it.
+ */
+export function useMergeSubnetMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async ({ id, into }: { id: string; into: string }) => {
+			const { data } = await apiClient.POST('/api/v1/subnets/{id}/merge', {
+				params: { path: { id } },
+				body: { into }
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to merge subnet');
+			}
+			return data.data;
+		},
+		// The merged row is gone and the target may have gained addresses, so nothing local is
+		// authoritative any more.
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.subnets.all })
+	}));
+}
+
 export function useUpdateSubnetMutation() {
 	const queryClient = useQueryClient();
 

@@ -11,9 +11,15 @@
 //! These seed the organizational subnets the way a real network gets them, so the list under test
 //! is the list production has.
 
+use uuid::Uuid;
+
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
-    shared::{services::traits::CrudService, storage::traits::Storage},
+    shared::{
+        services::{factory::ServiceFactory, traits::CrudService},
+        storage::traits::Storage,
+        types::entities::EntitySource,
+    },
     subnets::{
         r#impl::{base::Subnet, types::SubnetCidrSource},
         service::Placement,
@@ -27,7 +33,7 @@ use super::{network, organization, test_services};
 async fn network_holding(
     cidrs: &[&str],
 ) -> (
-    crate::server::shared::services::factory::ServiceFactory,
+    ServiceFactory,
     uuid::Uuid,
     testcontainers::ContainerAsync<testcontainers::GenericImage>,
 ) {
@@ -56,6 +62,106 @@ async fn network_holding(
     }
 
     (services, net.id, container)
+}
+
+/// Record a range the way discovery does — a daemon's own interface, or a device's own netmask.
+/// Both reach the server through `Subnet::from_discovery`, which stamps `Observed`.
+async fn observe(services: &ServiceFactory, network_id: Uuid, cidr: &str) {
+    let mut subnet = super::subnet(&network_id);
+    subnet.base.cidr = cidr.parse().expect("valid test CIDR");
+    subnet.base.name = cidr.to_string();
+    subnet.base.cidr_source = SubnetCidrSource::Observed;
+    subnet.base.source = EntitySource::Discovery;
+    services
+        .subnet_service
+        .create(subnet, AuthenticatedEntity::System)
+        .await
+        .expect("the reading is recorded");
+}
+
+async fn live_subnet(services: &ServiceFactory, id: Uuid) -> Subnet {
+    services
+        .subnet_service
+        .get_by_id(&id)
+        .await
+        .unwrap()
+        .expect("the subnet is live")
+}
+
+/// Every range the network holds, catch-alls excluded.
+async fn held_ranges(services: &ServiceFactory, network_id: Uuid) -> Vec<String> {
+    all_live(services, network_id)
+        .await
+        .into_iter()
+        .filter(|s| !s.is_organizational_subnet())
+        .map(|s| s.base.cidr.to_string())
+        .collect()
+}
+
+async fn inferred_ranges(services: &ServiceFactory, network_id: Uuid) -> Vec<Subnet> {
+    all_live(services, network_id)
+        .await
+        .into_iter()
+        .filter(|s| s.base.cidr_source == SubnetCidrSource::Inferred)
+        .collect()
+}
+
+async fn all_live(services: &ServiceFactory, network_id: Uuid) -> Vec<Subnet> {
+    services
+        .subnet_service
+        .get_all(
+            crate::server::shared::storage::filter::StorableFilter::<Subnet>::new_from_network_ids(
+                &[network_id],
+            )
+            .live(),
+        )
+        .await
+        .unwrap()
+}
+
+/// An address filed on a subnet, so a correction has something to displace.
+async fn ip_on(
+    services: &ServiceFactory,
+    network_id: Uuid,
+    subnet_id: Uuid,
+    address: &str,
+) -> Uuid {
+    use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
+
+    // The address needs a host to hang off; the FK is not optional.
+    let host = services
+        .host_service
+        .create(super::host(&network_id), AuthenticatedEntity::System)
+        .await
+        .expect("the host is stored");
+
+    let ip = IPAddress::new(IPAddressBase {
+        network_id,
+        host_id: host.id,
+        subnet_id,
+        ip_address: address.parse().expect("valid test address"),
+        mac_address: None,
+        name: None,
+        position: 0,
+    });
+    services
+        .ip_address_service
+        .create(ip.clone(), AuthenticatedEntity::System)
+        .await
+        .expect("the address is stored");
+    ip.id
+}
+
+async fn live_ip(
+    services: &ServiceFactory,
+    id: Uuid,
+) -> crate::server::ip_addresses::r#impl::base::IPAddress {
+    services
+        .ip_address_service
+        .get_by_id(&id)
+        .await
+        .unwrap()
+        .expect("the address is live")
 }
 
 /// The defect Maya hit: an address in a range nothing holds must produce one, not come back
@@ -164,5 +270,243 @@ async fn a_public_address_is_unplaceable_rather_than_invented() {
     assert!(
         matches!(placement, Placement::Unplaceable),
         "got {placement:?}"
+    );
+}
+
+/// A reading that agrees with the assumed range settles it. Outcome 2: nothing moves, the badge
+/// goes.
+///
+/// This is the one that never worked. `SubnetService::create` cloned the row it matched and threw
+/// the incoming rung away, so a daemon reading the real netmask for a segment changed nothing and
+/// `Inferred` could only ever be cleared by hand.
+#[tokio::test]
+async fn a_reading_of_the_same_range_settles_it() {
+    let (services, network_id, _container) = network_holding(&[]).await;
+
+    let Placement::Inferred(subnet_id) = services
+        .subnet_service
+        .place_address(network_id, "10.20.30.24".parse().unwrap())
+        .await
+        .unwrap()
+    else {
+        panic!("expected a range to be inferred");
+    };
+
+    observe(&services, network_id, "10.20.30.0/24").await;
+
+    let settled = live_subnet(&services, subnet_id).await;
+    assert_eq!(settled.base.cidr.to_string(), "10.20.30.0/24");
+    assert_eq!(settled.base.cidr_source, SubnetCidrSource::Observed);
+    assert_eq!(
+        inferred_ranges(&services, network_id).await.len(),
+        0,
+        "nothing is still assumed"
+    );
+}
+
+/// Outcome 3: the segment is wider than assumed, so the row widens in place rather than a second
+/// overlapping subnet appearing beside it.
+#[tokio::test]
+async fn a_reading_that_covers_the_guess_widens_it_in_place() {
+    let (services, network_id, _container) = network_holding(&[]).await;
+
+    let Placement::Inferred(subnet_id) = services
+        .subnet_service
+        .place_address(network_id, "10.20.30.24".parse().unwrap())
+        .await
+        .unwrap()
+    else {
+        panic!("expected a range to be inferred");
+    };
+
+    observe(&services, network_id, "10.20.30.0/23").await;
+
+    let widened = live_subnet(&services, subnet_id).await;
+    assert_eq!(widened.base.cidr.to_string(), "10.20.30.0/23");
+    assert_eq!(widened.base.cidr_source, SubnetCidrSource::Observed);
+    assert_eq!(
+        held_ranges(&services, network_id).await,
+        vec!["10.20.30.0/23".to_string()],
+        "one row, corrected — not two overlapping ones"
+    );
+}
+
+/// Outcome 5: the widening was wrong. The row narrows to what was read, and the addresses it no
+/// longer covers are re-filed rather than left pointing at a range without them.
+#[tokio::test]
+async fn a_reading_inside_the_guess_narrows_it_and_refiles_the_rest() {
+    let (services, network_id, _container) = network_holding(&[]).await;
+
+    // Two addresses a /24 apart, so the range that holds both has to be wider than either.
+    let Placement::Inferred(subnet_id) = services
+        .subnet_service
+        .place_address(network_id, "10.20.30.24".parse().unwrap())
+        .await
+        .unwrap()
+    else {
+        panic!("expected a range to be inferred");
+    };
+    let inside = ip_on(&services, network_id, subnet_id, "10.20.30.24").await;
+    let outside = ip_on(&services, network_id, subnet_id, "10.20.31.9").await;
+
+    // A netmask for the lower half only.
+    observe(&services, network_id, "10.20.30.0/25").await;
+
+    let narrowed = live_subnet(&services, subnet_id).await;
+    assert_eq!(narrowed.base.cidr.to_string(), "10.20.30.0/25");
+    assert_eq!(narrowed.base.cidr_source, SubnetCidrSource::Observed);
+
+    assert_eq!(
+        live_ip(&services, inside).await.base.subnet_id,
+        subnet_id,
+        "an address the corrected range still covers stays put"
+    );
+    let moved = live_ip(&services, outside).await;
+    assert_ne!(
+        moved.base.subnet_id, subnet_id,
+        "an address it no longer covers is re-filed"
+    );
+    let new_home = live_subnet(&services, moved.base.subnet_id).await;
+    assert!(
+        new_home.base.cidr.contains(&"10.20.31.9".parse().unwrap()),
+        "and re-filed somewhere that actually holds it, not anywhere"
+    );
+}
+
+/// Outcome 4: a reading covering two guesses says they are one segment, but resolving that means
+/// deleting rows — so discovery declines and leaves them for a person.
+#[tokio::test]
+async fn a_reading_covering_two_guesses_corrects_neither() {
+    let (services, network_id, _container) = network_holding(&[]).await;
+
+    for address in ["10.20.30.24", "10.20.31.9"] {
+        let Placement::Inferred(_) = services
+            .subnet_service
+            .place_address(network_id, address.parse().unwrap())
+            .await
+            .unwrap()
+        else {
+            panic!("expected a range to be inferred for {address}");
+        };
+    }
+
+    observe(&services, network_id, "10.20.30.0/23").await;
+
+    let mut held = held_ranges(&services, network_id).await;
+    held.sort();
+    assert_eq!(
+        held,
+        vec![
+            "10.20.30.0/23".to_string(),
+            "10.20.30.0/24".to_string(),
+            "10.20.31.0/24".to_string()
+        ],
+        "the reading is recorded beside the guesses rather than swallowing one of them"
+    );
+    assert_eq!(
+        inferred_ranges(&services, network_id).await.len(),
+        2,
+        "both stay assumed, and both stay badged for a person to merge"
+    );
+}
+
+/// The resolution for outcome 4: a person folds an assumed range into the read one that covers it.
+///
+/// Total by construction — containment guarantees every address fits — so nothing is re-placed and
+/// nothing is orphaned.
+#[tokio::test]
+async fn merging_a_guess_into_the_range_that_covers_it_moves_its_addresses() {
+    let (services, network_id, _container) = network_holding(&[]).await;
+
+    // Two guesses, so the reading below covers both and discovery declines to correct either —
+    // which is the only state this merge exists to resolve. With one guess it would have been
+    // corrected in place and there would be nothing to merge.
+    for address in ["10.20.30.24", "10.20.31.9"] {
+        let Placement::Inferred(_) = services
+            .subnet_service
+            .place_address(network_id, address.parse().unwrap())
+            .await
+            .unwrap()
+        else {
+            panic!("expected a range to be inferred for {address}");
+        };
+    }
+    let guess = all_live(&services, network_id)
+        .await
+        .into_iter()
+        .find(|s| s.base.cidr.to_string() == "10.20.31.0/24")
+        .expect("the second guess")
+        .id;
+    let address = ip_on(&services, network_id, guess, "10.20.31.9").await;
+
+    observe(&services, network_id, "10.20.30.0/23").await;
+    let covering = all_live(&services, network_id)
+        .await
+        .into_iter()
+        .find(|s| s.base.cidr.to_string() == "10.20.30.0/23")
+        .expect("the read range");
+
+    services
+        .subnet_service
+        .merge_into(guess, covering.id, AuthenticatedEntity::System)
+        .await
+        .expect("the merge succeeds");
+
+    assert_eq!(
+        live_ip(&services, address).await.base.subnet_id,
+        covering.id,
+        "the address moved to the covering range"
+    );
+    let mut held = held_ranges(&services, network_id).await;
+    held.sort();
+    assert_eq!(
+        held,
+        vec!["10.20.30.0/23".to_string(), "10.20.30.0/24".to_string()],
+        "the merged guess is gone; the other is still there to be merged in its turn"
+    );
+}
+
+/// A range is only ever folded into one that contains it. Anything else would be guessing where the
+/// addresses that do not fit should go.
+#[tokio::test]
+async fn a_range_cannot_be_merged_into_one_that_does_not_contain_it() {
+    let (services, network_id, _container) = network_holding(&[]).await;
+
+    let Placement::Inferred(guess) = services
+        .subnet_service
+        .place_address(network_id, "10.20.30.24".parse().unwrap())
+        .await
+        .unwrap()
+    else {
+        panic!("expected a range to be inferred");
+    };
+
+    observe(&services, network_id, "192.168.4.0/22").await;
+    let elsewhere = all_live(&services, network_id)
+        .await
+        .into_iter()
+        .find(|s| s.base.cidr.to_string() == "192.168.4.0/22")
+        .expect("the unrelated range");
+
+    assert!(
+        services
+            .subnet_service
+            .merge_into(guess, elsewhere.id, AuthenticatedEntity::System)
+            .await
+            .is_err()
+    );
+
+    // And never into a catch-all, which contains everything by construction.
+    let internet = all_live(&services, network_id)
+        .await
+        .into_iter()
+        .find(|s| s.is_organizational_subnet())
+        .expect("a seeded catch-all");
+    assert!(
+        services
+            .subnet_service
+            .merge_into(guess, internet.id, AuthenticatedEntity::System)
+            .await
+            .is_err()
     );
 }

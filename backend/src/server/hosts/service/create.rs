@@ -1504,10 +1504,16 @@ fn interface_moved(existing: &IPAddress, incoming: &IPAddress, live_subnets: &[S
 /// True when the id names no live subnet at all — nil, or a row this server never minted — which
 /// covers both an integration that deliberately leaves placement to the server and an old daemon
 /// reporting a stale id.
+///
+/// Also true when the named subnet no longer *contains* the address, which is the same test
+/// `interface_moved` makes below. That happens when a real netmask narrows a range Scanopy had only
+/// inferred: the correction re-files what it displaces, but an address it could not place keeps a
+/// subnet that no longer covers it, and identity alone would never notice.
 fn needs_placement(live_subnets: &[Subnet], ip_address: &IPAddress) -> bool {
-    !live_subnets
+    live_subnets
         .iter()
-        .any(|s| s.id == ip_address.base.subnet_id)
+        .find(|s| s.id == ip_address.base.subnet_id)
+        .is_none_or(|s| !s.base.cidr.contains(&ip_address.base.ip_address))
 }
 
 /// Rewrite a credential assignment's `ip_address_ids` from the daemon's own
@@ -1572,10 +1578,16 @@ mod tests {
         }
     }
 
+    /// An address that actually sits inside the `127.0.0.0/8` these tests use as their live subnet.
+    ///
+    /// The default is `0.0.0.0`, which is in no subnet at all — fine while `needs_placement` only
+    /// compared ids, and a false negative now that it also asks whether the subnet covers the
+    /// address.
     fn ip_address_on(subnet_id: Uuid) -> IPAddress {
         IPAddress {
             base: IPAddressBase {
                 subnet_id,
+                ip_address: "127.0.0.1".parse().expect("valid test IP"),
                 ..Default::default()
             },
             ..Default::default()
@@ -1674,6 +1686,22 @@ mod tests {
         let live = vec![subnet(valid, "127.0.0.0/8")];
 
         assert!(!needs_placement(&live, &ip_address_on(valid)));
+    }
+
+    /// A subnet that still exists but no longer covers the address needs re-placing.
+    ///
+    /// This is what a narrowed range leaves behind: a real netmask shrinks a range Scanopy had only
+    /// inferred, and an address the correction could not re-file keeps pointing at it. Asking only
+    /// whether the id names a live subnet would never notice.
+    #[test]
+    fn an_address_its_subnet_no_longer_covers_needs_placement() {
+        let narrowed = Uuid::new_v4();
+        let live = vec![subnet(narrowed, "10.20.30.0/24")];
+
+        let mut stranded = ip_address_on(narrowed);
+        stranded.base.ip_address = "10.20.31.5".parse().unwrap();
+
+        assert!(needs_placement(&live, &stranded));
     }
 
     fn assignment(ip_address_ids: Option<Vec<Uuid>>) -> CredentialAssignment {

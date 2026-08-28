@@ -367,7 +367,11 @@ fn merge_into(ranges: &mut BTreeMap<String, InferredRange>, range: InferredRange
 }
 
 /// Whether two ranges share any address. Either containing the other is enough.
-fn overlaps(a: &IpCidr, b: &IpCidr) -> bool {
+///
+/// For CIDRs this *is* nesting: two ranges are equal, one contains the other, or they are disjoint.
+/// Partial overlap cannot occur, which is what lets [`Subnet::corrects_inferred_range`] use this as
+/// its containment test.
+pub(crate) fn overlaps(a: &IpCidr, b: &IpCidr) -> bool {
     a.contains(&b.first_address()) || b.contains(&a.first_address())
 }
 

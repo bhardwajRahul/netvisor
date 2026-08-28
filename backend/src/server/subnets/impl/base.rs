@@ -5,6 +5,7 @@ use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::api::deserialize_empty_string_as_none;
 use crate::server::shared::types::entities::EntitySource;
+use crate::server::subnets::r#impl::inference::overlaps;
 use crate::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
 use chrono::{DateTime, Utc};
 use cidr::{IpCidr, Ipv4Cidr};
@@ -284,6 +285,33 @@ impl Subnet {
         true
     }
 
+    /// Whether this reading should correct `existing` rather than be inserted beside it.
+    ///
+    /// The case it exists for: a range Scanopy inferred from LLDP neighbour addresses, and a real
+    /// netmask later read for the same segment — from a daemon's own interface or a device's
+    /// `ipAdEntNetMask`. Those two rarely agree exactly, and `Subnet::eq` is CIDR equality, so
+    /// without this the reading inserts a second, overlapping subnet and the guess stays badged
+    /// forever.
+    ///
+    /// Nesting is the containment test because for CIDRs it *is* containment — two ranges are
+    /// equal, one holds the other, or they are disjoint; partial overlap cannot occur.
+    ///
+    /// `>` rather than `>=` is load-bearing twice over. It stops one inference correcting another,
+    /// and it is what makes the caller's re-placement of displaced addresses terminate: re-placing
+    /// creates `Inferred` subnets, so the `create` that runs inside one can never correct anything
+    /// and cannot recurse.
+    ///
+    /// The organizational rows are excluded because both are `0.0.0.0/0` and would otherwise
+    /// "contain" every inferred range on the network.
+    pub fn corrects_inferred_range(&self, existing: &Subnet) -> bool {
+        existing.base.cidr_source == SubnetCidrSource::Inferred
+            && self.base.cidr_source > existing.base.cidr_source
+            && self.base.network_id == existing.base.network_id
+            && !self.is_organizational_subnet()
+            && !existing.is_organizational_subnet()
+            && overlaps(&self.base.cidr, &existing.base.cidr)
+    }
+
     pub fn is_user_managed(&self) -> bool {
         self.base.source == EntitySource::Manual || !self.base.subnet_type.is_synthetic_category()
     }
@@ -459,5 +487,111 @@ mod tests {
         assert_eq!(subnet.base.source, EntitySource::Discovery);
         assert!(subnet.base.subnet_type.is_loopback());
         assert!(!subnet.is_container_bridge_subnet());
+    }
+
+    fn ranged(cidr: &str, cidr_source: SubnetCidrSource) -> Subnet {
+        Subnet::new(SubnetBase {
+            cidr: cidr.parse().expect("valid test CIDR"),
+            cidr_source,
+            source: EntitySource::Discovery,
+            network_id: Uuid::nil(),
+            ..Default::default()
+        })
+    }
+
+    /// The ladder in both directions: a reading settles a guess, and a guess never unsettles a
+    /// reading.
+    #[test]
+    fn a_range_is_only_replaced_by_something_at_least_as_authoritative() {
+        let mut subnet = ranged("10.20.30.0/24", SubnetCidrSource::Inferred);
+
+        assert!(subnet.apply_cidr("10.20.30.0/23".parse().unwrap(), SubnetCidrSource::Observed));
+        assert_eq!(subnet.base.cidr.to_string(), "10.20.30.0/23");
+        assert_eq!(subnet.base.cidr_source, SubnetCidrSource::Observed);
+
+        assert!(
+            !subnet.apply_cidr("10.20.30.0/24".parse().unwrap(), SubnetCidrSource::Inferred),
+            "an inference must not displace a reading"
+        );
+        assert_eq!(subnet.base.cidr.to_string(), "10.20.30.0/23");
+    }
+
+    /// Equal rank still wins, which is what makes a re-scan idempotent in the useful direction: a
+    /// device re-reporting its own netmask refreshes the observation rather than being ignored.
+    #[test]
+    fn an_equal_rung_refreshes_the_range_but_an_unchanged_one_reports_nothing() {
+        let mut subnet = ranged("10.20.30.0/24", SubnetCidrSource::Observed);
+
+        assert!(subnet.apply_cidr("10.20.31.0/24".parse().unwrap(), SubnetCidrSource::Observed));
+        assert!(
+            !subnet.apply_cidr("10.20.31.0/24".parse().unwrap(), SubnetCidrSource::Observed),
+            "the same range at the same rung is not a change"
+        );
+    }
+
+    /// Nothing a scan reads displaces a range a person confirmed.
+    #[test]
+    fn a_confirmed_range_is_never_moved_by_a_reading() {
+        let mut subnet = ranged("10.20.30.0/24", SubnetCidrSource::Confirmed);
+
+        assert!(!subnet.apply_cidr("10.20.30.0/23".parse().unwrap(), SubnetCidrSource::Observed));
+        assert_eq!(subnet.base.cidr.to_string(), "10.20.30.0/24");
+    }
+
+    /// A reading corrects a guess it nests with, in either direction — the segment is the same one
+    /// whether the netmask turned out wider or narrower than assumed.
+    #[test]
+    fn a_reading_corrects_an_inferred_range_it_nests_with() {
+        let inferred = ranged("10.20.30.0/24", SubnetCidrSource::Inferred);
+
+        let wider = ranged("10.20.30.0/23", SubnetCidrSource::Observed);
+        let narrower = ranged("10.20.30.0/25", SubnetCidrSource::Observed);
+        let same = ranged("10.20.30.0/24", SubnetCidrSource::Observed);
+
+        assert!(wider.corrects_inferred_range(&inferred));
+        assert!(narrower.corrects_inferred_range(&inferred));
+        assert!(same.corrects_inferred_range(&inferred));
+    }
+
+    /// A range that shares no address with the guess says nothing about it.
+    #[test]
+    fn a_disjoint_reading_corrects_nothing() {
+        let inferred = ranged("10.20.30.0/24", SubnetCidrSource::Inferred);
+        let elsewhere = ranged("192.168.4.0/22", SubnetCidrSource::Observed);
+
+        assert!(!elsewhere.corrects_inferred_range(&inferred));
+    }
+
+    /// One inference never corrects another. This is what stops the re-placement of displaced
+    /// addresses recursing: re-placing mints `Inferred` subnets, and the `create` inside that call
+    /// must not be able to correct anything.
+    #[test]
+    fn an_inference_never_corrects_another_inference() {
+        let existing = ranged("10.20.30.0/24", SubnetCidrSource::Inferred);
+        let incoming = ranged("10.20.30.0/23", SubnetCidrSource::Inferred);
+
+        assert!(!incoming.corrects_inferred_range(&existing));
+    }
+
+    /// Nor does a reading correct a range that was already settled.
+    #[test]
+    fn a_settled_range_is_not_corrected() {
+        let observed = ranged("10.20.30.0/24", SubnetCidrSource::Observed);
+        let incoming = ranged("10.20.30.0/23", SubnetCidrSource::Confirmed);
+
+        assert!(!incoming.corrects_inferred_range(&observed));
+    }
+
+    /// The seeded catch-alls contain every private range on the network, so without excluding them
+    /// the first `0.0.0.0/0` to arrive would swallow every inferred row.
+    #[test]
+    fn the_organizational_catch_alls_correct_nothing() {
+        let inferred = ranged("10.20.30.0/24", SubnetCidrSource::Inferred);
+
+        let mut catch_all = ranged("0.0.0.0/0", SubnetCidrSource::Observed);
+        catch_all.base.source = EntitySource::System;
+        catch_all.base.subnet_type = SubnetType::Internet;
+
+        assert!(!catch_all.corrects_inferred_range(&inferred));
     }
 }
