@@ -331,19 +331,19 @@ describe('discovery warning rendering', () => {
 			expect(credentialIdsOf(row)).toEqual([OTHER_CREDENTIAL]);
 		});
 
-		it('offers one credential to open, and falls back to the list for several', () => {
-			// The rule `ProvisionalSubnetInferred` already applies to inferred ranges: one is a
-			// destination, several is a list, because the row stands for all of them.
+		it('names every credential a row implicates, deduped and in first-seen order', () => {
+			// Order carries weight: the row's action opens the first of these, so a row covering
+			// several credentials still lands the reader on one of the records it is about rather
+			// than on the list. The rest stay reachable through the row's chips.
 			const at = (address: string, credential_id: string) =>
 				credentialWarning('CredentialRejected', { address, credential_id });
 
 			expect(credentialIdsOf(rowFor([at('10.0.0.1', CREDENTIAL)]))).toEqual([CREDENTIAL]);
 
-			const several = rowFor([at('10.0.0.1', CREDENTIAL), at('10.0.0.2', OTHER_CREDENTIAL)]);
-			expect(credentialIdsOf(several)).toEqual([CREDENTIAL, OTHER_CREDENTIAL]);
+			const several = rowFor([at('10.0.0.2', OTHER_CREDENTIAL), at('10.0.0.1', CREDENTIAL)]);
+			expect(credentialIdsOf(several)).toEqual([OTHER_CREDENTIAL, CREDENTIAL]);
 
-			// Deduped: one broken credential met at twenty addresses is still one credential, and
-			// would otherwise be sent to the list for looking like several.
+			// Deduped: one broken credential met at twenty addresses is still one credential.
 			const repeated = rowFor([at('10.0.0.1', CREDENTIAL), at('10.0.0.2', CREDENTIAL)]);
 			expect(credentialIdsOf(repeated)).toEqual([CREDENTIAL]);
 		});

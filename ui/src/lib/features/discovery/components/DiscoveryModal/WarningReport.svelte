@@ -169,20 +169,29 @@
 		}
 
 		if (entry.warnings.some((w) => 'integration' in w)) {
-			const credentialIds = credentialIdsOf(entry);
+			const [credentialId] = credentialIdsOf(entry);
 			return {
 				label: common_credentials(),
 				icon: createIconComponent('key-round'),
 				run: () => {
-					// One implicated credential opens that credential; several is a trip to the
-					// list, for the same reason an inferred range is above — the row stands for all
-					// of them and there is no "all of them" editor. A row from before ids were
-					// carried has none, and still lands on the list as it always did.
-					if (credentialIds.length === 1) {
-						navigateToEntity('Credential', credentialIds[0]);
-					} else {
+					// Any known id opens that credential's editor. Unlike an inferred range above,
+					// where the four-way choice is genuinely per subnet, every credential on this
+					// row needs the same thing done to it — so landing on the first is a head start
+					// on the list, and the row's chips reach the others directly. Only a row with
+					// no id at all — written before ids were carried, or posted by a daemon that
+					// predates them — still goes to the list.
+					if (!credentialId) {
 						window.location.hash = 'credentials';
+						return;
 					}
+					// The credential itself where it has loaded, so the editor opens on the id
+					// alone rather than waiting for the credentials tab's own query to settle —
+					// `resolveModalDeepLink` falls back to `entityData` for exactly this.
+					navigateToEntity(
+						'Credential',
+						credentialId,
+						credentialsData.find((c) => c.id === credentialId)
+					);
 				}
 			};
 		}
