@@ -48,6 +48,40 @@ export interface WarningSubject {
 	hostId?: string;
 }
 
+/**
+ * One of the individual cases behind a statement — an unresolved neighbour pair, an inferred range.
+ *
+ * Split into ends rather than pre-joined into a sentence for two reasons. It renders on a line of
+ * its own, so eight of them stop being the last clause of a paragraph; and each end that resolved
+ * to a device is a real entity, so it can be tagged and navigated to instead of printed.
+ *
+ * Either end can be empty — a host deleted since the scan, a far end nothing matched, a device that
+ * reported no interface description. The arrow between them is drawn only when both survive:
+ * `-> TAMMIERENEW` reads as a rendering fault rather than as missing data.
+ */
+export interface WarningExample {
+	/** The device that reported this, when its name resolved. */
+	near: WarningSubject | null;
+	/** Its own port, as the device described it. */
+	nearText: string;
+	/** The device at the other end, when one resolved. */
+	far: WarningSubject | null;
+	/** What was advertised for the far end, or the identifier that matched nothing. */
+	farText: string;
+}
+
+/**
+ * One thing a row says, and the individual cases behind it.
+ *
+ * `examples` is a list because it *is* a list. Eight unresolved pairs joined into the last clause
+ * of a sentence is the wall of text this report exists to undo, one level down — so the sentence
+ * keeps the explanation and the count, and the pairs render underneath it, one per line.
+ */
+export interface WarningStatement {
+	sentence: string;
+	examples: WarningExample[];
+}
+
 /** One warning code's worth of a run, as a row in the report. */
 export interface WarningEntry {
 	code: DiscoveryWarningCode;
@@ -58,8 +92,8 @@ export interface WarningEntry {
 	icon: string;
 	/** The devices, ranges or addresses this row concerns. */
 	subjects: WarningSubject[];
-	/** The full sentences, shown on disclosure: one per group, or one per occurrence. */
-	details: string[];
+	/** What the row says, shown on disclosure. Usually one statement; more when they differ. */
+	details: WarningStatement[];
 	/** Every occurrence behind the row, so an action can read ids off the payload. */
 	warnings: DiscoveryWarning[];
 }
@@ -239,13 +273,7 @@ const WARNING_PARAMS = {
 	LldpPortNotFound: portParams,
 	LldpPortAmbiguous: portParams,
 
-	ProvisionalSubnetInferred: (w, hostName) => ({
-		count: w.length,
-		examples: joinList(
-			w.map((x) => describeProvisionalSubnet(x, hostName)),
-			'conjunction'
-		)
-	}),
+	ProvisionalSubnetInferred: (w) => ({ count: w.length }),
 
 	WarningsTruncated: (w) => ({ elided: sum(w.map((x) => x.elided)) }),
 	// The whole sentence *is* the detail: a warning from another version, or one written before
@@ -321,20 +349,6 @@ function attemptParams(
 }
 
 /**
- * Join the two ends of a neighbour relation.
- *
- * The arrow only carries meaning with something on both sides. A host deleted since the scan, or a
- * device that reported no interface description, can empty one end — and `-> TAMMIERENEW` or
- * `1/1 -> via InterfaceName("1/1")` reads as a rendering fault rather than as missing data. Drop
- * the arrow instead and show the end that survived.
- */
-function arrow(near: string, far: string): string {
-	if (!near) return far;
-	if (!far) return near;
-	return `${near} -> ${far}`;
-}
-
-/**
  * `switch7 Gi1/0/1 -> 00:ad:24:89:cc:f0 (core-sw) at 10.20.30.11`.
  *
  * Which of our devices saw the neighbour leads the line, because it is the first thing an operator
@@ -357,24 +371,23 @@ function describeNeighbour(
 		address?: string | null;
 	},
 	hostName: HostNameLookup
-): string {
-	const near = [hostName(w.host_id), w.if_descr].filter(Boolean).join(' ');
+): WarningExample {
+	const label = hostName(w.host_id);
 	const named = `${w.identifier}${w.sys_name ? ` (${w.sys_name})` : ''}`;
-	const far = w.address ? `${named} ${discovery_warningAtAddress({ address: w.address })}` : named;
-	return arrow(near, far);
+	return {
+		near: label ? { label, hostId: w.host_id } : null,
+		nearText: w.if_descr,
+		// The far end is the whole point of this warning: nothing on this network matched it, so
+		// there is no device to tag, only the identifier it advertised.
+		far: null,
+		farText: w.address ? `${named} ${discovery_warningAtAddress({ address: w.address })}` : named
+	};
 }
 
 function neighbourParams(
-	w: WarningOf<'LldpNeighbourNotFound' | 'LldpNeighbourAmbiguous'>[],
-	hostName: HostNameLookup
+	w: WarningOf<'LldpNeighbourNotFound' | 'LldpNeighbourAmbiguous'>[]
 ): Params {
-	return {
-		count: w.length,
-		examples: joinList(
-			w.map((x) => describeNeighbour(x, hostName)),
-			'conjunction'
-		)
-	};
+	return { count: w.length };
 }
 
 /**
@@ -394,16 +407,19 @@ function describePort(
 		port_desc?: string | null;
 	},
 	hostName: HostNameLookup
-): string {
-	const near = [hostName(w.host_id), w.if_descr].filter(Boolean).join(' ');
+): WarningExample {
+	const nearLabel = hostName(w.host_id);
+	const farLabel = hostName(w.remote_host_id);
 	const desc = w.port_desc ? ` (${w.port_desc})` : '';
 	// "via <id>" when the device advertised one, "with no port id" when it did not — the
 	// distinction the tiers turn on, and the phrasing the prose these replaced used.
 	const id = w.port_id ? `via ${w.port_id}${desc}` : `${discovery_warningNoPortId()}${desc}`;
-	// The port only belongs to something when the far end resolved; without it the arrow points
-	// straight at the identifier that was tried.
-	const remote = hostName(w.remote_host_id);
-	return arrow(near, remote ? `${remote} ${id}` : id);
+	return {
+		near: nearLabel ? { label: nearLabel, hostId: w.host_id } : null,
+		nearText: w.if_descr,
+		far: farLabel ? { label: farLabel, hostId: w.remote_host_id } : null,
+		farText: id
+	};
 }
 
 /**
@@ -417,12 +433,12 @@ function describePort(
 function describeProvisionalSubnet(
 	w: WarningOf<'ProvisionalSubnetInferred'>,
 	hostName: HostNameLookup
-): string {
+): WarningExample {
 	// A range is reported for as long as it is unconfirmed, so most of them arrive without the
 	// far-end evidence that produced them — the pass that inferred it may have been scans ago, and
 	// one inferred while placing a controller-reported address never had a neighbour at all. The
 	// range alone is still the actionable part.
-	if (!w.addresses.length) return w.cidr;
+	if (!w.addresses.length) return { near: null, nearText: w.cidr, far: null, farText: '' };
 
 	// Paired positionally where both are present: `sys_names` omits far ends that sent none, so a
 	// group where only some did would otherwise misalign names against addresses.
@@ -432,22 +448,16 @@ function describeProvisionalSubnet(
 			: w.addresses;
 	const seenBy = [...new Set(w.seen_by_host_ids.map(hostName).filter(Boolean))] as string[];
 	const from = discovery_warningInferredFrom({ far_ends: joinList(named, 'conjunction') });
-	return seenBy.length
+	const text = seenBy.length
 		? `${w.cidr}, ${from} ${discovery_warningSeenBy({ devices: joinList(seenBy, 'conjunction') })}`
 		: `${w.cidr}, ${from}`;
+	return { near: null, nearText: text, far: null, farText: '' };
 }
 
 function portParams(
-	w: WarningOf<'LldpPortNoStrategy' | 'LldpPortNotFound' | 'LldpPortAmbiguous'>[],
-	hostName: HostNameLookup
+	w: WarningOf<'LldpPortNoStrategy' | 'LldpPortNotFound' | 'LldpPortAmbiguous'>[]
 ): Params {
-	return {
-		count: w.length,
-		examples: joinList(
-			w.map((x) => describePort(x, hostName)),
-			'conjunction'
-		)
-	};
+	return { count: w.length };
 }
 
 /**
@@ -469,7 +479,6 @@ const AGGREGATING_SLOTS = new Set([
 	'addresses',
 	'groups',
 	'count',
-	'examples',
 	'dropped',
 	'total',
 	'misplaced',
@@ -510,24 +519,49 @@ function bucketByStatement(
 }
 
 /**
- * One sentence per distinct statement a code's occurrences make.
+ * The individual cases behind a statement, one per line.
+ *
+ * Only the codes that carry them — a neighbour pair, an unresolved port, an inferred range. The
+ * rest name their devices in the sentence itself and have nothing to list.
+ */
+function examplesOf(group_: DiscoveryWarning[], hostName: HostNameLookup): WarningExample[] {
+	return group_.flatMap((w) => {
+		switch (w.code) {
+			case 'LldpNeighbourNotFound':
+			case 'LldpNeighbourAmbiguous':
+				return [describeNeighbour(w, hostName)];
+			case 'LldpPortNoStrategy':
+			case 'LldpPortNotFound':
+			case 'LldpPortAmbiguous':
+				return [describePort(w, hostName)];
+			case 'ProvisionalSubnetInferred':
+				return [describeProvisionalSubnet(w, hostName)];
+			default:
+				return [];
+		}
+	});
+}
+
+/**
+ * One statement per distinct thing a code's occurrences say, with the cases behind it.
  *
  * Usually one. Several when the occurrences genuinely differ — different credential diagnostics,
  * different claimed figures — and the devices that made the *same* statement are named together
  * inside a single sentence rather than repeating it once each.
  */
-function renderSentences(
+function renderStatements(
 	code: DiscoveryWarningCode,
 	group_: DiscoveryWarning[],
 	hostName: HostNameLookup
-): string[] {
+): WarningStatement[] {
 	const build = WARNING_PARAMS[code] as (w: DiscoveryWarning[], lookup: HostNameLookup) => Params;
 	const fallback = warningCodes.find((c) => c.id === code)?.description;
 	if (!fallback) return [];
 
-	return bucketByStatement(code, group_, hostName).map((bucket) =>
-		metaDescriptionWith('warning_codes', code, build(bucket, hostName), fallback)
-	);
+	return bucketByStatement(code, group_, hostName).map((bucket) => ({
+		sentence: metaDescriptionWith('warning_codes', code, build(bucket, hostName), fallback),
+		examples: examplesOf(bucket, hostName)
+	}));
 }
 
 /**
@@ -624,7 +658,7 @@ export function buildWarningReport(
 			color: toColor(meta.color),
 			icon: meta.icon,
 			subjects: subjectsOf(group_, hostName),
-			details: renderSentences(code, group_, hostName),
+			details: renderStatements(code, group_, hostName),
 			warnings: group_
 		});
 	}

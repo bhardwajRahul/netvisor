@@ -67,7 +67,15 @@ describe('discovery warning rendering', () => {
 	const sentences = (warnings: DiscoveryWarning[], hostName?: HostNameLookup): string[] =>
 		buildWarningReport(warnings, hostName)
 			.flatMap((section) => section.entries)
-			.flatMap((entry) => entry.details);
+			.flatMap((entry) => entry.details)
+			.map((statement) => statement.sentence);
+
+	/** Every example line a run renders, flattened the same way. */
+	const examples = (warnings: DiscoveryWarning[], hostName?: HostNameLookup) =>
+		buildWarningReport(warnings, hostName)
+			.flatMap((section) => section.entries)
+			.flatMap((entry) => entry.details)
+			.flatMap((statement) => statement.examples);
 
 	it('renders every code the backend can send, with no slot left unfilled', () => {
 		const unfilled: string[] = [];
@@ -226,7 +234,7 @@ describe('discovery warning rendering', () => {
 		expect(report[0].entries[0].subjects.map((s) => s.label)).toEqual(devices);
 		expect(report[0].entries[0].details).toHaveLength(1);
 		for (const device of devices) {
-			expect(report[0].entries[0].details[0]).toContain(device);
+			expect(report[0].entries[0].details[0].sentence).toContain(device);
 		}
 	});
 
@@ -246,10 +254,10 @@ describe('discovery warning rendering', () => {
 		// Still one row — it is one code — but two sentences under it.
 		expect(section.entries).toHaveLength(1);
 		expect(section.entries[0].details).toHaveLength(2);
-		expect(section.entries[0].details[0]).toContain('192.168.7.248');
-		expect(section.entries[0].details[0]).toContain('192.168.7.252');
-		expect(section.entries[0].details[1]).toContain('192.168.7.236');
-		expect(section.entries[0].details[1]).not.toContain('192.168.7.248');
+		expect(section.entries[0].details[0].sentence).toContain('192.168.7.248');
+		expect(section.entries[0].details[0].sentence).toContain('192.168.7.252');
+		expect(section.entries[0].details[1].sentence).toContain('192.168.7.236');
+		expect(section.entries[0].details[1].sentence).not.toContain('192.168.7.248');
 	});
 
 	it('merges credential failures that returned the same diagnostic', () => {
