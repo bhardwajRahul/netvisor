@@ -6,6 +6,7 @@ use std::{
 use uuid::Uuid;
 use validator::ValidationError;
 
+use crate::server::ip_addresses::r#impl::base::mac_of;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     interfaces::r#impl::base::{Interface, InterfaceDataComplete, Neighbor},
@@ -314,11 +315,11 @@ pub(crate) fn match_existing_interface(
     // multiple unclaimed existing rows indicates VLAN sub-interfaces or bond
     // members and must not collapse into a single match — only accept a 1:1
     // MAC pairing.
-    if let Some(mac) = entry.base.mac_address {
+    if let Some(mac) = mac_of(&entry.base.mac_address) {
         let mut candidates = existing
             .iter()
             .filter(available)
-            .filter(|e| e.base.mac_address == Some(mac));
+            .filter(|e| mac_of(&e.base.mac_address) == Some(mac));
         if let Some(first) = candidates.next()
             && candidates.next().is_none()
         {
@@ -332,6 +333,12 @@ pub(crate) fn match_existing_interface(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
+    use crate::server::services::r#impl::patterns::ClientProbe;
+    use crate::server::shared::attribution::AttributeSource;
+
+    /// What a credentialed SNMP walk claims for a MAC it read off the device itself.
+    const SNMP_MAC: AttributeSource = AttributeSource::Probe(ClientProbe::Snmp);
     use crate::server::interfaces::r#impl::base::InterfaceBase;
     use mac_address::MacAddress;
 
@@ -349,7 +356,9 @@ mod tests {
         base.host_id = Uuid::nil();
         base.if_descr = if_name.unwrap_or_default().to_string();
         base.if_name = if_name.map(String::from);
-        base.mac_address = mac.map(|s| s.parse::<MacAddress>().unwrap());
+        base.mac_address = mac
+            .map(|s| s.parse::<MacAddress>().unwrap())
+            .map(|m| MacEvidence::new(MacEvidenceValue(m), SNMP_MAC));
         Interface::new(base)
     }
 

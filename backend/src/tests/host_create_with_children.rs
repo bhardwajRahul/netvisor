@@ -10,9 +10,11 @@
 //! `cargo test --lib` in seconds; the docker-compose integration suite takes tens of minutes and
 //! asserts almost nothing about persisted rows.
 
+use crate::server::shared::attribution::AttributeSource;
+use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
 use std::net::{IpAddr, Ipv4Addr};
 
-use cidr::{IpCidr, Ipv4Cidr};
+use cidr::IpCidr;
 use uuid::Uuid;
 
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
@@ -33,7 +35,7 @@ use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
 use crate::server::subnets::r#impl::types::SubnetType;
 
 use super::{organization, test_services};
-use crate::server::hosts::r#impl::name::HostName;
+use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
 
 const BRIDGE_CIDR: &str = "172.28.0.0/16";
 const LAN_CIDR: &str = "192.168.1.0/24";
@@ -55,7 +57,7 @@ struct Submission {
 impl Submission {
     fn container_host(network_id: Uuid) -> Self {
         let host = Host::new(HostBase {
-            name: HostName::Manual("docker-host".to_string()),
+            name: HostName::manual("docker-host".to_string()),
             hostname: Some("docker-host.local".to_string()),
             network_id,
             source: EntitySource::Discovery,
@@ -65,7 +67,10 @@ impl Submission {
         let lan = Subnet::new(SubnetBase {
             name: "lan".to_string(),
             network_id,
-            cidr: LAN_CIDR.parse().unwrap(),
+            cidr: SubnetCidr::new(
+                SubnetCidrValue(LAN_CIDR.parse().unwrap()),
+                AttributeSource::DaemonSelfReport,
+            ),
             subnet_type: SubnetType::Lan,
             source: EntitySource::Discovery,
             ..Default::default()
@@ -86,7 +91,10 @@ impl Submission {
         let bridge = Subnet::new(SubnetBase {
             name: "sct-net-a".to_string(),
             network_id,
-            cidr: BRIDGE_CIDR.parse().unwrap(),
+            cidr: SubnetCidr::new(
+                SubnetCidrValue(BRIDGE_CIDR.parse().unwrap()),
+                AttributeSource::DaemonSelfReport,
+            ),
             subnet_type: SubnetType::DockerBridge,
             virtualization_service_id: Some(runtime.id),
             source: EntitySource::Discovery,
@@ -247,7 +255,7 @@ async fn bridge_subnet_owner_resolves_on_first_scan() {
         .await
         .unwrap()
         .into_iter()
-        .find(|s| s.base.cidr == bridge_cidr)
+        .find(|s| *s.base.cidr == bridge_cidr)
         .expect("the bridge subnet is persisted");
 
     assert_eq!(
@@ -282,7 +290,7 @@ async fn second_scan_reuses_the_one_bridge_subnet() {
         .id;
     let bridge_id = persisted
         .iter()
-        .find(|s| s.base.cidr == bridge_cidr)
+        .find(|s| *s.base.cidr == bridge_cidr)
         .expect("bridge subnet persisted")
         .id;
 
@@ -297,7 +305,7 @@ async fn second_scan_reuses_the_one_bridge_subnet() {
         .await
         .unwrap()
         .into_iter()
-        .filter(|s| s.base.cidr == bridge_cidr)
+        .filter(|s| *s.base.cidr == bridge_cidr)
         .collect();
 
     assert_eq!(
@@ -332,7 +340,7 @@ async fn unknown_bridge_owner_is_nulled_not_fatal() {
         .await
         .unwrap()
         .into_iter()
-        .find(|s| s.base.cidr == bridge_cidr)
+        .find(|s| *s.base.cidr == bridge_cidr)
         .expect("the bridge subnet is still persisted");
 
     assert_eq!(
@@ -416,7 +424,7 @@ async fn container_service_owner_survives_a_rescan() {
         .id;
     let bridge_id = persisted
         .iter()
-        .find(|s| s.base.cidr == bridge_cidr)
+        .find(|s| *s.base.cidr == bridge_cidr)
         .expect("bridge persisted")
         .id;
 

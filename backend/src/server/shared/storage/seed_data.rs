@@ -2,11 +2,13 @@ use cidr::Ipv4Cidr;
 use std::net::{IpAddr, Ipv4Addr};
 use uuid::Uuid;
 
+use crate::server::shared::attribution::AttributeSource;
+use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
 use crate::server::{
     bindings::r#impl::base::Binding,
     hosts::r#impl::{
         base::{Host, HostBase},
-        name::HostName,
+        name::{HostName, HostNameSources},
     },
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
     networks::r#impl::{Network, NetworkBase},
@@ -18,7 +20,7 @@ use crate::server::{
     shared::{storage::traits::Storable, types::entities::EntitySource},
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
-        types::{SubnetCidrSource, SubnetType},
+        types::SubnetType,
     },
     users::r#impl::base::{User, UserBase},
 };
@@ -36,8 +38,12 @@ pub fn create_wan_subnet(network_id: Uuid) -> Subnet {
         name: "Internet".to_string(),
         network_id,
         tags: Vec::new(),
-        cidr: cidr::IpCidr::V4(
-            Ipv4Cidr::new(Ipv4Addr::new(0, 0, 0, 0), 0).expect("Cidr for internet subnet"),
+        // Seeded by Scanopy on purpose, so it must never read as a guess to confirm.
+        cidr: SubnetCidr::new(
+            SubnetCidrValue(cidr::IpCidr::V4(
+                Ipv4Cidr::new(Ipv4Addr::new(0, 0, 0, 0), 0).expect("Cidr for internet subnet"),
+            )),
+            AttributeSource::DaemonSelfReport,
         ),
         description: Some(
             "For representing services on the public internet, like DNS servers, \
@@ -46,8 +52,6 @@ be found by scanning. Create ip_addresses on this subnet to include them in your
                 .to_string(),
         ),
         subnet_type: SubnetType::Internet,
-        // Seeded by Scanopy on purpose, so it must never read as a guess to confirm.
-        cidr_source: SubnetCidrSource::Observed,
         virtualization_service_id: None,
         source: EntitySource::System,
     };
@@ -60,8 +64,12 @@ pub fn create_remote_subnet(network_id: Uuid) -> Subnet {
         name: "Remote Network".to_string(),
         network_id,
         tags: Vec::new(),
-        cidr: cidr::IpCidr::V4(
-            Ipv4Cidr::new(Ipv4Addr::new(0, 0, 0, 0), 0).expect("Cidr for internet subnet"),
+        // Seeded by Scanopy on purpose, so it must never read as a guess to confirm.
+        cidr: SubnetCidr::new(
+            SubnetCidrValue(cidr::IpCidr::V4(
+                Ipv4Cidr::new(Ipv4Addr::new(0, 0, 0, 0), 0).expect("Cidr for internet subnet"),
+            )),
+            AttributeSource::DaemonSelfReport,
         ),
         description: Some(
             "For representing services on networks outside your scan range, like \
@@ -70,7 +78,6 @@ subnet to include them in your topology."
                 .to_string(),
         ),
         subnet_type: SubnetType::Remote,
-        cidr_source: SubnetCidrSource::Observed,
         virtualization_service_id: None,
         source: EntitySource::System,
     };
@@ -92,7 +99,7 @@ pub fn create_remote_host(
     let base = HostBase {
         // A deliberate label on a synthetic host, not something we derived — discovery
         // must never rename these.
-        name: HostName::Manual("Mobile Device".to_string()),
+        name: HostName::manual("Mobile Device".to_string()),
         hostname: None,
         network_id,
         tags: Vec::new(),
@@ -136,7 +143,7 @@ pub fn create_internet_connectivity_host(
     let base = HostBase {
         // A deliberate label on a synthetic host, not something we derived — discovery
         // must never rename these.
-        name: HostName::Manual("Google.com".to_string()),
+        name: HostName::manual("Google.com".to_string()),
         network_id,
         tags: Vec::new(),
         hostname: None,
@@ -181,7 +188,7 @@ pub fn create_public_dns_host(
     let base = HostBase {
         // A deliberate label on a synthetic host, not something we derived — discovery
         // must never rename these.
-        name: HostName::Manual("Cloudflare DNS".to_string()),
+        name: HostName::manual("Cloudflare DNS".to_string()),
         hostname: None,
         network_id,
         description: None,

@@ -20,6 +20,9 @@
 //!    (`"1/1/1"`), which is handled by deriving interface identity from the port's own reported id
 //!    rather than assuming a flat index — see [`port_if_index`].
 
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
+use crate::server::services::r#impl::patterns::ClientProbe;
+use crate::server::shared::attribution::AttributeSource;
 use crate::server::subnets::r#impl::inference::placeable_subnet;
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -111,6 +114,7 @@ fn map_device(
     let device_mac = device.mac_address.as_deref().and_then(canonical_mac);
 
     let identity = ControllerIdentity {
+        probe: ClientProbe::InstantOn,
         name: device.name.clone(),
         // Adopted infrastructure has no separate reported hostname; the portal's name is the
         // only one there is.
@@ -129,7 +133,13 @@ fn map_device(
         host_id: Uuid::nil(), // server assigns
         subnet_id: subnet.id,
         ip_address: ip,
-        mac_address: device_mac.as_deref().and_then(|m| m.parse().ok()),
+        // The controller reporting a device it manages, not the device answering us.
+        mac_address: device_mac.as_deref().and_then(|m| m.parse().ok()).map(|m| {
+            MacEvidence::new(
+                MacEvidenceValue(m),
+                AttributeSource::Probe(ClientProbe::InstantOn),
+            )
+        }),
         name: None,
         position: 0,
     });
@@ -394,6 +404,7 @@ pub fn map_clients(
         .iter()
         .filter_map(|client| {
             let identity = ControllerIdentity {
+                probe: ClientProbe::InstantOn,
                 name: client.name.clone(),
                 // The portal reports one name per client and does not distinguish an assigned
                 // alias from a DHCP hostname.
@@ -422,6 +433,7 @@ mod tests {
     use crate::server::interfaces::r#impl::base::{IfAdminStatus, IfOperStatus};
     use crate::server::shared::types::entities::EntitySource;
     use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use crate::server::subnets::r#impl::types::SubnetType;
 
     // ------------------------------------------------------------------------------------
@@ -455,7 +467,10 @@ mod tests {
             base: SubnetBase {
                 name: name.to_string(),
                 network_id,
-                cidr: cidr.parse().expect("valid CIDR"),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(cidr.parse().expect("valid CIDR")),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 subnet_type,
                 source: EntitySource::Discovery,
                 ..Default::default()

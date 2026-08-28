@@ -1,7 +1,14 @@
 use crate::server::credentials::r#impl::types::CredentialAssignment;
-use crate::server::hosts::r#impl::name::{HostName, HostNameSource};
+use crate::server::hosts::r#impl::attributes::{
+    HostChassisIdAttributed, HostFirmwareRevisionAttributed, HostManagementUrlAttributed,
+    HostManufacturerAttributed, HostModelAttributed, HostSerialNumberAttributed,
+    HostSysContactAttributed, HostSysDescrAttributed, HostSysLocationAttributed,
+    HostSysNameAttributed, HostSysObjectIdAttributed,
+};
+use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
 use crate::server::hosts::r#impl::virtualization::HostVirtualization;
 use crate::server::ip_addresses::r#impl::base::IPAddress;
+use crate::server::shared::attribution::{self, AttributeSource, Attributed};
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::types::api::deserialize_empty_string_as_none;
 use crate::server::shared::types::entities::EntitySource;
@@ -16,7 +23,7 @@ use validator::Validate;
 /// The 100-character cap the API has always enforced on a host name. A custom validator rather
 /// than `#[validate(length)]` because the derive cannot see a length through [`HostName`].
 fn validate_host_name(name: &HostName) -> Result<(), validator::ValidationError> {
-    if name.value().chars().count() > 100 {
+    if name.value().as_str().chars().count() > 100 {
         return Err(validator::ValidationError::new("length"));
     }
     Ok(())
@@ -31,7 +38,11 @@ pub struct HostBase {
     ///
     /// Serialises as the two flat keys `name` and `name_source`, so the wire format is a bare
     /// string exactly as it has always been. Assign only through [`HostBase::apply_name`].
-    #[serde(flatten)]
+    #[serde(
+        flatten,
+        deserialize_with = "crate::server::hosts::r#impl::name::deserialize_host_name"
+    )]
+    #[schema(value_type = HostName)]
     #[validate(custom(function = "validate_host_name"))]
     pub name: HostName,
     /// The network this entity belongs to.
@@ -64,38 +75,49 @@ pub struct HostBase {
     #[serde(default)]
     #[schema(required)]
     pub tags: Vec<Uuid>,
-    // SNMP System MIB fields
+    // Discovered attributes. Each carries the source that produced it, as two flat wire keys —
+    // `model` and `model_source` — so the payload shape a daemon sends is unchanged except for the
+    // rung riding alongside. Assign only through `Attributed::apply`.
     /// SNMP sysDescr.0 - full system description
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sys_descr: Option<String>,
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostSysDescrAttributed)]
+    pub sys_descr: Option<HostSysDescrAttributed>,
     /// SNMP sysObjectID.0 - vendor OID for device identification
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sys_object_id: Option<String>,
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostSysObjectIdAttributed)]
+    pub sys_object_id: Option<HostSysObjectIdAttributed>,
     /// SNMP sysLocation.0 - physical location
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sys_location: Option<String>,
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostSysLocationAttributed)]
+    pub sys_location: Option<HostSysLocationAttributed>,
     /// SNMP sysContact.0 - admin contact info
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sys_contact: Option<String>,
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostSysContactAttributed)]
+    pub sys_contact: Option<HostSysContactAttributed>,
     /// URL for device management interface (manual or discovered)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(format = "uri")]
-    pub management_url: Option<String>,
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostManagementUrlAttributed)]
+    pub management_url: Option<HostManagementUrlAttributed>,
     /// LLDP lldpLocChassisId - globally unique device identifier for deduplication
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub chassis_id: Option<String>,
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostChassisIdAttributed)]
+    pub chassis_id: Option<HostChassisIdAttributed>,
     /// SNMP sysName.0 - administratively-assigned hostname
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sys_name: Option<String>,
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostSysNameAttributed)]
+    pub sys_name: Option<HostSysNameAttributed>,
     /// ENTITY-MIB entPhysicalMfgName - hardware manufacturer
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manufacturer: Option<String>,
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostManufacturerAttributed)]
+    pub manufacturer: Option<HostManufacturerAttributed>,
     /// ENTITY-MIB entPhysicalModelName - hardware model
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostModelAttributed)]
+    pub model: Option<HostModelAttributed>,
     /// ENTITY-MIB entPhysicalSerialNum - hardware serial number
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub serial_number: Option<String>,
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostSerialNumberAttributed)]
+    pub serial_number: Option<HostSerialNumberAttributed>,
     /// Firmware or software revision of the device as a whole.
     ///
     /// Written by whichever source read it — a controller's REST inventory, an industrial probe's
@@ -105,8 +127,9 @@ pub struct HostBase {
     ///
     /// Device-level rather than per-module: everything downstream is host-shaped, and the NCCoE
     /// asset-inventory minimum says "product version", singular.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub firmware_revision: Option<String>,
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = HostFirmwareRevisionAttributed)]
+    pub firmware_revision: Option<HostFirmwareRevisionAttributed>,
     /// Credential assignments for this host (hydrated from junction table).
     #[serde(default)]
     #[schema(required)]
@@ -116,7 +139,7 @@ pub struct HostBase {
 impl Default for HostBase {
     fn default() -> Self {
         Self {
-            name: HostName::default(),
+            name: HostName::unnamed(),
             network_id: Uuid::nil(),
             hostname: None,
             description: None,
@@ -175,8 +198,16 @@ impl Host {
             .hostname
             .as_deref()
             .and_then(non_blank)
-            .or_else(|| self.base.sys_name.as_deref().and_then(non_blank))
-            .or_else(|| self.base.chassis_id.as_deref().and_then(non_blank))
+            .or_else(|| {
+                attribution::text_of(&self.base.sys_name)
+                    .as_deref()
+                    .and_then(non_blank)
+            })
+            .or_else(|| {
+                attribution::text_of(&self.base.chassis_id)
+                    .as_deref()
+                    .and_then(non_blank)
+            })
             .or_else(|| {
                 addresses
                     .into_iter()
@@ -187,40 +218,38 @@ impl Host {
 }
 
 impl HostBase {
-    /// Assign `name`/`name_source` if `candidate` is at least as authoritative as what is stored.
+    /// Assign the host's name if `candidate` is at least as authoritative as what is stored.
     /// Returns whether anything changed.
     ///
-    /// **This is the only place either field is written.** The ordering lives entirely in
-    /// [`HostNameSource`]'s derived `Ord`, so there is no per-call-site precedence to keep in
-    /// sync — a caller only has to say where its name came from.
+    /// **This is the only place the name and its source are written.** The ordering lives entirely
+    /// in [`AttributeSource::rank`], so there is no per-call-site precedence to keep in sync — a
+    /// caller only has to say where its name came from.
     ///
-    /// Equal rank wins, which is what makes a re-sync idempotent in the useful direction: a
-    /// controller rename propagates on the next discovery, while a lower rung (reverse DNS, a
-    /// detected service, an IP) never displaces it, and nothing displaces
-    /// [`HostNameSource::Manual`].
+    /// Equal rank from the same source wins, which is what makes a re-sync idempotent in the useful
+    /// direction: a controller rename propagates on the next discovery, while a lower rung (reverse
+    /// DNS, a detected service, an address) never displaces it, and nothing displaces
+    /// [`AttributeSource::Manual`].
     pub fn apply_name(&mut self, candidate: HostName) -> bool {
-        // A blank candidate is an absent name, not a value — it must never displace a real one.
-        if candidate.is_blank() || candidate.source() < self.name.source() || self.name == candidate
-        {
-            return false;
-        }
-        self.name = candidate;
-        true
+        self.name.apply_in_place(candidate)
     }
 
-    /// Fill every discovered attribute this host does not yet have from `incoming`, returning
-    /// whether anything changed. First-write-wins: a value already present is never displaced,
-    /// which is what protects the `manufacturer`, `model` and `serial_number` a person typed into
-    /// the host edit form from being overwritten by the next scan.
+    /// Merge every discovered attribute from `incoming`, returning whether anything changed.
+    ///
+    /// Rank-based, not first-write-wins. Before provenance this was an `is_none()` gate, so
+    /// whichever source reached a field first owned it permanently and a better reading could never
+    /// land — on a switch answering both SNMP and EtherNet/IP, precedence was decided by which
+    /// probe happened to finish first. What protects a value a person entered is now
+    /// [`AttributeSource::Manual`] outranking everything discovery can write, rather than the
+    /// accident of having got there first.
     ///
     /// **The destructure below is the point of this method.** These arms used to be written out
     /// one per field at the single call site, and a field added to `HostBase` without one compiled
     /// perfectly and then silently dropped that field on every re-scan — collected, stored once,
     /// and never refreshed. Here a new field fails to compile until it is classified: either it is
-    /// a discovered attribute and gets filled, or it is named in the ignore list because something
-    /// else owns it (`name` has its own ladder, `tags` and `credential_assignments` are user state,
-    /// `hidden` is a user preference).
-    pub fn fill_missing_attributes_from(&mut self, incoming: &HostBase) -> bool {
+    /// a discovered attribute and gets merged, or it is named in the ignore list because something
+    /// else owns it (`name` has its own entry point above, `tags` and `credential_assignments` are
+    /// user state, `hidden` is a user preference).
+    pub fn apply_attributes_from(&mut self, incoming: &HostBase) -> bool {
         let HostBase {
             // Not attributes: owned by the naming ladder, by the user, or by the row itself.
             name: _,
@@ -233,7 +262,7 @@ impl HostBase {
             tags: _,
             credential_assignments: _,
             // Filled earlier in `upsert_host`, before the naming ladder reads it: a hostname that
-            // arrived on this scan has to be present when `apply_name(HostName::Hostname(..))`
+            // arrived on this scan has to be present when `apply_name(HostName::from_hostname(..))`
             // runs, or the host goes one whole scan without the name its hostname would give it.
             hostname: _,
             // Discovered attributes.
@@ -250,39 +279,52 @@ impl HostBase {
             firmware_revision,
         } = incoming;
 
+        // A macro rather than a closure: each field is a different carrier type, so every call is
+        // monomorphised separately and picks up that field's own blank rule and refreshable policy.
         let mut changed = false;
-        let mut fill = |slot: &mut Option<String>, incoming: &Option<String>| {
-            if slot.is_none()
-                && let Some(value) = incoming
-            {
-                *slot = Some(value.clone());
-                changed = true;
-            }
-        };
-
-        fill(&mut self.sys_descr, sys_descr);
-        fill(&mut self.sys_object_id, sys_object_id);
-        fill(&mut self.sys_location, sys_location);
-        fill(&mut self.sys_contact, sys_contact);
-        fill(&mut self.management_url, management_url);
-        fill(&mut self.chassis_id, chassis_id);
-        fill(&mut self.sys_name, sys_name);
-        fill(&mut self.manufacturer, manufacturer);
-        fill(&mut self.model, model);
-        fill(&mut self.serial_number, serial_number);
-        fill(&mut self.firmware_revision, firmware_revision);
+        macro_rules! merge {
+            ($($field:ident),* $(,)?) => {
+                $(
+                    if let Some(candidate) = $field
+                        && Attributed::apply(&mut self.$field, candidate.clone())
+                    {
+                        changed = true;
+                    }
+                )*
+            };
+        }
+        merge!(
+            sys_descr,
+            sys_object_id,
+            sys_location,
+            sys_contact,
+            management_url,
+            chassis_id,
+            sys_name,
+            manufacturer,
+            model,
+            serial_number,
+            firmware_revision,
+        );
         changed
     }
 
-    /// Lower the recorded provenance to `ceiling` if it claims more, keeping the name itself.
-    /// Returns whether anything changed.
+    /// Refuse a daemon payload's claim that a person typed this name into Scanopy, keeping the
+    /// name itself. Returns whether anything changed.
     ///
-    /// The server applies this to daemon payloads, and it can only ever move the rung down.
-    pub fn clamp_name_source(&mut self, ceiling: HostNameSource) -> bool {
-        if self.name.source() <= ceiling {
+    /// A single source rather than a rank ceiling, because `Manual` is the only claim a daemon
+    /// cannot make: every other source is something a daemon legitimately observed, and demoting
+    /// by rank would strip the provenance off every inbound name rather than the one that is not
+    /// a daemon's to assert.
+    ///
+    /// The value survives at `Unspecified` — the claim told us nothing believable about where the
+    /// name came from, and nothing believable is exactly what `Unspecified` means. It keeps the
+    /// name while letting the next real reading correct the rung.
+    pub fn reject_manual_name_claim(&mut self) -> bool {
+        if self.name.source() != AttributeSource::Manual {
             return false;
         }
-        self.name = self.name.clone().clamped_to(ceiling);
+        self.name = self.name.clone().clamped_to(AttributeSource::Unspecified);
         true
     }
 }
@@ -392,6 +434,12 @@ impl ChangeTriggersTopologyStaleness<Host> for Host {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::hosts::r#impl::attributes::HostModelValue;
+    use crate::server::services::r#impl::patterns::ClientProbe;
+
+    fn controller_name(name: &str) -> HostName {
+        HostName::from_controller(name.to_string(), ClientProbe::UnifiController)
+    }
 
     /// `apply_name`'s return value is what `upsert_host` uses to decide whether the host actually
     /// changed, and an Updated event (and a topology rebuild) rides on that. A re-sync that
@@ -399,9 +447,9 @@ mod tests {
     #[test]
     fn reapplying_an_unchanged_name_reports_no_change() {
         let mut base = HostBase::default();
-        assert!(base.apply_name(HostName::Integration("Core Switch".to_string())));
-        assert!(!base.apply_name(HostName::Integration("Core Switch".to_string())));
-        assert!(base.apply_name(HostName::Integration("Core Switch 2".to_string())));
+        assert!(base.apply_name(controller_name("Core Switch")));
+        assert!(!base.apply_name(controller_name("Core Switch")));
+        assert!(base.apply_name(controller_name("Core Switch 2")));
     }
 
     /// The same value arriving from a *better* source is still a change worth recording: the name
@@ -409,45 +457,125 @@ mod tests {
     #[test]
     fn the_same_name_from_a_higher_rung_is_recorded() {
         let mut base = HostBase::default();
-        base.apply_name(HostName::Hostname("switch.lan".to_string()));
-        assert!(base.apply_name(HostName::Integration("switch.lan".to_string())));
-        assert_eq!(base.name.source(), HostNameSource::Integration);
+        base.apply_name(HostName::from_hostname("switch.lan".to_string()));
+        assert!(base.apply_name(controller_name("switch.lan")));
+        assert_eq!(
+            base.name.source(),
+            AttributeSource::Authored(ClientProbe::UnifiController)
+        );
     }
-    /// The characterization the attribute merge needed before it was extracted: what a person
-    /// typed into the host edit form has to survive every subsequent scan, and that protection is
-    /// the `is_none()` gate rather than anything about provenance.
+
+    /// What a person typed into Scanopy survives every subsequent scan. This used to be the
+    /// `is_none()` gate — first writer wins, whoever they were — and is now `Manual` outranking
+    /// everything discovery can produce, which is what makes a refreshable `model` safe.
     #[test]
-    fn a_value_already_present_is_never_displaced() {
+    fn a_manually_entered_value_is_never_displaced() {
         let mut existing = HostBase {
-            model: Some("typed-by-a-person".to_string()),
+            model: Some(Attributed::new(
+                HostModelValue("typed-by-a-person".to_string()),
+                AttributeSource::Manual,
+            )),
             ..Default::default()
         };
         let incoming = HostBase {
-            model: Some("read-over-snmp".to_string()),
-            serial_number: Some("FOC1234X5YZ".to_string()),
+            model: Some(Attributed::new(
+                HostModelValue("read-over-snmp".to_string()),
+                AttributeSource::Probe(ClientProbe::Snmp),
+            )),
+            serial_number: Some(Attributed::new(
+                crate::server::hosts::r#impl::attributes::HostSerialNumberValue(
+                    "FOC1234X5YZ".to_string(),
+                ),
+                AttributeSource::Probe(ClientProbe::Snmp),
+            )),
             ..Default::default()
         };
 
-        assert!(existing.fill_missing_attributes_from(&incoming));
+        assert!(existing.apply_attributes_from(&incoming));
 
-        assert_eq!(existing.model.as_deref(), Some("typed-by-a-person"));
-        assert_eq!(existing.serial_number.as_deref(), Some("FOC1234X5YZ"));
+        assert_eq!(
+            attribution::text_of(&existing.model).as_deref(),
+            Some("typed-by-a-person")
+        );
+        assert_eq!(
+            attribution::text_of(&existing.serial_number).as_deref(),
+            Some("FOC1234X5YZ")
+        );
+    }
+
+    /// The behaviour the `is_none()` gate could not express: a value already present is displaced
+    /// when a better source reads it. Under first-write-wins the model below stayed "Cisco Switch"
+    /// for the life of the host, whatever SNMP later said.
+    #[test]
+    fn a_weak_value_is_displaced_by_a_stronger_source() {
+        let mut existing = HostBase {
+            model: Some(Attributed::new(
+                HostModelValue("Cisco Switch".to_string()),
+                AttributeSource::Probe(ClientProbe::UnifiController),
+            )),
+            ..Default::default()
+        };
+        let incoming = HostBase {
+            model: Some(Attributed::new(
+                HostModelValue("WS-C2960X-48FPD-L".to_string()),
+                AttributeSource::Probe(ClientProbe::Snmp),
+            )),
+            ..Default::default()
+        };
+
+        assert!(existing.apply_attributes_from(&incoming));
+        assert_eq!(
+            attribution::text_of(&existing.model).as_deref(),
+            Some("WS-C2960X-48FPD-L")
+        );
+    }
+
+    /// The ordering this item exists to establish, on the field that prompted it. ENTITY-MIB is
+    /// Track 2's reader, but its rung is decided here: a device answering SNMP outranks a
+    /// controller describing a device it manages, so a firmware revision from the MIB displaces
+    /// one a controller reported rather than losing to whichever probe finished first.
+    #[test]
+    fn firmware_from_the_device_displaces_firmware_from_a_controller() {
+        use crate::server::hosts::r#impl::attributes::HostFirmwareRevisionValue;
+
+        let mut existing = HostBase {
+            firmware_revision: Some(Attributed::new(
+                HostFirmwareRevisionValue("6.5.59".to_string()),
+                AttributeSource::Probe(ClientProbe::UnifiController),
+            )),
+            ..Default::default()
+        };
+        let incoming = HostBase {
+            firmware_revision: Some(Attributed::new(
+                HostFirmwareRevisionValue("17.03.01".to_string()),
+                AttributeSource::Probe(ClientProbe::Snmp),
+            )),
+            ..Default::default()
+        };
+
+        assert!(existing.apply_attributes_from(&incoming));
+        assert_eq!(
+            attribution::text_of(&existing.firmware_revision).as_deref(),
+            Some("17.03.01")
+        );
     }
 
     /// `upsert_host` publishes an Updated event and triggers a topology rebuild off this return
     /// value, so a scan that learns nothing new must report no change.
     #[test]
     fn learning_nothing_new_reports_no_change() {
+        let snmp = AttributeSource::Probe(ClientProbe::Snmp);
+        let model = |v: &str| Some(Attributed::new(HostModelValue(v.to_string()), snmp));
         let mut existing = HostBase {
-            model: Some("WS-C2960X".to_string()),
+            model: model("WS-C2960X"),
             ..Default::default()
         };
         let incoming = HostBase {
-            model: Some("WS-C2960X".to_string()),
+            model: model("WS-C2960X"),
             ..Default::default()
         };
 
-        assert!(!existing.fill_missing_attributes_from(&incoming));
-        assert!(!existing.fill_missing_attributes_from(&HostBase::default()));
+        assert!(!existing.apply_attributes_from(&incoming));
+        assert!(!existing.apply_attributes_from(&HostBase::default()));
     }
 }

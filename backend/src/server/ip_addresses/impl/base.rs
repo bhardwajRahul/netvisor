@@ -1,3 +1,4 @@
+use crate::server::shared::attribution::{self as attribution, AttributeValue, Attributed};
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::position::Positioned;
 use crate::server::subnets::r#impl::base::Subnet;
@@ -14,6 +15,59 @@ use validator::Validate;
 
 pub const ALL_IP_ADDRESSES_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
 
+/// A MAC address, and the evidence for it.
+///
+/// Four sites produce one and they are not equally good: our own ARP request answered by the
+/// address itself, a device reporting its own `ifPhysAddress`, a *router's* ARP cache talking about
+/// somebody else, and a controller reporting a device it manages. §6's minting rule turns on that
+/// distinction — conjuring a host from a MAC nothing has ever contacted, on a third party's say-so,
+/// is how ghost hosts get created.
+///
+/// Shared by `IPAddressBase` and `InterfaceBase`: identical keys, identical schema, so the two
+/// cannot drift on pattern or example the way the copy-pasted declarations had begun to.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct MacEvidenceValue(pub MacAddress);
+
+impl std::fmt::Display for MacEvidenceValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl AttributeValue for MacEvidenceValue {
+    const VALUE_KEY: &'static str = "mac_address";
+    const SOURCE_KEY: &'static str = "mac_address_source";
+    const SCHEMA_NAME: &'static str = "MacEvidence";
+    /// A NIC does not change its address, so a re-read from the same source never moves it. A
+    /// stronger source may still correct one a weaker source got wrong, which is the point: an ARP
+    /// reply we solicited should be able to fix a MAC a forwarding table reported.
+    const REFRESHABLE: bool = false;
+}
+
+impl utoipa::PartialSchema for MacEvidenceValue {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::Schema> {
+        use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
+        utoipa::openapi::RefOr::T(utoipa::openapi::Schema::Object(
+            ObjectBuilder::new()
+                .schema_type(SchemaType::new(Type::String))
+                .description(Some("MAC address, as discovered."))
+                .pattern(Some(r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$"))
+                .examples([serde_json::json!("a4:bb:6d:12:34:56")])
+                .build(),
+        ))
+    }
+}
+
+/// A MAC address together with what produced it.
+pub type MacEvidence = Attributed<MacEvidenceValue>;
+
+/// The address itself, for the matching and counting code that cares which MAC it is rather than
+/// how we came to know it.
+pub fn mac_of(evidence: &Option<MacEvidence>) -> Option<MacAddress> {
+    evidence.as_ref().map(|e| e.value().0)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema, Validate)]
 pub struct IPAddressBase {
     /// The network this entity belongs to.
@@ -25,9 +79,10 @@ pub struct IPAddressBase {
     /// IPv4 or IPv6 address.
     #[schema(value_type = String, example = "192.168.1.10")]
     pub ip_address: IpAddr,
-    /// MAC address discovered from ARP, SNMP, or Docker - immutable once set
-    #[schema(value_type = Option<String>, pattern = r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$", example = "a4:bb:6d:12:34:56")]
-    pub mac_address: Option<MacAddress>,
+    /// MAC address discovered from ARP, SNMP or a container runtime, with the evidence for it.
+    #[serde(flatten, deserialize_with = "attribution::optional")]
+    #[schema(value_type = MacEvidence)]
+    pub mac_address: Option<MacEvidence>,
     /// Human-facing name for this IP address.
     #[schema(required)]
     pub name: Option<String>,
@@ -202,6 +257,7 @@ impl Positioned for IPAddress {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::shared::attribution::AttributeSource;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -216,7 +272,8 @@ mod tests {
             base: IPAddressBase {
                 ip_address: ip,
                 subnet_id,
-                mac_address: mac,
+                mac_address: mac
+                    .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::ArpReply)),
                 ..Default::default()
             },
             ..Default::default()

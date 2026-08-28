@@ -154,7 +154,7 @@ impl DiscoveryRunner {
         );
 
         let subnet_futures = subnets_to_create.iter().map(|subnet| async move {
-            let cidr = subnet.base.cidr;
+            let cidr = *subnet.base.cidr;
             match ops.create_subnet(subnet, cancel).await {
                 Ok(created) => {
                     tracing::debug!(cidr = %cidr, subnet_id = %created.id, "Subnet created");

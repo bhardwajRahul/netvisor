@@ -5,6 +5,7 @@
 //! services, daemons, API keys, tags, and dependencies.
 
 use crate::daemon::discovery::types::base::DiscoveryPhase;
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
 use crate::server::{
     bindings::r#impl::base::Binding,
     credentials::r#impl::{
@@ -27,8 +28,13 @@ use crate::server::{
         types::{DiscoveryType, HostNamingFallback, RunType},
     },
     hosts::r#impl::{
+        attributes::{
+            HostChassisIdValue, HostManufacturerValue, HostModelValue, HostSerialNumberValue,
+            HostSysContactValue, HostSysDescrValue, HostSysLocationValue, HostSysNameValue,
+            HostSysObjectIdValue,
+        },
         base::{Host, HostBase},
-        name::HostName,
+        name::{HostName, HostNameSources},
         virtualization::{HostVirtualization, ProxmoxVirtualization},
     },
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
@@ -36,6 +42,7 @@ use crate::server::{
     lldp::{LldpChassisId, LldpPortId},
     networks::r#impl::{DEFAULT_STALE_AFTER_HOURS, Network, NetworkBase},
     ports::r#impl::base::{Port, PortType},
+    services::r#impl::patterns::ClientProbe,
     services::{
         definitions::ServiceDefinitionRegistry,
         r#impl::{
@@ -43,14 +50,16 @@ use crate::server::{
             virtualization::{DockerVirtualization, ServiceVirtualization},
         },
     },
+    shared::attribution::{AttributeSource, Attributed},
     shared::{
         api_key_common::{ApiKeyType, generate_api_key_for_storage},
         types::{Color, entities::EntitySource},
     },
     shares::r#impl::base::{Share, ShareBase, ShareOptions},
+    subnets::r#impl::base::{SubnetCidr, SubnetCidrValue},
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
-        types::{SubnetCidrSource, SubnetType},
+        types::SubnetType,
     },
     tags::r#impl::base::{Tag, TagBase},
     topology::types::{
@@ -561,8 +570,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 1, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(10, 0, 1, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: hq.id,
                 name: "HQ Management".to_string(),
                 description: Some("Network management and monitoring".to_string()),
@@ -583,8 +596,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 10, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(10, 0, 10, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: hq.id,
                 name: "HQ Office LAN".to_string(),
                 description: Some("Office workstations".to_string()),
@@ -605,8 +622,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 20, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(10, 0, 20, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: hq.id,
                 name: "HQ Servers".to_string(),
                 description: Some("On-premises servers and hypervisors".to_string()),
@@ -627,8 +648,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 40, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(10, 0, 40, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: hq.id,
                 name: "HQ Storage".to_string(),
                 description: Some("Storage area network".to_string()),
@@ -649,8 +674,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 30, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(10, 0, 30, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: hq.id,
                 name: "HQ IoT".to_string(),
                 description: Some("Smart office devices".to_string()),
@@ -671,8 +700,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 17, 0, 0), 16).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(172, 17, 0, 0), 16).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: hq.id,
                 name: "HQ Docker Bridge".to_string(),
                 description: Some("Docker container network".to_string()),
@@ -693,8 +726,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 100, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(10, 0, 100, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: hq.id,
                 name: "HQ Guest WiFi".to_string(),
                 description: Some("Guest wireless network".to_string()),
@@ -716,8 +753,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: dc.id,
                 name: "DC Management".to_string(),
                 description: Some("Data center management network".to_string()),
@@ -738,8 +779,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 16, 10, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(172, 16, 10, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: dc.id,
                 name: "DC Compute".to_string(),
                 description: Some("Compute and hypervisor hosts".to_string()),
@@ -760,8 +805,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 16, 20, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(172, 16, 20, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: dc.id,
                 name: "DC Storage".to_string(),
                 description: Some("Storage network".to_string()),
@@ -782,8 +831,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 16, 30, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(172, 16, 30, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: dc.id,
                 name: "DC DMZ".to_string(),
                 description: Some("Demilitarized zone for public-facing services".to_string()),
@@ -804,8 +857,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 18, 0, 0), 16).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(172, 18, 0, 0), 16).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: dc.id,
                 name: "DC Docker Bridge".to_string(),
                 description: Some("Docker container network".to_string()),
@@ -826,8 +883,12 @@ fn generate_subnets(
             created_at: now,
             updated_at: now,
             base: SubnetBase {
-                cidr_source: SubnetCidrSource::Observed,
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 8, 0, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(10, 8, 0, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id: dc.id,
                 name: "DC VPN Tunnel".to_string(),
                 description: Some("VPN tunnel to headquarters".to_string()),
@@ -896,7 +957,7 @@ fn create_host(
         created_at: now,
         updated_at: now,
         base: HostBase {
-            name: HostName::Manual(name.to_string()),
+            name: HostName::manual(name.to_string()),
             network_id: network.id,
             hostname: hostname.map(String::from),
             description: description.map(String::from),
@@ -935,22 +996,38 @@ fn with_snmp(
     model: Option<&str>,
     serial_number: Option<&str>,
 ) -> (Host, IPAddress) {
-    host.base.sys_descr = sys_descr.map(String::from);
-    host.base.sys_object_id = sys_object_id.map(String::from);
-    host.base.sys_location = sys_location.map(String::from);
-    host.base.sys_contact = sys_contact.map(String::from);
-    host.base.chassis_id = chassis_id.map(String::from);
+    // Demo data stands in for a credentialed SNMP scan, so it claims what such a scan would: the
+    // device's own answers, with `sysLocation` and `sysContact` as the two an operator typed into
+    // it. Anything else would give the demo org a provenance no real scan produces.
+    let probe = AttributeSource::Probe(ClientProbe::Snmp);
+    let authored = AttributeSource::Authored(ClientProbe::Snmp);
+    host.base.sys_descr = sys_descr.map(|v| Attributed::new(HostSysDescrValue(v.into()), probe));
+    host.base.sys_object_id =
+        sys_object_id.map(|v| Attributed::new(HostSysObjectIdValue(v.into()), probe));
+    host.base.sys_location =
+        sys_location.map(|v| Attributed::new(HostSysLocationValue(v.into()), authored));
+    host.base.sys_contact =
+        sys_contact.map(|v| Attributed::new(HostSysContactValue(v.into()), authored));
+    host.base.chassis_id = chassis_id.map(|v| Attributed::new(HostChassisIdValue(v.into()), probe));
     // SNMP sysName conventionally mirrors the device hostname.
-    host.base.sys_name = Some(host.base.name.to_string());
-    host.base.manufacturer = manufacturer.map(str::to_string);
-    host.base.model = model.map(str::to_string);
-    host.base.serial_number = serial_number.map(str::to_string);
+    host.base.sys_name = Some(Attributed::new(
+        HostSysNameValue(host.base.name.to_string()),
+        probe,
+    ));
+    host.base.manufacturer =
+        manufacturer.map(|v| Attributed::new(HostManufacturerValue(v.into()), probe));
+    host.base.model = model.map(|v| Attributed::new(HostModelValue(v.into()), probe));
+    host.base.serial_number =
+        serial_number.map(|v| Attributed::new(HostSerialNumberValue(v.into()), probe));
     (host, ip_address)
 }
 
 /// Wraps a `create_host()` result to set the MAC address on the IP address.
 fn with_mac((host, mut ip_address): (Host, IPAddress), mac: [u8; 6]) -> (Host, IPAddress) {
-    ip_address.base.mac_address = Some(MacAddress::new(mac));
+    ip_address.base.mac_address = Some(MacEvidence::new(
+        MacEvidenceValue(MacAddress::new(mac)),
+        AttributeSource::ArpReply,
+    ));
     (host, ip_address)
 }
 
@@ -1839,7 +1916,10 @@ fn generate_hosts_and_services(
                 host_id,
                 subnet_id: hq_servers.id,
                 ip_address: IpAddr::V4(Ipv4Addr::new(10, 0, 20, 20)),
-                mac_address: Some(MacAddress::new([0xf8, 0xbc, 0x12, 0x20, 0x13, 0x01])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xf8, 0xbc, 0x12, 0x20, 0x13, 0x01])),
+                    AttributeSource::ArpReply,
+                )),
                 name: Some("eth0".to_string()),
                 position: 0,
             },
@@ -1859,7 +1939,10 @@ fn generate_hosts_and_services(
                 host_id,
                 subnet_id: hq_docker.id,
                 ip_address: IpAddr::V4(Ipv4Addr::new(172, 17, 0, 1)),
-                mac_address: Some(MacAddress::new([0x02, 0x42, 0xac, 0x11, 0x00, 0x01])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0x02, 0x42, 0xac, 0x11, 0x00, 0x01])),
+                    AttributeSource::ArpReply,
+                )),
                 name: Some("docker0".to_string()),
                 position: 1,
             },
@@ -1875,7 +1958,7 @@ fn generate_hosts_and_services(
             created_at: now,
             updated_at: now,
             base: HostBase {
-                name: HostName::Manual("docker-prod01".to_string()),
+                name: HostName::manual("docker-prod01".to_string()),
                 network_id: hq.id,
                 hostname: Some("docker-prod01.acme.local".to_string()),
                 description: Some("Production Docker host".to_string()),
@@ -2961,7 +3044,10 @@ fn generate_hosts_and_services(
                 host_id,
                 subnet_id: dc_compute.id,
                 ip_address: IpAddr::V4(Ipv4Addr::new(172, 16, 10, 20)),
-                mac_address: Some(MacAddress::new([0xf8, 0xbc, 0x12, 0xdc, 0x11, 0x01])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xf8, 0xbc, 0x12, 0xdc, 0x11, 0x01])),
+                    AttributeSource::ArpReply,
+                )),
                 name: Some("eth0".to_string()),
                 position: 0,
             },
@@ -2981,7 +3067,10 @@ fn generate_hosts_and_services(
                 host_id,
                 subnet_id: dc_docker.id,
                 ip_address: IpAddr::V4(Ipv4Addr::new(172, 18, 0, 1)),
-                mac_address: Some(MacAddress::new([0x02, 0x42, 0xac, 0x12, 0x00, 0x01])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0x02, 0x42, 0xac, 0x12, 0x00, 0x01])),
+                    AttributeSource::ArpReply,
+                )),
                 name: Some("docker0".to_string()),
                 position: 1,
             },
@@ -2997,7 +3086,7 @@ fn generate_hosts_and_services(
             created_at: now,
             updated_at: now,
             base: HostBase {
-                name: HostName::Manual("dc-docker01".to_string()),
+                name: HostName::manual("dc-docker01".to_string()),
                 network_id: dc.id,
                 hostname: Some("docker01.dc.acme.io".to_string()),
                 description: Some("Data center Docker host".to_string()),
@@ -3522,7 +3611,12 @@ fn generate_interfaces(
     let mut interfaces = Vec::new();
     let mut neighbor_updates = Vec::new();
 
-    let find_host = |name: &str| hosts.iter().find(|h| h.base.name == name).copied();
+    let find_host = |name: &str| {
+        hosts
+            .iter()
+            .find(|h| h.base.name.value().as_str() == name)
+            .copied()
+    };
     let find_ip_address = |host_id: Uuid| {
         ip_addresses
             .iter()
@@ -3582,7 +3676,10 @@ fn generate_interfaces(
                 speed_bps: Some(1_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xa4, 0xbe, 0x2b, 0x10, 0x01, 0x10])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xa4, 0xbe, 0x2b, 0x10, 0x01, 0x10])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: None,
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -3624,7 +3721,10 @@ fn generate_interfaces(
                 speed_bps: Some(1_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xa4, 0xbe, 0x2b, 0x10, 0x01, 0x11])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xa4, 0xbe, 0x2b, 0x10, 0x01, 0x11])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -3672,7 +3772,10 @@ fn generate_interfaces(
                 speed_bps: Some(1_000_000_000),
                 admin_status: Some(IfAdminStatus::Down),
                 oper_status: Some(IfOperStatus::Down),
-                mac_address: Some(MacAddress::new([0xa4, 0xbe, 0x2b, 0x10, 0x01, 0x12])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xa4, 0xbe, 0x2b, 0x10, 0x01, 0x12])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: None,
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -3724,7 +3827,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xd0, 0x50, 0x99, 0x40, 0x17, 0x10])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xd0, 0x50, 0x99, 0x40, 0x17, 0x10])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -3782,7 +3888,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xf8, 0xbc, 0x12, 0x20, 0x08, 0x10])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xf8, 0xbc, 0x12, 0x20, 0x08, 0x10])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -3882,7 +3991,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xf8, 0xbc, 0x12, 0x20, 0x09, 0x10])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xf8, 0xbc, 0x12, 0x20, 0x09, 0x10])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -3940,7 +4052,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xf8, 0xbc, 0x12, 0x20, 0x13, 0x10])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xf8, 0xbc, 0x12, 0x20, 0x13, 0x10])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4006,7 +4121,10 @@ fn generate_interfaces(
                 speed_bps: Some(1_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x01])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x01])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4055,7 +4173,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x02])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x02])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: None,
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4104,7 +4225,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x03])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x03])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: None,
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4153,7 +4277,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x04])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x04])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: None,
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4202,7 +4329,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x05])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x05])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: None,
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4251,7 +4381,10 @@ fn generate_interfaces(
                 speed_bps: Some(1_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x06])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xfc, 0xec, 0xda, 0x10, 0x03, 0x06])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: None,
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4301,14 +4434,17 @@ fn generate_interfaces(
                     speed_bps: Some(1_000_000_000),
                     admin_status: Some(IfAdminStatus::Up),
                     oper_status: Some(IfOperStatus::Down),
-                    mac_address: Some(MacAddress::new([
-                        0xfc,
-                        0xec,
-                        0xda,
-                        0x10,
-                        0x03,
-                        port_num as u8,
-                    ])),
+                    mac_address: Some(MacEvidence::new(
+                        MacEvidenceValue(MacAddress::new([
+                            0xfc,
+                            0xec,
+                            0xda,
+                            0x10,
+                            0x03,
+                            port_num as u8,
+                        ])),
+                        AttributeSource::ArpReply,
+                    )),
                     ip_address_id: None,
                     neighbor: None,
                     neighbor_seen_at: None,
@@ -4361,7 +4497,10 @@ fn generate_interfaces(
                 speed_bps: Some(1_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xfc, 0xec, 0xda, 0x30, 0x23, 0x10])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xfc, 0xec, 0xda, 0x30, 0x23, 0x10])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4419,7 +4558,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0x70, 0x4c, 0xa5, 0xdc, 0x01, 0x10])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0x70, 0x4c, 0xa5, 0xdc, 0x01, 0x10])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4477,7 +4619,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xf8, 0xbc, 0x12, 0xdc, 0x07, 0x10])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xf8, 0xbc, 0x12, 0xdc, 0x07, 0x10])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4535,7 +4680,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xf8, 0xbc, 0x12, 0xdc, 0x11, 0x10])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xf8, 0xbc, 0x12, 0xdc, 0x11, 0x10])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4593,7 +4741,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0xf8, 0xbc, 0x12, 0xdc, 0x04, 0x10])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0xf8, 0xbc, 0x12, 0xdc, 0x04, 0x10])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4657,7 +4808,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0x00, 0x1c, 0x73, 0xdc, 0x02, 0x01])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0x00, 0x1c, 0x73, 0xdc, 0x02, 0x01])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: ip_address.map(|i| i.id),
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4706,7 +4860,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0x00, 0x1c, 0x73, 0xdc, 0x02, 0x02])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0x00, 0x1c, 0x73, 0xdc, 0x02, 0x02])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: None,
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4755,7 +4912,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0x00, 0x1c, 0x73, 0xdc, 0x02, 0x03])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0x00, 0x1c, 0x73, 0xdc, 0x02, 0x03])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: None,
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4804,7 +4964,10 @@ fn generate_interfaces(
                 speed_bps: Some(10_000_000_000),
                 admin_status: Some(IfAdminStatus::Up),
                 oper_status: Some(IfOperStatus::Up),
-                mac_address: Some(MacAddress::new([0x00, 0x1c, 0x73, 0xdc, 0x02, 0x04])),
+                mac_address: Some(MacEvidence::new(
+                    MacEvidenceValue(MacAddress::new([0x00, 0x1c, 0x73, 0xdc, 0x02, 0x04])),
+                    AttributeSource::ArpReply,
+                )),
                 ip_address_id: None,
                 neighbor: None,
                 neighbor_seen_at: None,
@@ -4854,14 +5017,17 @@ fn generate_interfaces(
                     speed_bps: Some(1_000_000_000),
                     admin_status: Some(IfAdminStatus::Up),
                     oper_status: Some(IfOperStatus::Down),
-                    mac_address: Some(MacAddress::new([
-                        0x00,
-                        0x1c,
-                        0x73,
-                        0xdc,
-                        0x02,
-                        port_num as u8,
-                    ])),
+                    mac_address: Some(MacEvidence::new(
+                        MacEvidenceValue(MacAddress::new([
+                            0x00,
+                            0x1c,
+                            0x73,
+                            0xdc,
+                            0x02,
+                            port_num as u8,
+                        ])),
+                        AttributeSource::ArpReply,
+                    )),
                     ip_address_id: None,
                     neighbor: None,
                     neighbor_seen_at: None,
@@ -4903,7 +5069,12 @@ fn generate_daemons(
             .find(|n| n.base.name.contains(name))
             .unwrap()
     };
-    let find_host = |name: &str| hosts.iter().find(|h| h.base.name == name).copied();
+    let find_host = |name: &str| {
+        hosts
+            .iter()
+            .find(|h| h.base.name.value().as_str() == name)
+            .copied()
+    };
 
     let mut daemons = Vec::new();
 

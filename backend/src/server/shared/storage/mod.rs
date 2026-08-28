@@ -1,3 +1,4 @@
+pub mod attributed;
 pub mod child;
 pub mod factory;
 pub mod filter;

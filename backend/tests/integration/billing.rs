@@ -4,10 +4,12 @@ use crate::infra::{TestContext, reset_plan_to_default, set_billable_plan, set_pl
 use cidr::{IpCidr, Ipv4Cidr};
 use reqwest::StatusCode;
 use scanopy::server::hosts::r#impl::base::Host;
+use scanopy::server::shared::attribution::AttributeSource;
 use scanopy::server::shared::storage::traits::Storable;
 use scanopy::server::shared::types::entities::EntitySource;
 use scanopy::server::subnets::r#impl::base::{Subnet, SubnetBase};
-use scanopy::server::subnets::r#impl::types::{SubnetCidrSource, SubnetType};
+use scanopy::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
+use scanopy::server::subnets::r#impl::types::SubnetType;
 use scanopy::server::tags::r#impl::base::Tag;
 use std::net::Ipv4Addr;
 
@@ -58,11 +60,15 @@ async fn test_billing_past_due_blocks_requests(ctx: &TestContext) -> Result<(), 
     set_plan_status(Some("past_due"))?;
 
     let subnet = Subnet::new(SubnetBase {
-        cidr_source: SubnetCidrSource::Observed,
         name: "Blocked Subnet".to_string(),
         description: None,
         network_id: ctx.network_id,
-        cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 1, 0, 0), 24).unwrap()),
+        cidr: SubnetCidr::new(
+            SubnetCidrValue(IpCidr::V4(
+                Ipv4Cidr::new(Ipv4Addr::new(10, 1, 0, 0), 24).unwrap(),
+            )),
+            AttributeSource::DaemonSelfReport,
+        ),
         subnet_type: SubnetType::Lan,
         source: EntitySource::System,
         tags: Vec::new(),

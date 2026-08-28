@@ -12,6 +12,8 @@ use crate::server::credentials::r#impl::types::CredentialType;
 use crate::server::dependencies::r#impl::base::Dependency;
 use crate::server::lldp::{LldpChassisId, LldpPortId};
 use crate::server::services::r#impl::base::Service;
+use crate::server::services::r#impl::patterns::ClientProbe;
+use crate::server::shared::attribution::{AttributeSource, AttributeSourceKind};
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::entity_metadata::EntityCategory;
 use crate::server::shared::events::types::{BillingOperation, OnboardingOperationDiscriminants};
@@ -24,7 +26,7 @@ use crate::server::{
     billing::types::base::BillingPlan,
     daemons::r#impl::base::DaemonMode,
     discovery::r#impl::types::{DiscoveryType, RunType},
-    hosts::r#impl::{base::Host, name::HostNameSource, virtualization::HostVirtualization},
+    hosts::r#impl::{base::Host, virtualization::HostVirtualization},
     interfaces::r#impl::base::Interface,
     ip_addresses::r#impl::base::IPAddress,
     organizations::r#impl::base::OrgNotifications,
@@ -342,7 +344,7 @@ pub enum SqlValue {
     IpAddr(IpAddr),
     OptionalIpAddr(Option<IpAddr>),
     EntitySource(EntitySource),
-    HostNameSource(HostNameSource),
+    AttributeSource(AttributeSource),
     EntityDiscriminant(EntityDiscriminants),
     ServiceDefinition(Box<dyn ServiceDefinition>),
     OptionalServiceVirtualization(Option<ServiceVirtualization>),
@@ -511,6 +513,25 @@ impl DbEnumContributor for RunType {
     }
 }
 
+/// `AttributeSource` is the second composite whose nested enum is reachable nowhere else.
+///
+/// Two of its variants carry a [`ClientProbe`] in the persisted JSON (`{"type":"Probe",
+/// "probe":"Snmp"}`), so the probe names are values written to the database that
+/// `strum::VariantNames` on `AttributeSource` alone cannot see. Same delegation, same reason, as
+/// `RunType` above: without it, adding a probe would slip past both coexistence gates while being
+/// written to every `*_source` column.
+impl DbEnumContributor for AttributeSource {
+    fn contribute(out: &mut std::collections::BTreeMap<&'static str, Vec<String>>) {
+        let variants: Vec<String> = <AttributeSourceKind as ::strum::VariantNames>::VARIANTS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        out.insert(db_enum_key_for::<AttributeSource>(), variants);
+
+        ClientProbe::contribute(out);
+    }
+}
+
 // ServiceDefinition covers service metadata (Docker, nginx, etc.), not
 // DB-persisted discriminants — out of scope for this catalog.
 impl DbEnumContributor for Box<dyn ServiceDefinition> {
@@ -563,7 +584,7 @@ impl_db_enum_contributor_via_variant_names!(
 
 impl_db_enum_contributor_via_variant_names!(
     EntitySource,
-    HostNameSource,
+    ClientProbe,
     HostVirtualization,
     ServiceVirtualization,
     DiscoveryType,
@@ -688,7 +709,7 @@ impl SqlValue {
                 MacAddress::contribute(out)
             }
             SqlValueDiscriminants::EntitySource => EntitySource::contribute(out),
-            SqlValueDiscriminants::HostNameSource => HostNameSource::contribute(out),
+            SqlValueDiscriminants::AttributeSource => AttributeSource::contribute(out),
             SqlValueDiscriminants::EntityDiscriminant => EntityDiscriminants::contribute(out),
             SqlValueDiscriminants::ServiceDefinition => {
                 <Box<dyn ServiceDefinition>>::contribute(out)

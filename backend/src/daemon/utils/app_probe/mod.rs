@@ -35,10 +35,15 @@ use tokio_util::sync::CancellationToken;
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::types::base::DiscoveryCriticalError;
 use crate::daemon::utils::scanner::{ScanConcurrencyController, batch_scan};
+use crate::server::hosts::r#impl::attributes::{
+    HostFirmwareRevisionAttributed, HostManufacturerAttributed, HostModelAttributed,
+    HostSerialNumberAttributed,
+};
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::definitions::ServiceDefinitionRegistry;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::services::r#impl::patterns::ClientProbe;
+use crate::server::shared::attribution::{AttributeSource, AttributeValue, Attributed};
 
 /// Everything a probe is allowed to know about its target.
 ///
@@ -93,58 +98,65 @@ pub enum AppProbeOutcome {
 /// compile error rather than a silently empty column.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceIdentity {
-    pub manufacturer: Option<String>,
-    pub model: Option<String>,
-    pub serial_number: Option<String>,
+    /// Not a plain string, because the four fields do not all come from the same place. A probe
+    /// that reads a vendor *name* off the device and one that synthesises it from a numeric ID are
+    /// making different claims, and only the value's own source can say which — see
+    /// `ethernet_ip.rs`, whose `manufacturer` is our construction rather than the device's word.
+    pub manufacturer: Option<HostManufacturerAttributed>,
+    pub model: Option<HostModelAttributed>,
+    pub serial_number: Option<HostSerialNumberAttributed>,
     /// Firmware or product revision, as the device words it — Modbus MajorMinorRevision,
     /// EtherNet/IP `<major>.<minor>`.
-    pub firmware_revision: Option<String>,
+    pub firmware_revision: Option<HostFirmwareRevisionAttributed>,
 }
 
 impl DeviceIdentity {
     /// Fold this identity into the host currently being scanned.
     ///
-    /// First-write-wins throughout, via the existing `with_*` setters, and applied *after* the
-    /// credentialed integrations have run — so an SNMP or controller read of the same field keeps
-    /// its value. That is the same rule and the same reasoning as
-    /// [`ControllerIdentity::enrich`](crate::daemon::discovery::integration::controller::ControllerIdentity::enrich):
-    /// a credentialed read reaches the device's own inventory, while a probe sees only what a
-    /// discovery packet happens to carry.
+    /// Each value carries the source that produced it, so the ordering against a credentialed
+    /// read is stated rather than resting on the app-probe stage running last. An industrial
+    /// protocol is the device's own, which outranks a generic MIB — so a Modbus vendor name does
+    /// displace SNMP's, deliberately. What does not is a manufacturer we synthesised from a vendor
+    /// ID: that is an inference, and it says so.
     pub fn enrich(&self, host_data: &mut HostData) {
         let Self {
             manufacturer,
             model,
             serial_number,
             firmware_revision,
-        } = self.clone().normalized();
+        } = self.clone();
 
         if let Some(manufacturer) = manufacturer {
-            host_data.with_manufacturer(manufacturer);
+            Attributed::apply(&mut host_data.host.base.manufacturer, manufacturer);
         }
         if let Some(model) = model {
-            host_data.with_model(model);
+            Attributed::apply(&mut host_data.host.base.model, model);
         }
         if let Some(serial_number) = serial_number {
-            host_data.with_serial_number(serial_number);
+            Attributed::apply(&mut host_data.host.base.serial_number, serial_number);
         }
         if let Some(firmware_revision) = firmware_revision {
-            host_data.with_firmware_revision(firmware_revision);
+            Attributed::apply(
+                &mut host_data.host.base.firmware_revision,
+                firmware_revision,
+            );
         }
     }
+}
 
-    /// Devices routinely pad a fixed-width identity field with spaces or return it empty. An empty
-    /// string is absence, not a value, and must not displace something real.
-    fn normalized(self) -> Self {
-        fn blank_to_none(v: Option<String>) -> Option<String> {
-            v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
-        }
-        Self {
-            manufacturer: blank_to_none(self.manufacturer),
-            model: blank_to_none(self.model),
-            serial_number: blank_to_none(self.serial_number),
-            firmware_revision: blank_to_none(self.firmware_revision),
-        }
-    }
+/// Wrap one identity string with the source that produced it, dropping it if the device sent
+/// nothing usable.
+///
+/// Devices routinely pad a fixed-width identity field with spaces or return it empty, and an empty
+/// string is absence rather than a value. Trimming here rather than at each parse site keeps the
+/// two probes from disagreeing about it; the applier then refuses whatever is still blank.
+pub fn identity_field<T: AttributeValue + From<String>>(
+    value: Option<String>,
+    source: AttributeSource,
+) -> Option<Attributed<T>> {
+    let value = value?.trim().to_string();
+    let carrier = Attributed::new(T::from(value), source);
+    (!carrier.is_blank()).then_some(carrier)
 }
 
 /// A non-credentialed application probe.
@@ -264,6 +276,7 @@ pub async fn scan_app_probes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::services::r#impl::patterns::ClientProbe;
 
     /// Every probe is reachable only through a service definition, so this also asserts that each
     /// one has a definition behind it.
@@ -286,18 +299,26 @@ mod tests {
         );
     }
 
+    /// Devices routinely pad a fixed-width identity field with spaces or return it empty, and an
+    /// empty string is absence rather than a value — it must not occupy a rung where it would
+    /// block a real reading. `identity_field` is where both probes get that, so neither can
+    /// forget it.
     #[test]
     fn blank_identity_fields_are_absence_not_values() {
-        let identity = DeviceIdentity {
-            manufacturer: Some("   ".to_string()),
-            model: Some("".to_string()),
-            serial_number: Some("  FOC1234X5YZ  ".to_string()),
-            firmware_revision: None,
-        }
-        .normalized();
+        let source = AttributeSource::Probe(ClientProbe::ModbusTcp);
 
-        assert_eq!(identity.manufacturer, None);
-        assert_eq!(identity.model, None);
-        assert_eq!(identity.serial_number, Some("FOC1234X5YZ".to_string()));
+        let blank: Option<HostManufacturerAttributed> =
+            identity_field(Some("   ".to_string()), source);
+        assert_eq!(blank, None);
+
+        let empty: Option<HostModelAttributed> = identity_field(Some(String::new()), source);
+        assert_eq!(empty, None);
+
+        let padded: Option<HostSerialNumberAttributed> =
+            identity_field(Some("  FOC1234X5YZ  ".to_string()), source);
+        assert_eq!(
+            padded.map(|c| c.value().0.clone()),
+            Some("FOC1234X5YZ".to_string())
+        );
     }
 }

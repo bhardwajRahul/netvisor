@@ -20,10 +20,10 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{AsRefStr, EnumDiscriminants};
 use uuid::Uuid;
 
+use crate::server::shared::attribution::AttributeSource;
 use crate::server::shared::events::EventFlags;
 use crate::server::shared::events::traits::{EventFilter, Operation};
 use crate::server::shared::events::types::EventLogLevel;
-use crate::server::subnets::r#impl::types::SubnetCidrSource;
 
 /// What a reading did to a range that had been inferred.
 ///
@@ -57,8 +57,8 @@ pub struct SubnetCorrectionScope {
     pub subnet_id: Uuid,
     pub from_cidr: String,
     pub to_cidr: String,
-    pub from_source: SubnetCidrSource,
-    pub to_source: SubnetCidrSource,
+    pub from_source: AttributeSource,
+    pub to_source: AttributeSource,
 }
 
 impl Operation for SubnetCorrection {

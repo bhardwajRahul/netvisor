@@ -1,5 +1,6 @@
 //! Host creation from API requests and the create-with-children path.
 use super::*;
+use crate::server::shared::attribution::AttributeSource;
 
 use crate::server::subnets::service::Placement;
 
@@ -130,7 +131,7 @@ impl HostService {
         // Create host base with SNMP fields. The name is applied below rather than assigned
         // here: a person typed it, and that is the top of the ladder.
         let mut host_base = HostBase {
-            name: HostName::default(),
+            name: HostName::unnamed(),
             network_id,
             hostname,
             description,
@@ -139,12 +140,20 @@ impl HostService {
             virtualization_service_id,
             hidden,
             tags,
-            sys_descr,
-            sys_object_id,
-            sys_location,
-            sys_contact,
-            management_url,
-            chassis_id,
+            // A person filling in the create form is the definition of `Manual`: nothing discovery
+            // reads may displace what they typed.
+            sys_descr: sys_descr
+                .map(|v| Attributed::new(HostSysDescrValue(v), AttributeSource::Manual)),
+            sys_object_id: sys_object_id
+                .map(|v| Attributed::new(HostSysObjectIdValue(v), AttributeSource::Manual)),
+            sys_location: sys_location
+                .map(|v| Attributed::new(HostSysLocationValue(v), AttributeSource::Manual)),
+            sys_contact: sys_contact
+                .map(|v| Attributed::new(HostSysContactValue(v), AttributeSource::Manual)),
+            management_url: management_url
+                .map(|v| Attributed::new(HostManagementUrlValue(v), AttributeSource::Manual)),
+            chassis_id: chassis_id
+                .map(|v| Attributed::new(HostChassisIdValue(v), AttributeSource::Manual)),
             sys_name: None,
             manufacturer: None,
             model: None,
@@ -152,7 +161,7 @@ impl HostService {
             firmware_revision: None,
             credential_assignments,
         };
-        host_base.apply_name(HostName::Manual(name.clone()));
+        host_base.apply_name(HostName::manual(name.clone()));
         let host = Host::new(host_base);
 
         // Build ip_addresses with client-provided IDs
@@ -371,7 +380,7 @@ impl HostService {
             .find_matching_host_by_ip_addresses(
                 &host.base.network_id,
                 &ip_addresses,
-                host.base.chassis_id.as_deref(),
+                host.base.chassis_id.as_ref().map(|c| c.value().0.as_str()),
             )
             .await?;
 
@@ -665,7 +674,7 @@ impl HostService {
         // that may have moved subnets (e.g., Docker container with DHCP, subnet reconfiguration).
         let incoming_mac_counts: HashMap<MacAddress, usize> = ip_addresses
             .iter()
-            .filter_map(|i| i.base.mac_address)
+            .filter_map(|i| mac_of(&i.base.mac_address))
             .fold(HashMap::new(), |mut acc, mac| {
                 *acc.entry(mac).or_insert(0) += 1;
                 acc
@@ -791,12 +800,12 @@ impl HostService {
                 //   so it's a standalone ip_address, not a VLAN sub-interface
                 // - existing_by_mac.len() == 1: only one existing interface has this MAC,
                 //   so there's an unambiguous 1:1 match (not a N:1 VLAN consolidation)
-                if let Some(mac) = &ip_address.base.mac_address
-                    && incoming_mac_counts.get(mac).copied().unwrap_or(0) == 1
+                if let Some(mac) = mac_of(&ip_address.base.mac_address)
+                    && incoming_mac_counts.get(&mac).copied().unwrap_or(0) == 1
                 {
                     let mac_filter =
                         StorableFilter::<IPAddress>::new_from_host_ids(&[ip_address.base.host_id])
-                            .mac_address(mac)
+                            .mac_address(&mac)
                             .live();
                     let existing_by_mac: Vec<IPAddress> =
                         self.ip_address_service.get_all(mac_filter).await?;
@@ -1566,12 +1575,16 @@ mod tests {
     use crate::server::credentials::r#impl::types::CredentialAssignment;
     use crate::server::ip_addresses::r#impl::base::IPAddressBase;
     use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
 
     fn subnet(id: Uuid, cidr: &str) -> Subnet {
         Subnet {
             id,
             base: SubnetBase {
-                cidr: cidr.parse().expect("valid test CIDR"),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(cidr.parse().expect("valid test CIDR")),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 ..Default::default()
             },
             ..Default::default()

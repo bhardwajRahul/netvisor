@@ -214,12 +214,16 @@
 	}
 
 	/**
-	 * Keep the range as it stands. The server takes the higher rung of the ladder on update, so
-	 * `Confirmed` sticks and the next scan cannot put the row back to `Inferred`.
+	 * Keep the range as it stands. The server takes the higher rung of the ladder on update, so a
+	 * range a person confirmed sticks and the next scan cannot put the row back to an inference.
+	 *
+	 * `Manual` is that rung on the shared ladder — the same one a value typed into any other field
+	 * carries, which is what makes "nothing discovery reads displaces it" one rule rather than a
+	 * per-field convention.
 	 */
 	async function handleConfirmRange(subnet: Subnet) {
 		try {
-			await updateSubnetMutation.mutateAsync({ ...subnet, cidr_source: 'Confirmed' });
+			await updateSubnetMutation.mutateAsync({ ...subnet, cidr_source: { type: 'Manual' } });
 			handleCloseProvisionalRange();
 		} catch {
 			// Error handled by mutation

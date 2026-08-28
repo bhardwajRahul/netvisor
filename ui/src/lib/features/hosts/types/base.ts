@@ -50,20 +50,24 @@ export interface HostFormData {
 	hidden: boolean;
 	tags: string[];
 
-	// SNMP fields (populated by discovery, read-only in UI)
-	sys_descr: string | null;
-	sys_object_id: string | null;
-	sys_location: string | null;
-	sys_contact: string | null;
-	management_url: string | null;
-	chassis_id: string | null;
-	sys_name: string | null;
+	// SNMP fields (populated by discovery, read-only in UI).
+	//
+	// Optional rather than nullable: each of these now travels with the source that produced it,
+	// and an attribute with no value has no source either — the pair is present or it is not,
+	// with nothing in between for a `null` to mean.
+	sys_descr?: string;
+	sys_object_id?: string;
+	sys_location?: string;
+	sys_contact?: string;
+	management_url?: string;
+	chassis_id?: string;
+	sys_name?: string;
 
 	// Hardware identity (ENTITY-MIB or a controller integration, read-only in UI)
-	manufacturer: string | null;
-	model: string | null;
-	serial_number: string | null;
-	firmware_revision: string | null;
+	manufacturer?: string;
+	model?: string;
+	serial_number?: string;
+	firmware_revision?: string;
 
 	// Credential assignments (user-editable, from junction table)
 	credential_assignments: CredentialAssignment[];

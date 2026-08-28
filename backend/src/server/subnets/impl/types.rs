@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use strum::{Display, EnumDiscriminants, EnumIter, EnumString, IntoStaticStr};
+use strum::{Display, EnumDiscriminants, EnumIter, IntoStaticStr};
 use utoipa::ToSchema;
 
 use crate::server::shared::{
@@ -11,57 +11,6 @@ use crate::server::shared::{
         metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
     },
 };
-
-/// How far a subnet's CIDR can be trusted, and therefore whether an operator is asked to confirm it.
-///
-/// **Declaration order is the precedence order.** `Ord` is derived from it and is the whole
-/// enforcement mechanism — the same arrangement [`HostNameSource`] uses for names, and for the
-/// same reason: a rung inserted at its rank propagates to every comparison, with no per-call-site
-/// precedence to keep in sync.
-///
-/// [`HostNameSource`]: crate::server::hosts::r#impl::name::HostNameSource
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Serialize,
-    Deserialize,
-    Eq,
-    PartialEq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Display,
-    EnumString,
-    EnumIter,
-    IntoStaticStr,
-    Default,
-    ToSchema,
-)]
-pub enum SubnetCidrSource {
-    /// Guessed from the addresses LLDP/CDP neighbours publish for themselves, because nothing this
-    /// network has scanned holds an address in the range.
-    ///
-    /// LLDP carries no prefix — there is no netmask TLV in 802.1AB — so the range around such an
-    /// address is a convention (`/24`, or `/64` for IPv6) rather than something read off a device.
-    /// It is good enough to place a host and draw a link, and not good enough to assert, which is
-    /// what the badge and the confirm action exist for.
-    Inferred,
-    /// Read from something that knows: a device's own `ipAdEntNetMask`, a daemon's own interface,
-    /// a container runtime's IPAM config, or a subnet Scanopy seeded. Not a guess.
-    #[default]
-    Observed,
-    /// A person entered the range or confirmed the one Scanopy proposed. Nothing a scan reads
-    /// displaces it — the same rule `corrects_container_bridge_guess` already applies to
-    /// `subnet_type`, which discovery must never silently overwrite.
-    Confirmed,
-}
-
-impl HasId for SubnetCidrSource {
-    fn id(&self) -> &'static str {
-        self.into()
-    }
-}
 
 #[derive(
     Debug,

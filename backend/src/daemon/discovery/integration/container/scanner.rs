@@ -1,3 +1,5 @@
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
+use crate::server::shared::attribution::AttributeSource;
 use anyhow::{Error, Result, anyhow};
 use bollard::{
     Docker,
@@ -1479,10 +1481,19 @@ exec(\\\"try:\\\\n p=urllib.request.urlopen(r,context=c,timeout=1)\\\\nexcept Ex
                                         )
                                     {
                                         // Parse MAC address from Docker network endpoint
+                                        // The runtime's own record of the endpoint it created.
                                         let mac_address = endpoint
                                             .mac_address
                                             .as_ref()
-                                            .and_then(|mac_str| mac_str.parse::<MacAddress>().ok());
+                                            .and_then(|mac_str| mac_str.parse::<MacAddress>().ok())
+                                            .map(|m| {
+                                                MacEvidence::new(
+                                                    MacEvidenceValue(m),
+                                                    AttributeSource::Probe(
+                                                        self.runtime.client_probe(),
+                                                    ),
+                                                )
+                                            });
 
                                         return Some((
                                             IPAddress::new(IPAddressBase {
@@ -1771,6 +1782,8 @@ mod tests {
     use crate::server::services::r#impl::categories::ServiceCategory;
     use crate::server::services::r#impl::definitions::ServiceDefinition;
     use crate::server::services::r#impl::patterns::Pattern;
+    use crate::server::shared::attribution::AttributeSource;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
 
     #[derive(PartialEq, Eq, Hash, Clone)]
     struct TestServiceDef;
@@ -1968,7 +1981,10 @@ mod tests {
             id: Uuid::new_v4(),
             base: crate::server::subnets::r#impl::base::SubnetBase {
                 name: name.to_string(),
-                cidr: cidr.parse().expect("valid test CIDR"),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(cidr.parse().expect("valid test CIDR")),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 ..Default::default()
             },
             ..Default::default()

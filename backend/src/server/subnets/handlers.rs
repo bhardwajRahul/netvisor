@@ -2,6 +2,7 @@ use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Or, Viewer};
 use crate::server::ip_addresses::r#impl::base::IPAddress;
 use crate::server::networks::r#impl::Network;
+use crate::server::shared::attribution::AttributeSource;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
@@ -15,8 +16,10 @@ use crate::server::shared::types::api::{
     ApiError, ApiErrorResponse, ApiJson, ApiResponse, ApiResult, PaginatedApiResponse,
 };
 use crate::server::shared::types::entities::EntitySource;
-use crate::server::subnets::r#impl::types::SubnetCidrSource;
-use crate::server::{config::AppState, subnets::r#impl::base::Subnet};
+use crate::server::{
+    config::AppState,
+    subnets::r#impl::base::{Subnet, SubnetCidr},
+};
 use axum::extract::{Path, State};
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
@@ -367,7 +370,8 @@ async fn update_subnet(
         // corrected range being re-corrected on the next discovery. This lives here rather than in
         // `preserve_immutable_fields` because here it is *true* — the route is `Authorized<Member>`
         // and no daemon can reach it — whereas storage sees every writer alike.
-        subnet.base.cidr_source = SubnetCidrSource::Confirmed;
+        subnet.base.cidr =
+            SubnetCidr::new(subnet.base.cidr.value().clone(), AttributeSource::Manual);
 
         // CIDR is changing - validate that all existing ip_addresses are within the new CIDR
         let filter = StorableFilter::<IPAddress>::new_from_subnet_id(&id);

@@ -251,7 +251,10 @@ impl ViewBuilder for L2Builder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::hosts::r#impl::name::HostName;
+    use crate::server::hosts::r#impl::attributes::HostChassisIdValue;
+    use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
+    use crate::server::services::r#impl::patterns::ClientProbe;
+    use crate::server::shared::attribution::{AttributeSource, Attributed};
     use crate::server::{
         hosts::r#impl::base::{Host, HostBase},
         interfaces::r#impl::base::{Interface, InterfaceBase, Neighbor, if_type},
@@ -274,7 +277,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: HostName::Manual(name.to_string()),
+                name: HostName::manual(name.to_string()),
                 ..Default::default()
             },
             ..Default::default()
@@ -366,21 +369,24 @@ mod tests {
 
     /// A host container says which device it is even when the host carries no name.
     ///
-    /// `HostName::Unnamed` formats as the empty string, so the header used to be `Some("")`. That
+    /// `HostName::unnamed()` formats as the empty string, so the header used to be `Some("")`. That
     /// is not absence: every consumer reads it with `??`, so the container drew a blank title and
     /// no fallback ever fired. Unnamed hosts are a live state — controller-imported devices with
     /// no assigned name sit at exactly that rung — and L2 is where they cluster.
     #[test]
     fn an_unnamed_host_container_falls_back_to_the_evidence_it_has() {
         let mut by_chassis = make_host("");
-        by_chassis.base.name = HostName::Unnamed;
-        by_chassis.base.chassis_id = Some("00:11:22:33:44:55".to_string());
+        by_chassis.base.name = HostName::unnamed();
+        by_chassis.base.chassis_id = Some(Attributed::new(
+            HostChassisIdValue("00:11:22:33:44:55".to_string()),
+            AttributeSource::Probe(ClientProbe::Snmp),
+        ));
 
         let mut by_address = make_host("");
-        by_address.base.name = HostName::Unnamed;
+        by_address.base.name = HostName::unnamed();
 
         let mut anonymous = make_host("");
-        anonymous.base.name = HostName::Unnamed;
+        anonymous.base.name = HostName::unnamed();
 
         // A neighbour on each of the other two qualifies all three: the far end is a link target.
         let anchor = make_if_entry(by_chassis.id, 1, if_type::ETHERNET_CSMA_CD, None);

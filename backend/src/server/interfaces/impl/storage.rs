@@ -1,10 +1,12 @@
 use chrono::{DateTime, Utc};
-use mac_address::MacAddress;
 use serde::Serialize;
 use sqlx::Row;
 use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
+use crate::server::ip_addresses::r#impl::base::{MacEvidenceValue, mac_of};
+use crate::server::shared::attribution::Attributed;
+use crate::server::shared::storage::attributed;
 use crate::server::{
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase, Neighbor},
     shared::{
@@ -144,6 +146,8 @@ impl Storable for Interface {
             None => (None, None),
         };
 
+        let [mac_value, mac_source] = attributed::optional_params(&mac_address);
+
         let columns = vec![
             "id",
             "host_id",
@@ -157,6 +161,7 @@ impl Storable for Interface {
             "admin_status",
             "oper_status",
             "mac_address",
+            "mac_address_source",
             "ip_address_id",
             "neighbor_interface_id",
             "neighbor_host_id",
@@ -196,7 +201,8 @@ impl Storable for Interface {
             SqlValue::OptionalI64(speed_bps),
             SqlValue::OptionalI32(admin_status.map(i32::from)),
             SqlValue::OptionalI32(oper_status.map(i32::from)),
-            SqlValue::OptionalMacAddress(mac_address),
+            mac_value,
+            mac_source,
             SqlValue::OptionalUuid(ip_address_id),
             SqlValue::OptionalUuid(neighbor_interface_id),
             SqlValue::OptionalUuid(neighbor_host_id),
@@ -240,9 +246,7 @@ impl Storable for Interface {
         let speed_bps: Option<i64> = row.get("speed_bps");
 
         // Read mac_address from MACADDR column
-        let mac_address: Option<MacAddress> = row
-            .try_get("mac_address")
-            .map_err(|e| anyhow::anyhow!("Failed to read mac_address: {}", e))?;
+        let mac_address = attributed::read_optional::<MacEvidenceValue>(row)?;
 
         // Parse neighbor columns into Neighbor enum
         let neighbor_interface_id: Option<Uuid> = row.get("neighbor_interface_id");
@@ -362,7 +366,7 @@ impl Entity for Interface {
             speed_bps: self.base.speed_bps,
             admin_status: csv_status(self.base.admin_status),
             oper_status: csv_status(self.base.oper_status),
-            mac_address: self.base.mac_address.map(|m| m.to_string()),
+            mac_address: mac_of(&self.base.mac_address).map(|m| m.to_string()),
             ip_address_id: self.base.ip_address_id,
             neighbor: self.base.neighbor.as_ref().map(|n| match n {
                 Neighbor::Interface(id) => format!("Interface:{}", id),
@@ -433,10 +437,15 @@ impl Entity for Interface {
 
     fn preserve_immutable_fields(&mut self, existing: &Self) {
         self.created_at = existing.created_at;
-        // MAC address is immutable once set (from SNMP ifPhysAddress)
-        if existing.base.mac_address.is_some() {
-            self.base.mac_address = existing.base.mac_address;
+        // The MAC merges by rung rather than being pinned to whatever wrote it first. Pinning meant
+        // a MAC a router's ARP cache reported could never be corrected by the device answering for
+        // itself — first-write-wins under another name, and the same failure the host attributes
+        // had. `MacEvidenceValue` is not refreshable, so an equal-rung re-read still cannot move it.
+        let mut merged = existing.base.mac_address.clone();
+        if let Some(incoming) = self.base.mac_address.clone() {
+            Attributed::apply(&mut merged, incoming);
         }
+        self.base.mac_address = merged;
         // Keep a previously-captured if_name if the current scan happens to lack it
         // (partial SNMP response, or device that stopped reporting ifXTable). Losing
         // if_name silently breaks tier-1 matching on the next scan.
@@ -575,6 +584,14 @@ impl DiscoveryTracked for Interface {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
+    use crate::server::services::r#impl::patterns::ClientProbe;
+    use crate::server::shared::attribution::AttributeSource;
+
+    /// What a credentialed SNMP walk claims for a MAC it read off the device itself. Named once so
+    /// a fixture cannot assert a provenance no real scan produces.
+    const SNMP_MAC: AttributeSource = AttributeSource::Probe(ClientProbe::Snmp);
+
     use mac_address::MacAddress;
 
     fn make_interface(if_index: i32, if_name: Option<&str>, mac: Option<&str>) -> Interface {
@@ -583,7 +600,9 @@ mod tests {
         base.network_id = Uuid::new_v4();
         base.if_index = Some(if_index);
         base.if_name = if_name.map(String::from);
-        base.mac_address = mac.map(|s| s.parse::<MacAddress>().unwrap());
+        base.mac_address = mac
+            .map(|s| s.parse::<MacAddress>().unwrap())
+            .map(|m| MacEvidence::new(MacEvidenceValue(m), SNMP_MAC));
         Interface::new(base)
     }
 

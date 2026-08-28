@@ -1,4 +1,5 @@
 pub mod api;
+pub mod attributes;
 pub mod base;
 pub mod handlers;
 pub mod legacy;

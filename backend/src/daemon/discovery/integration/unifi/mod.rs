@@ -369,8 +369,10 @@ fn interface_data_complete() -> InterfaceDataComplete {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::shared::attribution::AttributeSource;
     use crate::server::shared::types::entities::EntitySource;
     use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use crate::server::subnets::r#impl::types::SubnetType;
     use uuid::Uuid;
 
@@ -379,7 +381,10 @@ mod tests {
             base: SubnetBase {
                 name: cidr.to_string(),
                 network_id: Uuid::nil(),
-                cidr: cidr.parse().expect("valid CIDR"),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(cidr.parse().expect("valid CIDR")),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 subnet_type: SubnetType::Lan,
                 source: EntitySource::System,
                 ..Default::default()

@@ -165,6 +165,7 @@ mod inference;
 mod reciprocal;
 
 use crate::server::interfaces::r#impl::base::InterfaceBase;
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
 use crate::server::subnets::r#impl::inference::UnplacedFarEnd;
 
 use reciprocal::PortBinding;
@@ -620,7 +621,10 @@ impl HostService {
                 host_id,
                 if_descr: descr,
                 if_name: name,
-                mac_address,
+                // The port id a neighbour advertised for itself. Announced on a link anything
+                // could have spoken on, not something we asked the far end for.
+                mac_address: mac_address
+                    .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::LldpChassisId)),
                 ..Default::default()
             });
 

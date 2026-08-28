@@ -1,3 +1,4 @@
+use crate::server::shared::attribution::AttributeMethod;
 use crate::server::shared::oui;
 use crate::server::{
     services::{
@@ -157,7 +158,21 @@ impl MatchConfidence {
 /// non-credentialed [`AppProbe`](crate::daemon::utils::app_probe::AppProbe)s. Every variant needs
 /// one — a variant nothing produces gives a service definition a pattern that can never match, and
 /// `every_client_probe_variant_has_a_producer` is what now says so.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum_macros::EnumIter)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    strum_macros::EnumIter,
+    strum_macros::EnumString,
+    strum_macros::IntoStaticStr,
+    strum_macros::VariantNames,
+)]
 pub enum ClientProbe {
     Docker,
     /// A completed gNMI `Get` against the device. A gRPC listener accepts a TCP connect whatever
@@ -177,6 +192,26 @@ pub enum ClientProbe {
     OpcUa,
     /// A CIP ListIdentity reply came back with our sender context echoed.
     EtherNetIp,
+}
+
+impl ClientProbe {
+    /// Where this probe's own structured answers sit on the provenance ladder.
+    ///
+    /// Exhaustive and with no default, so adding a probe forces the tier decision here — at the
+    /// probe's own definition — rather than in `AttributeSource::method`, where it would be easy
+    /// to add a variant and never revisit the match.
+    pub fn method(&self) -> AttributeMethod {
+        use AttributeMethod as M;
+        match self {
+            // A runtime or controller describing something it manages: known speaker, not the
+            // subject.
+            Self::Docker | Self::Podman | Self::UnifiController | Self::InstantOn => M::Reported,
+            // We chose the address and the transport correlated the answer.
+            Self::Snmp | Self::Gnmi => M::Queried,
+            // Same, over the device's own product protocol.
+            Self::ModbusTcp | Self::EtherNetIp | Self::OpcUa => M::Native,
+        }
+    }
 }
 
 /// A device reported by a management controller the daemon authenticated to, rather than one
@@ -726,7 +761,9 @@ impl Pattern<'_> {
             }
 
             Pattern::MacVendor(vendor_string) => {
-                if let Some(mac_address) = ip_address.base.mac_address {
+                if let Some(mac_address) =
+                    crate::server::ip_addresses::r#impl::base::mac_of(&ip_address.base.mac_address)
+                {
                     let mac_str = mac_address.to_string();
                     let Some(entry) = oui::lookup_by_mac(&mac_str) else {
                         return Err(anyhow!(
@@ -1158,8 +1195,10 @@ mod tests {
 
     use crate::server::credentials::r#impl::mapping::SnmpCredentialMapping;
     use crate::server::discovery::r#impl::types::{DiscoveryType, HostNamingFallback};
+    use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
     use crate::server::services::r#impl::base::Service;
     use crate::server::services::r#impl::virtualization::ServiceVirtualization;
+    use crate::server::shared::attribution::AttributeSource;
     use crate::tests::{network, organization};
     use uuid::Uuid;
 
@@ -1607,7 +1646,10 @@ mod tests {
     fn test_mac_vendor_pattern_match() {
         let mut ctx = TestContext::new();
         // Set a known Sonos MAC address (B8:E9:37 is a Sonos OUI prefix)
-        ctx.ip_address.base.mac_address = Some("B8:E9:37:00:00:01".parse().expect("valid MAC"));
+        ctx.ip_address.base.mac_address = Some(MacEvidence::new(
+            MacEvidenceValue("B8:E9:37:00:00:01".parse().expect("valid MAC")),
+            AttributeSource::ArpReply,
+        ));
 
         let ports = vec![];
         let baseline = ctx.create_baseline_params(&ports);
@@ -1650,7 +1692,10 @@ mod tests {
         use crate::server::services::definitions::unifi_switch::UnifiSwitch;
 
         let mut ctx = TestContext::new();
-        ctx.ip_address.base.mac_address = Some("78:8A:20:00:00:01".parse().expect("valid MAC"));
+        ctx.ip_address.base.mac_address = Some(MacEvidence::new(
+            MacEvidenceValue("78:8A:20:00:00:01".parse().expect("valid MAC")),
+            AttributeSource::ArpReply,
+        ));
 
         let ports = vec![];
         let pattern = UnifiSwitch.discovery_pattern();

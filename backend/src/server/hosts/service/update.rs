@@ -99,8 +99,8 @@ impl HostService {
         // whole object, so stamping `Manual` on every save would freeze a derived name — a host
         // named after its detected service could then never adopt its controller's name because
         // someone once toggled "hidden".
-        if updated_host.base.name != name {
-            updated_host.base.apply_name(HostName::Manual(name));
+        if updated_host.base.name.value().as_str() != name {
+            updated_host.base.apply_name(HostName::manual(name));
         }
 
         if let Some(org_id) = authentication.organization_id() {

@@ -10,6 +10,9 @@
 //! lowercase-colon form `from_snmp` does — the raw-string `hosts.chassis_id` fallback compares
 //! by string equality, so a UniFi-sourced and an SNMP-sourced chassis ID must be byte-identical.
 
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
+use crate::server::services::r#impl::patterns::ClientProbe;
+use crate::server::shared::attribution::AttributeSource;
 use crate::server::subnets::r#impl::inference::placeable_subnet;
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -83,6 +86,7 @@ fn map_device(
     let device_mac = device.mac.as_deref().and_then(canonical_mac);
 
     let identity = ControllerIdentity {
+        probe: ClientProbe::UnifiController,
         name: device.name.clone(),
         // Adopted infrastructure has no separate reported hostname; the controller's name is
         // the only one there is.
@@ -101,7 +105,13 @@ fn map_device(
         host_id: Uuid::nil(),   // server assigns
         subnet_id: Uuid::nil(), // server places
         ip_address: ip,
-        mac_address: device_mac.as_deref().and_then(|m| m.parse().ok()),
+        // The controller reporting a device it manages, not the device answering us.
+        mac_address: device_mac.as_deref().and_then(|m| m.parse().ok()).map(|m| {
+            MacEvidence::new(
+                MacEvidenceValue(m),
+                AttributeSource::Probe(ClientProbe::UnifiController),
+            )
+        }),
         name: None,
         position: 0,
     });
@@ -155,7 +165,13 @@ fn map_interfaces(
                 .mac
                 .as_deref()
                 .and_then(canonical_mac)
-                .and_then(|m| m.parse().ok()),
+                .and_then(|m| m.parse().ok())
+                .map(|m| {
+                    MacEvidence::new(
+                        MacEvidenceValue(m),
+                        AttributeSource::Probe(ClientProbe::UnifiController),
+                    )
+                }),
             ..Default::default()
         }));
     }
@@ -185,7 +201,13 @@ fn port_to_interface(port: &UnifiPort, network_id: Uuid, device_mac: Option<&str
     // gateways report for WAN/LAN) is recorded.
     let mac_address = port_mac
         .filter(|m| device_mac != Some(m.as_str()))
-        .and_then(|m| m.parse().ok());
+        .and_then(|m| m.parse().ok())
+        .map(|m| {
+            MacEvidence::new(
+                MacEvidenceValue(m),
+                AttributeSource::Probe(ClientProbe::UnifiController),
+            )
+        });
 
     let fdb_macs: Vec<String> = port
         .mac_table
@@ -336,6 +358,7 @@ pub fn map_clients(
         .iter()
         .filter_map(|station| {
             let identity = ControllerIdentity {
+                probe: ClientProbe::UnifiController,
                 name: station.name.clone(),
                 hostname: station.hostname.clone(),
                 chassis_id: None,
@@ -359,8 +382,10 @@ pub fn map_clients(
 mod tests {
     use super::*;
     use crate::daemon::discovery::integration::unifi::types::UnifiEnvelope;
+    use crate::server::ip_addresses::r#impl::base::mac_of;
     use crate::server::shared::types::entities::EntitySource;
     use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use crate::server::subnets::r#impl::types::SubnetType;
 
     // ------------------------------------------------------------------------------------
@@ -395,7 +420,10 @@ mod tests {
             base: SubnetBase {
                 name: "Test".to_string(),
                 network_id,
-                cidr: "192.168.20.0/24".parse().expect("valid CIDR"),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue("192.168.20.0/24".parse().expect("valid CIDR")),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 subnet_type: SubnetType::Lan,
                 source: EntitySource::System,
                 ..Default::default()
@@ -414,7 +442,10 @@ mod tests {
             base: SubnetBase {
                 name: name.to_string(),
                 network_id,
-                cidr: "0.0.0.0/0".parse().expect("valid CIDR"),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue("0.0.0.0/0".parse().expect("valid CIDR")),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 subnet_type: SubnetType::Internet,
                 source: EntitySource::System,
                 ..Default::default()
@@ -693,10 +724,7 @@ mod tests {
         let uplink = &ap.interfaces[0];
         assert_eq!(uplink.base.if_index, Some(1));
         assert_eq!(
-            uplink
-                .base
-                .mac_address
-                .map(|m| m.to_string().to_lowercase()),
+            mac_of(&uplink.base.mac_address).map(|m| m.to_string().to_lowercase()),
             Some("f0:9f:c2:aa:00:12".to_string()),
             "an AP's eth0 MAC is genuinely distinct, unlike a switch's repeated port MACs"
         );

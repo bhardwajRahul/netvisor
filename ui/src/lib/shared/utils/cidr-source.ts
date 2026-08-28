@@ -14,6 +14,7 @@
 
 import { CloudAlert } from 'lucide-svelte';
 
+import attributeMethods from '$lib/data/attribute-methods.json';
 import type { components } from '$lib/api/schema';
 import type { CardFieldItem, TagProps } from '$lib/shared/components/data/types';
 import {
@@ -23,27 +24,49 @@ import {
 } from '$lib/paraglide/messages';
 import { toColor } from '$lib/shared/utils/styling';
 
-/** Derived from the backend enum rather than restated, so a new rung cannot drift out of sync. */
-export type SubnetCidrSource = components['schemas']['SubnetCidrSource'];
+/** Derived from the backend enum rather than restated, so a new source cannot drift out of sync. */
+export type AttributeSource = components['schemas']['AttributeSource'];
 
 /**
  * The shape these read: any subnet, and any older payload that predates the column.
  *
  * Optional rather than required so a historical scan record or a cached response without it reads
- * as settled instead of throwing — an absent rung is not a guess.
+ * as settled instead of throwing — an absent source is not a guess.
  */
-type WithCidrSource = { cidr_source?: SubnetCidrSource };
+type WithCidrSource = { cidr_source?: AttributeSource };
+
+/**
+ * Every source that sits at the `Inferred` tier, as the backend groups them.
+ *
+ * Read from the metadata fixture rather than matched against a variant name here. The tier a source
+ * belongs to is a backend decision — it is the same `AttributeSource::method()` the applier orders
+ * by — and the previous version of this file hardcoded `=== 'Inferred'`, which meant a source added
+ * at that tier silently stopped raising the badge. Keyed on the whole source, probe included,
+ * because `Probe(Snmp)` and `Probe(Docker)` sit at different tiers.
+ */
+const INFERRED_SOURCES: ReadonlySet<string> = new Set(
+	(
+		(attributeMethods.find((method) => method.id === 'Inferred')?.metadata?.sources ??
+			[]) as AttributeSource[]
+	).map(sourceKey)
+);
+
+/** A stable key for a source, so the two halves are compared together rather than by `type` alone. */
+function sourceKey(source: AttributeSource): string {
+	const probe = 'probe' in source ? source.probe : undefined;
+	return probe ? `${source.type}:${probe}` : source.type;
+}
 
 /** Whether this subnet's range is a guess awaiting confirmation. */
 export function isProvisionalCidr(subnet: WithCidrSource): boolean {
-	return subnet.cidr_source === 'Inferred';
+	return subnet.cidr_source ? INFERRED_SOURCES.has(sourceKey(subnet.cidr_source)) : false;
 }
 
 /**
  * The provisional-range tag, or `null` when there is nothing to say.
  *
- * `null` for `Observed` and `Confirmed` alike: a range read off a device and one a person typed are
- * both settled, and the badge exists only to mark the third case.
+ * `null` for everything above the `Inferred` tier: a range read off a device and one a person typed
+ * are both settled, and the badge exists only to mark the third case.
  */
 export function getCidrSourceTag(subnet: WithCidrSource): TagProps | null {
 	if (!isProvisionalCidr(subnet)) return null;

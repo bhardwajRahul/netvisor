@@ -2,12 +2,14 @@ use std::net::IpAddr;
 
 use chrono::{DateTime, Utc};
 use ipnetwork::IpNetwork;
-use mac_address::MacAddress;
 use serde::Serialize;
 use sqlx::Row;
 use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
+use crate::server::ip_addresses::r#impl::base::{MacEvidenceValue, mac_of};
+use crate::server::shared::attribution::Attributed;
+use crate::server::shared::storage::attributed;
 use crate::server::{
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
     shared::{
@@ -93,6 +95,8 @@ impl Storable for IPAddress {
                 },
         } = self.clone();
 
+        let [mac_value, mac_source] = attributed::optional_params(&mac_address);
+
         Ok((
             vec![
                 "id",
@@ -101,6 +105,7 @@ impl Storable for IPAddress {
                 "subnet_id",
                 "ip_address",
                 "mac_address",
+                "mac_address_source",
                 "name",
                 "position",
                 "created_at",
@@ -118,7 +123,8 @@ impl Storable for IPAddress {
                 SqlValue::Uuid(host_id),
                 SqlValue::Uuid(subnet_id),
                 SqlValue::IpAddr(ip_address),
-                SqlValue::OptionalMacAddress(mac_address),
+                mac_value,
+                mac_source,
                 SqlValue::OptionalString(name),
                 SqlValue::I32(position),
                 SqlValue::Timestamp(created_at),
@@ -140,10 +146,8 @@ impl Storable for IPAddress {
             .map_err(|e| anyhow::anyhow!("Failed to read ip_address: {}", e))?;
         let ip_address: IpAddr = ip_network.ip();
 
-        // Read mac_address from MACADDR column
-        let mac_address: Option<MacAddress> = row
-            .try_get("mac_address")
-            .map_err(|e| anyhow::anyhow!("Failed to read mac_address: {}", e))?;
+        // The MACADDR column and the source beside it, read as one pair.
+        let mac_address = attributed::read_optional::<MacEvidenceValue>(row)?;
 
         Ok(IPAddress {
             id: row.get("id"),
@@ -191,7 +195,7 @@ impl Entity for IPAddress {
         IPAddressCsvRow {
             id: self.id,
             ip_address: self.base.ip_address.to_string(),
-            mac_address: self.base.mac_address.map(|m| m.to_string()),
+            mac_address: mac_of(&self.base.mac_address).map(|m| m.to_string()),
             name: self.base.name.clone(),
             host_id: self.base.host_id,
             subnet_id: self.base.subnet_id,
@@ -232,10 +236,15 @@ impl Entity for IPAddress {
 
     fn preserve_immutable_fields(&mut self, existing: &Self) {
         self.created_at = existing.created_at;
-        // MAC address is immutable once set
-        if existing.base.mac_address.is_some() {
-            self.base.mac_address = existing.base.mac_address;
+        // Merged by rung rather than pinned to whichever source wrote first. Pinning meant a MAC
+        // a router's ARP cache reported could never be corrected by an ARP reply the address
+        // itself sent — first-write-wins under another name. `MacEvidenceValue` is not
+        // refreshable, so an equal-rung re-read still cannot move it.
+        let mut merged = existing.base.mac_address.clone();
+        if let Some(incoming) = self.base.mac_address.clone() {
+            Attributed::apply(&mut merged, incoming);
         }
+        self.base.mac_address = merged;
     }
 }
 
@@ -312,5 +321,85 @@ impl DiscoveryTracked for IPAddress {
             "id",
             &scanned.ip_address_ids,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase, MacEvidence};
+    use crate::server::services::r#impl::patterns::ClientProbe;
+    use crate::server::shared::attribution::AttributeSource;
+
+    fn with_mac(mac: &str, source: AttributeSource) -> IPAddress {
+        IPAddress::new(IPAddressBase {
+            mac_address: Some(MacEvidence::new(
+                MacEvidenceValue(mac.parse().expect("valid MAC")),
+                source,
+            )),
+            ..Default::default()
+        })
+    }
+
+    /// A MAC used to be pinned to whichever source wrote it first — "immutable once set" — which
+    /// meant an address whose MAC came from a router's ARP cache could never be corrected by the
+    /// address itself answering our ARP request. That is first-write-wins under another name, and
+    /// it is the distinction §6's host-minting rule turns on: minting from a MAC nothing has ever
+    /// contacted, on a third party's say-so, is how ghost hosts get created.
+    #[test]
+    fn an_arp_reply_corrects_a_mac_a_forwarding_table_reported() {
+        let existing = with_mac("00:11:22:33:44:55", AttributeSource::ForwardingTable);
+        let mut incoming = with_mac("aa:bb:cc:dd:ee:ff", AttributeSource::ArpReply);
+
+        incoming.preserve_immutable_fields(&existing);
+
+        assert_eq!(
+            mac_of(&incoming.base.mac_address),
+            Some("aa:bb:cc:dd:ee:ff".parse().expect("valid MAC"))
+        );
+    }
+
+    /// The converse: a router's cache does not overwrite what the address itself told us.
+    #[test]
+    fn a_forwarding_table_does_not_displace_an_arp_reply() {
+        let existing = with_mac("aa:bb:cc:dd:ee:ff", AttributeSource::ArpReply);
+        let mut incoming = with_mac("00:11:22:33:44:55", AttributeSource::ForwardingTable);
+
+        incoming.preserve_immutable_fields(&existing);
+
+        assert_eq!(
+            mac_of(&incoming.base.mac_address),
+            Some("aa:bb:cc:dd:ee:ff".parse().expect("valid MAC"))
+        );
+    }
+
+    /// A NIC does not change its address, so a re-read from the same source never moves it — the
+    /// half of "immutable once set" that was worth keeping.
+    #[test]
+    fn the_same_source_re_reading_does_not_move_a_mac() {
+        let snmp = AttributeSource::Probe(ClientProbe::Snmp);
+        let existing = with_mac("aa:bb:cc:dd:ee:ff", snmp);
+        let mut incoming = with_mac("00:11:22:33:44:55", snmp);
+
+        incoming.preserve_immutable_fields(&existing);
+
+        assert_eq!(
+            mac_of(&incoming.base.mac_address),
+            Some("aa:bb:cc:dd:ee:ff".parse().expect("valid MAC"))
+        );
+    }
+
+    /// A scan that finds no MAC must not erase one already recorded.
+    #[test]
+    fn a_scan_with_no_mac_keeps_the_one_on_file() {
+        let existing = with_mac("aa:bb:cc:dd:ee:ff", AttributeSource::ArpReply);
+        let mut incoming = IPAddress::new(IPAddressBase::default());
+
+        incoming.preserve_immutable_fields(&existing);
+
+        assert_eq!(
+            mac_of(&incoming.base.mac_address),
+            Some("aa:bb:cc:dd:ee:ff".parse().expect("valid MAC"))
+        );
     }
 }

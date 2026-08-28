@@ -3205,19 +3205,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-08-27T21:13:19.129602Z",
+             *       "created_at": "2026-08-28T14:13:35.676373Z",
              *       "first_discovery_id": null,
-             *       "id": "7f313905-e14b-48f6-ae95-8f0710ecba12",
+             *       "id": "e03bdb2e-7efa-48b0-b1fe-1990c926f2fa",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-08-27T21:13:19.129602Z",
+             *       "last_seen_at": "2026-08-28T14:13:35.676373Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-08-27T21:13:19.129602Z",
-             *       "valid_from": "2026-08-27T21:13:19.129602Z",
+             *       "updated_at": "2026-08-28T14:13:35.676373Z",
+             *       "valid_from": "2026-08-28T14:13:35.676373Z",
              *       "valid_to": null
              *     }
              */
@@ -3743,11 +3743,17 @@ export interface components {
              * @description Response type for host endpoints.
              *     Includes children (ip_addresses, ports, services, interfaces).
              * @example {
+             *       "chassis_id_source": {
+             *         "type": "Unspecified"
+             *       },
              *       "created_at": "2026-01-15T10:30:00Z",
              *       "credential_assignments": [],
              *       "description": "Primary web server",
              *       "display_name": "web-server-01",
              *       "firmware_revision": null,
+             *       "firmware_revision_source": {
+             *         "type": "Unspecified"
+             *       },
              *       "hidden": false,
              *       "hostname": "web-server-01.local",
              *       "id": "550e8400-e29b-41d4-a716-446655440003",
@@ -3778,6 +3784,9 @@ export interface components {
              *           "lldp_sys_desc": null,
              *           "lldp_sys_name": null,
              *           "mac_address": "DE:AD:BE:EF:CA:FE",
+             *           "mac_address_source": {
+             *             "type": "ArpReply"
+             *           },
              *           "neighbor": null,
              *           "neighbor_seen_at": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
@@ -3799,6 +3808,9 @@ export interface components {
              *           "last_seen_at": "2026-01-15T10:30:00Z",
              *           "lineage_id": null,
              *           "mac_address": "DE:AD:BE:EF:CA:FE",
+             *           "mac_address_source": {
+             *             "type": "ArpReply"
+             *           },
              *           "name": "eth0",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
@@ -3809,8 +3821,19 @@ export interface components {
              *         }
              *       ],
              *       "last_seen_at": "2026-01-15T10:30:00Z",
+             *       "management_url_source": {
+             *         "type": "Unspecified"
+             *       },
+             *       "manufacturer_source": {
+             *         "type": "Unspecified"
+             *       },
+             *       "model_source": {
+             *         "type": "Unspecified"
+             *       },
              *       "name": "web-server-01",
-             *       "name_source": "Manual",
+             *       "name_source": {
+             *         "type": "Manual"
+             *       },
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "ports": [
              *         {
@@ -3830,23 +3853,26 @@ export interface components {
              *           "valid_to": null
              *         }
              *       ],
+             *       "serial_number_source": {
+             *         "type": "Unspecified"
+             *       },
              *       "services": [
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-08-27T21:13:19.100398Z",
+             *               "created_at": "2026-08-28T14:13:35.652664Z",
              *               "first_discovery_id": null,
-             *               "id": "6e5d5487-aa64-4670-939a-085714a15ad4",
+             *               "id": "a5655bb7-9490-475f-b6dd-9b36e82ee96c",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-08-27T21:13:19.100398Z",
+             *               "last_seen_at": "2026-08-28T14:13:35.652664Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-08-27T21:13:19.100398Z",
-             *               "valid_from": "2026-08-27T21:13:19.100398Z",
+             *               "updated_at": "2026-08-28T14:13:35.652664Z",
+             *               "valid_from": "2026-08-28T14:13:35.652664Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3860,7 +3886,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Scanopy Server",
+             *           "service_definition": "Modbus TCP",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3875,6 +3901,21 @@ export interface components {
              *       "source": {
              *         "type": "Manual"
              *       },
+             *       "sys_contact_source": {
+             *         "type": "Unspecified"
+             *       },
+             *       "sys_descr_source": {
+             *         "type": "Unspecified"
+             *       },
+             *       "sys_location_source": {
+             *         "type": "Unspecified"
+             *       },
+             *       "sys_name_source": {
+             *         "type": "Unspecified"
+             *       },
+             *       "sys_object_id_source": {
+             *         "type": "Unspecified"
+             *       },
              *       "tags": [],
              *       "updated_at": "2026-01-15T10:30:00Z",
              *       "virtualization_metadata": null,
@@ -3884,6 +3925,8 @@ export interface components {
             data?: {
                 /** @description LLDP chassis identifier, used to match the host to its neighbours. */
                 chassis_id?: string | null;
+                /** @description What produced the LLDP chassis identifier. Read-only: decided by whichever source read it. */
+                chassis_id_source?: components["schemas"]["AttributeSource"];
                 /**
                  * Format: date-time
                  * @description When this record was first created.
@@ -3906,6 +3949,8 @@ export interface components {
                 readonly display_name?: string | null;
                 /** @description Firmware or software revision of the device. */
                 firmware_revision: string | null;
+                /** @description What produced the firmware revision. Read-only: decided by whichever source read it. */
+                firmware_revision_source?: components["schemas"]["AttributeSource"];
                 /** @description Whether the host is hidden from topology views. */
                 hidden: boolean;
                 /** @description Hostname as resolved or reported by the host. */
@@ -3928,17 +3973,23 @@ export interface components {
                 last_seen_at: string;
                 /** @description Link to the host's own management interface. */
                 management_url?: string | null;
+                /** @description What produced the management URL. Read-only: decided by whichever source read it. */
+                management_url_source?: components["schemas"]["AttributeSource"];
                 /** @description ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above. */
                 readonly manufacturer?: string | null;
+                /** @description What produced the manufacturer. Read-only: decided by whichever source read it. */
+                manufacturer_source?: components["schemas"]["AttributeSource"];
                 /** @description ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above. */
                 readonly model?: string | null;
+                /** @description What produced the model. Read-only: decided by whichever source read it. */
+                model_source?: components["schemas"]["AttributeSource"];
                 /** @description Human-facing name for the host. */
                 name: string;
                 /**
-                 * @description Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever
-                 *     supplied the name, not by the caller.
+                 * @description What produced `name`. Read-only: it is decided by whoever supplied the name, not by the
+                 *     caller.
                  */
-                name_source?: components["schemas"]["HostNameSource"];
+                name_source?: components["schemas"]["AttributeSource"];
                 /**
                  * Format: uuid
                  * @description The network this entity belongs to.
@@ -3948,23 +3999,35 @@ export interface components {
                 ports: components["schemas"]["Port"][];
                 /** @description ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above. */
                 readonly serial_number?: string | null;
+                /** @description What produced the serial number. Read-only: decided by whichever source read it. */
+                serial_number_source?: components["schemas"]["AttributeSource"];
                 /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
                 /** @description How this host came to be known — discovered, imported, or created by hand. */
                 source: components["schemas"]["EntitySource"];
                 /** @description SNMP sysContact — administrative contact as configured on the device. */
                 sys_contact?: string | null;
+                /** @description What produced SNMP sysContact. Read-only: decided by whichever source read it. */
+                sys_contact_source?: components["schemas"]["AttributeSource"];
                 /** @description SNMP sysDescr — the device's own description of itself. */
                 sys_descr?: string | null;
+                /** @description What produced SNMP sysDescr. Read-only: decided by whichever source read it. */
+                sys_descr_source?: components["schemas"]["AttributeSource"];
                 /** @description SNMP sysLocation — physical location as configured on the device. */
                 sys_location?: string | null;
+                /** @description What produced SNMP sysLocation. Read-only: decided by whichever source read it. */
+                sys_location_source?: components["schemas"]["AttributeSource"];
                 /**
                  * @description SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it
                  *     from the device, so neither create nor update accepts it.
                  */
                 readonly sys_name?: string | null;
+                /** @description What produced SNMP sysName. Read-only: decided by whichever source read it. */
+                sys_name_source?: components["schemas"]["AttributeSource"];
                 /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
                 sys_object_id?: string | null;
+                /** @description What produced SNMP sysObjectID. Read-only: decided by whichever source read it. */
+                sys_object_id_source?: components["schemas"]["AttributeSource"];
                 /** @description Tags assigned to this entity. */
                 tags: string[];
                 /**
@@ -3999,6 +4062,9 @@ export interface components {
              *       "last_seen_at": "2026-01-15T10:30:00Z",
              *       "lineage_id": null,
              *       "mac_address": "DE:AD:BE:EF:CA:FE",
+             *       "mac_address_source": {
+             *         "type": "ArpReply"
+             *       },
              *       "name": "eth0",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
@@ -4541,19 +4607,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-08-27T21:13:19.121726Z",
+             *           "created_at": "2026-08-28T14:13:35.671523Z",
              *           "first_discovery_id": null,
-             *           "id": "5d6a1ff5-25d4-4278-8598-bcadd772806c",
+             *           "id": "8ea8c0ef-8659-4278-9ca9-2bc237eaccfd",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-08-27T21:13:19.121726Z",
+             *           "last_seen_at": "2026-08-28T14:13:35.671523Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-08-27T21:13:19.121726Z",
-             *           "valid_from": "2026-08-27T21:13:19.121726Z",
+             *           "updated_at": "2026-08-28T14:13:35.671523Z",
+             *           "valid_from": "2026-08-28T14:13:35.671523Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4567,7 +4633,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Scanopy Server",
+             *       "service_definition": "Modbus TCP",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4755,7 +4821,9 @@ export interface components {
              * @description The result payload. Omitted on failure.
              * @example {
              *       "cidr": "192.168.1.0/24",
-             *       "cidr_source": "Observed",
+             *       "cidr_source": {
+             *         "type": "DaemonSelfReport"
+             *       },
              *       "created_at": "2026-01-15T10:30:00Z",
              *       "description": "Local area network",
              *       "first_discovery_id": null,
@@ -5337,6 +5405,66 @@ export interface components {
             /** @description `true` when the request succeeded. `false` responses carry `error` instead of `data`. */
             success: boolean;
         };
+        /**
+         * @description How a discovered value reached us.
+         *
+         *     Every variant here has something that writes it. Sources with no producer are deliberately
+         *     absent: a rung the applier can never see is a rung nothing can be tested against, and the tier
+         *     decision is better made by whoever writes the reader than guessed in advance.
+         *
+         *     **Do not derive `Ord`.** A derive compares the variant and then the payload, which would make
+         *     `Probe(Docker) < Probe(Snmp)` on declaration order alone. Ordering is only ever [`Self::rank`].
+         */
+        AttributeSource: {
+            /** @enum {string} */
+            type: "Unspecified";
+        } | {
+            /** @enum {string} */
+            type: "OwnAddress";
+        } | {
+            /** @enum {string} */
+            type: "ServiceMatch";
+        } | {
+            /** @enum {string} */
+            type: "LldpNeighbourAddress";
+        } | {
+            /** @enum {string} */
+            type: "CipVendorId";
+        } | {
+            /** @enum {string} */
+            type: "DnsSdInstanceName";
+        } | {
+            /** @enum {string} */
+            type: "LldpChassisId";
+        } | {
+            /** @enum {string} */
+            type: "ReverseDns";
+        } | {
+            /** @enum {string} */
+            type: "ForwardingTable";
+        } | {
+            /** @enum {string} */
+            type: "ArpReply";
+        } | {
+            /** @enum {string} */
+            type: "DaemonSelfReport";
+        } | {
+            /** @description A value the thing emitted about itself, over whatever transport [`ClientProbe`] names. */
+            probe: components["schemas"]["ClientProbe"];
+            /** @enum {string} */
+            type: "Probe";
+        } | {
+            /**
+             * @description A value a person entered into the thing we read it from, carried back over the same
+             *     transport: SNMP `sysLocation`, a name set in a controller.
+             */
+            probe: components["schemas"]["ClientProbe"];
+            /** @enum {string} */
+            type: "Authored";
+        } | {
+            /** @enum {string} */
+            type: "Manual";
+        };
         BillingPlan: (components["schemas"]["PlanConfig"] & {
             /** @enum {string} */
             type: "Community";
@@ -5376,19 +5504,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-08-27T21:13:19.100662Z",
+         *       "created_at": "2026-08-28T14:13:35.653152Z",
          *       "first_discovery_id": null,
-         *       "id": "4904db7f-25ad-485d-b869-4333f0856ff7",
+         *       "id": "1f5fa5ca-6099-486b-b6a6-b8fefb9ffe99",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-08-27T21:13:19.100662Z",
+         *       "last_seen_at": "2026-08-28T14:13:35.653152Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-08-27T21:13:19.100662Z",
-         *       "valid_from": "2026-08-27T21:13:19.100662Z",
+         *       "updated_at": "2026-08-28T14:13:35.653152Z",
+         *       "valid_from": "2026-08-28T14:13:35.653152Z",
          *       "valid_to": null
          *     }
          */
@@ -5611,6 +5739,18 @@ export interface components {
          * @enum {string}
          */
         ClaimSource: "IfNumber" | "SysServicesBridgeBit" | "LldpLocalIdentity" | "Dot1dBaseNumPorts";
+        /**
+         * @description Types of client probes that run before service matching.
+         *     The probe result (success/failure) is pre-computed; Pattern::ClientResponse
+         *     just checks whether it succeeded.
+         *
+         *     Two kinds of producer fill this: the credentialed `DiscoveryIntegration`s, and the
+         *     non-credentialed [`AppProbe`](crate::daemon::utils::app_probe::AppProbe)s. Every variant needs
+         *     one — a variant nothing produces gives a service definition a pattern that can never match, and
+         *     `every_client_probe_variant_has_a_producer` is what now says so.
+         * @enum {string}
+         */
+        ClientProbe: "Docker" | "Gnmi" | "Podman" | "Snmp" | "UnifiController" | "InstantOn" | "ModbusTcp" | "OpcUa" | "EtherNetIp";
         /** @enum {string} */
         Color: "Pink" | "Rose" | "Red" | "Amber" | "Orange" | "Green" | "Emerald" | "Teal" | "Cyan" | "Blue" | "Indigo" | "Purple" | "Fuchsia" | "Violet" | "Sky" | "Gray" | "Lime" | "Yellow";
         /** @enum {string} */
@@ -5690,7 +5830,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Scanopy Server",
+         *           "service_definition": "Modbus TCP",
          *           "tags": [],
          *           "virtualization_metadata": null,
          *           "virtualization_service_id": null
@@ -7439,7 +7579,9 @@ export interface components {
          *       "last_seen_at": "2026-01-15T10:30:00Z",
          *       "lineage_id": null,
          *       "name": "web-server-01",
-         *       "name_source": "Manual",
+         *       "name_source": {
+         *         "type": "Manual"
+         *       },
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "source": {
          *         "type": "Manual"
@@ -7513,57 +7655,22 @@ export interface components {
          *     Child entities (ip_addresses, ports, services) are stored in their own tables
          *     and queried by `host_id`. They are NOT stored on the host.
          */
-        HostBase: components["schemas"]["HostName"] & {
-            /** @description LLDP lldpLocChassisId - globally unique device identifier for deduplication */
-            chassis_id?: string | null;
+        HostBase: components["schemas"]["HostName"] & components["schemas"]["HostSysDescr"] & components["schemas"]["HostSysObjectId"] & components["schemas"]["HostSysLocation"] & components["schemas"]["HostSysContact"] & components["schemas"]["HostManagementUrl"] & components["schemas"]["HostChassisId"] & components["schemas"]["HostSysName"] & components["schemas"]["HostManufacturer"] & components["schemas"]["HostModel"] & components["schemas"]["HostSerialNumber"] & components["schemas"]["HostFirmwareRevision"] & {
             /** @description Credential assignments for this host (hydrated from junction table). */
             credential_assignments: components["schemas"]["CredentialAssignment"][];
             /** @description Free-text notes about the host. */
             description: string | null;
-            /**
-             * @description Firmware or software revision of the device as a whole.
-             *
-             *     Written by whichever source read it — a controller's REST inventory, an industrial probe's
-             *     identity response, and (once ENTITY-MIB revisions land) `entPhysicalFirmwareRev`. Before
-             *     this column existed each of those had nowhere to put a version it had already read, and two
-             *     of them flattened it into `sys_descr` as prose.
-             *
-             *     Device-level rather than per-module: everything downstream is host-shaped, and the NCCoE
-             *     asset-inventory minimum says "product version", singular.
-             */
-            firmware_revision?: string | null;
             /** @description Whether the host is hidden from topology views. */
             hidden: boolean;
             /** @description Hostname as resolved or reported by the host. */
             hostname: string | null;
             /**
-             * Format: uri
-             * @description URL for device management interface (manual or discovered)
-             */
-            management_url?: string | null;
-            /** @description ENTITY-MIB entPhysicalMfgName - hardware manufacturer */
-            manufacturer?: string | null;
-            /** @description ENTITY-MIB entPhysicalModelName - hardware model */
-            model?: string | null;
-            /**
              * Format: uuid
              * @description The network this entity belongs to.
              */
             network_id: string;
-            /** @description ENTITY-MIB entPhysicalSerialNum - hardware serial number */
-            serial_number?: string | null;
             /** @description How this host came to be known — discovered, imported, or created by hand. */
             source: components["schemas"]["EntitySource"];
-            /** @description SNMP sysContact.0 - admin contact info */
-            sys_contact?: string | null;
-            /** @description SNMP sysDescr.0 - full system description */
-            sys_descr?: string | null;
-            /** @description SNMP sysLocation.0 - physical location */
-            sys_location?: string | null;
-            /** @description SNMP sysName.0 - administratively-assigned hostname */
-            sys_name?: string | null;
-            /** @description SNMP sysObjectID.0 - vendor OID for device identification */
-            sys_object_id?: string | null;
             /** @description Tags assigned to this entity. */
             tags: string[];
             virtualization_metadata: null | components["schemas"]["HostVirtualization"];
@@ -7578,13 +7685,36 @@ export interface components {
              */
             virtualization_service_id: string | null;
         };
+        HostChassisId: {
+            /** @description LLDP lldpLocChassisId - globally unique device identifier for deduplication */
+            chassis_id?: string;
+            chassis_id_source?: components["schemas"]["AttributeSource"];
+        };
+        HostFirmwareRevision: {
+            /** @description Firmware or software revision of the device as a whole */
+            firmware_revision?: string;
+            firmware_revision_source?: components["schemas"]["AttributeSource"];
+        };
+        HostManagementUrl: {
+            /** @description URL for device management interface (manual or discovered) */
+            management_url?: string;
+            management_url_source?: components["schemas"]["AttributeSource"];
+        };
+        HostManufacturer: {
+            /** @description ENTITY-MIB entPhysicalMfgName - hardware manufacturer */
+            manufacturer?: string;
+            manufacturer_source?: components["schemas"]["AttributeSource"];
+        };
+        HostModel: {
+            /** @description ENTITY-MIB entPhysicalModelName - hardware model */
+            model?: string;
+            model_source?: components["schemas"]["AttributeSource"];
+        };
         HostName: {
             /** @description Human-facing name for the host. */
             name: string;
-            name_source?: components["schemas"]["HostNameSource"];
+            name_source?: components["schemas"]["AttributeSource"];
         };
-        /** @enum {string} */
-        HostNameSource: "Unnamed" | "Unspecified" | "Ip" | "DetectedService" | "Hostname" | "DnsSd" | "Integration" | "Manual";
         /** @enum {string} */
         HostNamingFallback: "Ip" | "BestService";
         /**
@@ -7596,11 +7726,17 @@ export interface components {
          * @description Response type for host endpoints.
          *     Includes children (ip_addresses, ports, services, interfaces).
          * @example {
+         *       "chassis_id_source": {
+         *         "type": "Unspecified"
+         *       },
          *       "created_at": "2026-01-15T10:30:00Z",
          *       "credential_assignments": [],
          *       "description": "Primary web server",
          *       "display_name": "web-server-01",
          *       "firmware_revision": null,
+         *       "firmware_revision_source": {
+         *         "type": "Unspecified"
+         *       },
          *       "hidden": false,
          *       "hostname": "web-server-01.local",
          *       "id": "550e8400-e29b-41d4-a716-446655440003",
@@ -7631,6 +7767,9 @@ export interface components {
          *           "lldp_sys_desc": null,
          *           "lldp_sys_name": null,
          *           "mac_address": "DE:AD:BE:EF:CA:FE",
+         *           "mac_address_source": {
+         *             "type": "ArpReply"
+         *           },
          *           "neighbor": null,
          *           "neighbor_seen_at": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
@@ -7652,6 +7791,9 @@ export interface components {
          *           "last_seen_at": "2026-01-15T10:30:00Z",
          *           "lineage_id": null,
          *           "mac_address": "DE:AD:BE:EF:CA:FE",
+         *           "mac_address_source": {
+         *             "type": "ArpReply"
+         *           },
          *           "name": "eth0",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
@@ -7662,8 +7804,19 @@ export interface components {
          *         }
          *       ],
          *       "last_seen_at": "2026-01-15T10:30:00Z",
+         *       "management_url_source": {
+         *         "type": "Unspecified"
+         *       },
+         *       "manufacturer_source": {
+         *         "type": "Unspecified"
+         *       },
+         *       "model_source": {
+         *         "type": "Unspecified"
+         *       },
          *       "name": "web-server-01",
-         *       "name_source": "Manual",
+         *       "name_source": {
+         *         "type": "Manual"
+         *       },
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "ports": [
          *         {
@@ -7683,23 +7836,26 @@ export interface components {
          *           "valid_to": null
          *         }
          *       ],
+         *       "serial_number_source": {
+         *         "type": "Unspecified"
+         *       },
          *       "services": [
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-08-27T21:13:19.100102Z",
+         *               "created_at": "2026-08-28T14:13:35.652051Z",
          *               "first_discovery_id": null,
-         *               "id": "e6e37e29-e40c-4544-8e3e-147038ee1480",
+         *               "id": "391dea5d-11e2-463e-b9d8-e0ac858ea89a",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-08-27T21:13:19.100102Z",
+         *               "last_seen_at": "2026-08-28T14:13:35.652051Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-08-27T21:13:19.100102Z",
-         *               "valid_from": "2026-08-27T21:13:19.100102Z",
+         *               "updated_at": "2026-08-28T14:13:35.652051Z",
+         *               "valid_from": "2026-08-28T14:13:35.652051Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -7713,7 +7869,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Scanopy Server",
+         *           "service_definition": "Modbus TCP",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -7728,6 +7884,21 @@ export interface components {
          *       "source": {
          *         "type": "Manual"
          *       },
+         *       "sys_contact_source": {
+         *         "type": "Unspecified"
+         *       },
+         *       "sys_descr_source": {
+         *         "type": "Unspecified"
+         *       },
+         *       "sys_location_source": {
+         *         "type": "Unspecified"
+         *       },
+         *       "sys_name_source": {
+         *         "type": "Unspecified"
+         *       },
+         *       "sys_object_id_source": {
+         *         "type": "Unspecified"
+         *       },
          *       "tags": [],
          *       "updated_at": "2026-01-15T10:30:00Z",
          *       "virtualization_metadata": null,
@@ -7737,6 +7908,8 @@ export interface components {
         HostResponse: {
             /** @description LLDP chassis identifier, used to match the host to its neighbours. */
             chassis_id?: string | null;
+            /** @description What produced the LLDP chassis identifier. Read-only: decided by whichever source read it. */
+            chassis_id_source?: components["schemas"]["AttributeSource"];
             /**
              * Format: date-time
              * @description When this record was first created.
@@ -7759,6 +7932,8 @@ export interface components {
             readonly display_name?: string | null;
             /** @description Firmware or software revision of the device. */
             firmware_revision: string | null;
+            /** @description What produced the firmware revision. Read-only: decided by whichever source read it. */
+            firmware_revision_source?: components["schemas"]["AttributeSource"];
             /** @description Whether the host is hidden from topology views. */
             hidden: boolean;
             /** @description Hostname as resolved or reported by the host. */
@@ -7781,17 +7956,23 @@ export interface components {
             last_seen_at: string;
             /** @description Link to the host's own management interface. */
             management_url?: string | null;
+            /** @description What produced the management URL. Read-only: decided by whichever source read it. */
+            management_url_source?: components["schemas"]["AttributeSource"];
             /** @description ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above. */
             readonly manufacturer?: string | null;
+            /** @description What produced the manufacturer. Read-only: decided by whichever source read it. */
+            manufacturer_source?: components["schemas"]["AttributeSource"];
             /** @description ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above. */
             readonly model?: string | null;
+            /** @description What produced the model. Read-only: decided by whichever source read it. */
+            model_source?: components["schemas"]["AttributeSource"];
             /** @description Human-facing name for the host. */
             name: string;
             /**
-             * @description Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever
-             *     supplied the name, not by the caller.
+             * @description What produced `name`. Read-only: it is decided by whoever supplied the name, not by the
+             *     caller.
              */
-            name_source?: components["schemas"]["HostNameSource"];
+            name_source?: components["schemas"]["AttributeSource"];
             /**
              * Format: uuid
              * @description The network this entity belongs to.
@@ -7801,23 +7982,35 @@ export interface components {
             ports: components["schemas"]["Port"][];
             /** @description ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above. */
             readonly serial_number?: string | null;
+            /** @description What produced the serial number. Read-only: decided by whichever source read it. */
+            serial_number_source?: components["schemas"]["AttributeSource"];
             /** @description Services running on this host. */
             services: components["schemas"]["Service"][];
             /** @description How this host came to be known — discovered, imported, or created by hand. */
             source: components["schemas"]["EntitySource"];
             /** @description SNMP sysContact — administrative contact as configured on the device. */
             sys_contact?: string | null;
+            /** @description What produced SNMP sysContact. Read-only: decided by whichever source read it. */
+            sys_contact_source?: components["schemas"]["AttributeSource"];
             /** @description SNMP sysDescr — the device's own description of itself. */
             sys_descr?: string | null;
+            /** @description What produced SNMP sysDescr. Read-only: decided by whichever source read it. */
+            sys_descr_source?: components["schemas"]["AttributeSource"];
             /** @description SNMP sysLocation — physical location as configured on the device. */
             sys_location?: string | null;
+            /** @description What produced SNMP sysLocation. Read-only: decided by whichever source read it. */
+            sys_location_source?: components["schemas"]["AttributeSource"];
             /**
              * @description SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it
              *     from the device, so neither create nor update accepts it.
              */
             readonly sys_name?: string | null;
+            /** @description What produced SNMP sysName. Read-only: decided by whichever source read it. */
+            sys_name_source?: components["schemas"]["AttributeSource"];
             /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
             sys_object_id?: string | null;
+            /** @description What produced SNMP sysObjectID. Read-only: decided by whichever source read it. */
+            sys_object_id_source?: components["schemas"]["AttributeSource"];
             /** @description Tags assigned to this entity. */
             tags: string[];
             /**
@@ -7831,6 +8024,36 @@ export interface components {
              * @description The hypervisor service this VM runs on.
              */
             virtualization_service_id?: string | null;
+        };
+        HostSerialNumber: {
+            /** @description ENTITY-MIB entPhysicalSerialNum - hardware serial number */
+            serial_number?: string;
+            serial_number_source?: components["schemas"]["AttributeSource"];
+        };
+        HostSysContact: {
+            /** @description SNMP sysContact.0 - admin contact info */
+            sys_contact?: string;
+            sys_contact_source?: components["schemas"]["AttributeSource"];
+        };
+        HostSysDescr: {
+            /** @description SNMP sysDescr.0 - full system description */
+            sys_descr?: string;
+            sys_descr_source?: components["schemas"]["AttributeSource"];
+        };
+        HostSysLocation: {
+            /** @description SNMP sysLocation.0 - physical location */
+            sys_location?: string;
+            sys_location_source?: components["schemas"]["AttributeSource"];
+        };
+        HostSysName: {
+            /** @description SNMP sysName.0 - administratively-assigned hostname */
+            sys_name?: string;
+            sys_name_source?: components["schemas"]["AttributeSource"];
+        };
+        HostSysObjectId: {
+            /** @description SNMP sysObjectID.0 - vendor OID for device identification */
+            sys_object_id?: string;
+            sys_object_id_source?: components["schemas"]["AttributeSource"];
         };
         /** HostVirtualization */
         HostVirtualization: {
@@ -7857,6 +8080,9 @@ export interface components {
          *       "last_seen_at": "2026-01-15T10:30:00Z",
          *       "lineage_id": null,
          *       "mac_address": "DE:AD:BE:EF:CA:FE",
+         *       "mac_address_source": {
+         *         "type": "ArpReply"
+         *       },
          *       "name": "eth0",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
@@ -7913,7 +8139,7 @@ export interface components {
              */
             readonly valid_to?: string | null;
         };
-        IPAddressBase: {
+        IPAddressBase: components["schemas"]["MacEvidence"] & {
             /**
              * Format: uuid
              * @description The host this entity belongs to.
@@ -7924,11 +8150,6 @@ export interface components {
              * @example 192.168.1.10
              */
             ip_address: string;
-            /**
-             * @description MAC address discovered from ARP, SNMP, or Docker - immutable once set
-             * @example a4:bb:6d:12:34:56
-             */
-            mac_address?: string | null;
             /** @description Human-facing name for this IP address. */
             name: string | null;
             /**
@@ -8194,7 +8415,7 @@ export interface components {
              */
             readonly valid_to?: string | null;
         };
-        InterfaceBase: {
+        InterfaceBase: components["schemas"]["MacEvidence"] & {
             admin_status?: null | components["schemas"]["IfAdminStatus"];
             /**
              * @description Remote management IP from CDP (cdpCacheAddress). IPv4 or IPv6.
@@ -8265,11 +8486,6 @@ export interface components {
             lldp_sys_desc?: string | null;
             /** @description Remote system name from LLDP neighbor (lldpRemSysName) */
             lldp_sys_name?: string | null;
-            /**
-             * @description MAC address from SNMP ifPhysAddress - immutable once set
-             * @example a4:bb:6d:12:34:56
-             */
-            mac_address?: string | null;
             /**
              * Format: uuid
              * @description Native/untagged VLAN entity ID on this port (resolved from Q-BRIDGE dot1qPvid)
@@ -8529,6 +8745,14 @@ export interface components {
              * @description The account password.
              */
             password: string;
+        };
+        MacEvidence: {
+            /**
+             * @description MAC address, as discovered.
+             * @example a4:bb:6d:12:34:56
+             */
+            mac_address?: string;
+            mac_address_source?: components["schemas"]["AttributeSource"];
         };
         /**
          * @description What discarding a device's malformed neighbour records cost it.
@@ -9102,6 +9326,8 @@ export interface components {
             data: {
                 /** @description LLDP chassis identifier, used to match the host to its neighbours. */
                 chassis_id?: string | null;
+                /** @description What produced the LLDP chassis identifier. Read-only: decided by whichever source read it. */
+                chassis_id_source?: components["schemas"]["AttributeSource"];
                 /**
                  * Format: date-time
                  * @description When this record was first created.
@@ -9124,6 +9350,8 @@ export interface components {
                 readonly display_name?: string | null;
                 /** @description Firmware or software revision of the device. */
                 firmware_revision: string | null;
+                /** @description What produced the firmware revision. Read-only: decided by whichever source read it. */
+                firmware_revision_source?: components["schemas"]["AttributeSource"];
                 /** @description Whether the host is hidden from topology views. */
                 hidden: boolean;
                 /** @description Hostname as resolved or reported by the host. */
@@ -9146,17 +9374,23 @@ export interface components {
                 last_seen_at: string;
                 /** @description Link to the host's own management interface. */
                 management_url?: string | null;
+                /** @description What produced the management URL. Read-only: decided by whichever source read it. */
+                management_url_source?: components["schemas"]["AttributeSource"];
                 /** @description ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above. */
                 readonly manufacturer?: string | null;
+                /** @description What produced the manufacturer. Read-only: decided by whichever source read it. */
+                manufacturer_source?: components["schemas"]["AttributeSource"];
                 /** @description ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above. */
                 readonly model?: string | null;
+                /** @description What produced the model. Read-only: decided by whichever source read it. */
+                model_source?: components["schemas"]["AttributeSource"];
                 /** @description Human-facing name for the host. */
                 name: string;
                 /**
-                 * @description Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever
-                 *     supplied the name, not by the caller.
+                 * @description What produced `name`. Read-only: it is decided by whoever supplied the name, not by the
+                 *     caller.
                  */
-                name_source?: components["schemas"]["HostNameSource"];
+                name_source?: components["schemas"]["AttributeSource"];
                 /**
                  * Format: uuid
                  * @description The network this entity belongs to.
@@ -9166,23 +9400,35 @@ export interface components {
                 ports: components["schemas"]["Port"][];
                 /** @description ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above. */
                 readonly serial_number?: string | null;
+                /** @description What produced the serial number. Read-only: decided by whichever source read it. */
+                serial_number_source?: components["schemas"]["AttributeSource"];
                 /** @description Services running on this host. */
                 services: components["schemas"]["Service"][];
                 /** @description How this host came to be known — discovered, imported, or created by hand. */
                 source: components["schemas"]["EntitySource"];
                 /** @description SNMP sysContact — administrative contact as configured on the device. */
                 sys_contact?: string | null;
+                /** @description What produced SNMP sysContact. Read-only: decided by whichever source read it. */
+                sys_contact_source?: components["schemas"]["AttributeSource"];
                 /** @description SNMP sysDescr — the device's own description of itself. */
                 sys_descr?: string | null;
+                /** @description What produced SNMP sysDescr. Read-only: decided by whichever source read it. */
+                sys_descr_source?: components["schemas"]["AttributeSource"];
                 /** @description SNMP sysLocation — physical location as configured on the device. */
                 sys_location?: string | null;
+                /** @description What produced SNMP sysLocation. Read-only: decided by whichever source read it. */
+                sys_location_source?: components["schemas"]["AttributeSource"];
                 /**
                  * @description SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it
                  *     from the device, so neither create nor update accepts it.
                  */
                 readonly sys_name?: string | null;
+                /** @description What produced SNMP sysName. Read-only: decided by whichever source read it. */
+                sys_name_source?: components["schemas"]["AttributeSource"];
                 /** @description SNMP sysObjectID — the vendor's identifier for the device model. */
                 sys_object_id?: string | null;
+                /** @description What produced SNMP sysObjectID. Read-only: decided by whichever source read it. */
+                sys_object_id_source?: components["schemas"]["AttributeSource"];
                 /** @description Tags assigned to this entity. */
                 tags: string[];
                 /**
@@ -10277,19 +10523,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-08-27T21:13:19.100600Z",
+         *           "created_at": "2026-08-28T14:13:35.653048Z",
          *           "first_discovery_id": null,
-         *           "id": "532cbe70-974d-41e2-a9b9-42cd3334bf1b",
+         *           "id": "b7d077c8-9d25-4510-89aa-aa363fb43290",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-08-27T21:13:19.100600Z",
+         *           "last_seen_at": "2026-08-28T14:13:35.653048Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-08-27T21:13:19.100600Z",
-         *           "valid_from": "2026-08-27T21:13:19.100600Z",
+         *           "updated_at": "2026-08-28T14:13:35.653048Z",
+         *           "valid_from": "2026-08-28T14:13:35.653048Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -10303,7 +10549,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Scanopy Server",
+         *       "service_definition": "Modbus TCP",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -10628,7 +10874,9 @@ export interface components {
         /**
          * @example {
          *       "cidr": "192.168.1.0/24",
-         *       "cidr_source": "Observed",
+         *       "cidr_source": {
+         *         "type": "DaemonSelfReport"
+         *       },
          *       "created_at": "2026-01-15T10:30:00Z",
          *       "description": "Local area network",
          *       "first_discovery_id": null,
@@ -10696,20 +10944,7 @@ export interface components {
              */
             readonly valid_to?: string | null;
         };
-        SubnetBase: {
-            /**
-             * @description Subnet in CIDR notation, IPv4 or IPv6.
-             * @example 192.168.1.0/24
-             */
-            cidr: string;
-            /**
-             * @description How far [`Self::cidr`] can be trusted.
-             *
-             *     Written only by [`SubnetBase::apply_cidr`], which is what keeps the pair from drifting: a
-             *     range and the confidence in it are one fact, and assigning `cidr` alone is how a guess ends
-             *     up indistinguishable from a reading.
-             */
-            cidr_source: components["schemas"]["SubnetCidrSource"];
+        SubnetBase: components["schemas"]["SubnetCidr"] & {
             /** @description Free-text notes about the subnet. */
             description?: string | null;
             /** @description Human-facing name for this subnet. */
@@ -10737,18 +10972,14 @@ export interface components {
              */
             virtualization_service_id: string | null;
         };
-        /**
-         * @description How far a subnet's CIDR can be trusted, and therefore whether an operator is asked to confirm it.
-         *
-         *     **Declaration order is the precedence order.** `Ord` is derived from it and is the whole
-         *     enforcement mechanism — the same arrangement [`HostNameSource`] uses for names, and for the
-         *     same reason: a rung inserted at its rank propagates to every comparison, with no per-call-site
-         *     precedence to keep in sync.
-         *
-         *     [`HostNameSource`]: crate::server::hosts::r#impl::name::HostNameSource
-         * @enum {string}
-         */
-        SubnetCidrSource: "Inferred" | "Observed" | "Confirmed";
+        SubnetCidr: {
+            /**
+             * @description Subnet in CIDR notation, IPv4 or IPv6.
+             * @example 192.168.1.0/24
+             */
+            cidr: string;
+            cidr_source?: components["schemas"]["AttributeSource"];
+        };
         /**
          * @description Fields that subnets can be ordered/grouped by.
          * @enum {string}
@@ -10967,7 +11198,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "a3fad1bb-a71d-4e4a-9e58-33f57206ab5c",
+             *           "id": "f83eb173-ef0d-4912-b3f3-5938a233ac69",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -10977,23 +11208,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "3815c83e-7599-40eb-b4d6-a1548fdbef29",
+             *           "id": "47171668-293c-4061-87d7-2046ec785459",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "90fd2e68-511b-4311-aca8-09c3c5079556",
+             *           "id": "e1dc01c1-2581-422a-8bae-dbf8fdfb1e31",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "bc0e4194-f589-460d-a1ec-c1102443f214",
+             *           "id": "731e7f37-4449-4099-8e8f-5f103ee4ca75",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "3815c83e-7599-40eb-b4d6-a1548fdbef29",
+             *           "id": "47171668-293c-4061-87d7-2046ec785459",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -11006,19 +11237,19 @@ export interface components {
              * @description Rules deciding how entities are placed and inlined within containers.
              * @default [
              *       {
-             *         "id": "8df4651b-f4a0-43a5-9912-a4fe7ce59f38",
+             *         "id": "7cef45a9-a1b4-4557-8bdb-dea413f7bbc3",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "45e9ed1b-59c1-4c69-82aa-577be6d81bb3",
+             *         "id": "64641f1b-fa39-465b-af58-86fdd838bd40",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "a50104dc-3645-466f-bb48-6f48cfcbf4d4",
+             *         "id": "1294c64a-7f03-4a05-ad81-7152b7fc7697",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "c2051c96-ddd8-4f8c-9d32-25f8e6d369f8",
+             *         "id": "2f7c27d2-f026-4c9c-a039-082ea54b50a8",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -11036,7 +11267,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "d7172090-8ff3-4a6a-8821-ab04435c0d5a",
+             *         "id": "d056e064-7691-4d46-b5f9-8713f8894829",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -11045,15 +11276,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "f99db505-7011-4142-883d-45d067a7deb4",
+             *         "id": "dba1b953-b2aa-494c-b58a-9f30ea06c521",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "4ebb2c24-9a65-4570-975b-bfc050c729c7",
+             *         "id": "431642ff-911b-4787-ad61-8194469c3d16",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "a014ab99-e7ce-4613-be2f-3203df8b5126",
+             *         "id": "a70a6dcf-4ba8-41a6-82f9-0b42149a64ef",
              *         "rule": "ByStack"
              *       }
              *     ]

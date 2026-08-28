@@ -11,14 +11,21 @@ use crate::server::{
             BindingInput, ConflictBehavior, CreateHostRequest, HostResponse, IPAddressInput,
             PortInput, ServiceInput, UpdateHostRequest,
         },
+        attributes::{
+            HostChassisIdValue, HostManagementUrlValue, HostSysContactValue, HostSysDescrValue,
+            HostSysLocationValue, HostSysNameValue, HostSysObjectIdValue,
+        },
         base::{Host, HostBase},
-        name::{HostName, HostNameSource},
+        name::{HostName, HostNameSources},
     },
     interfaces::{
         r#impl::base::{Interface, InterfaceDataComplete, Neighbor},
         service::InterfaceService,
     },
-    ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},
+    ip_addresses::{
+        r#impl::base::{IPAddress, mac_of},
+        service::IPAddressService,
+    },
     lldp::{IdentityResolution, LldpResolver, resolver::LldpResolverImpl},
     networks::service::NetworkService,
     organizations::service::OrganizationService,
@@ -27,6 +34,7 @@ use crate::server::{
         r#impl::{base::Service, definitions::ServiceDefinitionExt},
         service::ServiceService,
     },
+    shared::attribution::{AttributeSource, Attributed},
     shared::{
         entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
         events::{bus::EventBus, types::EntityOperation},
@@ -313,8 +321,7 @@ fn is_virtual_router_mac(mac: &MacAddress) -> bool {
 
 /// True when this row's MAC is a shared virtual-router MAC (VRRP/CARP/HSRP).
 fn has_virtual_router_mac(ip: &IPAddress) -> bool {
-    ip.base
-        .mac_address
+    mac_of(&ip.base.mac_address)
         .map(|m| is_virtual_router_mac(&m))
         .unwrap_or(false)
 }
@@ -322,8 +329,7 @@ fn has_virtual_router_mac(ip: &IPAddress) -> bool {
 /// True when this row pins identity to physical hardware: a MAC that is present and is
 /// *not* a shared virtual-router MAC. A row with no MAC is not physical evidence.
 fn has_real_mac(ip: &IPAddress) -> bool {
-    ip.base
-        .mac_address
+    mac_of(&ip.base.mac_address)
         .map(|m| !is_virtual_router_mac(&m))
         .unwrap_or(false)
 }
@@ -346,7 +352,7 @@ fn mac_counts_for_payload<'a>(
 ) -> HashMap<MacAddress, usize> {
     payload
         .into_iter()
-        .filter_map(|i| i.base.mac_address)
+        .filter_map(|i| mac_of(&i.base.mac_address))
         .fold(HashMap::new(), |mut acc, mac| {
             *acc.entry(mac).or_insert(0) += 1;
             acc
@@ -554,6 +560,8 @@ fn ip_addresses_match(
         && incoming
             .base
             .mac_address
+            .as_ref()
+            .map(|e| e.value().0)
             .map(|mac| incoming_mac_counts.get(&mac).copied().unwrap_or(0) == 1)
             .unwrap_or(false))
 }
@@ -562,6 +570,7 @@ fn ip_addresses_match(
 mod tests {
     use super::*;
     use crate::server::ip_addresses::r#impl::base::IPAddressBase;
+    use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
 
     fn make_interface(ip: IpAddr, subnet_id: Uuid, mac: Option<MacAddress>) -> IPAddress {
         IPAddress {
@@ -569,7 +578,8 @@ mod tests {
             base: IPAddressBase {
                 ip_address: ip,
                 subnet_id,
-                mac_address: mac,
+                mac_address: mac
+                    .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::ArpReply)),
                 ..Default::default()
             },
             ..Default::default()
