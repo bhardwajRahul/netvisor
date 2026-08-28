@@ -153,9 +153,19 @@
 	Note this wrapper is the containing block for `position: sticky`, so a sticky
 	header here would offset from the wrapper rather than the viewport — which is
 	why the header scrolls with the rows instead of pinning.
+
+	`relative` is what makes it the containing block for *absolute* descendants as
+	well, and that is load-bearing rather than tidy. `FieldValue` renders an
+	absolutely positioned `sr-only` span for every empty cell, and `overflow` only
+	clips descendants it is also the containing block for. Left static, those spans
+	resolved against `main` — the next positioned ancestor — kept their static
+	position out at the far columns of a wide table, and extended `main`'s scrollable
+	width past its own box. The window did not scroll, `main` did, into blank space
+	to the right of the content. Same escape the `relative` on `main` was added for
+	vertically, one level down.
 -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<div class="overflow-x-auto" tabindex="0" role="region" aria-label={caption}>
+<div class="relative overflow-x-auto" tabindex="0" role="region" aria-label={caption}>
 	<table class="w-full border-collapse text-sm">
 		<caption class="sr-only">{caption}</caption>
 		<thead>

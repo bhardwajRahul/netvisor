@@ -104,7 +104,7 @@ impl AttributeMethod {
 ///
 /// **Externally tagged**, which is serde's default and is left unstated for that reason. Thirty-three
 /// of these variants carry nothing, and a tag on a variant with no content is a key that distinguishes
-/// nothing — `"Unspecified"`, not `{"type":"Unspecified"}`, in every row of fifteen columns. The two
+/// nothing — `"Unspecified"`, not `{"type":"Unspecified"}`, in every row of every column. The two
 /// that do carry a [`ClientProbe`] keep it under their own name, `{"Probe":"Snmp"}`, which tells them
 /// apart from each other and from every bare name.
 #[derive(
