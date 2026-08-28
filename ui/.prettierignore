@@ -13,5 +13,9 @@ src/lib/paraglide/
 # settings.json. Formatting tool output we never commit just fails the gate.
 project.inlang/
 
+# Playwright writes run metadata and failure artifacts here on every harness run.
+# Gitignored, never committed, and reformatting tool output only fails the gate.
+test-results/
+
 # Miscellaneous
 /static/
