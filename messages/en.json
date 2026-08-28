@@ -2057,6 +2057,7 @@
 	"topology_containerHost": "Container Host",
 	"topology_containerService": "Container Service",
 	"topology_createdUsing": "Created using scanopy.net",
+	"topology_detailHiddenByZoom": "Detail hidden at this zoom",
 	"topology_displayHelp": "Adjust visual settings for the topology view.",
 	"topology_dontFadeEdges": "Don't Fade Edges",
 	"topology_dontFadeEdgesHelp": "Show edges at full opacity at all times",
