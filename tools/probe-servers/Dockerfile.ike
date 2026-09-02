@@ -1,0 +1,6 @@
+FROM debian:bookworm-slim
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y strongswan iproute2 && rm -rf /var/lib/apt/lists/*
+RUN printf 'config setup\n  charondebug="ike 1"\nconn probe\n  auto=add\n  keyexchange=ikev2\n  left=%%any\n  right=%%any\n  authby=secret\n' > /etc/ipsec.conf \
+ && printf ': PSK "probe"\n' > /etc/ipsec.secrets
+EXPOSE 500/udp 4500/udp
+CMD ["/usr/sbin/ipsec","start","--nofork"]

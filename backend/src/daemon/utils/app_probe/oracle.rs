@@ -28,18 +28,27 @@ const TYPE_CONNECT: u8 = 0x01;
 
 /// Length (2), checksum (2), type, reserved, header checksum (2).
 const TNS_HEADER_LEN: usize = 8;
+/// The `CONNECT` body a listener expects before the descriptor starts.
+const BODY_LEN: usize = 50;
+/// Header plus body: where the connect descriptor begins, and what the offset field must carry.
+const FIXED_LEN: usize = TNS_HEADER_LEN + BODY_LEN;
 
 /// A `CONNECT` carrying a minimal connect descriptor.
 ///
 /// The service name is deliberately one nothing will be listening for: a listener that refuses it
 /// answers just as usefully as one that accepts, and asking for a real service we do not know the
 /// name of would be no more informative.
+///
+/// **The fixed portion is 58 bytes and the connect-data offset has to say so.** An 8-byte header
+/// plus a 50-byte body, with the descriptor following at exactly that offset. A listener sent a
+/// shorter body reads the offset as pointing into the middle of its own fields and closes the
+/// connection without a word, which is indistinguishable from nothing being there — verified
+/// against `gvenzl/oracle-free`, which answered `ACCEPT` the moment the offset was right and had
+/// been silent before.
 fn connect_packet() -> Vec<u8> {
     let descriptor = b"(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=)(CID=(PROGRAM=)(HOST=)(USER=))))";
 
-    // Connect data begins straight after the 26-byte CONNECT body that follows the header.
-    let offset = (TNS_HEADER_LEN + 26) as u16;
-    let mut body = Vec::new();
+    let mut body = Vec::with_capacity(BODY_LEN);
     body.extend_from_slice(&0x0136u16.to_be_bytes()); // version
     body.extend_from_slice(&0x012Cu16.to_be_bytes()); // minimum compatible version
     body.extend_from_slice(&0x0000u16.to_be_bytes()); // service options
@@ -49,11 +58,14 @@ fn connect_packet() -> Vec<u8> {
     body.extend_from_slice(&0x0000u16.to_be_bytes()); // line turnaround
     body.extend_from_slice(&0x0001u16.to_be_bytes()); // value of 1 in hardware
     body.extend_from_slice(&(descriptor.len() as u16).to_be_bytes());
-    body.extend_from_slice(&offset.to_be_bytes());
+    body.extend_from_slice(&(FIXED_LEN as u16).to_be_bytes()); // connect data offset
     body.extend_from_slice(&0u32.to_be_bytes()); // maximum receivable connect data
-    body.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // flags and trailing fields
+    body.extend_from_slice(&[0x00, 0x01]); // connect flags
+    // Trace cross-facility items and the unique connection id, all unused here.
+    body.extend_from_slice(&[0u8; 24]);
+    debug_assert_eq!(body.len(), BODY_LEN);
 
-    let total = (TNS_HEADER_LEN + body.len() + descriptor.len()) as u16;
+    let total = (FIXED_LEN + descriptor.len()) as u16;
     let mut packet = Vec::with_capacity(total as usize);
     packet.extend_from_slice(&total.to_be_bytes());
     packet.extend_from_slice(&0u16.to_be_bytes()); // packet checksum, unused
@@ -169,5 +181,22 @@ mod tests {
             packet.windows(12).any(|w| w == b"(DESCRIPTION"),
             "the connect descriptor follows the body"
         );
+    }
+
+    /// The offset field has to point at where the descriptor actually starts. A listener sent a
+    /// shorter body closes the connection silently, which reads as "nothing there" — this is the
+    /// bug a real Oracle caught that no parser test could.
+    #[test]
+    fn the_connect_data_offset_points_at_the_descriptor() {
+        let packet = connect_packet();
+        let offset = u16::from_be_bytes([packet[26], packet[27]]) as usize;
+        assert_eq!(offset, FIXED_LEN);
+        assert_eq!(
+            &packet[offset..offset + 12],
+            b"(DESCRIPTION",
+            "the offset the listener is told is where the descriptor is"
+        );
+        let declared_len = u16::from_be_bytes([packet[24], packet[25]]) as usize;
+        assert_eq!(declared_len, packet.len() - offset);
     }
 }

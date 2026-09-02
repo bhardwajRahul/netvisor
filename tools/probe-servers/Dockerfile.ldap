@@ -1,0 +1,12 @@
+FROM debian:bookworm-slim
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y slapd ldap-utils && rm -rf /var/lib/apt/lists/*
+RUN echo "slapd slapd/internal/generated_adminpw password probe" | debconf-set-selections \
+ && echo "slapd slapd/internal/adminpw password probe" | debconf-set-selections \
+ && echo "slapd slapd/password1 password probe" | debconf-set-selections \
+ && echo "slapd slapd/password2 password probe" | debconf-set-selections \
+ && echo "slapd slapd/domain string probe.local" | debconf-set-selections \
+ && echo "slapd shared/organization string Probe" | debconf-set-selections \
+ && rm -rf /etc/ldap/slapd.d/* /var/lib/ldap/* \
+ && dpkg-reconfigure -f noninteractive slapd
+EXPOSE 389
+CMD ["/usr/sbin/slapd","-h","ldap://0.0.0.0:389/","-d","0"]
