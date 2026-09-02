@@ -36,7 +36,7 @@
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import ContainerHeader, { type SubgroupRow } from './ContainerHeader.svelte';
 	import { CONTAINER_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
-	import { nodeDetail, shouldSimplify } from '../../pipeline/render-mode';
+	import { nodeDetail } from '../../pipeline/render-mode';
 
 	// Shared, refcounted views over the module-level stores — see
 	// `reactive-stores.svelte.ts`. One subscription serves every node component.
@@ -154,7 +154,9 @@
 	/**
 	 * What this container draws — see `nodeDetail`.
 	 *
-	 * Keyed on this container's own on-screen box, not on zoom alone. At the zoom a large L2 graph
+	 * Whether the graph is past full detail is decided once in the viewer (`detailSimplified`), since
+	 * it depends on the size of the whole graph. What this container then *draws* is keyed on its own
+	 * on-screen box, not on zoom alone. At the zoom a large L2 graph
 	 * fits at, a switch is 211px and the port-status group inside a host is 2.7px; the first cut at
 	 * this used one global boolean and gave both of them the same 12px label, so a grouping box
 	 * ended up wearing a name four times wider than itself.
@@ -164,11 +166,7 @@
 	 */
 	let detailTier = $derived(
 		nodeDetail({
-			detail: !shouldSimplify({
-				zoom: viewport.current.zoom,
-				measuring: sharedStores.measuring.current,
-				exporting: isExportingValue
-			}),
+			detail: !sharedStores.simplified.current,
 			screenWidth: (width ?? 0) * viewport.current.zoom,
 			isSubcontainer
 		})
