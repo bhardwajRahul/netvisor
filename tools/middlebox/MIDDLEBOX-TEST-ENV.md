@@ -19,10 +19,27 @@ the connect is the only thing between it and a host record.
 
 The daemon must therefore not be on the phantom range's segment. That constraint is the whole setup.
 
-## What to set up
+## Currently deployed
 
-A Debian LXC or VM the scanning daemon can reach. The SNMP lab's Proxmox host is the natural place;
-it needs one core and 512 MB.
+Running on the SNMP lab VM (`192.168.4.21`, reachable as `root@192.168.7.230` with
+`~/.ssh/snmp-test-vm`), with the route already added on the daemon Mac. Verified end to end: every
+address in `10.77.0.0/24` completes a handshake on the intercepted ports from the scanning host, and
+a port outside the set is refused.
+
+It shares that VM with the SNMP simulator and does not disturb it — the NAT rules match only
+`-d 10.77.0.0/24`, so no `192.168.7.x` traffic touches them. Confirmed after deployment: 26 `snmpd`
+units still active, 25 macvlans present, `switch-core-01` still answering `snmpget`.
+
+Teardown:
+
+```
+ssh -i ~/.ssh/snmp-test-vm root@192.168.7.230 '/root/middlebox-setup.sh --down'
+sudo route -n delete -net 10.77.0.0/24
+```
+
+## Setting it up elsewhere
+
+A Debian LXC or VM the scanning daemon can reach. It needs one core and 512 MB.
 
 ```
 pct create 300 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
@@ -42,6 +59,11 @@ apt-get update && apt-get install -y socat iptables
 
 It prints the three addresses it verified, each completing a handshake with nothing behind it.
 
+Those checks run **on the middlebox itself**, which is a weaker test than it looks: locally
+originated traffic is redirected to loopback, while traffic forwarded from the scanner is redirected
+to the LAN address. A sink bound to `127.0.0.1` passes the local check and drops every packet from
+the scanner. Always confirm from the scanning host as well, which is what the next section is for.
+
 ## The one change outside that box
 
 The scanning host has to know the range is reachable through the middlebox:
@@ -57,6 +79,15 @@ Undo with `ip route del 10.77.0.0/24` or `sudo route -n delete 10.77.0.0/24`.
 
 If the daemon runs in Docker, add the route inside the container (needs `--cap-add=NET_ADMIN`), or
 run the daemon on the host for this test.
+
+Then confirm from the scanning host, not just from the middlebox:
+
+```
+for a in 10.77.0.7 10.77.0.99 10.77.0.201; do
+    timeout 4 bash -c "echo > /dev/tcp/$a/5060" && echo "$a completed" || echo "$a no answer"
+done
+timeout 4 bash -c "echo > /dev/tcp/10.77.0.7/8080" && echo "8080 answered (wrong)" || echo "8080 refused"
+```
 
 ## Testing it
 
@@ -80,9 +111,17 @@ ip addr add 10.77.0.50/32 dev lo
 python3 -m http.server 8080 --bind 10.77.0.50
 ```
 
-8080 is not in the intercepted set, so this address answers for itself. It should appear as a host
-with a web service on the same scan that records nothing for the phantom addresses. If it does not,
-the change is over-suppressing and that is a bug worth reporting.
+This address is the interesting one, because it is **both**: it serves real HTTP on 8080 *and* is
+intercepted on 5060 along with every other address in the range. That is what a real host behind the
+customer's FortiGate looks like — the helper answers on its behalf too.
+
+So it should appear as a host, with its web service, and **without** a SIP Server. Three failures to
+watch for:
+
+- The host is missing entirely — the guard is over-suppressing, and that is a worse bug than the one
+  it fixes.
+- The host appears with a SIP Server on it — a probe is accepting a completed handshake as evidence.
+- The phantom addresses appear at all — the guard is not running.
 
 ## Tuning
 

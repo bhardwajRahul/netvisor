@@ -70,13 +70,19 @@ ip route replace "$PHANTOM_SUBNET" dev lo 2>/dev/null || true
 # answers the protocol is a different (and much rarer) case; this one completes the
 # handshake and stays silent, which is what a session helper does for a destination
 # that does not exist.
+#
+# Bound to 0.0.0.0, which is load bearing. `REDIRECT` rewrites the destination to the
+# address of the interface the packet arrived on: 127.0.0.1 for traffic this box
+# originates, but the LAN address for traffic it forwards. A sink bound to loopback
+# passes a local test and then silently drops every packet from the scanner, which is
+# the one case the lab exists for.
 cat > /etc/systemd/system/middlebox-sink.service <<EOF
 [Unit]
 Description=Middlebox sink: accepts TCP and says nothing
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/socat TCP-LISTEN:${SINK_PORT},fork,reuseaddr,bind=127.0.0.1 /dev/null
+ExecStart=/usr/bin/socat TCP-LISTEN:${SINK_PORT},fork,reuseaddr /dev/null
 Restart=always
 
 [Install]
