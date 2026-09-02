@@ -857,6 +857,66 @@ mod tests {
         HashSet::new()
     }
 
+    // ---- A far end minted by this session's resolution pass ---------------
+
+    /// Minting happens server-side after the daemon's own work, so the two gates that decide
+    /// whether a host reaches the digest are the ones this exercises together: `covers_host`
+    /// admits it only because the session observed it (it has no addresses, so no subnet can
+    /// place it), and `compute_digest_status` calls it new only because it is in the scanned set
+    /// *and* its `created_at` falls inside the window. Either gate alone still drops it, which is
+    /// why they are asserted as a pair rather than separately.
+    #[test]
+    fn a_far_end_this_session_minted_is_reported_as_added() {
+        let w = window(24 * 7, Some(HOUR));
+
+        // Stamped with the session's clock, the way the resolution pass now stamps it.
+        let mut minted = Host::new(HostBase {
+            source: EntitySource::Inferred,
+            ..Default::default()
+        });
+        minted.last_seen_at = w.t_end;
+        minted.created_at = w.t_end;
+
+        let scanned: HashSet<Uuid> = HashSet::from([minted.id]);
+        let coverage = ScanCoverage::Subnets(HashSet::from([Uuid::new_v4()]));
+
+        assert!(
+            coverage.covers_host(minted.id, None, true),
+            "a minted far end has no addresses, so only having been observed can cover it"
+        );
+        assert_eq!(
+            compute_digest_status(&minted, &scanned, &w),
+            (EntityFreshness::New, true),
+            "a host this session created and touched is an addition, not a silent arrival"
+        );
+    }
+
+    /// The trap the scan-time stamp exists to avoid. `Utc::now()` at mint time is *after* the
+    /// daemon's `finished_at`, which is where the window closes — so a host stamped with the wall
+    /// clock falls outside the window that exists to report it, and `is_new` rejects it even
+    /// though the session both created and scanned it. Nothing about this is visible at the call
+    /// site, which is why it is pinned here.
+    #[test]
+    fn a_minted_host_stamped_after_the_window_closes_is_not_reported_as_new() {
+        let w = window(24 * 7, Some(HOUR));
+
+        let mut too_late = Host::new(HostBase {
+            source: EntitySource::Inferred,
+            ..Default::default()
+        });
+        // One second past `finished_at` — the gap between the daemon finishing and the server
+        // minting.
+        too_late.last_seen_at = w.t_end + chrono::Duration::seconds(1);
+        too_late.created_at = w.t_end + chrono::Duration::seconds(1);
+
+        let scanned: HashSet<Uuid> = HashSet::from([too_late.id]);
+        assert_ne!(
+            compute_digest_status(&too_late, &scanned, &w).0,
+            EntityFreshness::New,
+            "stamping mint time instead of scan time puts the host outside its own scan's window"
+        );
+    }
+
     // ---- The decay scenario from the task -------------------------------
 
     // A host reported with 3 services loses one per scan, then goes dark

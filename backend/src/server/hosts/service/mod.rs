@@ -5,7 +5,6 @@ use crate::server::{
     bindings::r#impl::base::{Binding, BindingType},
     credentials::service::CredentialService,
     daemons::{r#impl::base::Daemon, service::DaemonService},
-    discovery::service::DiscoveryService,
     hosts::r#impl::{
         api::{
             BindingInput, ConflictBehavior, CreateHostRequest, HostResponse, IPAddressInput,
@@ -81,8 +80,6 @@ pub struct HostService {
     service_service: Arc<ServiceService>,
     interface_service: Arc<InterfaceService>,
     pub daemon_service: Arc<DaemonService>,
-    /// Used to carry post-scan resolution findings back onto the scan record the operator reads.
-    discovery_service: Arc<DiscoveryService>,
     credential_service: Arc<CredentialService>,
     subnet_service: Arc<SubnetService>,
     vlan_service: Arc<VlanService>,
@@ -243,6 +240,11 @@ pub struct LldpResolutionOutcome {
     /// One coded warning per far end that could not be placed, carrying the evidence needed to
     /// triage it. Coded like the daemon's, so both producers reach the same metric.
     pub warnings: Vec<DiscoveryWarning>,
+    /// Hosts this pass minted for far ends nothing had scanned.
+    ///
+    /// The caller folds these into the session's scanned set before the scan record is written, so
+    /// they pick up the discovery FKs and the digest entry every other entity of that scan gets.
+    pub minted_host_ids: Vec<Uuid>,
 }
 
 impl LldpResolutionStats {

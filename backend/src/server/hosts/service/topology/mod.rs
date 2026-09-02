@@ -514,7 +514,11 @@ impl HostService {
     /// The second pass's findings *replace* the first's rather than adding to them. A far end that
     /// resolves once its host exists is no longer an unmatched neighbour, and reporting both would
     /// tell an operator that the same devices are missing and were just added.
-    pub async fn resolve_lldp_links(&self, network_id: Uuid) -> Result<LldpResolutionOutcome> {
+    pub async fn resolve_lldp_links(
+        &self,
+        network_id: Uuid,
+        scan_time: DateTime<Utc>,
+    ) -> Result<LldpResolutionOutcome> {
         let first = self.resolve_neighbours_once(network_id).await?;
 
         // The plan's host limit, built the way the daemon batch path builds it
@@ -524,17 +528,18 @@ impl HostService {
         let limit_ctx = self.host_limit_context(network_id).await;
 
         let inferred = self
-            .infer_far_end_subnets(network_id, first.unplaced, limit_ctx.as_ref())
+            .infer_far_end_subnets(network_id, first.unplaced, limit_ctx.as_ref(), scan_time)
             .await?;
 
         // A pass that created nothing has nothing new to resolve against, whatever the standing
         // report says about ranges awaiting confirmation.
-        if !inferred.minted {
+        if inferred.minted_host_ids.is_empty() {
             let mut warnings = first.warnings;
             warnings.extend(inferred.warnings);
             return Ok(LldpResolutionOutcome {
                 stats: first.stats,
                 warnings,
+                minted_host_ids: Vec::new(),
             });
         }
 
@@ -547,21 +552,8 @@ impl HostService {
         Ok(LldpResolutionOutcome {
             stats: second.stats,
             warnings,
+            minted_host_ids: inferred.minted_host_ids,
         })
-    }
-
-    /// Put a resolution pass's findings on the scan record they belong to.
-    ///
-    /// Thin by design — the decision of *where* these belong lives in
-    /// [`DiscoveryService::append_historical_warnings`]; this only names the session.
-    pub async fn append_resolution_warnings(
-        &self,
-        session_id: Uuid,
-        warnings: Vec<DiscoveryWarning>,
-    ) -> Result<()> {
-        self.discovery_service
-            .append_historical_warnings(session_id, warnings)
-            .await
     }
 
     /// Give a far end the port it advertised, where nothing else has ever described one.

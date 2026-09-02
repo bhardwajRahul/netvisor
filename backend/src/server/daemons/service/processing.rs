@@ -1,5 +1,6 @@
 //! Inbound daemon message processing: status, startup, registration, capabilities, discovery entities, and migration.
 use super::*;
+use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 
 impl DaemonService {
@@ -545,13 +546,80 @@ impl DaemonService {
         Ok(())
     }
 
-    /// Process a discovery progress update
+    /// Process a discovery progress update.
+    ///
+    /// On the terminal update, neighbour resolution runs *before* the session is finalized, and the
+    /// hosts it mints are added to the session's scanned set. That ordering is the whole point: the
+    /// discovery FKs and the digest are both driven by the `Discovery::Created` event that
+    /// `update_session` publishes, and both read the scanned set off it. Resolving afterwards — as a
+    /// subscriber on the terminal phase event, which is where this used to live — meant a far end
+    /// minted from a neighbour's advertisement existed only after everything that could have
+    /// attributed or reported it had already run. It got no discovery FKs and never appeared in the
+    /// digest, despite being a device that scan found.
+    ///
+    /// The cost is that this request now waits for a network-wide resolution pass. That is the
+    /// deliberate trade: the scan record is written before the daemon is acknowledged, so a failure
+    /// here is one the daemon sees and can retry, rather than a session silently lost after a
+    /// successful ack.
     pub async fn process_discovery_progress(
         &self,
-        update: DiscoveryUpdatePayload,
+        mut update: DiscoveryUpdatePayload,
     ) -> Result<(), ApiError> {
+        if update.phase == DiscoveryPhase::Complete
+            && update.discovery_type.rescan_target_host_id().is_none()
+        {
+            self.resolve_neighbours_into_session(&mut update).await;
+        }
+
         self.discovery_service.update_session(update).await?;
         Ok(())
+    }
+
+    /// Resolve this network's neighbours and fold what that produced into the terminal payload.
+    ///
+    /// Never fails the caller. Link resolution is post-scan enrichment; losing some links is a bad
+    /// outcome, and losing the scan record itself because enrichment failed is a far worse one — so
+    /// an error here is logged and the session is finalized regardless. This is the same
+    /// best-effort posture the pass had as a subscriber, where a failure could not reach the
+    /// completion path at all.
+    async fn resolve_neighbours_into_session(&self, update: &mut DiscoveryUpdatePayload) {
+        let Some(host_service) = self.host_service.get() else {
+            tracing::warn!(
+                session_id = %update.session_id,
+                "HostService not initialized; skipping neighbour resolution for this session"
+            );
+            return;
+        };
+
+        // The session's own clock, so a minted host carries the timestamp every other entity of
+        // this scan carries. `finished_at` is what closes the digest's window; stamping mint time
+        // instead would put the host just outside the window that exists to report it.
+        let scan_time = update.finished_at.unwrap_or_else(Utc::now);
+
+        match host_service
+            .resolve_lldp_links(update.network_id, scan_time)
+            .await
+        {
+            Ok(outcome) => {
+                if !outcome.minted_host_ids.is_empty() {
+                    update
+                        .scanned
+                        .get_or_insert_with(Default::default)
+                        .host_ids
+                        .extend(outcome.minted_host_ids);
+                }
+                // Into the row as it is written, rather than appended to it afterwards. The append
+                // existed only because this ran after the row; with the order reversed there is
+                // nothing to append to and nothing to race.
+                update.warnings.extend(outcome.warnings);
+            }
+            Err(e) => tracing::warn!(
+                session_id = %update.session_id,
+                network_id = %update.network_id,
+                error = %e,
+                "Neighbour resolution failed; finalizing the session without its findings"
+            ),
+        }
     }
 
     /// Process discovered entities from a daemon.
