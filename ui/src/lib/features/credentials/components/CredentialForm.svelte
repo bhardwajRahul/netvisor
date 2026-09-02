@@ -554,6 +554,20 @@
 	 * requires at least one host (a remote IP or the daemon-host row). Broadcast is
 	 * always valid. The caller surfaces failures via a toast on advance.
 	 */
+	/**
+	 * The human label for one of this form's field paths, for the validation toast.
+	 *
+	 * Without it `validateForm` falls back to the raw path and names something the form never
+	 * showed: the Instant On portal login is `fields.username` but is labelled Portal Account.
+	 */
+	export function fieldLabel(fieldPath: string): string {
+		const prefix = `${fieldPrefix}fields.`;
+		if (!fieldPath.startsWith(prefix)) return fieldPath.replace(/_/g, ' ');
+		const id = fieldPath.slice(prefix.length);
+		const fields = credentialTypes.getMetadata(selectedTypeId)?.fields ?? [];
+		return fields.find((f) => f.id === id)?.label ?? id.replace(/_/g, ' ');
+	}
+
 	export function validateTarget(): boolean {
 		// A hidden picker can never be a failure the user could act on: `hideTargets` types
 		// (the daemon-host socket, managed references) carry an implicit 127.0.0.1 target.

@@ -191,7 +191,7 @@
 	async function handleSave() {
 		loading = true;
 		try {
-			await submitForm(form);
+			await submitForm(form, (path) => credentialFormRef?.fieldLabel(path) ?? path);
 		} finally {
 			loading = false;
 		}
