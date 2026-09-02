@@ -506,7 +506,6 @@
 	// Publish rather than let each node decide: the size term above is not visible to a node, and
 	// one refcounted subscription beats a viewport read per node. See `detailSimplified`.
 	$effect(() => detailSimplified.set(detailHidden));
-	$effect(() => isRenderingTopology.set(loadInProgress));
 
 	let cullOffscreen = $derived(
 		shouldCull({
@@ -597,9 +596,24 @@
 	// switch). Keeps auto-collapse of the infra subcontainer correct on switch.
 	const getInfrastructureRuleId = () => getInfrastructureRuleIdForTopology(topology);
 
-	// `$state` so the viewer can say when a run is in flight — a collapse press on a large estate
-	// is eighteen to twenty-two seconds of mostly-synchronous ELK, and silence reads as a hang.
-	let loadInProgress = $state(false);
+	/**
+	 * Whether a pipeline run is in flight. Deliberately *not* `$state`.
+	 *
+	 * `triggerLoad` both reads this and writes it, and it is called from an `$effect` (the topology
+	 * prop watcher below). As a rune that read is tracked, so the write re-invalidates the effect,
+	 * which calls `triggerLoad` again — an unbounded loop that hangs the page before the first
+	 * layout, on a graph of any size. It was introduced and reverted once; do not make it reactive.
+	 *
+	 * The UI still needs to know, so `setLoadInProgress` mirrors it into a store. The store is only
+	 * ever read by the template and by other components, never by the control flow here, which is
+	 * what keeps the cycle broken.
+	 */
+	let loadInProgress = false;
+
+	function setLoadInProgress(value: boolean): void {
+		loadInProgress = value;
+		isRenderingTopology.set(value);
+	}
 	let pendingReload = false;
 	/**
 	 * Escape hatch for the hydration gate below.
@@ -669,7 +683,7 @@
 		// Always-on twin of the counter above: `perf` records nothing in a customer's build, and
 		// which trigger started a run is the missing half of the zero-sized-container reports.
 		noteRunStart(source);
-		loadInProgress = true;
+		setLoadInProgress(true);
 		pendingReload = false;
 		void loadTopologyData()
 			.catch((err) => {
@@ -678,7 +692,7 @@
 			})
 			.finally(() => {
 				noteRunEnd();
-				loadInProgress = false;
+				setLoadInProgress(false);
 				if (pendingReload) {
 					pendingReload = false;
 					// Only re-run if an input actually differs from what the run
@@ -1639,7 +1653,7 @@
 			/>
 		{/if}
 
-		{#if loadInProgress || detailHidden}
+		{#if $isRenderingTopology || detailHidden}
 			<!--
 				One pill for what the view is doing to itself, in flow chrome rather than in the graph
 				so it belongs to the view and not to any node.
@@ -1649,7 +1663,7 @@
 				because `shouldSimplify` suspends there and a run is never in flight mid-capture.
 			-->
 			<div class="detail-hidden-badge">
-				{#if loadInProgress}
+				{#if $isRenderingTopology}
 					<span class="detail-hidden-row">
 						<Loader2 class="h-3 w-3 flex-shrink-0 animate-spin" />
 						{common_rendering()}
