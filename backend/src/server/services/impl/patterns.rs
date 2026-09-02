@@ -243,6 +243,12 @@ pub enum ClientProbe {
     Nfs,
     /// A DNS query over TCP came back as a response carrying our transaction id.
     DnsTcp,
+    /// A TLS handshake reached the server's certificate, and that certificate's subject carries the
+    /// organizational unit Docker issues to swarm nodes. Names the swarm, not just the transport.
+    DockerSwarm,
+    /// A TLS handshake reached the server's certificate. Presence of TLS only — used where the
+    /// certificate carries nothing dependable to match on.
+    Tls,
     /// An IKE_SA_INIT came back as an IKE response, including a rejection notify.
     Ike,
     /// An OpenVPN hard reset was answered with the server's own hard reset.
@@ -294,6 +300,8 @@ impl ClientProbe {
             | Self::Rdp
             | Self::Nfs
             | Self::DnsTcp
+            | Self::DockerSwarm
+            | Self::Tls
             | Self::Ike
             | Self::OpenVpn => M::Native,
         }
