@@ -369,7 +369,7 @@ impl CredentialQueryPayload {
     /// Resolve all FilePath fields to Value by reading from disk,
     /// then validate PEM contents for fields that require it.
     pub fn resolve_file_paths(&self) -> Result<Self, anyhow::Error> {
-        use super::types::InlineFormat;
+        use crate::server::shared::types::field_definition::InlineFormat;
 
         let label = self.discovery_label();
         match self {

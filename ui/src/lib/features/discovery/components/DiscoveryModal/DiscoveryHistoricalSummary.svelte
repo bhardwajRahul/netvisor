@@ -12,6 +12,7 @@
 	import { useSubnetsQuery, getSubnetById } from '$lib/features/subnets/queries';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import scanSettingsFields from '$lib/data/scan-settings.json';
+	import type { FieldDefinition } from '$lib/shared/stores/metadata';
 	import {
 		discovery_runDetails,
 		discovery_hostNamingFallback,
@@ -69,14 +70,7 @@
 	}
 
 	// Scan settings field metadata for label lookup
-	interface FieldDef {
-		id: string;
-		label: string;
-		default_value: string;
-		field_type: string;
-	}
-
-	const fields = scanSettingsFields as FieldDef[];
+	const fields = scanSettingsFields as FieldDefinition[];
 
 	// Get non-default scan settings as label/value pairs. A rescan carries the
 	// narrower RescanSettings, whose fields are a subset of the same definitions,

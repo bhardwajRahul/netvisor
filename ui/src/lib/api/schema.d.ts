@@ -7466,6 +7466,48 @@ export interface components {
             /** @description Guest name as configured on the ESXi host. */
             vm_name?: string | null;
         };
+        /**
+         * @description Definition of a form field for dynamic UI rendering.
+         *
+         *     One definition serves every dynamic form: credential types and discovery scan settings both
+         *     build these, and the frontend renders them through the same switch. Reaches the UI through
+         *     build-time fixtures (`credential-types.json`, `integrations.json`, `scan-settings.json`) and,
+         *     for the generated TypeScript union, through the OpenAPI schema.
+         */
+        FieldDefinition: {
+            /** @description Value pre-filled when the field is first shown. */
+            default_value?: string | null;
+            /** @description How the field should be rendered and validated. */
+            field_type: components["schemas"]["FieldType"];
+            /** @description Grouping label used to section a long form. */
+            group?: string | null;
+            /** @description Explanatory text shown beneath the field. */
+            help_text?: string | null;
+            /** @description Server-assigned unique identifier. */
+            id: string;
+            inline_format?: null | components["schemas"]["InlineFormat"];
+            /** @description Human-facing field label. */
+            label: string;
+            /** @description Whether the field may be left empty. */
+            optional: boolean;
+            /**
+             * @description Choices for `Select` fields. Each option carries a wire `value` (the serialized enum
+             *     variant) and a human-facing `label`.
+             */
+            options?: components["schemas"]["SelectOption"][] | null;
+            /** @description Placeholder text for the input. */
+            placeholder?: string | null;
+            /** @description Whether the value is a secret, so it is masked and never echoed back. */
+            secret: boolean;
+        };
+        /**
+         * @description Field types for dynamic form generation.
+         *
+         *     The serialized lowercase name is the wire contract with the frontend, which switches on it to
+         *     pick a renderer and a validator. Adding a variant means teaching the frontend about it.
+         * @enum {string}
+         */
+        FieldType: "string" | "text" | "number" | "boolean" | "select" | "port" | "secretpathorinline" | "pathorinline";
         /** @description Non-secret value that can be inline content or a file path on daemon host. */
         FileOrInline: {
             /** @enum {string} */
@@ -8189,6 +8231,11 @@ export interface components {
          * @enum {string}
          */
         IfOperStatus: "Up" | "Down" | "Testing" | "Unknown" | "Dormant" | "NotPresent" | "LowerLayerDown";
+        /**
+         * @description Format hint for inline values in `PathOrInline` and `SecretPathOrInline` fields.
+         * @enum {string}
+         */
+        InlineFormat: "plain" | "pemprivatekey" | "pemcertificate";
         /**
          * @description Visual grouping metadata for inlined entities.
          *     Entities sharing the same `group_id` are rendered together in the element card.
@@ -10432,6 +10479,16 @@ export interface components {
             mode: "FilePath";
             /** @description Path to a file on the daemon host holding the secret. */
             path: string;
+        };
+        /**
+         * @description A single choice for a `Select` field. `value` is the wire value (serialized enum variant, e.g.
+         *     "Sha256"); `label` is the human-facing display text.
+         */
+        SelectOption: {
+            /** @description Human-facing option label. */
+            label: string;
+            /** @description Value submitted when this option is chosen. */
+            value: string;
         };
         /** @description Server capabilities returned on startup/registration */
         ServerCapabilities: {

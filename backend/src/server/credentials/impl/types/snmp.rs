@@ -4,6 +4,7 @@ use crate::server::credentials::r#impl::mapping::{
     BannerField, BannerFieldValue, CredentialMapping, IpOverride, ResolvableSecret,
     ResolvedCredential,
 };
+use crate::server::shared::types::field_definition::SelectOption;
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use utoipa::ToSchema;
@@ -94,12 +95,12 @@ impl SnmpV3AuthProtocol {
     }
 
     /// Select options surfaced to the frontend via `field_definitions()`.
-    pub const OPTIONS: &'static [super::fields::SelectOption] = &[
-        super::fields::SelectOption {
+    pub const OPTIONS: &'static [SelectOption] = &[
+        SelectOption {
             value: "Sha1",
             label: "SHA-1",
         },
-        super::fields::SelectOption {
+        SelectOption {
             value: "Sha256",
             label: "SHA-256",
         },
@@ -138,12 +139,12 @@ impl SnmpV3PrivProtocol {
     }
 
     /// Select options surfaced to the frontend via `field_definitions()`.
-    pub const OPTIONS: &'static [super::fields::SelectOption] = &[
-        super::fields::SelectOption {
+    pub const OPTIONS: &'static [SelectOption] = &[
+        SelectOption {
             value: "Aes128",
             label: "AES-128",
         },
-        super::fields::SelectOption {
+        SelectOption {
             value: "Aes256",
             label: "AES-256",
         },

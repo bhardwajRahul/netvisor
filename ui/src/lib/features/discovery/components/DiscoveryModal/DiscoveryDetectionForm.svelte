@@ -1,5 +1,6 @@
 <script lang="ts">
 	import scanSettingsFields from '$lib/data/scan-settings.json';
+	import type { FieldDefinition } from '$lib/shared/stores/metadata';
 	import type { Discovery } from '../../types/base';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
 	import { tooltip } from '$lib/shared/actions/tooltip';
@@ -19,19 +20,8 @@
 
 	let { formData = $bindable(), readOnly = false, isEditing = false }: Props = $props();
 
-	type FieldDef = {
-		id: string;
-		label: string;
-		field_type: string;
-		placeholder?: string;
-		help_text?: string;
-		default_value?: string;
-		optional?: boolean;
-		category?: string;
-	};
-
-	const fields = scanSettingsFields as FieldDef[];
-	const detectionFields = fields.filter((f) => f.category === 'Detection');
+	const fields = scanSettingsFields as FieldDefinition[];
+	const detectionFields = fields.filter((f) => f.group === 'Detection');
 	// full_scan_interval is grouped with force_full_scan in its own card
 	const booleanFields = detectionFields.filter(
 		(f) => f.field_type === 'boolean' && f.id !== 'full_scan_interval'
@@ -46,7 +36,7 @@
 			.join(', ')
 	);
 
-	function getHelpText(field: FieldDef): string {
+	function getHelpText(field: FieldDefinition): string {
 		if (field.id === 'probe_raw_socket_ports' && rawSocketServiceNames) {
 			return `${field.help_text} Required to detect: ${rawSocketServiceNames}`;
 		}

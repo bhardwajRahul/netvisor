@@ -14,10 +14,9 @@ use strum::IntoEnumIterator;
 
 use crate::server::services::r#impl::definitions::{ServiceDefinition, ServiceDefinitionExt};
 use crate::server::shared::fixtures::logo_slug;
+use crate::server::shared::types::field_definition::FieldDefinition;
 
-use super::types::{
-    CredentialStability, CredentialTypeDiscriminants, FieldDefinition, Target, UpstreamSupport,
-};
+use super::types::{CredentialStability, CredentialTypeDiscriminants, Target, UpstreamSupport};
 
 /// One integration: a service plus the transports (credential types) that reach
 /// it, with a single canonical discovery description and a one-line summary.

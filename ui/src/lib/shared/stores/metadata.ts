@@ -42,20 +42,13 @@ export interface TypeMetadata extends EntityMetadata {
 	metadata: unknown;
 }
 
-export interface FieldDefinition {
-	id: string;
-	label: string;
-	field_type: 'string' | 'text' | 'select' | 'secretpathorinline' | 'pathorinline';
-	placeholder?: string;
-	secret: boolean;
-	optional: boolean;
-	help_text?: string;
-	/** Choices for `select` fields: wire `value` + human-facing `label`. */
-	options?: { value: string; label: string }[];
-	default_value?: string;
-	inline_format?: 'plain' | 'pemprivatekey' | 'pemcertificate';
-	group?: string;
-}
+/**
+ * The one form-field shape, generated from the backend `FieldDefinition`. Credential types and
+ * discovery scan settings both build these, so both are rendered from the same declared
+ * `field_type` — never inferred from a label, an id or a placeholder.
+ */
+export type FieldDefinition = components['schemas']['FieldDefinition'];
+export type FieldType = components['schemas']['FieldType'];
 
 export interface CredentialTypeMetadata {
 	fields: FieldDefinition[];
