@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { shouldCull, nodeDetail, BOX_MIN_PX } from '$lib/features/topology/pipeline/render-mode';
+import {
+	shouldCull,
+	shouldSimplify,
+	nodeDetail,
+	BOX_MIN_PX,
+	LOD_MIN_NODES,
+	DETAIL_ZOOM
+} from '$lib/features/topology/pipeline/render-mode';
 
 /**
  * Culling has two hard suspensions. Both exist because something else needs
@@ -66,5 +73,37 @@ describe('nodeDetail', () => {
 		// Elements are the graph's texture and their state colour is the one thing that survives at
 		// this scale, so they keep a box where a grouping container would be dropped.
 		expect(nodeDetail({ ...base, screenWidth: 1 })).toBe('boxed');
+	});
+});
+
+/**
+ * The size gate.
+ *
+ * Simplifying costs the operator something real — the cards stop saying what they are — so it has
+ * to buy something back. On a few hundred nodes there is nothing to reclaim and hiding detail is
+ * purely worse, which is why this is gated on the graph and not on the zoom alone.
+ */
+describe('shouldSimplify', () => {
+	const big = { zoom: 0.01, nodeCount: LOD_MIN_NODES, measuring: false, exporting: false };
+
+	it('simplifies a large graph once it is zoomed out past the detail threshold', () => {
+		expect(shouldSimplify(big)).toBe(true);
+	});
+
+	it('leaves a small graph alone however far it is zoomed out', () => {
+		// The whole point of the gate: a 200-node graph costs nothing to draw in full, so taking its
+		// labels away at low zoom would be a loss with no compensating gain.
+		expect(shouldSimplify({ ...big, nodeCount: LOD_MIN_NODES - 1 })).toBe(false);
+	});
+
+	it('leaves a large graph alone while it is zoomed in', () => {
+		expect(shouldSimplify({ ...big, zoom: DETAIL_ZOOM })).toBe(false);
+	});
+
+	it('suspends for the measure pass and for export', () => {
+		// Both would otherwise corrupt something silently: the measure pass would hand ELK the
+		// pinned heights, and an export would rasterise a page of empty boxes.
+		expect(shouldSimplify({ ...big, measuring: true })).toBe(false);
+		expect(shouldSimplify({ ...big, exporting: true })).toBe(false);
 	});
 });

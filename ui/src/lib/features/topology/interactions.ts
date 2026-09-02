@@ -35,6 +35,26 @@ export const isExporting = writable(false);
  * ELK the result. `shouldSimplify` suspends on it for the same reason `shouldCull` does.
  */
 export const isMeasuring = writable(false);
+
+/**
+ * Whether the canvas is currently drawing boxes rather than card contents.
+ *
+ * Decided once in the viewer and published, rather than each node deciding for itself, because the
+ * decision now depends on the size of the whole graph — which a node cannot see. It is also simply
+ * cheaper: one subscription shared across every node instead of thousands of viewport reads.
+ * Containers still read the zoom directly, because their tier depends on their own box.
+ */
+export const detailSimplified = writable(false);
+
+/**
+ * A pipeline run is in flight — layout, measurement, the lot.
+ *
+ * Surfaced so the viewer can say so. On a large estate a collapse press costs eighteen to
+ * twenty-two seconds of mostly-synchronous ELK, during which the canvas sits there looking broken;
+ * an operator who cannot tell "working" from "hung" reasonably concludes the latter, which is how
+ * the report behind this work described it.
+ */
+export const isRenderingTopology = writable(false);
 export const newNodeIds = writable<Set<string>>(new Set());
 
 // Tag filter stores - nodes/services hidden by tag filter

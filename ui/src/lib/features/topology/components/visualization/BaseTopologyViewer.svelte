@@ -18,9 +18,11 @@
 		topology_levelSubcontainersExpanded,
 		topology_levelFullyExpanded,
 		topology_parseFailed,
-		topology_detailHiddenByZoom
+		topology_detailSimplified,
+		common_rendering
 	} from '$lib/paraglide/messages';
 	import { type Node, type Edge } from '@xyflow/svelte';
+	import { Loader2 } from 'lucide-svelte';
 	import { getViewportForBounds, type Rect } from '@xyflow/system';
 	import { shouldSimplify } from '../../pipeline/render-mode';
 	import {
@@ -51,7 +53,13 @@
 		topologyOptionsHydrated,
 		activeView
 	} from '../../queries';
-	import { isExporting, isMeasuring, expandedPortNodeIds } from '../../interactions';
+	import {
+		isExporting,
+		isMeasuring,
+		detailSimplified,
+		isRenderingTopology,
+		expandedPortNodeIds
+	} from '../../interactions';
 
 	// Import custom node/edge components
 	import ContainerNode from './ContainerNode.svelte';
@@ -489,10 +497,16 @@
 	let detailHidden = $derived(
 		shouldSimplify({
 			zoom: viewerViewport.current.zoom,
+			nodeCount: $nodes.length,
 			measuring: measurePassActive,
 			exporting: $isExporting
 		})
 	);
+
+	// Publish rather than let each node decide: the size term above is not visible to a node, and
+	// one refcounted subscription beats a viewport read per node. See `detailSimplified`.
+	$effect(() => detailSimplified.set(detailHidden));
+	$effect(() => isRenderingTopology.set(loadInProgress));
 
 	let cullOffscreen = $derived(
 		shouldCull({
@@ -583,7 +597,9 @@
 	// switch). Keeps auto-collapse of the infra subcontainer correct on switch.
 	const getInfrastructureRuleId = () => getInfrastructureRuleIdForTopology(topology);
 
-	let loadInProgress = false;
+	// `$state` so the viewer can say when a run is in flight — a collapse press on a large estate
+	// is eighteen to twenty-two seconds of mostly-synchronous ELK, and silence reads as a hang.
+	let loadInProgress = $state(false);
 	let pendingReload = false;
 	/**
 	 * Escape hatch for the hydration gate below.
@@ -1623,10 +1639,28 @@
 			/>
 		{/if}
 
-		{#if detailHidden}
-			<!-- Positioned in flow chrome rather than in the graph, so it is a property of the view
-			     and not of any node. Hidden during export by `shouldSimplify` itself. -->
-			<div class="detail-hidden-badge">{topology_detailHiddenByZoom()}</div>
+		{#if loadInProgress || detailHidden}
+			<!--
+				One pill for what the view is doing to itself, in flow chrome rather than in the graph
+				so it belongs to the view and not to any node.
+
+				Both lines can be true at once — a large graph is usually the reason a run is slow and
+				the reason detail is off — so they stack rather than compete. Absent during export,
+				because `shouldSimplify` suspends there and a run is never in flight mid-capture.
+			-->
+			<div class="detail-hidden-badge">
+				{#if loadInProgress}
+					<span class="detail-hidden-row">
+						<Loader2 class="h-3 w-3 flex-shrink-0 animate-spin" />
+						{common_rendering()}
+					</span>
+				{/if}
+				{#if detailHidden}
+					<span class="detail-hidden-row">
+						{topology_detailSimplified({ count: $nodes.length })}
+					</span>
+				{/if}
+			</div>
 		{/if}
 
 		{#if showBranding}
@@ -1654,6 +1688,10 @@
 	 * state, it is not a control, and it must not eat pointer events over the graph.
 	 */
 	.detail-hidden-badge {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
 		position: absolute;
 		bottom: 12px;
 		left: 50%;
@@ -1669,6 +1707,12 @@
 		background: var(--color-topology-node-bg, #fff);
 		border: 1px solid var(--color-border, #e2e8f0);
 		box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+	}
+
+	.detail-hidden-row {
+		display: flex;
+		align-items: center;
+		gap: 5px;
 	}
 
 	.branding-badge {

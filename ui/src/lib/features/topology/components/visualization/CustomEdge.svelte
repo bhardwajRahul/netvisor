@@ -6,16 +6,14 @@
 		EdgeLabel,
 		getBezierPath,
 		getStraightPath,
-		EdgeReconnectAnchor,
-		useViewport
+		EdgeReconnectAnchor
 	} from '@xyflow/svelte';
 	import { topologyOptions } from '../../queries';
 	import { useTopology, selectedTopologyId } from '../../context';
 	import { edgeTypes } from '$lib/shared/stores/metadata';
 	import { createColorHelper, type Color } from '$lib/shared/utils/styling';
 	import type { TopologyEdge, RenderableTopology } from '../../types/base';
-	import { isExporting, isMeasuring, hoveredEdgeType } from '../../interactions';
-	import { shouldSimplify } from '../../pipeline/render-mode';
+	import { isExporting, detailSimplified, hoveredEdgeType } from '../../interactions';
 	import {
 		getLinkEvidenceTag,
 		isDottedEdge,
@@ -122,14 +120,7 @@
 	 * into the mounted set — dropping edges from it would change what is culled, not just what is
 	 * drawn.
 	 */
-	const viewport = useViewport();
-	let simplified = $derived(
-		shouldSimplify({
-			zoom: viewport.current.zoom,
-			measuring: $isMeasuring,
-			exporting: $isExporting
-		})
-	);
+	let simplified = $derived($detailSimplified);
 
 	let hideEdge = $derived(
 		simplified ||

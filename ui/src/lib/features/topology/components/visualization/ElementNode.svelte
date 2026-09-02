@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import { type NodeProps, useInternalNode, useViewport } from '@xyflow/svelte';
+	import { type NodeProps, useInternalNode } from '@xyflow/svelte';
 	import NodeHandles from './NodeHandles.svelte';
 	import { concepts, entities, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import {
@@ -33,7 +33,6 @@
 	import type { Node, Edge } from '@xyflow/svelte';
 	import { topology_hideOpenPorts, topology_openPortsSummary } from '$lib/paraglide/messages';
 	import { ELEMENT_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
-	import { shouldSimplify } from '../../pipeline/render-mode';
 	import { ELEMENT_STATE_FILL, elementState, portStatusDotColor } from '../../element-state-color';
 
 	let { id, data, width }: NodeProps = $props();
@@ -47,36 +46,27 @@
 	let isExportingValue = $derived(sharedStores.exporting.current);
 
 	/**
-	 * Draw as a box rather than as contents, once the card is too small to read.
+	 * Draw as a box rather than as contents — decided once in the viewer and shared.
 	 *
-	 * Reads the viewport directly, which is only affordable because the result is a boolean: the
-	 * viewport object is replaced on every pan frame, so this `$derived` recomputes per frame, but
-	 * Svelte only propagates when the value actually changes — so the DOM churns when the threshold
-	 * is crossed and not otherwise. Measured at 5,936 mounted nodes before relying on it.
+	 * See `detailSimplified`: the decision needs the size of the whole graph, which a card cannot
+	 * see, and one refcounted subscription is cheaper than a viewport read per node.
 	 */
-	const viewport = useViewport();
+	let simplified = $derived(sharedStores.simplified.current);
+
 	/**
 	 * The height a simplified card has to hold, taken from what SvelteFlow measured.
 	 *
-	 * Not the `height` prop: `build-flow-nodes.ts:247` sets it to `undefined` for every element
-	 * on purpose, because `NodeWrapper` only applies a height style when it is present and an
-	 * element card is meant to size to its content. That leaves the card itself as the height
-	 * source — so an empty one collapses, ELK's next input shrinks, and the whole graph reflows on
-	 * zoom. Measured at 5,936 nodes: the fitted zoom moved from 0.0108 to 0.0135 before this pin
-	 * existed, which is the layout shrinking by a quarter.
+	 * Not the `height` prop: `build-flow-nodes.ts:247` sets it to `undefined` for every element on
+	 * purpose, because `NodeWrapper` only applies a height style when it is present and an element
+	 * card is meant to size to its content. That leaves the card itself as the height source — so an
+	 * empty one collapses, ELK's next input shrinks, and the whole graph reflows on zoom. Measured
+	 * at 5,936 nodes: the fitted zoom moved 0.0108 -> 0.0135 before this pin existed, which is the
+	 * layout shrinking by a quarter.
 	 *
-	 * Pinning to `measured.height` is stable rather than circular: the card then renders at exactly
-	 * the height SvelteFlow already recorded, so `updateNodeInternals` sees no drift and never
-	 * re-measures it smaller.
+	 * Pinning to `measured.height` is stable rather than circular: the card renders at exactly the
+	 * height SvelteFlow already recorded, so `updateNodeInternals` sees no drift.
 	 */
 	let pinnedHeight = $derived(useInternalNode(id).current?.measured?.height);
-	let simplified = $derived(
-		shouldSimplify({
-			zoom: viewport.current.zoom,
-			measuring: sharedStores.measuring.current,
-			exporting: isExportingValue
-		})
-	);
 	let hiddenEntities = $derived(sharedStores.hiddenEntities.current);
 	let searchHiddenNodes = $derived(sharedStores.searchHiddenNodes.current);
 	let connectedNodes = $derived(sharedStores.connectedNodes.current);

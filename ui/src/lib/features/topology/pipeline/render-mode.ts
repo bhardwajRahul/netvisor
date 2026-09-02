@@ -96,9 +96,22 @@ export const DETAIL_ZOOM = 0.35;
 /** Below this on-screen width a box is too small to be worth drawing structure inside. */
 export const BOX_MIN_PX = 12;
 
+/**
+ * Graph size at or above which reduced detail is worth having at all.
+ *
+ * Simplifying is a real cost to the operator — the cards stop saying what they are — and it only
+ * buys anything on a graph big enough for the DOM to hurt. On a few hundred nodes there is nothing
+ * to reclaim and hiding detail is just worse. Set well above `CULLING_THRESHOLD_ELEMENTS`, since
+ * culling is invisible and this is not, and at the scale the cost was actually measured: the
+ * capture behind this work peaked at 1,501 mounted nodes before its tab ran out of memory.
+ */
+export const LOD_MIN_NODES = 1_000;
+
 export interface SimplifyConditions {
 	/** The viewport's current zoom. */
 	zoom: number;
+	/** Nodes in the store. Below `LOD_MIN_NODES` nothing is simplified at any zoom. */
+	nodeCount: number;
 	/** A DOM measurement pass is in progress. */
 	measuring: boolean;
 	/** An export is capturing the flow element. */
@@ -123,8 +136,14 @@ export interface SimplifyConditions {
  * Tooling shares `__topoNoCull` rather than getting a second flag: anything reading the graph out
  * of the DOM wants it whole and detailed, which is the same thing that switch already means.
  */
-export function shouldSimplify({ zoom, measuring, exporting }: SimplifyConditions): boolean {
+export function shouldSimplify({
+	zoom,
+	nodeCount,
+	measuring,
+	exporting
+}: SimplifyConditions): boolean {
 	if (measuring || exporting || cullingDisabledForTooling()) return false;
+	if (nodeCount < LOD_MIN_NODES) return false;
 	return zoom < DETAIL_ZOOM;
 }
 
