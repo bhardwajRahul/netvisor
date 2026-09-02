@@ -33,6 +33,7 @@ impl HostService {
         network_id: Uuid,
         far_ends: Vec<UnplacedFarEnd>,
         limit_ctx: Option<&HostLimitContext>,
+        scan_time: DateTime<Utc>,
     ) -> Result<InferenceOutcome> {
         // No early return on an empty far-end list: the standing report below covers ranges the
         // ingest path inferred, and a scan that placed every neighbour is exactly when those are
@@ -123,19 +124,18 @@ impl HostService {
         // Every far end, not only those a range was created for. A device that published no address
         // is still one nothing has contacted, and minting it is what turns an unresolved neighbour
         // into a host the next pass can place and the topology can draw.
-        let minted = self
-            .mint_far_end_hosts(network_id, &far_ends, &placements, limit_ctx)
+        let minted_host_ids = self
+            .mint_far_end_hosts(network_id, &far_ends, &placements, limit_ctx, scan_time)
             .await;
 
-        // A re-resolution is worth running only when a *host* was minted, which is what makes a
-        // previously unresolved neighbour resolve. A range created without one changes nothing the
-        // second pass would see, and the standing report below says nothing new either way.
-        let minted = minted > 0;
         warnings.extend(
             self.provisional_subnet_warnings(network_id, evidence)
                 .await?,
         );
-        Ok(InferenceOutcome { minted, warnings })
+        Ok(InferenceOutcome {
+            minted_host_ids,
+            warnings,
+        })
     }
 
     /// Report every range on this network still waiting to be confirmed, not only the ones this
@@ -144,8 +144,8 @@ impl HostService {
     /// A provisional CIDR is a standing state, not a per-scan delta — the same reasoning that makes
     /// `LldpNeighbourNotFound` a standing population. Reporting only new ones would mean an
     /// operator who did not act on the scan that proposed a range never hears about it again, and
-    /// would leave ranges inferred on the ingest path silent entirely: nothing there has a
-    /// `session_id`, and `append_historical_warnings` needs one.
+    /// would leave ranges inferred on the ingest path silent entirely: nothing there belongs to a
+    /// session, so nothing there can ride out on one's scan record.
     ///
     /// Far-end evidence is attached where this pass has it and omitted where it does not, which is
     /// the honest shape: a range inferred from a controller-reported address has no neighbour that
@@ -180,8 +180,14 @@ impl HostService {
 
 /// What one inference step produced.
 pub(super) struct InferenceOutcome {
-    /// Whether this step created a range, and so whether re-resolving can place anything new.
-    pub minted: bool,
+    /// The hosts this step created, in the order it created them.
+    ///
+    /// Ids rather than a count, because the caller has to hand them to the session as entities it
+    /// touched. A far end minted here is a device *this scan* found — through a neighbour rather
+    /// than by sweeping it, but found nonetheless — so it carries the scan's discovery FKs and is
+    /// reported in its digest like anything else. Without the ids it was neither: attribution and
+    /// the digest both read the session's scanned set, and nothing put it there.
+    pub minted_host_ids: Vec<Uuid>,
     /// Every range on the network still waiting to be confirmed, not only the ones created here.
     pub warnings: Vec<DiscoveryWarning>,
 }
@@ -243,13 +249,14 @@ impl HostService {
         far_ends: &[UnplacedFarEnd],
         placements: &HashMap<String, Uuid>,
         limit_ctx: Option<&HostLimitContext>,
-    ) -> usize {
+        scan_time: DateTime<Utc>,
+    ) -> Vec<Uuid> {
         // One host per chassis id, not per address: several ports naming the same far end is one
         // device, and minting per sighting would put a row on the map for every cable. The chassis
         // id rather than the address because every far end has one — it is the hard gate in
         // `unplaced_far_end` — and because it is what `select_matching_host` later merges on.
         let mut seen: HashSet<&str> = HashSet::new();
-        let mut minted = 0usize;
+        let mut minted: Vec<Uuid> = Vec::new();
 
         for far_end in far_ends {
             if !seen.insert(far_end.chassis_id.as_str()) {
@@ -289,7 +296,12 @@ impl HostService {
                 (None, Some(address)) => host.base.apply_name(HostName::from_ip(address)),
                 (None, None) => false,
             };
-            host.last_seen_at = Utc::now();
+            // The scan's own timestamp, not `Utc::now()`. `create.rs` derives `created_at` from
+            // this via `originate_scan_timestamps`, and the digest's window closes at the session's
+            // `finished_at` — so a host stamped with the wall clock at mint time lands just past the
+            // end of the window that is supposed to contain it, and is never reported as added.
+            // Every daemon-submitted entity already shares one timestamp for this reason.
+            host.last_seen_at = scan_time;
 
             // An address only where a range was actually created for it. A far end that published
             // none, or whose range was refused, becomes a host with no address — legal, and what
@@ -359,7 +371,7 @@ impl HostService {
                 (None, None) => Vec::new(),
             };
 
-            if let Err(e) = self
+            match self
                 .create_with_children(
                     host,
                     ip_addresses,
@@ -378,15 +390,17 @@ impl HostService {
                 )
                 .await
             {
-                tracing::warn!(
+                // The server-assigned id, not the one this loop generated: `create_with_children`
+                // matches an existing host before it creates, so what comes back may be a host this
+                // network already held. Recording that id is still right — the scan did touch it.
+                Ok(response) => minted.push(response.id),
+                Err(e) => tracing::warn!(
                     network_id = %network_id,
                     chassis_id = %far_end.chassis_id,
                     address = ?far_end.address,
                     error = %e,
                     "Could not mint a host for an unplaceable far end"
-                );
-            } else {
-                minted += 1;
+                ),
             }
         }
 
