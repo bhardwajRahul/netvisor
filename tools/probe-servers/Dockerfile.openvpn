@@ -1,0 +1,12 @@
+FROM debian:bookworm-slim
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y openvpn openssl && rm -rf /var/lib/apt/lists/*
+WORKDIR /pki
+# A throwaway PKI. The probe never gets as far as TLS: it is the pre-TLS control-channel
+# hard reset that answers, and the server needs a valid config merely to start at all.
+RUN openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.crt -days 3650 -subj "/CN=probe-ca" \
+ && openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj "/CN=probe-server" \
+ && openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 3650 \
+ && openssl dhparam -out dh.pem 2048
+RUN printf 'port 1194\nproto udp\ndev tun\nca /pki/ca.crt\ncert /pki/server.crt\nkey /pki/server.key\ndh /pki/dh.pem\nserver 10.88.0.0 255.255.255.0\nkeepalive 10 120\nverb 3\n' > /pki/server.conf
+EXPOSE 1194/udp
+CMD ["openvpn","--config","/pki/server.conf"]

@@ -14,6 +14,10 @@
 //!
 //! Ports with nothing listening are reported rather than skipped in silence, so a run that
 //! exercised three probes cannot be mistaken for one that exercised all of them.
+//!
+//! UDP has no connect, so nothing can tell "no server there" from "the probe is wrong". Its probes
+//! are therefore only asserted when `SCANOPY_LIVE_UDP_PORTS` names the ports a server is known to
+//! be on — `SCANOPY_LIVE_UDP_PORTS=500,1194 cargo test --lib -- --ignored live_servers`.
 
 use std::net::SocketAddr;
 
@@ -78,6 +82,48 @@ async fn every_tcp_probe_recognises_its_own_reference_server() {
     assert!(
         !recognised.is_empty(),
         "no reference server was reachable, so this run proved nothing"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs UDP reference servers; name their ports in SCANOPY_LIVE_UDP_PORTS"]
+async fn named_udp_probes_recognise_their_own_reference_server() {
+    let Ok(named) = std::env::var("SCANOPY_LIVE_UDP_PORTS") else {
+        panic!(
+            "set SCANOPY_LIVE_UDP_PORTS to the ports a UDP reference server is listening on, \
+             e.g. SCANOPY_LIVE_UDP_PORTS=500,1194. Without it this test cannot tell a broken probe \
+             from an absent server, so it refuses to report either."
+        );
+    };
+    let expected: Vec<u16> = named
+        .split(',')
+        .filter_map(|p| p.trim().parse().ok())
+        .collect();
+    assert!(
+        !expected.is_empty(),
+        "SCANOPY_LIVE_UDP_PORTS named no ports"
+    );
+
+    let ctx = context();
+    let mut missed = Vec::new();
+    let mut recognised = Vec::new();
+
+    for probe in all_app_probes()
+        .into_iter()
+        .filter(|p| p.port().is_udp() && expected.contains(&p.port().number()))
+    {
+        let port = probe.port().number();
+        match probe.run(&ctx).await {
+            Ok(AppProbeOutcome::Answered { .. }) => recognised.push(port),
+            _ => missed.push(port),
+        }
+    }
+
+    eprintln!("recognised: {recognised:?}");
+    assert!(
+        missed.is_empty(),
+        "a UDP reference server was said to be listening on these ports and the probe did not \
+         recognise it: {missed:?}"
     );
 }
 
