@@ -117,8 +117,16 @@
 				daemonHostIds
 			);
 
+			// `value` also carries CredentialForm's scratch state — `fields` (raw per-field
+			// strings) and `targetIps` — because those inputs register under this form. Neither
+			// is part of `Credential`, and `fields` would put uncoerced strings on the wire
+			// beside the built `credential_type`, so drop both here.
+			const formValues: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+			delete formValues.fields;
+			delete formValues.targetIps;
+
 			const credentialData: Credential = {
-				...(value as Credential),
+				...(formValues as unknown as Credential),
 				organization_id: organization.id,
 				credential_type: credentialType,
 				assigned_network_ids: permitted.assignedNetworkIds,

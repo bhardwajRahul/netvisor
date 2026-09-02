@@ -226,7 +226,7 @@
 			}
 		}
 		fieldValues = values;
-		syncSelectFieldsToForm(raw.type as string);
+		syncFieldsToForm(raw.type as string);
 	}
 
 	function initDefaultFieldValues(typeId: string) {
@@ -241,21 +241,21 @@
 			}
 		}
 		fieldValues = values;
-		syncSelectFieldsToForm(typeId);
+		syncFieldsToForm(typeId);
 	}
 
-	// `select` fields are rendered manually and only push their value into the
-	// TanStack form on change. Seed the form with the current value so a required
-	// select with a default validates without the user re-picking the option.
-	function syncSelectFieldsToForm(typeId: string) {
+	// Every field renders from `fieldValues` and only pushes into the TanStack form on change,
+	// so a form opened on an existing credential has no TanStack value until the user types in
+	// the field. Its validators still run on submit and see `undefined`, which reads as empty:
+	// a required field the user never touched fails with "This field is required" and the save
+	// is blocked until they retype the value that is already on screen. Seeding every field
+	// here is what makes an unchanged edit saveable. (Secret and path fields dodged this because
+	// their validators read the display value instead of the TanStack one, and optional fields
+	// dodged it because empty is legal — which is why only required plain fields broke.)
+	function syncFieldsToForm(typeId: string) {
 		const fields = credentialTypes.getMetadata(typeId)?.fields ?? [];
 		for (const field of fields) {
-			if (field.field_type === 'select') {
-				form.setFieldValue?.(
-					fieldName(field.id),
-					fieldValues[field.id] ?? field.default_value ?? ''
-				);
-			}
+			form.setFieldValue?.(fieldName(field.id), fieldValues[field.id] ?? field.default_value ?? '');
 		}
 	}
 
