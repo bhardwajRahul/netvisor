@@ -596,10 +596,25 @@ impl DaemonService {
         // instead would put the host just outside the window that exists to report it.
         let scan_time = update.finished_at.unwrap_or_else(Utc::now);
 
-        match host_service
+        // TEMPORARY diagnostic, to answer one question in dev: how long a real completion request
+        // now waits on this. Remove once that number is known -- see the Work Summary.
+        let started = std::time::Instant::now();
+
+        let outcome = host_service
             .resolve_lldp_links(update.network_id, scan_time)
-            .await
-        {
+            .await;
+
+        tracing::info!(
+            target: "resolution_timing",
+            session_id = %update.session_id,
+            network_id = %update.network_id,
+            duration_ms = started.elapsed().as_millis() as u64,
+            minted = outcome.as_ref().map(|o| o.minted_host_ids.len()).unwrap_or(0),
+            failed = outcome.is_err(),
+            "Neighbour resolution finished"
+        );
+
+        match outcome {
             Ok(outcome) => {
                 if !outcome.minted_host_ids.is_empty() {
                     update
