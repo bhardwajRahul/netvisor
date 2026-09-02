@@ -22,7 +22,6 @@ mod fields;
 mod metadata;
 mod secrets;
 
-pub use fields::{FieldDefinition, FieldType, InlineFormat, PemTag, SelectOption};
 pub use metadata::{
     CredentialAssignment, CredentialCategory, CredentialHostAssignment, CredentialStability,
     UpstreamSupport,
@@ -671,6 +670,7 @@ fn container_proxy_query(
 mod tests {
     use super::*;
     use crate::server::credentials::r#impl::mapping::CredentialQueryPayload;
+    use crate::server::shared::types::field_definition::FieldType;
     use secrecy::SecretString;
     use std::collections::HashMap;
     use strum::IntoEnumIterator;
@@ -1278,5 +1278,26 @@ mod tests {
             CredentialTypeDiscriminants::SnmpV2c.upstream_support(),
             UpstreamSupport::Vendor
         );
+    }
+
+    /// A port field must declare `FieldType::Port`, which is what gives it the 1-65535 range on
+    /// the frontend. Typing one as `String` loses that validation silently, and the form used to
+    /// recover the type by looking for "port" in the field's *label* — which misfired on Instant
+    /// On's "Portal Account" and made a valid email unsaveable. The type is declared now, so this
+    /// asserts the declaration holds for every credential type rather than trusting authors.
+    #[test]
+    fn port_fields_declare_the_port_type() {
+        for disc in CredentialTypeDiscriminants::iter() {
+            for field in disc.to_credential_type().field_definitions() {
+                assert_eq!(
+                    field.id == "port",
+                    matches!(field.field_type, FieldType::Port),
+                    "{disc:?} field '{}' ({:?}) must be FieldType::Port if and only if its id is \
+                     \"port\"",
+                    field.id,
+                    field.field_type,
+                );
+            }
+        }
     }
 }

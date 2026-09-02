@@ -25,7 +25,7 @@
 	import { translateFieldDefinitions } from '$lib/i18n/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
-	import type { FieldDefinition } from '$lib/shared/stores/metadata';
+	import type { FieldDefinition, FieldType } from '$lib/shared/stores/metadata';
 	import { Eye, EyeOff } from 'lucide-svelte';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import { docsUrl } from '$lib/shared/utils/docs';
@@ -359,6 +359,12 @@
 		await submitForm(form);
 	}
 
+	// Field types whose value is numeric on the wire. `port` is here because a port is declared
+	// as one now rather than being a `string` that happened to look like a number.
+	function submitsAsNumber(fieldType: FieldType): boolean {
+		return fieldType === 'string' || fieldType === 'port';
+	}
+
 	/** Build a CredentialType from current fieldValues. */
 	export function buildCredentialType(): CredentialType {
 		const fields = currentFields;
@@ -391,14 +397,15 @@
 					const dv = field.default_value;
 					const dvNum = Number(dv);
 					typeObj[field.id] =
-						dv !== '' && !isNaN(dvNum) && field.field_type === 'string' ? dvNum : dv;
+						dv !== '' && !isNaN(dvNum) && submitsAsNumber(field.field_type) ? dvNum : dv;
 				} else {
 					typeObj[field.id] = null;
 				}
 			} else {
 				const raw = value ?? (field.default_value || '');
 				const num = Number(raw);
-				typeObj[field.id] = raw !== '' && !isNaN(num) && field.field_type === 'string' ? num : raw;
+				typeObj[field.id] =
+					raw !== '' && !isNaN(num) && submitsAsNumber(field.field_type) ? num : raw;
 			}
 		}
 
@@ -617,7 +624,7 @@
 			if (!field.optional && !effectiveValue?.trim()) return 'This field is required';
 			// Skip all further validation if value is empty (optional field)
 			if (!effectiveValue?.trim()) return undefined;
-			if (field.id === 'port' || field.label?.toLowerCase().includes('port')) {
+			if (field.field_type === 'port') {
 				return port(effectiveValue);
 			}
 			// Only validate PEM format when in inline mode

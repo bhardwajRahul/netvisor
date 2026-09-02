@@ -24161,6 +24161,102 @@
           }
         }
       },
+      "FieldDefinition": {
+        "type": "object",
+        "description": "Definition of a form field for dynamic UI rendering.\n\nOne definition serves every dynamic form: credential types and discovery scan settings both\nbuild these, and the frontend renders them through the same switch. Reaches the UI through\nbuild-time fixtures (`credential-types.json`, `integrations.json`, `scan-settings.json`) and,\nfor the generated TypeScript union, through the OpenAPI schema.",
+        "required": [
+          "id",
+          "label",
+          "field_type",
+          "secret",
+          "optional"
+        ],
+        "properties": {
+          "default_value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Value pre-filled when the field is first shown."
+          },
+          "field_type": {
+            "$ref": "#/components/schemas/FieldType",
+            "description": "How the field should be rendered and validated."
+          },
+          "group": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Grouping label used to section a long form."
+          },
+          "help_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Explanatory text shown beneath the field."
+          },
+          "id": {
+            "type": "string",
+            "description": "Server-assigned unique identifier."
+          },
+          "inline_format": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InlineFormat",
+                "description": "For `PathOrInline` and `SecretPathOrInline` fields: what format the inline value must be.\nAlso drives server-side validation in `CredentialType::validate`."
+              }
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-facing field label."
+          },
+          "optional": {
+            "type": "boolean",
+            "description": "Whether the field may be left empty."
+          },
+          "options": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SelectOption"
+            },
+            "description": "Choices for `Select` fields. Each option carries a wire `value` (the serialized enum\nvariant) and a human-facing `label`."
+          },
+          "placeholder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Placeholder text for the input."
+          },
+          "secret": {
+            "type": "boolean",
+            "description": "Whether the value is a secret, so it is masked and never echoed back."
+          }
+        }
+      },
+      "FieldType": {
+        "type": "string",
+        "description": "Field types for dynamic form generation.\n\nThe serialized lowercase name is the wire contract with the frontend, which switches on it to\npick a renderer and a validator. Adding a variant means teaching the frontend about it.",
+        "enum": [
+          "string",
+          "text",
+          "number",
+          "boolean",
+          "select",
+          "port",
+          "secretpathorinline",
+          "pathorinline"
+        ]
+      },
       "FileOrInline": {
         "oneOf": [
           {
@@ -25598,6 +25694,15 @@
           "Dormant",
           "NotPresent",
           "LowerLayerDown"
+        ]
+      },
+      "InlineFormat": {
+        "type": "string",
+        "description": "Format hint for inline values in `PathOrInline` and `SecretPathOrInline` fields.",
+        "enum": [
+          "plain",
+          "pemprivatekey",
+          "pemcertificate"
         ]
       },
       "InlineGroup": {
@@ -30375,6 +30480,24 @@
           }
         ],
         "description": "Secret value that can be either inline content or a file path on the daemon host."
+      },
+      "SelectOption": {
+        "type": "object",
+        "description": "A single choice for a `Select` field. `value` is the wire value (serialized enum variant, e.g.\n\"Sha256\"); `label` is the human-facing display text.",
+        "required": [
+          "value",
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Human-facing option label."
+          },
+          "value": {
+            "type": "string",
+            "description": "Value submitted when this option is chosen."
+          }
+        }
       },
       "ServerCapabilities": {
         "type": "object",
