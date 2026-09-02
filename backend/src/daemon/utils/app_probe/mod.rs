@@ -20,10 +20,40 @@
 //! sntpc), BACnet and EtherNet/IP bind a UDP socket, and Modbus opens a TCP stream and keeps it for
 //! a second exchange.
 
+pub mod amqp;
+pub mod cassandra;
+pub mod checkmk;
+pub mod dns_tcp;
 pub mod ethernet_ip;
+pub mod ftp;
+pub mod ike;
+pub mod kafka;
+pub mod kerberos;
+pub mod ldap;
+#[cfg(test)]
+mod live_servers;
+#[cfg(test)]
+mod middlebox;
 pub mod modbus;
+pub mod mongodb;
+pub mod mqtt;
+pub mod mssql;
+pub mod mysql;
+pub mod nfs;
+pub mod nut;
 pub mod opcua;
+pub mod openvpn;
+pub mod oracle;
+pub mod postgresql;
+pub mod rdp;
+pub mod redis;
+pub mod rtsp;
+pub mod sip;
+pub mod smb;
+pub mod ssh;
+pub mod telnet;
 pub mod udp;
+pub mod zabbix;
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -34,7 +64,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::daemon::discovery::service::ops::HostData;
 use crate::daemon::discovery::types::base::DiscoveryCriticalError;
-use crate::daemon::utils::scanner::{ScanConcurrencyController, batch_scan};
+use crate::daemon::utils::scanner::{SCAN_TIMEOUT, ScanConcurrencyController, batch_scan};
 use crate::server::hosts::r#impl::attributes::{
     HostFirmwareRevisionAttributed, HostManufacturerAttributed, HostModelAttributed,
     HostSerialNumberAttributed,
@@ -44,6 +74,8 @@ use crate::server::services::definitions::ServiceDefinitionRegistry;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::services::r#impl::patterns::ClientProbe;
 use crate::server::shared::attribution::{AttributeSource, AttributeValue, Attributed};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 
 /// Everything a probe is allowed to know about its target.
 ///
@@ -193,11 +225,92 @@ pub struct AppProbeResult {
     pub identity: Option<DeviceIdentity>,
 }
 
+/// Connect to `port` on the context's address and read whatever the peer sends first.
+///
+/// For the protocols where the *server* opens the conversation: SSH sends its version string, FTP
+/// and SMTP send a `220`, a Check_MK agent dumps its section list. `None` covers every way that can
+/// fail to produce evidence — no connect, no bytes, a closed connection — because a probe only ever
+/// distinguishes "the protocol answered" from "it did not".
+///
+/// A connect error is reported to the scan controller before being swallowed, so FD exhaustion
+/// degrades the scan's concurrency rather than being read as "nothing is listening there".
+pub(crate) async fn read_greeting(ctx: &ProbeContext, port: PortType, buf_len: usize) -> Vec<u8> {
+    let addr = std::net::SocketAddr::new(ctx.ip, port.number());
+    let mut stream = match tokio::time::timeout(SCAN_TIMEOUT, TcpStream::connect(addr)).await {
+        Ok(Ok(stream)) => stream,
+        Ok(Err(e)) => {
+            ctx.note_connect_error(&e);
+            return Vec::new();
+        }
+        Err(_) => return Vec::new(),
+    };
+
+    let mut buf = vec![0u8; buf_len];
+    match tokio::time::timeout(SCAN_TIMEOUT, stream.read(&mut buf)).await {
+        Ok(Ok(read)) => {
+            buf.truncate(read);
+            buf
+        }
+        // A listener that accepts and then says nothing is the middlebox shape, and it is why this
+        // returns empty rather than erroring: silence is a legitimate answer meaning "not this".
+        _ => Vec::new(),
+    }
+}
+
+/// Connect to `port`, send `request`, and read the reply.
+///
+/// For the protocols where the *client* opens the conversation: RTSP `OPTIONS`, a Redis `PING`, an
+/// LDAP search, an SMB negotiate. Same `None`-shaped contract as [`read_greeting`].
+pub(crate) async fn request_response(
+    ctx: &ProbeContext,
+    port: PortType,
+    request: &[u8],
+    buf_len: usize,
+) -> Vec<u8> {
+    let addr = std::net::SocketAddr::new(ctx.ip, port.number());
+    let mut stream = match tokio::time::timeout(SCAN_TIMEOUT, TcpStream::connect(addr)).await {
+        Ok(Ok(stream)) => stream,
+        Ok(Err(e)) => {
+            ctx.note_connect_error(&e);
+            return Vec::new();
+        }
+        Err(_) => return Vec::new(),
+    };
+
+    if tokio::time::timeout(SCAN_TIMEOUT, stream.write_all(request))
+        .await
+        .is_err()
+    {
+        return Vec::new();
+    }
+
+    let mut buf = vec![0u8; buf_len];
+    match tokio::time::timeout(SCAN_TIMEOUT, stream.read(&mut buf)).await {
+        Ok(Ok(read)) => {
+            buf.truncate(read);
+            buf
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// `Answered` with no identity when `detected`, `NoAnswer` otherwise.
+///
+/// Most probes establish presence and nothing else; this saves each of them writing the same
+/// two-arm match.
+pub(crate) fn presence(detected: bool) -> AppProbeOutcome {
+    if detected {
+        AppProbeOutcome::Answered { identity: None }
+    } else {
+        AppProbeOutcome::NoAnswer
+    }
+}
+
 /// The probe registry *is* the service-definition registry.
 pub fn all_app_probes() -> Vec<Box<dyn AppProbe>> {
     ServiceDefinitionRegistry::all_service_definitions()
         .iter()
-        .filter_map(|d| d.app_probe())
+        .flat_map(|d| d.app_probes())
         .collect()
 }
 

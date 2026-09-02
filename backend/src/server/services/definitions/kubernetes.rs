@@ -20,7 +20,18 @@ impl ServiceDefinition for Kubernetes {
 
     fn discovery_pattern(&self) -> Pattern<'_> {
         Pattern::AllOf(vec![
-            Pattern::Port(PortType::Kubernetes),
+            // The API server refuses an unauthenticated request, and the refusal is the evidence:
+            // it comes back as the API's own `Status` object rather than a bare 401, so it can only
+            // have been produced by something running the Kubernetes API. Anonymous access to
+            // `/livez` is upstream-default but most distributions disable it, which is why this
+            // matches the error rather than a health check.
+            Pattern::Endpoint(
+                PortType::Kubernetes,
+                "/version",
+                "\"kind\": \"Status\"",
+                Some(400..500),
+            ),
+            // The control-plane and node ports, which qualify the above rather than standing alone.
             Pattern::AnyOf(vec![
                 Pattern::Port(PortType::new_tcp(10250)),
                 Pattern::Port(PortType::new_tcp(10259)),

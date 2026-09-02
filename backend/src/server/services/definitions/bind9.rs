@@ -18,10 +18,12 @@ impl ServiceDefinition for Bind9 {
         ServiceCategory::DNS
     }
 
+    /// The statistics channel serves XML referencing BIND's own stylesheet, which is what
+    /// separates BIND from any other DNS server answering on 53.
     fn discovery_pattern(&self) -> Pattern<'_> {
         Pattern::AllOf(vec![
             Pattern::Port(PortType::DnsUdp),
-            Pattern::Port(PortType::new_tcp(8053)),
+            Pattern::Endpoint(PortType::new_tcp(8053), "/", "/bind9.xsl", None),
         ])
     }
 }

@@ -192,6 +192,61 @@ pub enum ClientProbe {
     OpcUa,
     /// A CIP ListIdentity reply came back with our sender context echoed.
     EtherNetIp,
+    /// An `OPTIONS` request came back as a `SIP/2.0` status line. Any final response counts: a
+    /// stack that parsed the request and refused it is still a stack.
+    Sip,
+    /// The server sent an `SSH-` identification string, which RFC 4253 requires before anything
+    /// else happens.
+    Ssh,
+    /// An FTP greeting: `220` ready, or `421` refusing this client.
+    Ftp,
+    /// Telnet option negotiation — an `IAC` command byte in the opening bytes.
+    Telnet,
+    /// An `OPTIONS` request came back as an `RTSP/1.0` status line.
+    Rtsp,
+    /// A NUT server answered its text protocol rather than an error of another shape.
+    Nut,
+    /// A Zabbix agent answered a passive check with its `ZBXD` header.
+    ZabbixAgent,
+    /// A Check_MK agent dumped its section list, which opens `<<<check_mk>>>`.
+    CheckMkAgent,
+    /// An SMB2 NEGOTIATE was answered with an SMB2 header.
+    Smb,
+    /// An LDAP search of the root DSE came back as a BER-encoded searchResEntry or a result code.
+    Ldap,
+    /// A Kerberos AS-REQ came back as a KRB-ERROR, which is what an unauthenticated request earns
+    /// and is proof of a KDC.
+    Kerberos,
+    /// MySQL's server greeting packet, which it sends before the client says anything.
+    MySql,
+    /// PostgreSQL answered an SSLRequest with `S` or `N`.
+    PostgreSql,
+    /// A TDS PRELOGIN response.
+    MsSql,
+    /// MongoDB answered a `hello` command.
+    MongoDb,
+    /// Redis answered `PING` with `+PONG`, or refused it with `-NOAUTH`, which is still Redis.
+    Redis,
+    /// A CQL OPTIONS frame came back as SUPPORTED.
+    Cassandra,
+    /// A Kafka ApiVersions request came back with our correlation ID echoed.
+    Kafka,
+    /// The AMQP protocol header was answered, either by agreement or by a version rejection.
+    Amqp,
+    /// An MQTT CONNECT came back as a CONNACK, whatever return code it carries.
+    Mqtt,
+    /// An Oracle TNS connect packet came back as a TNS packet.
+    OracleTns,
+    /// An X.224 connection request came back as a connection confirm.
+    Rdp,
+    /// An ONC RPC NULL call to the NFS program came back as an RPC reply.
+    Nfs,
+    /// A DNS query over TCP came back as a response carrying our transaction id.
+    DnsTcp,
+    /// An IKE_SA_INIT came back as an IKE response, including a rejection notify.
+    Ike,
+    /// An OpenVPN hard reset was answered with the server's own hard reset.
+    OpenVpn,
 }
 
 impl ClientProbe {
@@ -210,6 +265,37 @@ impl ClientProbe {
             Self::Snmp | Self::Gnmi => M::Queried,
             // Same, over the device's own product protocol.
             Self::ModbusTcp | Self::EtherNetIp | Self::OpcUa => M::Native,
+            // The presence probes: we chose the address and spoke the service's own protocol to
+            // it. None of them reads an identity field today — they establish that the protocol
+            // answered and nothing more — so this tier is not consulted for any value yet. It is
+            // still stated rather than defaulted, because the day one of them does parse a version
+            // banner into a `DeviceIdentity` the tier has to already be right.
+            Self::Sip
+            | Self::Ssh
+            | Self::Ftp
+            | Self::Telnet
+            | Self::Rtsp
+            | Self::Nut
+            | Self::ZabbixAgent
+            | Self::CheckMkAgent
+            | Self::Smb
+            | Self::Ldap
+            | Self::Kerberos
+            | Self::MySql
+            | Self::PostgreSql
+            | Self::MsSql
+            | Self::MongoDb
+            | Self::Redis
+            | Self::Cassandra
+            | Self::Kafka
+            | Self::Amqp
+            | Self::Mqtt
+            | Self::OracleTns
+            | Self::Rdp
+            | Self::Nfs
+            | Self::DnsTcp
+            | Self::Ike
+            | Self::OpenVpn => M::Native,
         }
     }
 }
@@ -1185,6 +1271,66 @@ impl Pattern<'_> {
             }
             _ => false,
         }
+    }
+
+    /// Whether a completed TCP connection to `port`, and nothing else, is enough for this pattern
+    /// to match.
+    ///
+    /// This is the property a middlebox exploits. A firewall session helper, transparent proxy or
+    /// IPS completes the handshake on behalf of an address that holds no device, and a definition
+    /// resting on the connect alone then names a service there (GH: FortiGate SIP ALG report). A
+    /// definition that reads a protocol response cannot be fooled the same way, because the
+    /// middlebox would have to speak the protocol to satisfy it.
+    ///
+    /// Derived from the pattern rather than from a maintained list, so a definition added with a
+    /// bare [`Pattern::Port`] is covered the day it lands and one that validates its port never is.
+    /// [`ServiceDefinition::connect_only_rationale`] is what declares the deliberate exceptions,
+    /// and the two are held equal by a test.
+    ///
+    /// UDP is out of scope: there is no connect to complete, and a UDP port is only ever reported
+    /// open by an `AppProbe` that already validated it.
+    pub fn matches_on_connect_alone(&self, port: PortType) -> bool {
+        if !port.is_tcp() {
+            return false;
+        }
+        match self {
+            Pattern::Port(p) => *p == port,
+            Pattern::AnyOf(patterns) => patterns.iter().any(|p| p.matches_on_connect_alone(port)),
+            // Every arm has to be satisfiable by connects for the whole to be, and one of them has
+            // to be the port in question — otherwise `AllOf([Port(80), Port(443)])` would report
+            // itself connect-only for a port it never looks at.
+            Pattern::AllOf(patterns) => {
+                patterns.iter().all(|p| p.satisfiable_by_connect())
+                    && patterns.iter().any(|p| p.references_port(port))
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether this pattern can be satisfied without evidence beyond completed TCP connections.
+    ///
+    /// The [`Pattern::AllOf`] recursion for [`Self::matches_on_connect_alone`]. Everything not
+    /// listed is `false` because it demands evidence a middlebox cannot manufacture: an HTTP body
+    /// or header match, a credentialed or application-probe response, an mDNS advert, a controller
+    /// inventory entry. [`Pattern::MacVendor`] is `false` for the same reason from the other
+    /// direction — it needs a MAC, which a routed address never has, so an OUI-gated definition is
+    /// already self-limiting off-link. [`Pattern::Custom`] is `false` because its predicate is
+    /// opaque; that also keeps the "Unclaimed Open Ports" catch-all from marking every port on the
+    /// network as connect-only.
+    fn satisfiable_by_connect(&self) -> bool {
+        match self {
+            Pattern::Port(_) => true,
+            // Satisfied when the inner pattern *fails*, which needs no evidence at all.
+            Pattern::Not(_) => true,
+            Pattern::AnyOf(patterns) => patterns.iter().any(|p| p.satisfiable_by_connect()),
+            Pattern::AllOf(patterns) => patterns.iter().all(|p| p.satisfiable_by_connect()),
+            _ => false,
+        }
+    }
+
+    /// Whether `port` appears anywhere in this pattern as a scanned port.
+    fn references_port(&self, port: PortType) -> bool {
+        self.ports().contains(&port)
     }
 }
 

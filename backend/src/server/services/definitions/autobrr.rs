@@ -18,8 +18,10 @@ impl ServiceDefinition for Autobrr {
         ServiceCategory::Media
     }
 
+    /// The served page names the application. `/api/healthz/liveness` is unauthenticated but
+    /// answers a bare `OK`, which any HTTP listener can return, so it identifies nothing.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::Port(PortType::new_tcp(7474))
+        Pattern::Endpoint(PortType::new_tcp(7474), "/", "autobrr", None)
     }
 
     fn logo_url(&self) -> &'static str {

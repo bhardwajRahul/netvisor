@@ -21,7 +21,12 @@ impl ServiceDefinition for WgDashboard {
 
     fn discovery_pattern(&self) -> Pattern<'_> {
         Pattern::AllOf(vec![
-            Pattern::Port(PortType::new_tcp(10086)),
+            Pattern::Endpoint(
+                PortType::new_tcp(10086),
+                "/",
+                "<title>WGDashboard</title>",
+                None,
+            ),
             Pattern::Not(Box::new(Pattern::SubnetIsType(SubnetType::VpnTunnel))),
         ])
     }

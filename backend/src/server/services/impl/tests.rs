@@ -8,7 +8,7 @@ use crate::server::{
     },
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     fs::File,
     io::BufReader,
     path::PathBuf,
@@ -1131,16 +1131,108 @@ fn a_definitions_probe_port_is_a_port_its_pattern_scans() {
     use crate::server::services::r#impl::definitions::ServiceDefinition;
 
     for definition in ServiceDefinitionRegistry::all_service_definitions() {
-        let Some(probe) = definition.app_probe() else {
-            continue;
-        };
         let scanned = definition.discovery_pattern().ports();
-        assert!(
-            scanned.contains(&probe.port()),
-            "{} probes {:?} but its discovery pattern scans {:?}",
-            ServiceDefinition::name(&definition),
-            probe.port(),
-            scanned
-        );
+        for probe in definition.app_probes() {
+            assert!(
+                scanned.contains(&probe.port()),
+                "{} probes {:?} but its discovery pattern scans {:?}",
+                ServiceDefinition::name(&definition),
+                probe.port(),
+                scanned
+            );
+        }
     }
+}
+
+/// No definition names a service on the strength of a completed TCP connection alone, unless it
+/// says why it cannot do better.
+///
+/// A middlebox in the path — a firewall session helper, a transparent proxy, an IPS — completes the
+/// handshake on behalf of addresses that hold no device. A definition resting on the connect alone
+/// then invents a service there, which is how a FortiGate SIP session helper became a "SIP Server"
+/// on every remote VLAN a customer scanned. A definition that reads a protocol response, an HTTP
+/// body or a header cannot be fooled that way, because the middlebox would have to speak the
+/// protocol to satisfy it.
+///
+/// The two sides are derived independently and compared: the left from each pattern's own shape via
+/// [`Pattern::matches_on_connect_alone`], the right from what each definition declares. That is what
+/// makes this maintenance-free — writing a probe or an endpoint match drops a definition off the
+/// left side automatically, and a new bare-port definition lands on it without anyone remembering
+/// to update a list.
+#[test]
+fn connect_only_definitions_are_declared() {
+    use crate::server::services::definitions::ServiceDefinitionRegistry;
+    use crate::server::services::r#impl::definitions::ServiceDefinition;
+
+    let derived: HashSet<&'static str> = ServiceDefinitionRegistry::connect_only_definitions()
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+
+    let declared: HashSet<&'static str> = ServiceDefinitionRegistry::all_service_definitions()
+        .iter()
+        .filter(|d| d.connect_only_rationale().is_some())
+        .map(|d| ServiceDefinition::name(d))
+        .collect();
+
+    let undeclared: BTreeSet<&str> = derived.difference(&declared).copied().collect();
+    let stale: BTreeSet<&str> = declared.difference(&derived).copied().collect();
+
+    assert!(
+        undeclared.is_empty(),
+        "these definitions match on a bare TCP connect, which any middlebox in the path can \
+         satisfy on behalf of an address that holds no device: {undeclared:?}\n\
+         Give each one evidence it can check — an `app_probes()` entry, or a `Pattern::Endpoint` / \
+         `Pattern::Header` that matches a body or header — or declare \
+         `connect_only_rationale()` saying which protocol fact prevents that."
+    );
+
+    assert!(
+        stale.is_empty(),
+        "these definitions declare a `connect_only_rationale()` they no longer need, because their \
+         pattern already validates what answered: {stale:?}\n\
+         Remove the declaration; the exception set is meant to shrink."
+    );
+}
+
+/// Every definition can actually be matched by something the scan collects.
+///
+/// A definition whose evidence no scan stage gathers is dead weight that looks like coverage.
+/// `openvpn`, `strongswan` and `wireguard` sat in the registry for years matching on a UDP port
+/// with no probe behind it, and nothing said so: UDP ports are only ever reported open by a
+/// registered [`AppProbe`], so those patterns could never be satisfied. The connect-only guard
+/// above would not have caught them, because their defect is unmatchability rather than weak
+/// evidence.
+///
+/// TCP ports are reachable by the connect scan; UDP ports only through a probe. A definition
+/// matching on something other than ports (an endpoint, mDNS, a controller inventory, a manual
+/// assignment via `Pattern::None`) has no port to check and passes.
+#[test]
+fn every_definition_can_be_matched() {
+    use crate::daemon::utils::app_probe::all_app_probes;
+    use crate::server::services::definitions::ServiceDefinitionRegistry;
+    use crate::server::services::r#impl::definitions::ServiceDefinition;
+
+    let probed_ports: HashSet<_> = all_app_probes().iter().map(|p| p.port()).collect();
+
+    let unreachable: BTreeSet<String> = ServiceDefinitionRegistry::all_service_definitions()
+        .iter()
+        .flat_map(|definition| {
+            let name = ServiceDefinition::name(definition);
+            definition
+                .discovery_pattern()
+                .ports()
+                .into_iter()
+                .filter(|port| port.is_udp() && !probed_ports.contains(port))
+                .map(move |port| format!("{name} ({port})"))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    assert!(
+        unreachable.is_empty(),
+        "these definitions depend on a UDP port no AppProbe covers, so nothing ever reports it \
+         open and the definition can never match: {unreachable:?}\n\
+         Write a probe for the port, or change the pattern to something the scan does collect."
+    );
 }

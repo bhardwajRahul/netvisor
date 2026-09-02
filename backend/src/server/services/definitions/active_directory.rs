@@ -2,7 +2,7 @@ use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::definitions::{ServiceDefinitionFactory, create_service};
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
-use crate::server::services::r#impl::patterns::Pattern;
+use crate::server::services::r#impl::patterns::{ClientProbe, Pattern};
 
 #[derive(Default, Clone, Eq, PartialEq, Hash)]
 pub struct ActiveDirectory;
@@ -19,8 +19,8 @@ impl ServiceDefinition for ActiveDirectory {
     }
     fn discovery_pattern(&self) -> Pattern<'_> {
         Pattern::AllOf(vec![
-            Pattern::Port(PortType::Ldap),
-            Pattern::Port(PortType::Samba),
+            Pattern::ClientResponse(ClientProbe::Ldap),
+            Pattern::ClientResponse(ClientProbe::Smb),
             Pattern::Port(PortType::Kerberos),
         ])
     }

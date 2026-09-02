@@ -1,7 +1,7 @@
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::definitions::{ServiceDefinitionFactory, create_service};
 use crate::server::services::r#impl::categories::ServiceCategory;
-use crate::server::services::r#impl::definitions::ServiceDefinition;
+use crate::server::services::r#impl::definitions::{ConnectOnly, ServiceDefinition};
 use crate::server::services::r#impl::patterns::Pattern;
 
 /// Beszel Agent - Lightweight server monitoring agent
@@ -27,6 +27,12 @@ impl ServiceDefinition for BeszelAgent {
     fn category(&self) -> ServiceCategory {
         ServiceCategory::Monitoring
     }
+    /// The agent speaks an SSH-framed protocol but expects the hub's key, and there is no published
+    /// exchange an unauthenticated peer can complete to confirm it.
+    fn connect_only_rationale(&self) -> Option<ConnectOnly> {
+        Some(ConnectOnly::NoVerifiableImplementation)
+    }
+
     fn discovery_pattern(&self) -> Pattern<'_> {
         // Port 45876 is the default SSH server port for Beszel agents
         Pattern::Port(PortType::new_tcp(45876))

@@ -23,8 +23,8 @@ impl ServiceDefinition for ModbusTcp {
     fn discovery_pattern(&self) -> Pattern<'_> {
         probe_pattern(&ModbusProbe)
     }
-    fn app_probe(&self) -> Option<Box<dyn AppProbe>> {
-        Some(Box::new(ModbusProbe))
+    fn app_probes(&self) -> Vec<Box<dyn AppProbe>> {
+        vec![Box::new(ModbusProbe)]
     }
     /// A protocol many vendors implement, not a product. A device answering Modbus is identified
     /// by what `0x2B` returns, not by the service definition.

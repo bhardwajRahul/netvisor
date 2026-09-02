@@ -19,10 +19,8 @@ impl ServiceDefinition for ProxmoxBackupServer {
     }
 
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::AnyOf(vec![
-            Pattern::Endpoint(PortType::new_tcp(8007), "/", "proxmox-backup-gui", None),
-            Pattern::Port(PortType::new_tcp(8007)),
-        ])
+        // The bare-port arm is gone, for the reason given on `proxmox.rs`.
+        Pattern::Endpoint(PortType::new_tcp(8007), "/", "proxmox-backup-gui", None)
     }
 
     fn logo_url(&self) -> &'static str {

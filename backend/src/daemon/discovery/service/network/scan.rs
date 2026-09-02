@@ -46,7 +46,8 @@ use super::{
     DeepScanParams, DiscoveredHostData, DispatchedAddresses, FULL_SCAN_COST_CS,
     LATE_ARRIVAL_GRACE_PERIOD, LIGHT_SCAN_COST_CS, LivenessEvidence, MAX_PROGRESS_REPORT_INTERVAL,
     NetworkScan, PROGRESS_ARP_PHASE, PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE,
-    RESPONSIVENESS_COST_CS, integration_cost_for_ip, is_host_address, liveness_probe_ports,
+    RESPONSIVENESS_COST_CS, enumerated_host_has_evidence, integration_cost_for_ip, is_host_address,
+    liveness_probe_ports,
 };
 
 impl NetworkScan {
@@ -1524,6 +1525,34 @@ impl NetworkScan {
             let port = endpoint_response.endpoint.port_type;
             if !open_ports.contains(&port) {
                 open_ports.push(port);
+            }
+        }
+
+        // An address nothing answered for has to show evidence beyond the bare connect that got it
+        // this far. Everything is in hand by now: the probes have spoken, the endpoints have
+        // replied, the credentials have authenticated or not.
+        //
+        // This is the check the FortiGate SIP session-helper report turned on. Before it, a
+        // middlebox completing a handshake on behalf of an empty address was enough to record a
+        // host there, on every routed VLAN it fronted.
+        if !evidence.is_confirmed_live() {
+            let mut validated_ports: HashSet<PortType> =
+                app_probe_results.iter().map(|result| result.port).collect();
+            validated_ports.extend(client_responses.values().flatten().copied());
+            validated_ports.extend(
+                endpoint_responses
+                    .iter()
+                    .map(|response| response.endpoint.port_type),
+            );
+
+            if !enumerated_host_has_evidence(&open_ports, &validated_ports) {
+                tracing::debug!(
+                    ip = %ip,
+                    open_ports = ?open_ports.iter().map(|p| p.number()).collect::<Vec<_>>(),
+                    "Every open port here is one we know how to interrogate and none answered; \
+                     recording no host"
+                );
+                return Ok(None);
             }
         }
 

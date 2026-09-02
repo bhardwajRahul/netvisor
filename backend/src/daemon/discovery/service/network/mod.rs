@@ -234,6 +234,53 @@ pub(super) fn is_host_address(cidr: &IpCidr, addr: IpAddr) -> bool {
     addr != cidr.first_address() && addr != cidr.last_address()
 }
 
+/// Ports some [`AppProbe`](crate::daemon::utils::app_probe::AppProbe) can validate.
+///
+/// Computed once: the probe registry is the service-definition registry, which is static, and
+/// walking ~270 definitions per scanned address would be paid for nothing.
+static PROBE_COVERED_PORTS: std::sync::LazyLock<
+    HashSet<crate::server::ports::r#impl::base::PortType>,
+> = std::sync::LazyLock::new(|| {
+    crate::daemon::utils::app_probe::all_app_probes()
+        .iter()
+        .map(|probe| probe.port())
+        .collect()
+});
+
+/// Whether an address nothing answered for has any evidence of a host beyond a bare TCP connect.
+///
+/// This is the check the FortiGate report turned on. A firewall session helper completes the
+/// handshake for every address on a routed VLAN, and an address with no ARP reply, no ICMP echo and
+/// no mDNS advert was promoted to a host on the strength of that alone — one phantom "SIP Server"
+/// per VLAN, none of them a device.
+///
+/// Two things count as evidence:
+///
+/// - **Anything validated.** A probe that spoke the protocol and got a protocol answer, an HTTP
+///   endpoint that returned a matching body, a credential that authenticated. A middlebox
+///   completing a handshake produces none of these.
+/// - **An open port nothing could have validated.** If no probe covers the port, its silence means
+///   only that we had nothing to ask — so the connect is the best evidence available and the host
+///   is recorded, exactly as before. This is what keeps the check from deleting hosts it merely
+///   cannot confirm, which would be a worse bug than the one it fixes.
+///
+/// So an address is dropped only when every open port is one we know how to interrogate and none of
+/// them answered. That is the false-positive shape and nothing else.
+///
+/// Confirmed-live addresses never reach this: ARP, ICMP and mDNS are evidence in their own right,
+/// and [`LivenessEvidence::is_confirmed_live`] gates the call.
+pub(super) fn enumerated_host_has_evidence(
+    open_ports: &[crate::server::ports::r#impl::base::PortType],
+    validated_ports: &HashSet<crate::server::ports::r#impl::base::PortType>,
+) -> bool {
+    if !validated_ports.is_empty() {
+        return true;
+    }
+    open_ports
+        .iter()
+        .any(|port| !PROBE_COVERED_PORTS.contains(port))
+}
+
 /// TCP ports the liveness check probes before committing to a deep scan of an address that
 /// produced no ARP reply.
 ///
@@ -316,12 +363,13 @@ pub(super) struct DeepScanParams<'a> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DispatchedAddresses, IpCidr, LivenessEvidence, MacAddress, integration_cost_for_ip,
-        is_host_address, liveness_probe_ports,
+        DispatchedAddresses, IpCidr, LivenessEvidence, MacAddress, enumerated_host_has_evidence,
+        integration_cost_for_ip, is_host_address, liveness_probe_ports,
     };
     use crate::server::credentials::r#impl::mapping::{
         ContainerSocketQueryCredential, CredentialMapping, CredentialQueryPayload,
     };
+    use crate::server::ports::r#impl::base::PortType;
     use crate::server::services::r#impl::base::Service;
     use std::collections::HashSet;
     use std::net::{IpAddr, Ipv4Addr};
@@ -503,5 +551,84 @@ mod tests {
             snmp + docker,
             "distinct integrations should each be counted once and summed"
         );
+    }
+}
+
+#[cfg(test)]
+mod enumerated_evidence {
+    use super::enumerated_host_has_evidence;
+    use crate::server::ports::r#impl::base::PortType;
+    use std::collections::HashSet;
+
+    fn ports(numbers: &[u16]) -> Vec<PortType> {
+        numbers.iter().map(|n| PortType::new_tcp(*n)).collect()
+    }
+
+    fn validated(numbers: &[u16]) -> HashSet<PortType> {
+        numbers.iter().map(|n| PortType::new_tcp(*n)).collect()
+    }
+
+    /// The reported bug. A FortiGate session helper completes the handshake on 5060 for an address
+    /// with no device behind it; the SIP probe gets no `SIP/2.0` back, so nothing validated. Before
+    /// this check that address became a host with a "SIP Server" on it, on every routed VLAN.
+    #[test]
+    fn a_probe_backed_port_that_did_not_answer_is_not_a_host() {
+        assert!(!enumerated_host_has_evidence(
+            &ports(&[5060]),
+            &validated(&[])
+        ));
+    }
+
+    /// The same address with a real SIP server on it: the probe answered, so it is a host.
+    #[test]
+    fn a_probe_that_answered_is_a_host() {
+        assert!(enumerated_host_has_evidence(
+            &ports(&[5060]),
+            &validated(&[5060])
+        ));
+    }
+
+    /// A port no probe covers cannot be interrogated, so its silence says nothing and the connect
+    /// stands as the best evidence available. Failing open here is deliberate: deleting hosts we
+    /// merely cannot confirm would be a worse bug than the one this fixes.
+    #[test]
+    fn an_unprobeable_open_port_is_still_evidence() {
+        // 9100 is JetDirect, which is declared `ProbeUnsafe` — writing to it prints.
+        assert!(enumerated_host_has_evidence(
+            &ports(&[9100]),
+            &validated(&[])
+        ));
+        // A port no definition claims at all.
+        assert!(enumerated_host_has_evidence(
+            &ports(&[43219]),
+            &validated(&[])
+        ));
+    }
+
+    /// A real host on a poisoned VLAN: the middlebox answers 5060 for it too, but its own SSH
+    /// answered, so the host is kept.
+    #[test]
+    fn one_validated_port_carries_an_address_whose_other_ports_did_not_answer() {
+        assert!(enumerated_host_has_evidence(
+            &ports(&[22, 5060]),
+            &validated(&[22])
+        ));
+    }
+
+    /// Several probe-backed ports, none of which answered. A middlebox intercepting more than one
+    /// helper port produces exactly this.
+    #[test]
+    fn several_silent_probe_backed_ports_are_still_not_a_host() {
+        assert!(!enumerated_host_has_evidence(
+            &ports(&[21, 554, 5060]),
+            &validated(&[])
+        ));
+    }
+
+    /// Nothing open at all cannot be a host either, and the responsiveness check upstream would
+    /// have dropped it already.
+    #[test]
+    fn no_open_ports_is_not_a_host() {
+        assert!(!enumerated_host_has_evidence(&[], &validated(&[])));
     }
 }

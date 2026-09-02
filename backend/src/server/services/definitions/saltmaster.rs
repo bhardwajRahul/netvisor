@@ -1,7 +1,7 @@
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::definitions::{ServiceDefinitionFactory, create_service};
 use crate::server::services::r#impl::categories::ServiceCategory;
-use crate::server::services::r#impl::definitions::ServiceDefinition;
+use crate::server::services::r#impl::definitions::{ConnectOnly, ServiceDefinition};
 use crate::server::services::r#impl::patterns::Pattern;
 
 #[derive(Default, Clone, Eq, PartialEq, Hash)]
@@ -16,6 +16,12 @@ impl ServiceDefinition for SaltMaster {
     }
     fn category(&self) -> ServiceCategory {
         ServiceCategory::Development
+    }
+
+    /// Salt's 4505/4506 are ZeroMQ with CurveZMQ encryption, so an unauthenticated peer gets
+    /// nothing that identifies Salt.
+    fn connect_only_rationale(&self) -> Option<ConnectOnly> {
+        Some(ConnectOnly::NoDistinguishingHandshake)
     }
 
     fn discovery_pattern(&self) -> Pattern<'_> {
