@@ -604,8 +604,10 @@ impl DaemonService {
             .resolve_lldp_links(update.network_id, scan_time)
             .await;
 
+        // No custom `target:` — the subscriber's filter is an allowlist of four
+        // (`scanopy`, `server`, `request_log`, `events`, see bin/server.rs), so a target outside it
+        // is dropped silently. The default module path is under `scanopy`.
         tracing::info!(
-            target: "resolution_timing",
             session_id = %update.session_id,
             network_id = %update.network_id,
             duration_ms = started.elapsed().as_millis() as u64,
