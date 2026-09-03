@@ -122,12 +122,22 @@
 	 */
 	let simplified = $derived($detailSimplified);
 
+	let isPreview = $derived(!!(edgeData as Record<string, unknown> | undefined)?.is_preview);
+
+	/**
+	 * A preview edge is never hidden.
+	 *
+	 * The exemption used to sit inside the hide-by-type arm alone, so that hiding `Dependency`
+	 * edges did not also hide the one being drawn. Simplification was then added in front of it as
+	 * `simplified || …`, which short-circuits: past the zoom threshold every edge was hidden and
+	 * the exemption was never reached. `detailSimplified` is graph-wide and any estate large enough
+	 * to fit below the threshold has it permanently on, so dependency previews stopped drawing at
+	 * all on exactly the networks where dependencies get drawn.
+	 */
 	let hideEdge = $derived(
-		simplified ||
-			(edgeData
-				? $topologyOptions.local.hide_edge_types.includes(edgeData.edge_type) &&
-					!(edgeData as Record<string, unknown>).is_preview
-				: false)
+		!isPreview &&
+			(simplified ||
+				(edgeData ? $topologyOptions.local.hide_edge_types.includes(edgeData.edge_type) : false))
 	);
 
 	// Any non-solid stroke gets the overlay treatment (thinner, dimmed until highlighted); the
@@ -160,7 +170,6 @@
 
 	// Determine if this edge should use the two-color dashed effect
 	let isGroupEdge = $derived(edgeTypeMetadata?.is_dependency_edge ?? false);
-	let isPreview = $derived(!!(edgeData as Record<string, unknown> | undefined)?.is_preview);
 	let useMultiColorDash = $derived((isGroupEdge && shouldShowFull) || isPreview);
 
 	// Edge type hover highlight
