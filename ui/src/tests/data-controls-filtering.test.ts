@@ -3,6 +3,7 @@ import {
 	matchesFilters,
 	matchesSearch,
 	hasActiveFilters,
+	serverFilterViolations,
 	type FilterState,
 	type ServerFilterMode
 } from '$lib/shared/components/data/controls/filtering';
@@ -153,6 +154,67 @@ describe('matchesFilters — server-side handover', () => {
 		const state: FilterState = { name: stringFilter(['a']) };
 
 		expect(matchesFilters(row({ name: 'zzz' }), [plain], state, CLIENT_ONLY)).toBe(true);
+	});
+});
+
+describe('serverFilterViolations', () => {
+	const SERVER_FIELDS: ServerFilterMode = { tags: true, fields: true };
+
+	it('reports the shape that made a filtered host list keep the unfiltered count', () => {
+		// HostTab offered these filters under server pagination while passing no
+		// onFilterChange, so they narrowed the loaded page while total_count kept
+		// describing every host — "62 of 1550", paging through the wrong rows.
+		const hostFields: FieldConfig<Row>[] = [
+			{ ...nameField, key: 'network_id', filterable: true },
+			{ ...hiddenField, key: 'hidden' },
+			tagsField
+		];
+
+		expect(serverFilterViolations(hostFields, true, { tags: true, fields: false })).toEqual([
+			'network_id',
+			'hidden'
+		]);
+	});
+
+	it('clears once each field is handled by the side that produced the count', () => {
+		const fields: FieldConfig<Row>[] = [
+			{ ...nameField, key: 'network_id', filterable: true, serverFiltered: true },
+			{ ...hiddenField, key: 'hidden', serverFiltered: true },
+			tagsField
+		];
+
+		expect(serverFilterViolations(fields, true, SERVER_FIELDS)).toEqual([]);
+	});
+
+	it('says nothing about a client-paginated list, where filtering here is correct', () => {
+		const fields: FieldConfig<Row>[] = [{ ...nameField, filterable: true }];
+
+		expect(serverFilterViolations(fields, false, { tags: false, fields: false })).toEqual([]);
+	});
+
+	it('counts tags as handled only when the tag callback is wired', () => {
+		expect(serverFilterViolations([tagsField], true, { tags: true, fields: false })).toEqual([]);
+		expect(serverFilterViolations([tagsField], true, { tags: false, fields: true })).toEqual([
+			'tags'
+		]);
+	});
+
+	it('reports exactly the fields the client pass would still apply', () => {
+		// The guard and the filter have to read one rule: a field the guard names
+		// is precisely a field matchesFilters does not skip. Were they to drift,
+		// the guard would either cry wolf or miss the bug it exists to catch.
+		const field: FieldConfig<Row> = { ...nameField, filterable: true, serverFiltered: true };
+		const state: FilterState = { name: stringFilter(['a']) };
+		const nonMatching = row({ name: 'zzz' });
+
+		for (const server of [
+			{ tags: false, fields: false },
+			{ tags: false, fields: true }
+		] satisfies ServerFilterMode[]) {
+			const clientPassSkipped = matchesFilters(nonMatching, [field], state, server);
+			const reported = serverFilterViolations([field], true, server).length > 0;
+			expect(reported).toBe(!clientPassSkipped);
+		}
 	});
 });
 

@@ -30,9 +30,10 @@
 		useUpdateServiceMutation,
 		useDeleteServiceMutation,
 		useBulkDeleteServicesMutation,
-		type ServicesQueryParams
+		type ServicesQueryParams,
+		useServicesCacheQuery
 	} from '../queries';
-	import { useHostsByIds } from '$lib/features/hosts/queries';
+	import { useHostsByIds, useHostSummariesQuery } from '$lib/features/hosts/queries';
 	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -132,6 +133,15 @@
 	// Search state (server-side, for the same reason)
 	let search = $state('');
 
+	// The remaining field filters, server-side for the same reason: the client
+	// holds one page of services, so filtering here would narrow that page while
+	// the total count kept describing every match.
+	let filterHostIds = $state<string[]>([]);
+	let filterNetworkIds = $state<string[]>([]);
+	let filterServiceDefinitions = $state<string[]>([]);
+	let filterVirtualizationServiceIds = $state<string[]>([]);
+	let filterIncludeUncontainerized = $state(false);
+
 	// Queries
 	const tagsQuery = useTagsQuery();
 	// Paginated services with server-side pagination, ordering, and tag filtering
@@ -149,11 +159,23 @@
 			exclude_categories:
 				excludeCategories.length > 0
 					? (excludeCategories as components['schemas']['ServiceCategory'][])
-					: undefined
+					: undefined,
+			host_ids: filterHostIds.length > 0 ? filterHostIds : undefined,
+			network_ids: filterNetworkIds.length > 0 ? filterNetworkIds : undefined,
+			service_definitions:
+				filterServiceDefinitions.length > 0 ? filterServiceDefinitions : undefined,
+			virtualization_service_ids:
+				filterVirtualizationServiceIds.length > 0 ? filterVirtualizationServiceIds : undefined,
+			include_uncontainerized: filterIncludeUncontainerized || undefined
 		})
 	);
 	const networksQuery = useNetworksQuery();
 	const portsQuery = usePortsQuery();
+	// Option sources for the server-side filters. The lists below are the tab's
+	// display data, scoped to the loaded page — filter options have to come from
+	// the full sets or the panel only ever offers what is already on screen.
+	const allHostsQuery = useHostSummariesQuery({});
+	const servicesCacheQuery = useServicesCacheQuery();
 	const ipAddressesQuery = useIPAddressesQuery();
 	const subnetsQuery = useSubnetsQuery();
 
@@ -181,6 +203,8 @@
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
 	let servicesData = $derived(servicesQuery.data?.items ?? []);
+	let allHostsData = $derived(allHostsQuery.data?.items ?? []);
+	let allServicesData = $derived(servicesCacheQuery.data ?? []);
 	let servicesPagination = $derived(servicesQuery.data?.pagination ?? null);
 	let hostsData = $derived(hostsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
@@ -272,14 +296,62 @@
 		// Reset to page 1 is handled by DataControls
 	}
 
-	// Server-side field filter handler. Each key here must match a field marked
-	// `serverFiltered`, otherwise DataControls would skip the client-side filter
-	// for a value nothing acts on.
+	/**
+	 * Server-side field filter handler.
+	 *
+	 * The panel offers what the user reads — a host's title, a network's name —
+	 * while the API filters on ids, so each case resolves the labels back
+	 * through the same data the options were built from. Every key here must
+	 * match a field marked `serverFiltered`; an unhandled one would filter
+	 * nothing at all, since DataControls skips the client pass for those fields.
+	 */
 	function handleFilterChange(fieldKey: string, values: string[]) {
-		if (fieldKey === 'category') {
-			excludeCategories = values;
-		} else if (fieldKey === 'port') {
-			ports = values.map(Number).filter((port) => Number.isFinite(port));
+		switch (fieldKey) {
+			case 'category':
+				excludeCategories = values;
+				break;
+			case 'port':
+				ports = values.map(Number).filter((port) => Number.isFinite(port));
+				break;
+			case 'host': {
+				const wanted = new Set(values);
+				filterHostIds = allHostsData
+					.filter((host) => wanted.has(hostDisplayName(host)))
+					.map((host) => host.id);
+				break;
+			}
+			case 'network_id': {
+				const wanted = new Set(values);
+				filterNetworkIds = networksData
+					.filter((network) => wanted.has(network.name))
+					.map((network) => network.id);
+				break;
+			}
+			case 'service_definition': {
+				// The options render friendly names; the server filters on the raw
+				// definition id, which is what `getGroupValue` already exposes.
+				const wanted = new Set(values);
+				filterServiceDefinitions = serviceDefinitions
+					.getItems()
+					.filter((definition) => definition.name !== null && wanted.has(definition.name))
+					.map((definition) => definition.id);
+				break;
+			}
+			case 'containerized_by': {
+				// "Not Containerized" is a choice about absence, so it is carried
+				// as its own flag rather than as an id nothing would match.
+				filterIncludeUncontainerized = values.includes(services_notContainerized());
+				const wanted = new Set(values.filter((v) => v !== services_notContainerized()));
+				filterVirtualizationServiceIds = allServicesData
+					.filter((service) => wanted.has(service.name))
+					.map((service) => service.id);
+				break;
+			}
+			default:
+				throw new Error(
+					`ServiceTab: no server-side filter handles "${fieldKey}". A serverFiltered field ` +
+						`without a case here filters nothing — neither the client nor the server.`
+				);
 		}
 	}
 
@@ -422,6 +494,9 @@
 					type: 'string',
 					searchable: true,
 					filterable: true,
+					serverFiltered: true,
+					// From the full host list, not the loaded page's hosts.
+					filterOptions: allHostsData.map(hostDisplayName),
 					groupable: true,
 					// The server groups on the host's title — the same full ladder rendered below —
 					// coalescing services with no host to an empty string. Both sides have to walk
@@ -456,6 +531,8 @@
 					type: 'string',
 					searchable: true,
 					filterable: true,
+					serverFiltered: true,
+					filterOptions: networksData.map((n) => n.name),
 					groupable: true,
 					// Displayed as a name, but grouped by id on the server.
 					getGroupValue: (item) => item.network_id,
@@ -475,6 +552,12 @@
 					type: 'string',
 					searchable: true,
 					filterable: true,
+					serverFiltered: true,
+					// Every definition the registry knows, not just those on this page.
+					filterOptions: serviceDefinitions
+						.getItems()
+						.map((definition) => definition.name)
+						.filter((name): name is string => name !== null),
 					groupable: true,
 					// The server groups on the raw definition id; the UI renders its
 					// friendly name, so the group key has to be supplied separately.
@@ -558,6 +641,12 @@
 					label: common_containerized(),
 					searchable: true,
 					filterable: true,
+					serverFiltered: true,
+					filterOptions: [
+						...new Set(allServicesData.map((s) => s.name).filter((name) => name.length > 0))
+					]
+						.sort((a, b) => a.localeCompare(b))
+						.concat(services_notContainerized()),
 					getValue: (item) =>
 						servicesData.find((s) => s.id == item.virtualization_service_id)?.name ||
 						services_notContainerized(),
@@ -585,7 +674,13 @@
 					label: services_matchConfidence(),
 					type: 'string',
 					searchable: true,
-					filterable: true,
+					// Deliberately not filterable. The value is derived from the
+					// `source` JSONB through `matchConfidenceLabel`, a mapping that
+					// exists only in TypeScript, so the server cannot filter on it —
+					// and this list is server-paginated, where a client-side filter
+					// would narrow the loaded page while the count kept describing
+					// every match. Restoring the filter means moving the label
+					// mapping to the backend (TypeMetadataProvider + fixture) first.
 					display: { hiddenByDefault: true },
 					getValue: (item) =>
 						item.source.type == 'DiscoveryWithMatch'

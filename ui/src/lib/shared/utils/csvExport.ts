@@ -14,8 +14,10 @@ export interface CsvExportParams {
 	tag_ids?: string[];
 	order_by?: string;
 	order_direction?: 'asc' | 'desc';
-	// Entity-specific filters can be added via index signature
-	[key: string]: string | string[] | undefined;
+	// Entity-specific filters can be added via index signature. Booleans are
+	// here because an export mirrors the list's filters, and some of those are
+	// boolean (a host's `hidden` flag); they are stringified on the way out.
+	[key: string]: string | string[] | boolean | boolean[] | undefined;
 }
 
 /**
@@ -39,9 +41,9 @@ export async function downloadCsv(
 	for (const [key, value] of Object.entries(params)) {
 		if (value === undefined) continue;
 		if (Array.isArray(value)) {
-			value.forEach((v) => url.searchParams.append(key, v));
+			value.forEach((v) => url.searchParams.append(key, String(v)));
 		} else {
-			url.searchParams.set(key, value);
+			url.searchParams.set(key, String(value));
 		}
 	}
 
@@ -114,9 +116,9 @@ export async function downloadHostsZip(params: CsvExportParams): Promise<void> {
 	for (const [key, value] of Object.entries(params)) {
 		if (value === undefined) continue;
 		if (Array.isArray(value)) {
-			value.forEach((v) => url.searchParams.append(key, v));
+			value.forEach((v) => url.searchParams.append(key, String(v)));
 		} else {
-			url.searchParams.set(key, value);
+			url.searchParams.set(key, String(value));
 		}
 	}
 

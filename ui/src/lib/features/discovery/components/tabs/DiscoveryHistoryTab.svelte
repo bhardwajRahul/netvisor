@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { entities } from '$lib/shared/stores/metadata';
+	import { entities, discoveryTypes } from '$lib/shared/stores/metadata';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
@@ -78,6 +78,14 @@
 	// search would only ever match the page in hand)
 	let search = $state('');
 
+	// Field filter state, server-side for the same reason.
+	let filterNetworkIds = $state<string[]>([]);
+	let filterDaemonIds = $state<string[]>([]);
+	let filterDiscoveryTypes = $state<string[]>([]);
+	let hasServerFilters = $derived(
+		filterNetworkIds.length > 0 || filterDaemonIds.length > 0 || filterDiscoveryTypes.length > 0
+	);
+
 	// Queries
 	const discoveriesQuery = useDiscoveryHistoryQuery(
 		(): DiscoveryHistoryQueryParams => ({
@@ -86,7 +94,10 @@
 			group_by: groupBy,
 			order_by: orderBy,
 			order_direction: orderDirection,
-			search: search || undefined
+			search: search || undefined,
+			network_ids: filterNetworkIds.length > 0 ? filterNetworkIds : undefined,
+			daemon_ids: filterDaemonIds.length > 0 ? filterDaemonIds : undefined,
+			discovery_types: filterDiscoveryTypes.length > 0 ? filterDiscoveryTypes : undefined
 		}),
 		() => isActive
 	);
@@ -141,6 +152,37 @@
 	// Search change handler for server-side search (debounced by DataControls)
 	function handleSearchChange(query: string) {
 		search = query;
+	}
+
+	/**
+	 * Server-side field filter handler.
+	 *
+	 * The panel offers what the user reads — a daemon's name, a network's name —
+	 * while the API filters on ids, so each case resolves the labels back
+	 * through the same data the options were built from. Every key here must
+	 * match a field marked `serverFiltered`; an unhandled one would filter
+	 * nothing at all, since DataControls skips the client pass for those fields.
+	 */
+	function handleFilterChange(fieldKey: string, values: string[]) {
+		const wanted = new Set(values);
+		switch (fieldKey) {
+			case 'daemon_id':
+				filterDaemonIds = daemonsData.filter((d) => wanted.has(d.name)).map((d) => d.id);
+				break;
+			case 'network_id':
+				filterNetworkIds = networksData.filter((n) => wanted.has(n.name)).map((n) => n.id);
+				break;
+			case 'discovery_type':
+				// Already the raw discriminant the server stores, so it needs no
+				// resolution — the column renders the tag itself.
+				filterDiscoveryTypes = values;
+				break;
+			default:
+				throw new Error(
+					`DiscoveryHistoryTab: no server-side filter handles "${fieldKey}". A serverFiltered ` +
+						`field without a case here filters nothing — neither the client nor the server.`
+				);
+		}
 	}
 
 	let showDiscoveryModal = $state(false);
@@ -250,6 +292,8 @@
 					type: 'string',
 					searchable: true,
 					filterable: true,
+					serverFiltered: true,
+					filterOptions: daemonsData.map((d) => d.name),
 					groupable: true,
 					// Displayed as a name, but grouped by id on the server.
 					getGroupValue: (item) => item.daemon_id,
@@ -263,6 +307,8 @@
 					type: 'string',
 					searchable: true,
 					filterable: true,
+					serverFiltered: true,
+					filterOptions: networksData.map((n) => n.name),
 					groupable: true,
 					getGroupValue: (item) => item.network_id,
 					getValue: (item) =>
@@ -274,6 +320,8 @@
 					type: 'string',
 					searchable: true,
 					filterable: true,
+					serverFiltered: true,
+					filterOptions: discoveryTypes.getItems().map((type) => type.id),
 					groupable: true,
 					getValue: (item) => item.discovery_type.type,
 					display: { hiddenByDefault: true }
@@ -290,7 +338,13 @@
 					label: common_status(),
 					type: 'string',
 					searchable: true,
-					filterable: true,
+					// Deliberately not filterable. The value is derived from the
+					// `run_type` JSONB through `outcomeTag`, a phase-to-label mapping
+					// that exists only in TypeScript, so the server cannot filter on
+					// it — and this list is server-paginated, where a client-side
+					// filter would narrow the loaded page while the count kept
+					// describing every match. Restoring the filter means moving the
+					// mapping to the backend (TypeMetadataProvider + fixture) first.
 					groupable: true,
 					getValue: (item) => outcomeTag(item)?.label ?? '',
 					display: {
@@ -372,13 +426,13 @@
 		<PreDaemonEmptyState title={daemons_installPromptDiscoveries()} />
 	{:else if isLoading}
 		<Loading />
-	{:else if discoveriesData.length === 0 && !search}
+	{:else if discoveriesData.length === 0 && !search && !hasServerFilters}
 		<!--
-			"No sessions yet" only when nothing is narrowing the list. The search runs
-			server-side and is restored from storage on mount, so an empty response under
-			it means "no matches" — and this branch would take the search box away with
-			it, re-arming the same no-match query on every reload. DataControls renders
-			the filtered-empty state instead.
+			"No sessions yet" only when nothing is narrowing the list. The search and the
+			field filters run server-side and are restored from storage on mount, so an
+			empty response under one means "no matches" — and this branch would take the
+			controls away with it, re-arming the same no-match query on every reload.
+			DataControls renders the filtered-empty state instead.
 		-->
 		<EmptyState
 			title={discovery_noHistorySessions()}
@@ -399,6 +453,7 @@
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
 			onSearchChange={handleSearchChange}
+			onFilterChange={handleFilterChange}
 			onCsvExport={handleCsvExport}
 			getActions={discoveryActions}
 			entityLabel={discovery_historyTitle()}

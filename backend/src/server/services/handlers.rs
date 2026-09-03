@@ -91,12 +91,21 @@ impl OrderField for ServiceOrderField {
 /// Query parameters for filtering and ordering services.
 #[derive(Deserialize, Default, Debug, Clone, IntoParams)]
 pub struct ServiceFilterQuery {
-    /// Filter by network ID
-    pub network_id: Option<Uuid>,
-    /// Filter by host ID
-    pub host_id: Option<Uuid>,
+    /// Filter by network ID. Repeat the parameter to pass several.
+    #[serde(alias = "network_id")]
+    pub network_ids: Option<Vec<Uuid>>,
+    /// Filter by host ID. Repeat the parameter to pass several.
+    #[serde(alias = "host_id")]
+    pub host_ids: Option<Vec<Uuid>>,
     /// Filter by specific entity IDs (for selective loading)
     pub ids: Option<Vec<Uuid>>,
+    /// Only services with one of these definitions.
+    pub service_definitions: Option<Vec<String>>,
+    /// Filter by the service containerizing this one. Repeat for several.
+    pub virtualization_service_ids: Option<Vec<Uuid>>,
+    /// `true` also returns services nothing containerizes. Set on its own it
+    /// returns only those — the "Not Containerized" choice in the UI's filter.
+    pub include_uncontainerized: Option<bool>,
     /// Filter by tag IDs (returns services that have ANY of the specified tags)
     pub tag_ids: Option<Vec<Uuid>>,
     /// Free-text search. Case-insensitive substring match against the service's
@@ -157,14 +166,22 @@ impl FilterQueryExtractor for ServiceFilterQuery {
             _ => filter,
         };
         // Apply host filter if provided
-        let filter = match self.host_id {
-            Some(id) => filter.host_id(&id),
+        let filter = match &self.host_ids {
+            Some(ids) => filter.host_ids(ids),
             None => filter,
         };
-        // Then apply network filter
-        match self.network_id {
-            Some(id) if user_network_ids.contains(&id) => filter.network_ids(&[id]),
-            Some(_) => filter.network_ids(&[]), // User doesn't have access - return empty
+        // Then apply network filter. Intersect with what the caller can see —
+        // a requested network they have no access to must narrow the result to
+        // nothing, never widen it.
+        match &self.network_ids {
+            Some(requested) => {
+                let accessible: Vec<Uuid> = requested
+                    .iter()
+                    .copied()
+                    .filter(|id| user_network_ids.contains(id))
+                    .collect();
+                filter.network_ids(&accessible)
+            }
             None => filter.network_ids(user_network_ids),
         }
     }
@@ -269,6 +286,29 @@ async fn get_all_services(
             }
         }
         _ => filter,
+    };
+
+    // The column holds the JSON-encoded definition id, so encode the requested
+    // ids the same way the category exclusion above does.
+    let filter = match &query.service_definitions {
+        Some(definitions) if !definitions.is_empty() => {
+            let encoded: Vec<String> = definitions
+                .iter()
+                .map(|id| serde_json::to_string(id).unwrap_or_default())
+                .collect();
+            filter.service_definition_in(&encoded)
+        }
+        _ => filter,
+    };
+
+    // "Not Containerized" is a choice about absence, so it can arrive without
+    // any service ids beside it.
+    let include_uncontainerized = query.include_uncontainerized.unwrap_or(false);
+    let containerized_by = query.virtualization_service_ids.as_deref().unwrap_or(&[]);
+    let filter = if include_uncontainerized || !containerized_by.is_empty() {
+        filter.virtualization_service_in(containerized_by, include_uncontainerized)
+    } else {
+        filter
     };
 
     // Staleness is per-network, so resolve each accessible network's cutoff and

@@ -5690,7 +5690,7 @@ export interface components {
          *     `every_client_probe_variant_has_a_producer` is what now says so.
          * @enum {string}
          */
-        ClientProbe: "Docker" | "Gnmi" | "Podman" | "Snmp" | "UnifiController" | "InstantOn" | "ModbusTcp" | "OpcUa" | "EtherNetIp";
+        ClientProbe: "Docker" | "Gnmi" | "Podman" | "Snmp" | "UnifiController" | "InstantOn" | "ModbusTcp" | "OpcUa" | "EtherNetIp" | "Sip" | "Ssh" | "Ftp" | "Telnet" | "Rtsp" | "Nut" | "ZabbixAgent" | "CheckMkAgent" | "Smb" | "Ldap" | "Kerberos" | "MySql" | "PostgreSql" | "MsSql" | "MongoDb" | "Redis" | "Cassandra" | "Kafka" | "Amqp" | "Mqtt" | "OracleTns" | "Rdp" | "Nfs" | "DnsTcp" | "DockerSwarm" | "Tls" | "Ike" | "OpenVpn" | "Zmtp" | "Bacula";
         /** @enum {string} */
         Color: "Pink" | "Rose" | "Red" | "Amber" | "Orange" | "Green" | "Emerald" | "Teal" | "Cyan" | "Blue" | "Indigo" | "Purple" | "Fuchsia" | "Violet" | "Sky" | "Gray" | "Lime" | "Yellow";
         /** @enum {string} */
@@ -7118,6 +7118,20 @@ export interface components {
             /** @enum {string} */
             code: "ProvisionalSubnetInferred";
         }) | {
+            /**
+             * Format: int32
+             * @description Seconds the pass was allowed before it was stopped.
+             */
+            budget_seconds: number;
+            /** @enum {string} */
+            code: "NeighbourResolutionIncomplete";
+            /**
+             * Format: int32
+             * @description Interfaces carrying neighbour data it was working through, so the reader can tell
+             *     "this network is large" from "something is wrong".
+             */
+            neighbours: number;
+        } | {
             /** @enum {string} */
             code: "WarningsTruncated";
             /**
@@ -14865,10 +14879,12 @@ export interface operations {
     get_all_discoveries: {
         parameters: {
             query?: {
-                /** @description Filter by network ID */
-                network_id?: string | null;
-                /** @description Filter by daemon ID */
-                daemon_id?: string | null;
+                /** @description Filter by network ID. Repeat the parameter to pass several. */
+                network_ids?: string[] | null;
+                /** @description Filter by daemon ID. Repeat the parameter to pass several. */
+                daemon_ids?: string[] | null;
+                /** @description Only runs of one of these discovery types. */
+                discovery_types?: string[] | null;
                 /**
                  * @description `true` returns only completed runs (the history view), `false` only the
                  *     configurations that produce them. Omit for both.
@@ -14997,10 +15013,12 @@ export interface operations {
     export_discoveries_csv: {
         parameters: {
             query?: {
-                /** @description Filter by network ID */
-                network_id?: string | null;
-                /** @description Filter by daemon ID */
-                daemon_id?: string | null;
+                /** @description Filter by network ID. Repeat the parameter to pass several. */
+                network_ids?: string[] | null;
+                /** @description Filter by daemon ID. Repeat the parameter to pass several. */
+                daemon_ids?: string[] | null;
+                /** @description Only runs of one of these discovery types. */
+                discovery_types?: string[] | null;
                 /**
                  * @description `true` returns only completed runs (the history view), `false` only the
                  *     configurations that produce them. Omit for both.
@@ -15243,16 +15261,34 @@ export interface operations {
     get_all_hosts: {
         parameters: {
             query?: {
-                /** @description Filter by network ID */
-                network_id?: string | null;
+                /** @description Filter by network ID. Repeat the parameter to pass several. */
+                network_ids?: string[] | null;
                 /** @description Filter by specific entity IDs (for selective loading) */
                 ids?: string[] | null;
+                /**
+                 * @description Filter by the `hidden` flag. Repeat the parameter to accept both values;
+                 *     omit it for no constraint.
+                 */
+                hidden?: boolean[] | null;
+                /** @description Filter by the service virtualizing the host. Repeat for several. */
+                virtualization_service_ids?: string[] | null;
+                /**
+                 * @description `true` also returns hosts nothing virtualizes. Set on its own it returns
+                 *     only those — the "Not Virtualized" choice in the UI's filter.
+                 */
+                include_unvirtualized?: boolean | null;
+                /** @description Filter to hosts running a service with one of these names. */
+                service_names?: string[] | null;
                 /** @description Filter by tag IDs (returns hosts that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
                 /**
                  * @description Free-text search. Case-insensitive substring match against the host's
-                 *     name, hostname and description, and against its IP addresses and the
-                 *     names of services running on it.
+                 *     name, hostname, sysName, chassis id and description, and against its IP
+                 *     addresses and the names of services running on it.
+                 *
+                 *     sysName and chassis id are in there because they are rungs of the title
+                 *     ladder: a host with no name of its own is *shown* under one of them, and
+                 *     a title you can read but cannot search for is a dead end.
                  */
                 search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
@@ -15413,16 +15449,34 @@ export interface operations {
     export_hosts_csv: {
         parameters: {
             query?: {
-                /** @description Filter by network ID */
-                network_id?: string | null;
+                /** @description Filter by network ID. Repeat the parameter to pass several. */
+                network_ids?: string[] | null;
                 /** @description Filter by specific entity IDs (for selective loading) */
                 ids?: string[] | null;
+                /**
+                 * @description Filter by the `hidden` flag. Repeat the parameter to accept both values;
+                 *     omit it for no constraint.
+                 */
+                hidden?: boolean[] | null;
+                /** @description Filter by the service virtualizing the host. Repeat for several. */
+                virtualization_service_ids?: string[] | null;
+                /**
+                 * @description `true` also returns hosts nothing virtualizes. Set on its own it returns
+                 *     only those — the "Not Virtualized" choice in the UI's filter.
+                 */
+                include_unvirtualized?: boolean | null;
+                /** @description Filter to hosts running a service with one of these names. */
+                service_names?: string[] | null;
                 /** @description Filter by tag IDs (returns hosts that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
                 /**
                  * @description Free-text search. Case-insensitive substring match against the host's
-                 *     name, hostname and description, and against its IP addresses and the
-                 *     names of services running on it.
+                 *     name, hostname, sysName, chassis id and description, and against its IP
+                 *     addresses and the names of services running on it.
+                 *
+                 *     sysName and chassis id are in there because they are rungs of the title
+                 *     ladder: a host with no name of its own is *shown* under one of them, and
+                 *     a title you can read but cannot search for is a dead end.
                  */
                 search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
@@ -15474,16 +15528,34 @@ export interface operations {
     export_hosts_zip: {
         parameters: {
             query?: {
-                /** @description Filter by network ID */
-                network_id?: string | null;
+                /** @description Filter by network ID. Repeat the parameter to pass several. */
+                network_ids?: string[] | null;
                 /** @description Filter by specific entity IDs (for selective loading) */
                 ids?: string[] | null;
+                /**
+                 * @description Filter by the `hidden` flag. Repeat the parameter to accept both values;
+                 *     omit it for no constraint.
+                 */
+                hidden?: boolean[] | null;
+                /** @description Filter by the service virtualizing the host. Repeat for several. */
+                virtualization_service_ids?: string[] | null;
+                /**
+                 * @description `true` also returns hosts nothing virtualizes. Set on its own it returns
+                 *     only those — the "Not Virtualized" choice in the UI's filter.
+                 */
+                include_unvirtualized?: boolean | null;
+                /** @description Filter to hosts running a service with one of these names. */
+                service_names?: string[] | null;
                 /** @description Filter by tag IDs (returns hosts that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
                 /**
                  * @description Free-text search. Case-insensitive substring match against the host's
-                 *     name, hostname and description, and against its IP addresses and the
-                 *     names of services running on it.
+                 *     name, hostname, sysName, chassis id and description, and against its IP
+                 *     addresses and the names of services running on it.
+                 *
+                 *     sysName and chassis id are in there because they are rungs of the title
+                 *     ladder: a host with no name of its own is *shown* under one of them, and
+                 *     a title you can read but cannot search for is a dead end.
                  */
                 search?: string | null;
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
@@ -17205,12 +17277,21 @@ export interface operations {
     get_all_services: {
         parameters: {
             query?: {
-                /** @description Filter by network ID */
-                network_id?: string | null;
-                /** @description Filter by host ID */
-                host_id?: string | null;
+                /** @description Filter by network ID. Repeat the parameter to pass several. */
+                network_ids?: string[] | null;
+                /** @description Filter by host ID. Repeat the parameter to pass several. */
+                host_ids?: string[] | null;
                 /** @description Filter by specific entity IDs (for selective loading) */
                 ids?: string[] | null;
+                /** @description Only services with one of these definitions. */
+                service_definitions?: string[] | null;
+                /** @description Filter by the service containerizing this one. Repeat for several. */
+                virtualization_service_ids?: string[] | null;
+                /**
+                 * @description `true` also returns services nothing containerizes. Set on its own it
+                 *     returns only those — the "Not Containerized" choice in the UI's filter.
+                 */
+                include_uncontainerized?: boolean | null;
                 /** @description Filter by tag IDs (returns services that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
                 /**
@@ -17322,12 +17403,21 @@ export interface operations {
     export_services_csv: {
         parameters: {
             query?: {
-                /** @description Filter by network ID */
-                network_id?: string | null;
-                /** @description Filter by host ID */
-                host_id?: string | null;
+                /** @description Filter by network ID. Repeat the parameter to pass several. */
+                network_ids?: string[] | null;
+                /** @description Filter by host ID. Repeat the parameter to pass several. */
+                host_ids?: string[] | null;
                 /** @description Filter by specific entity IDs (for selective loading) */
                 ids?: string[] | null;
+                /** @description Only services with one of these definitions. */
+                service_definitions?: string[] | null;
+                /** @description Filter by the service containerizing this one. Repeat for several. */
+                virtualization_service_ids?: string[] | null;
+                /**
+                 * @description `true` also returns services nothing containerizes. Set on its own it
+                 *     returns only those — the "Not Containerized" choice in the UI's filter.
+                 */
+                include_uncontainerized?: boolean | null;
                 /** @description Filter by tag IDs (returns services that have ANY of the specified tags) */
                 tag_ids?: string[] | null;
                 /**

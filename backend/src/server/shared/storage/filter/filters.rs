@@ -887,6 +887,170 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// Push an `IN (…)` condition over `column`, sized for `len` values.
+    ///
+    /// Call this *before* pushing the values themselves — the placeholder
+    /// numbers are derived from the current bind count.
+    ///
+    /// The empty case belongs to the caller: an inclusion filter wants `FALSE`
+    /// (match nothing), an optional one wants no condition at all.
+    fn push_in_clause(&mut self, column: &str, len: usize) {
+        let col = self.qualify_column(column);
+        let placeholders: Vec<String> = (0..len)
+            .map(|i| format!("${}", self.values.len() + i + 1))
+            .collect();
+        self.conditions
+            .push(format!("{} IN ({})", col, placeholders.join(", ")));
+    }
+
+    /// Hosts whose `hidden` flag is one of `values`.
+    pub fn hidden_in(mut self, values: &[bool]) -> Self {
+        if values.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+
+        self.push_in_clause("hidden", values.len());
+        for value in values {
+            self.values.push(SqlValue::Bool(*value));
+        }
+
+        self
+    }
+
+    /// Entities whose virtualization parent is one of `service_ids`, and — when
+    /// `include_null` is set — those with no parent at all.
+    ///
+    /// Both `hosts` and `services` carry `virtualization_service_id`, so this
+    /// serves the Hosts tab's "Virtualized By" filter and the Services tab's
+    /// "Containerized" filter alike. `include_null` is what makes the UI's
+    /// "Not Virtualized" / "Not Containerized" choice expressible: those labels
+    /// mean *no parent*, not a parent named that.
+    pub fn virtualization_service_in(mut self, service_ids: &[Uuid], include_null: bool) -> Self {
+        let col = self.qualify_column("virtualization_service_id");
+
+        if service_ids.is_empty() {
+            // Picking only "not virtualized" is a real choice; picking nothing
+            // at all matches nothing.
+            self.conditions.push(if include_null {
+                format!("{} IS NULL", col)
+            } else {
+                "FALSE".to_string()
+            });
+            return self;
+        }
+
+        let placeholders: Vec<String> = service_ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("${}", self.values.len() + i + 1))
+            .collect();
+        let in_clause = format!("{} IN ({})", col, placeholders.join(", "));
+
+        self.conditions.push(if include_null {
+            format!("({} OR {} IS NULL)", in_clause, col)
+        } else {
+            in_clause
+        });
+
+        for id in service_ids {
+            self.values.push(SqlValue::Uuid(*id));
+        }
+
+        self
+    }
+
+    /// Hosts running a service named one of `names`.
+    ///
+    /// `IN (subquery)` rather than a JOIN so a host running several matching
+    /// services is still one row: a JOIN would repeat it and inflate the
+    /// paginated `COUNT(*)`.
+    pub fn has_service_named(mut self, names: &[String]) -> Self {
+        if names.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+
+        let col = self.qualify_column("id");
+        let placeholders: Vec<String> = names
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("${}", self.values.len() + i + 1))
+            .collect();
+
+        self.conditions.push(format!(
+            "{} IN (SELECT s.host_id FROM services s \
+             WHERE s.valid_to IS NULL AND s.name IN ({}))",
+            col,
+            placeholders.join(", ")
+        ));
+
+        for name in names {
+            self.values.push(SqlValue::String(name.clone()));
+        }
+
+        self
+    }
+
+    /// Services whose definition is one of `definitions` — the include-side
+    /// counterpart to [`Self::service_definition_not_in`].
+    pub fn service_definition_in(mut self, definitions: &[String]) -> Self {
+        if definitions.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+
+        self.push_in_clause("service_definition", definitions.len());
+        for def in definitions {
+            self.values.push(SqlValue::String(def.clone()));
+        }
+
+        self
+    }
+
+    /// Entities belonging to one of `ids` daemons.
+    pub fn daemon_ids(mut self, ids: &[Uuid]) -> Self {
+        if ids.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+
+        self.push_in_clause("daemon_id", ids.len());
+        for id in ids {
+            self.values.push(SqlValue::Uuid(*id));
+        }
+
+        self
+    }
+
+    /// Discovery runs whose `discovery_type` discriminant is one of `types`.
+    ///
+    /// `discovery_type` is stored as JSONB, and the UI filters on its `type`
+    /// tag, so the predicate reads that tag out rather than comparing whole
+    /// documents.
+    pub fn discovery_type_in(mut self, types: &[String]) -> Self {
+        if types.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+
+        let col = self.qualify_column("discovery_type");
+        let placeholders: Vec<String> = types
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("${}", self.values.len() + i + 1))
+            .collect();
+
+        self.conditions
+            .push(format!("{}->>'type' IN ({})", col, placeholders.join(", ")));
+
+        for discovery_type in types {
+            self.values.push(SqlValue::String(discovery_type.clone()));
+        }
+
+        self
+    }
+
     pub fn to_where_clause(&self) -> String {
         if self.conditions.is_empty() {
             String::new()
