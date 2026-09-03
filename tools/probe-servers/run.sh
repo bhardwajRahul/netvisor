@@ -46,6 +46,8 @@ PUBLIC_SERVERS=(
   "zabbix     10050:10050  zabbix/zabbix-agent:alpine-7.0-latest|-e|ZBX_PASSIVESERVERS=0.0.0.0/0|-e|ZBX_ACTIVESERVERS=127.0.0.1"
   "oracle     1521:1521    gvenzl/oracle-free:slim|-e|ORACLE_PASSWORD=probe"
   "mongodb    27017:27017  mongo:7"
+  # Needs a real public key or the agent exits; the probe reads its banner and never authenticates.
+  "beszel     45876:45876  henrygd/beszel-agent|-e|KEY=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINRaenOMiDdJNWfIyv2c+gy/rINJPQUX7VALCON2DM97 scanopy-probe-reference-server|-e|LISTEN=45876"
 )
 
 # The ones built here. RDP and the two VPNs need extra privileges. The list grew because the runner

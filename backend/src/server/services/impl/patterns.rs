@@ -257,6 +257,8 @@ pub enum ClientProbe {
     Zmtp,
     /// A Bacula `Hello` was answered with the plaintext CRAM-MD5 challenge.
     Bacula,
+    /// An SSH identification string whose software name is Beszel's.
+    BeszelAgent,
 }
 
 impl ClientProbe {
@@ -309,7 +311,8 @@ impl ClientProbe {
             | Self::Ike
             | Self::OpenVpn
             | Self::Zmtp
-            | Self::Bacula => M::Native,
+            | Self::Bacula
+            | Self::BeszelAgent => M::Native,
         }
     }
 }

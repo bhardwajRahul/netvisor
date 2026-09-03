@@ -18,8 +18,14 @@ impl ServiceDefinition for Huntarr {
         ServiceCategory::Media
     }
 
-    /// No published container image resolves for Huntarr, so its web UI's response has not been
-    /// seen and any match string would be a guess.
+    /// The exception stands, and the earlier note that "no published container image resolves" was
+    /// right by accident — the images do resolve, they are simply not this service.
+    ///
+    /// Everything published under `huntarr/` is either a headless `*arr` worker (`4sonarr`,
+    /// `4radarr`, `4lidarr`, …), which connects out to a Sonarr API and listens on nothing, or
+    /// `huntarr/plexguide`, which is a different product serving 9700. Nothing under that namespace,
+    /// `huntarr/huntarr`, or `ghcr.io/plexguide/huntarr` publishes the web UI this port belongs to,
+    /// so its response has still never been seen and any match string would be a guess.
     fn connect_only_rationale(&self) -> Option<ConnectOnly> {
         Some(ConnectOnly::NoVerifiableImplementation)
     }
