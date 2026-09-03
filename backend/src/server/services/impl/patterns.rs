@@ -253,6 +253,10 @@ pub enum ClientProbe {
     Ike,
     /// An OpenVPN hard reset was answered with the server's own hard reset.
     OpenVpn,
+    /// A ZMTP greeting came back naming a security mechanism, in cleartext, before any encryption.
+    Zmtp,
+    /// A Bacula `Hello` was answered with the plaintext CRAM-MD5 challenge.
+    Bacula,
 }
 
 impl ClientProbe {
@@ -303,7 +307,9 @@ impl ClientProbe {
             | Self::DockerSwarm
             | Self::Tls
             | Self::Ike
-            | Self::OpenVpn => M::Native,
+            | Self::OpenVpn
+            | Self::Zmtp
+            | Self::Bacula => M::Native,
         }
     }
 }

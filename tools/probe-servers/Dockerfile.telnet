@@ -1,0 +1,5 @@
+# busybox telnetd. Built rather than run from the public image because the runner passes extra
+# docker *flags*, not a container command, and telnetd needs the latter.
+FROM busybox:latest
+EXPOSE 23
+CMD ["telnetd","-F","-p","23","-l","/bin/sh"]

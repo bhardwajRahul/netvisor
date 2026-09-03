@@ -30,20 +30,32 @@
 //! false positive in general is that the definition now rests on a protocol exchange at all: see
 //! `connect_only_definitions_are_declared` in `services/impl/tests.rs`, which is what stops the
 //! next definition being written this way.
+//!
+//! The request line and the status line come from [`ezk_sip_types`] rather than from string
+//! formatting. Two things move to the library: bracketing an IPv6 host inside a `sip:` URI, which
+//! was hand-written here and is a classic place to get SIP subtly wrong, and deciding what counts as
+//! a status line — `MessageLine` parses `SIP/2.0 <code> <reason>` and rejects a request line, where
+//! the prefix comparison it replaces needed a second check bolted on to tell them apart.
+//!
+//! `ezk-sip-types` rather than `rsip`: my note that `rsip` carried a non-standard licence was wrong,
+//! it is MIT and crates.io merely renders `license-file` crates that way. It fails on maintenance
+//! instead — last release April 2022, last commit August 2022 — which is the very argument for
+//! preferring a library over hand-rolled code, so it cannot be waved away here.
 
 use anyhow::Error;
 use async_trait::async_trait;
+use ezk_sip_types::host::{Host, HostPort};
+use ezk_sip_types::msg::MessageLine;
+use ezk_sip_types::print::AppendCtx;
+use ezk_sip_types::uri::SipUri;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-use crate::daemon::utils::app_probe::{AppProbe, AppProbeOutcome, ProbeContext};
+use crate::daemon::utils::app_probe::{AppProbe, AppProbeOutcome, ProbeContext, presence};
 use crate::daemon::utils::scanner::SCAN_TIMEOUT;
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::patterns::ClientProbe;
-
-/// The status line every SIP response opens with, whatever the code that follows.
-const SIP_VERSION: &[u8] = b"SIP/2.0 ";
 
 /// Enough for a status line and headers. A response body is of no interest here and is allowed to
 /// be truncated.
@@ -92,16 +104,26 @@ impl AppProbe for SipProbe {
 /// fixed rather than random because nothing correlates responses here — one request, one read, one
 /// connection, then closed. `Max-Forwards: 0` keeps a proxy from relaying it onward, so the answer
 /// comes from the host being probed rather than from whatever it fronts.
+///
+/// The target URI is built as a [`SipUri`], which is what puts an IPv6 address in brackets. The
+/// headers are formatted here because each would otherwise need its own typed header value for no
+/// gain — they are fixed strings, not a wire format with a shape to get wrong.
 fn options_request(ip: std::net::IpAddr) -> String {
-    let target = match ip {
-        std::net::IpAddr::V4(v4) => v4.to_string(),
-        std::net::IpAddr::V6(v6) => format!("[{v6}]"),
-    };
+    let uri = SipUri::new(HostPort {
+        host: match ip {
+            std::net::IpAddr::V4(v4) => Host::IP4(v4),
+            std::net::IpAddr::V6(v6) => Host::IP6(v6),
+        },
+        port: None,
+    });
+    // `SipUri` prints through a context rather than `Display`, and the default context is the one
+    // that emits a plain `sip:` URI.
+    let target = uri.default_print_ctx().to_string();
     format!(
-        "OPTIONS sip:{target} SIP/2.0\r\n\
+        "OPTIONS {target} SIP/2.0\r\n\
          Via: SIP/2.0/TCP scanopy.invalid;branch=z9hG4bKscanopy\r\n\
          Max-Forwards: 0\r\n\
-         To: <sip:{target}>\r\n\
+         To: <{target}>\r\n\
          From: <sip:scanopy@scanopy.invalid>;tag=scanopy\r\n\
          Call-ID: scanopy-probe@scanopy.invalid\r\n\
          CSeq: 1 OPTIONS\r\n\
@@ -116,18 +138,19 @@ fn options_request(ip: std::net::IpAddr) -> String {
 /// "accepted the connection and sent something that is not SIP" case can be asserted directly —
 /// that is the shape a middlebox produces.
 fn parse_response(bytes: &[u8]) -> AppProbeOutcome {
-    // A status line is `SIP/2.0 <3-digit code> <reason>`. The version prefix alone would match a
-    // request line's trailing `SIP/2.0` too, so the code is checked as well.
-    let is_response = bytes.starts_with(SIP_VERSION)
-        && bytes
-            .get(SIP_VERSION.len()..SIP_VERSION.len() + 3)
-            .is_some_and(|code| code.iter().all(u8::is_ascii_digit));
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return AppProbeOutcome::NoAnswer;
+    };
+    let Some(first_line) = text.lines().next() else {
+        return AppProbeOutcome::NoAnswer;
+    };
 
-    if is_response {
-        AppProbeOutcome::Answered { identity: None }
-    } else {
-        AppProbeOutcome::NoAnswer
-    }
+    // `MessageLine` parses a status line *or* a request line, and only the former is an answer to
+    // us: a SIP request arriving unsolicited says nothing about whether the peer answered ours.
+    presence(matches!(
+        first_line.parse::<MessageLine>(),
+        Ok(MessageLine::Response(_))
+    ))
 }
 
 #[cfg(test)]
@@ -191,7 +214,10 @@ mod tests {
     #[test]
     fn the_request_addresses_the_target_and_does_not_relay() {
         let request = options_request("10.1.2.3".parse().unwrap());
-        assert!(request.starts_with("OPTIONS sip:10.1.2.3 SIP/2.0\r\n"));
+        assert!(
+            request.starts_with("OPTIONS sip:10.1.2.3 SIP/2.0\r\n"),
+            "{request}"
+        );
         assert!(request.contains("Max-Forwards: 0\r\n"));
         assert!(request.ends_with("\r\n\r\n"));
     }
@@ -199,6 +225,9 @@ mod tests {
     #[test]
     fn an_ipv6_target_is_bracketed() {
         let request = options_request("2001:db8::1".parse().unwrap());
-        assert!(request.starts_with("OPTIONS sip:[2001:db8::1] SIP/2.0\r\n"));
+        assert!(
+            request.starts_with("OPTIONS sip:[2001:db8::1] SIP/2.0\r\n"),
+            "{request}"
+        );
     }
 }

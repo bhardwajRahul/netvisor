@@ -363,13 +363,12 @@ pub(super) struct DeepScanParams<'a> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DispatchedAddresses, IpCidr, LivenessEvidence, MacAddress, enumerated_host_has_evidence,
-        integration_cost_for_ip, is_host_address, liveness_probe_ports,
+        DispatchedAddresses, IpCidr, LivenessEvidence, MacAddress, integration_cost_for_ip,
+        is_host_address, liveness_probe_ports,
     };
     use crate::server::credentials::r#impl::mapping::{
         ContainerSocketQueryCredential, CredentialMapping, CredentialQueryPayload,
     };
-    use crate::server::ports::r#impl::base::PortType;
     use crate::server::services::r#impl::base::Service;
     use std::collections::HashSet;
     use std::net::{IpAddr, Ipv4Addr};

@@ -1,0 +1,13 @@
+# A Salt master, for the ZMTP greeting on 4505/4506.
+#
+# Installed from PyPI rather than from a distribution package or `saltstack/salt`: Debian dropped
+# the Salt packages, and the published image is an amd64-only manifest. This is upstream Salt on
+# upstream pyzmq, which is the point — the probe is meant to be exercised against the thing it
+# claims to detect, not against a bare ZeroMQ socket that would speak ZMTP either way.
+FROM python:3.11-slim
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc libzmq3-dev && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir salt
+RUN mkdir -p /etc/salt/master.d /var/cache/salt /var/log/salt \
+ && printf 'interface: 0.0.0.0\npublish_port: 4505\nret_port: 4506\nlog_level: warning\nauto_accept: False\n' > /etc/salt/master.d/probe.conf
+EXPOSE 4505 4506
+CMD ["salt-master","-l","warning"]

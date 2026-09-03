@@ -5,11 +5,21 @@
 //! (`inappropriateAuthentication`) or 53 (`unwillingToPerform`), which is a parsed LDAP reply and
 //! therefore proof of a directory. The result code is deliberately not inspected.
 //!
-//! BER by hand rather than a crate: the request is fourteen fixed bytes and the reply needs only its
-//! outer tags read, which is less code than wiring a parser in and far less than a dependency.
+//! [`rasn_ldap`] supplies the types and `rasn` the BER codec, so the request is an `LdapMessage`
+//! rather than fourteen hand-counted bytes and the reply is decoded rather than read at offsets.
+//! The old check looked at bytes 0, 2, 3, 4 and 5, which is correct only while every length fits in
+//! the short form — true for the reply a small directory sends and not true in general. A real
+//! decode has no such ceiling.
+//!
+//! `rasn-ldap` rather than `ldap3`: the latter owns the socket and returns a refused bind as an
+//! error, where here the refusal is the positive result. Which result codes count stays decided
+//! below — and the answer is all of them, because any of them means a directory parsed the request.
 
 use anyhow::Error;
 use async_trait::async_trait;
+use rasn_ldap::{
+    AuthenticationChoice, BindRequest, LdapMessage, LdapString, MessageId, ProtocolOp, ResultCode,
+};
 
 use crate::daemon::utils::app_probe::{
     AppProbe, AppProbeOutcome, ProbeContext, presence, request_response,
@@ -17,33 +27,26 @@ use crate::daemon::utils::app_probe::{
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::patterns::ClientProbe;
 
-/// Universal SEQUENCE, which wraps every `LDAPMessage`.
-const TAG_SEQUENCE: u8 = 0x30;
-/// Universal INTEGER, the message id.
-const TAG_INTEGER: u8 = 0x02;
-/// `[APPLICATION 1]` — `bindResponse`.
-const TAG_BIND_RESPONSE: u8 = 0x61;
+/// The message id we send and expect echoed. Not 0, which is reserved for the unsolicited notice a
+/// server sends on its own initiative — that is not an answer to us.
+const MESSAGE_ID: MessageId = 1;
 
-/// The message id we send and expect echoed.
-const MESSAGE_ID: u8 = 0x01;
+/// The version this speaks. A directory that does not support it must answer `protocolError`, which
+/// is still an answer.
+const LDAP_V3: u8 = 3;
 
 /// An anonymous simple bind: LDAP v3, empty DN, empty password.
-const BIND_REQUEST: [u8; 14] = [
-    TAG_SEQUENCE,
-    0x0C, // length of everything following
-    TAG_INTEGER,
-    0x01,
-    MESSAGE_ID,
-    0x60, // [APPLICATION 0] bindRequest
-    0x07, // length
-    TAG_INTEGER,
-    0x01,
-    0x03, // version 3
-    0x04,
-    0x00, // name: empty OCTET STRING
-    0x80,
-    0x00, // [0] simple authentication, empty
-];
+fn bind_request() -> Vec<u8> {
+    let message = LdapMessage::new(
+        MESSAGE_ID,
+        ProtocolOp::BindRequest(BindRequest::new(
+            LDAP_V3,
+            LdapString(String::new()),
+            AuthenticationChoice::Simple(Vec::new().into()),
+        )),
+    );
+    rasn::ber::encode(&message).expect("the request is built from literals")
+}
 
 pub struct LdapProbe;
 
@@ -58,68 +61,71 @@ impl AppProbe for LdapProbe {
     }
 
     async fn run(&self, ctx: &ProbeContext) -> Result<AppProbeOutcome, Error> {
-        let reply = request_response(ctx, self.port(), &BIND_REQUEST, 512).await;
+        let reply = request_response(ctx, self.port(), &bind_request(), 512).await;
         Ok(parse_reply(&reply, MESSAGE_ID))
     }
 }
 
 /// Whether the reply is a `bindResponse` to our message.
-///
-/// Reads only the outer structure: SEQUENCE, then the message id, then the `bindResponse` tag. The
-/// message id is checked so an unsolicited notice (which LDAP sends with id 0) is not read as an
-/// answer to us.
-fn parse_reply(bytes: &[u8], message_id: u8) -> AppProbeOutcome {
-    // 0: SEQUENCE, 1: length, 2: INTEGER, 3: length 1, 4: the id, 5: the operation's tag.
-    let Some(prefix) = bytes.get(..6) else {
-        return AppProbeOutcome::NoAnswer;
-    };
-    presence(
-        prefix[0] == TAG_SEQUENCE
-            && prefix[2] == TAG_INTEGER
-            && prefix[3] == 0x01
-            && prefix[4] == message_id
-            && prefix[5] == TAG_BIND_RESPONSE,
-    )
+fn parse_reply(bytes: &[u8], message_id: MessageId) -> AppProbeOutcome {
+    presence(bind_result(bytes, message_id).is_some())
+}
+
+/// The result code a directory answered our bind with, if it answered one.
+fn bind_result(bytes: &[u8], message_id: MessageId) -> Option<ResultCode> {
+    let message = rasn::ber::decode::<LdapMessage>(bytes).ok()?;
+    if message.message_id != message_id {
+        return None;
+    }
+    match message.protocol_op {
+        ProtocolOp::BindResponse(response) => Some(response.result_code),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rasn_ldap::BindResponse;
 
-    fn bind_response(message_id: u8, result_code: u8) -> Vec<u8> {
-        vec![
-            TAG_SEQUENCE,
-            0x0C,
-            TAG_INTEGER,
-            0x01,
+    fn bind_response(message_id: MessageId, result_code: ResultCode) -> Vec<u8> {
+        let message = LdapMessage::new(
             message_id,
-            TAG_BIND_RESPONSE,
-            0x07,
-            0x0A, // ENUMERATED
-            0x01,
-            result_code,
-            0x04,
-            0x00, // matchedDN
-            0x04,
-            0x00, // diagnosticMessage
-        ]
+            ProtocolOp::BindResponse(BindResponse::new(
+                result_code,
+                LdapString(String::new()),
+                LdapString(String::new()),
+                None,
+                None,
+            )),
+        );
+        rasn::ber::encode(&message).unwrap()
     }
 
     #[test]
     fn a_successful_bind_is_ldap() {
         assert_eq!(
-            parse_reply(&bind_response(MESSAGE_ID, 0), MESSAGE_ID),
+            parse_reply(&bind_response(MESSAGE_ID, ResultCode::Success), MESSAGE_ID),
             AppProbeOutcome::Answered { identity: None }
         );
     }
 
-    /// A directory refusing anonymous access parsed our request to refuse it.
+    /// A directory refusing anonymous access parsed our request to refuse it. This is the case a
+    /// client crate would have handed back as an error rather than as a detection.
     #[test]
     fn a_refused_bind_is_ldap() {
-        for result_code in [48, 53] {
+        for result_code in [
+            ResultCode::InappropriateAuthentication,
+            ResultCode::UnwillingToPerform,
+        ] {
             assert_eq!(
                 parse_reply(&bind_response(MESSAGE_ID, result_code), MESSAGE_ID),
-                AppProbeOutcome::Answered { identity: None }
+                AppProbeOutcome::Answered { identity: None },
+                "{result_code:?}"
+            );
+            assert_eq!(
+                bind_result(&bind_response(MESSAGE_ID, result_code), MESSAGE_ID),
+                Some(result_code)
             );
         }
     }
@@ -128,32 +134,46 @@ mod tests {
     #[test]
     fn an_unsolicited_notice_is_not_evidence() {
         assert_eq!(
-            parse_reply(&bind_response(0x00, 0), MESSAGE_ID),
+            parse_reply(&bind_response(0, ResultCode::Success), MESSAGE_ID),
             AppProbeOutcome::NoAnswer
         );
     }
 
     #[test]
-    fn silence_or_another_protocol_is_not_ldap() {
+    fn silence_a_request_or_another_protocol_is_not_ldap() {
+        let response = bind_response(MESSAGE_ID, ResultCode::Success);
         for reply in [
             &b""[..],
             &b"SSH-2.0-OpenSSH_9.6\r\n"[..],
-            &[TAG_SEQUENCE, 0x0C, TAG_INTEGER, 0x01, MESSAGE_ID][..],
-            // A SEQUENCE whose operation is not a bindResponse.
-            &[TAG_SEQUENCE, 0x0C, TAG_INTEGER, 0x01, MESSAGE_ID, 0x65][..],
+            // Our own bind request reflected back: a valid LdapMessage, but not a bindResponse.
+            &bind_request(),
+            // A BER prefix with nothing behind it.
+            &[0x30, 0x0C, 0x02, 0x01, 0x01][..],
+            // Truncated mid-message, which the offset check this replaced accepted.
+            &response[..response.len() - 3],
         ] {
-            assert_eq!(parse_reply(reply, MESSAGE_ID), AppProbeOutcome::NoAnswer);
+            assert_eq!(
+                parse_reply(reply, MESSAGE_ID),
+                AppProbeOutcome::NoAnswer,
+                "{reply:?}"
+            );
         }
     }
 
+    /// The bind carries no name and no password, so it cannot be mistaken for a credential attempt.
     #[test]
-    fn the_bind_request_is_a_well_formed_ldap_message() {
-        assert_eq!(BIND_REQUEST[0], TAG_SEQUENCE);
+    fn the_bind_request_is_anonymous() {
+        let decoded = rasn::ber::decode::<LdapMessage>(&bind_request()).expect("we send valid BER");
+        assert_eq!(decoded.message_id, MESSAGE_ID);
+        let ProtocolOp::BindRequest(request) = decoded.protocol_op else {
+            panic!("we send a bind request");
+        };
+        assert_eq!(request.version, LDAP_V3);
+        assert!(request.name.0.is_empty(), "no bind DN");
         assert_eq!(
-            BIND_REQUEST[1] as usize,
-            BIND_REQUEST.len() - 2,
-            "the outer length counts everything after it"
+            request.authentication,
+            AuthenticationChoice::Simple(Vec::new().into()),
+            "an empty simple password"
         );
-        assert_eq!(BIND_REQUEST[9], 0x03, "LDAP version 3");
     }
 }

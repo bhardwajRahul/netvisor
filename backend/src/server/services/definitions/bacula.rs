@@ -1,8 +1,9 @@
-use crate::server::ports::r#impl::base::PortType;
+use crate::daemon::utils::app_probe::AppProbe;
+use crate::daemon::utils::app_probe::bacula::BaculaProbe;
 use crate::server::services::definitions::{ServiceDefinitionFactory, create_service};
 use crate::server::services::r#impl::categories::ServiceCategory;
-use crate::server::services::r#impl::definitions::{ConnectOnly, ServiceDefinition};
-use crate::server::services::r#impl::patterns::Pattern;
+use crate::server::services::r#impl::definitions::ServiceDefinition;
+use crate::server::services::r#impl::patterns::{Pattern, probe_pattern};
 
 #[derive(Default, Clone, Eq, PartialEq, Hash)]
 pub struct Bacula;
@@ -17,16 +18,20 @@ impl ServiceDefinition for Bacula {
     fn category(&self) -> ServiceCategory {
         ServiceCategory::Backup
     }
-    /// The Director authenticates with CRAM-MD5 before sending anything that names Bacula, and the
-    /// challenge itself carries no product identity.
-    fn connect_only_rationale(&self) -> Option<ConnectOnly> {
-        Some(ConnectOnly::NoDistinguishingHandshake)
+
+    /// The Director's port, qualified by the CRAM-MD5 challenge it issues to an unauthenticated
+    /// `Hello`.
+    ///
+    /// This was declared `NoDistinguishingHandshake` on the reading that the Director authenticates
+    /// before identifying itself. It sends the challenge first, in plaintext, and the challenge
+    /// names the algorithm; see [`crate::daemon::utils::app_probe::bacula`].
+    fn discovery_pattern(&self) -> Pattern<'_> {
+        probe_pattern(&BaculaProbe)
+    }
+    fn app_probes(&self) -> Vec<Box<dyn AppProbe>> {
+        vec![Box::new(BaculaProbe)]
     }
 
-    fn discovery_pattern(&self) -> Pattern<'_> {
-        // Bacula Director port
-        Pattern::Port(PortType::new_tcp(9101))
-    }
     fn logo_url(&self) -> &'static str {
         "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/bacula.png"
     }

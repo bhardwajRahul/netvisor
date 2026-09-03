@@ -10,12 +10,29 @@
 //! authentication attempt: no password is guessed, nothing is decrypted, and the only outcome
 //! sought is an error.
 //!
-//! DER by hand rather than a crate. The request is fixed apart from the realm and principal names,
-//! and the reply needs only its outermost application tag read, so a parser would be more code than
-//! this and a dependency more still.
+//! The message is built and read with [`picky_krb`] rather than by hand. This replaced 217 lines of
+//! hand-written DER, and the parse is strictly stronger than what it replaced: the old code read the
+//! outermost application tag and trusted the byte, where this decodes the whole `KRB-ERROR` down to
+//! its `error-code`. A byte in the right place is cheap for something that is not a KDC to produce;
+//! a well-formed `KRB-ERROR` is not.
+//!
+//! What the crate does *not* decide is which replies count. That judgement — that a refusal is the
+//! positive result — stays here, which is why a session crate would have been the wrong shape: its
+//! job is to turn `KDC_ERR_PREAUTH_REQUIRED` into an error, and here it is the answer.
 
 use anyhow::Error;
 use async_trait::async_trait;
+use picky_asn1::bit_string::BitString;
+use picky_asn1::date::Date;
+use picky_asn1::restricted_string::Ia5String;
+use picky_asn1::wrapper::{
+    Asn1SequenceOf, BitStringAsn1, ExplicitContextTag0, ExplicitContextTag1, ExplicitContextTag2,
+    ExplicitContextTag3, ExplicitContextTag4, ExplicitContextTag5, ExplicitContextTag7,
+    ExplicitContextTag8, GeneralStringAsn1, IntegerAsn1, Optional,
+};
+use picky_krb::constants::types::{AS_REQ_MSG_TYPE, NT_PRINCIPAL, NT_SRV_INST};
+use picky_krb::data_types::{KerberosTime, PrincipalName};
+use picky_krb::messages::{AsRep, AsReq, KdcReq, KdcReqBody, KrbError};
 
 use crate::daemon::utils::app_probe::{
     AppProbe, AppProbeOutcome, ProbeContext, presence, request_response,
@@ -23,87 +40,96 @@ use crate::daemon::utils::app_probe::{
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::patterns::ClientProbe;
 
-/// `[APPLICATION 30]` — `KRB-ERROR`, which is what an unauthenticated `AS-REQ` earns.
-const TAG_KRB_ERROR: u8 = 0x7E;
-/// `[APPLICATION 11]` — `AS-REP`, in the unusual case that a principal needs no pre-authentication.
-const TAG_AS_REP: u8 = 0x6B;
 /// Kerberos over TCP prefixes every message with a four-byte length.
 const LENGTH_PREFIX_LEN: usize = 4;
 
 /// The realm and principal the request names. Neither is expected to exist; the point is to be
 /// refused by something that speaks Kerberos.
-const REALM: &[u8] = b"SCANOPY.INVALID";
-const PRINCIPAL: &[u8] = b"scanopy-probe";
+const REALM: &str = "SCANOPY.INVALID";
+const PRINCIPAL: &str = "scanopy-probe";
 
-/// A DER length header for a body of `len` bytes.
-fn der_len(len: usize) -> Vec<u8> {
-    if len < 0x80 {
-        vec![len as u8]
-    } else if len < 0x100 {
-        vec![0x81, len as u8]
-    } else {
-        vec![0x82, (len >> 8) as u8, len as u8]
+/// AES256-CTS-HMAC-SHA1-96, which every current KDC offers. One entry rather than the eight a real
+/// client lists, because nothing here intends to encrypt anything.
+const ETYPE_AES256_CTS_HMAC_SHA1_96: u8 = 18;
+
+/// Enough for a `KRB-ERROR`, which is the reply this expects and runs to a few hundred bytes.
+const READ_LIMIT: usize = 16_384;
+
+/// A Kerberos name built from its components, e.g. `krbtgt/SCANOPY.INVALID`.
+fn principal_name(name_type: u8, components: &[&str]) -> PrincipalName {
+    PrincipalName {
+        name_type: ExplicitContextTag0::from(IntegerAsn1(vec![name_type])),
+        name_string: ExplicitContextTag1::from(Asn1SequenceOf::from(
+            components
+                .iter()
+                .map(|c| {
+                    GeneralStringAsn1::from(
+                        Ia5String::from_string((*c).to_owned())
+                            .expect("the realm and principal are ASCII literals"),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )),
     }
 }
 
-/// A DER element: tag, length, body.
-fn der(tag: u8, body: &[u8]) -> Vec<u8> {
-    let mut out = vec![tag];
-    out.extend_from_slice(&der_len(body.len()));
-    out.extend_from_slice(body);
-    out
-}
-
-/// A `GeneralString`, which is how Kerberos carries realm and name components.
-fn general_string(value: &[u8]) -> Vec<u8> {
-    der(0x1B, value)
-}
-
-/// `PrincipalName ::= SEQUENCE { name-type [0] Int32, name-string [1] SEQUENCE OF GeneralString }`
-fn principal_name(name_type: u8, components: &[&[u8]]) -> Vec<u8> {
-    let mut strings = Vec::new();
-    for component in components {
-        strings.extend_from_slice(&general_string(component));
-    }
-    let mut body = der(0xA0, &der(0x02, &[name_type]));
-    body.extend_from_slice(&der(0xA1, &der(0x30, &strings)));
-    der(0x30, &body)
-}
-
-/// An `AS-REQ` for a principal that is not expected to exist.
+/// An `AS-REQ` for a principal that is not expected to exist, length-prefixed for TCP.
 fn as_req() -> Vec<u8> {
-    // KDC-REQ-BODY
-    let mut body = Vec::new();
-    // kdc-options [0]: a BIT STRING with no options set.
-    body.extend_from_slice(&der(
-        0xA0,
-        &der(0x03, &[0x05, 0x00, 0x00, 0x00, 0x00, 0x10]),
-    ));
-    // cname [1]
-    body.extend_from_slice(&der(0xA1, &principal_name(1, &[PRINCIPAL])));
-    // realm [2]
-    body.extend_from_slice(&der(0xA2, &general_string(REALM)));
-    // sname [3]: krbtgt/REALM
-    body.extend_from_slice(&der(0xA3, &principal_name(2, &[b"krbtgt", REALM])));
-    // till [5]: a fixed absolute time, well past any clock skew check that matters here.
-    body.extend_from_slice(&der(0xA5, &der(0x18, b"19700101000000Z")));
-    // nonce [7]
-    body.extend_from_slice(&der(0xA7, &der(0x02, &[0x5C, 0xA1, 0x0B, 0x05])));
-    // etype [8]: AES256-CTS-HMAC-SHA1-96 (18), which every current KDC offers.
-    body.extend_from_slice(&der(0xA8, &der(0x30, &der(0x02, &[0x12]))));
-    let kdc_req_body = der(0x30, &body);
+    let request = AsReq::from(KdcReq {
+        pvno: ExplicitContextTag1::from(IntegerAsn1(vec![5])),
+        msg_type: ExplicitContextTag2::from(IntegerAsn1(vec![AS_REQ_MSG_TYPE])),
+        // No pre-authentication data. Supplying it is what an authentication attempt looks like;
+        // omitting it is what draws the refusal this is after.
+        padata: Optional::from(None),
+        req_body: ExplicitContextTag4::from(KdcReqBody {
+            // KDCOptions with no options set beyond `renewable-ok`, as a client's first request has.
+            kdc_options: ExplicitContextTag0::from(BitStringAsn1::from(BitString::with_bytes(
+                vec![0, 0, 0, 16],
+            ))),
+            cname: Optional::from(Some(ExplicitContextTag1::from(principal_name(
+                NT_PRINCIPAL,
+                &[PRINCIPAL],
+            )))),
+            realm: ExplicitContextTag2::from(GeneralStringAsn1::from(
+                Ia5String::from_string(REALM.to_owned()).expect("an ASCII literal"),
+            )),
+            sname: Optional::from(Some(ExplicitContextTag3::from(principal_name(
+                NT_SRV_INST,
+                &["krbtgt", REALM],
+            )))),
+            from: Optional::from(None),
+            // A fixed absolute time in the future. Fixed rather than derived from the clock so the
+            // request is byte-identical every run; a KDC that dislikes it still answers with a
+            // `KRB-ERROR`, which is the outcome sought either way.
+            till: ExplicitContextTag5::from(KerberosTime::from(
+                Date::new(2037, 1, 1, 0, 0, 0).expect("a valid date"),
+            )),
+            rtime: Optional::from(None),
+            nonce: ExplicitContextTag7::from(IntegerAsn1(vec![0x5C, 0xA1, 0x0B, 0x05])),
+            etype: ExplicitContextTag8::from(Asn1SequenceOf::from(vec![IntegerAsn1(vec![
+                ETYPE_AES256_CTS_HMAC_SHA1_96,
+            ])])),
+            addresses: Optional::from(None),
+            enc_authorization_data: Optional::from(None),
+            additional_tickets: Optional::from(None),
+        }),
+    });
 
-    // KDC-REQ
-    let mut request = Vec::new();
-    request.extend_from_slice(&der(0xA1, &der(0x02, &[0x05]))); // pvno 5
-    request.extend_from_slice(&der(0xA2, &der(0x02, &[0x0A]))); // msg-type 10: AS-REQ
-    request.extend_from_slice(&der(0xA4, &kdc_req_body));
-    // [APPLICATION 10] AS-REQ
-    let message = der(0x6A, &der(0x30, &request));
-
+    let message = picky_asn1_der::to_vec(&request).expect("the request is built from literals");
     let mut framed = (message.len() as u32).to_be_bytes().to_vec();
     framed.extend_from_slice(&message);
     framed
+}
+
+/// What a KDC sent back.
+#[derive(Debug, PartialEq, Eq)]
+enum KerberosReply {
+    /// A `KRB-ERROR`, carrying the code that says why. `KDC_ERR_C_PRINCIPAL_UNKNOWN` (6) is the
+    /// expected one; `KDC_ERR_PREAUTH_REQUIRED` (25) arrives if the principal happens to exist.
+    Error { code: u32 },
+    /// An `AS-REP`. Only reachable for a principal configured without pre-authentication, which the
+    /// named principal is not expected to be.
+    Ticket,
 }
 
 pub struct KerberosProbe;
@@ -119,99 +145,150 @@ impl AppProbe for KerberosProbe {
     }
 
     async fn run(&self, ctx: &ProbeContext) -> Result<AppProbeOutcome, Error> {
-        let reply = request_response(ctx, self.port(), &as_req(), 2048).await;
+        let reply = request_response(ctx, self.port(), &as_req(), READ_LIMIT).await;
         Ok(parse_reply(&reply))
     }
 }
 
-/// Whether the reply is a Kerberos message.
-///
-/// Only the application tag after the length prefix is read. The declared length is checked against
-/// what arrived, which is what makes `0x7E` a Kerberos tag here rather than a byte that happens to
-/// be in the right place.
 fn parse_reply(bytes: &[u8]) -> AppProbeOutcome {
-    let Some(prefix) = bytes.get(..LENGTH_PREFIX_LEN) else {
-        return AppProbeOutcome::NoAnswer;
-    };
-    let declared = u32::from_be_bytes(prefix.try_into().unwrap_or_default()) as usize;
-    let tag = bytes.get(LENGTH_PREFIX_LEN);
+    presence(decode(bytes).is_some())
+}
 
-    // The read is capped, so a long reply may be truncated, but the length must account for at
-    // least what arrived and be a plausible message size.
-    presence(
-        declared > 0
-            && declared >= bytes.len() - LENGTH_PREFIX_LEN
-            && matches!(tag, Some(&TAG_KRB_ERROR) | Some(&TAG_AS_REP)),
-    )
+/// Decode a length-prefixed Kerberos reply.
+///
+/// The declared length must account for what arrived — a reply that claims to be shorter than the
+/// bytes on the wire is not a framed Kerberos message however its body decodes.
+fn decode(bytes: &[u8]) -> Option<KerberosReply> {
+    let prefix = bytes.get(..LENGTH_PREFIX_LEN)?;
+    let declared = u32::from_be_bytes(prefix.try_into().ok()?) as usize;
+    let body = bytes.get(LENGTH_PREFIX_LEN..)?;
+    if declared == 0 || declared < body.len() {
+        return None;
+    }
+
+    if let Ok(error) = picky_asn1_der::from_bytes::<KrbError>(body) {
+        return Some(KerberosReply::Error {
+            code: *error.0.error_code,
+        });
+    }
+    picky_asn1_der::from_bytes::<AsRep>(body)
+        .ok()
+        .map(|_| KerberosReply::Ticket)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn framed(tag: u8, body_len: usize) -> Vec<u8> {
-        let body = vec![0xAA; body_len];
-        let message = der(tag, &body);
-        let mut out = (message.len() as u32).to_be_bytes().to_vec();
-        out.extend_from_slice(&message);
-        out
+    /// A `KRB-ERROR` as a KDC would frame it, built with the same crate that reads it.
+    fn krb_error(code: u32) -> Vec<u8> {
+        use picky_asn1::wrapper::ExplicitContextTag6;
+        use picky_asn1::wrapper::{ExplicitContextTag9, ExplicitContextTag10};
+        use picky_krb::messages::KrbErrorInner;
+
+        let inner = KrbErrorInner {
+            pvno: ExplicitContextTag0::from(IntegerAsn1(vec![5])),
+            msg_type: ExplicitContextTag1::from(IntegerAsn1(vec![30])),
+            ctime: Optional::from(None),
+            cusec: Optional::from(None),
+            stime: ExplicitContextTag4::from(KerberosTime::from(
+                Date::new(2026, 1, 1, 0, 0, 0).unwrap(),
+            )),
+            susec: ExplicitContextTag5::from(IntegerAsn1(vec![0])),
+            error_code: ExplicitContextTag6::from(code),
+            crealm: Optional::from(None),
+            cname: Optional::from(None),
+            realm: ExplicitContextTag9::from(GeneralStringAsn1::from(
+                Ia5String::from_string("EXAMPLE.COM".to_owned()).unwrap(),
+            )),
+            sname: ExplicitContextTag10::from(principal_name(
+                NT_SRV_INST,
+                &["krbtgt", "EXAMPLE.COM"],
+            )),
+            e_text: Optional::from(None),
+            e_data: Optional::from(None),
+        };
+        let message = picky_asn1_der::to_vec(&KrbError::from(inner)).unwrap();
+        let mut framed = (message.len() as u32).to_be_bytes().to_vec();
+        framed.extend_from_slice(&message);
+        framed
     }
 
     /// The expected outcome: a KDC refusing a principal it does not know.
     #[test]
-    fn a_krb_error_is_a_kdc() {
+    fn a_krb_error_is_a_kdc_and_says_why() {
+        const KDC_ERR_C_PRINCIPAL_UNKNOWN: u32 = 6;
         assert_eq!(
-            parse_reply(&framed(TAG_KRB_ERROR, 40)),
+            decode(&krb_error(KDC_ERR_C_PRINCIPAL_UNKNOWN)),
+            Some(KerberosReply::Error {
+                code: KDC_ERR_C_PRINCIPAL_UNKNOWN
+            })
+        );
+        assert_eq!(
+            parse_reply(&krb_error(KDC_ERR_C_PRINCIPAL_UNKNOWN)),
             AppProbeOutcome::Answered { identity: None }
         );
     }
 
-    /// A principal configured without pre-authentication answers with a ticket instead. Still a KDC.
+    /// A KDC that wants pre-authentication is as much a KDC as one that does not know the name.
     #[test]
-    fn an_as_rep_is_a_kdc() {
+    fn a_preauth_required_error_is_also_a_kdc() {
+        const KDC_ERR_PREAUTH_REQUIRED: u32 = 25;
         assert_eq!(
-            parse_reply(&framed(TAG_AS_REP, 40)),
+            parse_reply(&krb_error(KDC_ERR_PREAUTH_REQUIRED)),
             AppProbeOutcome::Answered { identity: None }
         );
     }
 
     #[test]
     fn silence_an_echo_or_another_protocol_is_not_a_kdc() {
-        let mut trailing = framed(TAG_KRB_ERROR, 4);
-        trailing.extend_from_slice(&[0xFF; 40]);
+        let mut short_declaration = krb_error(6);
+        short_declaration[0..4].copy_from_slice(&4u32.to_be_bytes());
         for reply in [
             &b""[..],
             &b"SSH-2.0-OpenSSH_9.6\r\n"[..],
-            // Our own AS-REQ reflected back carries the request's application tag.
+            // Our own AS-REQ reflected back is a Kerberos message, but not a *reply*: it carries
+            // application tag 10, and neither `KRB-ERROR` nor `AS-REP` decodes from it.
             &as_req(),
             &[0, 0, 0, 0][..],
-            &trailing,
+            // A well-formed body whose frame claims fewer bytes than arrived.
+            &short_declaration,
         ] {
             assert_eq!(parse_reply(reply), AppProbeOutcome::NoAnswer);
         }
     }
 
+    /// A truncated reply is not accepted on the strength of its first bytes — which is exactly what
+    /// the hand-written parser this replaced used to do.
     #[test]
-    fn the_request_is_length_prefixed_and_tagged_as_an_as_req() {
+    fn a_truncated_krb_error_does_not_decode() {
+        let full = krb_error(6);
+        let cut = &full[..full.len() - 8];
+        assert_eq!(parse_reply(cut), AppProbeOutcome::NoAnswer);
+    }
+
+    #[test]
+    fn the_request_is_length_prefixed_and_decodes_as_an_as_req() {
         let request = as_req();
         let declared = u32::from_be_bytes(request[0..4].try_into().unwrap()) as usize;
         assert_eq!(declared, request.len() - LENGTH_PREFIX_LEN);
-        assert_eq!(request[LENGTH_PREFIX_LEN], 0x6A, "[APPLICATION 10] AS-REQ");
+        picky_asn1_der::from_bytes::<AsReq>(&request[LENGTH_PREFIX_LEN..])
+            .expect("the request we send is a well-formed AS-REQ");
     }
 
     /// The principal named is one nothing is expected to match, so the exchange cannot be mistaken
-    /// for an attempt to obtain a ticket.
+    /// for an attempt to obtain a ticket — and no pre-authentication data is offered.
     #[test]
-    fn the_request_names_a_principal_that_should_not_exist() {
+    fn the_request_names_a_principal_that_should_not_exist_and_offers_no_credential() {
         let request = as_req();
-        assert!(request.windows(PRINCIPAL.len()).any(|w| w == PRINCIPAL));
-        assert!(request.windows(REALM.len()).any(|w| w == REALM));
-    }
-
-    #[test]
-    fn der_lengths_use_the_shortest_form_that_fits() {
-        assert_eq!(der_len(0x7F), vec![0x7F]);
-        assert_eq!(der_len(0x80), vec![0x81, 0x80]);
-        assert_eq!(der_len(0x1234), vec![0x82, 0x12, 0x34]);
+        let decoded = picky_asn1_der::from_bytes::<AsReq>(&request[LENGTH_PREFIX_LEN..]).unwrap();
+        assert!(
+            decoded.0.padata.0.is_none(),
+            "no pre-authentication data is sent"
+        );
+        let body = &decoded.0.req_body.0;
+        assert_eq!(body.realm.0.to_string(), REALM);
+        let cname = body.cname.0.as_ref().expect("a client name is sent");
+        assert_eq!(cname.0.name_string.0.0[0].to_string(), PRINCIPAL);
     }
 }

@@ -21,6 +21,7 @@
 //! a second exchange.
 
 pub mod amqp;
+pub mod bacula;
 pub mod cassandra;
 pub mod checkmk;
 pub mod dns_tcp;
@@ -57,6 +58,7 @@ pub mod tls;
 pub mod udp;
 pub mod unbound_control;
 pub mod zabbix;
+pub mod zmtp;
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -295,6 +297,55 @@ pub(crate) async fn request_response(
         }
         _ => Vec::new(),
     }
+}
+
+/// Connect to `port`, send `request`, and read until `want` bytes have arrived.
+///
+/// Sibling of [`request_response`], for a reply of known fixed size that a peer is entitled to send
+/// in pieces. ZMTP is the case that needs it: RFC 23 lets a peer write the 10-octet signature, wait
+/// to read ours, and only then send the remaining 54 — so a single `read` sees a tenth of the
+/// greeting and a probe built on it reports "not this protocol" against a real server.
+///
+/// Returns what arrived when the peer stops early or the timeout expires, which the caller checks
+/// against the length it needs. The whole read is bounded by one [`SCAN_TIMEOUT`], not one per
+/// segment, so a peer that dribbles bytes cannot hold the scan open.
+pub(crate) async fn request_exact(
+    ctx: &ProbeContext,
+    port: PortType,
+    request: &[u8],
+    want: usize,
+) -> Vec<u8> {
+    let addr = std::net::SocketAddr::new(ctx.ip, port.number());
+    let mut stream = match tokio::time::timeout(SCAN_TIMEOUT, TcpStream::connect(addr)).await {
+        Ok(Ok(stream)) => stream,
+        Ok(Err(e)) => {
+            ctx.note_connect_error(&e);
+            return Vec::new();
+        }
+        Err(_) => return Vec::new(),
+    };
+
+    if tokio::time::timeout(SCAN_TIMEOUT, stream.write_all(request))
+        .await
+        .is_err()
+    {
+        return Vec::new();
+    }
+
+    let mut received = Vec::with_capacity(want);
+    let read_all = async {
+        let mut buf = vec![0u8; want];
+        while received.len() < want {
+            match stream.read(&mut buf).await {
+                // The peer closed. What arrived is all there is.
+                Ok(0) | Err(_) => break,
+                Ok(n) => received.extend_from_slice(&buf[..n]),
+            }
+        }
+    };
+    let _ = tokio::time::timeout(SCAN_TIMEOUT, read_all).await;
+    received.truncate(want);
+    received
 }
 
 /// `Answered` with no identity when `detected`, `NoAnswer` otherwise.
