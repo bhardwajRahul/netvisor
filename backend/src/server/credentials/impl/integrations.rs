@@ -14,10 +14,9 @@ use strum::IntoEnumIterator;
 
 use crate::server::services::r#impl::definitions::{ServiceDefinition, ServiceDefinitionExt};
 use crate::server::shared::fixtures::logo_slug;
+use crate::server::shared::types::field_definition::FieldDefinition;
 
-use super::types::{
-    CredentialStability, CredentialTypeDiscriminants, FieldDefinition, Target, UpstreamSupport,
-};
+use super::types::{CredentialStability, CredentialTypeDiscriminants, Target, UpstreamSupport};
 
 /// One integration: a service plus the transports (credential types) that reach
 /// it, with a single canonical discovery description and a one-line summary.
@@ -38,6 +37,10 @@ pub struct Integration {
     /// Canonical "what's discovered" text — the single source shared by every
     /// transport of this integration.
     pub discovers: String,
+    /// Path to this integration's documentation guide, relative to the site root and with a
+    /// trailing slash. Shared by every transport, like `discovers`, because a guide documents the
+    /// integration rather than one of its transports.
+    pub docs_path: String,
     /// One-line summary: the discovery text plus the available transports.
     pub summary: String,
     /// Maturity and daemon-version floors are deliberately *not* summarized here.
@@ -123,6 +126,7 @@ pub fn all_integrations() -> Vec<Integration> {
             logo_slug: logo_slug(ServiceDefinition::name(&*service)),
             logo_needs_white_background: service.logo_needs_white_background(),
             discovers: disc.integration_discovers().to_string(),
+            docs_path: disc.integration_docs_path().to_string(),
             summary: String::new(), // filled in after all transports are collected
             transports: vec![transport],
         });
@@ -202,6 +206,14 @@ mod tests {
                 integration.summary.contains(&integration.discovers),
                 "{} summary should build on its discovery text",
                 integration.id
+            );
+            // Root-relative with a trailing slash: the website joins it onto its own origin and
+            // the docs site serves every page with one, so a bare or absolute path would 404.
+            assert!(
+                integration.docs_path.starts_with("/docs/") && integration.docs_path.ends_with('/'),
+                "{} docs path should be a root-relative /docs/… path with a trailing slash, got {:?}",
+                integration.id,
+                integration.docs_path
             );
             assert!(
                 !integration.transports.is_empty(),

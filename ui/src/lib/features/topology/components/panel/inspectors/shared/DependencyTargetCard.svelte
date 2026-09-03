@@ -4,6 +4,7 @@
 	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
 	import { entityRef } from '$lib/shared/components/data/types';
 	import { entities, serviceDefinitions } from '$lib/shared/stores/metadata';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import EntityTagSelect, {
 		type EntityTagOption
 	} from '$lib/shared/components/forms/selection/EntityTagSelect.svelte';
@@ -109,7 +110,9 @@
 	// Host / IPAddress targets with zero candidate services are invalid members —
 	// the card surfaces an inline error, and InspectorMultiSelect blocks submit.
 	let hasNoServices = $derived(target.kind !== 'service' && candidates.length === 0);
-	let noServicesLabel = $derived(target.kind === 'ipAddress' ? target.label : (host?.name ?? ''));
+	let noServicesLabel = $derived(
+		target.kind === 'ipAddress' ? target.label : host ? hostDisplayName(host) : ''
+	);
 
 	let serviceOptions = $derived<EntityTagOption[]>(
 		candidates.map((svc) => ({
@@ -137,7 +140,7 @@
 			{#if host}
 				<EntityTag
 					entityRef={entityRef('Host', host.id, host)}
-					label={host.name}
+					label={hostDisplayName(host)}
 					icon={entities.getIconComponent('Host')}
 					color={entities.getColorHelper('Host').color}
 				/>

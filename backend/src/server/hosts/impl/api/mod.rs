@@ -1,3 +1,13 @@
+//! The shapes a host takes on the wire.
+//!
+//! Request and response types here; the conversions between `HostResponse` and `Host` are in
+//! [`conversion`], which is the half that grew when every attribute started carrying its source.
+//! Both directions destructure exhaustively, so a field added to either side fails to compile
+//! until it is handled in both — which is what keeps a column from being collected, stored and
+//! then silently dropped on the way back out.
+
+mod conversion;
+
 use chrono::{DateTime, Utc};
 use mac_address::MacAddress;
 use serde::{Deserialize, Serialize};
@@ -10,20 +20,27 @@ use crate::server::{
     bindings::r#impl::base::{Binding, BindingBase, BindingType},
     credentials::r#impl::types::CredentialAssignment,
     hosts::r#impl::{
+        attributes::{
+            HostChassisIdValue, HostFirmwareRevisionValue, HostManagementUrlValue,
+            HostManufacturerValue, HostModelValue, HostSerialNumberValue,
+            HostSoftwareRevisionValue, HostSysContactValue, HostSysDescrValue,
+            HostSysLocationValue, HostSysNameValue, HostSysObjectIdValue,
+        },
         base::{Host, HostBase},
-        name::{HostName, HostNameSource},
+        name::host_name_from_parts,
         virtualization::HostVirtualization,
     },
     interfaces::r#impl::base::{
         IfAdminStatus, IfOperStatus, Interface, InterfaceBase, InterfaceDataComplete,
     },
-    ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
+    ip_addresses::r#impl::base::{IPAddress, IPAddressBase, MacEvidence, MacEvidenceValue},
     ports::r#impl::base::{Port, PortBase, PortConfig, PortType, TransportProtocol},
     services::r#impl::{
         base::{Service, ServiceBase},
         definitions::ServiceDefinition,
         virtualization::ServiceVirtualization,
     },
+    shared::attribution::{self as attribution, AttributeSource, Attributed},
     shared::position::PositionedInput,
     shared::types::entities::EntitySource,
 };
@@ -285,7 +302,11 @@ impl IPAddressInput {
                 host_id,
                 subnet_id: self.subnet_id,
                 ip_address: self.ip_address,
-                mac_address: self.mac_address,
+                // A MAC arriving through the API is one a person entered, which is the only way
+                // this path is reached — discovery submits through `DiscoveryHostRequest`.
+                mac_address: self
+                    .mac_address
+                    .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::Manual)),
                 name: self.name,
                 position: self.position.unwrap_or(0),
             },
@@ -556,15 +577,20 @@ impl InterfaceInput {
             base: InterfaceBase {
                 host_id,
                 network_id,
-                if_index: self.if_index,
+                if_index: Some(self.if_index),
                 if_descr: self.if_descr,
                 if_name: None,
                 if_alias: self.if_alias,
-                if_type: self.if_type.unwrap_or(1), // 1 = other
+                // Straight through. These were coerced to "other"/Up/Up, which recorded a
+                // guess as though the caller had reported it; absent now means absent.
+                if_type: self.if_type,
                 speed_bps: self.speed_bps,
-                admin_status: self.admin_status.unwrap_or_default(),
-                oper_status: self.oper_status.unwrap_or_default(),
-                mac_address: self.mac_address,
+                admin_status: self.admin_status,
+                oper_status: self.oper_status,
+                // Interfaces reach this path only through the API, so a MAC here was entered.
+                mac_address: self
+                    .mac_address
+                    .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::Manual)),
                 ip_address_id: self.ip_address_id,
                 // Neighbor resolution fields - not set from API, resolved server-side
                 neighbor: None,
@@ -741,11 +767,22 @@ pub struct HostResponse {
     // Host fields
     /// Human-facing name for the host.
     pub name: String,
-    /// Which rung of the naming ladder produced `name`. Read-only: it is decided by whoever
-    /// supplied the name, not by the caller.
+    /// What to call this host when `name` is empty: its hostname, sysName, chassis id or first
+    /// address, whichever it has. `None` when nothing identifies it.
+    ///
+    /// Read-only and separate from `name` rather than folded into it. `name` is what a person
+    /// typed and what the editor writes back, so filling it with a fallback would turn a chassis
+    /// id into a name the next save persists. Computed from [`Host::display_name`], the same
+    /// ladder topology titles a host container with, so a host cannot be called one thing in the
+    /// list and another on the map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(read_only)]
+    pub display_name: Option<String>,
+    /// What produced `name`. Read-only: it is decided by whoever supplied the name, not by the
+    /// caller.
     #[serde(default)]
     #[schema(read_only)]
-    pub name_source: HostNameSource,
+    pub name_source: AttributeSource,
     /// The network this entity belongs to.
     pub network_id: Uuid,
     /// Hostname as resolved or reported by the host.
@@ -772,38 +809,92 @@ pub struct HostResponse {
     /// SNMP sysDescr — the device's own description of itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_descr: Option<String>,
+    /// What produced SNMP sysDescr. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub sys_descr_source: AttributeSource,
     /// SNMP sysObjectID — the vendor's identifier for the device model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_object_id: Option<String>,
+    /// What produced SNMP sysObjectID. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub sys_object_id_source: AttributeSource,
     /// SNMP sysLocation — physical location as configured on the device.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_location: Option<String>,
+    /// What produced SNMP sysLocation. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub sys_location_source: AttributeSource,
     /// SNMP sysContact — administrative contact as configured on the device.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sys_contact: Option<String>,
+    /// What produced SNMP sysContact. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub sys_contact_source: AttributeSource,
     /// Link to the host's own management interface.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub management_url: Option<String>,
+    /// What produced the management URL. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub management_url_source: AttributeSource,
     /// LLDP chassis identifier, used to match the host to its neighbours.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chassis_id: Option<String>,
+    /// What produced the LLDP chassis identifier. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub chassis_id_source: AttributeSource,
     /// SNMP sysName.0 — the administratively-assigned hostname. Read-only: discovery collects it
     /// from the device, so neither create nor update accepts it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(read_only)]
     pub sys_name: Option<String>,
+    /// What produced SNMP sysName. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub sys_name_source: AttributeSource,
     /// ENTITY-MIB entPhysicalMfgName — hardware manufacturer. Read-only, as above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(read_only)]
     pub manufacturer: Option<String>,
+    /// What produced the manufacturer. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub manufacturer_source: AttributeSource,
     /// ENTITY-MIB entPhysicalModelName — hardware model. Read-only, as above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(read_only)]
     pub model: Option<String>,
+    /// What produced the model. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub model_source: AttributeSource,
     /// ENTITY-MIB entPhysicalSerialNum — hardware serial number. Read-only, as above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(read_only)]
     pub serial_number: Option<String>,
+    /// What produced the serial number. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub serial_number_source: AttributeSource,
+    /// ENTITY-MIB entPhysicalFirmwareRev — firmware revision of the device. Read-only, as above.
+    #[schema(required, read_only)]
+    pub firmware_revision: Option<String>,
+    /// What produced the firmware revision. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub firmware_revision_source: AttributeSource,
+    /// ENTITY-MIB entPhysicalSoftwareRev — software revision of the device. Read-only, as above.
+    #[schema(required, read_only)]
+    pub software_revision: Option<String>,
+    /// What produced the software revision. Read-only: decided by whichever source read it.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub software_revision_source: AttributeSource,
     /// Credentials assigned to scan this host.
     #[serde(default)]
     pub credential_assignments: Vec<CredentialAssignment>,
@@ -817,166 +908,4 @@ pub struct HostResponse {
     pub services: Vec<Service>,
     /// SNMP ifTable entries
     pub interfaces: Vec<Interface>,
-}
-
-impl HostResponse {
-    /// Convert HostResponse back to a Host entity (without children).
-    /// Uses exhaustive destructuring to ensure compile error if HostResponse changes.
-    pub fn to_host(&self) -> Host {
-        // Exhaustive destructuring of HostResponse
-        let HostResponse {
-            id,
-            created_at,
-            updated_at,
-            last_seen_at,
-            name,
-            name_source,
-            network_id,
-            hostname,
-            description,
-            source,
-            virtualization_metadata,
-            virtualization_service_id,
-            hidden,
-            tags,
-            sys_descr,
-            sys_object_id,
-            sys_location,
-            sys_contact,
-            management_url,
-            chassis_id,
-            sys_name,
-            manufacturer,
-            model,
-            serial_number,
-            credential_assignments,
-            ip_addresses: _,
-            ports: _,
-            services: _,
-            interfaces: _,
-        } = self;
-
-        // The remaining SCD2 fields aren't in HostResponse; defaults are filled
-        // in here. The to_host() method is only used in legacy compat paths;
-        // round-tripping a HostResponse → Host loses temporal info that can be
-        // reconstructed from the live row's values via from_row.
-        Host {
-            id: *id,
-            created_at: *created_at,
-            updated_at: *updated_at,
-            valid_from: *created_at,
-            valid_to: None,
-            lineage_id: None,
-            last_seen_at: *last_seen_at,
-            last_discovery_id: None,
-            first_discovery_id: None,
-            base: HostBase {
-                name: HostName::from_parts(name.clone(), *name_source),
-                network_id: *network_id,
-                hostname: hostname.clone(),
-                description: description.clone(),
-                source: source.clone(),
-                virtualization_metadata: virtualization_metadata.clone(),
-                virtualization_service_id: *virtualization_service_id,
-                hidden: *hidden,
-                tags: tags.clone(),
-                sys_descr: sys_descr.clone(),
-                sys_object_id: sys_object_id.clone(),
-                sys_location: sys_location.clone(),
-                sys_contact: sys_contact.clone(),
-                management_url: management_url.clone(),
-                chassis_id: chassis_id.clone(),
-                sys_name: sys_name.clone(),
-                manufacturer: manufacturer.clone(),
-                model: model.clone(),
-                serial_number: serial_number.clone(),
-                credential_assignments: credential_assignments.clone(),
-            },
-        }
-    }
-
-    /// Build HostResponse from a Host and its children.
-    /// Uses exhaustive destructuring to ensure compile error if Host/HostBase changes.
-    pub fn from_host_with_children(
-        host: Host,
-        ip_addresses: Vec<IPAddress>,
-        ports: Vec<Port>,
-        services: Vec<Service>,
-        interfaces: Vec<Interface>,
-    ) -> Self {
-        // Exhaustive destructuring of Host
-        let Host {
-            id,
-            created_at,
-            updated_at,
-            // `last_seen_at` IS part of the response shape: it drives the
-            // "Last seen" column and the stale badge. The remaining SCD2/audit
-            // fields stay internal — an audit-trail UX can surface those later
-            // via the historical Discovery row + lineage queries.
-            last_seen_at,
-            valid_from: _,
-            valid_to: _,
-            lineage_id: _,
-            last_discovery_id: _,
-            first_discovery_id: _,
-            base,
-        } = host;
-
-        // Exhaustive destructuring of HostBase
-        // If a field is added to HostBase, this will fail to compile
-        let crate::server::hosts::r#impl::base::HostBase {
-            name,
-            network_id,
-            hostname,
-            description,
-            source,
-            virtualization_metadata,
-            virtualization_service_id,
-            hidden,
-            tags,
-            sys_descr,
-            sys_object_id,
-            sys_location,
-            sys_contact,
-            management_url,
-            chassis_id,
-            sys_name,
-            manufacturer,
-            model,
-            serial_number,
-            credential_assignments,
-        } = base;
-
-        Self {
-            id,
-            created_at,
-            updated_at,
-            last_seen_at,
-            name_source: name.source(),
-            name: name.value().to_string(),
-            network_id,
-            hostname,
-            description,
-            source,
-            virtualization_metadata,
-            virtualization_service_id,
-            hidden,
-            tags,
-            sys_descr,
-            sys_object_id,
-            sys_location,
-            sys_contact,
-            management_url,
-            chassis_id,
-            sys_name,
-            manufacturer,
-            model,
-            serial_number,
-            credential_assignments,
-            ip_addresses,
-            ports,
-            services,
-            interfaces,
-        }
-    }
 }

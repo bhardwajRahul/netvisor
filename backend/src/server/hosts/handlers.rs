@@ -9,6 +9,7 @@ use crate::server::discovery::r#impl::scan_settings::{RescanSettings, ScanSettin
 use crate::server::discovery::r#impl::types::{DiscoveryType, RunType};
 use crate::server::interfaces::r#impl::base::Interface;
 use crate::server::ip_addresses::r#impl::base::IPAddress;
+use crate::server::networks::r#impl::Network;
 use crate::server::openapi::tags as api_tags;
 use crate::server::ports::r#impl::base::{Port, PortType};
 use crate::server::services::r#impl::base::Service;
@@ -34,7 +35,7 @@ use crate::server::{
     daemons::r#impl::{base::Daemon, version::pre_interface_to_ip_address_rename},
     hosts::r#impl::{
         api::{CreateHostRequest, DiscoveryHostRequest, HostResponse, UpdateHostRequest},
-        base::Host,
+        base::{Host, PRIMARY_INTERFACE_JOIN, host_display_name_sql},
         legacy::{HostCreateRequestBody, HostCreateResponse, LegacyHostWithServicesResponse},
     },
     shared::types::api::{ApiError, ApiResponse, ApiResult, PaginatedApiResponse},
@@ -65,6 +66,9 @@ use zip::write::SimpleFileOptions;
 pub enum HostOrderField {
     #[default]
     CreatedAt,
+    /// Sort by the host's *title* — the [`Host::display_name`] ladder, not the stored `name`
+    /// column, so the order matches what the Name column draws. Requires the primary-address
+    /// JOIN for the ladder's last rung.
     Name,
     Hostname,
     UpdatedAt,
@@ -81,7 +85,7 @@ impl OrderField for HostOrderField {
     fn to_sql(&self) -> &'static str {
         match self {
             Self::CreatedAt => "hosts.created_at",
-            Self::Name => "hosts.name",
+            Self::Name => host_display_name_sql!("hosts", "primary_interface"),
             Self::Hostname => "hosts.hostname",
             Self::UpdatedAt => "hosts.updated_at",
             Self::NetworkId => "hosts.network_id",
@@ -95,15 +99,12 @@ impl OrderField for HostOrderField {
         match self {
             Self::VirtualizedBy => Some(
                 "LEFT JOIN services AS virt_service ON \
-                 (hosts.virtualization->'details'->>'service_id')::uuid = virt_service.id",
+                 hosts.virtualization_service_id = virt_service.id",
             ),
-            Self::InterfaceIp => Some(
-                "LEFT JOIN (\
-                    SELECT DISTINCT ON (host_id) host_id, ip_address \
-                    FROM ip_addresses \
-                    ORDER BY host_id, position ASC\
-                ) AS primary_interface ON hosts.id = primary_interface.host_id",
-            ),
+            // One const shared by both: grouping by interface ip while ordering by name must
+            // produce a single `primary_interface` join. `apply_ordering` drops the second when
+            // the two are equal, so what matters is that they cannot stop being equal.
+            Self::Name | Self::InterfaceIp => Some(PRIMARY_INTERFACE_JOIN),
             _ => None,
         }
     }
@@ -116,15 +117,30 @@ impl OrderField for HostOrderField {
 /// Query parameters for filtering and ordering hosts.
 #[derive(Deserialize, Default, Debug, Clone, IntoParams)]
 pub struct HostFilterQuery {
-    /// Filter by network ID
-    pub network_id: Option<Uuid>,
+    /// Filter by network ID. Repeat the parameter to pass several.
+    #[serde(alias = "network_id")]
+    pub network_ids: Option<Vec<Uuid>>,
     /// Filter by specific entity IDs (for selective loading)
     pub ids: Option<Vec<Uuid>>,
+    /// Filter by the `hidden` flag. Repeat the parameter to accept both values;
+    /// omit it for no constraint.
+    pub hidden: Option<Vec<bool>>,
+    /// Filter by the service virtualizing the host. Repeat for several.
+    pub virtualization_service_ids: Option<Vec<Uuid>>,
+    /// `true` also returns hosts nothing virtualizes. Set on its own it returns
+    /// only those — the "Not Virtualized" choice in the UI's filter.
+    pub include_unvirtualized: Option<bool>,
+    /// Filter to hosts running a service with one of these names.
+    pub service_names: Option<Vec<String>>,
     /// Filter by tag IDs (returns hosts that have ANY of the specified tags)
     pub tag_ids: Option<Vec<Uuid>>,
     /// Free-text search. Case-insensitive substring match against the host's
-    /// name, hostname and description, and against its IP addresses and the
-    /// names of services running on it.
+    /// name, hostname, sysName, chassis id and description, and against its IP
+    /// addresses and the names of services running on it.
+    ///
+    /// sysName and chassis id are in there because they are rungs of the title
+    /// ladder: a host with no name of its own is *shown* under one of them, and
+    /// a title you can read but cannot search for is a dead end.
     pub search: Option<String>,
     /// Primary ordering field (used for grouping). Always sorts ASC to keep groups together.
     pub group_by: Option<HostOrderField>,
@@ -164,6 +180,35 @@ impl HostFilterQuery {
             "hosts.created_at ASC",
         )
     }
+
+    /// Apply the field filters the Hosts tab offers.
+    ///
+    /// Shared by the list and the exports, for the same reason the staleness
+    /// filter is: an export should mirror exactly what the user was looking at.
+    /// Every one of these is applied server-side because the list is paginated —
+    /// filtering the loaded page instead would hide matches on every other page
+    /// and leave the total count describing a different set of rows.
+    pub fn apply_field_filters(&self, filter: StorableFilter<Host>) -> StorableFilter<Host> {
+        let filter = match &self.hidden {
+            Some(values) if !values.is_empty() => filter.hidden_in(values),
+            _ => filter,
+        };
+
+        // "Not Virtualized" is a choice about absence, so it can arrive without
+        // any service ids beside it.
+        let include_unvirtualized = self.include_unvirtualized.unwrap_or(false);
+        let virtualization_ids = self.virtualization_service_ids.as_deref().unwrap_or(&[]);
+        let filter = if include_unvirtualized || !virtualization_ids.is_empty() {
+            filter.virtualization_service_in(virtualization_ids, include_unvirtualized)
+        } else {
+            filter
+        };
+
+        match &self.service_names {
+            Some(names) if !names.is_empty() => filter.has_service_named(names),
+            _ => filter,
+        }
+    }
 }
 
 impl FilterQueryExtractor for HostFilterQuery {
@@ -178,10 +223,18 @@ impl FilterQueryExtractor for HostFilterQuery {
             Some(ids) if !ids.is_empty() => filter.entity_ids(ids),
             _ => filter,
         };
-        // Then apply network filter
-        match self.network_id {
-            Some(id) if user_network_ids.contains(&id) => filter.network_ids(&[id]),
-            Some(_) => filter.network_ids(&[]), // User doesn't have access - return empty
+        // Then apply network filter. Intersect with what the caller can see —
+        // a requested network they have no access to must narrow the result to
+        // nothing, never widen it.
+        match &self.network_ids {
+            Some(requested) => {
+                let accessible: Vec<Uuid> = requested
+                    .iter()
+                    .copied()
+                    .filter(|id| user_network_ids.contains(id))
+                    .collect();
+                filter.network_ids(&accessible)
+            }
             None => filter.network_ids(user_network_ids),
         }
     }
@@ -261,6 +314,8 @@ async fn get_all_hosts(
         Some(search) if !search.trim().is_empty() => filter.text_search(search),
         _ => filter,
     };
+
+    let filter = query.apply_field_filters(filter);
 
     // Staleness is per-network, so resolve each accessible network's cutoff and
     // let the filter compare every row against its own.
@@ -452,9 +507,26 @@ async fn create_host(
                     .and_then(|o| o.base.plan)
                     .unwrap_or_else(crate::server::billing::plans::get_free_plan);
                 if let Some(limit) = plan.host_limit() {
-                    let org_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
-                    let current_hosts =
-                        state.services.host_service.get_all(org_filter).await?.len() as u64;
+                    // Counted the way the dashboard counts and the way the discovery path gates:
+                    // through `count_for_networks`, which narrows SCD2 entities to live rows, and
+                    // across *every* network the organization owns. Hand-rolling it here meant
+                    // closed snapshot copies were counted and the caller's own accessible networks
+                    // were the scope — so a user could be shown 18/25 and refused at 25, and a
+                    // member whose networks are a subset of the org's could create past the limit.
+                    let org_network_ids: Vec<Uuid> = state
+                        .services
+                        .network_service
+                        .get_all(StorableFilter::<Network>::new_from_org_id(&org_id))
+                        .await
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|n| n.id)
+                        .collect();
+                    let current_hosts = state
+                        .services
+                        .host_service
+                        .count_for_networks(&org_network_ids)
+                        .await?;
                     if current_hosts >= limit {
                         let _ = state
                             .services
@@ -1249,6 +1321,8 @@ async fn export_hosts_zip(
         }
         None => filter,
     };
+
+    let filter = query.apply_field_filters(filter);
 
     // Get all hosts (no pagination for export)
     let hosts = state.services.host_service.get_all(filter).await?;

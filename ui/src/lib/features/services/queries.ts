@@ -26,8 +26,16 @@ export type { Service };
 export interface ServicesQueryParams {
 	limit?: number;
 	offset?: number;
-	network_id?: string;
-	host_id?: string;
+	/** Filter by network ID. Several narrows to the union of them. */
+	network_ids?: string[];
+	/** Filter by host ID. Several narrows to the union of them. */
+	host_ids?: string[];
+	/** Only services with one of these definitions (raw definition ids). */
+	service_definitions?: string[];
+	/** Filter by the service containerizing this one. */
+	virtualization_service_ids?: string[];
+	/** Also return services nothing containerizes; on its own, only those. */
+	include_uncontainerized?: boolean;
 	/** Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
 	group_by?: components['schemas']['ServiceOrderField'];
 	/** Secondary ordering field (sorting within groups or standalone sort). */
@@ -77,8 +85,11 @@ export function useServicesQuery(
 		const {
 			limit,
 			offset,
-			network_id,
-			host_id,
+			network_ids,
+			host_ids,
+			service_definitions,
+			virtualization_service_ids,
+			include_uncontainerized,
 			group_by,
 			order_by,
 			order_direction,
@@ -95,8 +106,11 @@ export function useServicesQuery(
 				{
 					limit,
 					offset,
-					network_id,
-					host_id,
+					network_ids,
+					host_ids,
+					service_definitions,
+					virtualization_service_ids,
+					include_uncontainerized,
 					group_by,
 					order_by,
 					order_direction,
@@ -113,8 +127,11 @@ export function useServicesQuery(
 						query: {
 							limit,
 							offset,
-							network_id,
-							host_id,
+							network_ids,
+							host_ids,
+							service_definitions,
+							virtualization_service_ids,
+							include_uncontainerized,
 							group_by,
 							order_by,
 							order_direction,

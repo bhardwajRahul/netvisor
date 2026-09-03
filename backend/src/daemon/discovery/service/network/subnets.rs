@@ -285,7 +285,7 @@ pub(crate) fn resolve_rescan_subnets(
 
         let Some(parent) = all_subnets
             .iter()
-            .find(|s| s.base.cidr == containing_cidr)
+            .find(|s| *s.base.cidr == containing_cidr)
             .cloned()
         else {
             resolution
@@ -321,6 +321,8 @@ pub(crate) fn longest_prefix_containing(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::shared::attribution::AttributeSource;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use std::str::FromStr;
 
     fn cidr(s: &str) -> cidr::IpCidr {
@@ -374,7 +376,10 @@ mod tests {
         Subnet {
             id: uuid::Uuid::new_v4(),
             base: crate::server::subnets::r#impl::base::SubnetBase {
-                cidr: cidr(cidr_str),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(cidr(cidr_str)),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 ..Default::default()
             },
             ..Default::default()
@@ -402,7 +407,7 @@ mod tests {
             resolution
                 .subnets
                 .iter()
-                .map(|s| s.base.cidr)
+                .map(|s| *s.base.cidr)
                 .collect::<Vec<_>>(),
             vec![cidr("10.0.5.0/24")]
         );

@@ -18,11 +18,18 @@ impl ServiceDefinition for PowerDNS {
         ServiceCategory::DNS
     }
 
+    /// The built-in webserver's root page is served unauthenticated and titles itself, which is
+    /// what separates PowerDNS from any other DNS server answering on 53. Only the `/api/` paths
+    /// are gated behind `X-API-Key`.
     fn discovery_pattern(&self) -> Pattern<'_> {
         Pattern::AllOf(vec![
             Pattern::Port(PortType::DnsUdp),
-            Pattern::Port(PortType::DnsTcp),
-            Pattern::Port(PortType::Http8081),
+            Pattern::Endpoint(
+                PortType::Http8081,
+                "/",
+                "PowerDNS Authoritative Server Monitor",
+                None,
+            ),
         ])
     }
 

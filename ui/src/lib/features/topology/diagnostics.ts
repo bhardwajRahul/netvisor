@@ -58,6 +58,51 @@ const VIEWPORT_SAMPLE_INTERVAL_MS = 500;
 
 export type BlankReason = 'culled' | 'empty' | 'hidden' | null;
 
+/** The frame's own facts, reduced to the five that decide whether anything is on screen. */
+export interface BlankInputs {
+	/** Nodes the store holds. Zero is a data problem, not a rendering one. */
+	storeNodes: number;
+	/** The pane is `visibility: hidden`. */
+	paneHidden: boolean;
+	/** The cold load's measure pass is running, which hides the pane on purpose. */
+	coldLoadMeasure: boolean;
+	/** `.svelte-flow__node` elements in this viewer. */
+	mountedCount: number;
+	/** Whether the mounted nodes' bounding box meets the pane at all. */
+	intersectsPane: boolean;
+}
+
+/**
+ * Why nothing is on the canvas, or `null` if something is.
+ *
+ * Split out of `sampleViewerState` so the decision can be tested without a DOM — the classifier
+ * drove a customer report and had no coverage at all, which is how a sample taken before the
+ * renderer had caught up came to be recorded as a blank canvas.
+ *
+ * Order matters. An empty store outranks everything: with no nodes there is nothing for culling or
+ * a hidden pane to explain, and reporting `culled` there would send the next reader to the
+ * renderer for what is a pipeline fault.
+ */
+export function classifyBlank({
+	storeNodes,
+	paneHidden,
+	coldLoadMeasure,
+	mountedCount,
+	intersectsPane
+}: BlankInputs): BlankReason {
+	if (storeNodes === 0) return 'empty';
+	// Hidden *while the cold load measures* is that pass doing its job — it mounts every node at
+	// full size behind `visibility: hidden` to read their heights, and a sample landing in that
+	// window sees an intentionally invisible canvas. Only a pane still hidden with no cold load
+	// running is a fault, and it is one an operator would describe the same way as the others.
+	//
+	// Gated on `coldLoadMeasure`, not `measuring`: the cold load is the only pass that hides the
+	// pane, so a later measure pass must not excuse a pane that is stuck hidden.
+	if (paneHidden) return coldLoadMeasure ? null : 'hidden';
+	if (mountedCount === 0 || !intersectsPane) return 'culled';
+	return null;
+}
+
 /**
  * How many of the store's nodes SvelteFlow is *able* to cull.
  *
@@ -69,13 +114,25 @@ export type BlankReason = 'culled' | 'empty' | 'hidden' | null;
  * where it sits, so a report can show `culling: on` beside `mounted == store.nodes` and nothing in
  * it explains why. `forceRendered` is that number directly.
  */
-export interface CullabilitySummary {
+export interface CullabilityCounts {
 	/** Internal nodes inspected. Less than `store.nodes` when the viewport path stride-samples. */
 	total: number;
 	withMeasured: number;
 	withHandleBounds: number;
 	/** Nodes SvelteFlow will mount regardless of the viewport. */
 	forceRendered: number;
+}
+
+export interface CullabilitySummary extends CullabilityCounts {
+	/**
+	 * Whether `total` is a stride sample rather than the whole store.
+	 *
+	 * Without it the two numbers are indistinguishable and read as a fault. A capture showed
+	 * `cullable.total: 423` on the viewport rows against a 1268-node store and `1268` on a pipeline
+	 * row, which looks like the count moving — it is `1268 / ⌈1268/500⌉`, the stride below, taken
+	 * on the throttled path and nowhere else.
+	 */
+	sampled: boolean;
 }
 
 /** The shape `summariseCullability` needs. Structural, so a test needs no SvelteFlow. */
@@ -90,7 +147,7 @@ export interface CullableNode {
  * A node counts as measured only with both dimensions: a width alone still yields `area === 0`,
  * which is the case that made every element card unconditionally visible.
  */
-export function summariseCullability(nodes: (CullableNode | undefined)[]): CullabilitySummary {
+export function summariseCullability(nodes: (CullableNode | undefined)[]): CullabilityCounts {
 	let total = 0;
 	let withMeasured = 0;
 	let withHandleBounds = 0;
@@ -154,18 +211,35 @@ export interface CumulativeCounters {
 	/** Peak reserved heap, tracked alongside `peakUsedJSHeapMb` and for the same reason. */
 	peakTotalJSHeapMb?: number;
 	/**
-	 * Runs abandoned because a later input superseded them before they reached ELK.
+	 * Times a later input made the run in flight obsolete — signals raised, not runs saved.
 	 *
-	 * The saving, stated directly. Presses arrive faster than a run completes — 1.8-3.7s per run
-	 * against a press every ~2s — so before cancellation each press paid for a full layout that the
-	 * next press discarded, and a capture showed 8 runs for roughly 4 presses with every one of them
-	 * running ELK.
+	 * This counts the generation bump, which is all the supersede mechanism does. Whether it saved
+	 * anything depends on where the run had got to: the only bail is the check immediately before
+	 * `layoutEngine.compute`, so a signal that arrives one second into a twenty-second layout is
+	 * counted here and still pays for every second of it.
 	 *
-	 * Read against `elkRuns`, which is the number that should track presses rather than double them.
-	 * Together they say how many layouts a session actually needed versus how many it performed.
+	 * So this is not a numerator over `elkRuns`, and the two must not be read as a ratio — a
+	 * customer capture of `runsSuperseded: 28` beside `elkRuns: 31` was read as "28 of 31 layouts
+	 * were abandoned" when the counters describe disjoint events and no run in the buffer carried
+	 * `supersededBeforeElk` at all. The pair that answers "did cancellation help" is
+	 * `runsSuperseded` against `elkResultsDiscarded`: the difference is signals that landed in time.
 	 */
 	runsSuperseded: number;
-	/** ELK layouts actually performed. The allocation driver: ~250-340MB and 1.8-3.7s apiece. */
+	/**
+	 * Layouts that ran to completion and were thrown away for being stale.
+	 *
+	 * The cost cancellation did *not* avoid, which nothing recorded before. Every one of these is a
+	 * full ELK layout — 18-22s and several hundred MB on a large estate — paid for and discarded.
+	 */
+	elkResultsDiscarded: number;
+	/**
+	 * `elk.layout()` calls. The allocation driver: ~250-340MB and 1.8-3.7s apiece.
+	 *
+	 * Layouts, not pipeline runs. Each run performs two — a first pass to learn element positions
+	 * and a second with the container ports pinned to them — and this used to be incremented once
+	 * per run beside a doc that said "ELK layouts actually performed", so every reading of it was
+	 * half the truth.
+	 */
 	elkRuns: number;
 }
 
@@ -197,15 +271,21 @@ const counters: CumulativeCounters = {
 	peakMounted: 0,
 	peakDomInNodes: 0,
 	runsSuperseded: 0,
+	elkResultsDiscarded: 0,
 	elkRuns: 0
 };
 
-/** A run was abandoned because a later input made its result obsolete before it laid out. */
+/** A later input made the run in flight obsolete. Whether that saved a layout is a separate fact. */
 export function noteRunSuperseded(): void {
 	counters.runsSuperseded += 1;
 }
 
-/** An ELK layout is about to run — the expensive thing this work exists to do less of. */
+/** A completed layout was thrown away for being stale — the supersede that arrived too late. */
+export function noteElkResultDiscarded(): void {
+	counters.elkResultsDiscarded += 1;
+}
+
+/** One `elk.layout()` call is about to start — the expensive thing this work exists to do less of. */
 export function noteElkRun(): void {
 	counters.elkRuns += 1;
 }
@@ -256,6 +336,16 @@ export interface RunRecord {
 	heapTotalEndMb?: number;
 	/** This run was abandoned before ELK because a later input superseded it. No layout was paid for. */
 	supersededBeforeElk?: boolean;
+	/**
+	 * This run laid out in full and its result was discarded for being stale.
+	 *
+	 * The other half of `supersededBeforeElk`, and the expensive one. The stale check sits before
+	 * `layoutEngine.compute` and again after it, with nothing in between, so a supersede raised any
+	 * time after the run entered ELK lands here instead — the whole layout paid for, nothing drawn.
+	 * A buffer full of these against a healthy `runsSuperseded` means cancellation is firing too
+	 * late to be worth anything, which is invisible from the cumulative counters alone.
+	 */
+	supersededAfterElk?: boolean;
 	/**
 	 * Expanded containers whose `expandedSize` is still zero once the run finished.
 	 *
@@ -374,6 +464,29 @@ export interface ViewerSample {
 	/** Bounding box of the mounted nodes in screen space, and whether it meets the pane at all. */
 	bounds: { left: number; top: number; right: number; bottom: number } | null;
 	intersectsPane: boolean;
+	/**
+	 * The zoom a fit needs for the current graph, against the zoom the floor allows.
+	 *
+	 * The quantity a capture of this fault had no way to express. A report showed every sample in
+	 * the ring at `scale(0.1)` — both views, all four collapse levels, after eight separate fits on
+	 * eight different graph sizes — which reads as a coincidence until you know 0.1 was the floor
+	 * and every one of those fits was clamping. `clampedAtFloor` says so directly, and `required`
+	 * says by how far: a graph needing 0.03 is being shown at a third of its width with the rest
+	 * off-screen, which is what gets reported as an empty canvas.
+	 *
+	 * `null` when nothing is laid out yet, since there are no bounds to fit.
+	 */
+	fitZoom: { required: number; applied: number; clampedAtFloor: boolean } | null;
+	/**
+	 * The collapse level, and how many containers are collapsed at it.
+	 *
+	 * Note the two counts in this sample are over different populations and are not comparable.
+	 * `collapsedContainers` is computed over the raw payload and includes containers nested inside
+	 * other collapsed containers, while `store.nodes` is what survived collapse pruning and
+	 * filtering — so 2,693 collapsed containers beside a 760-node store is the expected shape at a
+	 * low level, not a counter overflowing its population. Level 1 is fully collapsed and level 4
+	 * fully expanded, so zero here at level 4 is the definition, not an absence.
+	 */
 	collapse: { level: number | null; collapsedContainers: number };
 	/**
 	 * The payload's edges by `edge_type`, before anything the renderer does to them.
@@ -428,6 +541,14 @@ interface SampleInputs {
 	 * arrays would pin the whole topology in the ring buffer.
 	 */
 	payload: () => DiagnosablePayload | null;
+	/**
+	 * The zoom a fit needs against the floor allowing it, read lazily.
+	 *
+	 * Supplied by the viewer rather than derived here: the graph's bounds live in the node store in
+	 * graph coordinates, and this file only ever reads the DOM, which at low zoom and with culling
+	 * on holds a clipped subset of them.
+	 */
+	fitZoom: () => ViewerSample['fitZoom'];
 	trigger: ViewerSample['trigger'];
 }
 
@@ -517,11 +638,13 @@ function summariseNeighborKinds(
 const CULLABILITY_SAMPLE_LIMIT = 500;
 
 function sampleCullability(nodes: (CullableNode | undefined)[], full: boolean): CullabilitySummary {
-	if (full || nodes.length <= CULLABILITY_SAMPLE_LIMIT) return summariseCullability(nodes);
+	if (full || nodes.length <= CULLABILITY_SAMPLE_LIMIT) {
+		return { ...summariseCullability(nodes), sampled: false };
+	}
 	const stride = Math.ceil(nodes.length / CULLABILITY_SAMPLE_LIMIT);
 	const sampled: (CullableNode | undefined)[] = [];
 	for (let i = 0; i < nodes.length; i += stride) sampled.push(nodes[i]);
-	return summariseCullability(sampled);
+	return { ...summariseCullability(sampled), sampled: true };
 }
 
 /**
@@ -586,22 +709,13 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 	);
 
 	const paneHidden = pane ? getComputedStyle(pane).visibility === 'hidden' : false;
-	let blank: BlankReason = null;
-	if (inputs.storeNodes === 0) {
-		blank = 'empty';
-	} else if (paneHidden && !inputs.coldLoadMeasure) {
-		// Hidden *while the cold load measures* is that pass doing its job — it mounts every node
-		// at full size behind `visibility: hidden` to read their heights, and a viewport sample
-		// landing in that window sees an intentionally invisible canvas. Only a pane still hidden
-		// with no cold load running is a fault, and it is the one an operator would describe
-		// the same way as the others.
-		//
-		// Gated on `coldLoadMeasure`, not `measuring`: the cold load is the only pass that hides
-		// the pane, so a later measure pass must not excuse a pane that is stuck hidden.
-		blank = 'hidden';
-	} else if (!paneHidden && (nodeEls.length === 0 || !intersectsPane)) {
-		blank = 'culled';
-	}
+	const blank = classifyBlank({
+		storeNodes: inputs.storeNodes,
+		paneHidden,
+		coldLoadMeasure: inputs.coldLoadMeasure,
+		mountedCount: nodeEls.length,
+		intersectsPane
+	});
 
 	counters.peakMounted = Math.max(counters.peakMounted, nodeEls.length);
 
@@ -650,6 +764,7 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
 				}
 			: null,
 		intersectsPane,
+		fitZoom: inputs.fitZoom(),
 		collapse: {
 			level: get(collapseLevel) ?? null,
 			collapsedContainers: get(collapsedContainers).size
@@ -671,6 +786,21 @@ export function sampleViewerState(inputs: SampleInputs): ViewerSample {
  */
 let firstBlankCapture: ViewerSample[] | null = null;
 
+/**
+ * The same, for the *most recent* time it went blank.
+ *
+ * `firstBlankCapture` latches for the life of the tab, which is the right thing for a fault seen
+ * once on a fresh load and the wrong thing for everything else. A capture that came in for
+ * diagnosis had been open for 23 hours 50 minutes: its `firstBlank` was a transient from minute
+ * 0:49 of the previous day, the ring held the last eight minutes, and the blank being complained
+ * about fell in the gap between them and appeared nowhere in the file. A topology tab is left open
+ * all day, so that is the normal case, not an unlucky one.
+ *
+ * Keeping both costs one more array of at most `HISTORY_LIMIT` samples and means a report always
+ * carries the lead-in to *a* blank the reporter might actually have seen.
+ */
+let lastBlankCapture: ViewerSample[] | null = null;
+
 function push(sample: ViewerSample): void {
 	history.push(sample);
 	if (history.length > HISTORY_LIMIT) history.shift();
@@ -688,6 +818,7 @@ function record(inputs: SampleInputs): void {
 	if (sample.blank && sample.blank !== previousBlank) {
 		// Before anything else can push it out of the ring.
 		firstBlankCapture ??= [...history];
+		lastBlankCapture = [...history];
 		console.warn(
 			`[scanopy] topology canvas is blank (${sample.blank}): ` +
 				`${sample.store.nodes} nodes in the graph, ${sample.mounted} drawn, ` +
@@ -723,11 +854,22 @@ export interface DiagnosticsReport {
 	/**
 	 * The buffer as it stood when the canvas first went blank, or `null` if it never did.
 	 *
-	 * Read this first: it holds the runs leading into the fault. `samples` below is whatever the
-	 * live ring happens to hold by the time the report was taken, which after any amount of
-	 * panning is the aftermath rather than the cause.
+	 * Note this is the buffer, not a list of blanks: all but the last entry are the lead-in, with
+	 * `blank: null`, and the last is the sample that tripped it. A report of seventeen entries
+	 * describes one blank and sixteen healthy frames before it.
+	 *
+	 * `lastBlank` below is usually the one to read first. This one only wins when the fault was on
+	 * a fresh load, since it never updates again afterwards.
 	 */
 	firstBlank: ViewerSample[] | null;
+	/**
+	 * The same buffer for the most recent blank — normally the one being reported.
+	 *
+	 * Identical to `firstBlank` when the canvas has only gone blank once. When they differ, the tab
+	 * has been open long enough to matter and this is the recent evidence; `samples` is whatever
+	 * the ring holds now, which after any panning is the aftermath rather than the cause.
+	 */
+	lastBlank: ViewerSample[] | null;
 	samples: ViewerSample[];
 	/** What each recent pipeline run did — see `RunRecord`. */
 	runs: RunRecord[];
@@ -791,6 +933,7 @@ function buildReport(current: ViewerSample): DiagnosticsReport {
 			devicePixelRatio: window.devicePixelRatio
 		},
 		firstBlank: firstBlankCapture,
+		lastBlank: lastBlankCapture,
 		runs: [...runs],
 		samples: [...history, current],
 		cumulative: {
@@ -855,12 +998,16 @@ export function resetDiagnostics(): void {
 	history.length = 0;
 	previousBlank = null;
 	firstBlankCapture = null;
+	lastBlankCapture = null;
 	counters.pipelineRuns = 0;
 	counters.nodeStoreWrites = 0;
 	counters.fullMeasurePasses = 0;
 	counters.peakStoreNodes = 0;
 	counters.peakMounted = 0;
 	counters.peakDomInNodes = 0;
+	counters.runsSuperseded = 0;
+	counters.elkResultsDiscarded = 0;
+	counters.elkRuns = 0;
 	runs.length = 0;
 }
 

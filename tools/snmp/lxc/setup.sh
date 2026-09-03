@@ -261,6 +261,16 @@ echo "$LINE" | awk '{ print $1; print $2; $1=""; $2=""; sub(/^  */, ""); print }
 PASSEOF
 chmod +x "$CONF_DIR/snmp-pass-handler-stuck.sh"
 
+# The GETBULK refuser, for the one device that must not answer a bulk page and must answer a
+# getnext on the same OIDs (GH #668).
+#
+# Not a `pass` handler: snmpd drives those serially, so a handler slow enough to fail a bulk page
+# occupies the agent long enough to fail the getnext queued behind it, and the device then fails
+# both ways instead of one. This sits in front of the agent instead and drops the datagram, which
+# costs the agent nothing. The agent behind it binds loopback; the generated config does that.
+install -m 755 "$SCRIPT_DIR/snmp-bulk-refuser.py" "$CONF_DIR/snmp-bulk-refuser.py"
+
+
 
 # ── 4. Install the generated devices ─────────────────────────────────
 #
@@ -312,6 +322,34 @@ UNIT
 
 for i in "${!UNITS[@]}"; do
     make_unit "${UNITS[$i]}" "${UNITS[$i]} (${HOSTS[$i]})"
+done
+
+# Devices with a GETBULK refuser in front of them. SHIMS is generated alongside the configs: each
+# entry is "unit|listen-ip|upstream-port|refused-oid[,refused-oid...]", empty for every device that
+# does not need one. The agent binds loopback and this owns the address the scanner talks to, so it
+# comes up behind a ready agent rather than in front of a port nothing is listening on yet.
+SHIM_UNITS=()
+for entry in "${SHIMS[@]:-}"; do
+    [ -n "$entry" ] || continue
+    IFS='|' read -r sname slisten sport srefuse <<< "$entry"
+    refuse_args=""
+    IFS=',' read -ra oids <<< "$srefuse"
+    for oid in "${oids[@]}"; do refuse_args="$refuse_args --refuse $oid"; done
+    cat > "/etc/systemd/system/snmp-bulk-refuser-${sname}.service" << UNIT
+[Unit]
+Description=SNMP GETBULK refuser — ${sname} (${slisten}:161 → 127.0.0.1:${sport})
+After=network.target snmpd-${sname}.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 ${CONF_DIR}/snmp-bulk-refuser.py --listen ${slisten}:161 --upstream 127.0.0.1:${sport}${refuse_args}
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    SHIM_UNITS+=("$sname")
 done
 
 # Any context back end binds loopback rather than a macvlan, has no entry in HOSTS, and must never
@@ -373,6 +411,14 @@ for name in "${UNITS[@]}"; do
     systemctl enable "snmpd-${name}" --quiet
     systemctl restart "snmpd-${name}"
     printf "  %-28s started\n" "snmpd-${name}"
+done
+# After the agents: each of these owns a device's public address and forwards to the agent behind
+# it, so it has nothing to forward to until that agent is listening.
+for name in "${SHIM_UNITS[@]:-}"; do
+    [ -n "$name" ] || continue
+    systemctl enable "snmp-bulk-refuser-${name}" --quiet
+    systemctl restart "snmp-bulk-refuser-${name}"
+    printf "  %-28s started\n" "snmp-bulk-refuser-${name}"
 done
 
 

@@ -26,6 +26,7 @@ import type {
 	TopologyOptions
 } from './types/base';
 import { resolveElementNode } from './resolvers';
+import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 import { getTopologyIndex } from './entity-index';
 import { entities, serviceDefinitions, views } from '$lib/shared/stores/metadata';
 import { getFreshnessTag } from '$lib/shared/utils/freshness';
@@ -176,7 +177,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 				footerText: null,
 				services: service ? [service] : [],
 				hiddenOpenPorts: [],
-				headerText: showHostname ? (host?.name ?? null) : null,
+				headerText: showHostname && host ? hostDisplayName(host) : null,
 				bodyText: service ? null : 'Unknown Service',
 				showServices: !!service,
 				isVirtualized: false,
@@ -219,7 +220,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 				(flags.inlinesPort && !flags.portInlineHidden)) &&
 			(servicesOnHost.length !== 0 || hiddenOpenPorts.length !== 0);
 
-		const hostLabel = node.header ?? (host.name || host.hostname || null);
+		const hostLabel = node.header ?? hostDisplayName(host);
 
 		return {
 			flags,
@@ -332,7 +333,7 @@ export function buildElementRender(inputs: ElementRenderInputs): ElementRenderRe
 			services: servicesOnIPAddress,
 			hiddenOpenPorts,
 			headerText,
-			bodyText: showServices ? null : host.name,
+			bodyText: showServices ? null : hostDisplayName(host),
 			showServices,
 			isVirtualized:
 				headerText?.startsWith('Docker @') || isContainerSubnet

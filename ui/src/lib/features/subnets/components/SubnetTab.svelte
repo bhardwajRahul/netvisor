@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { lastSeenItems } from '$lib/shared/utils/freshness';
+	import { cidrSourceItems, isProvisionalCidr } from '$lib/shared/utils/cidr-source';
+	import { cidrContains } from '$lib/shared/utils/cidr';
 	import SubnetEditModal from './SubnetEditModal/SubnetEditModal.svelte';
+	import ProvisionalRangeModal from './ProvisionalRangeModal.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
@@ -10,13 +13,14 @@
 	import { defineFields, type CardAction } from '$lib/shared/components/data/types';
 	import { tagNames } from '$lib/features/tags/columns';
 	import { networkItems } from '$lib/features/networks/columns';
-	import { Plus, Trash2, Edit } from 'lucide-svelte';
+	import { Plus, Trash2, Edit, CloudAlert } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import {
 		isUserManagedSubnet,
 		useSubnetsQuery,
 		useCreateSubnetMutation,
+		useMergeSubnetMutation,
 		useUpdateSubnetMutation,
 		useDeleteSubnetMutation,
 		useBulkDeleteSubnetsMutation
@@ -44,6 +48,7 @@
 		common_unknownNetwork,
 		common_updated,
 		daemons_installPromptSubnets,
+		subnets_resolveRange,
 		subnets_subnetType
 	} from '$lib/paraglide/messages';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
@@ -73,6 +78,7 @@
 	// Mutations
 	const createSubnetMutation = useCreateSubnetMutation();
 	const updateSubnetMutation = useUpdateSubnetMutation();
+	const mergeSubnetMutation = useMergeSubnetMutation();
 	const deleteSubnetMutation = useDeleteSubnetMutation();
 	const bulkDeleteSubnetsMutation = useBulkDeleteSubnetsMutation();
 
@@ -84,6 +90,8 @@
 
 	let showSubnetEditor = $state(false);
 	let editingSubnet = $state<Subnet | null>(null);
+	let showProvisionalRange = $state(false);
+	let resolvingSubnet = $state<Subnet | null>(null);
 
 	// Deep-link: open subnet editor from URL (handles both fresh open and entity switch)
 	$effect(() => {
@@ -100,6 +108,30 @@
 		}
 	});
 
+	/**
+	 * Deep-link: resolve an assumed range from anywhere that names one.
+	 *
+	 * A scan warning is the other place an operator meets a guessed range, and it is where they
+	 * meet it first — this is what lets that row hand off to the same four-way choice instead of
+	 * growing a second copy of it. Same shape as the editor's deep link above.
+	 */
+	$effect(() => {
+		const result = resolveModalDeepLink(
+			$modalState,
+			'provisional-range',
+			subnetsData,
+			showProvisionalRange,
+			resolvingSubnet?.id,
+			isProvisionalCidr
+		);
+		// Create mode is meaningless here — there is no range to resolve without a subnet — so a
+		// link that names none is ignored rather than opening an empty modal.
+		if (result) {
+			resolvingSubnet = result;
+			showProvisionalRange = true;
+		}
+	});
+
 	function handleCreateSubnet() {
 		editingSubnet = null;
 		showSubnetEditor = true;
@@ -109,7 +141,22 @@
 	function subnetActions(subnet: Subnet): CardAction[] {
 		if (isReadOnly) return [];
 
-		return [
+		const actions: CardAction[] = [];
+
+		// Only where there is something to resolve. A badge that says a range was guessed and
+		// offers no way to settle it leaves the operator with the question and no answer.
+		if (isProvisionalCidr(subnet)) {
+			// Neutral, like Edit. The badge in the row already carries the colour, and the two
+			// variants that would stand out are spoken for: amber means stale and red means broken,
+			// which is exactly what an assumed range is not.
+			actions.push({
+				label: subnets_resolveRange(),
+				icon: CloudAlert,
+				onClick: () => handleResolveRange(subnet)
+			});
+		}
+
+		actions.push(
 			{ label: common_edit(), icon: Edit, onClick: () => handleEditSubnet(subnet) },
 			{
 				label: common_delete(),
@@ -117,7 +164,76 @@
 				class: 'btn-icon-danger',
 				onClick: () => handleDeleteSubnet(subnet)
 			}
-		];
+		);
+
+		return actions;
+	}
+
+	function handleResolveRange(subnet: Subnet) {
+		resolvingSubnet = subnet;
+		showProvisionalRange = true;
+	}
+
+	/**
+	 * A settled range that already covers the one being resolved, if the network holds one.
+	 *
+	 * This is the state discovery deliberately leaves alone: where a reading covers *several*
+	 * assumed ranges it corrects none of them, because folding them into one means deleting rows.
+	 * Offering the merge here is how that gets resolved, one deliberate click at a time.
+	 *
+	 * Searching `subnetsData` rather than the raw query is what keeps the `0.0.0.0/0` catch-alls
+	 * out: they are synthetic, so `isUserManagedSubnet` has already dropped them, and either would
+	 * otherwise "cover" every range on the network.
+	 */
+	let coveringSubnet = $derived.by(() => {
+		if (!resolvingSubnet) return null;
+		const target = resolvingSubnet;
+		return (
+			subnetsData.find(
+				(candidate) =>
+					candidate.id !== target.id &&
+					candidate.network_id === target.network_id &&
+					!isProvisionalCidr(candidate) &&
+					cidrContains(candidate.cidr, target.cidr)
+			) ?? null
+		);
+	});
+
+	async function handleMergeRange(subnet: Subnet, into: Subnet) {
+		try {
+			await mergeSubnetMutation.mutateAsync({ id: subnet.id, into: into.id });
+			handleCloseProvisionalRange();
+		} catch {
+			// Error handled by mutation
+		}
+	}
+
+	function handleCloseProvisionalRange() {
+		showProvisionalRange = false;
+		resolvingSubnet = null;
+	}
+
+	/**
+	 * Keep the range as it stands. The server takes the higher rung of the ladder on update, so a
+	 * range a person confirmed sticks and the next scan cannot put the row back to an inference.
+	 *
+	 * `Manual` is that rung on the shared ladder — the same one a value typed into any other field
+	 * carries, which is what makes "nothing discovery reads displaces it" one rule rather than a
+	 * per-field convention.
+	 */
+	async function handleConfirmRange(subnet: Subnet) {
+		try {
+			await updateSubnetMutation.mutateAsync({ ...subnet, cidr_source: 'Manual' });
+			handleCloseProvisionalRange();
+		} catch {
+			// Error handled by mutation
+		}
+	}
+
+	/** Straight into the editor, which is where a corrected CIDR is typed. */
+	function handleCorrectRange(subnet: Subnet) {
+		handleCloseProvisionalRange();
+		handleEditSubnet(subnet);
 	}
 
 	function handleEditSubnet(subnet: Subnet) {
@@ -189,7 +305,7 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
-					display: { order: 3 }
+					display: { order: 3, getItems: cidrSourceItems() }
 				},
 				subnet_type: {
 					label: subnets_subnetType(),
@@ -311,4 +427,14 @@
 				handleCloseSubnetEditor();
 			}
 		: null}
+/>
+
+<ProvisionalRangeModal
+	isOpen={showProvisionalRange}
+	subnet={resolvingSubnet}
+	coveredBy={coveringSubnet}
+	onConfirm={handleConfirmRange}
+	onCorrect={handleCorrectRange}
+	onMerge={handleMergeRange}
+	onClose={handleCloseProvisionalRange}
 />

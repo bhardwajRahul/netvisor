@@ -63,8 +63,14 @@ impl<T: Storable> StorableFilter<T> {
         let placeholders: Vec<String> = (start..start + EXCLUDED_IF_TYPES.len())
             .map(|i| format!("${i}"))
             .collect();
-        self.conditions
-            .push(format!("{col} NOT IN ({})", placeholders.join(", ")));
+        // `NULL NOT IN (...)` is NULL, not true, so without the null arm every row whose type
+        // was never read would be filtered out — silently removing exactly the ports learned from
+        // a neighbour's advertisement from MAC-based resolution. Unknown counts as physical: the
+        // far end of a cable is a physical port by construction.
+        self.conditions.push(format!(
+            "({col} IS NULL OR {col} NOT IN ({}))",
+            placeholders.join(", ")
+        ));
         for if_type in EXCLUDED_IF_TYPES {
             self.values.push(SqlValue::I32(*if_type));
         }

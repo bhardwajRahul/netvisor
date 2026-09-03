@@ -198,6 +198,7 @@ where
             Bound::UuidArray(v) => query.bind(v),
             Bound::OptUuidArray(v) => query.bind(v),
             Bound::I32(v) => query.bind(v),
+            Bound::OptI32(v) => query.bind(v),
             Bound::I64(v) => query.bind(v),
             Bound::OptI64(v) => query.bind(v),
             Bound::Bool(v) => query.bind(v),
@@ -206,6 +207,7 @@ where
             Bound::IpNet(v) => query.bind(v),
             Bound::OptIpNet(v) => query.bind(v),
             Bound::Mac(v) => query.bind(v),
+            Bound::MacArray(v) => query.bind(v),
             Bound::OptMac(v) => query.bind(v),
         })
     }

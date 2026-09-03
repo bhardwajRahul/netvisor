@@ -42,20 +42,13 @@ export interface TypeMetadata extends EntityMetadata {
 	metadata: unknown;
 }
 
-export interface FieldDefinition {
-	id: string;
-	label: string;
-	field_type: 'string' | 'text' | 'select' | 'secretpathorinline' | 'pathorinline';
-	placeholder?: string;
-	secret: boolean;
-	optional: boolean;
-	help_text?: string;
-	/** Choices for `select` fields: wire `value` + human-facing `label`. */
-	options?: { value: string; label: string }[];
-	default_value?: string;
-	inline_format?: 'plain' | 'pemprivatekey' | 'pemcertificate';
-	group?: string;
-}
+/**
+ * The one form-field shape, generated from the backend `FieldDefinition`. Credential types and
+ * discovery scan settings both build these, so both are rendered from the same declared
+ * `field_type` — never inferred from a label, an id or a placeholder.
+ */
+export type FieldDefinition = components['schemas']['FieldDefinition'];
+export type FieldType = components['schemas']['FieldType'];
 
 export interface CredentialTypeMetadata {
 	fields: FieldDefinition[];
@@ -79,6 +72,9 @@ export interface CredentialTypeMetadata {
 	 *  "Unofficial API" tag but stay selectable. A separate axis from `stability`: an integration
 	 *  can be fully validated and still ride an endpoint the vendor never published. */
 	upstream_support?: components['schemas']['UpstreamSupport'];
+	/** Guide for this type's integration, root-relative and trailing-slashed
+	 *  (`/docs/guides/integrations/snmp/`). Compose onto the docs origin with `docsUrl`. */
+	docs_path?: string;
 	/** Whether the associated service has a logo */
 	has_logo?: boolean;
 	/** Whether the logo needs a white background */
@@ -179,7 +175,16 @@ export interface ServicedDefinitionMetadata {
 	has_logo: boolean;
 	logo_ext: string;
 	logo_needs_white_background: boolean;
-	has_raw_socket_endpoint: boolean;
+	/** Whether `probe_raw_socket_ports` being off would stop this service being detected — it drops
+	 *  9100-9107 from the scan entirely, so it governs any definition referencing one, endpoint or
+	 *  bare port alike. */
+	gated_by_raw_socket_scanning: boolean;
+	/** Whether this service is only ever matched by a port being open, with no protocol exchange
+	 *  behind it. A middlebox that completes TCP handshakes can manufacture one of these, so on a
+	 *  subnet reached through a router these need `trust_port_only_detections`. */
+	connect_only: boolean;
+	is_gateway: boolean;
+	is_generic: boolean;
 }
 
 export interface PermissionsMetadata {

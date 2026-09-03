@@ -59,6 +59,22 @@ export function closeModal(): void {
 }
 
 /**
+ * Re-apply a modal state that was captured before someone else's close handler ran.
+ *
+ * Exists for one situation, described in full on `GenericModal`'s superseded-modal effect: opening
+ * modal B from inside modal A makes A close, and a close handler that calls `closeModal()`
+ * unconditionally — the ordinary shape, and correct when the user dismissed A — discards B along
+ * with A. Restoring is the repair.
+ *
+ * Takes the whole state rather than rebuilding it from parts so a future field on `ModalState`
+ * cannot be silently dropped on the way through.
+ */
+export function restoreModal(state: ModalState): void {
+	modalState.set({ ...state });
+	syncToUrl(state);
+}
+
+/**
  * Navigate back to the URL captured before navigateToEntity was called.
  * Closes the current modal and restores the previous URL (which may re-open a previous modal).
  */

@@ -227,7 +227,13 @@ impl DiscoveryDigestService {
         }
         let host_buckets: Vec<HostBucket> = all_hosts
             .into_iter()
-            .filter(|h| coverage.covers_host(h.id, host_subnets.get(&h.id)))
+            .filter(|h| {
+                coverage.covers_host(
+                    h.id,
+                    host_subnets.get(&h.id),
+                    scanned_host_ids.contains(&h.id),
+                )
+            })
             .map(|h| {
                 let (status, is_fresh) = compute_digest_status(&h, &scanned_host_ids, &window);
                 HostBucket {
@@ -597,11 +603,31 @@ impl ScanCoverage {
     }
 
     /// Whether this session's silence about `host_id` is meaningful.
-    fn covers_host(&self, host_id: Uuid, host_subnets: Option<&HashSet<Uuid>>) -> bool {
+    ///
+    /// `observed` is whether the session actually reported this host. It only matters to the
+    /// subnet arm, and it is there because a host's subnets are derived from its addresses: a host
+    /// with none belongs to no swept subnet, so the arithmetic dropped it before it was ever
+    /// bucketed — and a device the scan had just discovered produced no digest line at all, not
+    /// even as an addition. A session that saw a host covers that host, whatever placing it in a
+    /// subnet would have concluded.
+    ///
+    /// It deliberately does not widen the `SingleHost` arm. Those sessions name the one host they
+    /// speak for, and a Docker or self-report run touches several while claiming authority over
+    /// exactly one.
+    ///
+    /// Silence about an address-less host stays un-asserted, which is the honest reading: an
+    /// address sweep cannot conclude anything about a device that has no address to sweep.
+    fn covers_host(
+        &self,
+        host_id: Uuid,
+        host_subnets: Option<&HashSet<Uuid>>,
+        observed: bool,
+    ) -> bool {
         match self {
             Self::SingleHost(id) => *id == host_id,
             Self::Subnets(swept) => {
-                host_subnets.is_some_and(|subnets| subnets.iter().any(|s| swept.contains(s)))
+                observed
+                    || host_subnets.is_some_and(|subnets| subnets.iter().any(|s| swept.contains(s)))
             }
         }
     }
@@ -733,10 +759,11 @@ fn interface_summary(i: &Interface, status: EntityFreshness, is_fresh: bool) -> 
     // Interface's Display includes its UUID. For the digest we want only the
     // human-readable bits: the description if discovery provided one, else
     // the ifIndex.
-    let label = if i.base.if_descr.is_empty() {
-        format!("ifIndex {}", i.base.if_index)
-    } else {
-        i.base.if_descr.clone()
+    let label = match (i.base.if_descr.is_empty(), i.base.if_index) {
+        (false, _) => i.base.if_descr.clone(),
+        (true, Some(if_index)) => format!("ifIndex {if_index}"),
+        // Neither a description nor an index: a port known only as a name a neighbour published.
+        (true, None) => i.base.if_name.clone().unwrap_or_default(),
     };
     InterfaceSummary {
         id: i.id,
@@ -828,6 +855,66 @@ mod tests {
 
     fn none_scanned() -> HashSet<Uuid> {
         HashSet::new()
+    }
+
+    // ---- A far end minted by this session's resolution pass ---------------
+
+    /// Minting happens server-side after the daemon's own work, so the two gates that decide
+    /// whether a host reaches the digest are the ones this exercises together: `covers_host`
+    /// admits it only because the session observed it (it has no addresses, so no subnet can
+    /// place it), and `compute_digest_status` calls it new only because it is in the scanned set
+    /// *and* its `created_at` falls inside the window. Either gate alone still drops it, which is
+    /// why they are asserted as a pair rather than separately.
+    #[test]
+    fn a_far_end_this_session_minted_is_reported_as_added() {
+        let w = window(24 * 7, Some(HOUR));
+
+        // Stamped with the session's clock, the way the resolution pass now stamps it.
+        let mut minted = Host::new(HostBase {
+            source: EntitySource::Inferred,
+            ..Default::default()
+        });
+        minted.last_seen_at = w.t_end;
+        minted.created_at = w.t_end;
+
+        let scanned: HashSet<Uuid> = HashSet::from([minted.id]);
+        let coverage = ScanCoverage::Subnets(HashSet::from([Uuid::new_v4()]));
+
+        assert!(
+            coverage.covers_host(minted.id, None, true),
+            "a minted far end has no addresses, so only having been observed can cover it"
+        );
+        assert_eq!(
+            compute_digest_status(&minted, &scanned, &w),
+            (EntityFreshness::New, true),
+            "a host this session created and touched is an addition, not a silent arrival"
+        );
+    }
+
+    /// The trap the scan-time stamp exists to avoid. `Utc::now()` at mint time is *after* the
+    /// daemon's `finished_at`, which is where the window closes — so a host stamped with the wall
+    /// clock falls outside the window that exists to report it, and `is_new` rejects it even
+    /// though the session both created and scanned it. Nothing about this is visible at the call
+    /// site, which is why it is pinned here.
+    #[test]
+    fn a_minted_host_stamped_after_the_window_closes_is_not_reported_as_new() {
+        let w = window(24 * 7, Some(HOUR));
+
+        let mut too_late = Host::new(HostBase {
+            source: EntitySource::Inferred,
+            ..Default::default()
+        });
+        // One second past `finished_at` — the gap between the daemon finishing and the server
+        // minting.
+        too_late.last_seen_at = w.t_end + chrono::Duration::seconds(1);
+        too_late.created_at = w.t_end + chrono::Duration::seconds(1);
+
+        let scanned: HashSet<Uuid> = HashSet::from([too_late.id]);
+        assert_ne!(
+            compute_digest_status(&too_late, &scanned, &w).0,
+            EntityFreshness::New,
+            "stamping mint time instead of scan time puts the host outside its own scan's window"
+        );
     }
 
     // ---- The decay scenario from the task -------------------------------
@@ -1026,14 +1113,43 @@ mod tests {
 
         let in_scope = Uuid::new_v4();
         let out_of_scope = Uuid::new_v4();
-        assert!(coverage.covers_host(in_scope, Some(&subnets(&[swept]))));
+        assert!(coverage.covers_host(in_scope, Some(&subnets(&[swept])), false));
         assert!(
-            !coverage.covers_host(out_of_scope, Some(&subnets(&[untouched]))),
+            !coverage.covers_host(out_of_scope, Some(&subnets(&[untouched])), false),
             "a host in an unswept subnet must be left out of the digest entirely"
         );
         assert!(
-            !coverage.covers_host(Uuid::new_v4(), None),
+            !coverage.covers_host(Uuid::new_v4(), None, false),
             "a host with no IPs cannot be placed in a swept subnet"
+        );
+    }
+
+    /// A host's subnets come from its addresses, so a host with none is placed in nothing and the
+    /// subnet arm concluded it was out of scope. That dropped it before bucketing — so a device
+    /// the scan had just discovered produced no digest line at all, not even as an addition.
+    /// Seeing it is the coverage; the subnet arithmetic is only how coverage is inferred for the
+    /// hosts it can speak for.
+    #[test]
+    fn a_scan_that_saw_an_address_less_host_still_reports_it() {
+        let swept = Uuid::new_v4();
+        let coverage = ScanCoverage::for_session(
+            &DiscoveryType::Unified {
+                host_id: Uuid::new_v4(),
+                subnet_ids: Some(vec![swept]),
+                host_naming_fallback: Default::default(),
+                scan_settings: Default::default(),
+            },
+            &ScannedEntityIds::default(),
+        );
+
+        let mac_only_host = Uuid::new_v4();
+        assert!(
+            coverage.covers_host(mac_only_host, None, true),
+            "a session that observed a host covers it, whatever placing it in a subnet concludes"
+        );
+        assert!(
+            !coverage.covers_host(Uuid::new_v4(), None, false),
+            "an address-less host this session never saw stays un-asserted, not stale"
         );
     }
 
@@ -1056,9 +1172,9 @@ mod tests {
             },
         );
 
-        assert!(coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[daemon_a_subnet]))));
+        assert!(coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[daemon_a_subnet])), false));
         assert!(
-            !coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[daemon_b_subnet]))),
+            !coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[daemon_b_subnet])), false),
             "daemon A's silence about daemon B's subnet carries no information"
         );
     }
@@ -1079,9 +1195,9 @@ mod tests {
             },
         ] {
             let coverage = ScanCoverage::for_session(&discovery_type, &ScannedEntityIds::default());
-            assert!(coverage.covers_host(daemon_host, Some(&any_subnet)));
+            assert!(coverage.covers_host(daemon_host, Some(&any_subnet), false));
             assert!(
-                !coverage.covers_host(other_host, Some(&any_subnet)),
+                !coverage.covers_host(other_host, Some(&any_subnet), false),
                 "a container/self-report run never swept the network"
             );
             assert!(
@@ -1102,7 +1218,7 @@ mod tests {
             },
             &ScannedEntityIds::default(),
         );
-        assert!(!coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[Uuid::new_v4()]))));
+        assert!(!coverage.covers_host(Uuid::new_v4(), Some(&subnets(&[Uuid::new_v4()])), false));
         assert!(!coverage.swept_subnets());
     }
 }

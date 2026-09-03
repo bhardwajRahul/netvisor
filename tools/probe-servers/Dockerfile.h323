@@ -1,0 +1,12 @@
+# GNU Gatekeeper in routed mode.
+#
+# `GKRouted=1` is the whole point: without it a gatekeeper listens only on 1719 for RAS and nothing
+# is on 1720, so a connection there is accepted by Docker's proxy and reset — which looks exactly
+# like a broken probe and is not.
+#
+# Built on the published binary because gnugk is not packaged in Debian; the image is amd64 and runs
+# under emulation, which is fine for TCP.
+FROM --platform=linux/amd64 andrewhirst/gnugk:latest
+RUN printf '[Gatekeeper::Main]\nName=probe-gk\nFourtytwo=42\n[RoutedMode]\nGKRouted=1\nH245Routed=0\nCallSignalPort=1720\nAcceptUnregisteredCalls=1\nAcceptNeighborsCalls=1\n[RasSrv::RRQFeatures]\nAcceptEndpointIdentifier=1\n' > /probe-gk.ini
+EXPOSE 1720
+CMD ["/bin/sh","-c","gnugk-5.3-linux-x86_64/bin/gnugk -c /probe-gk.ini -ttt"]

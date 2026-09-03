@@ -306,10 +306,11 @@ mod discovery_tracked_stamping_tests {
 
     use super::DiscoveryTracked;
     use crate::server::hosts::r#impl::base::{Host, HostBase};
+    use crate::server::hosts::r#impl::name::HostNameSources;
 
     fn fresh_host() -> Host {
         Host::new(HostBase {
-            name: crate::server::hosts::r#impl::name::HostName::Manual("test".to_string()),
+            name: crate::server::hosts::r#impl::name::HostName::manual("test".to_string()),
             network_id: Uuid::new_v4(),
             ..Default::default()
         })

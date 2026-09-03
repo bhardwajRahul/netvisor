@@ -1,8 +1,9 @@
-use crate::server::ports::r#impl::base::PortType;
+use crate::daemon::utils::app_probe::AppProbe;
+use crate::daemon::utils::app_probe::ike::IkeProbe;
 use crate::server::services::definitions::{ServiceDefinitionFactory, create_service};
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
-use crate::server::services::r#impl::patterns::Pattern;
+use crate::server::services::r#impl::patterns::{Pattern, probe_pattern};
 
 #[derive(Default, Clone, Eq, PartialEq, Hash)]
 pub struct StrongSwan;
@@ -18,11 +19,17 @@ impl ServiceDefinition for StrongSwan {
         ServiceCategory::VPN
     }
 
+    /// Derived from the probe. IKE's opening exchange is unauthenticated by construction, so a
+    /// responder answers it; a listener that does not is not claimed as IPsec.
+    ///
+    /// One port here rather than the two the pattern used to name: the probe itself tries 500 and
+    /// then 4500, and a pattern arm for 4500 with no probe behind it would be a UDP port nothing
+    /// ever reports open.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::AllOf(vec![
-            Pattern::Port(PortType::new_udp(500)),
-            Pattern::Port(PortType::new_udp(4500)),
-        ])
+        probe_pattern(&IkeProbe)
+    }
+    fn app_probes(&self) -> Vec<Box<dyn AppProbe>> {
+        vec![Box::new(IkeProbe)]
     }
 }
 

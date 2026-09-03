@@ -100,8 +100,11 @@ export function clearStaleFieldInfo(form: AnyFormApi): void {
  * <form onsubmit={(e) => { e.preventDefault(); e.stopPropagation(); submitForm(form); }}>
  * ```
  */
-export async function submitForm(form: AnyFormApi): Promise<void> {
-	const isValid = await validateForm(form);
+export async function submitForm(
+	form: AnyFormApi,
+	entityNameResolver?: (fieldPath: string) => string
+): Promise<void> {
+	const isValid = await validateForm(form, undefined, entityNameResolver);
 	if (!isValid) {
 		return;
 	}

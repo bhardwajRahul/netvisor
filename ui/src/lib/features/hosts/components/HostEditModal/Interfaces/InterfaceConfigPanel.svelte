@@ -69,8 +69,8 @@
 
 <div class="space-y-6">
 	<ConfigHeader
-		title={iface.if_name || iface.if_descr || `Interface ${iface.if_index}`}
-		subtitle={hosts_interfaces_index({ index: iface.if_index })}
+		title={iface.if_name || iface.if_descr}
+		subtitle={iface.if_index == null ? null : hosts_interfaces_index({ index: iface.if_index })}
 	/>
 
 	<InterfaceDetailsCard

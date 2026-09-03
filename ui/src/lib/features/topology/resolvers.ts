@@ -1,6 +1,7 @@
 import type { components } from '$lib/api/schema';
 import type { RenderableTopology, TopologyNode } from './types/base';
 import { entities } from '$lib/shared/stores/metadata';
+import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 import { getTopologyIndex, type ContainerContents } from './entity-index';
 
 /**
@@ -255,7 +256,7 @@ export function resolveDependencyTargets(
 				hostId: entityId,
 				candidateServiceIds,
 				elementId: node.id,
-				label: host.name
+				label: hostDisplayName(host)
 			});
 			continue;
 		}
@@ -275,7 +276,7 @@ export function resolveDependencyTargets(
 				serviceId: node.id,
 				elementId: node.id,
 				label: service.name,
-				hostName: host?.name ?? ''
+				hostName: host ? hostDisplayName(host) : ''
 			});
 		} else if (elementType === 'Host') {
 			const hostId = 'host_id' in data ? (data.host_id as string | undefined) : undefined;
@@ -293,7 +294,7 @@ export function resolveDependencyTargets(
 				hostId,
 				candidateServiceIds,
 				elementId: node.id,
-				label: host.name
+				label: hostDisplayName(host)
 			});
 		} else if (elementType === 'IPAddress') {
 			const resolved = resolveElementNode(node.id, data, topology);
@@ -313,7 +314,7 @@ export function resolveDependencyTargets(
 				candidateServiceIds,
 				elementId: node.id,
 				label: ipLabel,
-				hostName: resolved.host?.name ?? ''
+				hostName: resolved.host ? hostDisplayName(resolved.host) : ''
 			});
 		}
 		// Interface elements: not valid dep targets (L2 uses PhysicalLink edges instead) — skip.

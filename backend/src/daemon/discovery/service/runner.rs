@@ -45,6 +45,9 @@ impl DiscoveryRunner {
             default_credential: Some(CredentialQueryPayload::Snmp(
                 crate::server::credentials::r#impl::mapping::SnmpQueryCredential::public_default(),
             )),
+            // Synthesized here, not stored anywhere, so there is no record for a warning about it
+            // to point at.
+            default_credential_id: None,
             ip_overrides: vec![],
         });
 
@@ -151,7 +154,7 @@ impl DiscoveryRunner {
         );
 
         let subnet_futures = subnets_to_create.iter().map(|subnet| async move {
-            let cidr = subnet.base.cidr;
+            let cidr = *subnet.base.cidr;
             match ops.create_subnet(subnet, cancel).await {
                 Ok(created) => {
                     tracing::debug!(cidr = %cidr, subnet_id = %created.id, "Subnet created");

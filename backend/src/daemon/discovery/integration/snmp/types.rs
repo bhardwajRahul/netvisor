@@ -127,6 +127,13 @@ pub struct DeviceInventory {
     pub model: Option<String>,
     /// entPhysicalSerialNum - serial number
     pub serial_number: Option<String>,
+    /// entPhysicalFirmwareRev - firmware revision
+    pub firmware_revision: Option<String>,
+    /// entPhysicalSoftwareRev - software revision
+    ///
+    /// Kept apart from the firmware revision rather than folded into it: RFC 4133 defines them as
+    /// distinct objects, and a chassis reporting both is reporting two different versions.
+    pub software_revision: Option<String>,
 }
 
 /// Bridge FDB entry from dot1dTpFdbTable

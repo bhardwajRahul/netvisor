@@ -16,6 +16,7 @@
 	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
 	import type { Credential, CredentialType } from '../types/base';
 	import type { Host } from '$lib/features/hosts/types/base';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import { createDefaultCredential } from '../types/base';
 	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
 	import { entityRef } from '$lib/shared/components/data/types';
@@ -24,9 +25,10 @@
 	import { translateFieldDefinitions } from '$lib/i18n/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
-	import type { FieldDefinition } from '$lib/shared/stores/metadata';
+	import type { FieldDefinition, FieldType } from '$lib/shared/stores/metadata';
 	import { Eye, EyeOff } from 'lucide-svelte';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
+	import { docsUrl } from '$lib/shared/utils/docs';
 	import {
 		common_name,
 		credentials_credentialType,
@@ -37,10 +39,8 @@
 		credentials_namePlaceholderExample,
 		credentials_secretStoredInDatabase,
 		credentials_typeImmutableWarning,
-		credentials_docsSnmp,
-		credentials_docsSnmpLinkText,
-		credentials_docsDockerProxy,
-		credentials_docsDockerProxyLinkText,
+		credentials_docsIntegration,
+		credentials_docsIntegrationLinkText,
 		daemons_credentialWizardTargetIpHelp,
 		daemons_credentialWizardAddRemoteHostTarget,
 		daemons_credentialWizardAddDaemonHostTarget,
@@ -142,10 +142,14 @@
 	let supportsDaemonHost = $derived(supportedTargets.includes('DaemonHost'));
 	let supportsRemoteHosts = $derived(supportedTargets.includes('Hosts'));
 	let supportsHosts = $derived(supportsDaemonHost || supportsRemoteHosts);
-	// Integration (associated service) name — used in the daemon-host-taken message.
+	// Integration (associated service) name — used in the daemon-host-taken message and the
+	// guide link below.
 	let integrationName = $derived(
 		credentialTypes.getMetadata(selectedTypeId)?.associated_service ?? ''
 	);
+	// Guide for the selected type's integration. Comes from the credential metadata rather than a
+	// branch per type, so every credential type links its guide instead of the two that had one.
+	let integrationDocsPath = $derived(credentialTypes.getMetadata(selectedTypeId)?.docs_path ?? '');
 	// Show the Hosts | Networks toggle only when both modes are available.
 	let showTargetModeToggle = $derived(supportsHosts && supportsNetworks);
 
@@ -222,7 +226,7 @@
 			}
 		}
 		fieldValues = values;
-		syncSelectFieldsToForm(raw.type as string);
+		syncFieldsToForm(raw.type as string, 'all');
 	}
 
 	function initDefaultFieldValues(typeId: string) {
@@ -237,21 +241,28 @@
 			}
 		}
 		fieldValues = values;
-		syncSelectFieldsToForm(typeId);
+		syncFieldsToForm(typeId, 'selects');
 	}
 
-	// `select` fields are rendered manually and only push their value into the
-	// TanStack form on change. Seed the form with the current value so a required
-	// select with a default validates without the user re-picking the option.
-	function syncSelectFieldsToForm(typeId: string) {
+	// Fields render from `fieldValues` and only push into the TanStack form on change, so a
+	// field the user never touches has no form value at all. Its submit validator still runs
+	// and reads `undefined` as empty, so seeding is what lets a value already on screen count
+	// as present.
+	//
+	// `'selects'` covers a new credential: a manually-rendered select must not force the user
+	// to re-pick a default it is already showing, but every other field legitimately starts
+	// empty and must still fail its required check.
+	//
+	// `'all'` is for editing an existing credential, where every field arrives pre-filled and a
+	// required one the user never touched would otherwise block the save until they retyped the
+	// value in front of them (Instant On's Portal Account). Seeding every field is safe only
+	// here: the type selector is disabled while editing, so no other credential type's fields
+	// can be left behind in the form to fail validation for a field that is no longer on screen.
+	function syncFieldsToForm(typeId: string, which: 'all' | 'selects') {
 		const fields = credentialTypes.getMetadata(typeId)?.fields ?? [];
 		for (const field of fields) {
-			if (field.field_type === 'select') {
-				form.setFieldValue?.(
-					fieldName(field.id),
-					fieldValues[field.id] ?? field.default_value ?? ''
-				);
-			}
+			if (which === 'selects' && field.field_type !== 'select') continue;
+			form.setFieldValue?.(fieldName(field.id), fieldValues[field.id] ?? field.default_value ?? '');
 		}
 	}
 
@@ -355,6 +366,12 @@
 		await submitForm(form);
 	}
 
+	// Field types whose value is numeric on the wire. `port` is here because a port is declared
+	// as one now rather than being a `string` that happened to look like a number.
+	function submitsAsNumber(fieldType: FieldType): boolean {
+		return fieldType === 'string' || fieldType === 'port';
+	}
+
 	/** Build a CredentialType from current fieldValues. */
 	export function buildCredentialType(): CredentialType {
 		const fields = currentFields;
@@ -387,14 +404,15 @@
 					const dv = field.default_value;
 					const dvNum = Number(dv);
 					typeObj[field.id] =
-						dv !== '' && !isNaN(dvNum) && field.field_type === 'string' ? dvNum : dv;
+						dv !== '' && !isNaN(dvNum) && submitsAsNumber(field.field_type) ? dvNum : dv;
 				} else {
 					typeObj[field.id] = null;
 				}
 			} else {
 				const raw = value ?? (field.default_value || '');
 				const num = Number(raw);
-				typeObj[field.id] = raw !== '' && !isNaN(num) && field.field_type === 'string' ? num : raw;
+				typeObj[field.id] =
+					raw !== '' && !isNaN(num) && submitsAsNumber(field.field_type) ? num : raw;
 			}
 		}
 
@@ -543,6 +561,20 @@
 	 * requires at least one host (a remote IP or the daemon-host row). Broadcast is
 	 * always valid. The caller surfaces failures via a toast on advance.
 	 */
+	/**
+	 * The human label for one of this form's field paths, for the validation toast.
+	 *
+	 * Without it `validateForm` falls back to the raw path and names something the form never
+	 * showed: the Instant On portal login is `fields.username` but is labelled Portal Account.
+	 */
+	export function fieldLabel(fieldPath: string): string {
+		const prefix = `${fieldPrefix}fields.`;
+		if (!fieldPath.startsWith(prefix)) return fieldPath.replace(/_/g, ' ');
+		const id = fieldPath.slice(prefix.length);
+		const fields = credentialTypes.getMetadata(selectedTypeId)?.fields ?? [];
+		return fields.find((f) => f.id === id)?.label ?? id.replace(/_/g, ' ');
+	}
+
 	export function validateTarget(): boolean {
 		// A hidden picker can never be a failure the user could act on: `hideTargets` types
 		// (the daemon-host socket, managed references) carry an implicit 127.0.0.1 target.
@@ -613,7 +645,7 @@
 			if (!field.optional && !effectiveValue?.trim()) return 'This field is required';
 			// Skip all further validation if value is empty (optional field)
 			if (!effectiveValue?.trim()) return undefined;
-			if (field.id === 'port' || field.label?.toLowerCase().includes('port')) {
+			if (field.field_type === 'port') {
 				return port(effectiveValue);
 			}
 			// Only validate PEM format when in inline mode
@@ -649,7 +681,7 @@
 					{#each lockedHosts as host (host.id)}
 						<EntityTag
 							entityRef={entityRef('Host', host.id, host)}
-							label={host.name}
+							label={hostDisplayName(host)}
 							icon={entities.getIconComponent('Host')}
 							color={entities.getColorHelper('Host').color}
 						/>
@@ -841,17 +873,11 @@
 				</div>
 			{/if}
 
-			{#if selectedTypeId === 'SnmpV1' || selectedTypeId === 'SnmpV2c' || selectedTypeId === 'SnmpV3'}
+			{#if integrationDocsPath}
 				<DocsHint
-					text={credentials_docsSnmp()}
-					href="https://scanopy.net/docs/guides/snmp-credentials/"
-					linkText={credentials_docsSnmpLinkText()}
-				/>
-			{:else if selectedTypeId === 'DockerProxy'}
-				<DocsHint
-					text={credentials_docsDockerProxy()}
-					href="https://scanopy.net/docs/guides/docker-proxy/"
-					linkText={credentials_docsDockerProxyLinkText()}
+					text={credentials_docsIntegration()}
+					href={docsUrl(integrationDocsPath)}
+					linkText={credentials_docsIntegrationLinkText({ integration: integrationName })}
 				/>
 			{/if}
 		</div>

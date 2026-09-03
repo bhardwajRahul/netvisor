@@ -4,6 +4,7 @@ use crate::server::credentials::r#impl::mapping::{
     BannerField, BannerFieldValue, CredentialMapping, IpOverride, ResolvableSecret,
     ResolvedCredential,
 };
+use crate::server::shared::types::field_definition::SelectOption;
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use utoipa::ToSchema;
@@ -94,12 +95,12 @@ impl SnmpV3AuthProtocol {
     }
 
     /// Select options surfaced to the frontend via `field_definitions()`.
-    pub const OPTIONS: &'static [super::fields::SelectOption] = &[
-        super::fields::SelectOption {
+    pub const OPTIONS: &'static [SelectOption] = &[
+        SelectOption {
             value: "Sha1",
             label: "SHA-1",
         },
-        super::fields::SelectOption {
+        SelectOption {
             value: "Sha256",
             label: "SHA-256",
         },
@@ -138,12 +139,12 @@ impl SnmpV3PrivProtocol {
     }
 
     /// Select options surfaced to the frontend via `field_definitions()`.
-    pub const OPTIONS: &'static [super::fields::SelectOption] = &[
-        super::fields::SelectOption {
+    pub const OPTIONS: &'static [SelectOption] = &[
+        SelectOption {
             value: "Aes128",
             label: "AES-128",
         },
-        super::fields::SelectOption {
+        SelectOption {
             value: "Aes256",
             label: "AES-256",
         },
@@ -424,7 +425,7 @@ mod tests {
     fn exposed_serialization_contains_plaintext() {
         let original = SnmpCredentialMapping {
             default_credential: Some(cred("my-secret")),
-            ip_overrides: vec![],
+            ..Default::default()
         };
 
         let exposed = SnmpCredentialMappingExposed::from(&original);
@@ -467,7 +468,9 @@ mod tests {
                 ip,
                 credential: cred("override-community"),
                 credential_id: cred_id,
+                host_id: None,
             }],
+            ..Default::default()
         };
 
         // IP with override: override first, then default, then public
@@ -498,7 +501,9 @@ mod tests {
                 ip,
                 credential: cred("public"),
                 credential_id: Uuid::nil(),
+                host_id: None,
             }],
+            ..Default::default()
         };
 
         let creds = mapping.get_credentials_by_specificity(&ip);
@@ -513,12 +518,13 @@ mod tests {
         let ip: IpAddr = "10.0.0.1".parse().unwrap();
 
         let mapping = SnmpCredentialMapping {
-            default_credential: None,
             ip_overrides: vec![IpOverride {
                 ip,
                 credential: cred("secret"),
                 credential_id: Uuid::nil(),
+                host_id: None,
             }],
+            ..Default::default()
         };
 
         let creds = mapping.get_credentials_by_specificity(&ip);

@@ -2,3 +2,6 @@
 # so there is no second copy of a device that can drift from the struct that defines it.
 # Produced by `make snmp-fixtures`.
 generated/
+
+# Byte-cache from running the shim locally; the VM runs it from source.
+__pycache__/

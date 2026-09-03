@@ -135,11 +135,28 @@ fn expose(secret: &SecretValue) -> String {
     }
 }
 
+/// Where a shimmed device's agent actually listens.
+///
+/// The shim owns `<ip>:161`, so the agent behind it moves to loopback. Derived from the address's
+/// last octet rather than allocated, so it is stable across deploys and cannot collide with
+/// another device's — the same reasoning as the context back end's fixed port, which this stays
+/// clear of.
+pub fn upstream_port(device: &SimDevice) -> u16 {
+    16000 + u16::from(device.ip.octets()[3])
+}
+
 /// One device's `snmpd.conf`.
 pub fn snmpd_conf(device: &SimDevice) -> String {
     let files: Vec<String> = device.data_files().into_iter().map(|f| f.name).collect();
     let system = &device.system;
-    let mut lines = vec![format!("agentAddress udp:{}:161", device.ip)];
+    // A device that refuses getbulk has `snmp-bulk-refuser.py` on its own address, so the agent
+    // binds loopback and is reachable only through it. Without this the two would contend for
+    // `<ip>:161` and whichever started second would fail to bind.
+    let mut lines = vec![if device.refuses_getbulk().is_empty() {
+        format!("agentAddress udp:{}:161", device.ip)
+    } else {
+        format!("agentAddress udp:127.0.0.1:{}", upstream_port(device))
+    }];
     lines.extend(access_lines(device));
 
     for (key, value) in [
@@ -254,6 +271,27 @@ pub fn lab_env(devices: &[SimDevice]) -> String {
         field(&|d| match &d.credential {
             CredentialType::SnmpV3 { security_name, .. } => format!("\"{security_name}\""),
             _ => "\"\"".to_string(),
+        })
+    ));
+    // One entry per device needing a GETBULK refuser in front of it, empty for the rest:
+    // `unit|listen-ip|upstream-port|refused-oid[,refused-oid…]`. Everything the unit needs is here
+    // rather than in the deploy script, for the same reason the rest of this file exists — a
+    // second copy of the device list is a second thing that can disagree with the structs.
+    out.push_str(&format!(
+        "SHIMS=({})\n",
+        field(&|d| {
+            let refused = d.refuses_getbulk();
+            if refused.is_empty() {
+                return "\"\"".to_string();
+            }
+            let oids: Vec<String> = refused.iter().map(|oid| dotted(oid)).collect();
+            format!(
+                "\"{}|{}|{}|{}\"",
+                d.name,
+                d.ip,
+                upstream_port(d),
+                oids.join(",")
+            )
         })
     ));
     out
@@ -406,6 +444,47 @@ mod tests {
         );
         // ...and an ordinary table does not need to.
         assert!(conf.contains("pass .1.3.6.1.2.1.2.2 "));
+    }
+
+    /// A device behind a GETBULK refuser hands its public address to the shim and takes loopback.
+    ///
+    /// Both halves matter and neither is visible from the other file: if the agent kept
+    /// `<ip>:161` the two would contend for it and whichever started second would fail to bind,
+    /// and if `lab.env` named a different port the shim would forward into nothing. They are
+    /// generated from one place so they cannot drift, and this is what says so.
+    #[test]
+    fn a_bulk_refusing_device_moves_its_agent_behind_the_shim() {
+        let device = super::super::device("switch-slowbulk-01");
+        let port = upstream_port(&device);
+
+        assert!(
+            snmpd_conf(&device).starts_with(&format!("agentAddress udp:127.0.0.1:{port}\n")),
+            "the agent has to leave the address the shim listens on"
+        );
+
+        let entry = format!(
+            "\"switch-slowbulk-01|{}|{port}|.1.0.8802.1.1.2.1.4\"",
+            device.ip
+        );
+        assert!(
+            lab_env(&super::super::lab()).contains(&entry),
+            "lab.env must carry the shim's whole invocation; expected {entry}"
+        );
+    }
+
+    /// Every other device is untouched: no shim, no loopback, no second process in front of it.
+    #[test]
+    fn a_device_that_serves_bulk_normally_keeps_its_own_address() {
+        for device in super::super::lab() {
+            if !device.refuses_getbulk().is_empty() {
+                continue;
+            }
+            assert!(
+                snmpd_conf(&device).starts_with(&format!("agentAddress udp:{}:161\n", device.ip)),
+                "{} should bind its own address directly",
+                device.name
+            );
+        }
     }
 
     /// The v1 device must refuse v2c and v3, which `rocommunity` would not do — the whole point

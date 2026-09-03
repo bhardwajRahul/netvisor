@@ -10,13 +10,17 @@
 
 import * as m from '$lib/paraglide/messages';
 
-/** Minimal structural shape shared by credential and scan-setting field definitions. */
+/**
+ * The translatable subset of a field definition. Optionals admit `null` because the generated
+ * `FieldDefinition` schema renders Rust's `Option<T>` that way, and this must stay a supertype of
+ * it — every caller passes one.
+ */
 interface TranslatableField {
 	id: string;
 	label: string;
-	placeholder?: string;
-	help_text?: string;
-	options?: { value: string; label: string }[];
+	placeholder?: string | null;
+	help_text?: string | null;
+	options?: { value: string; label: string }[] | null;
 }
 
 /**

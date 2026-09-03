@@ -13,7 +13,7 @@
 	import { edgeTypes } from '$lib/shared/stores/metadata';
 	import { createColorHelper, type Color } from '$lib/shared/utils/styling';
 	import type { TopologyEdge, RenderableTopology } from '../../types/base';
-	import { isExporting, hoveredEdgeType } from '../../interactions';
+	import { isExporting, detailSimplified, hoveredEdgeType } from '../../interactions';
 	import {
 		getLinkEvidenceTag,
 		isDottedEdge,
@@ -110,11 +110,34 @@
 		return null;
 	});
 
+	/**
+	 * Edges go with the card detail below the zoom threshold — see `shouldSimplify`.
+	 *
+	 * At the zoom a large graph fits at, an edge is a hairline between two nodes that are
+	 * themselves a couple of pixels wide: it conveys nothing and there are as many of them as
+	 * there are links. Folded into the existing `hideEdge` gate rather than filtering the store,
+	 * because the store is also what `getLayoutedEdges` reads to decide which endpoints to force
+	 * into the mounted set — dropping edges from it would change what is culled, not just what is
+	 * drawn.
+	 */
+	let simplified = $derived($detailSimplified);
+
+	let isPreview = $derived(!!(edgeData as Record<string, unknown> | undefined)?.is_preview);
+
+	/**
+	 * A preview edge is never hidden.
+	 *
+	 * The exemption used to sit inside the hide-by-type arm alone, so that hiding `Dependency`
+	 * edges did not also hide the one being drawn. Simplification was then added in front of it as
+	 * `simplified || …`, which short-circuits: past the zoom threshold every edge was hidden and
+	 * the exemption was never reached. `detailSimplified` is graph-wide and any estate large enough
+	 * to fit below the threshold has it permanently on, so dependency previews stopped drawing at
+	 * all on exactly the networks where dependencies get drawn.
+	 */
 	let hideEdge = $derived(
-		edgeData
-			? $topologyOptions.local.hide_edge_types.includes(edgeData.edge_type) &&
-					!(edgeData as Record<string, unknown>).is_preview
-			: false
+		!isPreview &&
+			(simplified ||
+				(edgeData ? $topologyOptions.local.hide_edge_types.includes(edgeData.edge_type) : false))
 	);
 
 	// Any non-solid stroke gets the overlay treatment (thinner, dimmed until highlighted); the
@@ -147,7 +170,6 @@
 
 	// Determine if this edge should use the two-color dashed effect
 	let isGroupEdge = $derived(edgeTypeMetadata?.is_dependency_edge ?? false);
-	let isPreview = $derived(!!(edgeData as Record<string, unknown> | undefined)?.is_preview);
 	let useMultiColorDash = $derived((isGroupEdge && shouldShowFull) || isPreview);
 
 	// Edge type hover highlight

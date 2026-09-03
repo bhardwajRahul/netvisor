@@ -25,6 +25,7 @@ pub mod client;
 pub mod mapping;
 pub mod types;
 
+use crate::server::subnets::r#impl::inference::placeable_subnet;
 use std::time::Duration;
 
 use anyhow::{Error, Result};
@@ -148,8 +149,8 @@ impl DiscoveryIntegration for UnifiIntegration {
                 ip = %ctx.ip,
                 skipped,
                 total = devices.len(),
-                "Skipped UniFi devices with no IP in a known subnet — host identity is \
-                 IP-based, so they cannot be deduplicated across scans"
+                "Skipped UniFi devices with no address in a subnet this network holds — service \
+                 matching has no subnet to evaluate against for them"
             );
             ctx.ops
                 .record_attempt_failure(
@@ -163,6 +164,7 @@ impl DiscoveryIntegration for UnifiIntegration {
                         if devices.len() == 1 { "" } else { "s" }
                     ),
                     true,
+                    ctx.credential_id,
                 )
                 .await;
         }
@@ -203,7 +205,7 @@ impl DiscoveryIntegration for UnifiIntegration {
         let created_clients = match handle.client.get_site::<UnifiStation>("stat/sta").await {
             Ok(envelope) => {
                 let stations = envelope.data;
-                let clients = mapping::map_clients(&stations, network_id, &subnets, &device_ips);
+                let clients = mapping::map_clients(&stations, network_id, &device_ips);
                 tracing::info!(
                     ip = %ctx.ip,
                     reported = stations.len(),
@@ -298,10 +300,10 @@ async fn create_device_host(
     // consumes it, exactly as the container scanner feeds `ServiceVirtualization` — so these
     // hosts get an ordinary `DiscoveryWithMatch` service with a real confidence.
     let managed_device = device_type.map(|device_type| ManagedDevice { device_type });
-    let subnet = subnets
-        .iter()
-        .find(|s| s.base.cidr.contains(&ip))
-        .ok_or_else(|| Error::msg("device IP is not in any known subnet"))?;
+    // For the service matcher, which needs a subnet to evaluate its subnet patterns against —
+    // not for placement, which the server redoes for every address it stores.
+    let subnet = placeable_subnet(subnets, ip)
+        .ok_or_else(|| Error::msg("device IP is in no subnet this network holds"))?;
 
     let all_ports: Vec<PortType> = vec![];
     let endpoint_responses = vec![];
@@ -367,8 +369,10 @@ fn interface_data_complete() -> InterfaceDataComplete {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::shared::attribution::AttributeSource;
     use crate::server::shared::types::entities::EntitySource;
     use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use crate::server::subnets::r#impl::types::SubnetType;
     use uuid::Uuid;
 
@@ -377,7 +381,10 @@ mod tests {
             base: SubnetBase {
                 name: cidr.to_string(),
                 network_id: Uuid::nil(),
-                cidr: cidr.parse().expect("valid CIDR"),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(cidr.parse().expect("valid CIDR")),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 subnet_type: SubnetType::Lan,
                 source: EntitySource::System,
                 ..Default::default()

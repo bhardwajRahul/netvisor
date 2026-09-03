@@ -1,3 +1,4 @@
+use crate::daemon::utils::app_probe::AppProbe;
 use crate::server::hosts::r#impl::virtualization::HostVirtualizationDiscriminants;
 use crate::server::services::definitions::ServiceDefinitionRegistry;
 use crate::server::services::definitions::docker_daemon::Docker;
@@ -22,6 +23,34 @@ use utoipa::openapi::schema::{ObjectBuilder, SchemaType};
 use utoipa::openapi::{RefOr, Schema};
 use utoipa::{PartialSchema, ToSchema};
 
+/// Why a service definition cannot validate what answered on its port.
+///
+/// Each variant names something that stops a probe existing, not how much work one would be.
+/// "Nobody got round to it" is not among them, which is the point: the set is meant to shrink, and
+/// the guard test in `services/impl/tests.rs` is what keeps it from growing quietly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConnectOnly {
+    /// Writing to this port has side effects on the device.
+    ///
+    /// The raw-socket printer ports are the case: bytes sent to 9100 are printed. See
+    /// [`crate::server::ports::r#impl::base::PortType::is_raw_socket`].
+    ProbeUnsafe,
+    /// No unauthenticated exchange distinguishes this service from any other listener.
+    ///
+    /// Encrypted or authenticated-first control channels: mutual TLS, CurveZMQ, a client
+    /// certificate, CRAM-MD5 before anything identifying is sent.
+    NoDistinguishingHandshake,
+    /// There is no public implementation to check a match against.
+    ///
+    /// Commercial software with no pullable image and no published source. A match string written
+    /// from vendor documentation alone is a guess, and a guess that happens to match any HTTP
+    /// server is worse than the bare port it replaced — so the honest position is to say we could
+    /// not verify one. Unlike the two above this is a statement about our access rather than about
+    /// the protocol, which is why it is worth being able to tell apart: it becomes removable the
+    /// day someone can point the probe at a real instance.
+    NoVerifiableImplementation,
+}
+
 // Main trait used in service definition implementation
 pub trait ServiceDefinition: HasId + DynClone + DynHash + DynEq + Send + Sync {
     /// Service name, will also be used as unique identifier. < 40 characters.
@@ -39,6 +68,35 @@ pub trait ServiceDefinition: HasId + DynClone + DynHash + DynEq + Send + Sync {
     /// If service is not associated with a particular brand or vendor
     fn is_generic(&self) -> bool {
         false
+    }
+
+    /// The non-credentialed application probes that confirm this service.
+    ///
+    /// Empty by default: most definitions match on ports and HTTP endpoints alone. Hanging probes
+    /// here rather than on a registry of their own is what makes "a probe cannot exist without a
+    /// service definition" structural — see [`crate::daemon::utils::app_probe`].
+    ///
+    /// A list rather than one, because a service can speak more than one transport and each needs
+    /// its own exchange. DNS is the case that forced it: UDP/53 resolves a name through a library
+    /// client and TCP/53 sends a length-prefixed query, and a definition able to declare only one
+    /// of them would leave the other port scanned but never validated.
+    fn app_probes(&self) -> Vec<Box<dyn AppProbe>> {
+        Vec::new()
+    }
+
+    /// Why this definition is allowed to match on a completed TCP connection alone.
+    ///
+    /// `None` is the rule: a definition validates what answered, by reading a protocol response
+    /// (`app_probe`) or an HTTP body or header (`Pattern::Endpoint`, `Pattern::Header`). A bare
+    /// `Pattern::Port` names a service on evidence any middlebox in the path can manufacture, which
+    /// is how a FortiGate SIP session helper became a "SIP Server" on every remote VLAN.
+    ///
+    /// Declaring a reason here is the deliberate exception, and it is checked: a test holds the set
+    /// of definitions that declare one equal to the set
+    /// [`Pattern::matches_on_connect_alone`] derives, so a new bare-port definition fails until its
+    /// author either writes a probe or says here why they cannot.
+    fn connect_only_rationale(&self) -> Option<ConnectOnly> {
+        None
     }
 
     /// URL of icon, or static path if serving from /logos.
@@ -94,6 +152,14 @@ impl ServiceDefinition for Box<dyn ServiceDefinition> {
     fn logo_needs_white_background(&self) -> bool {
         ServiceDefinition::logo_needs_white_background(&**self)
     }
+
+    fn app_probes(&self) -> Vec<Box<dyn AppProbe>> {
+        ServiceDefinition::app_probes(&**self)
+    }
+
+    fn connect_only_rationale(&self) -> Option<ConnectOnly> {
+        ServiceDefinition::connect_only_rationale(&**self)
+    }
 }
 
 // Helper methods to be used in rest of codebase, not overridable by definition implementations
@@ -131,7 +197,7 @@ pub trait ServiceDefinitionExt {
     fn is_gateway(&self) -> bool;
     fn is_open_ports(&self) -> bool;
     fn has_logo(&self) -> bool;
-    fn has_raw_socket_endpoint(&self) -> bool;
+    fn gated_by_raw_socket_scanning(&self) -> bool;
 }
 
 impl ServiceDefinitionExt for Box<dyn ServiceDefinition> {
@@ -165,8 +231,8 @@ impl ServiceDefinitionExt for Box<dyn ServiceDefinition> {
         !self.logo_url().is_empty()
     }
 
-    fn has_raw_socket_endpoint(&self) -> bool {
-        self.discovery_pattern().has_raw_socket_endpoint()
+    fn gated_by_raw_socket_scanning(&self) -> bool {
+        self.discovery_pattern().gated_by_raw_socket_scanning()
     }
 
     /// Single source of truth mapping a manager service definition to the
@@ -237,7 +303,11 @@ impl TypeMetadataProvider for Box<dyn ServiceDefinition> {
             "has_logo": self.has_logo(),
             "logo_ext": logo_ext,
             "logo_needs_white_background": self.logo_needs_white_background(),
-            "has_raw_socket_endpoint": self.has_raw_socket_endpoint(),
+            "gated_by_raw_socket_scanning": self.gated_by_raw_socket_scanning(),
+            // Derived from the rationale rather than listed, so the set the `trust_port_only_
+            // detections` setting governs shrinks by itself as exceptions are retired and cannot
+            // drift from `connect_only_definitions_are_declared`.
+            "connect_only": self.connect_only_rationale().is_some(),
         })
     }
 }

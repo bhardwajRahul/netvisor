@@ -123,17 +123,22 @@ impl HostService {
             );
         }
 
-        // The name's rank is likewise server-authoritative at its top rung. `HostNameSource::Manual`
-        // means "a person typed this into Scanopy", which nothing running on a daemon can know;
-        // clamping here is what makes that unforgeable over the wire, rather than trusting every
-        // integration author not to claim it.
+        // The name's rank is likewise server-authoritative at its top rung.
+        // `AttributeSource::Manual` means "a person typed this into Scanopy", which nothing running
+        // on a daemon can know; clamping here is what makes that unforgeable over the wire, rather
+        // than trusting every integration author not to claim it.
+        //
+        // The ceiling is `Unspecified` rather than a named rung because a payload claiming `Manual`
+        // has told us nothing we can believe about where its name came from — and `Unspecified`
+        // keeps the name while letting the next real reading correct it. No daemon path constructs
+        // `Manual`, so this is a guard against a future one rather than something that fires today.
         let claimed = host.base.name.source();
-        if host.base.clamp_name_source(HostNameSource::Integration) {
+        if host.base.reject_manual_name_claim() {
             tracing::warn!(
                 host_name = %host.base.name,
                 %claimed,
-                "Discovery payload claimed a name provenance above Integration; clamping — only \
-                 the server can record that a person named a host"
+                "Discovery payload claimed a name was typed into Scanopy; clamping — only the \
+                 server can record that a person named a host"
             );
         }
 
@@ -163,7 +168,12 @@ impl HostService {
         // can drop. Post-upsert `get_for_host` alone would miss subnets that
         // disappeared entirely from the host.
         let previous_subnets: HashSet<Uuid> = self
-            .find_matching_host_by_ip_addresses(&host.base.network_id, &ip_addresses)
+            .find_matching_host_by_ip_addresses(
+                &host.base.network_id,
+                &ip_addresses,
+                &interfaces,
+                host.base.chassis_id.as_ref().map(|c| c.value().0.as_str()),
+            )
             .await?
             .map(|(_, existing_ips)| existing_ips.iter().map(|i| i.base.subnet_id).collect())
             .unwrap_or_default();
@@ -367,11 +377,14 @@ fn plan_interface_ip_links(
 
     let ip_by_mac: HashMap<MacAddress, Uuid> = ip_addresses
         .iter()
-        .filter_map(|ip| ip.base.mac_address.map(|mac| (mac, ip.id)))
+        .filter_map(|ip| mac_of(&ip.base.mac_address).map(|mac| (mac, ip.id)))
         .collect();
 
     let mut interfaces_per_mac: HashMap<MacAddress, usize> = HashMap::new();
-    for mac in interfaces.iter().filter_map(|i| i.base.mac_address) {
+    for mac in interfaces
+        .iter()
+        .filter_map(|i| mac_of(&i.base.mac_address))
+    {
         *interfaces_per_mac.entry(mac).or_default() += 1;
     }
 
@@ -379,11 +392,10 @@ fn plan_interface_ip_links(
         .iter()
         .filter(|i| i.base.ip_address_id.is_none())
         .filter_map(|i| {
-            let target = if i.base.if_type == if_type::SOFTWARE_LOOPBACK {
+            let target = if i.base.if_type == Some(if_type::SOFTWARE_LOOPBACK) {
                 loopback_ip_id
             } else {
-                i.base
-                    .mac_address
+                mac_of(&i.base.mac_address)
                     .filter(|mac| interfaces_per_mac.get(mac) == Some(&1))
                     .and_then(|mac| ip_by_mac.get(&mac).copied())
             }?;
@@ -395,21 +407,35 @@ fn plan_interface_ip_links(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
+    use crate::server::services::r#impl::patterns::ClientProbe;
+    use crate::server::shared::attribution::AttributeSource;
+
+    /// What a credentialed SNMP walk claims for a MAC it read off the device itself. Named once so
+    /// a fixture cannot assert a provenance no real scan produces.
+    const SNMP_MAC: AttributeSource = AttributeSource::Probe(ClientProbe::Snmp);
+
     use crate::server::interfaces::r#impl::base::InterfaceBase;
     use crate::server::ip_addresses::r#impl::base::IPAddressBase;
 
     fn iface(if_index: i32, mac: &str) -> Interface {
         let mut base = InterfaceBase::default();
-        base.if_index = if_index;
+        base.if_index = Some(if_index);
         base.if_descr = format!("Slot0/{if_index}");
-        base.mac_address = Some(mac.parse::<MacAddress>().unwrap());
+        base.mac_address = Some(MacEvidence::new(
+            MacEvidenceValue(mac.parse::<MacAddress>().unwrap()),
+            SNMP_MAC,
+        ));
         Interface::new(base)
     }
 
     fn management_ip(ip: &str, mac: &str) -> IPAddress {
         IPAddress::new(IPAddressBase {
             ip_address: ip.parse().unwrap(),
-            mac_address: Some(mac.parse::<MacAddress>().unwrap()),
+            mac_address: Some(MacEvidence::new(
+                MacEvidenceValue(mac.parse::<MacAddress>().unwrap()),
+                SNMP_MAC,
+            )),
             ..Default::default()
         })
     }

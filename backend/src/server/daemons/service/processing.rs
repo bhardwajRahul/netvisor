@@ -1,5 +1,15 @@
 //! Inbound daemon message processing: status, startup, registration, capabilities, discovery entities, and migration.
 use super::*;
+use crate::daemon::discovery::types::base::DiscoveryPhase;
+use crate::daemon::discovery::types::warnings::DiscoveryWarning;
+
+/// How long the completion request will wait for neighbour resolution before cutting it short.
+///
+/// Well inside the daemon's own 30s request timeout (`daemon/shared/api_client.rs`), leaving room
+/// for the rest of `update_session`. Insurance whose value is that it never fires: resolution reads
+/// the network once rather than querying per neighbour, so the pass is far from this on any network
+/// measured -- but a pathological one must degrade to a reported gap, not to a lost scan record.
+const RESOLUTION_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 
 impl DaemonService {
@@ -374,7 +384,7 @@ impl DaemonService {
             network_id: effective_network_id,
             // Placeholder identity: the daemon's own reported name, which sits at the same rung
             // as a hostname, so a later scan of the machine can improve on it.
-            name: HostName::default(),
+            name: HostName::unnamed(),
             hostname: None,
             description: None,
             source: EntitySource::Discovery,
@@ -392,11 +402,13 @@ impl DaemonService {
             manufacturer: None,
             model: None,
             serial_number: None,
+            firmware_revision: None,
+            software_revision: None,
             credential_assignments: vec![],
         });
         dummy_host
             .base
-            .apply_name(HostName::Hostname(request.name.clone()));
+            .apply_name(HostName::from_hostname(request.name.clone()));
 
         let host_response = host_service
             .discover_host(
@@ -543,13 +555,114 @@ impl DaemonService {
         Ok(())
     }
 
-    /// Process a discovery progress update
+    /// Process a discovery progress update.
+    ///
+    /// On the terminal update, neighbour resolution runs *before* the session is finalized, and the
+    /// hosts it mints are added to the session's scanned set. That ordering is the whole point: the
+    /// discovery FKs and the digest are both driven by the `Discovery::Created` event that
+    /// `update_session` publishes, and both read the scanned set off it. Resolving afterwards — as a
+    /// subscriber on the terminal phase event, which is where this used to live — meant a far end
+    /// minted from a neighbour's advertisement existed only after everything that could have
+    /// attributed or reported it had already run. It got no discovery FKs and never appeared in the
+    /// digest, despite being a device that scan found.
+    ///
+    /// The cost is that this request now waits for a network-wide resolution pass. That is the
+    /// deliberate trade: the scan record is written before the daemon is acknowledged, so a failure
+    /// here is one the daemon sees and can retry, rather than a session silently lost after a
+    /// successful ack.
     pub async fn process_discovery_progress(
         &self,
-        update: DiscoveryUpdatePayload,
+        mut update: DiscoveryUpdatePayload,
     ) -> Result<(), ApiError> {
+        if update.phase == DiscoveryPhase::Complete
+            && update.discovery_type.rescan_target_host_id().is_none()
+        {
+            self.resolve_neighbours_into_session(&mut update).await;
+        }
+
         self.discovery_service.update_session(update).await?;
         Ok(())
+    }
+
+    /// Resolve this network's neighbours and fold what that produced into the terminal payload.
+    ///
+    /// Never fails the caller. Link resolution is post-scan enrichment; losing some links is a bad
+    /// outcome, and losing the scan record itself because enrichment failed is a far worse one — so
+    /// an error here is logged and the session is finalized regardless. This is the same
+    /// best-effort posture the pass had as a subscriber, where a failure could not reach the
+    /// completion path at all.
+    async fn resolve_neighbours_into_session(&self, update: &mut DiscoveryUpdatePayload) {
+        let Some(host_service) = self.host_service.get() else {
+            tracing::warn!(
+                session_id = %update.session_id,
+                "HostService not initialized; skipping neighbour resolution for this session"
+            );
+            return;
+        };
+
+        // The session's own clock, so a minted host carries the timestamp every other entity of
+        // this scan carries. `finished_at` is what closes the digest's window; stamping mint time
+        // instead would put the host just outside the window that exists to report it.
+        let scan_time = update.finished_at.unwrap_or_else(Utc::now);
+
+        let started = std::time::Instant::now();
+        let outcome = tokio::time::timeout(
+            RESOLUTION_BUDGET,
+            host_service.resolve_lldp_links(update.network_id, scan_time),
+        )
+        .await;
+
+        // Unlabelled: this is one pass per completed session, and a network or session label would
+        // make the series unbounded for a number whose whole use is the distribution.
+        metrics::histogram!("lldp_resolution_duration_seconds")
+            .record(started.elapsed().as_secs_f64());
+
+        match outcome {
+            Ok(Ok(outcome)) => {
+                if !outcome.minted_host_ids.is_empty() {
+                    update
+                        .scanned
+                        .get_or_insert_with(Default::default)
+                        .host_ids
+                        .extend(outcome.minted_host_ids);
+                }
+                // Into the row as it is written, rather than appended to it afterwards. The append
+                // existed only because this ran after the row; with the order reversed there is
+                // nothing to append to and nothing to race.
+                update.warnings.extend(outcome.warnings);
+            }
+            Ok(Err(e)) => tracing::warn!(
+                session_id = %update.session_id,
+                network_id = %update.network_id,
+                error = %e,
+                "Neighbour resolution failed; finalizing the session without its findings"
+            ),
+            // Stopped, not failed. The daemon abandons this request at its own timeout, and a pass
+            // that outruns the budget would take the scan record down with it — so it is cut short
+            // and the session is finalized without its findings.
+            //
+            // Reported on the record rather than only logged: a self-hosted operator never sees the
+            // server log, and without this line a scan that silently drew no links is
+            // indistinguishable from a network that has none.
+            Err(_) => {
+                let neighbours = host_service
+                    .neighbour_bearing_interface_count(update.network_id)
+                    .await;
+                tracing::warn!(
+                    session_id = %update.session_id,
+                    network_id = %update.network_id,
+                    budget_seconds = RESOLUTION_BUDGET.as_secs(),
+                    neighbours,
+                    "Neighbour resolution exceeded its budget; finalizing the session without it"
+                );
+                update
+                    .warnings
+                    .push(DiscoveryWarning::NeighbourResolutionIncomplete {
+                        budget_seconds: RESOLUTION_BUDGET.as_secs() as u32,
+                        neighbours,
+                    });
+            }
+        }
     }
 
     /// Process discovered entities from a daemon.
@@ -716,7 +829,7 @@ impl DaemonService {
         // Process discovered subnets - continue on failure to avoid blocking entire batch
         for subnet in entities.subnets {
             let pending_id = subnet.id;
-            let cidr = subnet.base.cidr;
+            let cidr = *subnet.base.cidr;
             match self.subnet_service.create(subnet, auth.clone()).await {
                 Ok(actual_subnet) => {
                     created_subnets.push((pending_id, actual_subnet));

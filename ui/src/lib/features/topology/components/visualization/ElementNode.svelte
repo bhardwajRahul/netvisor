@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import { type NodeProps } from '@xyflow/svelte';
+	import { type NodeProps, useInternalNode } from '@xyflow/svelte';
 	import NodeHandles from './NodeHandles.svelte';
 	import { concepts, entities, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import {
@@ -33,6 +33,7 @@
 	import type { Node, Edge } from '@xyflow/svelte';
 	import { topology_hideOpenPorts, topology_openPortsSummary } from '$lib/paraglide/messages';
 	import { ELEMENT_HANDLE_SIZE_PX } from '../../pipeline/build-flow-nodes';
+	import { ELEMENT_STATE_FILL, elementState, portStatusDotColor } from '../../element-state-color';
 
 	let { id, data, width }: NodeProps = $props();
 
@@ -43,6 +44,29 @@
 	// first value can't be missed — which is what the previous hand-rolled
 	// subscriptions existed to work around.
 	let isExportingValue = $derived(sharedStores.exporting.current);
+
+	/**
+	 * Draw as a box rather than as contents — decided once in the viewer and shared.
+	 *
+	 * See `detailSimplified`: the decision needs the size of the whole graph, which a card cannot
+	 * see, and one refcounted subscription is cheaper than a viewport read per node.
+	 */
+	let simplified = $derived(sharedStores.simplified.current);
+
+	/**
+	 * The height a simplified card has to hold, taken from what SvelteFlow measured.
+	 *
+	 * Not the `height` prop: `build-flow-nodes.ts:247` sets it to `undefined` for every element on
+	 * purpose, because `NodeWrapper` only applies a height style when it is present and an element
+	 * card is meant to size to its content. That leaves the card itself as the height source — so an
+	 * empty one collapses, ELK's next input shrinks, and the whole graph reflows on zoom. Measured
+	 * at 5,936 nodes: the fitted zoom moved 0.0108 -> 0.0135 before this pin existed, which is the
+	 * layout shrinking by a quarter.
+	 *
+	 * Pinning to `measured.height` is stable rather than circular: the card renders at exactly the
+	 * height SvelteFlow already recorded, so `updateNodeInternals` sees no drift.
+	 */
+	let pinnedHeight = $derived(useInternalNode(id).current?.measured?.height);
 	let hiddenEntities = $derived(sharedStores.hiddenEntities.current);
 	let searchHiddenNodes = $derived(sharedStores.searchHiddenNodes.current);
 	let connectedNodes = $derived(sharedStores.connectedNodes.current);
@@ -110,6 +134,20 @@
 	// Staleness pill — computed with the rest of the card content because it
 	// renders in flow and therefore affects card height.
 	let staleTag = $derived(elementRender?.staleTag ?? null);
+	/**
+	 * The fill a reduced card paints itself, from the one state signal it has.
+	 *
+	 * An element is never `hidden` or `labelled` — it has no name worth showing at this size and it
+	 * is the graph's texture, so it always keeps its box. What varies is the colour.
+	 */
+	let stateFill = $derived(
+		ELEMENT_STATE_FILL[
+			elementState({
+				operStatus: nodeRenderData?.portStatus?.operStatus,
+				isStale: staleTag !== null
+			})
+		]
+	);
 
 	// Called once per service binding while rendering, so this must not scan
 	// `topology.ports` — on a large graph that is nodes x bindings x ports.
@@ -401,304 +439,316 @@
 {#if nodeRenderData}
 	<div
 		class={`${cardClass} ${isNewNode ? 'animate-pulse-highlight' : ''} ${serviceHoverShadowStyle ? 'animate-pulse-highlight-once' : ''} ${isEntityTypeHover ? 'entity-type-hover-active' : ''}`}
-		style={`width: ${effectiveWidth}px; height: 100%; display: flex; flex-direction: column; padding: 0; opacity: ${nodeOpacity}; transition: opacity 0.2s ease-in-out, box-shadow 0.15s ease-in-out; ${isNewNode ? `--pulse-color: ${discoveryColorHelper.rgb};` : ''} ${serviceHoverShadowStyle} ${tagHoverRingStyle}`}
+		style={`width: ${effectiveWidth}px; height: ${simplified && pinnedHeight !== undefined ? `${pinnedHeight}px` : '100%'}; ${simplified ? `background: ${stateFill};` : ''} display: flex; flex-direction: column; padding: 0; opacity: ${nodeOpacity}; transition: opacity 0.2s ease-in-out, box-shadow 0.15s ease-in-out; ${isNewNode ? `--pulse-color: ${discoveryColorHelper.rgb};` : ''} ${serviceHoverShadowStyle} ${tagHoverRingStyle}`}
 	>
-		<!-- Staleness tag: the same Tag component, label, colour and icon the
+		<!--
+			Below the zoom threshold the card is its own box and nothing else — see `shouldSimplify`.
+			The height is pinned to the node's own so the box the layout was built around is
+			unchanged; without that the empty card collapses and ELK's next input shifts, which
+			would make the graph reflow as you zoom.
+		-->
+		{#if !simplified}
+			<!-- Staleness tag: the same Tag component, label, colour and icon the
 		     inventory card badge uses (both come from `getFreshnessTag`), so one
 		     entity reads identically in the list, the map and the digest.
 		     Additive rather than an opacity change — opacity is already the
 		     filter/search dimming channel. -->
 
-		<!-- Topmost element of the card, centred: one placement that reads the
+			<!-- Topmost element of the card, centred: one placement that reads the
 		     same on every element type, rather than depending on which title row
 		     a given card happens to have. In flow so it stays inside the card
 		     bounds and never overlaps the title; node heights are DOM-measured
 		     (pipeline/measure.ts), so layout absorbs the row. -->
-		{#if staleTag}
-			<div class="flex flex-shrink-0 justify-center px-2 pt-2">
-				<div class="scale-90">
-					<Tag {...staleTag} pill />
+			{#if staleTag}
+				<div class="flex flex-shrink-0 justify-center px-2 pt-2">
+					<div class="scale-90">
+						<Tag {...staleTag} pill />
+					</div>
 				</div>
-			</div>
-		{/if}
+			{/if}
 
-		<!-- Rest of component stays the same -->
-		<!-- Header section with gradient transition to body -->
-		{#if nodeRenderData.headerText}
-			<!-- Padding and centring live on the text element itself; the wrapper that used to hold
+			<!-- Rest of component stays the same -->
+			<!-- Header section with gradient transition to body -->
+			{#if nodeRenderData.headerText}
+				<!-- Padding and centring live on the text element itself; the wrapper that used to hold
 			     them contributed one element per card and nothing else. -->
-			<div
-				data-entity-header
-				class={`relative flex-shrink-0 truncate px-2 pt-2 text-center text-xs font-medium leading-none ${nodeRenderData.isVirtualized ? virtualizationColorHelper.text : nodeRenderData.isContainerized ? containerizationColorHelper.text : 'text-tertiary'}`}
-			>
-				{nodeRenderData.headerText}
-			</div>
-		{/if}
+				<div
+					data-entity-header
+					class={`relative flex-shrink-0 truncate px-2 pt-2 text-center text-xs font-medium leading-none ${nodeRenderData.isVirtualized ? virtualizationColorHelper.text : nodeRenderData.isContainerized ? containerizationColorHelper.text : 'text-tertiary'}`}
+				>
+					{nodeRenderData.headerText}
+				</div>
+			{/if}
 
-		{#if nodeRenderData.subtitleText}
-			<div
-				data-entity-header
-				class="text-primary truncate px-2 pt-2 text-center text-sm font-medium {!nodeRenderData.headerText &&
-				!nodeRenderData.showServices
-					? 'pb-2'
-					: ''}"
-			>
-				{nodeRenderData.subtitleText}
-			</div>
-		{/if}
+			{#if nodeRenderData.subtitleText}
+				<div
+					data-entity-header
+					class="text-primary truncate px-2 pt-2 text-center text-sm font-medium {!nodeRenderData.headerText &&
+					!nodeRenderData.showServices
+						? 'pb-2'
+						: ''}"
+				>
+					{nodeRenderData.subtitleText}
+				</div>
+			{/if}
 
-		<!-- Body section -->
-		<!-- The body region. `contents` when it holds a single status line, so the line itself takes
+			<!-- Body section -->
+			<!-- The body region. `contents` when it holds a single status line, so the line itself takes
 		     the region's box instead of sitting inside another flex container — one element per port
 		     card. Anything richer (services, body text, a MAC line) still needs the real column. -->
-		<div
-			class={onlyStatusLine
-				? 'contents'
-				: 'flex flex-1 flex-col items-center justify-center px-3 py-2'}
-		>
-			{#if nodeRenderData.showServices}
-				{#snippet serviceCard(service: (typeof nodeRenderData.services)[number])}
-					{@const ServiceIcon = serviceDefinitions.getIconComponent(service.service_definition)}
-					{@const serviceColorHelper = serviceDefinitions.getColorHelper(
-						service.service_definition
-					)}
-					{@const serviceTagHighlight = inlineRowPulse('Service', service.tags)}
-					{@const serviceMetadataHighlight = (() => {
-						if (metadataHoverContext?.mode !== 'inline') return '';
-						if (!currentHoveredMetadata || currentHoveredMetadata.entityType !== 'Service')
-							return '';
-						const extractor =
-							FILTER_VALUE_EXTRACTORS['Service']?.[currentHoveredMetadata.filterType];
-						if (!extractor) return '';
-						if (
-							extractor(service, { network: networkFor(service) }) !==
-							currentHoveredMetadata.valueId
-						)
-							return '';
-						const ch = createColorHelper(
-							currentHoveredMetadata.color as Parameters<typeof createColorHelper>[0]
-						);
-						return `color: ${ch.rgb}; --text-pulse-color: ${ch.rgb};`;
-					})()}
-					<div
-						class="flex flex-col items-center justify-center py-2"
-						style="min-width: 0; max-width: 100%; width: 100%;"
-					>
-						<!-- Render the service name when either: (a) this card IS
+			<div
+				class={onlyStatusLine
+					? 'contents'
+					: 'flex flex-1 flex-col items-center justify-center px-3 py-2'}
+			>
+				{#if nodeRenderData.showServices}
+					{#snippet serviceCard(service: (typeof nodeRenderData.services)[number])}
+						{@const ServiceIcon = serviceDefinitions.getIconComponent(service.service_definition)}
+						{@const serviceColorHelper = serviceDefinitions.getColorHelper(
+							service.service_definition
+						)}
+						{@const serviceTagHighlight = inlineRowPulse('Service', service.tags)}
+						{@const serviceMetadataHighlight = (() => {
+							if (metadataHoverContext?.mode !== 'inline') return '';
+							if (!currentHoveredMetadata || currentHoveredMetadata.entityType !== 'Service')
+								return '';
+							const extractor =
+								FILTER_VALUE_EXTRACTORS['Service']?.[currentHoveredMetadata.filterType];
+							if (!extractor) return '';
+							if (
+								extractor(service, { network: networkFor(service) }) !==
+								currentHoveredMetadata.valueId
+							)
+								return '';
+							const ch = createColorHelper(
+								currentHoveredMetadata.color as Parameters<typeof createColorHelper>[0]
+							);
+							return `color: ${ch.rgb}; --text-pulse-color: ${ch.rgb};`;
+						})()}
+						<div
+							class="flex flex-col items-center justify-center py-2"
+							style="min-width: 0; max-width: 100%; width: 100%;"
+						>
+							<!-- Render the service name when either: (a) this card IS
 						  a Service element (the row is the card's own identity,
 						  not inlined content — always show), or (b) the card
 						  inlines services and the user hasn't toggled them off. -->
-						{#if nodeRenderData.elementType === 'Service' || (inlinesService && !serviceInlineHidden)}
-							<div
-								class="flex items-center justify-center gap-1"
-								style="line-height: 1.3; width: 100%; min-width: 0; max-width: 100%;"
-								title={service.name}
-							>
-								<ServiceIcon class="h-5 w-5 flex-shrink-0 {serviceColorHelper.icon}" />
-								<span
-									class="text-m text-secondary truncate {serviceTagHighlight ||
-									serviceMetadataHighlight
-										? 'animate-text-pulse-highlight'
-										: ''}"
-									style="transition: color 0.15s; {serviceTagHighlight || serviceMetadataHighlight}"
+							{#if nodeRenderData.elementType === 'Service' || (inlinesService && !serviceInlineHidden)}
+								<div
+									class="flex items-center justify-center gap-1"
+									style="line-height: 1.3; width: 100%; min-width: 0; max-width: 100%;"
+									title={service.name}
 								>
-									{service.name}
-								</span>
-							</div>
-						{/if}
-						{#if inlinesPort && !portInlineHidden && service.bindings.filter((b) => b.type == 'Port').length > 0}
-							{@const portPulse = inlineRowPulse('Port', [])}
-							<span
-								class="text-tertiary mt-1 text-center text-xs {portPulse
-									? 'animate-text-pulse-highlight'
-									: ''}"
-								style="transition: color 0.15s; {portPulse}"
-								>{service.bindings
-									.map((b) => {
-										if (
-											(b.ip_address_id == nodeRenderData.ip_address_id ||
-												b.ip_address_id == null) &&
-											b.type == 'Port' &&
-											b.port_id
-										) {
-											const port = getPortById(b.port_id);
-											if (port) {
-												return formatPort(port);
-											}
-										}
-									})
-									.filter((p) => {
-										return p !== undefined;
-									})
-									.join(', ')}</span
-							>
-						{/if}
-					</div>
-				{/snippet}
-				<!-- Show services list -->
-				<div class="flex w-full flex-col items-center" style="min-width: 0; max-width: 100%;">
-					{#if serviceGroups.containerized.length > 0}
-						<!-- Grouped rendering: bare services + containerized groups with dotted border -->
-						{#each serviceGroups.bare as service (service.id)}
-							{@render serviceCard(service)}
-						{/each}
-						{#each serviceGroups.containerized as group (group.runtimeId)}
-							{@const RuntimeIcon = group.runtimeService
-								? serviceDefinitions.getIconComponent(group.runtimeService.service_definition)
-								: null}
-							<div
-								class="mb-1 mt-1 w-full rounded-md border border-dashed border-gray-300 px-1 py-0.5 dark:border-gray-600"
-							>
-								<div class="flex items-center gap-1 px-1 pb-2 pt-1">
-									{#if RuntimeIcon}
-										<RuntimeIcon class="h-5 w-5 flex-shrink-0" />
-									{/if}
-									<span class="text-secondary truncate text-xs font-medium">
-										{group.runtimeService?.name ?? 'Containers'}
+									<ServiceIcon class="h-5 w-5 flex-shrink-0 {serviceColorHelper.icon}" />
+									<span
+										class="text-m text-secondary truncate {serviceTagHighlight ||
+										serviceMetadataHighlight
+											? 'animate-text-pulse-highlight'
+											: ''}"
+										style="transition: color 0.15s; {serviceTagHighlight ||
+											serviceMetadataHighlight}"
+									>
+										{service.name}
 									</span>
 								</div>
-								{#each group.containers as service (service.id)}
-									{@render serviceCard(service)}
-								{/each}
-							</div>
-						{/each}
-					{:else}
-						{#each nodeRenderData.services as service (service.id)}
-							{@render serviceCard(service)}
-						{/each}
-					{/if}
-					{#if nodeRenderData.hiddenOpenPorts.length > 0 && nodeRenderData.elementType !== 'Host'}
-						{#if expandedOpenPorts}
-							{#each nodeRenderData.hiddenOpenPorts as service (service.id)}
-								{@const ServiceIcon = serviceDefinitions.getIconComponent(
-									service.service_definition
-								)}
-								{@const svcColor = serviceDefinitions.getColorHelper(service.service_definition)}
-								<div
-									class="flex flex-col items-center justify-center"
-									style="min-width: 0; max-width: 100%; width: 100%;"
+							{/if}
+							{#if inlinesPort && !portInlineHidden && service.bindings.filter((b) => b.type == 'Port').length > 0}
+								{@const portPulse = inlineRowPulse('Port', [])}
+								<span
+									class="text-tertiary mt-1 text-center text-xs {portPulse
+										? 'animate-text-pulse-highlight'
+										: ''}"
+									style="transition: color 0.15s; {portPulse}"
+									>{service.bindings
+										.map((b) => {
+											if (
+												(b.ip_address_id == nodeRenderData.ip_address_id ||
+													b.ip_address_id == null) &&
+												b.type == 'Port' &&
+												b.port_id
+											) {
+												const port = getPortById(b.port_id);
+												if (port) {
+													return formatPort(port);
+												}
+											}
+										})
+										.filter((p) => {
+											return p !== undefined;
+										})
+										.join(', ')}</span
 								>
-									{#if inlinesService && !serviceInlineHidden}
-										<div
-											class="flex items-center justify-center gap-1"
-											style="line-height: 1.3; width: 100%; min-width: 0; max-width: 100%;"
-											title={service.name}
-										>
-											<ServiceIcon class="h-5 w-5 flex-shrink-0 {svcColor.icon}" />
-											<span class="text-m text-secondary truncate" style="transition: color 0.15s;">
-												{service.name}
-											</span>
-										</div>
-									{/if}
-									{#if inlinesPort && !portInlineHidden && service.bindings.filter((b) => b.type == 'Port').length > 0}
-										{@const portPulseExp = inlineRowPulse('Port', [])}
-										<span
-											class="text-tertiary mt-1 text-center text-xs {portPulseExp
-												? 'animate-text-pulse-highlight'
-												: ''}"
-											style="transition: color 0.15s; {portPulseExp}"
-											>{service.bindings
-												.map((b) => {
-													if (
-														(b.ip_address_id == nodeRenderData.ip_address_id ||
-															b.ip_address_id == null) &&
-														b.type == 'Port' &&
-														b.port_id
-													) {
-														const port = getPortById(b.port_id);
-														if (port) {
-															return formatPort(port);
-														}
-													}
-												})
-												.filter((p) => p !== undefined)
-												.join(', ')}</span
-										>
-									{/if}
+							{/if}
+						</div>
+					{/snippet}
+					<!-- Show services list -->
+					<div class="flex w-full flex-col items-center" style="min-width: 0; max-width: 100%;">
+						{#if serviceGroups.containerized.length > 0}
+							<!-- Grouped rendering: bare services + containerized groups with dotted border -->
+							{#each serviceGroups.bare as service (service.id)}
+								{@render serviceCard(service)}
+							{/each}
+							{#each serviceGroups.containerized as group (group.runtimeId)}
+								{@const RuntimeIcon = group.runtimeService
+									? serviceDefinitions.getIconComponent(group.runtimeService.service_definition)
+									: null}
+								<div
+									class="mb-1 mt-1 w-full rounded-md border border-dashed border-gray-300 px-1 py-0.5 dark:border-gray-600"
+								>
+									<div class="flex items-center gap-1 px-1 pb-2 pt-1">
+										{#if RuntimeIcon}
+											<RuntimeIcon class="h-5 w-5 flex-shrink-0" />
+										{/if}
+										<span class="text-secondary truncate text-xs font-medium">
+											{group.runtimeService?.name ?? 'Containers'}
+										</span>
+									</div>
+									{#each group.containers as service (service.id)}
+										{@render serviceCard(service)}
+									{/each}
 								</div>
 							{/each}
-							<button
-								class="nopan text-tertiary hover:text-secondary mb-2 mt-1 cursor-pointer text-xs underline"
-								onclick={(e) => {
-									e.stopPropagation();
-									toggleExpandedPorts(id);
-								}}
-							>
-								{topology_hideOpenPorts()}
-							</button>
 						{:else}
-							<button
-								class="nopan bg-surface-secondary text-tertiary hover:text-secondary mb-2 mt-1 cursor-pointer rounded-full px-2 py-0.5 text-xs underline"
-								onclick={(e) => {
-									e.stopPropagation();
-									toggleExpandedPorts(id);
-								}}
-							>
-								{topology_openPortsSummary({
-									count:
-										nodeRenderData.hiddenOpenPorts.reduce(
-											(sum, s) =>
-												sum +
-												s.bindings.filter(
-													(b) =>
-														(b.ip_address_id == nodeRenderData.ip_address_id ||
-															b.ip_address_id == null) &&
-														b.type == 'Port'
-												).length,
-											0
-										) || nodeRenderData.hiddenOpenPorts.length
-								})}
-							</button>
+							{#each nodeRenderData.services as service (service.id)}
+								{@render serviceCard(service)}
+							{/each}
 						{/if}
-					{/if}
-				</div>
-			{:else if nodeRenderData.bodyText}
-				<!-- Show host name as body text. Guarded like the footer below: `bodyText` is empty
+						{#if nodeRenderData.hiddenOpenPorts.length > 0 && nodeRenderData.elementType !== 'Host'}
+							{#if expandedOpenPorts}
+								{#each nodeRenderData.hiddenOpenPorts as service (service.id)}
+									{@const ServiceIcon = serviceDefinitions.getIconComponent(
+										service.service_definition
+									)}
+									{@const svcColor = serviceDefinitions.getColorHelper(service.service_definition)}
+									<div
+										class="flex flex-col items-center justify-center"
+										style="min-width: 0; max-width: 100%; width: 100%;"
+									>
+										{#if inlinesService && !serviceInlineHidden}
+											<div
+												class="flex items-center justify-center gap-1"
+												style="line-height: 1.3; width: 100%; min-width: 0; max-width: 100%;"
+												title={service.name}
+											>
+												<ServiceIcon class="h-5 w-5 flex-shrink-0 {svcColor.icon}" />
+												<span
+													class="text-m text-secondary truncate"
+													style="transition: color 0.15s;"
+												>
+													{service.name}
+												</span>
+											</div>
+										{/if}
+										{#if inlinesPort && !portInlineHidden && service.bindings.filter((b) => b.type == 'Port').length > 0}
+											{@const portPulseExp = inlineRowPulse('Port', [])}
+											<span
+												class="text-tertiary mt-1 text-center text-xs {portPulseExp
+													? 'animate-text-pulse-highlight'
+													: ''}"
+												style="transition: color 0.15s; {portPulseExp}"
+												>{service.bindings
+													.map((b) => {
+														if (
+															(b.ip_address_id == nodeRenderData.ip_address_id ||
+																b.ip_address_id == null) &&
+															b.type == 'Port' &&
+															b.port_id
+														) {
+															const port = getPortById(b.port_id);
+															if (port) {
+																return formatPort(port);
+															}
+														}
+													})
+													.filter((p) => p !== undefined)
+													.join(', ')}</span
+											>
+										{/if}
+									</div>
+								{/each}
+								<button
+									class="nopan text-tertiary hover:text-secondary mb-2 mt-1 cursor-pointer text-xs underline"
+									onclick={(e) => {
+										e.stopPropagation();
+										toggleExpandedPorts(id);
+									}}
+								>
+									{topology_hideOpenPorts()}
+								</button>
+							{:else}
+								<button
+									class="nopan bg-surface-secondary text-tertiary hover:text-secondary mb-2 mt-1 cursor-pointer rounded-full px-2 py-0.5 text-xs underline"
+									onclick={(e) => {
+										e.stopPropagation();
+										toggleExpandedPorts(id);
+									}}
+								>
+									{topology_openPortsSummary({
+										count:
+											nodeRenderData.hiddenOpenPorts.reduce(
+												(sum, s) =>
+													sum +
+													s.bindings.filter(
+														(b) =>
+															(b.ip_address_id == nodeRenderData.ip_address_id ||
+																b.ip_address_id == null) &&
+															b.type == 'Port'
+													).length,
+												0
+											) || nodeRenderData.hiddenOpenPorts.length
+									})}
+								</button>
+							{/if}
+						{/if}
+					</div>
+				{:else if nodeRenderData.bodyText}
+					<!-- Show host name as body text. Guarded like the footer below: `bodyText` is empty
 				     for whole element types (every Interface, for one), and rendering it anyway put a
 				     0x0 div on each of those cards — 992 of them on the seeded graph. -->
-				<div
-					class="text-secondary truncate text-center text-xs leading-none"
-					title={nodeRenderData.bodyText}
-				>
-					{nodeRenderData.bodyText}
-				</div>
-			{/if}
-			{#if nodeRenderData.portStatus}
-				{#snippet statusRow()}
-					<!-- One span, not a row div wrapping a dot span and a speed span: the dot is a
-					     `::before` on the speed text. Three elements per port card became one. -->
-					<span
-						class="status-line text-tertiary text-xs"
-						style="--status-dot-color: {nodeRenderData.portStatus?.operStatus === 'Up'
-							? '#22c55e'
-							: nodeRenderData.portStatus?.operStatus === 'Down'
-								? '#ef4444'
-								: '#9ca3af'}">{nodeRenderData.portStatus?.speed ?? ''}</span
+					<div
+						class="text-secondary truncate text-center text-xs leading-none"
+						title={nodeRenderData.bodyText}
 					>
-				{/snippet}
-
-				<!-- The stacking wrapper only earns its place when there is a second row to stack. On a
-				     port card without a MAC it was a sole-child wrapper, one per card. -->
-				{#if nodeRenderData.portStatus.macAddress}
-					<div class="flex flex-col items-center gap-0.5">
-						{@render statusRow()}
-						<span class="text-tertiary truncate font-mono" style="font-size: 0.55rem; opacity: 0.7"
-							>{nodeRenderData.portStatus.macAddress}</span
-						>
+						{nodeRenderData.bodyText}
 					</div>
-				{:else}
-					{@render statusRow()}
 				{/if}
-			{/if}
-		</div>
+				{#if nodeRenderData.portStatus}
+					{#snippet statusRow()}
+						<!-- One span, not a row div wrapping a dot span and a speed span: the dot is a
+					     `::before` on the speed text. Three elements per port card became one. -->
+						<span
+							class="status-line text-tertiary text-xs"
+							style="--status-dot-color: {portStatusDotColor(
+								nodeRenderData.portStatus?.operStatus
+							)}">{nodeRenderData.portStatus?.speed ?? ''}</span
+						>
+					{/snippet}
 
-		<!-- Footer section -->
-		{#if nodeRenderData.footerText}
-			<div class="relative flex flex-shrink-0 items-center justify-center px-2 pb-2">
-				<div class="text-tertiary truncate text-xs font-medium leading-none">
-					{nodeRenderData.footerText}
-				</div>
+					<!-- The stacking wrapper only earns its place when there is a second row to stack. On a
+				     port card without a MAC it was a sole-child wrapper, one per card. -->
+					{#if nodeRenderData.portStatus.macAddress}
+						<div class="flex flex-col items-center gap-0.5">
+							{@render statusRow()}
+							<span
+								class="text-tertiary truncate font-mono"
+								style="font-size: 0.55rem; opacity: 0.7"
+								>{nodeRenderData.portStatus.macAddress}</span
+							>
+						</div>
+					{:else}
+						{@render statusRow()}
+					{/if}
+				{/if}
 			</div>
+
+			<!-- Footer section -->
+			{#if nodeRenderData.footerText}
+				<div class="relative flex flex-shrink-0 items-center justify-center px-2 pb-2">
+					<div class="text-tertiary truncate text-xs font-medium leading-none">
+						{nodeRenderData.footerText}
+					</div>
+				</div>
+			{/if}
 		{/if}
 	</div>
 {/if}

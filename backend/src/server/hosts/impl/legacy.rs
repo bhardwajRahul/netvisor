@@ -21,8 +21,9 @@ use crate::server::{
     hosts::r#impl::{
         api::{DiscoveryHostRequest, HostResponse},
         base::Host,
+        name::HostNameSources,
     },
-    ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
+    ip_addresses::r#impl::base::{IPAddress, IPAddressBase, MacEvidence, MacEvidenceValue},
     ports::r#impl::base::{Port, PortBase, PortType},
     services::{
         definitions::ServiceDefinitionRegistry,
@@ -31,6 +32,7 @@ use crate::server::{
             definitions::DefaultServiceDefinition,
         },
     },
+    shared::attribution::AttributeSource,
     shared::types::entities::EntitySource,
 };
 
@@ -128,7 +130,10 @@ impl LegacyIPAddress {
                 host_id,
                 subnet_id: self.subnet_id,
                 ip_address: self.ip_address,
-                mac_address: self.mac_address,
+                // A legacy daemon payload carries the value with no rung at all.
+                mac_address: self
+                    .mac_address
+                    .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::Unspecified)),
                 name: self.name,
                 position: 0,
             },
@@ -362,7 +367,7 @@ impl LegacyHostWithServicesRequest {
             base: crate::server::hosts::r#impl::base::HostBase {
                 // A legacy daemon says nothing about where the name came from, so it enters
                 // at the bottom of the ladder and cannot displace a better-attributed one.
-                name: crate::server::hosts::r#impl::name::HostName::Unspecified(host.name),
+                name: crate::server::hosts::r#impl::name::HostName::unattributed(host.name),
                 network_id: host.network_id,
                 hostname: host.hostname,
                 description: host.description,
@@ -381,6 +386,8 @@ impl LegacyHostWithServicesRequest {
                 manufacturer: None,
                 model: None,
                 serial_number: None,
+                firmware_revision: None,
+                software_revision: None,
                 credential_assignments: vec![],
             },
         };

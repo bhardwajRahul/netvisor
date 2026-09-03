@@ -63,14 +63,16 @@ impl ViewBuilder for L3Builder {
 mod tests {
     use super::*;
     use crate::server::hosts::r#impl::base::{Host, HostBase};
-    use crate::server::hosts::r#impl::name::HostName;
+    use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
     use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
     use crate::server::services::r#impl::base::{Service, ServiceBase};
     use crate::server::services::r#impl::categories::ServiceCategory;
     use crate::server::services::r#impl::definitions::ServiceDefinition;
     use crate::server::services::r#impl::patterns::Pattern;
+    use crate::server::shared::attribution::AttributeSource;
     use crate::server::shared::types::Color;
     use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use crate::server::tags::r#impl::base::{Tag, TagBase};
     use crate::server::topology::service::context::TopologyContext;
     use crate::server::topology::service::view::ViewBuilder;
@@ -114,7 +116,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: HostName::Manual("test-host".to_string()),
+                name: HostName::manual("test-host".to_string()),
                 network_id,
                 tags: vec![], // NO host tags
                 ..Default::default()
@@ -127,7 +129,12 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: SubnetBase {
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 name: "test-subnet".to_string(),
                 ..Default::default()
@@ -238,7 +245,7 @@ mod tests {
         let host = Host {
             id: host_id,
             base: HostBase {
-                name: HostName::Manual("bridge-host".to_string()),
+                name: HostName::manual("bridge-host".to_string()),
                 network_id,
                 ..Default::default()
             },
@@ -251,7 +258,10 @@ mod tests {
         let make_bridge = |st: SubnetType, cidr: Ipv4Cidr, name: &str| Subnet {
             id: Uuid::new_v4(),
             base: SubnetBase {
-                cidr: IpCidr::V4(cidr),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(cidr)),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 name: name.to_string(),
                 subnet_type: st,
@@ -368,7 +378,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: HostName::Manual(name.to_string()),
+                name: HostName::manual(name.to_string()),
                 network_id,
                 ..Default::default()
             },
@@ -379,7 +389,12 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: SubnetBase {
-                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, third, 0), 24).unwrap()),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(IpCidr::V4(
+                        Ipv4Cidr::new(Ipv4Addr::new(10, 0, third, 0), 24).unwrap(),
+                    )),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 network_id,
                 name: format!("subnet-{third}"),
                 subnet_type,
@@ -407,9 +422,9 @@ mod tests {
             base: InterfaceBase {
                 host_id,
                 network_id,
-                if_index,
+                if_index: Some(if_index),
                 if_descr: format!("eth{if_index}"),
-                if_type: 6,
+                if_type: Some(6),
                 ip_address_id: Some(ip_address_id),
                 ..Default::default()
             },

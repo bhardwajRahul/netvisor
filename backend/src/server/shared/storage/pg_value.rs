@@ -170,6 +170,7 @@ pub enum Bound<'q> {
     UuidArray(Vec<Uuid>),
     OptUuidArray(Option<Vec<Uuid>>),
     I32(i32),
+    OptI32(&'q Option<i32>),
     I64(i64),
     OptI64(&'q Option<i64>),
     Bool(&'q bool),
@@ -179,6 +180,7 @@ pub enum Bound<'q> {
     OptIpNet(Option<IpNetwork>),
     Mac(MacAddress),
     OptMac(Option<MacAddress>),
+    MacArray(Vec<MacAddress>),
 }
 
 impl Bound<'_> {
@@ -217,7 +219,6 @@ impl SqlValue {
             Self::Email(v) => Bound::Text(PgText::new(v.as_str())),
             Self::UserOrgPermissions(v) => Bound::Text(PgText::new(v.as_str())),
             Self::EdgeStyle(v) => Bound::Text(PgText::owned(v.to_string())),
-            Self::HostNameSource(v) => Bound::Text(PgText::owned(v.to_string())),
             Self::StringArray(v) => Bound::TextArray(v.iter().map(|s| PgText::new(s)).collect()),
             Self::OptionalStringArray(v) => Bound::OptTextArray(
                 v.as_ref()
@@ -239,6 +240,11 @@ impl SqlValue {
             // `OptJson(None)` writes a SQL `NULL`. Both shapes existed before this refactor and
             // columns depend on which one they get, so each arm keeps the one it had.
             Self::EntitySource(v) => Bound::Json(PgJson::new(serde_json::to_value(v)?)),
+            // jsonb rather than text because two of the variants carry a `ClientProbe`, which a bare
+            // string could not hold without a format both the migrations and the frontend would have
+            // to know. The other thirty-three do write a bare string — externally tagged, so a
+            // variant with nothing to carry has no tag — and jsonb holds that as happily.
+            Self::AttributeSource(v) => Bound::Json(PgJson::new(serde_json::to_value(v)?)),
             Self::OptionalServiceVirtualization(v) => {
                 Bound::Json(PgJson::new(serde_json::to_value(v)?))
             }
@@ -325,6 +331,7 @@ impl SqlValue {
             Self::UuidArray(v) => Bound::UuidArray(v.clone()),
             Self::OptionalUuidVec(v) => Bound::OptUuidArray(v.clone()),
             Self::I32(v) => Bound::I32(*v),
+            Self::OptionalI32(v) => Bound::OptI32(v),
             Self::U16(v) => Bound::I32(i32::from(*v)),
             Self::I64(v) => Bound::I64(*v),
             Self::OptionalI64(v) => Bound::OptI64(v),
@@ -337,6 +344,7 @@ impl SqlValue {
             // sqlx's mac_address feature supports MacAddress directly.
             Self::MacAddress(v) => Bound::Mac(*v),
             Self::OptionalMacAddress(v) => Bound::OptMac(*v),
+            Self::MacAddressArray(v) => Bound::MacArray(v.clone()),
         })
     }
 }

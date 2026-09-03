@@ -41,6 +41,7 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import type { Host } from '$lib/features/hosts/types/base';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import {
 		common_confirmDeleteName,
 		common_create,
@@ -346,7 +347,7 @@
 				label: common_hosts(),
 				type: 'array',
 				searchable: true,
-				getValue: (item: Credential) => hostsForCredential(item).map((h) => h.name ?? h.id),
+				getValue: (item: Credential) => hostsForCredential(item).map(hostDisplayName),
 				display: {
 					getItems: (item: Credential) =>
 						assignmentItems(
@@ -355,7 +356,7 @@
 							targetsFor(item).some((t) => t === 'Hosts' || t === 'DaemonHost'),
 							hostsForCredential(item).map((host) => ({
 								id: host.id,
-								label: host.name ?? host.id,
+								label: hostDisplayName(host),
 								// A daemon-host credential reaches that host *through* its
 								// daemon, so it reads as a daemon relationship rather than a
 								// host one. Only credentials that target hosts generally get

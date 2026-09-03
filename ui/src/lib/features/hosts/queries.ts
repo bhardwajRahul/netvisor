@@ -13,6 +13,7 @@ import {
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import { pushSuccess } from '$lib/shared/stores/feedback';
+import { hostDisplayName } from './host-display-name';
 import { hosts_consolidatedToast, hosts_rescanStartedToast } from '$lib/paraglide/messages';
 import { discoverySSEManager } from '$lib/features/discovery/queries';
 import type { DiscoveryUpdatePayload } from '$lib/features/discovery/types/api';
@@ -49,14 +50,30 @@ export function toHostPrimitive(response: HostResponse): Host {
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const { ip_addresses, ports, services, interfaces, ...hostFields } = response;
 
-	// Normalize optional fields from HostResponse to required nullable fields in Host
+	// Normalize optional fields from HostResponse to required nullable fields in Host.
+	//
+	// The discovered attributes go the other way: `HostResponse` still sends them as nullable
+	// strings, while on `Host` each travels with the source that produced it, so absence is
+	// `undefined` — a value with no source is not a state that exists.
 	return {
 		...hostFields,
 		description: hostFields.description ?? null,
 		hostname: hostFields.hostname ?? null,
 		virtualization_metadata: hostFields.virtualization_metadata ?? null,
 		virtualization_service_id: hostFields.virtualization_service_id ?? null,
-		credential_assignments: hostFields.credential_assignments ?? []
+		credential_assignments: hostFields.credential_assignments ?? [],
+		sys_descr: hostFields.sys_descr ?? undefined,
+		sys_object_id: hostFields.sys_object_id ?? undefined,
+		sys_location: hostFields.sys_location ?? undefined,
+		sys_contact: hostFields.sys_contact ?? undefined,
+		management_url: hostFields.management_url ?? undefined,
+		chassis_id: hostFields.chassis_id ?? undefined,
+		sys_name: hostFields.sys_name ?? undefined,
+		manufacturer: hostFields.manufacturer ?? undefined,
+		model: hostFields.model ?? undefined,
+		serial_number: hostFields.serial_number ?? undefined,
+		firmware_revision: hostFields.firmware_revision ?? undefined,
+		software_revision: hostFields.software_revision ?? undefined
 	};
 }
 
@@ -142,8 +159,16 @@ function toCreateHostRequest(formData: HostFormData): CreateHostRequest {
 export interface HostQueryOptions {
 	limit?: number;
 	offset?: number;
-	/** Filter by network ID. */
-	network_id?: string;
+	/** Filter by network ID. Several narrows to the union of them. */
+	network_ids?: string[];
+	/** Filter by the `hidden` flag. Omit for no constraint. */
+	hidden?: boolean[];
+	/** Filter by the service virtualizing the host. */
+	virtualization_service_ids?: string[];
+	/** Also return hosts nothing virtualizes; on its own, only those. */
+	include_unvirtualized?: boolean;
+	/** Filter to hosts running a service with one of these names. */
+	service_names?: string[];
 	/** Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
 	group_by?: components['schemas']['HostOrderField'];
 	/** Secondary ordering field (sorting within groups or standalone sort). */
@@ -200,14 +225,18 @@ export function useHostsQuery(optionsOrGetter: HostQueryOptions | (() => HostQue
 						query: {
 							limit: options.limit,
 							offset: options.offset,
-							network_id: options.network_id,
+							network_ids: options.network_ids,
 							group_by: options.group_by,
 							order_by: options.order_by,
 							order_direction: options.order_direction,
 							tag_ids: options.tag_ids,
 							stale: options.stale,
 							search: options.search,
-							at: options.at
+							at: options.at,
+							hidden: options.hidden,
+							virtualization_service_ids: options.virtualization_service_ids,
+							include_unvirtualized: options.include_unvirtualized,
+							service_names: options.service_names
 						}
 					}
 				});
@@ -327,7 +356,9 @@ export function useHostSummariesQuery(
 				const { data } = await apiClient.GET('/api/v1/hosts', {
 					params: {
 						query: {
-							network_id: options.network_id,
+							// One network stays the ergonomic shape for a picker; the
+							// wire param takes a list.
+							network_ids: options.network_id ? [options.network_id] : undefined,
 							ids: options.ids,
 							tag_ids: options.tag_ids,
 							limit: options.limit ?? 0,
@@ -701,7 +732,12 @@ export function useConsolidateHostsMutation() {
 			});
 
 			if (otherHostName) {
-				pushSuccess(hosts_consolidatedToast({ source: otherHostName, destination: response.name }));
+				pushSuccess(
+					hosts_consolidatedToast({
+						source: otherHostName,
+						destination: hostDisplayName(response)
+					})
+				);
 			}
 		}
 	}));
@@ -789,19 +825,23 @@ export function hydrateHostToFormData(
 			.toSorted((a, b) => a.position - b.position),
 		interfaces: allInterfaces
 			.filter((e) => e.host_id === host.id)
-			.toSorted((a, b) => a.if_index - b.if_index),
+			// Unread indexes sort last, matching the `if_index ASC` the server orders by: a port
+			// learned from a neighbour's advertisement has none.
+			.toSorted((a, b) => (a.if_index ?? Infinity) - (b.if_index ?? Infinity)),
 		// SNMP fields from host
-		sys_descr: host.sys_descr ?? null,
-		sys_object_id: host.sys_object_id ?? null,
-		sys_location: host.sys_location ?? null,
-		sys_contact: host.sys_contact ?? null,
-		management_url: host.management_url ?? null,
-		chassis_id: host.chassis_id ?? null,
-		sys_name: host.sys_name ?? null,
+		sys_descr: host.sys_descr,
+		sys_object_id: host.sys_object_id,
+		sys_location: host.sys_location,
+		sys_contact: host.sys_contact,
+		management_url: host.management_url,
+		chassis_id: host.chassis_id,
+		sys_name: host.sys_name,
 		// Hardware identity from host
-		manufacturer: host.manufacturer ?? null,
-		model: host.model ?? null,
-		serial_number: host.serial_number ?? null,
+		manufacturer: host.manufacturer,
+		model: host.model,
+		serial_number: host.serial_number,
+		firmware_revision: host.firmware_revision,
+		software_revision: host.software_revision,
 		credential_assignments: host.credential_assignments ?? []
 	};
 }
@@ -835,18 +875,9 @@ export function createEmptyHostFormData(defaultNetworkId?: string): HostFormData
 		virtualization_service_id: null,
 		network_id: defaultNetworkId ?? '',
 		hidden: false,
-		// SNMP fields (populated by discovery)
-		sys_descr: null,
-		sys_object_id: null,
-		sys_location: null,
-		sys_contact: null,
-		management_url: null,
-		chassis_id: null,
-		sys_name: null,
-		// Hardware identity (populated by discovery)
-		manufacturer: null,
-		model: null,
-		serial_number: null,
+		// The discovered attributes are simply absent on a host nothing has scanned yet. They each
+		// travel with the source that produced them, so there is no value here without one — which
+		// is why these are omitted rather than set to null.
 		credential_assignments: [],
 		interfaces: []
 	};

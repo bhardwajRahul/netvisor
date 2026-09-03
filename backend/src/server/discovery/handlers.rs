@@ -87,10 +87,14 @@ impl OrderField for DiscoveryOrderField {
 /// Query parameters for filtering and ordering discoveries.
 #[derive(Deserialize, Default, Debug, Clone, IntoParams)]
 pub struct DiscoveryFilterQuery {
-    /// Filter by network ID
-    pub network_id: Option<Uuid>,
-    /// Filter by daemon ID
-    pub daemon_id: Option<Uuid>,
+    /// Filter by network ID. Repeat the parameter to pass several.
+    #[serde(alias = "network_id")]
+    pub network_ids: Option<Vec<Uuid>>,
+    /// Filter by daemon ID. Repeat the parameter to pass several.
+    #[serde(alias = "daemon_id")]
+    pub daemon_ids: Option<Vec<Uuid>>,
+    /// Only runs of one of these discovery types.
+    pub discovery_types: Option<Vec<String>>,
     /// `true` returns only completed runs (the history view), `false` only the
     /// configurations that produce them. Omit for both.
     pub historical: Option<bool>,
@@ -134,14 +138,26 @@ impl FilterQueryExtractor for DiscoveryFilterQuery {
         user_network_ids: &[Uuid],
         _user_organization_id: Uuid,
     ) -> StorableFilter<T> {
-        let mut filter = match self.network_id {
-            Some(id) if user_network_ids.contains(&id) => filter.network_ids(&[id]),
-            Some(_) => filter.network_ids(&[]),
+        // Intersect with what the caller can see — a requested network they
+        // have no access to must narrow the result to nothing, never widen it.
+        let mut filter = match &self.network_ids {
+            Some(requested) => {
+                let accessible: Vec<Uuid> = requested
+                    .iter()
+                    .copied()
+                    .filter(|id| user_network_ids.contains(id))
+                    .collect();
+                filter.network_ids(&accessible)
+            }
             None => filter.network_ids(user_network_ids),
         };
-        filter = match self.daemon_id {
-            Some(id) => filter.uuid_column("daemon_id", &id),
+        filter = match &self.daemon_ids {
+            Some(ids) => filter.daemon_ids(ids),
             None => filter,
+        };
+        filter = match &self.discovery_types {
+            Some(types) if !types.is_empty() => filter.discovery_type_in(types),
+            _ => filter,
         };
         filter = match self.historical {
             Some(true) => filter.historical_discovery(),

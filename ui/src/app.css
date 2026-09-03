@@ -28,6 +28,22 @@
 		--color-topology-node-bg: #ffffff;
 		--color-topology-subgroup-bg: rgba(0, 0, 0, 0.03);
 		--color-topology-zone: rgba(229, 231, 235, 0.2);
+
+		/*
+		 * Reduced-detail palette — see `pipeline/render-mode.ts`.
+		 *
+		 * At low zoom a node is a few pixels of flat colour, and the full-detail surfaces are useless
+		 * there: a white card on the #f8fafc canvas is 1.03:1, which is not a shape, it is a rumour.
+		 * These are the only colours in the topology chosen for contrast against the *canvas* rather
+		 * than for looking right beside text, and they are tokens rather than literals so the dark
+		 * theme gets its own — the first cut hard-coded light values and inverted itself at night.
+		 */
+		--color-topology-lod-nominal: #4ade80;
+		--color-topology-lod-down: #f87171;
+		--color-topology-lod-stale: #fbbf24;
+		--color-topology-lod-unknown: #cbd5e1;
+		--color-topology-lod-stroke: #94a3b8;
+		--color-topology-lod-container: rgba(148, 163, 184, 0.14);
 	}
 
 	.dark {
@@ -53,6 +69,15 @@
 		--color-topology-node-bg: #1a1d29;
 		--color-topology-subgroup-bg: rgba(255, 255, 255, 0.04);
 		--color-topology-zone: rgba(17, 24, 39, 0.2);
+
+		/* Reduced-detail palette, against the #15131e canvas. Deeper, so a field of these does not
+		 * glare the way the light values would on a dark ground. */
+		--color-topology-lod-nominal: #22c55e;
+		--color-topology-lod-down: #ef4444;
+		--color-topology-lod-stale: #d97706;
+		--color-topology-lod-unknown: #475569;
+		--color-topology-lod-stroke: #64748b;
+		--color-topology-lod-container: rgba(148, 163, 184, 0.16);
 	}
 
 	html {

@@ -2,7 +2,19 @@
 import type { components } from '$lib/api/schema';
 
 // Entity primitive types
-export type Host = components['schemas']['Host'];
+/**
+ * A host row plus the computed title every surface has to agree on.
+ *
+ * `display_name` lives on the *response* schemas (`HostResponse`, and the topology bundle's
+ * `TopologyHost`) rather than on `Host`, because it is derived, not stored. But every list, picker,
+ * table and topology consumer holds a `Host`, and `toHostPrimitive` already carries the field
+ * through at runtime — so without this it is present in the payload and invisible to the compiler.
+ *
+ * Both halves come from the generated schema. Read it with `hostDisplayName()`, never directly, and
+ * never read `name` for display.
+ */
+export type Host = components['schemas']['Host'] &
+	Pick<components['schemas']['HostResponse'], 'display_name'>;
 export type HostVirtualization = components['schemas']['HostVirtualization'];
 export type ProxmoxVirtualization = components['schemas']['ProxmoxVirtualization'];
 export type IPAddress = components['schemas']['IPAddress'];
@@ -50,19 +62,25 @@ export interface HostFormData {
 	hidden: boolean;
 	tags: string[];
 
-	// SNMP fields (populated by discovery, read-only in UI)
-	sys_descr: string | null;
-	sys_object_id: string | null;
-	sys_location: string | null;
-	sys_contact: string | null;
-	management_url: string | null;
-	chassis_id: string | null;
-	sys_name: string | null;
+	// SNMP fields (populated by discovery, read-only in UI).
+	//
+	// Optional rather than nullable: each of these now travels with the source that produced it,
+	// and an attribute with no value has no source either — the pair is present or it is not,
+	// with nothing in between for a `null` to mean.
+	sys_descr?: string;
+	sys_object_id?: string;
+	sys_location?: string;
+	sys_contact?: string;
+	management_url?: string;
+	chassis_id?: string;
+	sys_name?: string;
 
 	// Hardware identity (ENTITY-MIB or a controller integration, read-only in UI)
-	manufacturer: string | null;
-	model: string | null;
-	serial_number: string | null;
+	manufacturer?: string;
+	model?: string;
+	serial_number?: string;
+	firmware_revision?: string;
+	software_revision?: string;
 
 	// Credential assignments (user-editable, from junction table)
 	credential_assignments: CredentialAssignment[];

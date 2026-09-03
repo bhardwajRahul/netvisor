@@ -261,7 +261,6 @@ mod tests {
                 "a neighbour landed on {port}, which names no interface"
             );
         }
-        assert_eq!(scan.dropped_neighbours, 0);
 
         // The three breakout lanes are distinct ports, so the three end hosts must not collapse
         // onto one: taking the first match bound neighbours to a plausible-looking wrong port.

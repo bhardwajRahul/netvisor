@@ -19,10 +19,10 @@ impl ServiceDefinition for Proxmox {
     }
 
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::AnyOf(vec![
-            Pattern::Endpoint(PortType::new_tcp(8006), "/", "proxmox", None),
-            Pattern::Port(PortType::new_tcp(8006)),
-        ])
+        // The bare-port arm is gone. As an `AnyOf` alternative it meant any listener on 8006 was
+        // claimed as Proxmox whether or not the page said so, which made the endpoint match beside
+        // it decorative.
+        Pattern::Endpoint(PortType::new_tcp(8006), "/", "proxmox", None)
     }
 
     fn logo_url(&self) -> &'static str {

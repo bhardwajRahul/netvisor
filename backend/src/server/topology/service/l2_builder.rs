@@ -158,7 +158,7 @@ impl ViewBuilder for L2Builder {
                 },
                 position: Default::default(),
                 size: Default::default(),
-                header: Some(host.base.name.to_string()),
+                header: ctx.host_container_header(host),
             });
         }
 
@@ -174,7 +174,15 @@ impl ViewBuilder for L2Builder {
                 // `interfaces.neighbor` with no type check at all (see the loop above), so a
                 // neighbour that resolved onto a switch's VLAN or bridge interface used to produce
                 // an edge pointing at a node that was never created.
-                if EXCLUDED_IF_TYPES.contains(&entry.base.if_type) && !entry.has_neighbor() {
+                // An unread type is not an excluded one. A port learned from a neighbour's
+                // advertisement has no ifType, and dropping it for that would remove exactly the
+                // far ends this view exists to draw.
+                if entry
+                    .base
+                    .if_type
+                    .is_some_and(|if_type| EXCLUDED_IF_TYPES.contains(&if_type))
+                    && !entry.has_neighbor()
+                {
                     continue;
                 }
 
@@ -226,7 +234,7 @@ impl ViewBuilder for L2Builder {
                         is_trunk_port: interface
                             .and_then(|e| e.base.vlan_ids.as_ref())
                             .is_some_and(|v| !v.is_empty()),
-                        oper_status: interface.map(|e| e.base.oper_status),
+                        oper_status: interface.and_then(|e| e.base.oper_status),
                     })
                 } else {
                     None
@@ -243,10 +251,14 @@ impl ViewBuilder for L2Builder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::hosts::r#impl::name::HostName;
+    use crate::server::hosts::r#impl::attributes::HostChassisIdValue;
+    use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
+    use crate::server::services::r#impl::patterns::ClientProbe;
+    use crate::server::shared::attribution::{AttributeSource, Attributed};
     use crate::server::{
         hosts::r#impl::base::{Host, HostBase},
         interfaces::r#impl::base::{Interface, InterfaceBase, Neighbor, if_type},
+        ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
         lldp::LldpChassisId,
         topology::{
             service::context::TopologyContext,
@@ -265,7 +277,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             base: HostBase {
-                name: HostName::Manual(name.to_string()),
+                name: HostName::manual(name.to_string()),
                 ..Default::default()
             },
             ..Default::default()
@@ -284,10 +296,10 @@ mod tests {
             updated_at: Utc::now(),
             base: InterfaceBase {
                 host_id,
-                if_index,
+                if_index: Some(if_index),
                 if_descr: format!("GigabitEthernet0/{if_index}"),
                 if_name: Some(format!("Gi0/{if_index}")),
-                if_type,
+                if_type: Some(if_type),
                 speed_bps: Some(1_000_000_000),
                 neighbor,
                 ..Default::default()
@@ -353,6 +365,102 @@ mod tests {
         // No LLDP neighbors → no qualifying hosts → empty
         assert!(nodes.is_empty());
         assert!(edges.is_empty());
+    }
+
+    /// A host container says which device it is even when the host carries no name.
+    ///
+    /// `HostName::unnamed()` formats as the empty string, so the header used to be `Some("")`. That
+    /// is not absence: every consumer reads it with `??`, so the container drew a blank title and
+    /// no fallback ever fired. Unnamed hosts are a live state — controller-imported devices with
+    /// no assigned name sit at exactly that rung — and L2 is where they cluster.
+    #[test]
+    fn an_unnamed_host_container_falls_back_to_the_evidence_it_has() {
+        let mut by_chassis = make_host("");
+        by_chassis.base.name = HostName::unnamed();
+        by_chassis.base.chassis_id = Some(Attributed::new(
+            HostChassisIdValue("00:11:22:33:44:55".to_string()),
+            AttributeSource::Probe(ClientProbe::Snmp),
+        ));
+
+        let mut by_address = make_host("");
+        by_address.base.name = HostName::unnamed();
+
+        let mut anonymous = make_host("");
+        anonymous.base.name = HostName::unnamed();
+
+        // A neighbour on each of the other two qualifies all three: the far end is a link target.
+        let anchor = make_if_entry(by_chassis.id, 1, if_type::ETHERNET_CSMA_CD, None);
+        let mut from_address = make_if_entry(by_address.id, 1, if_type::ETHERNET_CSMA_CD, None);
+        from_address.base.neighbor = Some(Neighbor::Interface(anchor.id));
+        let mut from_anonymous = make_if_entry(anonymous.id, 2, if_type::ETHERNET_CSMA_CD, None);
+        from_anonymous.base.neighbor = Some(Neighbor::Interface(anchor.id));
+
+        let address = IPAddress::new(IPAddressBase {
+            network_id: Uuid::nil(),
+            host_id: by_address.id,
+            subnet_id: Uuid::new_v4(),
+            ip_address: "10.0.0.7".parse().unwrap(),
+            mac_address: None,
+            name: None,
+            position: 0,
+        });
+
+        let by_chassis_id = by_chassis.id;
+        let by_address_id = by_address.id;
+        let anonymous_id = anonymous.id;
+        let hosts = vec![by_chassis, by_address, anonymous];
+        let interfaces = vec![anchor, from_address, from_anonymous];
+        let ip_addresses = vec![address];
+        let options = TopologyOptions::default();
+        let ctx = TopologyContext::new(
+            &hosts,
+            &ip_addresses,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &interfaces,
+            &[],
+            &[],
+            &options,
+            crate::server::topology::types::views::TopologyView::L2Physical,
+        );
+
+        let (nodes, _) = L2Builder.build(&ctx, &l2_grouping());
+        let header_for = |host_id: Uuid| -> Option<String> {
+            nodes
+                .iter()
+                .find(|n| {
+                    matches!(
+                        n.node_type,
+                        NodeType::Container {
+                            container_type: ContainerType::Host,
+                            entity_id: Some(id),
+                            ..
+                        } if id == host_id
+                    )
+                })
+                .expect("every qualifying host gets a container")
+                .header
+                .clone()
+        };
+
+        assert_eq!(
+            header_for(by_chassis_id).as_deref(),
+            Some("00:11:22:33:44:55"),
+            "a device known only through LLDP still has a chassis id to be called by"
+        );
+        assert_eq!(
+            header_for(by_address_id).as_deref(),
+            Some("10.0.0.7"),
+            "an address is a poor name but it is an identity"
+        );
+        assert_eq!(
+            header_for(anonymous_id),
+            None,
+            "with nothing to say the header must be absent, not an empty string a `??` reads as present"
+        );
     }
 
     /// A virtual-typed interface is drawn when — and only when — it has a resolved neighbour.

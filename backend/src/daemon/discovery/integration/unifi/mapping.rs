@@ -10,6 +10,10 @@
 //! lowercase-colon form `from_snmp` does — the raw-string `hosts.chassis_id` fallback compares
 //! by string equality, so a UniFi-sourced and an SNMP-sourced chassis ID must be byte-identical.
 
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
+use crate::server::services::r#impl::patterns::ClientProbe;
+use crate::server::shared::attribution::AttributeSource;
+use crate::server::subnets::r#impl::inference::placeable_subnet;
 use std::collections::HashMap;
 use std::net::IpAddr;
 
@@ -45,10 +49,14 @@ pub struct MappedDevice {
 
 /// Translate a `stat/device` payload.
 ///
-/// Devices whose IP is missing, unparseable, or outside every known subnet are **skipped**:
-/// host deduplication is exclusively IP-based (`hosts/service/mod.rs::select_matching_host`),
-/// so a host created without a resolvable IP would mint a fresh duplicate on every scan rather
-/// than updating the existing one.
+/// A device whose IP is missing, unparseable, or in no subnet this network holds is skipped. The
+/// last of those is not placement — the server re-places every address it stores — it is that
+/// service matching needs a subnet to evaluate `Pattern::SubnetIsType` and the gateway patterns
+/// against, and there is nothing honest to hand it.
+///
+/// The rule is [`placeable_subnet`], not first-match: the list carries the `0.0.0.0/0`
+/// organizational rows, which contain every IPv4 address, so `find` returned `Internet` for
+/// everything and this skip never happened.
 pub fn map_devices(
     devices: &[UnifiDevice],
     network_id: Uuid,
@@ -74,10 +82,11 @@ fn map_device(
     by_mac: &HashMap<String, &UnifiDevice>,
 ) -> Option<MappedDevice> {
     let ip: IpAddr = device.ip.as_deref()?.trim().parse().ok()?;
-    let subnet = subnets.iter().find(|s| s.base.cidr.contains(&ip))?;
+    placeable_subnet(subnets, ip)?;
     let device_mac = device.mac.as_deref().and_then(canonical_mac);
 
     let identity = ControllerIdentity {
+        probe: ClientProbe::UnifiController,
         name: device.name.clone(),
         // Adopted infrastructure has no separate reported hostname; the controller's name is
         // the only one there is.
@@ -88,18 +97,21 @@ fn map_device(
         manufacturer: Some("Ubiquiti".to_string()),
         model: device.model.clone(),
         serial_number: device.serial.clone(),
-        sys_descr: device
-            .version
-            .as_ref()
-            .map(|v| format!("UniFi firmware {v}")),
+        firmware_revision: device.version.clone(),
     };
 
     let ip_address = IPAddress::new(IPAddressBase {
         network_id,
-        host_id: Uuid::nil(), // server assigns
-        subnet_id: subnet.id,
+        host_id: Uuid::nil(),   // server assigns
+        subnet_id: Uuid::nil(), // server places
         ip_address: ip,
-        mac_address: device_mac.as_deref().and_then(|m| m.parse().ok()),
+        // The controller reporting a device it manages, not the device answering us.
+        mac_address: device_mac.as_deref().and_then(|m| m.parse().ok()).map(|m| {
+            MacEvidence::new(
+                MacEvidenceValue(m),
+                AttributeSource::Probe(ClientProbe::UnifiController),
+            )
+        }),
         name: None,
         position: 0,
     });
@@ -141,19 +153,25 @@ fn map_interfaces(
         interfaces.push(Interface::new(InterfaceBase {
             host_id: Uuid::nil(),
             network_id,
-            if_index,
+            if_index: Some(if_index),
             if_descr: name.clone(),
             if_name: Some(name),
-            if_type: IF_TYPE_ETHERNET,
-            admin_status: IfAdminStatus::Up,
-            oper_status: IfOperStatus::Up,
+            if_type: Some(IF_TYPE_ETHERNET),
+            admin_status: Some(IfAdminStatus::Up),
+            oper_status: Some(IfOperStatus::Up),
             // Unlike a switch's repeated port MACs this is the device's own distinct
             // interface address, so it is safe (and useful) to record.
             mac_address: uplink
                 .mac
                 .as_deref()
                 .and_then(canonical_mac)
-                .and_then(|m| m.parse().ok()),
+                .and_then(|m| m.parse().ok())
+                .map(|m| {
+                    MacEvidence::new(
+                        MacEvidenceValue(m),
+                        AttributeSource::Probe(ClientProbe::UnifiController),
+                    )
+                }),
             ..Default::default()
         }));
     }
@@ -183,7 +201,13 @@ fn port_to_interface(port: &UnifiPort, network_id: Uuid, device_mac: Option<&str
     // gateways report for WAN/LAN) is recorded.
     let mac_address = port_mac
         .filter(|m| device_mac != Some(m.as_str()))
-        .and_then(|m| m.parse().ok());
+        .and_then(|m| m.parse().ok())
+        .map(|m| {
+            MacEvidence::new(
+                MacEvidenceValue(m),
+                AttributeSource::Probe(ClientProbe::UnifiController),
+            )
+        });
 
     let fdb_macs: Vec<String> = port
         .mac_table
@@ -195,22 +219,22 @@ fn port_to_interface(port: &UnifiPort, network_id: Uuid, device_mac: Option<&str
     Interface::new(InterfaceBase {
         host_id: Uuid::nil(),
         network_id,
-        if_index,
+        if_index: Some(if_index),
         if_descr: name.clone(),
         if_name: Some(name),
-        if_type: IF_TYPE_ETHERNET,
+        if_type: Some(IF_TYPE_ETHERNET),
         speed_bps: port
             .speed
             .map(|s| s.as_i64() * 1_000_000)
             .filter(|s| *s > 0),
-        admin_status: match port.enable.map(|e| e.as_bool()) {
+        admin_status: Some(match port.enable.map(|e| e.as_bool()) {
             Some(false) => IfAdminStatus::Down,
             _ => IfAdminStatus::Up,
-        },
-        oper_status: match port.up.map(|u| u.as_bool()) {
+        }),
+        oper_status: Some(match port.up.map(|u| u.as_bool()) {
             Some(true) => IfOperStatus::Up,
             _ => IfOperStatus::Down,
-        },
+        }),
         mac_address,
         // `None` rather than an empty vec: the server's unresolved-FDB filter keys on the
         // column being non-NULL.
@@ -228,7 +252,10 @@ fn apply_uplink(interfaces: &mut [Interface], device: &UnifiDevice) {
     let Some(port_idx) = uplink.port_idx.map(|p| p.as_i32()) else {
         return;
     };
-    let Some(interface) = interfaces.iter_mut().find(|i| i.base.if_index == port_idx) else {
+    let Some(interface) = interfaces
+        .iter_mut()
+        .find(|i| i.base.if_index == Some(port_idx))
+    else {
         return;
     };
 
@@ -259,7 +286,10 @@ fn apply_downlinks(
         let Some(port_idx) = downlink.port_idx.map(|p| p.as_i32()) else {
             continue;
         };
-        let Some(interface) = interfaces.iter_mut().find(|i| i.base.if_index == port_idx) else {
+        let Some(interface) = interfaces
+            .iter_mut()
+            .find(|i| i.base.if_index == Some(port_idx))
+        else {
             continue;
         };
 
@@ -291,7 +321,10 @@ fn apply_lldp_table(interfaces: &mut [Interface], device: &UnifiDevice) {
         let Some(local_idx) = entry.local_port_idx.map(|p| p.as_i32()) else {
             continue;
         };
-        let Some(interface) = interfaces.iter_mut().find(|i| i.base.if_index == local_idx) else {
+        let Some(interface) = interfaces
+            .iter_mut()
+            .find(|i| i.base.if_index == Some(local_idx))
+        else {
             continue;
         };
 
@@ -319,27 +352,26 @@ fn apply_lldp_table(interfaces: &mut [Interface], device: &UnifiDevice) {
 pub fn map_clients(
     stations: &[UnifiStation],
     network_id: Uuid,
-    subnets: &[Subnet],
     device_ips: &[IpAddr],
 ) -> Vec<MappedClient> {
     stations
         .iter()
         .filter_map(|station| {
             let identity = ControllerIdentity {
+                probe: ClientProbe::UnifiController,
                 name: station.name.clone(),
                 hostname: station.hostname.clone(),
                 chassis_id: None,
                 manufacturer: station.oui.clone(),
                 model: None,
                 serial_number: None,
-                sys_descr: None,
+                firmware_revision: None,
             };
             MappedClient::new(
                 identity,
                 station.ip.as_deref(),
                 station.mac.as_deref(),
                 network_id,
-                subnets,
             )
         })
         .filter(|client| !device_ips.contains(&client.ip))
@@ -350,8 +382,10 @@ pub fn map_clients(
 mod tests {
     use super::*;
     use crate::daemon::discovery::integration::unifi::types::UnifiEnvelope;
+    use crate::server::ip_addresses::r#impl::base::mac_of;
     use crate::server::shared::types::entities::EntitySource;
     use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use crate::server::subnets::r#impl::types::SubnetType;
 
     // ------------------------------------------------------------------------------------
@@ -386,13 +420,81 @@ mod tests {
             base: SubnetBase {
                 name: "Test".to_string(),
                 network_id,
-                cidr: "192.168.20.0/24".parse().expect("valid CIDR"),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue("192.168.20.0/24".parse().expect("valid CIDR")),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 subnet_type: SubnetType::Lan,
                 source: EntitySource::System,
                 ..Default::default()
             },
             ..Default::default()
         }]
+    }
+
+    /// Every network is seeded with an `Internet` and a `Remote Network` subnet, both `0.0.0.0/0`,
+    /// and the daemon's list is the network's whole address space — so both are in it. No test
+    /// here included them, which is why first-match placement survived: `find` matched `Internet`
+    /// for every IPv4 address, so a device was never actually skipped and every one of them was
+    /// filed under the internet.
+    fn subnets_with_catch_alls(network_id: Uuid) -> Vec<Subnet> {
+        let catch_all = |name: &str| Subnet {
+            base: SubnetBase {
+                name: name.to_string(),
+                network_id,
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue("0.0.0.0/0".parse().expect("valid CIDR")),
+                    AttributeSource::DaemonSelfReport,
+                ),
+                subnet_type: SubnetType::Internet,
+                source: EntitySource::System,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        // Seeded first, so they lead the `created_at ASC` order the daemon receives.
+        let mut subnets = vec![catch_all("Internet"), catch_all("Remote Network")];
+        subnets.extend(test_subnets(network_id));
+        subnets
+    }
+
+    /// A device on a real subnet is placed there even with the catch-alls ahead of it in the list.
+    #[test]
+    fn a_device_is_placed_on_its_real_subnet_not_a_catch_all() {
+        let network_id = Uuid::new_v4();
+        let devices = parse(USW_UPLINK);
+        let real = test_subnets(network_id)[0].id;
+
+        let mapped = map_devices(&devices, network_id, &subnets_with_catch_alls(network_id));
+
+        assert!(
+            !mapped.is_empty(),
+            "the fixture must map at least one device"
+        );
+        for device in &mapped {
+            assert_eq!(
+                device.ip_address.base.subnet_id, real,
+                "{} was filed under a catch-all",
+                device.ip
+            );
+        }
+    }
+
+    /// And a device in a range this network does not hold is skipped rather than filed under one —
+    /// service matching has no subnet to evaluate its subnet patterns against for it.
+    #[test]
+    fn a_device_in_no_held_range_is_skipped_rather_than_filed_under_a_catch_all() {
+        let network_id = Uuid::new_v4();
+        let devices = parse(USW_UPLINK);
+
+        // Only the catch-alls: nothing here holds the fixture's addresses.
+        let only_catch_alls: Vec<Subnet> = subnets_with_catch_alls(network_id)
+            .into_iter()
+            .filter(|s| s.base.cidr.to_string() == "0.0.0.0/0")
+            .collect();
+
+        assert!(map_devices(&devices, network_id, &only_catch_alls).is_empty());
     }
 
     fn map(json: &str) -> Vec<MappedDevice> {
@@ -404,7 +506,7 @@ mod tests {
         device
             .interfaces
             .iter()
-            .find(|i| i.base.if_index == if_index)
+            .find(|i| i.base.if_index == Some(if_index))
             .unwrap_or_else(|| panic!("expected an interface at index {if_index}"))
     }
 
@@ -423,8 +525,8 @@ mod tests {
         let switch = find(&devices, "Core Switch");
         let port = interface(switch, 5);
         assert_eq!(port.base.speed_bps, Some(1_000_000_000));
-        assert_eq!(port.base.oper_status, IfOperStatus::Up);
-        assert_eq!(port.base.admin_status, IfAdminStatus::Up);
+        assert_eq!(port.base.oper_status, Some(IfOperStatus::Up));
+        assert_eq!(port.base.admin_status, Some(IfAdminStatus::Up));
         // "port_idx": "24" on the uplink still lands the neighbor on port 24.
         assert!(interface(switch, 24).base.lldp_chassis_id.is_some());
     }
@@ -620,12 +722,9 @@ mod tests {
         let ap = find(&devices, "Office AP");
         assert_eq!(ap.interfaces.len(), 1);
         let uplink = &ap.interfaces[0];
-        assert_eq!(uplink.base.if_index, 1);
+        assert_eq!(uplink.base.if_index, Some(1));
         assert_eq!(
-            uplink
-                .base
-                .mac_address
-                .map(|m| m.to_string().to_lowercase()),
+            mac_of(&uplink.base.mac_address).map(|m| m.to_string().to_lowercase()),
             Some("f0:9f:c2:aa:00:12".to_string()),
             "an AP's eth0 MAC is genuinely distinct, unlike a switch's repeated port MACs"
         );

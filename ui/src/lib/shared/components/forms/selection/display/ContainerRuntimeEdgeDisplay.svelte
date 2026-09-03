@@ -1,6 +1,7 @@
 <script lang="ts" module>
 	import { edgeTypes, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import type { RenderableTopology, TopologyEdge } from '$lib/features/topology/types/base';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 
 	export const ContainerRuntimeEdgeDisplay: EntityDisplayComponent<
 		TopologyEdge,
@@ -27,7 +28,7 @@
 				'host_id' in edge ? context.topology.hosts.find((h) => h.id === edge.host_id) : null;
 			const parts: string[] = [];
 			if (containerizer) parts.push(containerizer.name);
-			if (host) parts.push(host.name);
+			if (host) parts.push(hostDisplayName(host));
 			return parts.join(' · ');
 		},
 		getIcon: () => edgeTypes.getIconComponent('ContainerRuntime'),

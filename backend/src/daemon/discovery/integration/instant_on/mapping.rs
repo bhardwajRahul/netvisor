@@ -20,6 +20,10 @@
 //!    (`"1/1/1"`), which is handled by deriving interface identity from the port's own reported id
 //!    rather than assuming a flat index — see [`port_if_index`].
 
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
+use crate::server::services::r#impl::patterns::ClientProbe;
+use crate::server::shared::attribution::AttributeSource;
+use crate::server::subnets::r#impl::inference::placeable_subnet;
 use std::collections::HashMap;
 use std::net::IpAddr;
 
@@ -104,10 +108,13 @@ fn map_device(
     by_id: &HashMap<&str, &InstantOnDevice>,
 ) -> Option<MappedDevice> {
     let ip: IpAddr = device.ip_address.as_deref()?.trim().parse().ok()?;
-    let subnet = subnets.iter().find(|s| s.base.cidr.contains(&ip))?;
+    // Not first-match: the list carries the `0.0.0.0/0` organizational rows, which contain every
+    // IPv4 address, so `find` returned `Internet` for everything and nothing was ever skipped.
+    let subnet = placeable_subnet(subnets, ip)?;
     let device_mac = device.mac_address.as_deref().and_then(canonical_mac);
 
     let identity = ControllerIdentity {
+        probe: ClientProbe::InstantOn,
         name: device.name.clone(),
         // Adopted infrastructure has no separate reported hostname; the portal's name is the
         // only one there is.
@@ -118,10 +125,7 @@ fn map_device(
         manufacturer: Some("HPE".to_string()),
         model: device.model.clone(),
         serial_number: device.serial_number.clone(),
-        sys_descr: device
-            .firmware_version
-            .as_ref()
-            .map(|v| format!("Instant On firmware {v}")),
+        firmware_revision: device.firmware_version.clone(),
     };
 
     let ip_address = IPAddress::new(IPAddressBase {
@@ -129,7 +133,13 @@ fn map_device(
         host_id: Uuid::nil(), // server assigns
         subnet_id: subnet.id,
         ip_address: ip,
-        mac_address: device_mac.as_deref().and_then(|m| m.parse().ok()),
+        // The controller reporting a device it manages, not the device answering us.
+        mac_address: device_mac.as_deref().and_then(|m| m.parse().ok()).map(|m| {
+            MacEvidence::new(
+                MacEvidenceValue(m),
+                AttributeSource::Probe(ClientProbe::InstantOn),
+            )
+        }),
         name: None,
         position: 0,
     });
@@ -171,12 +181,12 @@ fn map_interfaces(
         interfaces.push(Interface::new(InterfaceBase {
             host_id: Uuid::nil(),
             network_id,
-            if_index: 1,
+            if_index: Some(1),
             if_descr: name.clone(),
             if_name: Some(name),
-            if_type: IF_TYPE_ETHERNET,
-            admin_status: IfAdminStatus::Up,
-            oper_status: IfOperStatus::Up,
+            if_type: Some(IF_TYPE_ETHERNET),
+            admin_status: Some(IfAdminStatus::Up),
+            oper_status: Some(IfOperStatus::Up),
             ..Default::default()
         }));
     }
@@ -241,22 +251,22 @@ fn port_to_interface(port: &InstantOnPort, position: usize, network_id: Uuid) ->
     Interface::new(InterfaceBase {
         host_id: Uuid::nil(),
         network_id,
-        if_index,
+        if_index: Some(if_index),
         if_descr: name.clone(),
         if_name: Some(name),
-        if_type: IF_TYPE_ETHERNET,
+        if_type: Some(IF_TYPE_ETHERNET),
         speed_bps: port
             .speed
             .map(|s| s.as_i64() * 1_000_000)
             .filter(|s| *s > 0),
-        admin_status: match port.enabled.map(|e| e.as_bool()) {
+        admin_status: Some(match port.enabled.map(|e| e.as_bool()) {
             Some(false) => IfAdminStatus::Down,
             _ => IfAdminStatus::Up,
-        },
-        oper_status: match port.up.map(|u| u.as_bool()) {
+        }),
+        oper_status: Some(match port.up.map(|u| u.as_bool()) {
             Some(true) => IfOperStatus::Up,
             _ => IfOperStatus::Down,
-        },
+        }),
         // The portal's per-port `vlanId` is deliberately not mapped. `InterfaceBase`'s VLAN
         // columns hold VLAN *entity* ids, not raw tags, so recording one would mean resolving it
         // to a VLAN entity — and an access VLAN is not the membership list SNMP walks anyway.
@@ -284,7 +294,7 @@ fn apply_uplink(
     };
     let Some(interface) = interfaces
         .iter_mut()
-        .find(|i| i.base.if_index == local_index)
+        .find(|i| i.base.if_index == Some(local_index))
     else {
         return;
     };
@@ -360,7 +370,10 @@ fn apply_client_macs(
         let Some(index) = index_of_port(device, port_id) else {
             continue;
         };
-        let Some(interface) = interfaces.iter_mut().find(|i| i.base.if_index == index) else {
+        let Some(interface) = interfaces
+            .iter_mut()
+            .find(|i| i.base.if_index == Some(index))
+        else {
             continue;
         };
 
@@ -385,13 +398,13 @@ fn apply_client_macs(
 pub fn map_clients(
     clients: &[InstantOnClient],
     network_id: Uuid,
-    subnets: &[Subnet],
     device_ips: &[IpAddr],
 ) -> Vec<MappedClient> {
     clients
         .iter()
         .filter_map(|client| {
             let identity = ControllerIdentity {
+                probe: ClientProbe::InstantOn,
                 name: client.name.clone(),
                 // The portal reports one name per client and does not distinguish an assigned
                 // alias from a DHCP hostname.
@@ -400,14 +413,13 @@ pub fn map_clients(
                 manufacturer: None,
                 model: None,
                 serial_number: None,
-                sys_descr: None,
+                firmware_revision: None,
             };
             MappedClient::new(
                 identity,
                 client.ip_address.as_deref(),
                 client.mac_address.as_deref(),
                 network_id,
-                subnets,
             )
         })
         .filter(|client| !device_ips.contains(&client.ip))
@@ -421,6 +433,7 @@ mod tests {
     use crate::server::interfaces::r#impl::base::{IfAdminStatus, IfOperStatus};
     use crate::server::shared::types::entities::EntitySource;
     use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use crate::server::subnets::r#impl::types::SubnetType;
 
     // ------------------------------------------------------------------------------------
@@ -445,19 +458,68 @@ mod tests {
         envelope.elements
     }
 
-    /// The 192.168.20.0/24 the fixtures live on. `10.99.99.99` is deliberately outside it.
+    /// The 192.168.20.0/24 the fixtures live on, **plus the two `0.0.0.0/0` rows every network is
+    /// seeded with** — because that is what the daemon actually receives, and a list without them
+    /// is what let first-match placement file every device under `Internet` while looking correct
+    /// in every test. `10.99.99.99` is deliberately outside the real subnet.
     fn test_subnets(network_id: Uuid) -> Vec<Subnet> {
-        vec![Subnet {
+        let subnet = |name: &str, cidr: &str, subnet_type| Subnet {
             base: SubnetBase {
-                name: "Test".to_string(),
+                name: name.to_string(),
                 network_id,
-                cidr: "192.168.20.0/24".parse().expect("valid CIDR"),
-                subnet_type: SubnetType::Lan,
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(cidr.parse().expect("valid CIDR")),
+                    AttributeSource::DaemonSelfReport,
+                ),
+                subnet_type,
                 source: EntitySource::Discovery,
                 ..Default::default()
             },
             ..Default::default()
-        }]
+        };
+
+        // Seeded first, so they lead the `created_at ASC` order the daemon receives.
+        vec![
+            subnet("Internet", "0.0.0.0/0", SubnetType::Internet),
+            subnet("Remote Network", "0.0.0.0/0", SubnetType::Remote),
+            subnet("Test", "192.168.20.0/24", SubnetType::Lan),
+        ]
+    }
+
+    /// A device on the real subnet is placed there, and one outside every range this network holds
+    /// is skipped — not filed under a catch-all that technically contains it.
+    #[test]
+    fn devices_are_placed_on_real_subnets_and_never_on_a_catch_all() {
+        let network_id = Uuid::new_v4();
+        let subnets = test_subnets(network_id);
+        let real = subnets
+            .iter()
+            .find(|s| s.base.cidr.to_string() == "192.168.20.0/24")
+            .expect("the real subnet")
+            .id;
+
+        let mapped = map_devices(
+            &parse::<InstantOnDevice>(INVENTORY),
+            &parse::<InstantOnClient>(CLIENTS),
+            network_id,
+            &subnets,
+        );
+
+        assert!(
+            !mapped.is_empty(),
+            "the fixture must map at least one device"
+        );
+        for device in &mapped {
+            assert_eq!(
+                device.ip_address.base.subnet_id, real,
+                "{} was filed somewhere other than the subnet that holds it",
+                device.ip
+            );
+        }
+        assert!(
+            !mapped.iter().any(|d| d.ip.to_string() == "10.99.99.99"),
+            "a device outside every held range must be skipped, not placed on a catch-all"
+        );
     }
 
     fn map() -> Vec<MappedDevice> {
@@ -481,7 +543,7 @@ mod tests {
         device
             .interfaces
             .iter()
-            .find(|i| i.base.if_index == if_index)
+            .find(|i| i.base.if_index == Some(if_index))
             .unwrap_or_else(|| panic!("expected an interface at index {if_index}"))
     }
 
@@ -495,7 +557,7 @@ mod tests {
         let stack = find(&devices, "Core Stack");
 
         assert_eq!(stack.interfaces.len(), 4);
-        let indexes: std::collections::HashSet<i32> =
+        let indexes: std::collections::HashSet<Option<i32>> =
             stack.interfaces.iter().map(|i| i.base.if_index).collect();
         assert_eq!(indexes.len(), 4, "every stack port needs its own if_index");
 
@@ -611,20 +673,20 @@ mod tests {
         // "up": "true" and "enabled": 1 both read as up.
         assert_eq!(
             interface(stack, 2_001_001).base.oper_status,
-            IfOperStatus::Up
+            Some(IfOperStatus::Up)
         );
         assert_eq!(
             interface(stack, 2_001_001).base.admin_status,
-            IfAdminStatus::Up
+            Some(IfAdminStatus::Up)
         );
         // A down port is reported honestly.
         assert_eq!(
             interface(stack, 2_001_002).base.oper_status,
-            IfOperStatus::Down
+            Some(IfOperStatus::Down)
         );
         assert_eq!(
             interface(stack, 2_001_002).base.admin_status,
-            IfAdminStatus::Down
+            Some(IfAdminStatus::Down)
         );
     }
 
@@ -655,10 +717,7 @@ mod tests {
         assert_eq!(stack.identity.manufacturer.as_deref(), Some("HPE"));
         assert_eq!(stack.identity.model.as_deref(), Some("1960-48G-4SFP"));
         assert_eq!(stack.identity.serial_number.as_deref(), Some("STACK-SER-1"));
-        assert_eq!(
-            stack.identity.sys_descr.as_deref(),
-            Some("Instant On firmware 3.4.0")
-        );
+        assert_eq!(stack.identity.firmware_revision.as_deref(), Some("3.4.0"));
         // Canonicalised to the same lowercase-colon form SNMP writes, so a neighbor's advertised
         // chassis ID can reach this host by string equality.
         assert_eq!(

@@ -2,6 +2,7 @@
 	import type { Interface, IPAddress } from '$lib/features/hosts/types/base';
 	import type { Subnet } from '$lib/features/subnets/types/base';
 	import type { Host } from '$lib/features/hosts/types/base';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import { getAdminStatusLabels, getOperStatusLabels } from '$lib/features/credentials/types/base';
 	import CollapsibleCard from '$lib/shared/components/data/CollapsibleCard.svelte';
 	import InfoRow from '$lib/shared/components/data/InfoRow.svelte';
@@ -16,10 +17,10 @@
 		common_macAddress,
 		common_speed,
 		common_status,
+		common_index,
 		common_unknown,
 		hosts_interfaces_adminStatus,
 		hosts_interfaces_aliasDescription,
-		hosts_interfaces_index,
 		hosts_interfaces_nativeVlan,
 		hosts_interfaces_neighbor,
 		hosts_interfaces_operStatus,
@@ -62,8 +63,13 @@
 		return `${speed} bps`;
 	}
 
-	let adminStatusLabel = $derived(getAdminStatusLabels()[iface.admin_status] ?? common_unknown());
-	let operStatusLabel = $derived(getOperStatusLabels()[iface.oper_status] ?? common_unknown());
+	// A status nothing read is unknown, the same as one this build has no label for.
+	let adminStatusLabel = $derived(
+		(iface.admin_status && getAdminStatusLabels()[iface.admin_status]) || common_unknown()
+	);
+	let operStatusLabel = $derived(
+		(iface.oper_status && getOperStatusLabels()[iface.oper_status]) || common_unknown()
+	);
 
 	let operStatusColor: Color = $derived.by(() => {
 		switch (iface.oper_status) {
@@ -97,7 +103,7 @@
 	<InfoRow label={common_macAddress()} mono>{iface.mac_address || '-'}</InfoRow>
 	<InfoRow label={common_speed()}>{formatSpeed(iface.speed_bps)}</InfoRow>
 	<InfoRow label={hosts_interfaces_aliasDescription()}>{iface.if_alias || '-'}</InfoRow>
-	<InfoRow label={hosts_interfaces_index({ index: iface.if_index })}>{iface.if_index}</InfoRow>
+	<InfoRow label={common_index()}>{iface.if_index ?? '-'}</InfoRow>
 
 	<InfoRow label={common_ipAddress()}>
 		{#if linkedIpAddress}
@@ -161,7 +167,7 @@
 				{#if neighborHost}
 					<EntityTag
 						entityRef={entityRef('Host', neighborHost.id, neighborHost)}
-						label={neighborHost.name}
+						label={hostDisplayName(neighborHost)}
 						icon={entities.getIconComponent('Host')}
 						color={entities.getColorHelper('Host').color}
 					/>

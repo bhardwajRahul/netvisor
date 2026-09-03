@@ -6,6 +6,7 @@
 		Background,
 		BackgroundVariant,
 		useNodesInitialized,
+		useViewport,
 		type Connection,
 		useSvelteFlow
 	} from '@xyflow/svelte';
@@ -16,9 +17,19 @@
 		topology_levelContainersExpanded,
 		topology_levelSubcontainersExpanded,
 		topology_levelFullyExpanded,
-		topology_parseFailed
+		topology_parseFailed,
+		topology_detailSimplified,
+		common_rendering
 	} from '$lib/paraglide/messages';
 	import { type Node, type Edge } from '@xyflow/svelte';
+	import { getViewportForBounds, type Rect } from '@xyflow/system';
+	import { shouldSimplify } from '../../pipeline/render-mode';
+	import {
+		ABSOLUTE_MIN_ZOOM,
+		DEFAULT_MIN_ZOOM,
+		boundsOfNodes,
+		zoomFloorFor
+	} from '../../viewport-fit';
 	import '@xyflow/svelte/dist/style.css';
 	import './topology-viewer.css';
 	import { pushError } from '$lib/shared/stores/feedback';
@@ -41,7 +52,13 @@
 		topologyOptionsHydrated,
 		activeView
 	} from '../../queries';
-	import { isExporting, expandedPortNodeIds } from '../../interactions';
+	import {
+		isExporting,
+		isMeasuring,
+		detailSimplified,
+		isRenderingTopology,
+		expandedPortNodeIds
+	} from '../../interactions';
 
 	// Import custom node/edge components
 	import ContainerNode from './ContainerNode.svelte';
@@ -180,12 +197,65 @@
 	/** Empty handle map for measurement builds, whose handles `stripSizeSeed` removes anyway. */
 	const NO_HANDLES: Map<string, Set<string>> = new Map();
 
+	/**
+	 * SvelteFlow's own default, stated so the fit measurement and the canvas use one number.
+	 *
+	 * Passed to the flow as well as to `getViewportForBounds` below. Left implicit, the two could
+	 * be given different ceilings and the measured "required zoom" would stop describing the fit
+	 * the canvas actually performs.
+	 */
+	const MAX_ZOOM = 2;
+
 	// Track viewport panning state
 	let viewportMoved = false;
 	let viewportMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
-	const { fitView, getNodes, getInternalNode } = useSvelteFlow();
+	const { fitView, setViewport, getNodes, getInternalNode, getViewport } = useSvelteFlow();
+	const viewerViewport = useViewport();
 	let containerElement: HTMLDivElement;
+
+	/**
+	 * Bounds of the graph the pipeline last wrote, in graph coordinates.
+	 *
+	 * Read from `$nodes` rather than `getNodes()`: on a view switch SvelteFlow has not adopted the
+	 * new set yet, and the bounds are wanted exactly then.
+	 */
+	function getLayoutBounds(): Rect | null {
+		return boundsOfNodes($nodes);
+	}
+
+	/**
+	 * The viewport that frames `bounds`, at a given zoom floor.
+	 *
+	 * One helper for both the fit and the measurement of what the fit wanted, so the two cannot
+	 * disagree about padding, pane size or what "fits" means — they are the same call with a
+	 * different floor.
+	 */
+	function viewportFor(bounds: Rect, minZoom: number) {
+		return getViewportForBounds(
+			bounds,
+			containerElement?.clientWidth ?? 0,
+			containerElement?.clientHeight ?? 0,
+			minZoom,
+			MAX_ZOOM,
+			getFitViewPadding()
+		);
+	}
+
+	/**
+	 * The zoom a fit needs, measured at the absolute floor so no clamp can hide the answer.
+	 *
+	 * `null` until the pane has a size. `containerElement` is a `bind:this`, so for the first
+	 * render or two it is unbound and reads 0×0 — against which every graph "needs" the absolute
+	 * floor, which would drop the zoom floor to its minimum on a graph that fits comfortably and
+	 * report a required zoom that describes nothing.
+	 */
+	function requiredFitZoom(bounds: Rect): number | null {
+		const paneWidth = containerElement?.clientWidth ?? 0;
+		const paneHeight = containerElement?.clientHeight ?? 0;
+		if (paneWidth <= 0 || paneHeight <= 0) return null;
+		return viewportFor(bounds, ABSOLUTE_MIN_ZOOM).zoom;
+	}
 
 	/**
 	 * Returns fitView padding that accounts for overlays (options panel, minimap).
@@ -292,8 +362,25 @@
 		};
 	}
 
-	export function triggerFitView() {
-		requestAnimationFrame(() => fitView({ padding: getFitViewPadding() }));
+	/**
+	 * Fit the whole graph, without waiting for SvelteFlow to decide the nodes are ready.
+	 *
+	 * `fitView()` does not move the viewport. It sets `fitViewQueued` and the fit is applied from
+	 * the `nodesInitialized` derived, which is false while *any* node lacks `measured` — and the
+	 * only other way through is `updateNodeInternals`, which needs a node to mount and measure.
+	 * With culling on, a transform left over from the previous view can select nothing at all, and
+	 * then nothing mounts, so nothing measures, so the queued fit never runs and the transform
+	 * never moves. That is a closed loop: a blank canvas where `F` does nothing, which is how this
+	 * was reported.
+	 *
+	 * Computing the viewport and pushing it through `setViewport` is what `fitView` would
+	 * eventually have done, minus the wait for a condition the blank state prevents. We already
+	 * know the bounds — the pipeline just laid them out.
+	 */
+	export async function triggerFitView() {
+		const bounds = getLayoutBounds();
+		if (!bounds) return;
+		await setViewport(viewportFor(bounds, derivedMinZoom));
 	}
 
 	export function fitViewToNodes(nodeIds: string[]) {
@@ -350,7 +437,9 @@
 	 * a culled node never mounts, so measurement would silently return sizes for the on-screen
 	 * subset and hand ELK fallbacks for the rest. Set on *every* measure pass, not just the first.
 	 */
-	let measurePassActive = $state(false);
+	// A store, not component state: node components need to see it too — a card simplified for
+	// low zoom would otherwise be measured at its pinned height instead of its content's.
+	let measurePassActive = $derived($isMeasuring);
 
 	/**
 	 * The cold load is measuring, which additionally suppresses the expand animation.
@@ -373,12 +462,50 @@
 
 	/** Both flags down: no pass is measuring and the pane may show. */
 	function endMeasurePass(): void {
-		measurePassActive = false;
+		isMeasuring.set(false);
 		coldLoadMeasure = false;
 	}
 
+	/**
+	 * The zoom floor, derived from the graph rather than fixed.
+	 *
+	 * A hard-coded `0.1` is what made a large estate unfittable: every fit clamped, so `F` appeared
+	 * to do nothing and the canvas showed a fraction of the graph at a tenth scale. Recomputed as
+	 * the store changes, since the graph a collapse press produces is a different size.
+	 */
+	let derivedMinZoom = $derived.by(() => {
+		const bounds = boundsOfNodes($nodes);
+		if (!bounds) return DEFAULT_MIN_ZOOM;
+		const required = requiredFitZoom(bounds);
+		return required === null ? DEFAULT_MIN_ZOOM : zoomFloorFor(required);
+	});
+
 	// Cull off-screen nodes once the graph is big enough — see
 	// `pipeline/render-mode.ts` for why measuring and exporting must suspend it.
+	/**
+	 * Whether the canvas is currently drawing boxes instead of contents.
+	 *
+	 * Read once here for the badge below, rather than inferred from anything the nodes do. A view
+	 * that silently stops showing what it was showing reads as a bug — the original report this
+	 * whole line of work came from was someone describing exactly that — so the drop in detail is
+	 * stated on screen rather than left to be discovered.
+	 *
+	 * Reading the viewport reactively costs one component here, and the value is a boolean, so the
+	 * badge appears and disappears on threshold crossings rather than on every pan frame.
+	 */
+	let detailHidden = $derived(
+		shouldSimplify({
+			zoom: viewerViewport.current.zoom,
+			nodeCount: $nodes.length,
+			measuring: measurePassActive,
+			exporting: $isExporting
+		})
+	);
+
+	// Publish rather than let each node decide: the size term above is not visible to a node, and
+	// one refcounted subscription beats a viewport read per node. See `detailSimplified`.
+	$effect(() => detailSimplified.set(detailHidden));
+
 	let cullOffscreen = $derived(
 		shouldCull({
 			renderedCount: $nodes.length,
@@ -402,7 +529,19 @@
 		internalNodes: () => $nodes.map((n) => getInternalNode(n.id)),
 		// The payload as the server sent it, so a report can tell "few edges arrived" from "many
 		// arrived and were dropped in rendering" — the two causes `store.edges` cannot separate.
-		payload: () => topology ?? null
+		payload: () => topology ?? null,
+		// The zoom a fit wants against the zoom it is allowed. Lazy, because it walks the store.
+		fitZoom: () => {
+			const bounds = boundsOfNodes($nodes);
+			if (!bounds) return null;
+			const required = requiredFitZoom(bounds);
+			if (required === null) return null;
+			return {
+				required,
+				applied: getViewport().zoom,
+				clampedAtFloor: required < derivedMinZoom
+			};
+		}
 	});
 	installDiagnostics(diagnosticInputs);
 
@@ -456,7 +595,24 @@
 	// switch). Keeps auto-collapse of the infra subcontainer correct on switch.
 	const getInfrastructureRuleId = () => getInfrastructureRuleIdForTopology(topology);
 
+	/**
+	 * Whether a pipeline run is in flight. Deliberately *not* `$state`.
+	 *
+	 * `triggerLoad` both reads this and writes it, and it is called from an `$effect` (the topology
+	 * prop watcher below). As a rune that read is tracked, so the write re-invalidates the effect,
+	 * which calls `triggerLoad` again — an unbounded loop that hangs the page before the first
+	 * layout, on a graph of any size. It was introduced and reverted once; do not make it reactive.
+	 *
+	 * The UI still needs to know, so `setLoadInProgress` mirrors it into a store. The store is only
+	 * ever read by the template and by other components, never by the control flow here, which is
+	 * what keeps the cycle broken.
+	 */
 	let loadInProgress = false;
+
+	function setLoadInProgress(value: boolean): void {
+		loadInProgress = value;
+		isRenderingTopology.set(value);
+	}
 	let pendingReload = false;
 	/**
 	 * Escape hatch for the hydration gate below.
@@ -526,16 +682,33 @@
 		// Always-on twin of the counter above: `perf` records nothing in a customer's build, and
 		// which trigger started a run is the missing half of the zero-sized-container reports.
 		noteRunStart(source);
-		loadInProgress = true;
+		setLoadInProgress(true);
 		pendingReload = false;
-		void loadTopologyData()
+		// Give the browser one frame to draw the indicator before the run starts.
+		//
+		// Svelte flushes the DOM on a microtask, but painting needs a frame, and a run reaches its
+		// synchronous ELK without yielding one. ~16ms against the eighteen to twenty-two seconds of
+		// layout that are the reason for having an indicator at all.
+		//
+		// Not the fix for the spinner sitting still — that was the icon being an inline SVG, which
+		// the compositor will not drive, so the animation depended on the very thread ELK was
+		// holding. An earlier version of this comment claimed the indicator "never rendered", from a
+		// sampler that ran in-page and was therefore blocked alongside everything else: it recorded
+		// an absence it could not tell apart from the element not existing. It rendered fine.
+		requestAnimationFrame(() => {
+			void runPipeline();
+		});
+	}
+
+	function runPipeline(): Promise<void> {
+		return loadTopologyData()
 			.catch((err) => {
 				endMeasurePass();
 				pushError(topology_parseFailed({ error: String(err) }));
 			})
 			.finally(() => {
 				noteRunEnd();
-				loadInProgress = false;
+				setLoadInProgress(false);
 				if (pendingReload) {
 					pendingReload = false;
 					// Only re-run if an input actually differs from what the run
@@ -752,7 +925,7 @@
 						// Culling is suspended for every measurement pass, unconditionally —
 						// the pass reads heights out of the DOM, so a culled node measures as
 						// absent and ELK gets a fallback size for it.
-						measurePassActive = v;
+						isMeasuring.set(v);
 						// Only hide viewport during measurement for initial load
 						// (no nodes on screen). For subsequent measurements (e.g.
 						// cacheMisses on collapse), nodes keep their current positions
@@ -856,7 +1029,7 @@
 			// the cold-load one ends with `endMeasurePass()`. A measure pass on an already-rendered
 			// graph — every expand at scale — therefore left the flag set for the rest of the
 			// session, suspending culling permanently and mounting the whole graph on every run.
-			measurePassActive = false;
+			isMeasuring.set(false);
 			if (!elementNodeSizes) {
 				endMeasurePass();
 				return;
@@ -1092,6 +1265,13 @@
 				}
 				layoutState.lastRenderedTopoKey = prep.topoKey;
 				layoutState.lastRenderedView = prep.currentView;
+				// The recursion is a second full pipeline run — two more `elk.layout()` calls —
+				// inside the run record the first one opened. Without its own record it wrote its
+				// details over the outer run's, and the outer `durationMs` silently reported both
+				// passes as one, while `pipelineRuns` climbed past `runs.length` with nothing to
+				// say where the extra runs went.
+				noteRunEnd();
+				noteRunStart('post-render-relayout');
 				await loadTopologyData();
 				return;
 			}
@@ -1103,23 +1283,40 @@
 
 		if (prep.viewChanged || prep.topologyChanged || isFirstRender || layoutState.fitViewPending) {
 			layoutState.fitViewPending = false;
-			// Double rAF: first lets SvelteFlow process node positions, second triggers fitView
+			// Double rAF: first lets SvelteFlow process node positions, second triggers the fit
 			requestAnimationFrame(() =>
-				requestAnimationFrame(() => {
-					fitView({ padding: getFitViewPadding() });
-					// fitView is the last thing a cold load does, so this is the
+				requestAnimationFrame(async () => {
+					await triggerFitView();
+					// The fit is the last thing a cold load does, so this is the
 					// point the harness treats as "interactive".
 					perf.count('fit-view');
 					perf.endRun();
-					// …and the first moment the canvas is final, so the honest place to ask
-					// whether anything is actually on it.
-					recordAfterRun(diagnosticInputs());
+					await sampleOnNextFrame();
 				})
 			);
 		} else {
 			perf.endRun();
-			recordAfterRun(diagnosticInputs());
+			// Not awaited: the run is finished, and holding its promise open for a frame would add
+			// that frame to the `durationMs` this record exists to report.
+			void sampleOnNextFrame();
 		}
+	}
+
+	/**
+	 * Take a diagnostics sample once the frame the user is looking at has actually been drawn.
+	 *
+	 * Every field in a sample that matters for blankness — `mounted`, `withSize`, `bounds`,
+	 * `intersectsPane`, `transform` — is read out of the DOM, and the DOM lags a viewport change by
+	 * a frame. Sampling in the same turn as the fit therefore described the *previous* viewport
+	 * applied to the new layout, which reads as a blank canvas: a capture showed `mounted: 0` on a
+	 * 3,228-node store and 804 mounted 755ms later with nothing else having happened, and a blank
+	 * row carrying a `transform` byte-identical to the previous view's. Worse, the first such row
+	 * latched the one-shot `firstBlank` capture, so the report spent its evidence on a frame that
+	 * was never on screen.
+	 */
+	async function sampleOnNextFrame(): Promise<void> {
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+		recordAfterRun(diagnosticInputs());
 	}
 
 	// --- Event handlers ---
@@ -1420,7 +1617,8 @@
 		onmoveend={handleMoveEnd}
 		fitView={true}
 		onlyRenderVisibleElements={cullOffscreen}
-		minZoom={0.1}
+		minZoom={derivedMinZoom}
+		maxZoom={MAX_ZOOM}
 		noPanClass="nopan"
 		snapGrid={[25, 25]}
 		nodesDraggable={!readonly}
@@ -1471,6 +1669,30 @@
 			/>
 		{/if}
 
+		{#if $isRenderingTopology || detailHidden}
+			<!--
+				One pill for what the view is doing to itself, in flow chrome rather than in the graph
+				so it belongs to the view and not to any node.
+
+				Both lines can be true at once — a large graph is usually the reason a run is slow and
+				the reason detail is off — so they stack rather than compete. Absent during export,
+				because `shouldSimplify` suspends there and a run is never in flight mid-capture.
+			-->
+			<div class="detail-hidden-badge">
+				{#if $isRenderingTopology}
+					<span class="detail-hidden-row">
+						<span class="lod-spinner" aria-hidden="true"></span>
+						{common_rendering()}
+					</span>
+				{/if}
+				{#if detailHidden}
+					<span class="detail-hidden-row">
+						{topology_detailSimplified()}
+					</span>
+				{/if}
+			</div>
+		{/if}
+
 		{#if showBranding}
 			<a
 				href="https://scanopy.net?utm_source={isEmbed
@@ -1488,6 +1710,75 @@
 </div>
 
 <style>
+	/*
+	 * Says the canvas is drawing boxes rather than contents.
+	 *
+	 * Bottom-centre: out of the way of the minimap (bottom-left), the sidebar controls (right) and
+	 * the branding badge, and in the one place nothing else claims. Non-interactive — it reports a
+	 * state, it is not a control, and it must not eat pointer events over the graph.
+	 */
+	.detail-hidden-badge {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
+		position: absolute;
+		bottom: 12px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 5;
+		padding: 4px 10px;
+		border-radius: 9999px;
+		font-size: 0.75rem;
+		line-height: 1.2;
+		white-space: nowrap;
+		pointer-events: none;
+		color: var(--color-text-tertiary, #64748b);
+		background: var(--color-topology-node-bg, #fff);
+		border: 1px solid var(--color-border, #e2e8f0);
+		box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+	}
+
+	.detail-hidden-row {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+	}
+
+	/*
+	 * A ring drawn in CSS, not an icon.
+	 *
+	 * The whole point of this indicator is to stay alive while the main thread is not: ELK is the
+	 * bundled build and runs in-process, so for the eighteen to twenty-two seconds of a layout on a
+	 * large estate, no frame callback fires and nothing scripted can advance. A transform animation
+	 * can still run, but only from the compositor, and only if the element was promoted — and an
+	 * inline SVG generally is not, which is why the lucide spinner rendered and then sat there.
+	 *
+	 * A single element with a border and a radius is the shape most reliably promoted, so the ring
+	 * is borders rather than an icon. `will-change` asks for the layer explicitly; the animation is
+	 * pure `transform`, which is the one property the compositor can drive on its own.
+	 *
+	 * This also matches what the caret did for the same reason — see `ContainerHeader` — and costs
+	 * one element instead of the five a lucide icon brings.
+	 */
+	.lod-spinner {
+		display: block;
+		width: 11px;
+		height: 11px;
+		flex-shrink: 0;
+		border-radius: 9999px;
+		border: 1.5px solid var(--color-topology-lod-stroke);
+		border-top-color: transparent;
+		will-change: transform;
+		animation: lod-spin 0.7s linear infinite;
+	}
+
+	@keyframes lod-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
 	.branding-badge {
 		position: absolute;
 		bottom: 10px;

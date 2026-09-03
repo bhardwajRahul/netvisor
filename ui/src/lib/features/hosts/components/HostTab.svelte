@@ -9,6 +9,7 @@
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import HostEditor from './HostEditModal/HostEditor.svelte';
 	import HostConsolidationModal from './HostConsolidationModal.svelte';
 	import HostExportModal from './HostExportModal.svelte';
@@ -47,6 +48,8 @@
 		common_noEntityYet,
 		common_rescan,
 		common_serialNumber,
+		common_firmwareRevision,
+		common_softwareRevision,
 		common_service,
 		common_services,
 		common_tags,
@@ -104,6 +107,15 @@
 	// Search state (server-side, for the same reason)
 	let search = $state('');
 
+	// Field filter state. Server-side for the same reason as the two above: the
+	// client holds one page of hosts, so filtering here would narrow that page
+	// while the total count kept describing every match.
+	let filterNetworkIds = $state<string[]>([]);
+	let filterHidden = $state<boolean[]>([]);
+	let filterVirtualizationServiceIds = $state<string[]>([]);
+	let filterIncludeUnvirtualized = $state(false);
+	let filterServiceNames = $state<string[]>([]);
+
 	// Queries
 	const organizationQuery = useOrganizationQuery();
 	let org = $derived(organizationQuery.data);
@@ -132,7 +144,14 @@
 			order_direction: orderDirection,
 			tag_ids: tagIds.length > 0 ? tagIds : undefined,
 			stale: stale ?? undefined,
-			search: search || undefined
+			search: search || undefined,
+			network_ids: filterNetworkIds.length > 0 ? filterNetworkIds : undefined,
+			// Both values checked is no constraint, so it is sent as nothing.
+			hidden: filterHidden.length === 1 ? filterHidden : undefined,
+			virtualization_service_ids:
+				filterVirtualizationServiceIds.length > 0 ? filterVirtualizationServiceIds : undefined,
+			include_unvirtualized: filterIncludeUnvirtualized || undefined,
+			service_names: filterServiceNames.length > 0 ? filterServiceNames : undefined
 		})
 	);
 	const networksQuery = useNetworksQuery();
@@ -219,12 +238,64 @@
 		search = query;
 	}
 
+	/**
+	 * Server-side field filter handler.
+	 *
+	 * The panel offers what the user reads — a network's name, a service's name —
+	 * while the API filters on ids, so each case resolves the labels back through
+	 * the same data the options were built from. Every key here must match a
+	 * field marked `serverFiltered`; an unhandled one would filter nothing at
+	 * all, since DataControls skips the client pass for those fields.
+	 */
+	function handleFilterChange(fieldKey: string, values: string[]) {
+		switch (fieldKey) {
+			case 'network_id':
+				filterNetworkIds = idsForNames(values, networksData);
+				break;
+			case 'hidden':
+				filterHidden = values.map((value) => value === 'true');
+				break;
+			case 'virtualized_by':
+				// "Not Virtualized" is a choice about absence, so it is carried as
+				// its own flag rather than as an id nothing would match.
+				filterIncludeUnvirtualized = values.includes(hosts_notVirtualized());
+				filterVirtualizationServiceIds = idsForNames(
+					values.filter((value) => value !== hosts_notVirtualized()),
+					allServicesData
+				);
+				break;
+			case 'services':
+				filterServiceNames = values;
+				break;
+			default:
+				throw new Error(
+					`HostTab: no server-side filter handles "${fieldKey}". A serverFiltered field ` +
+						`without a case here filters nothing — neither the client nor the server.`
+				);
+		}
+	}
+
+	/** Resolve display names back to the ids the API filters on. */
+	function idsForNames(names: string[], from: { id: string; name: string }[]): string[] {
+		const wanted = new Set(names);
+		return from.filter((entry) => wanted.has(entry.name)).map((entry) => entry.id);
+	}
+
 	// Export modal state
 	let showExportModal = $state(false);
+	// Carries the field filters too: the export handler applies the same
+	// `apply_field_filters` as the list, so an export mirrors what the user was
+	// looking at rather than the whole network.
 	let exportParams = $derived({
 		tag_ids: tagIds.length > 0 ? tagIds : undefined,
 		order_by: orderBy,
-		order_direction: orderDirection
+		order_direction: orderDirection,
+		network_ids: filterNetworkIds.length > 0 ? filterNetworkIds : undefined,
+		hidden: filterHidden.length === 1 ? filterHidden : undefined,
+		virtualization_service_ids:
+			filterVirtualizationServiceIds.length > 0 ? filterVirtualizationServiceIds : undefined,
+		include_unvirtualized: filterIncludeUnvirtualized || undefined,
+		service_names: filterServiceNames.length > 0 ? filterServiceNames : undefined
 	});
 
 	let showHostEditor = $state(false);
@@ -292,6 +363,14 @@
 					type: 'string',
 					searchable: true,
 					groupable: false,
+					// The title, not the stored `name`. `getValue` rather than `display.cell`
+					// because this one accessor also feeds the row header cell, the row
+					// checkbox's accessible name and the card title — a `cell` snippet would fix
+					// the table and leave those three rendering an empty string.
+					//
+					// The key stays `name`: it is the `HostOrderField` sent to the server, which
+					// now orders by the same ladder this renders.
+					getValue: (host) => hostDisplayName(host),
 					display: { primary: true, width: 220, order: 0 }
 				},
 				hostname: {
@@ -306,6 +385,15 @@
 					type: 'string',
 					searchable: true,
 					filterable: true,
+					serverFiltered: true,
+					// From the full services cache, not the loaded page: options
+					// derived from one page would only offer the runtimes that
+					// happen to appear on it.
+					filterOptions: [
+						...new Set(allServicesData.map((s) => s.name).filter((name) => name.length > 0))
+					]
+						.sort((a, b) => a.localeCompare(b))
+						.concat(hosts_notVirtualized()),
 					groupable: true,
 					// The server groups on the virtualizing service's name,
 					// coalescing hosts without one to an empty string.
@@ -377,6 +465,7 @@
 					type: 'string',
 					searchable: true,
 					filterable: true,
+					serverFiltered: true,
 					groupable: true,
 					filterOptions: networksData.map((n) => n.name),
 					// Displayed as a name, but grouped by id on the server.
@@ -426,10 +515,23 @@
 					display: { hiddenByDefault: true }
 				},
 				{
+					key: 'firmware_revision',
+					label: common_firmwareRevision(),
+					type: 'string',
+					display: { hiddenByDefault: true }
+				},
+				{
+					key: 'software_revision',
+					label: common_softwareRevision(),
+					type: 'string',
+					display: { hiddenByDefault: true }
+				},
+				{
 					key: 'hidden',
 					label: common_hidden(),
 					type: 'boolean',
 					filterable: true,
+					serverFiltered: true,
 					// Useful as a filter, but almost always false — a column of "false"
 					// earns none of the width it takes.
 					display: { hiddenByDefault: true }
@@ -479,6 +581,13 @@
 					type: 'array',
 					searchable: true,
 					filterable: true,
+					serverFiltered: true,
+					// Names, not ids: the server matches a host's services by name,
+					// and the options come from the full cache so they are not
+					// limited to the services on the loaded page.
+					filterOptions: [
+						...new Set(allServicesData.map((s) => s.name).filter((name) => name.length > 0))
+					].sort((a, b) => a.localeCompare(b)),
 					getValue: (host) =>
 						allServicesData.filter((s) => s.host_id === host.id).map((s) => s.name),
 					display: {
@@ -520,7 +629,13 @@
 
 		return [
 			{ label: common_edit(), icon: Edit, onClick: () => handleEditHost(host) },
-			{ label: common_rescan(), icon: RefreshCw, onClick: () => handleRescanHost(host) },
+			// A rescan targets the host's known addresses, so a host with none has nothing to
+			// scan and the endpoint answers 400. Offering the action anyway meant the only way to
+			// find that out was to trigger it and read the error toast. Devices identified purely
+			// by a MAC are the reason such a host exists at all.
+			...(hostIPAddresses(host).length > 0
+				? [{ label: common_rescan(), icon: RefreshCw, onClick: () => handleRescanHost(host) }]
+				: []),
 			{ label: common_consolidate(), icon: Replace, onClick: () => handleStartConsolidate(host) },
 			{
 				label: common_hide(),
@@ -548,11 +663,11 @@
 	}
 
 	function handleRescanHost(host: Host) {
-		rescanHostMutation.mutate({ id: host.id, name: host.name });
+		rescanHostMutation.mutate({ id: host.id, name: hostDisplayName(host) });
 	}
 
 	function handleDeleteHost(host: Host) {
-		if (confirm(common_confirmDeleteName({ name: host.name }))) {
+		if (confirm(common_confirmDeleteName({ name: hostDisplayName(host) }))) {
 			deleteHostMutation.mutate(host.id);
 		}
 	}
@@ -582,7 +697,7 @@
 			await consolidateHostsMutation.mutateAsync({
 				destinationHostId,
 				otherHostId,
-				otherHostName: otherHost?.name
+				otherHostName: otherHost ? hostDisplayName(otherHost) : undefined
 			});
 			showHostConsolidationModal = false;
 			otherHost = null;
@@ -689,6 +804,7 @@
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
 			onTagFilterChange={handleTagFilterChange}
+			onFilterChange={handleFilterChange}
 			onStaleFilterChange={handleStaleFilterChange}
 			onSearchChange={handleSearchChange}
 			onExportClick={() => {

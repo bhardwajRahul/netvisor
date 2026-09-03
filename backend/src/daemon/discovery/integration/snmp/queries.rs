@@ -71,6 +71,24 @@ pub trait SnmpWalkTransport: Send {
     ) -> Result<WalkPage<'a>>;
     async fn walk_getnext<'a>(&'a mut self, from: &[u64]) -> Result<Varbinds<'a>>;
 
+    /// Whether this session has already established that the device will not serve getbulk.
+    ///
+    /// Scoped to the session, which lives exactly as long as one host's collection, so the answer
+    /// is per-device and re-learned on the next scan. `walk_subtree` seeds itself from this and
+    /// sets it through [`Self::note_getbulk_unusable`] when it falls back, so a device costs the
+    /// discovery one column's worth of timeouts rather than one per column: GH #668's switch3
+    /// spent fifteen seconds finding this out on `lldpRemChassisId` and fifteen more on
+    /// `lldpRemManAddrIfSubtype` immediately afterwards.
+    ///
+    /// Defaulted rather than required because the answer only matters to a transport that outlives
+    /// a single walk. The fakes that serve one column apiece are right to say `false`.
+    fn getbulk_unusable(&self) -> bool {
+        false
+    }
+
+    /// Record that getbulk did not work on this device.
+    fn note_getbulk_unusable(&mut self) {}
+
     /// Read one scalar instance, e.g. `sysName.0`.
     ///
     /// `Ok(None)` is "the agent has nothing at that OID" — a `noSuchObject`, a `noSuchInstance`,
@@ -110,7 +128,15 @@ pub trait SnmpWalkTransport: Send {
 }
 
 #[async_trait::async_trait]
-impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
+impl SnmpWalkTransport for super::session::SnmpSession {
+    fn getbulk_unusable(&self) -> bool {
+        Self::getbulk_unusable(self)
+    }
+
+    fn note_getbulk_unusable(&mut self) {
+        Self::note_getbulk_unusable(self);
+    }
+
     async fn walk_getbulk<'a>(
         &'a mut self,
         from: &[u64],
@@ -212,6 +238,32 @@ fn shrink_page(max_reps: &mut u32, use_bulk: &mut bool) {
     }
 }
 
+/// Ask an easier question after the agent answered nothing at all, and make sure the easiest one
+/// is reachable.
+///
+/// [`shrink_page`] alone could not get there. Halving from [`BULK_MAX_REPETITIONS`] needs five
+/// steps to put `max_reps` at 1 and a sixth to clear `use_bulk`, while [`MAX_TRANSPORT_RETRIES`]
+/// allows two — so on a timeout path getnext was three shrinks out of reach and the column was
+/// abandoned having never asked the one question the device would have answered. GH #668's
+/// reporter proved it would: `snmpwalk`, which is getnext, read the column their scan reported as
+/// empty.
+///
+/// So the last retry spends itself on getnext rather than on a third bulk page. The budget is
+/// unchanged — three requests, at most `3 * SNMP_TIMEOUT` on a column, exactly what it cost
+/// before — and the earlier retry still halves, because one lost datagram is the likelier cause
+/// the first time and halving is free. Two consecutive silences is where "this agent cannot serve
+/// getbulk" starts to beat "a packet went missing".
+///
+/// Deliberately not applied to `tooBig`: there the agent named page size as the problem and asked
+/// for a smaller one, so halving is its own answer and terminates on its own.
+fn degrade_after_silence(transport_retries: u8, max_reps: &mut u32, use_bulk: &mut bool) {
+    if transport_retries >= MAX_TRANSPORT_RETRIES {
+        *use_bulk = false;
+    } else {
+        shrink_page(max_reps, use_bulk);
+    }
+}
+
 /// Whether this error means the session read an answer to a question nobody is waiting for.
 ///
 /// The daemon abandons SNMP requests constantly — 5s per query, 60s per walk — and keeps using
@@ -253,7 +305,14 @@ where
 
     let mut current_parts = base_parts.clone();
     let mut count = 0usize;
-    let mut use_bulk = true;
+    // Seeded from the session rather than from `true`: an earlier column on this host may already
+    // have established that the device does not answer getbulk, and re-establishing it costs
+    // `MAX_TRANSPORT_RETRIES + 1` timeouts per column (GH #668).
+    let mut use_bulk = !session.getbulk_unusable();
+    // Set where this walk turns getbulk off, and acted on at the top of the loop. Deferred rather
+    // than called in place because the arms below hold a borrow of `session` for the page they
+    // just asked for.
+    let mut note_fallback = false;
     let mut stop = WalkStop::EndOfSubtree;
     let mut stop_detail: Option<String> = None;
     let mut desync_retries = 0u8;
@@ -273,6 +332,10 @@ where
     let mut high_water = base_parts.clone();
 
     'walk: loop {
+        if note_fallback {
+            note_fallback = false;
+            session.note_getbulk_unusable();
+        }
         if count >= MAX_WALK_ENTRIES {
             stop = WalkStop::EntryCap;
             break;
@@ -282,9 +345,11 @@ where
             match session.walk_getbulk(&current_parts, max_reps).await {
                 Ok(WalkPage::Varbinds(v)) => v,
                 Ok(WalkPage::BulkUnsupported) => {
-                    // Agent rejected getbulk (e.g. v1) — retry from the same OID with
-                    // getnext and stay on getnext for the rest of this walk.
+                    // Agent rejected getbulk (e.g. v1) — retry from the same OID with getnext and
+                    // stay on getnext for the rest of this walk, and of every other walk on this
+                    // session: a device without getbulk does not acquire it between columns.
                     use_bulk = false;
+                    note_fallback = true;
                     continue 'walk;
                 }
                 Ok(WalkPage::TooBig) => {
@@ -314,11 +379,13 @@ where
                 }
                 Err(e) if transport_retries < MAX_TRANSPORT_RETRIES => {
                     transport_retries += 1;
-                    // Shrink as well as retry. A timeout on this path is as likely to be the
-                    // agent labouring over a large page as a lost datagram — the reporter's
-                    // switch answered getbulk at roughly nine times the per-varbind cost of
-                    // getnext — and a smaller page addresses both.
-                    shrink_page(&mut max_reps, &mut use_bulk);
+                    // Ask something easier, and on the last retry ask the easiest thing there is.
+                    // A timeout here is as likely to be the agent labouring over a large page as
+                    // a lost datagram — the reporter's switch answered getbulk at roughly nine
+                    // times the per-varbind cost of getnext — and both are addressed by asking
+                    // for less. See `degrade_after_silence` for why the last one goes all the way.
+                    degrade_after_silence(transport_retries, &mut max_reps, &mut use_bulk);
+                    note_fallback = !use_bulk;
                     debug!(
                         ip = %ip,
                         base = base_oid_str,
@@ -378,7 +445,10 @@ where
             if transport_retries < MAX_TRANSPORT_RETRIES {
                 transport_retries += 1;
                 if use_bulk {
-                    shrink_page(&mut max_reps, &mut use_bulk);
+                    // An answer with nothing on it is the same non-answer as a timeout, so it
+                    // degrades the same way and reaches getnext on the same retry.
+                    degrade_after_silence(transport_retries, &mut max_reps, &mut use_bulk);
+                    note_fallback = !use_bulk;
                 }
                 debug!(
                     ip = %ip,
@@ -474,6 +544,15 @@ where
                         retry_page = true;
                         done = true;
                     } else {
+                        // The budgets are documented as what one walk *step* may spend and were
+                        // being spent across the whole walk, which matters now that reaching
+                        // getnext costs both transport retries: without this the fallback arrives
+                        // with nothing left, and the first lost datagram after it ends the column
+                        // — the exact fragility the budget was added to remove (GH #685). Every
+                        // reset is paid for by new rows, so the walk stays bounded by
+                        // MAX_WALK_ENTRIES and its own timeout.
+                        desync_retries = 0;
+                        transport_retries = 0;
                         current_parts = parts;
                     }
                 }
@@ -1861,6 +1940,8 @@ pub async fn query_entity_physical<T: SnmpWalkTransport>(
         serial_number: Option<String>,
         manufacturer: Option<String>,
         model: Option<String>,
+        firmware_revision: Option<String>,
+        software_revision: Option<String>,
     }
 
     let mut entries: HashMap<i32, PhysicalEntry> = HashMap::new();
@@ -1873,6 +1954,14 @@ pub async fn query_entity_physical<T: SnmpWalkTransport>(
         (oids::entity::entry::ENT_PHYSICAL_SERIAL_NUM, "serialNum"),
         (oids::entity::entry::ENT_PHYSICAL_MFG_NAME, "mfgName"),
         (oids::entity::entry::ENT_PHYSICAL_MODEL_NAME, "modelName"),
+        (
+            oids::entity::entry::ENT_PHYSICAL_FIRMWARE_REV,
+            "firmwareRev",
+        ),
+        (
+            oids::entity::entry::ENT_PHYSICAL_SOFTWARE_REV,
+            "softwareRev",
+        ),
     ];
 
     for (base_oid_str, column_name) in columns {
@@ -1895,6 +1984,8 @@ pub async fn query_entity_physical<T: SnmpWalkTransport>(
                         serial_number: None,
                         manufacturer: None,
                         model: None,
+                        firmware_revision: None,
+                        software_revision: None,
                     });
                 match column_name {
                     "descr" => entry.description = value_to_string(value),
@@ -1907,6 +1998,12 @@ pub async fn query_entity_physical<T: SnmpWalkTransport>(
                         entry.manufacturer = value_to_string(value).filter(|s| !s.is_empty())
                     }
                     "modelName" => entry.model = value_to_string(value).filter(|s| !s.is_empty()),
+                    "firmwareRev" => {
+                        entry.firmware_revision = value_to_string(value).filter(|s| !s.is_empty())
+                    }
+                    "softwareRev" => {
+                        entry.software_revision = value_to_string(value).filter(|s| !s.is_empty())
+                    }
                     _ => {}
                 }
             },
@@ -1914,18 +2011,34 @@ pub async fn query_entity_physical<T: SnmpWalkTransport>(
         .await;
     }
 
-    // Select best match: prefer chassis (3), fallback to stack (11), then module (9)
-    let best = entries
-        .values()
-        .find(|e| e.class == Some(3))
-        .or_else(|| entries.values().find(|e| e.class == Some(11)))
-        .or_else(|| entries.values().find(|e| e.class == Some(9)));
+    // Select best match: prefer chassis (3), fallback to stack (11), then module (9); within the
+    // strongest class present, the lowest `entPhysicalIndex`.
+    //
+    // The index tiebreak is what makes this deterministic, and it is load-bearing rather than
+    // decorative. This used to be `entries.values().find(..)`, and `entries` is a `HashMap` whose
+    // iteration order is randomised per instance — so a device serving more than one chassis row,
+    // which is any switch stack, returned a different row on each call. `model` is refreshable, so
+    // a stack whose members report different model strings already rewrote `hosts.model` on an
+    // arbitrary subset of scans; the two revisions read below are refreshable for the same reason
+    // and would have flapped the same way.
+    let best = [3, 11, 9].into_iter().find_map(|class| {
+        entries
+            .iter()
+            .filter(|(_, e)| e.class == Some(class))
+            .min_by_key(|&(index, _)| *index)
+            .map(|(_, e)| e)
+    });
 
+    // Every field comes from the one selected row. A chassis is a single physical thing, so a
+    // serial taken from one row and a firmware revision from another would describe no device
+    // that exists.
     let result = best.map(|e| DeviceInventory {
         description: e.description.clone().or_else(|| e.name.clone()),
         manufacturer: e.manufacturer.clone(),
         model: e.model.clone(),
         serial_number: e.serial_number.clone(),
+        firmware_revision: e.firmware_revision.clone(),
+        software_revision: e.software_revision.clone(),
     });
 
     debug!(
@@ -2729,11 +2842,167 @@ mod walk_tests {
             !stop.is_complete(),
             "a device that never answered again cannot have completed its table"
         );
+        assert!(
+            matches!(stop, WalkStop::Transport),
+            "the reason has to survive to the warning — without it a timeout and a desynchronised \
+             session are the same short column to an operator, but got {stop:?}"
+        );
         assert_eq!(seen, 1, "the one page it did answer is still collected");
         assert!(
             session.requests < 10,
             "the walk must give up on a silent device rather than spin on it (made {} requests)",
             session.requests
+        );
+    }
+
+    /// Serves getbulk and getnext from separate scripts, so a test can describe the one device
+    /// shape [`FlakyTransport`] cannot: an agent that answers one question and not the other.
+    ///
+    /// GH #668. The reporter's switch timed out every getbulk on `lldpRemChassisId` and answered
+    /// `snmpwalk` — which is getnext — on the same column, and our walk never asked.
+    struct BulkMuteTransport {
+        rows: Vec<Vec<u64>>,
+        cursor: usize,
+        /// Every getbulk asked for, to prove the walk stopped asking once it knew.
+        bulk_requests: usize,
+        /// Whether getnext answers too. `false` is a device that has gone silent outright.
+        getnext_answers: bool,
+        /// Survives across walks, as a real session does — which is what makes the second column
+        /// able to know what the first one learned.
+        getbulk_unusable: bool,
+    }
+
+    impl BulkMuteTransport {
+        fn new(rows: &[&str]) -> Self {
+            Self {
+                rows: page(rows),
+                cursor: 0,
+                bulk_requests: 0,
+                getnext_answers: true,
+                getbulk_unusable: false,
+            }
+        }
+
+        /// Nothing answers at all — the other half of the fallback, which still has to terminate.
+        fn mute() -> Self {
+            Self {
+                getnext_answers: false,
+                ..Self::new(&[])
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SnmpWalkTransport for BulkMuteTransport {
+        fn getbulk_unusable(&self) -> bool {
+            self.getbulk_unusable
+        }
+
+        fn note_getbulk_unusable(&mut self) {
+            self.getbulk_unusable = true;
+        }
+
+        async fn walk_getbulk<'a>(&'a mut self, _from: &[u64], _max: u32) -> Result<WalkPage<'a>> {
+            self.bulk_requests += 1;
+            Err(anyhow::anyhow!("getbulk timed out"))
+        }
+
+        async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
+            if !self.getnext_answers {
+                return Err(anyhow::anyhow!("getnext timed out"));
+            }
+            // One varbind per request, which is all a getnext ever returns, then out of the
+            // subtree to end the column the way a real agent does.
+            let row = self.rows.get(self.cursor).cloned();
+            self.cursor += 1;
+            Ok(vec![(
+                row.unwrap_or_else(|| oids::oid_parts("1.3.6.1.2.1.2.2.1.2.1")),
+                Value::Integer(1),
+            )])
+        }
+    }
+
+    /// GH #668, and the whole of it: a column the device will only serve one varbind at a time is
+    /// read in full, rather than abandoned with nothing.
+    ///
+    /// `shrink_page` halves and only abandons getbulk once the page is down to 1 — five halvings
+    /// from `BULK_MAX_REPETITIONS`, against the two `MAX_TRANSPORT_RETRIES` allows. So the walk
+    /// spent its whole budget asking the same unanswerable question in three sizes. On the
+    /// reporter's switch3 that lost `lldpRemChassisId` outright, and with it all thirteen
+    /// neighbours, because a neighbour with no chassis id is discarded.
+    #[tokio::test]
+    async fn a_column_only_getnext_can_serve_is_read_to_its_end() {
+        let mut session = BulkMuteTransport::new(&[
+            "1.3.6.1.2.1.2.2.1.1.1",
+            "1.3.6.1.2.1.2.2.1.1.2",
+            "1.3.6.1.2.1.2.2.1.1.3",
+        ]);
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
+            .await
+            .unwrap();
+
+        assert!(
+            stop.is_complete(),
+            "the device answered every getnext it was asked, so the column is finished — \
+             reporting {stop:?} marks the whole group non-authoritative"
+        );
+        assert_eq!(seen, 3, "every row the device would serve has to be read");
+    }
+
+    /// The budget the fallback is reached on is the same one it was reached with. A device that
+    /// answers nothing must still end promptly, still report short, and still name the reason.
+    #[tokio::test]
+    async fn a_device_answering_neither_request_still_terminates_and_reports_why() {
+        let mut session = BulkMuteTransport::mute();
+
+        let mut seen = 0usize;
+        let stop = walk_subtree(&mut session, ip(), BASE, |_suffix, _v| seen += 1)
+            .await
+            .unwrap();
+
+        assert_eq!(seen, 0);
+        assert!(!stop.is_complete());
+        assert!(
+            matches!(stop, WalkStop::Transport),
+            "an unreachable agent is a transport verdict, not a table that ended: {stop:?}"
+        );
+        assert!(
+            session.bulk_requests <= MAX_TRANSPORT_RETRIES as usize + 1,
+            "falling back must not buy the walk extra attempts against a silent device (made {} \
+             getbulk requests)",
+            session.bulk_requests
+        );
+    }
+
+    /// Once a session has proved it cannot serve getbulk, the next column does not pay to find
+    /// out again.
+    ///
+    /// switch3 spent fifteen seconds learning this on `lldpRemChassisId` and then fifteen more on
+    /// `lldpRemManAddrIfSubtype` (`switch-3-4-7_log.txt:45-48`). The knowledge belongs to the
+    /// session, which lives as long as the host, so a device costs it once.
+    #[tokio::test]
+    async fn a_session_that_fell_back_does_not_re_try_getbulk_on_the_next_column() {
+        let mut session = BulkMuteTransport::new(&["1.3.6.1.2.1.2.2.1.1.1"]);
+
+        walk_subtree(&mut session, ip(), BASE, |_suffix, _v| {})
+            .await
+            .unwrap();
+        let after_first = session.bulk_requests;
+        assert!(
+            after_first > 0,
+            "the first column has to actually try getbulk, or this proves nothing"
+        );
+
+        session.cursor = 0;
+        walk_subtree(&mut session, ip(), BASE, |_suffix, _v| {})
+            .await
+            .unwrap();
+
+        assert_eq!(
+            session.bulk_requests, after_first,
+            "the second column asked getbulk again on a session already known not to answer it"
         );
     }
 
@@ -3767,9 +4036,26 @@ mod if_table_tests {
 
     /// Bounded, so a device answering persistently out of step is reported as truncated rather
     /// than spun on.
+    ///
+    /// Desynchronisation belongs to the *session*, so both operations are answered the same way.
+    /// This fake used to declare getnext `unreachable!()` on the grounds that getbulk answered
+    /// first, which stopped being true once a walk that has run out of retries spends its last one
+    /// on getnext (GH #668) — and a walk reaching getnext here is correct: the session is what is
+    /// wrong, not the request type, and it has to be established rather than assumed.
     #[tokio::test]
     async fn a_persistently_desynced_session_still_reports_truncated() {
-        struct AlwaysDesyncs;
+        #[derive(Default)]
+        struct AlwaysDesyncs {
+            requests: usize,
+        }
+
+        impl AlwaysDesyncs {
+            fn desynced(&mut self) -> anyhow::Error {
+                self.requests += 1;
+                anyhow::Error::new(snmp2::Error::RequestIdMismatch)
+                    .context("SNMP session desynchronized")
+            }
+        }
 
         #[async_trait::async_trait]
         impl SnmpWalkTransport for AlwaysDesyncs {
@@ -3778,19 +4064,26 @@ mod if_table_tests {
                 _from: &[u64],
                 _max: u32,
             ) -> Result<WalkPage<'a>> {
-                Err(anyhow::Error::new(snmp2::Error::RequestIdMismatch)
-                    .context("SNMP session desynchronized"))
+                Err(self.desynced())
             }
 
             async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
-                unreachable!("getbulk answers first")
+                Err(self.desynced())
             }
         }
 
-        let stop = walk_subtree(&mut AlwaysDesyncs, ip(), IF_DESCR, |_, _| {})
+        let mut session = AlwaysDesyncs::default();
+        let stop = walk_subtree(&mut session, ip(), IF_DESCR, |_, _| {})
             .await
             .unwrap();
+
         assert!(stop.is_truncation(), "got {stop:?}");
+        assert!(
+            session.requests < 10,
+            "a session that is wrong in every direction must be reported, not spun on (made {} \
+             requests)",
+            session.requests
+        );
     }
 
     /// The other side of the rule, and the one that must keep working: a switch that *has*

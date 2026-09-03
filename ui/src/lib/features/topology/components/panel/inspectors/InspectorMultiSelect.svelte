@@ -40,6 +40,7 @@
 	import EdgeStyleForm from '$lib/features/dependencies/components/DependencyEditModal/EdgeStyleForm.svelte';
 	import { computeOptimalHandles } from '../../../layout/elk-layout';
 	import { dependencyTypes, concepts } from '$lib/shared/stores/metadata';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import {
 		commonTagsHeader,
 		formatEntityCounts,
@@ -499,7 +500,7 @@
 							serviceId: sid,
 							elementId: sid,
 							label: svc?.name ?? '',
-							hostName: host?.name ?? ''
+							hostName: host ? hostDisplayName(host) : ''
 						};
 					});
 			}

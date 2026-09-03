@@ -5,23 +5,28 @@ use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::discovery::service::warnings::{CredentialIssue, CredentialIssueReason};
 use crate::daemon::discovery::types::base::DiscoveryCriticalError;
 use crate::daemon::discovery::types::warnings::DiscoveryWarning;
+use crate::daemon::utils::app_probe::{ProbeContext, scan_app_probes};
 use crate::daemon::utils::base::{DaemonUtils, PlatformDaemonUtils};
 use crate::daemon::utils::scanner::{
-    ScanConcurrencyController, can_arp_scan, scan_endpoints, scan_tcp_ports, scan_udp_ports,
+    ScanConcurrencyController, can_arp_scan, probe_snmp_ports, scan_endpoints, scan_tcp_ports,
 };
-use crate::server::credentials::r#impl::mapping::{CredentialMapping, CredentialQueryPayload};
+use crate::server::credentials::r#impl::mapping::{
+    CredentialMapping, CredentialQueryPayload, IpOverride,
+};
 use crate::server::discovery::r#impl::scan_settings::defaults;
 use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::base::{Service, ServiceMatchBaselineParams};
+use crate::server::shared::attribution::AttributeSource;
 use crate::server::shared::types::entities::EntitySource;
 use crate::server::{
     daemons::r#impl::base::DaemonMode,
     hosts::r#impl::{
         api::{DiscoveryHostRequest, HostResponse},
         base::{Host, HostBase},
-        name::HostName,
+        name::{HostName, HostNameSources},
     },
     subnets::r#impl::base::Subnet,
 };
@@ -38,10 +43,11 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
-    DeepScanParams, DiscoveredHostData, DispatchedAddresses, FULL_SCAN_COST_CS,
+    CONNECT_ONLY_PORTS, DeepScanParams, DiscoveredHostData, DispatchedAddresses, FULL_SCAN_COST_CS,
     LATE_ARRIVAL_GRACE_PERIOD, LIGHT_SCAN_COST_CS, LivenessEvidence, MAX_PROGRESS_REPORT_INTERVAL,
     NetworkScan, PROGRESS_ARP_PHASE, PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE,
-    RESPONSIVENESS_COST_CS, integration_cost_for_ip, is_host_address, liveness_probe_ports,
+    RESPONSIVENESS_COST_CS, enumerated_host_has_evidence, integration_cost_for_ip, is_host_address,
+    liveness_probe_ports,
 };
 
 impl NetworkScan {
@@ -270,7 +276,7 @@ impl NetworkScan {
                 HashMap::new();
             for subnet in &interfaced_subnets {
                 let entry = subnet_to_ips
-                    .entry(subnet.base.cidr)
+                    .entry(*subnet.base.cidr)
                     .or_insert_with(|| (subnet.clone(), Vec::new()));
                 for addr in subnet.base.cidr.iter().map(|a| a.address()) {
                     if !is_targeted(&addr) {
@@ -798,7 +804,7 @@ impl NetworkScan {
                                         source: EntitySource::Discovery,
                                         ..Default::default()
                                     });
-                                    host.base.apply_name(HostName::Ip(ip));
+                                    host.base.apply_name(HostName::from_ip(ip));
                                     let host_id = host.id;
                                     let ip_address = IPAddress::new(IPAddressBase {
                                         network_id: early_subnet.base.network_id,
@@ -806,7 +812,9 @@ impl NetworkScan {
                                         name: None,
                                         subnet_id: early_subnet.id,
                                         ip_address: ip,
-                                        mac_address: mac,
+                                        // We broadcast for this address and something answered claiming it.
+                mac_address: mac
+                    .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::ArpReply)),
                                         position: 0,
                                     });
                                     let request = DiscoveryHostRequest {
@@ -1248,6 +1256,16 @@ impl NetworkScan {
             issues.extend(unanswered);
         }
 
+        // Addresses that completed a handshake and then answered nothing. Raised per subnet, at the
+        // end, because the middlebox that causes it causes it for the whole range at once.
+        let declined = self.declined_warnings();
+        if !declined.is_empty()
+            && let Ok(session_state) = ops.get_session().await
+            && let Ok(mut warnings) = session_state.warnings.lock()
+        {
+            warnings.extend(declined);
+        }
+
         let discovered = hosts_discovered.load(Ordering::Relaxed);
         tracing::info!(
             hosts_discovered = discovered,
@@ -1426,19 +1444,30 @@ impl NetworkScan {
         open_ports.sort_by_key(|p| (p.number(), p.protocol()));
         open_ports.dedup();
 
-        // Non-credentialed UDP scanning (DNS, NTP, DHCP, BACnet).
-        // SNMP probing is now handled by SnmpIntegration.probe() below.
-        let udp_ports = scan_udp_ports(
+        // SNMP port probing. Credentialed SNMP is SnmpIntegration.probe()'s below; this still
+        // tries the default `public` community, which is the only way an SNMP device is found on a
+        // network with no credential configured.
+        let snmp_ports = probe_snmp_ports(ip, cancel.clone(), &[]).await?;
+        open_ports.extend(snmp_ports);
+
+        // Non-credentialed application probes (DNS, NTP, DHCP, BACnet, Modbus, OPC UA,
+        // EtherNet/IP). TCP probes gate on `open_ports` from the connect scan above, so this has
+        // to run after it; the identities come back here and are applied further down, after the
+        // credentialed integrations have had their say.
+        let probe_ctx = ProbeContext {
             ip,
-            cancel.clone(),
-            effective_batch_size,
-            scan_rate_pps,
-            subnet.base.cidr,
-            gateway_ips.to_vec(),
-            &[], // No SNMP credentials — SNMP probing handled by integration
-        )
-        .await?;
-        open_ports.extend(udp_ports);
+            subnet_cidr: *subnet.base.cidr,
+            is_gateway: gateway_ips.contains(&ip),
+            cancel: cancel.clone(),
+            scan_controller: scan_controller.clone(),
+        };
+        let app_probe_results =
+            scan_app_probes(&probe_ctx, &open_ports, effective_batch_size, scan_rate_pps).await;
+        for result in &app_probe_results {
+            if !open_ports.contains(&result.port) {
+                open_ports.push(result.port);
+            }
+        }
 
         // Read once here rather than at the endpoint scan below: integration probes make their
         // own TLS calls and need the same policy.
@@ -1446,7 +1475,7 @@ impl NetworkScan {
 
         // Integration probes — each checks connectivity and returns a ClientProbe for service matching
         use crate::daemon::discovery::integration::dispatch;
-        let probe_results = dispatch::probe_integrations(
+        let mut probe_results = dispatch::probe_integrations(
             ip,
             credential_mappings,
             &open_ports,
@@ -1470,6 +1499,17 @@ impl NetworkScan {
                 integration_cost_for_ip(credential_mappings, ip),
                 Ordering::Relaxed,
             );
+        }
+        // Fold the application probes into the same evidence map the credentialed integrations
+        // fill, so `Pattern::ClientResponse` needs no second channel.
+        for result in &app_probe_results {
+            if let Some(client_probe) = result.client_probe {
+                probe_results
+                    .client_responses
+                    .entry(client_probe)
+                    .or_default()
+                    .push(result.port);
+            }
         }
         let client_responses = &probe_results.client_responses;
 
@@ -1495,6 +1535,40 @@ impl NetworkScan {
             let port = endpoint_response.endpoint.port_type;
             if !open_ports.contains(&port) {
                 open_ports.push(port);
+            }
+        }
+
+        // An address nothing answered for has to show evidence beyond the bare connect that got it
+        // this far. Everything is in hand by now: the probes have spoken, the endpoints have
+        // replied, the credentials have authenticated or not.
+        //
+        // This is the check the FortiGate SIP session-helper report turned on. Before it, a
+        // middlebox completing a handshake on behalf of an empty address was enough to record a
+        // host there, on every routed VLAN it fronted.
+        if !evidence.is_confirmed_live() {
+            let mut validated_ports: HashSet<PortType> =
+                app_probe_results.iter().map(|result| result.port).collect();
+            validated_ports.extend(client_responses.values().flatten().copied());
+            validated_ports.extend(
+                endpoint_responses
+                    .iter()
+                    .map(|response| response.endpoint.port_type),
+            );
+
+            if !enumerated_host_has_evidence(
+                &open_ports,
+                &validated_ports,
+                self.scan_settings.trust_port_only_detections,
+            ) {
+                tracing::debug!(
+                    ip = %ip,
+                    open_ports = ?open_ports.iter().map(|p| p.number()).collect::<Vec<_>>(),
+                    "Nothing answered on this enumerated address; recording no host"
+                );
+                // Recorded rather than warned here: the same reason applies to every address in
+                // the range, and the run raises one warning per subnet at the end.
+                self.note_declined_address(&subnet.base.cidr, &open_ports);
+                return Ok(None);
             }
         }
 
@@ -1531,8 +1605,12 @@ impl NetworkScan {
             subnet_id: subnet.id,
             ip_address: ip,
             // Only ARP yields one; an ICMP-discovered host records no MAC, exactly as a
-            // TCP-responsive one on a non-interfaced subnet always has.
-            mac_address: evidence.mac(),
+            // TCP-responsive one on a non-interfaced subnet always has. We broadcast for this
+            // address and something answered claiming it, which is the strongest evidence a MAC
+            // gets — and what §6's minting rule will ask for.
+            mac_address: evidence
+                .mac()
+                .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::ArpReply)),
             position: 0,
         });
 
@@ -1540,6 +1618,27 @@ impl NetworkScan {
         // matching the same filtering applied in scan_endpoints() for endpoint probing.
         if !probe_raw_socket_ports {
             open_ports.retain(|p| !p.is_raw_socket());
+        }
+
+        // The second layer, and the one the gate above cannot cover. A *real* host on a poisoned
+        // subnet passes that gate on its own evidence — and the middlebox is still answering every
+        // other port on its behalf, so a connect-only definition would attach its service to a host
+        // that has nothing of the sort. Veeam on 9392 and Denodo on 9090 are the remaining cases.
+        //
+        // Keyed on `reached_on_link` rather than `is_confirmed_live`, which is the distinction the
+        // lab caught: 10.77.0.50 is a real host that answers ICMP, so it was confirmed live, and the
+        // middlebox answered 9392 on its behalf anyway. It came back carrying a Veeam server it does
+        // not run. ICMP proves the host is there; only ARP or mDNS proves we are on its segment and
+        // reaching its ports rather than the appliance in front of them.
+        if !evidence.reached_on_link() && !self.scan_settings.trust_port_only_detections {
+            let before = open_ports.len();
+            open_ports.retain(|port| !CONNECT_ONLY_PORTS.contains(port));
+            if open_ports.len() != before {
+                tracing::debug!(
+                    ip = %ip,
+                    "Withheld connect-only ports from service matching on an enumerated address"
+                );
+            }
         }
 
         if let Ok(Some(mut host_data)) = ops
@@ -1589,6 +1688,15 @@ impl NetworkScan {
             )
             .await
             .ok();
+
+            // Applied last, so a credentialed read of the same field keeps its value — the rule
+            // `ControllerIdentity::enrich` already documents. A probe sees only what a discovery
+            // packet carries; SNMP and the controllers read the device's own inventory.
+            for result in &app_probe_results {
+                if let Some(identity) = &result.identity {
+                    identity.enrich(&mut host_data);
+                }
+            }
 
             // Extract final state from host_data
             let interfaces_complete = host_data.interfaces_complete;
@@ -1698,17 +1806,55 @@ pub(crate) fn unreachable_credential_targets(
     mappings: &[CredentialMapping<CredentialQueryPayload>],
     subnets: &[Subnet],
 ) -> Vec<CredentialIssue> {
-    mappings
+    let overrides: Vec<_> = mappings
         .iter()
         .flat_map(|m| m.ip_overrides.iter())
+        .collect();
+    let in_scope = |ip: &IpAddr| subnets.iter().any(|s| s.base.cidr.contains(ip));
+
+    overrides
+        .iter()
         .filter(|o| !o.ip.is_loopback())
-        .filter(|o| !subnets.iter().any(|s| s.base.cidr.contains(&o.ip)))
+        .filter(|o| !in_scope(&o.ip))
+        .filter(|o| !sibling_address_qualifies(&overrides, o, &in_scope))
         .map(|o| CredentialIssue {
             integration: (&o.credential).into(),
             ip: o.ip,
             reason: CredentialIssueReason::TargetNotScanned,
+            credential_id: (o.credential_id != Uuid::nil()).then_some(o.credential_id),
         })
         .collect()
+}
+
+/// Whether another address of the same host, under the same credential, already satisfies the test
+/// this override failed.
+///
+/// A host assignment means "use this credential on this device", and it fans out to one override
+/// per address the host holds. A multi-homed device — a wireless AP on a guest range and a
+/// management LAN, say — then produces an override the scan cannot use alongside one it can, and
+/// reporting the first reads as a misconfigured credential when the device was reached and the
+/// credential worked. The advice that comes with it ("add the subnet, or move the credential to a
+/// host inside it") is then wrong twice over: the credential is already on the right host.
+///
+/// Keyed on the host *and* the credential, so two different credentials on one device are still
+/// judged separately. An override with no `host_id` — an integration target, the legacy mapping,
+/// or any mapping from a server that predates the field — has no siblings and keeps the
+/// per-address rule unchanged, which is also what makes a genuinely mis-targeted credential on a
+/// single-homed host still report.
+fn sibling_address_qualifies(
+    overrides: &[&IpOverride<CredentialQueryPayload>],
+    subject: &IpOverride<CredentialQueryPayload>,
+    qualifies: &impl Fn(&IpAddr) -> bool,
+) -> bool {
+    let Some(host_id) = subject.host_id else {
+        return false;
+    };
+    overrides.iter().any(|other| {
+        other.host_id == Some(host_id)
+            && other.credential_id == subject.credential_id
+            && other.ip != subject.ip
+            && qualifies(&other.ip)
+    })
 }
 
 impl NetworkScan {
@@ -1824,17 +1970,26 @@ pub(crate) fn unanswered_credential_targets(
     target_ips: Option<&HashSet<IpAddr>>,
     answered: &HashSet<IpAddr>,
 ) -> Vec<CredentialIssue> {
-    mappings
+    let overrides: Vec<_> = mappings
         .iter()
         .flat_map(|m| m.ip_overrides.iter())
+        .collect();
+
+    overrides
+        .iter()
         .filter(|o| !o.ip.is_loopback())
         .filter(|o| subnets.iter().any(|s| s.base.cidr.contains(&o.ip)))
         .filter(|o| target_ips.is_none_or(|t| t.contains(&o.ip)))
         .filter(|o| !answered.contains(&o.ip))
+        // The same rule as the pre-scan check, against the addresses that answered rather than
+        // the ones in scope: a device that answered on one of its addresses was reached, and its
+        // silent second address is not an untried credential.
+        .filter(|o| !sibling_address_qualifies(&overrides, o, &|ip| answered.contains(ip)))
         .map(|o| CredentialIssue {
             integration: (&o.credential).into(),
             ip: o.ip,
             reason: CredentialIssueReason::TargetNotResponding,
+            credential_id: (o.credential_id != Uuid::nil()).then_some(o.credential_id),
         })
         .collect()
 }
@@ -1842,14 +1997,19 @@ pub(crate) fn unanswered_credential_targets(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::shared::attribution::AttributeSource;
     use crate::server::shared::storage::traits::Storable;
     use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
     use crate::server::subnets::r#impl::types::SubnetType;
     use std::str::FromStr;
 
     fn subnet(cidr: &str) -> Subnet {
         Subnet::new(SubnetBase {
-            cidr: cidr::IpCidr::from_str(cidr).unwrap(),
+            cidr: SubnetCidr::new(
+                SubnetCidrValue(cidr::IpCidr::from_str(cidr).unwrap()),
+                AttributeSource::DaemonSelfReport,
+            ),
             network_id: uuid::Uuid::new_v4(),
             name: cidr.to_string(),
             description: None,
@@ -1898,12 +2058,13 @@ mod tests {
     fn mapping_targeting(addr: &str) -> CredentialMapping<CredentialQueryPayload> {
         use crate::server::credentials::r#impl::mapping::IpOverride;
         CredentialMapping {
-            default_credential: None,
             ip_overrides: vec![IpOverride {
                 ip: ip(addr),
                 credential: CredentialQueryPayload::default(), // Snmp
                 credential_id: Uuid::new_v4(),
+                host_id: None,
             }],
+            ..Default::default()
         }
     }
 
@@ -1986,8 +2147,116 @@ mod tests {
         let subnets = [subnet("10.0.5.0/24")];
         let mappings = [CredentialMapping {
             default_credential: Some(CredentialQueryPayload::default()),
-            ip_overrides: Vec::new(),
+            ..Default::default()
         }];
         assert!(unreachable_credential_targets(&mappings, &subnets).is_empty());
+    }
+
+    /// One credential assigned to a multi-homed host, expanded to one override per address.
+    fn multi_homed(
+        cred: Uuid,
+        host: Uuid,
+        addrs: &[&str],
+    ) -> CredentialMapping<CredentialQueryPayload> {
+        use crate::server::credentials::r#impl::mapping::IpOverride;
+        CredentialMapping {
+            ip_overrides: addrs
+                .iter()
+                .map(|a| IpOverride {
+                    ip: ip(a),
+                    credential: CredentialQueryPayload::default(), // Snmp
+                    credential_id: cred,
+                    host_id: Some(host),
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    /// The shape a live scan produced: a wireless AP on a guest range and a management LAN, with
+    /// one credential assigned to the device. The scan covers the LAN, reaches the AP and uses the
+    /// credential successfully — and the guest address, which no scanned subnet holds, was then
+    /// reported as a credential that was never contacted. The advice was wrong twice over: the
+    /// credential is already on the right host, and it already worked.
+    #[test]
+    fn a_reached_hosts_out_of_scope_address_is_not_reported() {
+        let subnets = [subnet("192.168.4.0/22")];
+        let mappings = [multi_homed(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &["172.30.10.1", "192.168.7.235"],
+        )];
+
+        assert!(
+            unreachable_credential_targets(&mappings, &subnets).is_empty(),
+            "the device was reached at its LAN address; its guest address is not an untried credential"
+        );
+    }
+
+    /// The other side of the same rule, and the thing it must not swallow: a credential pinned to
+    /// a host the scan genuinely cannot reach has no sibling to vouch for it and still reports.
+    #[test]
+    fn a_host_with_no_in_scope_address_is_still_reported() {
+        let subnets = [subnet("192.168.4.0/22")];
+        let mappings = [multi_homed(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &["172.30.10.1", "172.30.10.2"],
+        )];
+
+        assert_eq!(unreachable_credential_targets(&mappings, &subnets).len(), 2);
+    }
+
+    /// Two addresses that merely share a scan are not siblings. Without the host id — an
+    /// integration target, the legacy mapping, or any mapping from a server that predates the
+    /// field — the per-address rule stands exactly as it did.
+    #[test]
+    fn addresses_of_different_hosts_do_not_vouch_for_each_other() {
+        let subnets = [subnet("192.168.4.0/22")];
+        let unrelated = [
+            mapping_targeting("172.30.10.1"),
+            mapping_targeting("192.168.7.235"),
+        ];
+        assert_eq!(
+            unreachable_credential_targets(&unrelated, &subnets).len(),
+            1,
+            "no host id means no siblings, so the out-of-scope address reports as it always did"
+        );
+
+        // Same two addresses, same host, but two different credentials: each is judged on its own.
+        let host = Uuid::new_v4();
+        let two_creds = [
+            multi_homed(Uuid::new_v4(), host, &["172.30.10.1"]),
+            multi_homed(Uuid::new_v4(), host, &["192.168.7.235"]),
+        ];
+        assert_eq!(
+            unreachable_credential_targets(&two_creds, &subnets).len(),
+            1,
+            "a second credential reaching the host says nothing about whether the first was tried"
+        );
+    }
+
+    /// The post-scan half, against the addresses that answered rather than the ones in scope: a
+    /// device that answered on one address was reached, and its silent second address is not an
+    /// untried credential.
+    #[test]
+    fn a_hosts_silent_address_is_not_reported_when_another_answered() {
+        let subnets = [subnet("192.168.4.0/22")];
+        let host = Uuid::new_v4();
+        let mappings = [multi_homed(
+            Uuid::new_v4(),
+            host,
+            &["192.168.4.10", "192.168.4.11"],
+        )];
+
+        let answered = HashSet::from([ip("192.168.4.10")]);
+        assert!(unanswered_credential_targets(&mappings, &subnets, None, &answered).is_empty());
+
+        // Nothing answered anywhere on the host, so both addresses are still reported.
+        let silent = HashSet::new();
+        assert_eq!(
+            unanswered_credential_targets(&mappings, &subnets, None, &silent).len(),
+            2
+        );
     }
 }

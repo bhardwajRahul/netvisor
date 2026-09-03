@@ -1,0 +1,5 @@
+FROM debian:bookworm-slim
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y socat procps && rm -rf /var/lib/apt/lists/*
+RUN printf '#!/bin/sh\necho "<<<check_mk>>>"\necho "Version: 2.3.0p10"\necho "AgentOS: linux"\necho "<<<uptime>>>"\ncat /proc/uptime\n' > /usr/bin/check_mk_agent && chmod +x /usr/bin/check_mk_agent
+EXPOSE 6556
+CMD ["socat","TCP-LISTEN:6556,reuseaddr,fork","EXEC:/usr/bin/check_mk_agent"]

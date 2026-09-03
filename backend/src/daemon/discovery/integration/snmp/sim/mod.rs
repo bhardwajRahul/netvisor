@@ -93,6 +93,20 @@ const IPADDR: &str = "ipaddr";
 const ENTITY: &str = "entity";
 const CDP: &str = "cdp";
 pub(crate) const VLAN20: &str = "vlan20";
+/// `lldpLocPortTable`, split out for a device that serves it through a handler of its own.
+const LOCPORTS: &str = "locports";
+
+/// A scalar's *object* OID: the constant without its trailing instance sub-id.
+///
+/// The MIB constants name instances (`lldpLocChassisId.0`), which is what a walk asks for, but
+/// `pass` registers a subtree. Registering the instance leaves the object invisible to a GETNEXT
+/// arriving from above, so the scalar is only reachable by a caller that already knows its exact
+/// OID.
+fn scalar_object(oid: &str) -> Vec<u64> {
+    let mut parts = oid_parts(oid);
+    parts.pop();
+    parts
+}
 const EMPTY: &str = "empty";
 
 impl SimDevice {
@@ -105,6 +119,19 @@ impl SimDevice {
             .if_table
             .as_ref()
             .map(tables::IfTable::ethernet_if_indexes)
+            .unwrap_or_default()
+    }
+
+    /// Subtrees this device refuses a GETBULK for, as `snmp-bulk-refuser.py` is configured.
+    ///
+    /// Empty for every device but the one that needs it, and empty means no shim: the agent binds
+    /// its own address directly and nothing sits in front of it.
+    pub fn refuses_getbulk(&self) -> Vec<Vec<u64>> {
+        self.tables
+            .lldp
+            .as_ref()
+            .filter(|table| table.neighbours_refuse_getbulk)
+            .map(|table| vec![oid_parts(table.mib.remote_root)])
             .unwrap_or_default()
     }
 
@@ -124,7 +151,24 @@ impl SimDevice {
             } else {
                 format!("{}-active", table.mib.file_suffix)
             };
-            files.push(self.file(&suffix, Ordering::Ascending, table.wire_rows()));
+            let mut rows = table.wire_rows();
+            if table.splits_registrations() {
+                // A sub-table served by its own handler needs its own file, because a `pass`
+                // script only ever sees the file it was given. `snmp-pass-handler-stuck.sh` reads
+                // `head -1`, so pointed at the whole MIB it would answer with a local-system
+                // scalar, net-snmp would reject that as outside the registration, and the device
+                // would report an *empty* port table rather than a truncated one — a different
+                // fault with a different warning.
+                let port_table = oid_parts(table.mib.local_port_table);
+                let split = rows
+                    .iter()
+                    .filter(|row| row.oid.starts_with(&port_table))
+                    .cloned()
+                    .collect();
+                rows.retain(|row| !row.oid.starts_with(&port_table));
+                files.push(self.file(&format!("{suffix}-{LOCPORTS}"), Ordering::Ascending, split));
+            }
+            files.push(self.file(&suffix, Ordering::Ascending, rows));
         }
         if !self.tables.bridge.is_empty() {
             let rows = self.tables.bridge.wire_rows(&self.ethernet_if_indexes());
@@ -253,9 +297,16 @@ impl SimDevice {
             (Some(mib), false) => format!("{}-active", mib.file_suffix),
             (None, _) => String::new(),
         };
+        let lldp_splits = self
+            .tables
+            .lldp
+            .as_ref()
+            .is_some_and(lldp::LldpTable::splits_registrations);
         for (suffix, subtree) in [
             (
-                lldp_file.as_str(),
+                // Skipped where the sub-tables are registered separately below: this line covers
+                // all of them, and covering them is exactly what stops them being served.
+                if lldp_splits { "" } else { lldp_file.as_str() },
                 lldp_mib.map(|m| m.root).unwrap_or(lldp_oids::LLDP_MIB),
             ),
             (BRIDGE, bridge::BRIDGE_MIB),
@@ -269,6 +320,46 @@ impl SimDevice {
                     handler: Handler::Normal,
                 });
             }
+        }
+        // A device that serves one LLDP sub-table differently carves the MIB into disjoint pieces
+        // instead of registering the root: the local-system scalars one by one, then the port
+        // table, then the remote tables. Emitted only when a handler is non-default, so every
+        // other device's config is the single root line it always was.
+        //
+        // Disjoint is not tidiness. net-snmp's `pass` serves only the broadest of a set of
+        // overlapping lines and silently ignores the nested ones — a root line plus `…1.3.7` plus
+        // `…1.4` answered everything from the root, so neither sub-table handler ever ran and the
+        // rows that had moved into the port table's own file were served by nobody. The device
+        // reported `No Such Instance` for a table it was holding, and the model, which resolved
+        // the nesting, said it was fine. `no_registration_is_nested_inside_another` is what stops
+        // that coming back.
+        if let (Some(table), Some(file)) = (self.tables.lldp.as_ref(), index(&lldp_file))
+            && table.splits_registrations()
+        {
+            let port_file = index(&format!("{lldp_file}-{LOCPORTS}")).unwrap_or(file);
+            let local = &table.mib.local;
+            for scalar in [
+                local.chassis_id_subtype,
+                local.chassis_id,
+                local.sys_name,
+                local.sys_desc,
+            ] {
+                registrations.push(Registration {
+                    subtree: scalar_object(scalar),
+                    file,
+                    handler: Handler::Normal,
+                });
+            }
+            registrations.push(Registration {
+                subtree: oid_parts(table.mib.local_port_table),
+                file: port_file,
+                handler: table.local_port_handler,
+            });
+            registrations.push(Registration {
+                subtree: oid_parts(table.mib.remote_root),
+                file,
+                handler: Handler::Normal,
+            });
         }
         if let Some(file) = index(IPADDR) {
             // Column by column, not as one subtree. net-snmp's own IP module owns `ipAddrTable`,
@@ -340,7 +431,8 @@ impl SimDevice {
     /// Whether it offers getbulk follows from its credential rather than being set per device:
     /// SNMPv1 has no getbulk, so the v1 agent forces every column through getnext.
     pub fn agent(&self) -> SimAgent {
-        let agent = SimAgent::new(&self.data_files(), self.registrations());
+        let agent = SimAgent::new(&self.data_files(), self.registrations())
+            .refusing_getbulk(self.refuses_getbulk());
         match self.credential {
             CredentialType::SnmpV1 { .. } => agent.without_getbulk(),
             _ => agent,
@@ -354,6 +446,23 @@ impl SimDevice {
             return None;
         }
         Some(SimAgent::new(&files, self.context_registrations()))
+    }
+
+    /// How many LLDP neighbours this device is *expected* to lose to a local port that names no
+    /// interface, because losing them is the defect it reproduces.
+    ///
+    /// Zero for every device but one, and the default is what makes the lab-wide check strict: a
+    /// new fixture that drops a neighbour fails rather than being quietly excused. The exemption
+    /// is a count rather than a flag so the fixture still has to lose *exactly* what it claims —
+    /// if `switch-shortports-01` ever stops truncating its `lldpLocPortTable`, the check notices.
+    pub fn expected_unplaceable_neighbours(&self) -> usize {
+        match self.name {
+            // GH #668's switch4. Its `lldpLocPortTable` read stops part way, which is the whole
+            // defect: the ports its two neighbours sit on are in the half that never arrives, so
+            // both reach no interface. A device that placed them would not reproduce the report.
+            "switch-shortports-01" => 2,
+            _ => 0,
+        }
     }
 
     /// `ifNumber.0` as this device publishes it, or `None` where it serves no ifTable.
@@ -412,6 +521,41 @@ mod tests {
                 device.name,
                 device.ip
             );
+        }
+    }
+
+    /// No device registers a subtree inside another one it registers.
+    ///
+    /// net-snmp's `pass` serves only the broadest of a set of overlapping lines and silently
+    /// ignores the nested ones — no error, no log, the config simply does less than it says. A
+    /// device that registered its LLDP MIB root alongside `…1.3.7` and `…1.4` therefore served
+    /// every LLDP request from the root line, and because the split had moved the port-table rows
+    /// into their own file, that table came back `No Such Instance` from a device that was holding
+    /// it. Two scans and a wire capture to find, and none of it visible from the definitions.
+    ///
+    /// A property over every device rather than an assertion about the one that got it wrong: the
+    /// mistake is available to any device that wants to serve part of a MIB differently, and the
+    /// answer is always to carve the MIB up rather than nest inside it.
+    #[test]
+    fn no_registration_is_nested_inside_another() {
+        for device in lab() {
+            let registrations = device.registrations();
+            for (i, outer) in registrations.iter().enumerate() {
+                for (j, inner) in registrations.iter().enumerate() {
+                    if i == j {
+                        continue;
+                    }
+                    assert!(
+                        !(inner.subtree.len() > outer.subtree.len()
+                            && inner.subtree.starts_with(&outer.subtree)),
+                        "{} registers {:?} inside {:?}; net-snmp will serve only the outer one and \
+                         the inner handler and file will never run",
+                        device.name,
+                        inner.subtree,
+                        outer.subtree
+                    );
+                }
+            }
         }
     }
 
@@ -491,6 +635,45 @@ mod tests {
                     ),
                 }
             }
+        }
+    }
+
+    /// No device in the lab loses an LLDP neighbour to a local port that names no interface.
+    ///
+    /// `count_dropped_neighbours` discards such a neighbour whole: no `lldp_chassis_id` is ever
+    /// written, so the far end it names contributes nothing and the server has nothing to resolve.
+    /// From the fixture's side this is invisible — the LLDP table still serves the neighbour, and a
+    /// device test asserting on `neighbour_named` still passes, because the drop happens after the
+    /// walk and before interfaces are built.
+    ///
+    /// That is how `switch-offsite-01` shipped serving two neighbours nothing could ever read: the
+    /// GH #668 "Switch1" shape on port 4 and the address-as-identity subtypes on port 5 were added
+    /// to `lldp()` and not to `if_table()`. Both cases existed only in unit tests while appearing
+    /// to be covered end to end.
+    ///
+    /// Lab-wide rather than per device, because the mistake is in adding a fixture and every future
+    /// fixture can make it. The two that exercise a *namespace* mismatch
+    /// (`switch-exos-01`'s 1001+ ifIndexes, `switch-voss-01`'s identity mapping) resolve their
+    /// neighbours through `lldpLocPortTable` and drop none, which is the point of both. The one
+    /// device that does drop declares how many through
+    /// [`SimDevice::expected_unplaceable_neighbours`] — losing them is the defect it reproduces,
+    /// so the check pins the count rather than waiving it.
+    #[tokio::test]
+    async fn no_lab_device_drops_an_lldp_neighbour() {
+        for device in lab() {
+            let scan = harness::collect(&device).await;
+            if scan.neighbours.records.is_empty() {
+                continue;
+            }
+            assert_eq!(
+                scan.dropped_neighbours,
+                device.expected_unplaceable_neighbours(),
+                "{} serves {} LLDP neighbour(s) and {} reach no interface — a local port in \
+                 lldp() with no matching row in if_table() is discarded before the server sees it",
+                device.name,
+                scan.neighbours.records.len(),
+                scan.dropped_neighbours,
+            );
         }
     }
 }

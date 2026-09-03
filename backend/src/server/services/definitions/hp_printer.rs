@@ -28,10 +28,12 @@ impl ServiceDefinition for HpPrinter {
                 Pattern::Endpoint(PortType::Http8080, "", "DeskJet", None),
                 Pattern::Endpoint(PortType::Http8080, "", "OfficeJet", None),
             ]),
+            // 515/udp is gone: nothing reports a UDP port open without a probe behind it, so that
+            // arm could never contribute. The remaining two qualify a page that already named the
+            // model, so neither stands alone.
             Pattern::AnyOf(vec![
                 Pattern::Port(PortType::Ipp),
                 Pattern::Port(PortType::LdpTcp),
-                Pattern::Port(PortType::LdpUdp),
             ]),
         ])
     }

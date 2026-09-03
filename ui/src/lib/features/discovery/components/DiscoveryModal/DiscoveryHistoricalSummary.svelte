@@ -3,20 +3,20 @@
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import InfoRow from '$lib/shared/components/data/InfoRow.svelte';
 	import InlineSuccess from '$lib/shared/components/feedback/InlineSuccess.svelte';
+	import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import type { DiscoveryUpdatePayload } from '../../types/api';
-	import { renderWarnings } from '../../utils/warnings';
 	import { formatDuration, formatTimestamp } from '$lib/shared/utils/formatting';
 	import { useSubnetsQuery, getSubnetById } from '$lib/features/subnets/queries';
 	import { useHostsByIds } from '$lib/features/hosts/queries';
 	import scanSettingsFields from '$lib/data/scan-settings.json';
+	import type { FieldDefinition } from '$lib/shared/stores/metadata';
 	import {
 		discovery_runDetails,
 		discovery_hostNamingFallback,
 		discovery_scanSettings,
-		discovery_completedWithWarnings,
 		discovery_defaultSettings,
 		discovery_bestService,
 		discovery_scanModeFull,
@@ -49,24 +49,13 @@
 	// TanStack Query for subnets
 	const subnetsQuery = useSubnetsQuery();
 	let subnetsData = $derived(subnetsQuery.data ?? []);
-	// A rescan names a target host, and the LLDP/CDP warnings name the devices that saw an
-	// unplaceable neighbour — both by id. Fetched by id rather than downloading every host with its
-	// nested entities, and as one set so the warnings do not need a query of their own.
-	let neededHostIds = $derived([
-		...new Set([
-			...(payload.discovery_type.type === 'Rescan' ? [payload.discovery_type.target_host_id] : []),
-			...(payload.warnings ?? []).flatMap((w) => [
-				...('host_id' in w ? [w.host_id] : []),
-				...('remote_host_id' in w ? [w.remote_host_id] : [])
-			])
-		])
-	]);
+	// A rescan names its target host by id. The warnings used to be resolved here too; they have
+	// their own tab now, and it holds the query for the devices they name.
+	let neededHostIds = $derived(
+		payload.discovery_type.type === 'Rescan' ? [payload.discovery_type.target_host_id] : []
+	);
 	const hostsQuery = useHostsByIds(() => neededHostIds);
 	let hostsData = $derived(hostsQuery.data ?? []);
-	// Named rather than numbered: "which of my switches saw this" is the first thing an operator
-	// needs from an unresolved-neighbour warning. Unresolved ids render without the segment.
-	let hostNameById = $derived((id: string) => hostsData.find((h) => h.id === id)?.name);
-	let warningLines = $derived(renderWarnings(payload.warnings ?? [], hostNameById));
 
 	let duration = $derived(
 		payload.started_at && payload.finished_at
@@ -81,14 +70,7 @@
 	}
 
 	// Scan settings field metadata for label lookup
-	interface FieldDef {
-		id: string;
-		label: string;
-		default_value: string;
-		field_type: string;
-	}
-
-	const fields = scanSettingsFields as FieldDef[];
+	const fields = scanSettingsFields as FieldDefinition[];
 
 	// Get non-default scan settings as label/value pairs. A rescan carries the
 	// narrower RescanSettings, whose fields are a subset of the same definitions,
@@ -119,9 +101,11 @@
 	// Hoisted: narrowing on `payload.discovery_type` doesn't survive into the
 	// nested callback, and `ports` is optional in the generated type.
 	let rescan = $derived(payload.discovery_type.type === 'Rescan' ? payload.discovery_type : null);
-	let rescanHostName = $derived(
-		rescan ? (hostsData.find((h) => h.id === rescan.target_host_id)?.name ?? null) : null
-	);
+	let rescanHostName = $derived.by(() => {
+		if (!rescan) return null;
+		const host = hostsData.find((h) => h.id === rescan.target_host_id);
+		return host ? hostDisplayName(host) : null;
+	});
 
 	let hostNamingLabel = $derived(
 		payload.discovery_type.type === 'Unified'
@@ -134,9 +118,9 @@
 
 <div class="space-y-4">
 	<!-- Status Banner -->
-	{#if payload.phase === 'Complete' && payload.warnings && payload.warnings.length > 0}
-		<InlineWarning title={discovery_completedWithWarnings()} items={warningLines} />
-	{:else if payload.phase === 'Complete'}
+	<!-- Warnings are a tab of their own, and the tab is the place that says so. Repeating it here
+	     left the details reporting on a list it does not show. -->
+	{#if payload.phase === 'Complete'}
 		<InlineSuccess title={payload.phase} />
 	{:else if payload.phase === 'Failed'}
 		<InlineDanger title={payload.phase} body={payload.error ?? null} />

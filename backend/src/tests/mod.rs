@@ -1,4 +1,6 @@
-use crate::server::hosts::r#impl::name::HostName;
+use crate::server::hosts::r#impl::name::{HostName, HostNameSources};
+use crate::server::shared::attribution::AttributeSource;
+use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
 use crate::server::{
     config::{AppState, ServerConfig},
     daemons::r#impl::base::{Daemon, DaemonBase, DaemonMode},
@@ -44,6 +46,7 @@ pub mod host_create_with_children;
 pub mod host_naming;
 pub mod lldp_resolution;
 pub mod snmp_sim_resolution;
+pub mod subnet_placement;
 
 pub const DAEMON_CONFIG_FIXTURE: &str = "src/tests/daemon_config.json";
 pub const SERVER_DB_FIXTURE: &str = "src/tests/scanopy.sql";
@@ -121,7 +124,7 @@ pub fn network(organization_id: &Uuid) -> Network {
 
 pub fn host(network_id: &Uuid) -> Host {
     Host::new(HostBase {
-        name: HostName::Manual("Test Host".to_string()),
+        name: HostName::manual("Test Host".to_string()),
         hostname: Some("test.local".to_string()),
         network_id: *network_id,
         description: None,
@@ -159,7 +162,12 @@ pub fn subnet(network_id: &Uuid) -> Subnet {
         name: "Test Subnet".to_string(),
         description: None,
         network_id: *network_id,
-        cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
+        cidr: SubnetCidr::new(
+            SubnetCidrValue(IpCidr::V4(
+                Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap(),
+            )),
+            AttributeSource::DaemonSelfReport,
+        ),
         subnet_type: SubnetType::Lan,
         virtualization_service_id: None,
         source: EntitySource::System,

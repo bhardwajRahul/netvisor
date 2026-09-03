@@ -46,6 +46,17 @@ pub use super::types::snmp::{
 pub struct CredentialMapping<T> {
     #[serde(default)]
     pub default_credential: Option<T>,
+    /// The stored credential `default_credential` came from.
+    ///
+    /// The accumulator this is built in is keyed by credential id — one mapping per credential —
+    /// and the key used to be dropped on the way out, which left a broadcast default anonymous by
+    /// the time it reached the daemon. A credential warning could then name the address it failed
+    /// at but never the record to go and fix, which is the whole point of carrying it.
+    ///
+    /// `None` on a mapping from a server too old to send it, and on the daemon's own injected
+    /// "public" fallback, which has no stored row behind it.
+    #[serde(default)]
+    pub default_credential_id: Option<Uuid>,
     #[serde(default)]
     pub ip_overrides: Vec<IpOverride<T>>,
 }
@@ -58,6 +69,19 @@ pub struct IpOverride<T> {
     /// Credential ID for tracking which credential was used during discovery.
     #[serde(default)]
     pub credential_id: Uuid,
+    /// The host this override was expanded from, where it came from a host assignment.
+    ///
+    /// A host assignment means "use this credential on this device", and it fans out to one
+    /// override per address the host holds. Flattened to addresses alone, the daemon could not
+    /// tell that two of them were the same device, and reported a multi-homed host's unscanned
+    /// address as an untried credential even though the credential had just worked at the host's
+    /// other address. Carrying the host is what lets those siblings be recognised.
+    ///
+    /// `None` where there is no host behind the override — an integration target names addresses
+    /// directly, and so does the legacy SNMP mapping — and on a mapping from an older server.
+    /// Those keep the per-address rule they have always had.
+    #[serde(default)]
+    pub host_id: Option<Uuid>,
 }
 
 impl<T> IpOverride<T> {
@@ -345,7 +369,7 @@ impl CredentialQueryPayload {
     /// Resolve all FilePath fields to Value by reading from disk,
     /// then validate PEM contents for fields that require it.
     pub fn resolve_file_paths(&self) -> Result<Self, anyhow::Error> {
-        use super::types::InlineFormat;
+        use crate::server::shared::types::field_definition::InlineFormat;
 
         let label = self.discovery_label();
         match self {
@@ -452,6 +476,56 @@ impl CredentialQueryPayload {
     }
 }
 
+/// A credential field that could not be turned into the value the wire needs.
+///
+/// Typed rather than a formatted string so a caller can tell "the configuration is wrong" from
+/// "the network is wrong" without matching on message text — the same reason
+/// `snmp::queries::is_desync` downcasts `snmp2::Error` rather than reading its `Display`. Until
+/// this existed the two were the same `anyhow::Error` to every probe, and a community string typed
+/// into a file-path field was reported at every host in the scan as an unreachable device
+/// (GH #668).
+///
+/// Only a *read* failure. A temp-file write failing while handing a value to a client library that
+/// wants a path is our disk, not the operator's credential, and telling them to re-enter it would
+/// send them to fix something that is not broken.
+///
+/// `Display` reproduces the previous message verbatim, so daemon logs are unchanged.
+#[derive(Debug, thiserror::Error)]
+#[error("Failed to read {field} from {path} for {label}: {source}")]
+pub struct UnresolvableCredential {
+    /// The field on the credential, e.g. `community` or `auth_password`.
+    pub field: String,
+    /// The path that could not be read. Never a secret — a path is what makes this debuggable.
+    pub path: String,
+    /// Which credential type asked, e.g. `SNMP`.
+    pub label: String,
+    pub source: std::io::Error,
+}
+
+impl UnresolvableCredential {
+    fn read(field: &str, path: &str, label: &str) -> Result<String, anyhow::Error> {
+        std::fs::read_to_string(path).map_err(|source| {
+            anyhow::Error::new(Self {
+                field: field.to_string(),
+                path: path.to_string(),
+                label: label.to_string(),
+                source,
+            })
+        })
+    }
+}
+
+/// Whether this error is a credential field we could not read, wherever in the chain it sits.
+///
+/// Chain-walking rather than a top-level downcast because every caller adds context on the way up:
+/// `create_session` wraps, the probe wraps again, and a check on the outermost error would see
+/// none of them.
+pub fn is_unresolvable_credential(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| cause.is::<UnresolvableCredential>())
+}
+
 /// Non-secret value — inline or file path. Daemon can log freely.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 #[serde(tag = "mode")]
@@ -527,15 +601,7 @@ impl ResolvableValue {
             Self::Value { value } => Ok(value.clone()),
             Self::FilePath { path } => {
                 tracing::info!("Read {} from {} for {}", field_name, path, label);
-                std::fs::read_to_string(path).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to read {} from {} for {}: {}",
-                        field_name,
-                        path,
-                        label,
-                        e
-                    )
-                })
+                UnresolvableCredential::read(field_name, path, label)
             }
         }
     }
@@ -546,15 +612,7 @@ impl ResolvableValue {
             Self::Value { .. } => Ok(self.clone()),
             Self::FilePath { path } => {
                 tracing::info!("Read {} from {} for {}", field_name, path, label);
-                let contents = std::fs::read_to_string(path).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to read {} from {} for {}: {}",
-                        field_name,
-                        path,
-                        label,
-                        e
-                    )
-                })?;
+                let contents = UnresolvableCredential::read(field_name, path, label)?;
                 Ok(Self::Value { value: contents })
             }
         }
@@ -605,15 +663,7 @@ impl ResolvableSecret {
             Self::Value { value } => Ok(redact::Secret::from(value.clone())),
             Self::FilePath { path } => {
                 tracing::info!("Read {} (********) from {} for {}", field_name, path, label);
-                let contents = std::fs::read_to_string(path).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to read {} from {} for {}: {}",
-                        field_name,
-                        path,
-                        label,
-                        e
-                    )
-                })?;
+                let contents = UnresolvableCredential::read(field_name, path, label)?;
                 Ok(redact::Secret::from(contents))
             }
         }
@@ -625,15 +675,7 @@ impl ResolvableSecret {
             Self::Value { .. } => Ok(self.clone()),
             Self::FilePath { path } => {
                 tracing::info!("Read {} (********) from {} for {}", field_name, path, label);
-                let contents = std::fs::read_to_string(path).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to read {} from {} for {}: {}",
-                        field_name,
-                        path,
-                        label,
-                        e
-                    )
-                })?;
+                let contents = UnresolvableCredential::read(field_name, path, label)?;
                 Ok(Self::Value { value: contents })
             }
         }
@@ -769,6 +811,7 @@ mod tests {
             ip,
             credential: make_snmp_cred("public"),
             credential_id: cred_id,
+            host_id: None,
         }
     }
 
@@ -782,6 +825,7 @@ mod tests {
                 make_override("10.0.0.1".parse().unwrap(), Uuid::nil()),
                 make_override("10.0.0.2".parse().unwrap(), Uuid::new_v4()),
             ],
+            ..Default::default()
         };
         let ids = mapping.credential_ids();
         assert_eq!(ids.len(), 1);
@@ -792,11 +836,11 @@ mod tests {
     fn credential_ids_deduplicates() {
         let shared_id = Uuid::new_v4();
         let mapping = CredentialMapping {
-            default_credential: None,
             ip_overrides: vec![
                 make_override("10.0.0.1".parse().unwrap(), shared_id),
                 make_override("10.0.0.2".parse().unwrap(), shared_id),
             ],
+            ..Default::default()
         };
         let ids = mapping.credential_ids();
         assert_eq!(ids.len(), 1);
@@ -807,7 +851,7 @@ mod tests {
     fn credential_ids_empty_when_no_overrides() {
         let mapping: CredentialMapping<SnmpQueryCredential> = CredentialMapping {
             default_credential: Some(make_snmp_cred("public")),
-            ip_overrides: vec![],
+            ..Default::default()
         };
         assert!(mapping.credential_ids().is_empty());
     }
@@ -818,7 +862,7 @@ mod tests {
     fn is_enabled_default_only() {
         let mapping = CredentialMapping {
             default_credential: Some(make_snmp_cred("public")),
-            ip_overrides: vec![],
+            ..Default::default()
         };
         assert!(mapping.is_enabled());
     }
@@ -826,8 +870,8 @@ mod tests {
     #[test]
     fn is_enabled_overrides_only() {
         let mapping = CredentialMapping {
-            default_credential: None,
             ip_overrides: vec![make_override("10.0.0.1".parse().unwrap(), Uuid::new_v4())],
+            ..Default::default()
         };
         assert!(mapping.is_enabled());
     }
@@ -849,7 +893,9 @@ mod tests {
                 ip,
                 credential: make_snmp_cred("override"),
                 credential_id: Uuid::new_v4(),
+                host_id: None,
             }],
+            ..Default::default()
         };
         let cred = mapping.get_credential_for_ip(&ip).unwrap();
         assert_eq!(
@@ -865,6 +911,7 @@ mod tests {
         let mapping = CredentialMapping {
             default_credential: Some(make_snmp_cred("default")),
             ip_overrides: vec![make_override("10.0.0.1".parse().unwrap(), Uuid::new_v4())],
+            ..Default::default()
         };
         let other_ip: IpAddr = "10.0.0.99".parse().unwrap();
         let cred = mapping.get_credential_for_ip(&other_ip).unwrap();
@@ -879,8 +926,8 @@ mod tests {
     #[test]
     fn get_credential_for_ip_no_match() {
         let mapping: CredentialMapping<SnmpQueryCredential> = CredentialMapping {
-            default_credential: None,
             ip_overrides: vec![make_override("10.0.0.1".parse().unwrap(), Uuid::new_v4())],
+            ..Default::default()
         };
         let other_ip: IpAddr = "10.0.0.99".parse().unwrap();
         assert!(mapping.get_credential_for_ip(&other_ip).is_none());

@@ -18,8 +18,15 @@ impl ServiceDefinition for AudioBookShelf {
         ServiceCategory::Media
     }
 
+    /// `/status` is unauthenticated and names the application in its own body, which a listener
+    /// that merely accepts the connection cannot produce.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::Port(PortType::new_tcp(13378))
+        Pattern::Endpoint(
+            PortType::new_tcp(13378),
+            "/status",
+            "\"app\":\"audiobookshelf\"",
+            None,
+        )
     }
 
     fn logo_url(&self) -> &'static str {

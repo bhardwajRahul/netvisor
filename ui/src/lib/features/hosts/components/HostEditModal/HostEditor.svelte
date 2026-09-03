@@ -2,6 +2,7 @@
 	import { createForm } from '@tanstack/svelte-form';
 	import { validateForm, clearStaleFieldInfo } from '$lib/shared/components/forms/form-context';
 	import { Info, ArrowRight } from 'lucide-svelte';
+	import { hostDisplayName } from '../../host-display-name';
 	import type {
 		Host,
 		HostFormData,
@@ -108,7 +109,7 @@
 
 	let isEditing = $derived(host !== null);
 	let title = $derived(
-		isEditing ? common_editName({ name: host?.name ?? '' }) : hosts_createHost()
+		isEditing ? common_editName({ name: host ? hostDisplayName(host) : '' }) : hosts_createHost()
 	);
 
 	// formData holds structural data (ids, network_id, tags, etc.)
@@ -128,7 +129,7 @@
 				const dataIface = formData.ip_addresses[i];
 				if (formIface && dataIface) {
 					dataIface.ip_address = formIface.ip_address ?? '';
-					dataIface.mac_address = formIface.mac_address ?? null;
+					dataIface.mac_address = formIface.mac_address ?? undefined;
 					dataIface.name = formIface.name ?? null;
 				}
 			}

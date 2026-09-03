@@ -1,3 +1,4 @@
+use crate::server::shared::attribution::AttributeMethod;
 use crate::server::shared::oui;
 use crate::server::{
     services::{
@@ -149,10 +150,29 @@ impl MatchConfidence {
     }
 }
 
-/// Types of credentialed client probes that run before service matching.
+/// Types of client probes that run before service matching.
 /// The probe result (success/failure) is pre-computed; Pattern::ClientResponse
 /// just checks whether it succeeded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// Two kinds of producer fill this: the credentialed `DiscoveryIntegration`s, and the
+/// non-credentialed [`AppProbe`](crate::daemon::utils::app_probe::AppProbe)s. Every variant needs
+/// one — a variant nothing produces gives a service definition a pattern that can never match, and
+/// `every_client_probe_variant_has_a_producer` is what now says so.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    strum_macros::EnumIter,
+    strum_macros::EnumString,
+    strum_macros::IntoStaticStr,
+    strum_macros::VariantNames,
+)]
 pub enum ClientProbe {
     Docker,
     /// A completed gNMI `Get` against the device. A gRPC listener accepts a TCP connect whatever
@@ -165,6 +185,139 @@ pub enum ClientProbe {
     /// Unlike the others this proves nothing is listening *on* the host — it proves the portal
     /// account works, which is what gates the integration's `execute`.
     InstantOn,
+    /// A well-formed MBAP frame came back with our transaction ID echoed. Says nothing about
+    /// whether the device answered `0x2B` — a `0xAB` exception is still Modbus.
+    ModbusTcp,
+    /// The OPC UA binary transport answered a `HEL` with an `ACK` or an `ERR`.
+    OpcUa,
+    /// A CIP ListIdentity reply came back with our sender context echoed.
+    EtherNetIp,
+    /// An `OPTIONS` request came back as a `SIP/2.0` status line. Any final response counts: a
+    /// stack that parsed the request and refused it is still a stack.
+    Sip,
+    /// The server sent an `SSH-` identification string, which RFC 4253 requires before anything
+    /// else happens.
+    Ssh,
+    /// An FTP greeting: `220` ready, or `421` refusing this client.
+    Ftp,
+    /// Telnet option negotiation — an `IAC` command byte in the opening bytes.
+    Telnet,
+    /// An `OPTIONS` request came back as an `RTSP/1.0` status line.
+    Rtsp,
+    /// A NUT server answered its text protocol rather than an error of another shape.
+    Nut,
+    /// A Zabbix agent answered a passive check with its `ZBXD` header.
+    ZabbixAgent,
+    /// A Check_MK agent dumped its section list, which opens `<<<check_mk>>>`.
+    CheckMkAgent,
+    /// An SMB2 NEGOTIATE was answered with an SMB2 header.
+    Smb,
+    /// An LDAP search of the root DSE came back as a BER-encoded searchResEntry or a result code.
+    Ldap,
+    /// A Kerberos AS-REQ came back as a KRB-ERROR, which is what an unauthenticated request earns
+    /// and is proof of a KDC.
+    Kerberos,
+    /// MySQL's server greeting packet, which it sends before the client says anything.
+    MySql,
+    /// PostgreSQL answered an SSLRequest with `S` or `N`.
+    PostgreSql,
+    /// A TDS PRELOGIN response.
+    MsSql,
+    /// MongoDB answered a `hello` command.
+    MongoDb,
+    /// Redis answered `PING` with `+PONG`, or refused it with `-NOAUTH`, which is still Redis.
+    Redis,
+    /// A CQL OPTIONS frame came back as SUPPORTED.
+    Cassandra,
+    /// A Kafka ApiVersions request came back with our correlation ID echoed.
+    Kafka,
+    /// The AMQP protocol header was answered, either by agreement or by a version rejection.
+    Amqp,
+    /// An MQTT CONNECT came back as a CONNACK, whatever return code it carries.
+    Mqtt,
+    /// An Oracle TNS connect packet came back as a TNS packet.
+    OracleTns,
+    /// An X.224 connection request came back as a connection confirm.
+    Rdp,
+    /// An ONC RPC NULL call to the NFS program came back as an RPC reply.
+    Nfs,
+    /// A DNS query over TCP came back as a response carrying our transaction id.
+    DnsTcp,
+    /// A TLS handshake reached the server's certificate, and that certificate's subject carries the
+    /// organizational unit Docker issues to swarm nodes. Names the swarm, not just the transport.
+    DockerSwarm,
+    /// A TLS handshake reached the server's certificate. Presence of TLS only — used where the
+    /// certificate carries nothing dependable to match on.
+    Tls,
+    /// An IKE_SA_INIT came back as an IKE response, including a rejection notify.
+    Ike,
+    /// An OpenVPN hard reset was answered with the server's own hard reset.
+    OpenVpn,
+    /// A ZMTP greeting came back naming a security mechanism, in cleartext, before any encryption.
+    Zmtp,
+    /// A Bacula `Hello` was answered with the plaintext CRAM-MD5 challenge.
+    Bacula,
+    /// An SSH identification string whose software name is Beszel's.
+    BeszelAgent,
+    /// A Q.931 `SETUP` was answered with a Q.931 message carrying our call reference.
+    H323,
+}
+
+impl ClientProbe {
+    /// Where this probe's own structured answers sit on the provenance ladder.
+    ///
+    /// Exhaustive and with no default, so adding a probe forces the tier decision here — at the
+    /// probe's own definition — rather than in `AttributeSource::method`, where it would be easy
+    /// to add a variant and never revisit the match.
+    pub fn method(&self) -> AttributeMethod {
+        use AttributeMethod as M;
+        match self {
+            // A runtime or controller describing something it manages: known speaker, not the
+            // subject.
+            Self::Docker | Self::Podman | Self::UnifiController | Self::InstantOn => M::Reported,
+            // We chose the address and the transport correlated the answer.
+            Self::Snmp | Self::Gnmi => M::Queried,
+            // Same, over the device's own product protocol.
+            Self::ModbusTcp | Self::EtherNetIp | Self::OpcUa => M::Native,
+            // The presence probes: we chose the address and spoke the service's own protocol to
+            // it. None of them reads an identity field today — they establish that the protocol
+            // answered and nothing more — so this tier is not consulted for any value yet. It is
+            // still stated rather than defaulted, because the day one of them does parse a version
+            // banner into a `DeviceIdentity` the tier has to already be right.
+            Self::Sip
+            | Self::Ssh
+            | Self::Ftp
+            | Self::Telnet
+            | Self::Rtsp
+            | Self::Nut
+            | Self::ZabbixAgent
+            | Self::CheckMkAgent
+            | Self::Smb
+            | Self::Ldap
+            | Self::Kerberos
+            | Self::MySql
+            | Self::PostgreSql
+            | Self::MsSql
+            | Self::MongoDb
+            | Self::Redis
+            | Self::Cassandra
+            | Self::Kafka
+            | Self::Amqp
+            | Self::Mqtt
+            | Self::OracleTns
+            | Self::Rdp
+            | Self::Nfs
+            | Self::DnsTcp
+            | Self::DockerSwarm
+            | Self::Tls
+            | Self::Ike
+            | Self::OpenVpn
+            | Self::Zmtp
+            | Self::Bacula
+            | Self::BeszelAgent
+            | Self::H323 => M::Native,
+        }
+    }
 }
 
 /// A device reported by a management controller the daemon authenticated to, rather than one
@@ -470,6 +623,26 @@ impl Display for Pattern<'_> {
     }
 }
 
+/// The discovery pattern for a service confirmed by an application probe.
+///
+/// `AllOf([Port(p), ClientResponse(c)])`: the port goes into the light scan because
+/// [`Pattern::ports`] flattens `AllOf`, *and* the service matches only once the probe has actually
+/// answered. Both halves come from the probe itself, so the port that gets scanned and the port
+/// that gets probed cannot drift apart — the failure mode that left `ClientProbe::Gnmi` with a
+/// pattern nothing can ever satisfy.
+///
+/// A probe contributing no [`ClientProbe`] degrades to the port alone, which is what the four
+/// probes migrated off the old UDP dispatch already matched on.
+pub fn probe_pattern(probe: &dyn crate::daemon::utils::app_probe::AppProbe) -> Pattern<'static> {
+    match probe.client_probe() {
+        Some(client_probe) => Pattern::AllOf(vec![
+            Pattern::Port(probe.port()),
+            Pattern::ClientResponse(client_probe),
+        ]),
+        None => Pattern::Port(probe.port()),
+    }
+}
+
 impl Pattern<'_> {
     pub fn matches(
         &self,
@@ -694,7 +867,9 @@ impl Pattern<'_> {
             }
 
             Pattern::MacVendor(vendor_string) => {
-                if let Some(mac_address) = ip_address.base.mac_address {
+                if let Some(mac_address) =
+                    crate::server::ip_addresses::r#impl::base::mac_of(&ip_address.base.mac_address)
+                {
                     let mac_str = mac_address.to_string();
                     let Some(entry) = oui::lookup_by_mac(&mac_str) else {
                         return Err(anyhow!(
@@ -1103,8 +1278,15 @@ impl Pattern<'_> {
 
     /// Whether the pattern includes HTTP endpoint probes on raw-socket ports.
     /// Used to flag services whose detection depends on the `probe_raw_socket_ports` toggle.
-    pub fn has_raw_socket_endpoint(&self) -> bool {
-        self.endpoints().iter().any(|e| e.port_type.is_raw_socket())
+    /// Whether `probe_raw_socket_ports` being off would stop this pattern matching.
+    ///
+    /// That setting drops 9100-9107 from the scan results entirely, so it governs any reference to
+    /// one of those ports — a bare `Pattern::Port`, as JetDirect uses, as much as an `Endpoint`.
+    /// Reading only the endpoints under-reported it: the setting exists because writing to 9100
+    /// prints, and JetDirect was missing from the list of what it gates.
+    pub fn gated_by_raw_socket_scanning(&self) -> bool {
+        self.ports().iter().any(PortType::is_raw_socket)
+            || self.endpoints().iter().any(|e| e.port_type.is_raw_socket())
     }
 
     /// Whether service uses IsGateway as a positive match signal -> service is_gateway = trues
@@ -1117,6 +1299,66 @@ impl Pattern<'_> {
             _ => false,
         }
     }
+
+    /// Whether a completed TCP connection to `port`, and nothing else, is enough for this pattern
+    /// to match.
+    ///
+    /// This is the property a middlebox exploits. A firewall session helper, transparent proxy or
+    /// IPS completes the handshake on behalf of an address that holds no device, and a definition
+    /// resting on the connect alone then names a service there (GH: FortiGate SIP ALG report). A
+    /// definition that reads a protocol response cannot be fooled the same way, because the
+    /// middlebox would have to speak the protocol to satisfy it.
+    ///
+    /// Derived from the pattern rather than from a maintained list, so a definition added with a
+    /// bare [`Pattern::Port`] is covered the day it lands and one that validates its port never is.
+    /// [`ServiceDefinition::connect_only_rationale`] is what declares the deliberate exceptions,
+    /// and the two are held equal by a test.
+    ///
+    /// UDP is out of scope: there is no connect to complete, and a UDP port is only ever reported
+    /// open by an `AppProbe` that already validated it.
+    pub fn matches_on_connect_alone(&self, port: PortType) -> bool {
+        if !port.is_tcp() {
+            return false;
+        }
+        match self {
+            Pattern::Port(p) => *p == port,
+            Pattern::AnyOf(patterns) => patterns.iter().any(|p| p.matches_on_connect_alone(port)),
+            // Every arm has to be satisfiable by connects for the whole to be, and one of them has
+            // to be the port in question — otherwise `AllOf([Port(80), Port(443)])` would report
+            // itself connect-only for a port it never looks at.
+            Pattern::AllOf(patterns) => {
+                patterns.iter().all(|p| p.satisfiable_by_connect())
+                    && patterns.iter().any(|p| p.references_port(port))
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether this pattern can be satisfied without evidence beyond completed TCP connections.
+    ///
+    /// The [`Pattern::AllOf`] recursion for [`Self::matches_on_connect_alone`]. Everything not
+    /// listed is `false` because it demands evidence a middlebox cannot manufacture: an HTTP body
+    /// or header match, a credentialed or application-probe response, an mDNS advert, a controller
+    /// inventory entry. [`Pattern::MacVendor`] is `false` for the same reason from the other
+    /// direction — it needs a MAC, which a routed address never has, so an OUI-gated definition is
+    /// already self-limiting off-link. [`Pattern::Custom`] is `false` because its predicate is
+    /// opaque; that also keeps the "Unclaimed Open Ports" catch-all from marking every port on the
+    /// network as connect-only.
+    fn satisfiable_by_connect(&self) -> bool {
+        match self {
+            Pattern::Port(_) => true,
+            // Satisfied when the inner pattern *fails*, which needs no evidence at all.
+            Pattern::Not(_) => true,
+            Pattern::AnyOf(patterns) => patterns.iter().any(|p| p.satisfiable_by_connect()),
+            Pattern::AllOf(patterns) => patterns.iter().all(|p| p.satisfiable_by_connect()),
+            _ => false,
+        }
+    }
+
+    /// Whether `port` appears anywhere in this pattern as a scanned port.
+    fn references_port(&self, port: PortType) -> bool {
+        self.ports().contains(&port)
+    }
 }
 
 #[cfg(test)]
@@ -1126,8 +1368,10 @@ mod tests {
 
     use crate::server::credentials::r#impl::mapping::SnmpCredentialMapping;
     use crate::server::discovery::r#impl::types::{DiscoveryType, HostNamingFallback};
+    use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
     use crate::server::services::r#impl::base::Service;
     use crate::server::services::r#impl::virtualization::ServiceVirtualization;
+    use crate::server::shared::attribution::AttributeSource;
     use crate::tests::{network, organization};
     use uuid::Uuid;
 
@@ -1575,7 +1819,10 @@ mod tests {
     fn test_mac_vendor_pattern_match() {
         let mut ctx = TestContext::new();
         // Set a known Sonos MAC address (B8:E9:37 is a Sonos OUI prefix)
-        ctx.ip_address.base.mac_address = Some("B8:E9:37:00:00:01".parse().expect("valid MAC"));
+        ctx.ip_address.base.mac_address = Some(MacEvidence::new(
+            MacEvidenceValue("B8:E9:37:00:00:01".parse().expect("valid MAC")),
+            AttributeSource::ArpReply,
+        ));
 
         let ports = vec![];
         let baseline = ctx.create_baseline_params(&ports);
@@ -1618,7 +1865,10 @@ mod tests {
         use crate::server::services::definitions::unifi_switch::UnifiSwitch;
 
         let mut ctx = TestContext::new();
-        ctx.ip_address.base.mac_address = Some("78:8A:20:00:00:01".parse().expect("valid MAC"));
+        ctx.ip_address.base.mac_address = Some(MacEvidence::new(
+            MacEvidenceValue("78:8A:20:00:00:01".parse().expect("valid MAC")),
+            AttributeSource::ArpReply,
+        ));
 
         let ports = vec![];
         let pattern = UnifiSwitch.discovery_pattern();

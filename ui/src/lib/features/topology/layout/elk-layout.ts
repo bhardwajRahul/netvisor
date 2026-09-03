@@ -1,6 +1,7 @@
 import type { ElkNode, ElkExtendedEdge } from 'elkjs';
 import type { TopologyNode } from '../types/base';
 import { affectsLayout } from './edge-classification';
+import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 import {
 	containerTypes,
 	getIrrelevantServiceCategories,
@@ -11,6 +12,7 @@ import { getOrgUseCase } from '../queries';
 import { getTopologyIndex } from '../entity-index';
 import * as perf from '../perf';
 import { resolveCollapsedAncestor } from '../collapse';
+import { noteElkRun } from '../diagnostics';
 
 /**
  * The port-constraint a container's own ports can honour.
@@ -927,11 +929,16 @@ function buildElkGraph(
 			}
 		}
 
-		// Map host name → count, then sort containers by header (= host name)
+		// Map host title → count, then sort containers by header (= the same title).
+		//
+		// Keyed on `hostDisplayName`, not the raw `name`: the join below is against
+		// `node.header`, which is the server-resolved title. Every host that has never been named
+		// keys as the empty string under `name`, so none of them ever matched their own container
+		// and the density sort silently degraded for exactly the hosts it mattered for.
 		const countByHostName = new Map<string, number>();
 		for (const host of input.topology.hosts ?? []) {
 			const count = countByHostId.get(host.id) ?? 0;
-			countByHostName.set(host.name, count);
+			countByHostName.set(hostDisplayName(host), count);
 		}
 
 		// Names resolved once per container. Two linear scans per comparison over 19,095 nodes made
@@ -1609,6 +1616,7 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 	graph1 = builtGraph1;
 	build1Done();
 	const elkPass1Done = perf.stage('elk.layout.pass1');
+	noteElkRun();
 	// Only the children array is bound, never the root: the root is unreferenced the moment this
 	// expression completes, and clearing this one binding after extraction drops the entire pass-1
 	// tree. Binding the result itself would keep the tree alive through `.children` anyway.
@@ -1665,6 +1673,7 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 	);
 	build2Done();
 	const elkPass2Done = perf.stage('elk.layout.pass2');
+	noteElkRun();
 	const result2 = await elk.layout(graph2);
 	elkPass2Done();
 

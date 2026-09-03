@@ -69,6 +69,54 @@ fn starting_request_id() -> i32 {
     NEXT.fetch_add(0x0001_0000, Ordering::Relaxed)
 }
 
+/// One host's SNMP session, and what this collection has learned about how to talk to it.
+///
+/// A newtype rather than the bare `AsyncSession` because the walk needs somewhere to record that
+/// getbulk does not work here. That verdict belongs to the device and holds for the whole
+/// collection: GH #668's switch3 spent fifteen seconds discovering it on `lldpRemChassisId` and
+/// then fifteen more on the very next column, because the flag driving it lived in `walk_subtree`
+/// and died with each walk. A session is the right lifetime — it is opened per host and dropped
+/// when that host is done, so nothing carries between hosts or between scans.
+///
+/// `Deref`/`DerefMut` keep every direct use of the session (the probe's `get`, the v3 `init`)
+/// working unchanged; the walk reaches it through [`SnmpWalkTransport`] instead.
+pub struct SnmpSession {
+    inner: Box<AsyncSession>,
+    getbulk_unusable: bool,
+}
+
+impl SnmpSession {
+    fn new(inner: AsyncSession) -> Self {
+        Self {
+            inner: Box::new(inner),
+            getbulk_unusable: false,
+        }
+    }
+
+    /// Whether a walk on this host has already found getbulk unanswerable.
+    pub fn getbulk_unusable(&self) -> bool {
+        self.getbulk_unusable
+    }
+
+    pub fn note_getbulk_unusable(&mut self) {
+        self.getbulk_unusable = true;
+    }
+}
+
+impl std::ops::Deref for SnmpSession {
+    type Target = AsyncSession;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl std::ops::DerefMut for SnmpSession {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
 /// Create an SNMP session with the given credentials.
 ///
 /// Returns a boxed session because `AsyncSession` contains ~131KB of stack-allocated
@@ -120,7 +168,7 @@ pub async fn create_session(
     credential: &SnmpQueryCredential,
     port: u16,
     context: SnmpContext,
-) -> Result<Box<AsyncSession>> {
+) -> Result<SnmpSession> {
     let target = format!("{}:{}", ip, port);
 
     let SnmpQueryCredential {
@@ -157,7 +205,7 @@ pub async fn create_session(
             match timeout(SNMP_SESSION_TIMEOUT, create).await {
                 Ok(Ok(session)) => {
                     tracing::debug!(ip = %ip, "SNMP session created successfully");
-                    Ok(Box::new(session))
+                    Ok(SnmpSession::new(session))
                 }
                 Ok(Err(e)) => Err(anyhow!(
                     "Failed to create SNMP{} session to {}: {:?}",
@@ -243,7 +291,7 @@ pub async fn create_session(
             match timeout(SNMP_SESSION_TIMEOUT, session.init()).await {
                 Ok(Ok(())) => {
                     tracing::debug!(ip = %ip, "SNMPv3 session initialized");
-                    Ok(Box::new(session))
+                    Ok(SnmpSession::new(session))
                 }
                 Ok(Err(e)) => Err(anyhow!(
                     "Failed SNMPv3 engine discovery / authentication to {}: {:?}",

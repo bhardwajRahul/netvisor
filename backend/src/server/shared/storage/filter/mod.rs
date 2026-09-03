@@ -408,4 +408,122 @@ mod tests {
         assert_eq!(f.conditions, vec!["FALSE".to_string()]);
         assert_eq!(f.values.len(), 0);
     }
+    /// `find_if_entry_by_mac` narrows to physical ports with this filter, and the ports it exists
+    /// to find are the ones with no `if_type` at all — a port learned from a neighbour's
+    /// advertisement, or a device known only at the link layer, never had an ifTable walked.
+    ///
+    /// The hazard is that the obvious predicate is silently wrong rather than broken: in Postgres
+    /// `NULL NOT IN (...)` evaluates to NULL, not TRUE, so a bare `NOT IN` drops every row whose
+    /// type was never read. No compile error, no failing test, and the rows lost are exactly the
+    /// MAC-identified interfaces this narrowing is asked to return. Asserted on the emitted clause
+    /// because that is the layer the bug lives at, and asserted here rather than at the one call
+    /// site so a second caller cannot reintroduce it.
+    #[test]
+    fn physical_if_types_admits_an_interface_whose_type_was_never_read() {
+        let clause =
+            StorableFilter::<crate::server::interfaces::r#impl::base::Interface>::new_unfiltered()
+                .physical_if_types()
+                .to_where_clause();
+
+        assert!(
+            clause.contains("if_type IS NULL"),
+            "an unread if_type must survive the physical-port narrowing, or a MAC-identified \
+             port silently stops resolving. Clause was: {clause}"
+        );
+        assert!(
+            clause.contains("NOT IN"),
+            "the virtual families must still be excluded. Clause was: {clause}"
+        );
+    }
+
+    /// The Hosts/Services tabs offer "Not Virtualized" / "Not Containerized",
+    /// which mean *no parent* rather than a parent with that name. Selecting
+    /// only that must therefore ask for NULLs, not match nothing.
+    #[test]
+    fn virtualization_service_in_expresses_absence_and_membership_separately() {
+        let only_absent = StorableFilter::<Host>::new_unfiltered()
+            .virtualization_service_in(&[], true)
+            .to_where_clause();
+        assert!(
+            only_absent.contains("virtualization_service_id IS NULL"),
+            "selecting only \"not virtualized\" must ask for NULLs. Clause was: {only_absent}"
+        );
+
+        let nothing = StorableFilter::<Host>::new_unfiltered()
+            .virtualization_service_in(&[], false)
+            .to_where_clause();
+        assert_eq!(
+            nothing.trim(),
+            "WHERE FALSE",
+            "selecting nothing at all must match nothing, not everything"
+        );
+
+        let both = StorableFilter::<Host>::new_unfiltered()
+            .virtualization_service_in(&[Uuid::new_v4()], true);
+        let clause = both.to_where_clause();
+        assert!(
+            clause.contains(" OR ") && clause.contains("IS NULL"),
+            "a parent id alongside \"not virtualized\" must union the two. Clause was: {clause}"
+        );
+        assert_eq!(both.values().len(), 1);
+    }
+
+    /// A host running several matching services must stay one row: a JOIN would
+    /// repeat it and inflate the paginated COUNT(*) that the tab displays.
+    #[test]
+    fn has_service_named_matches_hosts_once_and_ignores_closed_rows() {
+        let filter = StorableFilter::<Host>::new_unfiltered()
+            .has_service_named(&["ssh".to_string(), "http".to_string()]);
+        let clause = filter.to_where_clause();
+
+        assert!(
+            clause.contains("IN (SELECT s.host_id FROM services s"),
+            "must match through a subquery, not a row-multiplying JOIN. Clause was: {clause}"
+        );
+        assert!(
+            clause.contains("s.valid_to IS NULL"),
+            "superseded SCD2 service rows must not resurrect a host. Clause was: {clause}"
+        );
+        assert_eq!(filter.values().len(), 2);
+    }
+
+    /// `discovery_type` is JSONB and the tab filters on its discriminant, so the
+    /// predicate has to read that tag out rather than compare whole documents.
+    #[test]
+    fn discovery_type_in_reads_the_json_discriminant() {
+        let filter =
+            StorableFilter::<Discovery>::new_unfiltered().discovery_type_in(&["Snmp".to_string()]);
+        let clause = filter.to_where_clause();
+
+        assert!(
+            clause.contains("discovery_type->>'type' IN ($1)"),
+            "expected a JSON tag comparison, got: {clause}"
+        );
+        assert_eq!(filter.values().len(), 1);
+    }
+
+    /// Every inclusion filter added for server-side field filtering shares the
+    /// house rule that an empty selection matches nothing rather than silently
+    /// dropping the constraint — otherwise a filter could widen its result.
+    #[test]
+    fn empty_inclusion_filters_match_nothing() {
+        let clauses = [
+            StorableFilter::<Host>::new_unfiltered()
+                .hidden_in(&[])
+                .to_where_clause(),
+            StorableFilter::<Host>::new_unfiltered()
+                .has_service_named(&[])
+                .to_where_clause(),
+            StorableFilter::<Discovery>::new_unfiltered()
+                .daemon_ids(&[])
+                .to_where_clause(),
+            StorableFilter::<Discovery>::new_unfiltered()
+                .discovery_type_in(&[])
+                .to_where_clause(),
+        ];
+
+        for clause in clauses {
+            assert_eq!(clause.trim(), "WHERE FALSE");
+        }
+    }
 }

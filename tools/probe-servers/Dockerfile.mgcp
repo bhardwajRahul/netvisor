@@ -1,0 +1,10 @@
+# osmo-mgw, Osmocom's MGCP media gateway.
+#
+# Asterisk would be the obvious choice and is not usable: chan_mgcp was deprecated in Asterisk 19
+# and removed in 21, so no current build has it. osmo-mgw is a maintained implementation packaged in
+# Debian, and it answers an AUEP for an endpoint it does not have with the rejection the probe wants.
+FROM debian:bookworm-slim
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y osmo-mgw && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /etc/osmocom && printf 'line vty\n no login\nmgcp\n bind ip 0.0.0.0\n bind port 2427\n rtp port-range 4002 16000\n' > /etc/osmocom/osmo-mgw.cfg
+EXPOSE 2427/udp
+CMD ["osmo-mgw","-c","/etc/osmocom/osmo-mgw.cfg"]

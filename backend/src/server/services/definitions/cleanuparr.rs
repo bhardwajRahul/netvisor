@@ -18,8 +18,15 @@ impl ServiceDefinition for Cleanuparr {
         ServiceCategory::Media
     }
 
+    /// The served page names the application in its title. `/health` answers a bare `healthy`,
+    /// which any HTTP listener can return, so it identifies nothing.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::Port(PortType::new_tcp(11011))
+        Pattern::Endpoint(
+            PortType::new_tcp(11011),
+            "/",
+            "<title>Cleanuparr</title>",
+            None,
+        )
     }
 
     fn logo_url(&self) -> &'static str {

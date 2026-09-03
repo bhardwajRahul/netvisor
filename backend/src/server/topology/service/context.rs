@@ -98,6 +98,14 @@ impl<'a> TopologyContext<'a> {
             .collect()
     }
 
+    /// Heading for a container that stands for `host`.
+    ///
+    /// The ladder itself lives on [`Host::display_name`], so the host list and the same host drawn
+    /// here cannot disagree about what it is called; this only supplies the addresses it needs.
+    pub fn host_container_header(&self, host: &Host) -> Option<String> {
+        host.display_name(self.get_ip_addresses_for_host(host.id))
+    }
+
     pub fn get_services_for_host(&self, host_id: Uuid) -> Vec<&'a Service> {
         self.services
             .iter()

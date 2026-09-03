@@ -18,8 +18,10 @@ impl ServiceDefinition for Homarr {
         ServiceCategory::Dashboard
     }
 
+    /// A fresh install redirects `/` to `/init` and a configured one serves the dashboard; both
+    /// pages name the application, and the endpoint scan follows redirects.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::Port(PortType::new_tcp(7575))
+        Pattern::Endpoint(PortType::new_tcp(7575), "/", "Homarr", None)
     }
 
     fn logo_url(&self) -> &'static str {

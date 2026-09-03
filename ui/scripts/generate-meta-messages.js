@@ -59,12 +59,17 @@ export const COVERED_FIXTURES = [
 	{ file: 'cancel-reasons.json', key: 'cancel_reasons', kind: 'typeMetadata' },
 	{ file: 'save-offers.json', key: 'save_offers', kind: 'typeMetadata' },
 	{ file: 'plan-statuses.json', key: 'plan_statuses', kind: 'typeMetadata' },
+	// Provenance tiers. The `metadata.sources` list under each is data the UI looks values up in,
+	// not copy — only the name and description are translated.
+	{ file: 'attribute-methods.json', key: 'attribute_methods', kind: 'typeMetadata' },
 	// Scan warnings. Descriptions here are templates with `{named}` slots, unlike every other
 	// entry above: the values are copied through verbatim, paraglide compiles them into functions
 	// that take an inputs object, and `metaDescriptionWith` in src/lib/i18n/metadata.ts is what
 	// calls them with one. The slot names come from the same `metadata.slots` the backend test
 	// checks the template against.
 	{ file: 'warning-codes.json', key: 'warning_codes', kind: 'typeMetadata' },
+	// The rung each code's `category` names. Heading and sub-line for a section of the list.
+	{ file: 'warning-remedies.json', key: 'warning_remedies', kind: 'typeMetadata' },
 	{ file: 'snmp-walk-groups.json', key: 'snmp_walk_groups', kind: 'typeMetadata' },
 	{ file: 'claim-sources.json', key: 'claim_sources', kind: 'typeMetadata' },
 	// Keyed by the credential-query discriminant a warning carries, which credential-types.json

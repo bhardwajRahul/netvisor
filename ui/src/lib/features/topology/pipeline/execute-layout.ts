@@ -5,7 +5,7 @@ import { ElkLayoutEngine } from '../layout/engine';
 import { computeForceLayout, type ForceNode, type ForceLink } from '../layout/force-layout';
 import { containerTypes } from '$lib/shared/stores/metadata';
 import * as perf from '../perf';
-import { noteRunDetail, noteElkRun } from '../diagnostics';
+import { noteRunDetail, noteElkResultDiscarded } from '../diagnostics';
 
 const layoutEngine = new ElkLayoutEngine();
 
@@ -90,7 +90,6 @@ export async function executeLayout(
 			return null;
 		}
 
-		noteElkRun();
 		const elkComputeDone = perf.stage('layout.elk-compute');
 		const elkResult = await layoutEngine.compute({
 			nodes: elkNodes,
@@ -104,7 +103,16 @@ export async function executeLayout(
 			hiddenEdgeTypes
 		});
 		elkComputeDone();
-		if (isStale()) return null;
+		// Superseded, but too late for the check above to have saved anything: this layout ran in
+		// full and is now thrown away. Counted separately from `runsSuperseded`, which records the
+		// signal rather than the saving — read together they say whether cancellation is firing
+		// early enough to be worth having.
+		if (isStale()) {
+			perf.count('elk-result-discarded');
+			noteRunDetail({ supersededAfterElk: true });
+			noteElkResultDiscarded();
+			return null;
+		}
 
 		state.sessionStructureKey = structureKey;
 		state.sessionBaseKey = baseKey;

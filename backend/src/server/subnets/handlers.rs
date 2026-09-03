@@ -2,6 +2,7 @@ use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Or, Viewer};
 use crate::server::ip_addresses::r#impl::base::IPAddress;
 use crate::server::networks::r#impl::Network;
+use crate::server::shared::attribution::AttributeSource;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
@@ -14,7 +15,11 @@ use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::{
     ApiError, ApiErrorResponse, ApiJson, ApiResponse, ApiResult, PaginatedApiResponse,
 };
-use crate::server::{config::AppState, subnets::r#impl::base::Subnet};
+use crate::server::shared::types::entities::EntitySource;
+use crate::server::{
+    config::AppState,
+    subnets::r#impl::base::{Subnet, SubnetCidr},
+};
 use axum::extract::{Path, State};
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
@@ -141,6 +146,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
             update_subnet,
             generated::delete
         ))
+        .routes(routes!(merge_subnet))
         .routes(routes!(generated::bulk_delete))
         .routes(routes!(generated::export_csv))
 }
@@ -257,7 +263,7 @@ async fn get_all_subnets(
 async fn create_subnet(
     state: State<Arc<AppState>>,
     auth: Authorized<Or<Member, IsDaemon>>,
-    ApiJson(request): ApiJson<Subnet>,
+    ApiJson(mut request): ApiJson<Subnet>,
 ) -> ApiResult<Json<ApiResponse<Subnet>>> {
     let network_ids = auth.network_ids();
     let entity = auth.into_entity();
@@ -307,6 +313,13 @@ async fn create_subnet(
                     request.base.network_id,
                 ));
             }
+            // A range a person typed is an assertion, not a reading: `set_source` settles the
+            // confidence ladder along with the source, so nothing a later scan reads displaces it.
+            // Every other entity gets this from `create_handler`; subnets miss it because this
+            // handler is written out longhand for the daemon case above, and never picked it up.
+            // Stamped server-side rather than trusted from the body, so a client cannot claim
+            // `Discovery` for a row it typed.
+            request.set_source(EntitySource::Manual);
             let service = Subnet::get_service(&state);
             let created = service.create(request, entity).await.map_err(|e| {
                 tracing::error!(error = %e, "Failed to create subnet");
@@ -340,7 +353,7 @@ async fn update_subnet(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Member>,
     Path(id): Path<Uuid>,
-    ApiJson(subnet): ApiJson<Subnet>,
+    ApiJson(mut subnet): ApiJson<Subnet>,
 ) -> ApiResult<Json<ApiResponse<Subnet>>> {
     // Check if CIDR is being changed
     let current = state
@@ -352,6 +365,14 @@ async fn update_subnet(
         .ok_or_else(|| ApiError::entity_not_found::<Subnet>(id))?;
 
     if current.base.cidr != subnet.base.cidr {
+        // Moving the range through this endpoint is a person's assertion, so it settles the
+        // confidence ladder: `Confirmed` outranks anything a scan reads, which is what stops a
+        // corrected range being re-corrected on the next discovery. This lives here rather than in
+        // `preserve_immutable_fields` because here it is *true* — the route is `Authorized<Member>`
+        // and no daemon can reach it — whereas storage sees every writer alike.
+        subnet.base.cidr =
+            SubnetCidr::new(subnet.base.cidr.value().clone(), AttributeSource::Manual);
+
         // CIDR is changing - validate that all existing ip_addresses are within the new CIDR
         let filter = StorableFilter::<IPAddress>::new_from_subnet_id(&id);
         let ip_addresses = state
@@ -373,4 +394,46 @@ async fn update_subnet(
 
     // Delegate to generic handler
     update_handler::<Subnet>(State(state), auth, Path(id), Json(subnet)).await
+}
+
+/// Request body for merging a subnet into the range that contains it.
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+pub struct MergeSubnetRequest {
+    /// The subnet to merge into. Must contain the range being merged.
+    pub into: Uuid,
+}
+
+/// Merge a subnet into the range that contains it
+///
+/// Moves every address to the covering subnet and removes this one. Offered for a range Scanopy
+/// assumed that a later reading turned out to cover: discovery corrects such a range on its own
+/// only where the answer is unambiguous, and folding several assumed ranges into one means deleting
+/// rows, which is a person's call rather than a scan's.
+#[utoipa::path(
+    post,
+    path = "/{id}/merge",
+    tag = Subnet::ENTITY_NAME_PLURAL,
+    params(("id" = Uuid, Path, description = "Subnet ID to merge away")),
+    request_body = MergeSubnetRequest,
+    responses(
+        (status = 200, description = "Subnet merged", body = ApiResponse<Subnet>),
+        (status = 400, description = "The target does not contain this subnet", body = ApiErrorResponse),
+        (status = 404, description = "Subnet not found", body = ApiErrorResponse),
+    ),
+     security(("user_api_key" = []), ("session" = []))
+)]
+async fn merge_subnet(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Member>,
+    Path(id): Path<Uuid>,
+    ApiJson(request): ApiJson<MergeSubnetRequest>,
+) -> ApiResult<Json<ApiResponse<Subnet>>> {
+    let merged = state
+        .services
+        .subnet_service
+        .merge_into(id, request.into, auth.entity.clone())
+        .await
+        .map_err(|e| ApiError::bad_request(&e.to_string()))?;
+
+    Ok(Json(ApiResponse::success(merged)))
 }

@@ -67,12 +67,19 @@ NO_READER_DROP_FILES=(
     "$MIGRATIONS_DIR/20260703120001_drop_discovery_pending_credential_ids.sql"
     "$MIGRATIONS_DIR/20260706120000_drop_credentials_target_ips_and_daemons_capabilities.sql"
 )
+# NOT NULL dropped so a column can record "never read" instead of an invented value.
+# The released container reads these with `row.get::<i32>`, which panics on NULL, so the
+# release ships as a downtime deploy and the two containers never coexist. Header comment
+# in each migration documents this. Suppress ban-drop-not-null.
+DROP_NOT_NULL_FILES=(
+    "$MIGRATIONS_DIR/20260827130000_interfaces_unknown_port_facts.sql"
+)
 
 # Filter file lists.
 in_tx_main=()
 for f in "${in_tx_files[@]}"; do
     skip=0
-    for d in "${DOWNTIME_FILES[@]}" "${FK_BACKFILL_FILES[@]}" "${NO_READER_DROP_FILES[@]}"; do
+    for d in "${DOWNTIME_FILES[@]}" "${FK_BACKFILL_FILES[@]}" "${NO_READER_DROP_FILES[@]}" "${DROP_NOT_NULL_FILES[@]}"; do
         if [ "$f" = "$d" ]; then skip=1; break; fi
     done
     if [ "$skip" = "0" ]; then in_tx_main+=("$f"); fi
@@ -108,6 +115,13 @@ done
 for f in "${NO_READER_DROP_FILES[@]}"; do
     if [ -e "$f" ]; then
         squawk --config "$CONFIG_PATH" --exclude=ban-drop-column "$f" || status=$?
+    fi
+done
+
+# Nullability relaxations: see DROP_NOT_NULL_FILES above.
+for f in "${DROP_NOT_NULL_FILES[@]}"; do
+    if [ -e "$f" ]; then
+        squawk --config "$CONFIG_PATH" --exclude=ban-drop-not-null "$f" || status=$?
     fi
 done
 

@@ -622,6 +622,9 @@ impl CredentialService {
                             ip: i.base.ip_address,
                             credential: query_cred.clone(),
                             credential_id: cred.id,
+                            // Legacy pre-v0.15.0 path, serving daemons that predate host-aware
+                            // grouping — they get the per-address rule they have always had.
+                            host_id: None,
                         }));
                         break;
                     }
@@ -638,6 +641,10 @@ impl CredentialService {
 
         Ok(SnmpCredentialMapping {
             default_credential: network_snmp_credential,
+            // Legacy pre-v0.15.0 path: this mapping is built per network rather than per
+            // credential, so there is no single id for its default to carry, and the daemons it
+            // serves predate coded warnings anyway.
+            default_credential_id: None,
             ip_overrides: overrides,
         })
     }
@@ -781,6 +788,9 @@ impl TypedCredentialMapping {
             discriminant,
             mapping: CredentialMapping {
                 default_credential: None,
+                // Stamped from the accumulator key in `order_mappings_for_dispatch`, which is the
+                // one place that knows which credential this mapping belongs to.
+                default_credential_id: None,
                 ip_overrides: vec![],
             },
         }
@@ -849,8 +859,18 @@ fn order_mappings_for_dispatch(
     mappings: BTreeMap<Uuid, TypedCredentialMapping>,
 ) -> Vec<CredentialMapping<CredentialQueryPayload>> {
     let (broadcast_only, with_overrides): (Vec<_>, Vec<_>) = mappings
-        .into_values()
-        .map(|typed| typed.mapping)
+        .into_iter()
+        .map(|(credential_id, typed)| {
+            // The key is the credential this whole mapping belongs to, and dropping it here is
+            // what used to leave a broadcast default unattributable on the daemon. Stamped rather
+            // than set at build time so all three accumulator paths — network default, host
+            // override, integration target — get it from the one place they are keyed by.
+            let mut mapping = typed.mapping;
+            if mapping.default_credential.is_some() {
+                mapping.default_credential_id = Some(credential_id);
+            }
+            mapping
+        })
         .partition(|mapping| mapping.ip_overrides.is_empty());
 
     broadcast_only.into_iter().chain(with_overrides).collect()
@@ -935,11 +955,24 @@ pub(crate) fn apply_host_assignment(
     let mapping = mapping_for(mappings_by_credential, credential.id, cred_type);
 
     let relevant_interfaces = ip_addresses.iter().filter(|i| {
-        i.base.host_id == host_id
-            && match &assignment.ip_address_ids {
-                Some(ids) => ids.contains(&i.id),
-                None => true,
-            }
+        if i.base.host_id != host_id {
+            return false;
+        }
+        match &assignment.ip_address_ids {
+            // Scoped to named addresses: honour exactly what was named, loopback included. That
+            // is how a promoted Docker/Podman socket credential comes back out on the daemon
+            // host's `127.0.0.1` — see `promoted_socket_credential_is_dispatched_over_loopback`.
+            Some(ids) => ids.contains(&i.id),
+            // Host-wide: every address the host holds, except a loopback one. A remote device's
+            // own `127.0.0.1` is an interface it reports, not a way to reach it — and it is not
+            // even unique, since every device reports the same one. Swept up here it produced a
+            // credential attempt against the daemon's own machine and an "unreachable" finding
+            // for a credential that was working fine at the host's real address.
+            //
+            // Only the incidental case is dropped: naming a loopback address explicitly still
+            // targets it, which is the difference between a swept-up interface and an intent.
+            None => !i.base.ip_address.is_loopback(),
+        }
     });
 
     mapping
@@ -948,6 +981,9 @@ pub(crate) fn apply_host_assignment(
             ip: i.base.ip_address,
             credential: payload.clone(),
             credential_id: credential.id,
+            // The device these addresses belong to, so the daemon can tell a multi-homed host's
+            // addresses apart from unrelated ones.
+            host_id: Some(host_id),
         }));
 }
 
@@ -968,6 +1004,9 @@ fn push_unique_override(
             ip,
             credential: payload,
             credential_id,
+            // An integration target names addresses directly; there is no host behind it to
+            // group its siblings by.
+            host_id: None,
         });
     }
 }
@@ -1242,6 +1281,70 @@ mod integration_target_tests {
         assert_eq!(communities, vec!["netdefault", "secret42"]);
     }
 
+    /// A broadcast default must reach the daemon knowing which credential it is.
+    ///
+    /// The accumulator is keyed by credential id, and this is the only place that key can be put
+    /// on the mapping — it was dropped here, which left a malformed network-wide credential able
+    /// to say what failed but not which record to open. A malformed default is the one attempt
+    /// outcome that is reported for a broadcast credential (see `issue_for_attempt`), so this is
+    /// the whole path by which that warning gets an id.
+    #[test]
+    fn a_broadcast_default_carries_the_credential_it_came_from() {
+        let mut map: Mappings = Mappings::new();
+        let first = Uuid::from_u128(1);
+        let second = Uuid::from_u128(2);
+
+        for (id, community) in [(first, "netdefault"), (second, "secret42")] {
+            let cred_type = snmp_v2c(community);
+            mapping_for(&mut map, id, &cred_type).default_credential =
+                Some(cred_type.to_query_payload());
+        }
+
+        let dispatched = order_mappings_for_dispatch(map);
+
+        // Paired against the community, not just asserted non-None: two defaults of the same type
+        // are exactly the case address alone cannot tell apart, so an id on the wrong mapping
+        // would send the operator to the wrong record.
+        let pairs: Vec<(String, Option<Uuid>)> = dispatched
+            .iter()
+            .filter_map(|m| {
+                m.default_credential
+                    .as_ref()
+                    .map(|c| (payload_community(c), m.default_credential_id))
+            })
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![
+                ("netdefault".to_string(), Some(first)),
+                ("secret42".to_string(), Some(second)),
+            ]
+        );
+    }
+
+    /// A mapping with no default has nothing to attribute, so the id stays absent rather than
+    /// naming a credential that was never broadcast.
+    #[test]
+    fn a_mapping_without_a_default_carries_no_default_id() {
+        let mut map: Mappings = Mappings::new();
+        let host_id = Uuid::from_u128(7);
+
+        let specific = snmp_v2c("host-specific");
+        mapping_for(&mut map, host_id, &specific)
+            .ip_overrides
+            .push(IpOverride {
+                ip: "10.0.0.5".parse().unwrap(),
+                credential: specific.to_query_payload(),
+                credential_id: host_id,
+                host_id: None,
+            });
+
+        let dispatched = order_mappings_for_dispatch(map);
+
+        assert_eq!(dispatched.len(), 1);
+        assert_eq!(dispatched[0].default_credential_id, None);
+    }
+
     /// The version gate has to run on the 7-way credential type, not the 5-way wire tag: SnmpV1
     /// and SnmpV2c both serialize as `Snmp`, but only SnmpV1 requires a 0.17.0 daemon. Gating
     /// after the collapse could not tell them apart and would either starve old daemons of
@@ -1286,6 +1389,7 @@ mod integration_target_tests {
             ip: "10.0.0.5".parse().unwrap(),
             credential: specific.to_query_payload(),
             credential_id: host_id,
+            host_id: None,
         });
 
         let dispatched = order_mappings_for_dispatch(map);
@@ -1393,6 +1497,41 @@ mod integration_target_tests {
                 "10.0.0.5".parse::<IpAddr>().unwrap()
             ]
         );
+    }
+
+    /// A device's own loopback is an interface it reports, not a way to reach it — and every
+    /// device reports the same one, so it is not even a unique target. Swept into a host-wide
+    /// assignment it produced an SNMP attempt against the daemon's own machine and an
+    /// "unreachable" finding for a credential that was working at the host's real address.
+    ///
+    /// Only the incidental case goes: `promoted_socket_credential_is_dispatched_over_loopback`
+    /// covers the other side, where the assignment names a loopback address explicitly and must
+    /// still target it.
+    #[test]
+    fn a_host_wide_assignment_skips_the_hosts_own_loopback() {
+        let cred_id = Uuid::new_v4();
+        let host_id = Uuid::new_v4();
+        let cred = credential(cred_id, snmp_v2c("public"));
+        let assignment = CredentialAssignment {
+            credential_id: cred_id,
+            ip_address_ids: None,
+        };
+        let ip_addresses = vec![
+            ip_address(Uuid::new_v4(), host_id, localhost()),
+            ip_address(Uuid::new_v4(), host_id, "10.0.0.4".parse().unwrap()),
+        ];
+
+        let mut map: Mappings = Mappings::new();
+        apply_host_assignment(&mut map, host_id, &assignment, &cred, &ip_addresses);
+
+        let overrides = &only(&map).ip_overrides;
+        assert_eq!(
+            overrides.iter().map(|o| o.ip).collect::<Vec<_>>(),
+            vec!["10.0.0.4".parse::<IpAddr>().unwrap()]
+        );
+        // And the device it came from rides along, so the daemon can tell a multi-homed host's
+        // addresses apart from unrelated ones.
+        assert_eq!(overrides[0].host_id, Some(host_id));
     }
 
     /// A second `Network` target of the same credential type must not displace the first — the

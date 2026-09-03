@@ -1,4 +1,4 @@
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 
 use crate::daemon::discovery::integration::snmp::sim::lldp::{
     Advertised, LldpTable, RemoteNeighbour,
@@ -156,6 +156,10 @@ pub fn bridge_table() -> BridgeTable {
         .port_vlans(vec![(1, 10), (2, 10), (3, 20)])
 }
 
+/// The ordinary single-chassis shape, and the one device that proves the revision columns are read
+/// on it. The two values are deliberately different from each other: `.9` is the ROMMON image and
+/// `.10` is the IOS version this device's `sysDescr` also names, so a collection that folded the
+/// pair into one field would be visible here rather than plausible.
 pub fn entity_table() -> EntityTable {
     EntityTable::chassis(
         DeviceInventory {
@@ -163,6 +167,8 @@ pub fn entity_table() -> EntityTable {
             manufacturer: Some("Cisco".into()),
             model: Some("WS-C2960-24TC-L".into()),
             serial_number: Some("FOC1234X5YZ".into()),
+            firmware_revision: Some("12.2(44r)SE".into()),
+            software_revision: Some("15.2(7)E3".into()),
         },
         "Chassis",
     )
@@ -174,7 +180,10 @@ pub fn cdp_table() -> CdpTable {
         remote_device_id: Some("router-gw-01".into()),
         remote_port_id: Some("ge-0/0/0".into()),
         remote_platform: Some("Juniper MX204".into()),
-        remote_address: None,
+        // The address `router-gw-01` publishes for itself. CDP carries no chassis id, so this and
+        // the device id are the only two identities a CDP neighbour has — and the address is the
+        // one that still works when the far end's own tables came back empty.
+        remote_address: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 7, 232))),
     }])
 }
 
@@ -214,8 +223,53 @@ mod tests {
         }
     }
 
+    /// The ordinary single-chassis ENTITY-MIB read, on the device that serves it plainly.
+    ///
+    /// The two revisions are what this is really for. They are distinct MIB objects and are
+    /// deliberately distinct values here — the ROMMON image and the IOS version — so a collection
+    /// that read only one column, or folded the pair into a single field, fails rather than
+    /// looking right by coincidence.
+    #[tokio::test]
+    async fn it_reports_a_chassis_inventory_carrying_both_revisions() {
+        let scan = harness::scan("switch-core-01").await;
+
+        assert!(scan.entity.complete);
+        let inventory = scan
+            .entity
+            .records
+            .expect("the chassis row collapses to an inventory");
+
+        assert_eq!(inventory.manufacturer.as_deref(), Some("Cisco"));
+        assert_eq!(inventory.model.as_deref(), Some("WS-C2960-24TC-L"));
+        assert_eq!(inventory.serial_number.as_deref(), Some("FOC1234X5YZ"));
+        assert_eq!(inventory.firmware_revision.as_deref(), Some("12.2(44r)SE"));
+        assert_eq!(inventory.software_revision.as_deref(), Some("15.2(7)E3"));
+    }
+
     /// GH #686's read half: the forwarding database is a join across three columns, and the daemon
     /// keeps learned(3) and mgmt(5) while dropping self(4). Eight rows must yield seven entries —
+    /// `cdpCacheAddress` is raw address octets in a column the simulator served for no device at
+    /// all, so nothing exercised the tier that resolves a CDP neighbour by the address it
+    /// publishes — the only identity such a neighbour has besides its device id, and the one that
+    /// still works when the far end's own tables came back empty.
+    #[tokio::test]
+    async fn its_cdp_neighbour_publishes_the_address_it_is_reachable_at() {
+        let scan = harness::scan("switch-core-01").await;
+
+        let neighbour = scan
+            .cdp
+            .records
+            .iter()
+            .find(|n| n.remote_device_id.as_deref() == Some("router-gw-01"))
+            .expect("the CDP neighbour on Gi0/2");
+
+        assert_eq!(
+            neighbour.remote_address,
+            Some("192.168.7.232".parse().expect("valid address")),
+            "the address must survive the octet-string round trip"
+        );
+    }
+
     /// a filter that stopped working shows up as a count too *high*, not as an empty table.
     #[tokio::test]
     async fn its_forwarding_table_drops_only_the_self_rows() {

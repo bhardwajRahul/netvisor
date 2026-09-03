@@ -1,5 +1,6 @@
 <script lang="ts">
 	import scanSettingsFields from '$lib/data/scan-settings.json';
+	import type { FieldDefinition } from '$lib/shared/stores/metadata';
 	import CollapsibleCard from '$lib/shared/components/data/CollapsibleCard.svelte';
 	import type { Discovery } from '../../types/base';
 	import type { Daemon } from '$lib/features/daemons/types/base';
@@ -27,34 +28,25 @@
 	const subnetsQuery = useSubnetsQuery();
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 
-	type FieldDef = {
-		id: string;
-		label: string;
-		field_type: string;
-		placeholder?: string;
-		help_text?: string;
-		default_value?: string;
-		optional?: boolean;
-		category?: string;
-	};
-
 	// Labels/placeholders/help text resolved via meta_* i18n keys with fixture fallback
-	const fields = translateFieldDefinitions('scan_settings', null, scanSettingsFields as FieldDef[]);
-
-	// Only include performance-related fields (exclude Detection category)
-	const performanceFields = fields.filter(
-		(f) => f.category !== 'Detection' && f.id !== 'interfaces'
+	const fields = translateFieldDefinitions(
+		'scan_settings',
+		null,
+		scanSettingsFields as FieldDefinition[]
 	);
 
-	// Group fields by category
-	const categories = [
-		...new Set(performanceFields.map((f) => f.category).filter(Boolean))
+	// Only include performance-related fields (exclude the Detection group)
+	const performanceFields = fields.filter((f) => f.group !== 'Detection' && f.id !== 'interfaces');
+
+	// Section the form by each field's declared group
+	const groupNames = [
+		...new Set(performanceFields.map((f) => f.group).filter(Boolean))
 	] as string[];
-	const fieldsByCategory =
-		categories.length > 0
-			? categories.map((cat) => ({
-					name: cat,
-					fields: performanceFields.filter((f) => f.category === cat)
+	const fieldsByGroup =
+		groupNames.length > 0
+			? groupNames.map((name) => ({
+					name,
+					fields: performanceFields.filter((f) => f.group === name)
 				}))
 			: [{ name: 'Performance', fields: performanceFields }];
 
@@ -144,10 +136,10 @@
 		linkText={discovery_docsScanSettingsLinkText()}
 	/>
 
-	{#each fieldsByCategory as category (category.name)}
-		{@const numberFields = category.fields.filter((f) => f.field_type !== 'boolean')}
-		{@const booleanFields = category.fields.filter((f) => f.field_type === 'boolean')}
-		<CollapsibleCard title={category.name} expanded={true}>
+	{#each fieldsByGroup as group (group.name)}
+		{@const numberFields = group.fields.filter((f) => f.field_type === 'number')}
+		{@const booleanFields = group.fields.filter((f) => f.field_type === 'boolean')}
+		<CollapsibleCard title={group.name} expanded={true}>
 			<div class="space-y-3">
 				<div class="grid grid-cols-2 items-center gap-4">
 					{#each numberFields as field (field.id)}

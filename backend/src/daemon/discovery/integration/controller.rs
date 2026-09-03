@@ -18,15 +18,22 @@ use uuid::Uuid;
 
 use crate::daemon::discovery::integration::IntegrationContext;
 use crate::daemon::discovery::service::ops::HostData;
+use crate::server::hosts::r#impl::attributes::{
+    HostChassisIdValue, HostFirmwareRevisionValue, HostManufacturerValue, HostModelValue,
+    HostSerialNumberValue, HostSysNameValue,
+};
 use crate::server::hosts::r#impl::{
     base::{Host, HostBase},
-    name::HostName,
+    name::{HostName, HostNameSources},
 };
 use crate::server::interfaces::r#impl::base::InterfaceDataComplete;
-use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
+use crate::server::ip_addresses::r#impl::base::{
+    IPAddress, IPAddressBase, MacEvidence, MacEvidenceValue,
+};
 use crate::server::lldp::canonical_mac;
+use crate::server::services::r#impl::patterns::ClientProbe;
+use crate::server::shared::attribution::{AttributeSource, Attributed};
 use crate::server::shared::types::entities::EntitySource;
-use crate::server::subnets::r#impl::base::Subnet;
 
 /// The identity fields a controller reports for one device or client.
 ///
@@ -34,6 +41,12 @@ use crate::server::subnets::r#impl::base::Subnet;
 /// written at the construction site — that is what makes the omission visible.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ControllerIdentity {
+    /// Which controller reported this, so every value it carries can name its own source.
+    ///
+    /// Without it `enrich` would have to pick one source for all of them, and the two controllers
+    /// would be indistinguishable — which is exactly the case the equal-rung rule has to resolve
+    /// when a device is adopted by both.
+    pub probe: ClientProbe,
     /// The name a person assigned in the controller ("Core Switch", "Meeting Room AP").
     /// `None` only when the controller genuinely holds none.
     pub name: Option<String>,
@@ -45,7 +58,12 @@ pub struct ControllerIdentity {
     pub manufacturer: Option<String>,
     pub model: Option<String>,
     pub serial_number: Option<String>,
-    pub sys_descr: Option<String>,
+    /// The firmware version the controller reports for the device.
+    ///
+    /// Controllers hold this as a structured field and it used to be flattened into `sys_descr`
+    /// as "UniFi firmware 6.5.59", which is neither a system description nor comparable. It has
+    /// its own column now.
+    pub firmware_revision: Option<String>,
 }
 
 impl ControllerIdentity {
@@ -55,81 +73,100 @@ impl ControllerIdentity {
     /// path already found when there is one.
     pub fn into_host(self, network_id: Uuid) -> Host {
         let Self {
+            probe,
             name,
             hostname,
             chassis_id,
             manufacturer,
             model,
             serial_number,
-            sys_descr,
+            firmware_revision,
         } = self.normalized();
 
+        // Everything the controller reports about a device it manages is `Reported`: a known
+        // speaker that is not the subject. The one exception is the name, which a person typed
+        // into the controller — `apply_names` records that separately.
+        let reported = AttributeSource::Probe(probe);
         let mut host = Host::new(HostBase {
             network_id,
             source: EntitySource::Discovery,
             // The controller's name is also what the device advertises as LLDP sysName, and
             // neighbour resolution matches `interfaces.lldp_sys_name` against this column.
-            sys_name: name.clone(),
+            sys_name: name
+                .clone()
+                .map(|v| Attributed::new(HostSysNameValue(v), reported)),
             hostname: hostname.clone(),
-            chassis_id,
-            manufacturer,
-            model,
-            serial_number,
-            sys_descr,
+            chassis_id: chassis_id.map(|v| Attributed::new(HostChassisIdValue(v), reported)),
+            manufacturer: manufacturer.map(|v| Attributed::new(HostManufacturerValue(v), reported)),
+            model: model.map(|v| Attributed::new(HostModelValue(v), reported)),
+            serial_number: serial_number
+                .map(|v| Attributed::new(HostSerialNumberValue(v), reported)),
+            firmware_revision: firmware_revision
+                .map(|v| Attributed::new(HostFirmwareRevisionValue(v), reported)),
             ..Default::default()
         });
 
-        Self::apply_names(&mut host.base, name, hostname);
+        Self::apply_names(&mut host.base, probe, name, hostname);
         host
     }
 
     /// Fold this identity into the host currently being scanned.
     ///
-    /// Every field except the name stays first-write-wins, so a prior SNMP pass in the same scan
-    /// keeps its values — SNMP reads the device directly and is the better source when both are
-    /// present. The name instead goes through the ladder, where a controller's name outranks
-    /// anything the scan itself could derive and loses only to a name a person typed.
+    /// Every value carries the controller as its source, so a prior SNMP pass in the same scan
+    /// keeps its readings — SNMP asks the device directly, which outranks a controller describing
+    /// a device it manages, and that ordering is now stated rather than resting on which
+    /// integration happened to run first. The name is the exception: a person typed it into the
+    /// controller, so it outranks anything the scan itself could derive and loses only to a name
+    /// typed into Scanopy.
     pub fn enrich(&self, host_data: &mut HostData) {
         let Self {
+            probe,
             name,
             hostname,
             chassis_id,
             manufacturer,
             model,
             serial_number,
-            sys_descr,
+            firmware_revision,
         } = self.clone().normalized();
+
+        let reported = AttributeSource::Probe(probe);
 
         if let Some(hostname) = hostname {
             host_data.with_hostname_fallback(hostname);
         }
         if let Some(name) = name {
-            host_data.with_sys_name(name.clone());
-            host_data.apply_name(HostName::Integration(name));
+            host_data.with_sys_name(name.clone(), reported);
+            host_data.apply_name(HostName::from_controller(name, probe));
         }
         if let Some(chassis_id) = chassis_id {
-            host_data.with_chassis_id(chassis_id);
+            host_data.with_chassis_id(chassis_id, reported);
         }
         if let Some(manufacturer) = manufacturer {
-            host_data.with_manufacturer(manufacturer);
+            host_data.with_manufacturer(manufacturer, reported);
         }
         if let Some(model) = model {
-            host_data.with_model(model);
+            host_data.with_model(model, reported);
         }
         if let Some(serial_number) = serial_number {
-            host_data.with_serial_number(serial_number);
+            host_data.with_serial_number(serial_number, reported);
         }
-        if let Some(sys_descr) = sys_descr {
-            host_data.with_sys_descr(sys_descr);
+        if let Some(firmware_revision) = firmware_revision {
+            host_data.with_firmware_revision(firmware_revision, reported);
         }
     }
 
-    fn apply_names(base: &mut HostBase, name: Option<String>, hostname: Option<String>) {
+    fn apply_names(
+        base: &mut HostBase,
+        probe: ClientProbe,
+        name: Option<String>,
+        hostname: Option<String>,
+    ) {
         if let Some(hostname) = hostname {
-            base.apply_name(HostName::Hostname(hostname));
+            base.apply_name(HostName::from_controller_hostname(hostname, probe));
         }
         if let Some(name) = name {
-            base.apply_name(HostName::Integration(name));
+            base.apply_name(HostName::from_controller(name, probe));
         }
     }
 
@@ -140,13 +177,14 @@ impl ControllerIdentity {
             v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
         }
         Self {
+            probe: self.probe,
             name: blank_to_none(self.name),
             hostname: blank_to_none(self.hostname),
             chassis_id: blank_to_none(self.chassis_id),
             manufacturer: blank_to_none(self.manufacturer),
             model: blank_to_none(self.model),
             serial_number: blank_to_none(self.serial_number),
-            sys_descr: blank_to_none(self.sys_descr),
+            firmware_revision: blank_to_none(self.firmware_revision),
         }
     }
 }
@@ -165,30 +203,41 @@ pub struct MappedClient {
 }
 
 impl MappedClient {
-    /// Place a reported client on a known subnet, or skip it.
+    /// A reported client, with its address left for the server to place.
     ///
-    /// `None` when the address is missing, unparseable, or outside every known subnet: host
-    /// deduplication is IP-based, so a host created without a placeable address would mint a
-    /// fresh duplicate on every scan instead of updating the one already there.
+    /// `None` only when the address is missing or unparseable — there is nothing to report about a
+    /// client whose address we cannot read. It used to also return `None` for an address outside
+    /// every known subnet, on the grounds that IP-based dedup would mint a duplicate every scan;
+    /// that reasoning was sound and the remedy was not, because the subnet list it consulted
+    /// carries `0.0.0.0/0` catch-alls that contain every IPv4 address, so nothing was ever skipped
+    /// and everything landed on `Internet` instead.
+    ///
+    /// `subnet_id` is left nil the way `host_id` already is: the server places the address against
+    /// the network's authoritative subnet list and infers a range where nothing holds it, which is
+    /// the only place that decision can be made consistently across integrations.
     pub fn new(
         identity: ControllerIdentity,
         ip: Option<&str>,
         mac: Option<&str>,
         network_id: Uuid,
-        subnets: &[Subnet],
     ) -> Option<Self> {
         let ip: IpAddr = ip?.trim().parse().ok()?;
-        let subnet = subnets.iter().find(|s| s.base.cidr.contains(&ip))?;
         let mac = mac.and_then(canonical_mac);
+        let probe = identity.probe;
 
         Some(Self {
             identity,
             ip_address: IPAddress::new(IPAddressBase {
                 network_id,
-                host_id: Uuid::nil(), // server assigns
-                subnet_id: subnet.id,
+                host_id: Uuid::nil(),   // server assigns
+                subnet_id: Uuid::nil(), // server places
                 ip_address: ip,
-                mac_address: mac.as_deref().and_then(|m| m.parse().ok()),
+                // The controller reporting a device it manages: a known speaker that is not the
+                // subject, so weaker than an ARP reply the address itself sent us.
+                mac_address: mac
+                    .as_deref()
+                    .and_then(|m| m.parse().ok())
+                    .map(|m| MacEvidence::new(MacEvidenceValue(m), AttributeSource::Probe(probe))),
                 name: None,
                 position: 0,
             }),
@@ -250,41 +299,53 @@ pub async fn create_client_hosts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::hosts::r#impl::name::HostNameSource;
 
     fn identity(name: Option<&str>, hostname: Option<&str>) -> ControllerIdentity {
         ControllerIdentity {
+            probe: ClientProbe::UnifiController,
             name: name.map(str::to_string),
             hostname: hostname.map(str::to_string),
             chassis_id: None,
             manufacturer: None,
             model: None,
             serial_number: None,
-            sys_descr: None,
+            firmware_revision: None,
         }
     }
 
     #[test]
     fn controller_name_becomes_the_display_name() {
         let host = identity(Some("Core Switch"), None).into_host(Uuid::new_v4());
-        assert_eq!(host.base.name, "Core Switch");
-        assert_eq!(host.base.name.source(), HostNameSource::Integration);
+        assert_eq!(host.base.name.value().as_str(), "Core Switch");
+        assert_eq!(
+            host.base.name.source(),
+            AttributeSource::Authored(ClientProbe::UnifiController)
+        );
         // Still mirrored into sys_name, which is what LLDP neighbour resolution matches on.
-        assert_eq!(host.base.sys_name.as_deref(), Some("Core Switch"));
+        assert_eq!(
+            crate::server::shared::attribution::text_of(&host.base.sys_name).as_deref(),
+            Some("Core Switch")
+        );
     }
 
     #[test]
     fn a_controller_known_hostname_names_a_client_that_has_no_assigned_name() {
         let host = identity(None, Some("marys-laptop")).into_host(Uuid::new_v4());
-        assert_eq!(host.base.name, "marys-laptop");
-        assert_eq!(host.base.name.source(), HostNameSource::Hostname);
+        assert_eq!(host.base.name.value().as_str(), "marys-laptop");
+        assert_eq!(
+            host.base.name.source(),
+            AttributeSource::Probe(ClientProbe::UnifiController)
+        );
     }
 
     #[test]
     fn an_assigned_name_outranks_a_hostname_for_the_same_device() {
         let host = identity(Some("Reception iPad"), Some("ipad-1a2b")).into_host(Uuid::new_v4());
-        assert_eq!(host.base.name, "Reception iPad");
-        assert_eq!(host.base.name.source(), HostNameSource::Integration);
+        assert_eq!(host.base.name.value().as_str(), "Reception iPad");
+        assert_eq!(
+            host.base.name.source(),
+            AttributeSource::Authored(ClientProbe::UnifiController)
+        );
         assert_eq!(host.base.hostname.as_deref(), Some("ipad-1a2b"));
     }
 
@@ -293,7 +354,7 @@ mod tests {
         let host = identity(Some("   "), None).into_host(Uuid::new_v4());
         // `Unnamed`, not an empty `Unspecified`: "no name" and "a name we cannot attribute" are
         // different states, and only the latter should outrank anything.
-        assert_eq!(host.base.name, HostName::Unnamed);
+        assert_eq!(host.base.name, HostName::unnamed());
         assert_eq!(host.base.sys_name, None);
     }
 }

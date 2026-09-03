@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import type { Edge } from '@xyflow/svelte';
 import type { Node } from '@xyflow/svelte';
 import { edgeTypes, entities, views, serviceDefinitions } from '$lib/shared/stores/metadata';
+import { hostDisplayName } from '$lib/features/hosts/host-display-name';
 import type { TopologyEdge, TopologyNode, RenderableTopology } from './types/base';
 import {
 	isDisabledEdge,
@@ -25,6 +26,35 @@ export const groupHoverState = writable<Map<string, boolean>>(new Map());
 export const edgeHoverState = writable<Map<string, boolean>>(new Map());
 export const connectedNodeIds = writable<Set<string>>(new Set());
 export const isExporting = writable(false);
+/**
+ * A DOM measurement pass is mounting every node to read its real card height.
+ *
+ * A store rather than viewer-local state because node components have to see it: a simplified card
+ * measures its pinned height instead of its content's, so a measure pass running below the
+ * level-of-detail threshold would confirm whatever the last measurement happened to be and hand
+ * ELK the result. `shouldSimplify` suspends on it for the same reason `shouldCull` does.
+ */
+export const isMeasuring = writable(false);
+
+/**
+ * Whether the canvas is currently drawing boxes rather than card contents.
+ *
+ * Decided once in the viewer and published, rather than each node deciding for itself, because the
+ * decision now depends on the size of the whole graph — which a node cannot see. It is also simply
+ * cheaper: one subscription shared across every node instead of thousands of viewport reads.
+ * Containers still read the zoom directly, because their tier depends on their own box.
+ */
+export const detailSimplified = writable(false);
+
+/**
+ * A pipeline run is in flight — layout, measurement, the lot.
+ *
+ * Surfaced so the viewer can say so. On a large estate a collapse press costs eighteen to
+ * twenty-two seconds of mostly-synchronous ELK, during which the canvas sits there looking broken;
+ * an operator who cannot tell "working" from "hung" reasonably concludes the latter, which is how
+ * the report behind this work described it.
+ */
+export const isRenderingTopology = writable(false);
 export const newNodeIds = writable<Set<string>>(new Set());
 
 // Tag filter stores - nodes/services hidden by tag filter
@@ -1130,7 +1160,10 @@ export function updateSearchFilter(
 
 	// Search hosts
 	for (const host of topology.hosts) {
-		const nameMatch = host.name.toLowerCase().includes(q);
+		// The title, not the stored name — a host labelled `core-sw-01` on the canvas because that
+		// is its sysName has to be findable by typing what is drawn on it. Checking `name` as well
+		// would be redundant: it is the ladder's first rung, so a named host's title *is* its name.
+		const nameMatch = hostDisplayName(host).toLowerCase().includes(q);
 		const hostnameMatch = host.hostname?.toLowerCase().includes(q) ?? false;
 		if (nameMatch || hostnameMatch) {
 			addResolved('Host', host.id);

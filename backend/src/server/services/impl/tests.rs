@@ -8,7 +8,7 @@ use crate::server::{
     },
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     fs::File,
     io::BufReader,
     path::PathBuf,
@@ -289,10 +289,13 @@ fn test_all_protocol_ports_have_generic_service() {
             // ClientResponse integrations (SNMP, Docker) handle their own port detection
             // via credentialed probes — they don't need Pattern::Port coverage.
             Pattern::ClientResponse(_) => true,
-            Pattern::AnyOf(patterns) => patterns
+            // `AllOf` counts for the same reason `AnyOf` does: `Pattern::ports()` flattens both,
+            // so either shape puts the port into the light scan. The industrial protocols are
+            // `AllOf([Port(p), ClientResponse(c)])` — the port is scanned, and the service is
+            // claimed only once the probe has answered on it.
+            Pattern::AnyOf(patterns) | Pattern::AllOf(patterns) => patterns
                 .iter()
                 .any(|p| pattern_matches_port_alone(p, target_port)),
-            Pattern::AllOf(_) => false,
             Pattern::Not(_) => false,
             _ => false,
         }
@@ -1067,4 +1070,169 @@ fn extract_service_name(content: &str) -> Option<String> {
 
     let name: String = chars[..end_pos].iter().collect();
     Some(name)
+}
+
+/// Every [`ClientProbe`] variant must have something that produces it.
+///
+/// A variant nothing emits gives its service definition a pattern that can never match, and the
+/// definition looks entirely healthy while doing nothing — which is the state
+/// `services/definitions/gnmi.rs` has been in. Both producers are `inventory` collections
+/// populated at link time, so no `const` can see across them; this is the assertion that can.
+#[test]
+fn every_client_probe_variant_has_a_producer() {
+    use std::collections::HashSet;
+    use strum::IntoEnumIterator;
+
+    use crate::daemon::utils::app_probe::all_app_probes;
+    use crate::server::services::r#impl::patterns::ClientProbe;
+
+    // Credentialed integrations build their `ProbeSuccess` inside `probe()` at runtime rather
+    // than declaring it, so there is nothing to enumerate and they are named here.
+    let from_integrations = [
+        ClientProbe::Snmp,
+        ClientProbe::Docker,
+        ClientProbe::Podman,
+        ClientProbe::UnifiController,
+        ClientProbe::InstantOn,
+    ];
+
+    // Known to have no producer. gNMI's definition matches on `ClientResponse(Gnmi)` and nothing
+    // emits it, so that service can never be detected. Listed rather than the test being weakened,
+    // so a *new* orphan still fails here.
+    let known_unproduced = [ClientProbe::Gnmi];
+
+    let from_app_probes: HashSet<ClientProbe> = all_app_probes()
+        .iter()
+        .filter_map(|probe| probe.client_probe())
+        .collect();
+
+    let orphans: Vec<ClientProbe> = ClientProbe::iter()
+        .filter(|c| !from_app_probes.contains(c))
+        .filter(|c| !from_integrations.contains(c))
+        .filter(|c| !known_unproduced.contains(c))
+        .collect();
+
+    assert!(
+        orphans.is_empty(),
+        "these ClientProbe variants have no producer, so any service definition matching on them \
+         can never match: {orphans:?}\n\
+         Either emit them from an AppProbe or a DiscoveryIntegration's probe(), or remove them."
+    );
+}
+
+/// A definition's probe and its discovery pattern have to agree about the port.
+///
+/// `probe_pattern` derives the pattern from the probe, so the two cannot drift where it is used —
+/// this catches a definition that hand-writes a pattern for one port while handing out a probe for
+/// another, which would scan a port nothing probes and probe a port nothing scans.
+#[test]
+fn a_definitions_probe_port_is_a_port_its_pattern_scans() {
+    use crate::server::services::definitions::ServiceDefinitionRegistry;
+    use crate::server::services::r#impl::definitions::ServiceDefinition;
+
+    for definition in ServiceDefinitionRegistry::all_service_definitions() {
+        let scanned = definition.discovery_pattern().ports();
+        for probe in definition.app_probes() {
+            assert!(
+                scanned.contains(&probe.port()),
+                "{} probes {:?} but its discovery pattern scans {:?}",
+                ServiceDefinition::name(&definition),
+                probe.port(),
+                scanned
+            );
+        }
+    }
+}
+
+/// No definition names a service on the strength of a completed TCP connection alone, unless it
+/// says why it cannot do better.
+///
+/// A middlebox in the path — a firewall session helper, a transparent proxy, an IPS — completes the
+/// handshake on behalf of addresses that hold no device. A definition resting on the connect alone
+/// then invents a service there, which is how a FortiGate SIP session helper became a "SIP Server"
+/// on every remote VLAN a customer scanned. A definition that reads a protocol response, an HTTP
+/// body or a header cannot be fooled that way, because the middlebox would have to speak the
+/// protocol to satisfy it.
+///
+/// The two sides are derived independently and compared: the left from each pattern's own shape via
+/// [`Pattern::matches_on_connect_alone`], the right from what each definition declares. That is what
+/// makes this maintenance-free — writing a probe or an endpoint match drops a definition off the
+/// left side automatically, and a new bare-port definition lands on it without anyone remembering
+/// to update a list.
+#[test]
+fn connect_only_definitions_are_declared() {
+    use crate::server::services::definitions::ServiceDefinitionRegistry;
+    use crate::server::services::r#impl::definitions::ServiceDefinition;
+
+    let derived: HashSet<&'static str> = ServiceDefinitionRegistry::connect_only_definitions()
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+
+    let declared: HashSet<&'static str> = ServiceDefinitionRegistry::all_service_definitions()
+        .iter()
+        .filter(|d| d.connect_only_rationale().is_some())
+        .map(|d| ServiceDefinition::name(d))
+        .collect();
+
+    let undeclared: BTreeSet<&str> = derived.difference(&declared).copied().collect();
+    let stale: BTreeSet<&str> = declared.difference(&derived).copied().collect();
+
+    assert!(
+        undeclared.is_empty(),
+        "these definitions match on a bare TCP connect, which any middlebox in the path can \
+         satisfy on behalf of an address that holds no device: {undeclared:?}\n\
+         Give each one evidence it can check — an `app_probes()` entry, or a `Pattern::Endpoint` / \
+         `Pattern::Header` that matches a body or header — or declare \
+         `connect_only_rationale()` saying which protocol fact prevents that."
+    );
+
+    assert!(
+        stale.is_empty(),
+        "these definitions declare a `connect_only_rationale()` they no longer need, because their \
+         pattern already validates what answered: {stale:?}\n\
+         Remove the declaration; the exception set is meant to shrink."
+    );
+}
+
+/// Every definition can actually be matched by something the scan collects.
+///
+/// A definition whose evidence no scan stage gathers is dead weight that looks like coverage.
+/// `openvpn`, `strongswan` and `wireguard` sat in the registry for years matching on a UDP port
+/// with no probe behind it, and nothing said so: UDP ports are only ever reported open by a
+/// registered [`AppProbe`], so those patterns could never be satisfied. The connect-only guard
+/// above would not have caught them, because their defect is unmatchability rather than weak
+/// evidence.
+///
+/// TCP ports are reachable by the connect scan; UDP ports only through a probe. A definition
+/// matching on something other than ports (an endpoint, mDNS, a controller inventory, a manual
+/// assignment via `Pattern::None`) has no port to check and passes.
+#[test]
+fn every_definition_can_be_matched() {
+    use crate::daemon::utils::app_probe::all_app_probes;
+    use crate::server::services::definitions::ServiceDefinitionRegistry;
+    use crate::server::services::r#impl::definitions::ServiceDefinition;
+
+    let probed_ports: HashSet<_> = all_app_probes().iter().map(|p| p.port()).collect();
+
+    let unreachable: BTreeSet<String> = ServiceDefinitionRegistry::all_service_definitions()
+        .iter()
+        .flat_map(|definition| {
+            let name = ServiceDefinition::name(definition);
+            definition
+                .discovery_pattern()
+                .ports()
+                .into_iter()
+                .filter(|port| port.is_udp() && !probed_ports.contains(port))
+                .map(move |port| format!("{name} ({port})"))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    assert!(
+        unreachable.is_empty(),
+        "these definitions depend on a UDP port no AppProbe covers, so nothing ever reports it \
+         open and the definition can never match: {unreachable:?}\n\
+         Write a probe for the port, or change the pattern to something the scan does collect."
+    );
 }

@@ -1,6 +1,6 @@
 [package]
 name = "scanopy-server"
-version = "0.17.13"
+version = "0.17.14"
 edition = "2024"
 description = "Scanopy HTTP API server"
 
@@ -99,13 +99,65 @@ if-addrs = "0.14.0"
 # neither std nor tokio exposes it. Already in the tree via tokio, so this declaration adds no
 # crate and no compile cost — it only makes an existing transitive dependency directly usable.
 socket2 = "0.6"
+# Already compiled in via tokio; declared directly because the protocol codecs below take and return
+# `BytesMut`, and naming a transitive dependency is what the lint forbids rather than the dependency.
+bytes = "1"
 dns-lookup = "3.0.0"
 
 # === Network Protocol Support ===
 rsntp = "4.0.0"
 dhcproto = "0.15.0"
 
+# === Protocol codecs for the application probes ===
+# Codec crates only — parse and serialise, no sockets. A *client* crate is the wrong shape here:
+# its job is to turn a refusal into an error, where these probes treat the refusal as the positive
+# (`-NOAUTH`, `421 Service not available`, KDC_ERR_PREAUTH_REQUIRED, UNSUPPORTED_VERSION). A codec
+# hands back the parsed refusal and lets the probe decide, which is the judgement worth owning.
+#
+# Every one is `default-features = false`: several default to a native-tls or C backend, which on
+# the static musl release build is a link failure rather than a runtime error.
+picky-krb = { version = "0.12", default-features = false }
+# picky-krb does not re-export the ASN.1 wrappers its own public types are built from, so the
+# serialiser and the tag wrappers have to be named directly. Both are already in the tree as
+# picky-krb's dependencies; these declarations add no crate.
+picky-asn1 = { version = "0.10", default-features = false }
+picky-asn1-der = { version = "0.5", default-features = false }
+ironrdp-pdu = { version = "0.9", default-features = false }
+ironrdp-core = { version = "0.2", default-features = false, features = ["alloc"] }
+postgres-protocol = { version = "0.6", default-features = false }
+# `default-features = false` is load bearing: the default pulls flate2/zlib, which is the C zlib
+# backend via libz-sys. There is no libz-sys in this tree and this must not add one.
+mysql_common = { version = "0.38", default-features = false }
+redis-protocol = { version = "6", default-features = false, features = ["resp2", "resp3", "std"] }
+# `client` is what compiles the request encoders; the compression features are left off because
+# `gzip` pulls flate2 and `lz4`/`zstd` link C. Nothing here reads a record batch, so none applies.
+kafka-protocol = { version = "0.18", default-features = false, features = ["client"] }
+cassandra-protocol = { version = "4", default-features = false }
+# `rasn`'s `bytes` feature is its backing-store choice, not an optional extra: without it the crate
+# does not compile. `f32`/`f64` are left off — no LDAP message this sends or reads carries a REAL.
+rasn = { version = "0.28", default-features = false, features = ["std", "bytes"] }
+rasn-ldap = { version = "0.28", default-features = false }
+ezk-sip-types = { version = "0.6", default-features = false }
+rtsp-types = { version = "0.1", default-features = false }
+onc-rpc = { version = "0.3", default-features = false }
+
 # === TLS and Security ===
+# A TLS handshake, driven only far enough to read the server's certificate. `docker_swarm`'s raft
+# port on 2377 speaks mutual TLS, so the session can never complete — but the server sends its
+# Certificate before demanding ours, and a custom `ServerCertVerifier` sees it there. That
+# certificate names the swarm, which is the difference between detecting "a TLS listener on 2377"
+# and detecting Docker Swarm.
+#
+# `default-features = false` + `ring` is load bearing, not tidiness: rustls 0.23 defaults its crypto
+# provider to `aws-lc-rs`, which is banned here (it breaks the musl build, the same reason posthog-rs
+# is pinned). There is no aws-lc-rs in the tree today and this must not be what introduces one.
+# Both crates are already compiled in via reqwest, so this declaration adds no new code.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+# Reads the subject out of the captured certificate. Chosen over `x509-parser`, which wants
+# `asn1-rs ^0.7` against the 0.6 vendored by snmp2 and would add a second asn1-rs and a third nom;
+# this builds on `der`/`spki`/`const-oid`, already in the tree.
+x509-cert = { version = "0.3", default-features = false, features = ["std"] }
 pem = "3"
 webpki-roots = "0.25"
 base64ct = "=1.6.0"

@@ -1,10 +1,12 @@
 use chrono::{DateTime, Utc};
-use mac_address::MacAddress;
 use serde::Serialize;
 use sqlx::Row;
 use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
+use crate::server::ip_addresses::r#impl::base::{MacEvidenceValue, mac_of};
+use crate::server::shared::attribution::Attributed;
+use crate::server::shared::storage::attributed;
 use crate::server::{
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase, Neighbor},
     shared::{
@@ -19,16 +21,24 @@ use crate::server::{
 };
 
 /// CSV row representation for Interface export
+/// A status column for CSV export: the variant's name, or blank where nothing read it.
+///
+/// Blank rather than the string "None", because a spreadsheet column reading `None` looks like a
+/// status the device reported. An empty cell is how every other unknown in this export reads.
+fn csv_status<S: std::fmt::Debug>(status: Option<S>) -> String {
+    status.map_or_else(String::new, |s| format!("{s:?}"))
+}
+
 #[derive(Serialize)]
 pub struct InterfaceCsvRow {
     pub id: Uuid,
     pub host_id: Uuid,
     pub network_id: Uuid,
-    pub if_index: i32,
+    pub if_index: Option<i32>,
     pub if_descr: String,
     pub if_name: Option<String>,
     pub if_alias: Option<String>,
-    pub if_type: i32,
+    pub if_type: Option<i32>,
     pub speed_bps: Option<i64>,
     pub admin_status: String,
     pub oper_status: String,
@@ -136,6 +146,8 @@ impl Storable for Interface {
             None => (None, None),
         };
 
+        let [mac_value, mac_source] = attributed::optional_params(&mac_address);
+
         let columns = vec![
             "id",
             "host_id",
@@ -149,6 +161,7 @@ impl Storable for Interface {
             "admin_status",
             "oper_status",
             "mac_address",
+            "mac_address_source",
             "ip_address_id",
             "neighbor_interface_id",
             "neighbor_host_id",
@@ -180,15 +193,16 @@ impl Storable for Interface {
             SqlValue::Uuid(id),
             SqlValue::Uuid(host_id),
             SqlValue::Uuid(network_id),
-            SqlValue::I32(if_index),
+            SqlValue::OptionalI32(if_index),
             SqlValue::String(if_descr),
             SqlValue::OptionalString(if_name),
             SqlValue::OptionalString(if_alias),
-            SqlValue::I32(if_type),
+            SqlValue::OptionalI32(if_type),
             SqlValue::OptionalI64(speed_bps),
-            SqlValue::I32(i32::from(admin_status)),
-            SqlValue::I32(i32::from(oper_status)),
-            SqlValue::OptionalMacAddress(mac_address),
+            SqlValue::OptionalI32(admin_status.map(i32::from)),
+            SqlValue::OptionalI32(oper_status.map(i32::from)),
+            mac_value,
+            mac_source,
             SqlValue::OptionalUuid(ip_address_id),
             SqlValue::OptionalUuid(neighbor_interface_id),
             SqlValue::OptionalUuid(neighbor_host_id),
@@ -222,16 +236,17 @@ impl Storable for Interface {
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error> {
         use crate::server::lldp::{LldpChassisId, LldpPortId};
 
-        let admin_status_raw: i32 = row.get("admin_status");
-        let oper_status_raw: i32 = row.get("oper_status");
+        // Read as `Option` because the columns are nullable: a port learned from a neighbour's
+        // advertisement carries no status, and `row.get::<i32>` *panics* on NULL rather than
+        // returning an error, so a non-optional read here would take the request down.
+        let admin_status_raw: Option<i32> = row.get("admin_status");
+        let oper_status_raw: Option<i32> = row.get("oper_status");
 
         // Handle speed_bps which might be NULL or a large value
         let speed_bps: Option<i64> = row.get("speed_bps");
 
         // Read mac_address from MACADDR column
-        let mac_address: Option<MacAddress> = row
-            .try_get("mac_address")
-            .map_err(|e| anyhow::anyhow!("Failed to read mac_address: {}", e))?;
+        let mac_address = attributed::read_optional::<MacEvidenceValue>(row)?;
 
         // Parse neighbor columns into Neighbor enum
         let neighbor_interface_id: Option<Uuid> = row.get("neighbor_interface_id");
@@ -287,8 +302,8 @@ impl Storable for Interface {
                 if_alias: row.get("if_alias"),
                 if_type: row.get("if_type"),
                 speed_bps,
-                admin_status: IfAdminStatus::from(admin_status_raw),
-                oper_status: IfOperStatus::from(oper_status_raw),
+                admin_status: admin_status_raw.map(IfAdminStatus::from),
+                oper_status: oper_status_raw.map(IfOperStatus::from),
                 mac_address,
                 ip_address_id: row.get("ip_address_id"),
                 neighbor,
@@ -349,9 +364,9 @@ impl Entity for Interface {
             if_alias: self.base.if_alias.clone(),
             if_type: self.base.if_type,
             speed_bps: self.base.speed_bps,
-            admin_status: format!("{:?}", self.base.admin_status),
-            oper_status: format!("{:?}", self.base.oper_status),
-            mac_address: self.base.mac_address.map(|m| m.to_string()),
+            admin_status: csv_status(self.base.admin_status),
+            oper_status: csv_status(self.base.oper_status),
+            mac_address: mac_of(&self.base.mac_address).map(|m| m.to_string()),
             ip_address_id: self.base.ip_address_id,
             neighbor: self.base.neighbor.as_ref().map(|n| match n {
                 Neighbor::Interface(id) => format!("Interface:{}", id),
@@ -422,10 +437,15 @@ impl Entity for Interface {
 
     fn preserve_immutable_fields(&mut self, existing: &Self) {
         self.created_at = existing.created_at;
-        // MAC address is immutable once set (from SNMP ifPhysAddress)
-        if existing.base.mac_address.is_some() {
-            self.base.mac_address = existing.base.mac_address;
+        // The MAC merges by rung rather than being pinned to whatever wrote it first. Pinning meant
+        // a MAC a router's ARP cache reported could never be corrected by the device answering for
+        // itself — first-write-wins under another name, and the same failure the host attributes
+        // had. `MacEvidenceValue` is not refreshable, so an equal-rung re-read still cannot move it.
+        let mut merged = existing.base.mac_address.clone();
+        if let Some(incoming) = self.base.mac_address.clone() {
+            Attributed::apply(&mut merged, incoming);
         }
+        self.base.mac_address = merged;
         // Keep a previously-captured if_name if the current scan happens to lack it
         // (partial SNMP response, or device that stopped reporting ifXTable). Losing
         // if_name silently breaks tier-1 matching on the next scan.
@@ -564,15 +584,25 @@ impl DiscoveryTracked for Interface {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
+    use crate::server::services::r#impl::patterns::ClientProbe;
+    use crate::server::shared::attribution::AttributeSource;
+
+    /// What a credentialed SNMP walk claims for a MAC it read off the device itself. Named once so
+    /// a fixture cannot assert a provenance no real scan produces.
+    const SNMP_MAC: AttributeSource = AttributeSource::Probe(ClientProbe::Snmp);
+
     use mac_address::MacAddress;
 
     fn make_interface(if_index: i32, if_name: Option<&str>, mac: Option<&str>) -> Interface {
         let mut base = InterfaceBase::default();
         base.host_id = Uuid::new_v4();
         base.network_id = Uuid::new_v4();
-        base.if_index = if_index;
+        base.if_index = Some(if_index);
         base.if_name = if_name.map(String::from);
-        base.mac_address = mac.map(|s| s.parse::<MacAddress>().unwrap());
+        base.mac_address = mac
+            .map(|s| s.parse::<MacAddress>().unwrap())
+            .map(|m| MacEvidence::new(MacEvidenceValue(m), SNMP_MAC));
         Interface::new(base)
     }
 

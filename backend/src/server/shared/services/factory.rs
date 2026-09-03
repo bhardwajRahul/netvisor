@@ -164,6 +164,9 @@ impl ServiceFactory {
             storage.subnets.clone(),
             event_bus.clone(),
             entity_tag_service.clone(),
+            // For re-filing addresses a narrowed range displaces. No cycle — `IPAddressService`
+            // depends on no service and is constructed above.
+            ip_address_service.clone(),
         ));
 
         let vlan_service = Arc::new(VlanService::new(
@@ -244,11 +247,11 @@ impl ServiceFactory {
             service_service.clone(),
             interface_service.clone(),
             daemon_service.clone(),
-            discovery_service.clone(),
             credential_service.clone(),
             subnet_service.clone(),
             vlan_service.clone(),
             network_service.clone(),
+            organization_service.clone(),
             event_bus.clone(),
             entity_tag_service.clone(),
         ));

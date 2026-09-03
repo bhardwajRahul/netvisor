@@ -15,12 +15,14 @@ use std::net::IpAddr;
 use super::SimDevice;
 use crate::daemon::discovery::integration::snmp::queries::{IfTableWalk, SnmpCollection};
 use crate::daemon::discovery::integration::snmp::types::{
-    ArpEntry, BridgeFdbEntry, IfTableEntry, LldpLocalPort, LldpNeighbor, SystemInfo,
+    ArpEntry, BridgeFdbEntry, CdpNeighbor, DeviceInventory, IfTableEntry, LldpLocalPort,
+    LldpNeighbor, SystemInfo,
 };
 use crate::daemon::discovery::integration::snmp::{
     LocalPortOutcome, count_dropped_neighbours, query_arp_table, query_bridge_fdb,
-    query_bridge_port_mapping, query_ip_addr_table, query_lldp_local_ports, query_lldp_neighbors,
-    query_system_info, remap_lldp_local_ports, walk_if_table,
+    query_bridge_port_mapping, query_cdp_neighbors, query_entity_physical, query_ip_addr_table,
+    query_lldp_local_ports, query_lldp_neighbors, query_system_info, remap_lldp_local_ports,
+    walk_if_table,
 };
 
 /// Everything one scan of a device reads.
@@ -28,6 +30,11 @@ pub struct Collected {
     pub system: SystemInfo,
     pub if_table: IfTableWalk,
     pub local_ports: HashMap<i32, LldpLocalPort>,
+    /// Whether the `lldpLocPortTable` read finished. Kept alongside the rows because a placement
+    /// that failed reads completely differently depending on it: with a whole table the device
+    /// numbers its ports in a space of its own, and with a partial one we simply did not read the
+    /// numbering (GH #668).
+    pub local_ports_complete: bool,
     /// Neighbours *after* the local-port remap, which is the form the rest of the daemon sees.
     pub neighbours: SnmpCollection<Vec<LldpNeighbor>>,
     /// What the remap could and could not place.
@@ -36,8 +43,15 @@ pub struct Collected {
     /// claimed. Every one is discarded whole when interfaces are built.
     pub dropped_neighbours: usize,
     pub arp: SnmpCollection<Vec<ArpEntry>>,
+    /// CDP neighbours, read the way `SnmpIntegration::execute` reads them. Collected here because
+    /// a column the simulator emits and nothing reads back proves only that it was written.
+    pub cdp: SnmpCollection<Vec<CdpNeighbor>>,
     pub bridge_ports: HashMap<i32, i32>,
     pub fdb: SnmpCollection<Vec<BridgeFdbEntry>>,
+    /// The `entPhysicalTable` collapsed to one device, the way `SnmpIntegration::execute` reads it.
+    /// Collected here because until it was, `query_entity_physical` was referenced by no test at
+    /// all — every column the fixtures emitted for it proved only that it had been written.
+    pub entity: SnmpCollection<Option<DeviceInventory>>,
     pub ip_addresses: usize,
 }
 
@@ -102,10 +116,11 @@ pub async fn collect(device: &SimDevice) -> Collected {
 
     // The local-port table is read before the neighbours because the remap needs both, which is
     // the order `execute` uses.
-    let local_ports = query_lldp_local_ports(&mut agent, ip)
+    let local_port_walk = query_lldp_local_ports(&mut agent, ip)
         .await
-        .map(|c| c.records)
         .unwrap_or_default();
+    let local_ports_complete = local_port_walk.complete;
+    let local_ports = local_port_walk.records;
     let mut neighbours = query_lldp_neighbors(&mut agent, ip)
         .await
         .unwrap_or_default();
@@ -115,6 +130,9 @@ pub async fn collect(device: &SimDevice) -> Collected {
         count_dropped_neighbours(&neighbours.records, &local_ports, &if_table.entries);
 
     let arp = query_arp_table(&mut agent, ip).await.unwrap_or_default();
+    let cdp = query_cdp_neighbors(&mut agent, ip)
+        .await
+        .unwrap_or_default();
     let bridge_mapping = query_bridge_port_mapping(&mut agent, ip)
         .await
         .unwrap_or_default();
@@ -122,6 +140,9 @@ pub async fn collect(device: &SimDevice) -> Collected {
         .await
         .unwrap_or_default();
     let bridge_ports = bridge_mapping.records;
+    let entity = query_entity_physical(&mut agent, ip)
+        .await
+        .unwrap_or_default();
     let ip_addresses = query_ip_addr_table(&mut agent, ip)
         .await
         .map(|c| c.records.len())
@@ -131,12 +152,15 @@ pub async fn collect(device: &SimDevice) -> Collected {
         system,
         if_table,
         local_ports,
+        local_ports_complete,
         neighbours,
         local_port_outcome,
         dropped_neighbours,
         arp,
+        cdp,
         bridge_ports,
         fdb,
+        entity,
         ip_addresses,
     }
 }

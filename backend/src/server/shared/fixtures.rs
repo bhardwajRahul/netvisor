@@ -3,7 +3,7 @@
 
 use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::daemon::discovery::types::warnings::{
-    ClaimSource, DiscoveryWarningCode, MalformedNeighbourConsequence, SnmpWalkGroup,
+    ClaimSource, DiscoveryWarningCode, MalformedNeighbourConsequence, SnmpWalkGroup, WarningRemedy,
 };
 use crate::server::billing::plans::get_website_fixture_plans;
 use crate::server::billing::types::base::{BillingPlan, CancelReason, PlanStatus, SaveOffer};
@@ -18,6 +18,7 @@ use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::definitions::ServiceDefinitionRegistry;
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
+use crate::server::shared::attribution::AttributeMethod;
 use crate::server::shared::concepts::Concept;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::types::metadata::{EntityMetadata, MetadataProvider, TypeMetadata};
@@ -97,6 +98,12 @@ pub fn generate_ui_data_fixtures(output_dir: &Path) {
         .map(|c| c.to_metadata())
         .collect();
     write_fixture(&warning_codes, output_dir, "warning-codes.json");
+
+    // The rungs the codes above are filed under, in the order the warning list renders them. Each
+    // code names one through its `category`; this is where that name resolves to a heading.
+    let warning_remedies: Vec<TypeMetadata> =
+        WarningRemedy::iter().map(|r| r.to_metadata()).collect();
+    write_fixture(&warning_remedies, output_dir, "warning-remedies.json");
 
     let snmp_walk_groups: Vec<TypeMetadata> =
         SnmpWalkGroup::iter().map(|g| g.to_metadata()).collect();
@@ -187,6 +194,14 @@ pub fn generate_ui_data_fixtures(output_dir: &Path) {
 
     let plan_statuses: Vec<TypeMetadata> = PlanStatus::iter().map(|s| s.to_metadata()).collect();
     write_fixture(&plan_statuses, output_dir, "plan-statuses.json");
+
+    // How much a discovered value is worth, and which sources sit at each tier. The tier is what
+    // an operator reads ("assumed", "read from the device"); the source list under it is the
+    // lookup the UI needs to get from a value's recorded source to that label, inverted from
+    // `AttributeSource::method()` so it cannot disagree with the ordering the applier uses.
+    let attribute_methods: Vec<TypeMetadata> =
+        AttributeMethod::iter().map(|m| m.to_metadata()).collect();
+    write_fixture(&attribute_methods, output_dir, "attribute-methods.json");
 
     println!("Done! Generated all metadata fixtures.");
 }

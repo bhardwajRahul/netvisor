@@ -4,6 +4,7 @@
 //! realistic sample data in the API documentation. Based on test fixtures but
 //! with static placeholder IDs.
 
+use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
 use chrono::{TimeZone, Utc};
 use cidr::{IpCidr, Ipv4Cidr};
 use email_address::EmailAddress;
@@ -11,6 +12,8 @@ use mac_address::MacAddress;
 use semver::Version;
 use std::net::{IpAddr, Ipv4Addr};
 
+use crate::server::shared::attribution::AttributeSource;
+use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
 use crate::server::{
     bindings::r#impl::base::Binding,
     credentials::r#impl::mapping::SnmpCredentialMapping,
@@ -29,7 +32,7 @@ use crate::server::{
             BindingInput, CreateHostRequest, HostResponse, IPAddressInput, PortInput, ServiceInput,
         },
         base::{Host, HostBase},
-        name::HostName,
+        name::{HostName, HostNameSources},
     },
     interfaces::r#impl::base::{IfAdminStatus, IfOperStatus, Interface, InterfaceBase},
     ip_addresses::r#impl::base::{IPAddress, IPAddressBase},
@@ -118,7 +121,7 @@ pub fn host() -> Host {
         last_discovery_id: None,
         first_discovery_id: None,
         base: HostBase {
-            name: HostName::Manual("web-server-01".to_string()),
+            name: HostName::manual("web-server-01".to_string()),
             hostname: Some("web-server-01.local".to_string()),
             network_id: ids::NETWORK,
             description: Some("Primary web server".to_string()),
@@ -137,6 +140,8 @@ pub fn host() -> Host {
             manufacturer: None,
             model: None,
             serial_number: None,
+            firmware_revision: None,
+            software_revision: None,
             credential_assignments: vec![],
         },
     }
@@ -158,7 +163,12 @@ pub fn subnet() -> Subnet {
             name: "LAN".to_string(),
             description: Some("Local area network".to_string()),
             network_id: ids::NETWORK,
-            cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
+            cidr: SubnetCidr::new(
+                SubnetCidrValue(IpCidr::V4(
+                    Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap(),
+                )),
+                AttributeSource::DaemonSelfReport,
+            ),
             subnet_type: SubnetType::Lan,
             virtualization_service_id: None,
             source: EntitySource::Manual,
@@ -184,7 +194,10 @@ pub fn ip_address() -> IPAddress {
             host_id: ids::HOST,
             subnet_id: ids::SUBNET,
             ip_address: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),
-            mac_address: Some(MacAddress::new([0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE])),
+            mac_address: Some(MacEvidence::new(
+                MacEvidenceValue(MacAddress::new([0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE])),
+                AttributeSource::ArpReply,
+            )),
             name: Some("eth0".to_string()),
             position: 0,
         },
@@ -433,15 +446,18 @@ pub fn interface() -> Interface {
         base: InterfaceBase {
             host_id: ids::HOST,
             network_id: ids::NETWORK,
-            if_index: 1,
+            if_index: Some(1),
             if_descr: "GigabitEthernet0/1".to_string(),
             if_name: Some("Gi0/1".to_string()),
             if_alias: Some("Uplink to Core Switch".to_string()),
-            if_type: 6,                     // ethernet
+            if_type: Some(6),               // ethernet
             speed_bps: Some(1_000_000_000), // 1 Gbps
-            admin_status: IfAdminStatus::Up,
-            oper_status: IfOperStatus::Up,
-            mac_address: Some(MacAddress::new([0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE])),
+            admin_status: Some(IfAdminStatus::Up),
+            oper_status: Some(IfOperStatus::Up),
+            mac_address: Some(MacEvidence::new(
+                MacEvidenceValue(MacAddress::new([0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE])),
+                AttributeSource::ArpReply,
+            )),
             ip_address_id: Some(ids::INTERFACE),
             neighbor: None,
             neighbor_seen_at: None,

@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use cidr::IpCidr;
 use serde::Serialize;
 use sqlx::Row;
 use sqlx::postgres::PgRow;
@@ -8,16 +7,18 @@ use uuid::Uuid;
 
 use crate::server::{
     shared::{
+        attribution::AttributeSource,
         entities::EntityDiscriminants,
         entity_metadata::EntityCategory,
         storage::{
+            attributed,
             snapshot::{DiscoveryTracked, Snapshotable},
             traits::{Entity, SqlValue, Storable},
         },
         types::{entities::EntitySource, metadata::HasId},
     },
     subnets::r#impl::{
-        base::{Subnet, SubnetBase},
+        base::{Subnet, SubnetBase, SubnetCidr, SubnetCidrValue},
         types::SubnetType,
     },
 };
@@ -29,6 +30,7 @@ pub struct SubnetCsvRow {
     pub name: String,
     pub cidr: String,
     pub subnet_type: String,
+    pub cidr_source: String,
     pub description: Option<String>,
     pub network_id: Uuid,
     pub source: String,
@@ -94,12 +96,15 @@ impl Storable for Subnet {
                 },
         } = self.clone();
 
+        let [cidr_value, cidr_source] = attributed::present_params(&cidr);
+
         Ok((
             vec![
                 "id",
                 "name",
                 "description",
                 "cidr",
+                "cidr_source",
                 "source",
                 "subnet_type",
                 "virtualization_service_id",
@@ -117,7 +122,8 @@ impl Storable for Subnet {
                 SqlValue::Uuid(id),
                 SqlValue::String(name),
                 SqlValue::OptionalString(description),
-                SqlValue::IpCidr(cidr),
+                cidr_value,
+                cidr_source,
                 SqlValue::EntitySource(source),
                 SqlValue::String(subnet_type.id().to_string()),
                 SqlValue::OptionalUuid(virtualization_service_id),
@@ -136,10 +142,12 @@ impl Storable for Subnet {
 
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error> {
         // Parse fields safely
-        let cidr: IpCidr = serde_json::from_str(&row.get::<String, _>("cidr"))
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize cidr: {}", e))?;
         let subnet_type = SubnetType::from_str(&row.get::<String, _>("subnet_type"))
             .map_err(|e| anyhow::anyhow!("Failed to parse subnet_type: {}", e))?;
+        // A CIDR is required, so unlike an optional attribute an absent one is a real error.
+        // The source half degrades to `Unspecified` inside `AttributeSource`'s own `Deserialize`,
+        // which is what keeps a rung a newer binary wrote from failing the whole row.
+        let cidr = attributed::read_required::<SubnetCidrValue>(row)?;
         let source: EntitySource =
             serde_json::from_value(row.get::<serde_json::Value, _>("source"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize source: {}", e))?;
@@ -256,8 +264,9 @@ impl Entity for Subnet {
         SubnetCsvRow {
             id: self.id,
             name: self.base.name.clone(),
-            cidr: self.base.cidr.to_string(),
+            cidr: self.base.cidr.value().to_string(),
             subnet_type: self.base.subnet_type.id().to_string(),
+            cidr_source: self.base.cidr.source().to_string(),
             description: self.base.description.clone(),
             network_id: self.base.network_id,
             source: format!("{:?}", self.base.source),
@@ -304,6 +313,13 @@ impl Entity for Subnet {
     }
 
     fn set_source(&mut self, source: EntitySource) {
+        // A range a person typed into Scanopy is an assertion, not a reading, and it sits at the
+        // top of the ladder — the same act that makes the row `Manual` is the one that makes its
+        // CIDR `Manual`, so the two cannot be set apart from each other.
+        if source == EntitySource::Manual {
+            let asserted = SubnetCidr::new(self.base.cidr.value().clone(), AttributeSource::Manual);
+            self.base.cidr.apply_in_place(asserted);
+        }
         self.base.source = source;
     }
 
@@ -312,5 +328,18 @@ impl Entity for Subnet {
         self.base.source = existing.base.source.clone();
         self.created_at = existing.created_at;
         self.updated_at = existing.updated_at;
+
+        // The rung the caller supplied, never lower than the one already stored. This used to
+        // read a *changed* CIDR as proof a person had typed it, on the premise that discovery never
+        // moves an existing subnet's range. That premise no longer holds: a real netmask now
+        // corrects a range Scanopy only inferred. Deciding whose edit this was belongs to the layer
+        // that knows — `update_subnet` stamps the manual rung, and daemons cannot call it.
+        //
+        // Through the applier rather than a `max()` on the source alone: the pair is one field now,
+        // and raising the stored rung over the incoming *value* is how a guess used to end up
+        // labelled as a reading.
+        let mut merged = existing.base.cidr.clone();
+        merged.apply_in_place(self.base.cidr.clone());
+        self.base.cidr = merged;
     }
 }

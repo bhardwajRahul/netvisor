@@ -17,11 +17,13 @@ impl ServiceDefinition for Neo4j {
     fn category(&self) -> ServiceCategory {
         ServiceCategory::Database
     }
+    /// The HTTP discovery endpoint on 7474 answers unauthenticated with the server's own version
+    /// and Bolt routing URIs.
+    ///
+    /// 7474 was not previously scanned at all — the pattern listed 7473 (the HTTPS browser) and
+    /// 7687 (Bolt) — so this both validates the detection and reaches the port that identifies it.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::AnyOf(vec![
-            Pattern::Port(PortType::new_tcp(7473)),
-            Pattern::Port(PortType::new_tcp(7687)),
-        ])
+        Pattern::Endpoint(PortType::new_tcp(7474), "/", "neo4j_version", None)
     }
     fn logo_url(&self) -> &'static str {
         "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/neo4j.png"

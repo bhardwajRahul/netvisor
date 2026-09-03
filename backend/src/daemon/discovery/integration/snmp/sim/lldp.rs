@@ -13,6 +13,9 @@
 //! left *abbreviated* (`0:4:96:1:e0:0`) as the standing guard on the unpadded form. Changing any
 //! of those removes coverage rather than fixing anything.
 
+use std::net::IpAddr;
+
+use super::transport::Handler;
 use super::wire::{MacEncoding, PassValue, Row};
 use crate::daemon::discovery::integration::snmp::oids::lldp;
 use crate::server::lldp::{LldpChassisId, LldpPortId};
@@ -33,6 +36,13 @@ use crate::server::lldp::{LldpChassisId, LldpPortId};
 pub struct SimLldpMib {
     /// Subtree the agent registers, and the whole of what a walk of this MIB can reach.
     pub root: &'static str,
+    /// `lldpLocPortTable`, and [`Self::remote_root`] the remote tables. Both sit under
+    /// [`Self::root`] and are registered separately only by a device that serves one of them
+    /// differently — a slow or stuck handler on the port table while the neighbours answer
+    /// normally, which is the GH #668 shape. Values here rather than derived, because a MIB
+    /// revision is free to move them and `wire_rows` already treats every other column that way.
+    pub local_port_table: &'static str,
+    pub remote_root: &'static str,
     /// Distinguishes this MIB's data file from another's on the same device.
     pub file_suffix: &'static str,
     pub local: SimLldpLocalColumns,
@@ -64,11 +74,23 @@ pub struct SimLldpRemoteColumns {
     pub port_desc: &'static str,
     pub sys_name: &'static str,
     pub sys_desc: &'static str,
+    /// The accessible column of the separate `lldpRemManAddrTable`.
+    ///
+    /// Served for its *index*, not its value: the address itself is encoded in the trailing
+    /// sub-ids, which is why the daemon walks this column and reconstructs the address from the
+    /// OID rather than reading it (`queries.rs::split_lldp_man_addr_index`). A fixture that put
+    /// the address in the value would look right and be invisible to the collector.
+    pub man_addr_if_subtype: &'static str,
 }
 
 /// The classic LLDP-MIB, `1.0.8802.1.1.2`.
 pub static CLASSIC: SimLldpMib = SimLldpMib {
     root: lldp::LLDP_MIB,
+    local_port_table: lldp::local::LLDP_LOC_PORT_TABLE,
+    // The remote *tables*: `lldpRemTable` at `…1.4.1` and `lldpRemManAddrTable` at `…1.4.2`, so
+    // the root of both rather than `LLDP_REM_TABLE` — a registration stopping at `…1.4.1` would
+    // leave the management-address walk unserved.
+    remote_root: "1.0.8802.1.1.2.1.4",
     file_suffix: "lldp",
     local: SimLldpLocalColumns {
         chassis_id_subtype: lldp::local::LLDP_LOC_CHASSIS_ID_SUBTYPE,
@@ -87,9 +109,27 @@ pub static CLASSIC: SimLldpMib = SimLldpMib {
         port_desc: lldp::remote::entry::LLDP_REM_PORT_DESC,
         sys_name: lldp::remote::entry::LLDP_REM_SYS_NAME,
         sys_desc: lldp::remote::entry::LLDP_REM_SYS_DESC,
+        man_addr_if_subtype: lldp::remote::entry::LLDP_REM_MAN_ADDR_IF_SUBTYPE,
     },
     rem_suffix: classic_rem_suffix,
 };
+
+/// The `lldpRemManAddrTable` index sub-ids that follow a neighbour's own key:
+/// `lldpRemManAddrSubtype.lldpRemManAddrLen.lldpRemManAddr`.
+///
+/// The subtype is the IANA address family (1 = IPv4, 2 = IPv6) and the length counts the address
+/// octets that follow, each as its own sub-id. This is the exact shape
+/// `queries.rs::split_lldp_man_addr_index` reads back, and getting the length wrong is the failure
+/// it silently skips rather than reports.
+fn man_addr_suffix(addr: &IpAddr) -> Vec<u64> {
+    let (family, octets): (u64, Vec<u8>) = match addr {
+        IpAddr::V4(v4) => (1, v4.octets().to_vec()),
+        IpAddr::V6(v6) => (2, v6.octets().to_vec()),
+    };
+    let mut suffix = vec![family, octets.len() as u64];
+    suffix.extend(octets.into_iter().map(u64::from));
+    suffix
+}
 
 /// `lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex` — three sub-ids, or two where the firmware
 /// omits the time mark (GH #668).
@@ -172,6 +212,12 @@ pub struct RemoteNeighbour {
     pub port_desc: Option<String>,
     pub sys_name: Option<String>,
     pub sys_desc: Option<String>,
+    /// `lldpRemManAddr` — the address the far end publishes for its own management.
+    ///
+    /// Optional because plenty of firmware serves no management-address table at all, and that
+    /// absence is itself a case worth covering: it is the difference between a far end this
+    /// network could place if it were scanned and one that cannot be placed at all.
+    pub mgmt_addr: Option<IpAddr>,
     /// Set only where the malformed shape is the point.
     pub defect: Option<ChassisDefect>,
 }
@@ -192,6 +238,7 @@ impl RemoteNeighbour {
             port_desc: None,
             sys_name: None,
             sys_desc: None,
+            mgmt_addr: None,
             defect: None,
         }
     }
@@ -218,6 +265,11 @@ impl RemoteNeighbour {
 
     pub fn sys_desc(mut self, desc: &str) -> Self {
         self.sys_desc = Some(desc.to_string());
+        self
+    }
+
+    pub fn mgmt_addr(mut self, addr: IpAddr) -> Self {
+        self.mgmt_addr = Some(addr);
         self
     }
 
@@ -291,6 +343,19 @@ impl RemoteNeighbour {
                 rows.push(Row::at(base, &suffix, PassValue::Str(text.clone())));
             }
         }
+
+        // The management address rides in the index of its own table. The value served here is
+        // `lldpRemManAddrIfSubtype` and the collector ignores it — 1 is `unknown`, which is what a
+        // device that does not tie the address to a numbered interface reports.
+        if let Some(addr) = &self.mgmt_addr {
+            let mut man_suffix = suffix.clone();
+            man_suffix.extend(man_addr_suffix(addr));
+            rows.push(Row::at(
+                mib.remote.man_addr_if_subtype,
+                &man_suffix,
+                PassValue::Integer(1),
+            ));
+        }
         rows
     }
 }
@@ -359,6 +424,32 @@ pub struct LldpTable {
     pub sys_desc: Option<String>,
     pub local_ports: Vec<LocalPort>,
     pub neighbours: Vec<RemoteNeighbour>,
+    /// Which `pass` handler serves `lldpLocPortTable`.
+    ///
+    /// Its own field because GH #668's switch4 truncated that table while its neighbours read
+    /// clean, and one handler for the whole MIB could not say so. `Normal` is the ordinary case
+    /// and costs nothing: the table is then registered under the MIB root as one line, exactly as
+    /// before this existed.
+    pub local_port_handler: Handler,
+    /// Whether the device refuses a GETBULK of its remote tables while still answering a getnext
+    /// on the same OIDs — GH #668's switch3.
+    ///
+    /// Not a handler, because it is not the agent doing it: `snmp-bulk-refuser.py` sits in front
+    /// and drops the datagram. A handler could not express it anyway. snmpd drives `pass` serially,
+    /// so a handler slow enough to fail a bulk page occupies the agent long enough to fail the
+    /// getnext queued behind it, and the device fails both ways instead of one.
+    pub neighbours_refuse_getbulk: bool,
+}
+
+impl LldpTable {
+    /// Whether this table needs its sub-tables registered apart.
+    ///
+    /// Only the port-table handler forces it. A bulk refusal does not: the shim works on the OID
+    /// off the wire and needs no `pass` line of its own, so a device that only refuses bulk keeps
+    /// the single MIB-root registration.
+    pub fn splits_registrations(&self) -> bool {
+        self.local_port_handler != Handler::Normal
+    }
 }
 
 impl LldpTable {
@@ -370,7 +461,21 @@ impl LldpTable {
             sys_desc: None,
             local_ports: Vec::new(),
             neighbours: Vec::new(),
+            local_port_handler: Handler::Normal,
+            neighbours_refuse_getbulk: false,
         }
+    }
+
+    /// Serve `lldpLocPortTable` through a handler of its own.
+    pub fn local_ports_served_by(mut self, handler: Handler) -> Self {
+        self.local_port_handler = handler;
+        self
+    }
+
+    /// Refuse a GETBULK of `lldpRemTable` and `lldpRemManAddrTable`, still answering getnext.
+    pub fn neighbours_refuse_getbulk(mut self) -> Self {
+        self.neighbours_refuse_getbulk = true;
+        self
     }
 
     /// Serve this table under a MIB other than the classic one.

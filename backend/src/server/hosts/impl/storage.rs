@@ -7,13 +7,15 @@ use uuid::Uuid;
 use crate::server::{
     hosts::r#impl::{
         base::{Host, HostBase},
-        name::HostName,
+        name::host_name_from_parts,
         virtualization::HostVirtualization,
     },
     shared::{
+        attribution,
         entities::EntityDiscriminants,
         entity_metadata::EntityCategory,
         storage::{
+            attributed,
             snapshot::{DiscoveryTracked, Snapshotable},
             traits::{Entity, SqlValue, Storable},
         },
@@ -44,6 +46,8 @@ pub struct HostCsvRow {
     pub manufacturer: Option<String>,
     pub model: Option<String>,
     pub serial_number: Option<String>,
+    pub firmware_revision: Option<String>,
+    pub software_revision: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -56,21 +60,42 @@ impl Storable for Host {
     }
 
     /// Spans what an operator actually types when hunting for a host: its
-    /// name/hostname, a snippet of its description, an IP, or the name of
-    /// something running on it.
+    /// name/hostname, a snippet of its description, an IP, a MAC, or the name
+    /// of something running on it.
+    ///
+    /// The MAC predicates are not a convenience. A device identified only by
+    /// its MAC — one with no address at all — was unfindable by the single
+    /// identity it has, so the search box could not reach a host the fleet
+    /// holds. Both tables carry one, and which table depends on how the device
+    /// was found, so searching one would leave half of them unreachable.
+    /// Matched as text, so a partial address or a bare OUI prefix works the way
+    /// a partial IP already does.
+    ///
+    /// Every rung of the [`Host::display_name`] ladder is in here, which is why
+    /// `sys_name` and `chassis_id` are covered even though no column shows them
+    /// by default: a host that never got a name is *listed* under one of them,
+    /// and searching for the title on screen has to find the host wearing it.
     ///
     /// Children are matched with `EXISTS` rather than a JOIN so a host with
     /// many IPs or services is not duplicated in the result set — which would
     /// also corrupt the paginated `COUNT(*)`. The `valid_to IS NULL` guards
     /// keep closed SCD2 copies from matching, so a host stops being findable
     /// by an IP it no longer holds.
+    ///
+    /// [`Host::display_name`]: crate::server::hosts::r#impl::base::Host::display_name
     fn search_predicates() -> &'static [&'static str] {
         &[
             "hosts.name ILIKE {}",
             "hosts.hostname ILIKE {}",
+            "hosts.sys_name ILIKE {}",
+            "hosts.chassis_id ILIKE {}",
             "hosts.description ILIKE {}",
             "EXISTS (SELECT 1 FROM ip_addresses ia WHERE ia.host_id = hosts.id \
              AND ia.valid_to IS NULL AND host(ia.ip_address) ILIKE {})",
+            "EXISTS (SELECT 1 FROM ip_addresses ia WHERE ia.host_id = hosts.id \
+             AND ia.valid_to IS NULL AND ia.mac_address::text ILIKE {})",
+            "EXISTS (SELECT 1 FROM interfaces i WHERE i.host_id = hosts.id \
+             AND i.valid_to IS NULL AND i.mac_address::text ILIKE {})",
             "EXISTS (SELECT 1 FROM services s WHERE s.host_id = hosts.id \
              AND s.valid_to IS NULL AND s.name ILIKE {})",
         ]
@@ -135,9 +160,32 @@ impl Storable for Host {
                     manufacturer,
                     model,
                     serial_number,
+                    firmware_revision,
+                    software_revision,
                     credential_assignments: _, // Stored in host_credentials junction table
                 },
         } = self.clone();
+
+        // Each provenanced pair hands out its two columns and its two values together, so the two
+        // vectors below cannot drift apart on one of them.
+        let [name_value, name_source] = attributed::present_params(&name);
+        let [sys_descr_value, sys_descr_source] = attributed::optional_params(&sys_descr);
+        let [sys_object_id_value, sys_object_id_source] =
+            attributed::optional_params(&sys_object_id);
+        let [sys_location_value, sys_location_source] = attributed::optional_params(&sys_location);
+        let [sys_contact_value, sys_contact_source] = attributed::optional_params(&sys_contact);
+        let [management_url_value, management_url_source] =
+            attributed::optional_params(&management_url);
+        let [chassis_id_value, chassis_id_source] = attributed::optional_params(&chassis_id);
+        let [sys_name_value, sys_name_source] = attributed::optional_params(&sys_name);
+        let [manufacturer_value, manufacturer_source] = attributed::optional_params(&manufacturer);
+        let [model_value, model_source] = attributed::optional_params(&model);
+        let [serial_number_value, serial_number_source] =
+            attributed::optional_params(&serial_number);
+        let [firmware_revision_value, firmware_revision_source] =
+            attributed::optional_params(&firmware_revision);
+        let [software_revision_value, software_revision_source] =
+            attributed::optional_params(&software_revision);
 
         Ok((
             vec![
@@ -154,15 +202,29 @@ impl Storable for Host {
                 "virtualization_metadata",
                 "virtualization_service_id",
                 "sys_descr",
+                "sys_descr_source",
                 "sys_object_id",
+                "sys_object_id_source",
                 "sys_location",
+                "sys_location_source",
                 "sys_contact",
+                "sys_contact_source",
                 "management_url",
+                "management_url_source",
                 "chassis_id",
+                "chassis_id_source",
                 "sys_name",
+                "sys_name_source",
                 "manufacturer",
+                "manufacturer_source",
                 "model",
+                "model_source",
                 "serial_number",
+                "serial_number_source",
+                "firmware_revision",
+                "firmware_revision_source",
+                "software_revision",
+                "software_revision_source",
                 "valid_from",
                 "valid_to",
                 "lineage_id",
@@ -174,8 +236,8 @@ impl Storable for Host {
                 SqlValue::Uuid(id),
                 SqlValue::Timestamp(created_at),
                 SqlValue::Timestamp(updated_at),
-                SqlValue::String(name.value().to_string()),
-                SqlValue::HostNameSource(name.source()),
+                name_value,
+                name_source,
                 SqlValue::OptionalString(description),
                 SqlValue::Uuid(network_id),
                 SqlValue::EntitySource(source),
@@ -183,16 +245,30 @@ impl Storable for Host {
                 SqlValue::Bool(hidden),
                 SqlValue::OptionalHostVirtualization(virtualization_metadata),
                 SqlValue::OptionalUuid(virtualization_service_id),
-                SqlValue::OptionalString(sys_descr),
-                SqlValue::OptionalString(sys_object_id),
-                SqlValue::OptionalString(sys_location),
-                SqlValue::OptionalString(sys_contact),
-                SqlValue::OptionalString(management_url),
-                SqlValue::OptionalString(chassis_id),
-                SqlValue::OptionalString(sys_name),
-                SqlValue::OptionalString(manufacturer),
-                SqlValue::OptionalString(model),
-                SqlValue::OptionalString(serial_number),
+                sys_descr_value,
+                sys_descr_source,
+                sys_object_id_value,
+                sys_object_id_source,
+                sys_location_value,
+                sys_location_source,
+                sys_contact_value,
+                sys_contact_source,
+                management_url_value,
+                management_url_source,
+                chassis_id_value,
+                chassis_id_source,
+                sys_name_value,
+                sys_name_source,
+                manufacturer_value,
+                manufacturer_source,
+                model_value,
+                model_source,
+                serial_number_value,
+                serial_number_source,
+                firmware_revision_value,
+                firmware_revision_source,
+                software_revision_value,
+                software_revision_source,
                 SqlValue::Timestamp(valid_from),
                 SqlValue::OptionTimestamp(valid_to),
                 SqlValue::OptionalUuid(lineage_id),
@@ -218,11 +294,12 @@ impl Storable for Host {
                 None => None,
             };
 
-        let name = HostName::from_parts(
+        // `host_name_from_parts` rather than a plain construction: a blank name collapses to
+        // unnamed whatever rung the column claims, and an address rung whose value is not an
+        // address degrades instead of asserting something false.
+        let name = host_name_from_parts(
             row.get::<String, _>("name"),
-            row.get::<String, _>("name_source")
-                .parse()
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize name_source: {}", e))?,
+            attributed::read_source(row, "name_source")?,
         );
 
         Ok(Host {
@@ -245,16 +322,18 @@ impl Storable for Host {
                 virtualization_metadata,
                 virtualization_service_id: row.get("virtualization_service_id"),
                 tags: Vec::new(), // Hydrated from entity_tags junction table
-                sys_descr: row.get("sys_descr"),
-                sys_object_id: row.get("sys_object_id"),
-                sys_location: row.get("sys_location"),
-                sys_contact: row.get("sys_contact"),
-                management_url: row.get("management_url"),
-                chassis_id: row.get("chassis_id"),
-                sys_name: row.get("sys_name"),
-                manufacturer: row.get("manufacturer"),
-                model: row.get("model"),
-                serial_number: row.get("serial_number"),
+                sys_descr: attributed::read_optional(row)?,
+                sys_object_id: attributed::read_optional(row)?,
+                sys_location: attributed::read_optional(row)?,
+                sys_contact: attributed::read_optional(row)?,
+                management_url: attributed::read_optional(row)?,
+                chassis_id: attributed::read_optional(row)?,
+                sys_name: attributed::read_optional(row)?,
+                manufacturer: attributed::read_optional(row)?,
+                model: attributed::read_optional(row)?,
+                serial_number: attributed::read_optional(row)?,
+                firmware_revision: attributed::read_optional(row)?,
+                software_revision: attributed::read_optional(row)?,
                 credential_assignments: Vec::new(), // Hydrated from host_credentials junction table
             },
         })
@@ -289,16 +368,18 @@ impl Entity for Host {
             network_id: self.base.network_id,
             source: format!("{:?}", self.base.source),
             hidden: self.base.hidden,
-            sys_descr: self.base.sys_descr.clone(),
-            sys_object_id: self.base.sys_object_id.clone(),
-            sys_location: self.base.sys_location.clone(),
-            sys_contact: self.base.sys_contact.clone(),
-            management_url: self.base.management_url.clone(),
-            chassis_id: self.base.chassis_id.clone(),
-            sys_name: self.base.sys_name.clone(),
-            manufacturer: self.base.manufacturer.clone(),
-            model: self.base.model.clone(),
-            serial_number: self.base.serial_number.clone(),
+            sys_descr: attribution::text_of(&self.base.sys_descr),
+            sys_object_id: attribution::text_of(&self.base.sys_object_id),
+            sys_location: attribution::text_of(&self.base.sys_location),
+            sys_contact: attribution::text_of(&self.base.sys_contact),
+            management_url: attribution::text_of(&self.base.management_url),
+            chassis_id: attribution::text_of(&self.base.chassis_id),
+            sys_name: attribution::text_of(&self.base.sys_name),
+            manufacturer: attribution::text_of(&self.base.manufacturer),
+            model: attribution::text_of(&self.base.model),
+            serial_number: attribution::text_of(&self.base.serial_number),
+            firmware_revision: attribution::text_of(&self.base.firmware_revision),
+            software_revision: attribution::text_of(&self.base.software_revision),
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -346,8 +427,14 @@ impl Entity for Host {
     }
 
     fn preserve_immutable_fields(&mut self, existing: &Self) {
-        // source is set at creation time (Manual or Discovery), cannot be changed
-        self.base.source = existing.base.source.clone();
+        // source is set at creation time (Manual or Discovery), cannot be changed — with one
+        // exception. `Inferred` says "nothing has ever contacted this device", and the moment a
+        // scan does, that stops being true. Pinning it would leave a host that answers SNMP still
+        // badged as second-hand for ever, which is the opposite of what the rung is for.
+        self.base.source = match (&existing.base.source, &self.base.source) {
+            (EntitySource::Inferred, incoming) if incoming.is_from_discovery() => incoming.clone(),
+            (existing_source, _) => existing_source.clone(),
+        };
         self.created_at = existing.created_at;
         self.updated_at = existing.updated_at;
     }

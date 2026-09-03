@@ -1,3 +1,4 @@
+use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::shared::types::metadata::HasId;
 use inventory;
@@ -48,6 +49,33 @@ impl ServiceDefinitionRegistry {
             }
         })
     }
+
+    /// Every `(definition, port)` pair where a completed TCP connection alone is enough to name the
+    /// service.
+    ///
+    /// Derived from each definition's own pattern, so it needs no maintenance: writing a probe or
+    /// an endpoint match drops a definition out of this set, and adding a bare `Pattern::Port` puts
+    /// one in. `connect_only_definitions_are_declared` holds it equal to the definitions declaring
+    /// a [`ConnectOnly`](crate::server::services::r#impl::definitions::ConnectOnly) rationale.
+    pub fn connect_only_definitions() -> Vec<(&'static str, PortType)> {
+        let mut pairs: Vec<(&'static str, PortType)> =
+            inventory::iter::<ServiceDefinitionFactory>()
+                .flat_map(|factory| {
+                    let definition = factory.create();
+                    let pattern = definition.discovery_pattern();
+                    let id = definition.id();
+                    pattern
+                        .ports()
+                        .into_iter()
+                        .filter(|port| pattern.matches_on_connect_alone(*port))
+                        .map(|port| (id, port))
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+        pairs.sort_by_key(|(id, port)| (*id, port.number(), port.protocol()));
+        pairs.dedup();
+        pairs
+    }
 }
 
 // ============= NETWORK INFRASTRUCTURE =============
@@ -56,6 +84,8 @@ impl ServiceDefinitionRegistry {
 pub mod dhcp_server;
 pub mod gateway;
 pub mod gnmi;
+pub mod h323;
+pub mod mgcp;
 pub mod ntp;
 pub mod rdp;
 pub mod rustdesk;
@@ -66,6 +96,7 @@ pub mod ssh;
 pub mod switch;
 pub mod telnet;
 pub mod termix;
+pub mod tftp;
 pub mod unifi_gateway;
 pub mod unifi_switch;
 
@@ -321,7 +352,6 @@ pub mod client;
 // IoT
 pub mod amazon_echo;
 pub mod apple_tv;
-pub mod bacnet;
 pub mod camera;
 pub mod chromecast;
 pub mod frigate;
@@ -338,6 +368,12 @@ pub mod sonos_speaker;
 pub mod tasmota;
 pub mod tuyasmart;
 pub mod wiz;
+
+// Industrial
+pub mod bacnet;
+pub mod ethernet_ip;
+pub mod modbus_tcp;
+pub mod opc_ua;
 
 // Printer
 pub mod airprint_printer;

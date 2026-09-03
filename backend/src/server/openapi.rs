@@ -40,6 +40,9 @@ use crate::server::services::r#impl::base::Service;
 use crate::server::shared::handlers::query::{OrderDirection, PaginationParams};
 use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::types::entities::EntityFreshness;
+use crate::server::shared::types::field_definition::{
+    FieldDefinition, FieldType, InlineFormat, SelectOption,
+};
 use crate::server::shares::r#impl::base::Share;
 use crate::server::snapshots::types::base::Snapshot;
 use crate::server::subnets::handlers::SubnetOrderField;
@@ -119,7 +122,15 @@ pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
         InstallCommandKind,
         // Referenced by the credential-list `?type` filter, which utoipa collects from
         // `IntoParams` without registering the schema it points at.
-        CredentialTypeDiscriminants
+        CredentialTypeDiscriminants,
+        // Dynamic form metadata. Travels to the frontend inside the untyped `TypeMetadata.metadata`
+        // blob and the scan-settings fixture, so nothing else pulls it into the schema — but the
+        // frontend must derive its `field_type` union from here rather than hand-maintaining one.
+        // Hand-maintaining it is what let the credential form guess "is this a port?" from a label.
+        FieldDefinition,
+        FieldType,
+        SelectOption,
+        InlineFormat
     )),
     info(
         title = "Scanopy API",

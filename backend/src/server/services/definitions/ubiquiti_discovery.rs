@@ -1,4 +1,3 @@
-use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::definitions::{ServiceDefinitionFactory, create_service};
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
@@ -19,10 +18,10 @@ impl ServiceDefinition for UbiquitiDiscovery {
     }
 
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::AllOf(vec![
-            Pattern::MacVendor(Vendor::UBIQUITI),
-            Pattern::Port(PortType::new_udp(10001)),
-        ])
+        // The port arm is gone: 10001/udp has no probe, so nothing ever reported it open and this
+        // definition could never match. The OUI is the evidence that remains, and it is real — a
+        // Ubiquiti MAC is read from an ARP reply on the host's own segment.
+        Pattern::MacVendor(Vendor::UBIQUITI)
     }
 
     fn logo_url(&self) -> &'static str {

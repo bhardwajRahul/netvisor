@@ -574,18 +574,15 @@ impl DiscoveryService {
                     .await?;
             }
 
-            // Only now the terminal phase event, because the row above is what its subscribers
-            // annotate.
+            // The terminal phase event, for subscribers that want to know a session ended.
             //
-            // Post-scan work a daemon cannot do — neighbour resolution above all — is driven by
-            // this event and writes its findings onto the scan record. Published first, that work
-            // raced a row that did not exist yet and lost: `publish` only queues the event
-            // (`events/traits.rs`), so the debounced subscriber ran while this function was still
-            // doing the database round-trips above, found nothing to annotate, and returned
-            // quietly. On a small network it lost every time; on a large one, where resolution
-            // takes longer than those round-trips, it would have won — which is the kind of
-            // ordering bug that reproduces nowhere and rots forever. Creating the row first
-            // removes the race rather than narrowing it.
+            // Neighbour resolution used to be driven from here and annotated the row above, which
+            // is why the row is created first — published the other way round, the debounced
+            // subscriber raced a row that did not exist yet and quietly found nothing to annotate.
+            // That work now runs in `DaemonService::process_discovery_progress` *before* this
+            // function is called, so its findings are in the row as written and there is no race
+            // left to order around. The row still goes first, because the `Created` event above is
+            // what carries the session's scanned set to the discovery-FK and digest subscribers.
             self.event_bus()
                 .publish(session.into_discovery_event())
                 .await?;

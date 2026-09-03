@@ -82,9 +82,16 @@
 	} = $props();
 </script>
 
-<div class="flex items-end justify-between">
+<!--
+	flex-wrap plus min-w-0: a flex item defaults to `min-width: auto`, which resolves to its
+	min-content size, so neither group could shrink and the row stayed wider than the panel below
+	about 1160px of viewport. That overflow reached `main` and left it scrollable sideways into
+	blank space. The left group shrinks (the search keeps its own `min-w-48` floor) and the right
+	group holds its size and wraps to a second line rather than squashing its buttons.
+-->
+<div class="flex flex-wrap items-end justify-between gap-y-3">
 	<!-- Left: Search + Filter/Group/Sort -->
-	<div class="flex items-end gap-4">
+	<div class="flex min-w-0 items-end gap-4">
 		<!-- Search Input -->
 		<div class="relative w-96 min-w-48">
 			<Search class="text-tertiary absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
@@ -179,7 +186,7 @@
 	</div>
 
 	<!-- Right: View & Actions Group -->
-	<div class="flex items-end gap-2">
+	<div class="flex flex-shrink-0 items-end gap-2">
 		<!-- View Mode Toggle -->
 		<button
 			onclick={() => (viewMode = viewMode === 'card' ? 'table' : 'card')}

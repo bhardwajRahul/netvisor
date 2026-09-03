@@ -30,6 +30,7 @@ use uuid::Uuid;
 
 use crate::server::credentials::r#impl::mapping::CredentialQueryPayloadDiscriminants;
 
+pub use metadata::WarningRemedy;
 pub use values::{ClaimSource, MalformedNeighbourConsequence, SnmpWalkGroup};
 
 /// A single non-fatal finding from one discovery run, about one device, neighbour, or the scan
@@ -183,6 +184,23 @@ pub enum DiscoveryWarning {
         /// Neighbours the device reported in all.
         total: u32,
     },
+    /// The same loss, on a device whose own account of its port numbering was only half read.
+    ///
+    /// Separate from [`Self::LldpLocalPortDropped`] because that one names a cause — the switch
+    /// numbering its LLDP ports apart from its interfaces — which is a property of the device and
+    /// is not what happened here. Offering both readings in one sentence, as this used to, asks
+    /// the operator to pick; one says nothing will ever change and the other says a complete scan
+    /// may well place these neighbours (GH #668).
+    #[schema(title = "LldpLocalPortDroppedReadCutShort")]
+    LldpLocalPortDroppedReadCutShort {
+        /// The device that reported the neighbours.
+        #[schema(value_type = String)]
+        address: IpAddr,
+        /// Neighbours discarded for want of a matching interface.
+        dropped: u32,
+        /// Neighbours the device reported in all.
+        total: u32,
+    },
     /// Neighbours whose local port could not be identified but did match an interface number, so
     /// they are drawn against a port that may be the wrong one.
     #[schema(title = "LldpLocalPortMisplaced")]
@@ -230,6 +248,10 @@ pub enum DiscoveryWarning {
         #[schema(value_type = String)]
         address: IpAddr,
         integration: CredentialQueryPayloadDiscriminants,
+        /// The stored credential bound to that address. See [`CredentialAttempt::credential_id`].
+        #[serde(default)]
+        #[schema(required)]
+        credential_id: Option<Uuid>,
     },
     /// Nothing answered at the credential's address during the scan.
     #[schema(title = "CredentialTargetNotResponding")]
@@ -238,6 +260,10 @@ pub enum DiscoveryWarning {
         #[schema(value_type = String)]
         address: IpAddr,
         integration: CredentialQueryPayloadDiscriminants,
+        /// The stored credential bound to that address. See [`CredentialAttempt::credential_id`].
+        #[serde(default)]
+        #[schema(required)]
+        credential_id: Option<Uuid>,
     },
     /// The port the credential needs was not open, so it was never tried.
     #[schema(title = "CredentialGateClosed")]
@@ -248,6 +274,10 @@ pub enum DiscoveryWarning {
         integration: CredentialQueryPayloadDiscriminants,
         /// The ports that had to be open for the probe to run.
         ports: Vec<u16>,
+        /// The stored credential that needed those ports. See [`CredentialAttempt::credential_id`].
+        #[serde(default)]
+        #[schema(required)]
+        credential_id: Option<Uuid>,
     },
     /// The credential was refused.
     CredentialRejected(CredentialAttempt),
@@ -267,6 +297,22 @@ pub enum DiscoveryWarning {
     CredentialTimedOut(CredentialAttempt),
 
     // ---- Scan-level ------------------------------------------------------
+    /// Addresses on a routed subnet completed a TCP handshake and then answered nothing, so no
+    /// host was recorded at any of them.
+    ///
+    /// The shape a middlebox in the path produces: a firewall session helper, a load balancer or a
+    /// scrubbing appliance answering on behalf of addresses with nothing behind them. One warning
+    /// per subnet rather than per address — the case that raises it raises it for every address in
+    /// the range, and 254 copies of a sentence is not 254 findings.
+    #[schema(title = "ConnectionsWithoutProtocolResponse")]
+    ConnectionsWithoutProtocolResponse {
+        /// The subnet the addresses are in.
+        cidr: String,
+        /// How many addresses in it answered a connect and nothing else.
+        declined: u32,
+        /// The ports that completed a handshake, most frequent first.
+        ports: Vec<u16>,
+    },
     /// The run hit its global time limit, with an estimate of the work left.
     #[schema(title = "ScanTimeLimitWithEstimate")]
     ScanTimeLimitWithEstimate {
@@ -297,6 +343,21 @@ pub enum DiscoveryWarning {
     LldpPortNotFound(UnresolvedPort),
     /// The far end resolved, and several of its ports match, so it identifies none.
     LldpPortAmbiguous(UnresolvedPort),
+    /// A range was created from the addresses unplaceable far ends publish for themselves.
+    ProvisionalSubnetInferred(ProvisionalSubnet),
+    /// Link resolution ran out of its time budget, so this scan's links are incomplete.
+    ///
+    /// The pass runs on the completion request, which the daemon will abandon at its own timeout —
+    /// so it is bounded, and stopping has to be *said* rather than logged. Without this the
+    /// degraded result is indistinguishable from a network that genuinely has no neighbours.
+    #[schema(title = "NeighbourResolutionIncomplete")]
+    NeighbourResolutionIncomplete {
+        /// Seconds the pass was allowed before it was stopped.
+        budget_seconds: u32,
+        /// Interfaces carrying neighbour data it was working through, so the reader can tell
+        /// "this network is large" from "something is wrong".
+        neighbours: u32,
+    },
 
     // ---- Meta ------------------------------------------------------------
     /// The run produced more warnings than the scan record holds. Emitted rather than dropping
@@ -338,6 +399,15 @@ pub struct CredentialAttempt {
     #[schema(value_type = String)]
     pub address: IpAddr,
     pub integration: CredentialQueryPayloadDiscriminants,
+    /// The stored credential this attempt used, so the report can open it rather than sending the
+    /// reader to the list to find it. `integration` narrows to a type; on a network with two SNMP
+    /// communities the address does not narrow to a record, which is what this is for.
+    ///
+    /// `None` on a warning written before the id was carried, on one from a daemon that predates
+    /// it, and on the daemon's own injected "public" fallback, which has no stored row.
+    #[serde(default)]
+    #[schema(required)]
+    pub credential_id: Option<Uuid>,
     /// The library's own diagnostic — free text, so it can only ever be displayed. It is the one
     /// thing the code cannot supersede: the code says which failure mode, this says what actually
     /// came back ("connection refused (os error 111)"), and it is now attributable to this one
@@ -359,6 +429,40 @@ pub struct UnmatchedNeighbour {
     /// The far end's advertised `sysName`, where it sent one.
     #[schema(required)]
     pub sys_name: Option<String>,
+    /// The address the far end published for itself — `lldpRemManAddr`, a `NetworkAddress` port
+    /// id, or `cdpCacheAddress` — where it sent a usable one.
+    ///
+    /// Carried because it is the difference between two reports that otherwise read identically:
+    /// "the far end told us where it lives and this network holds no such address" is a device
+    /// nobody has scanned, while "it told us nothing" is a device that cannot be placed no matter
+    /// how much of the network is scanned. Without it, deciding which of the two a fleet is
+    /// looking at costs another round trip to the operator (GH #668).
+    #[schema(required)]
+    pub address: Option<String>,
+}
+
+/// A range inferred from where unplaceable far ends say they live.
+///
+/// Carries the evidence rather than just the verdict, because "we invented a subnet" is not a
+/// sentence an operator can act on: which of their devices saw it, on which ports, and what those
+/// far ends call themselves is what lets them recognise a segment as real, correct the range, or
+/// see that it is a device with a factory-default address.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
+pub struct ProvisionalSubnet {
+    /// The range, in CIDR notation.
+    pub cidr: String,
+    /// The subnet row created for it, so the UI can link straight to it.
+    pub subnet_id: Uuid,
+    /// The addresses that motivated it, in the order observed.
+    pub addresses: Vec<String>,
+    /// The far ends' own `sysName`s, where they sent any — the labels an operator recognises.
+    pub sys_names: Vec<String>,
+    /// The local devices that saw them.
+    pub seen_by_host_ids: Vec<Uuid>,
+    /// Whether a shared VLAN widened the range past the conventional prefix, rather than it being
+    /// the `/24` (or `/64`) a lone address is assumed to sit in. The difference is how much the
+    /// range rests on evidence versus on convention.
+    pub widened_by_vlan: bool,
 }
 
 /// A neighbour whose far-end host resolved but whose far-end *port* did not.
@@ -433,6 +537,7 @@ pub enum DiscoveryWarningCode {
     ClaimedCapabilityReadCutShort,
     ClaimedCapabilityEmpty,
     LldpLocalPortDropped,
+    LldpLocalPortDroppedReadCutShort,
     LldpLocalPortMisplaced,
     MalformedNeighboursWalkCutShort,
     MalformedNeighboursGhostRows,
@@ -452,6 +557,7 @@ pub enum DiscoveryWarningCode {
     CredentialCollectionTimedOut,
     CredentialUnreachable,
     CredentialTimedOut,
+    ConnectionsWithoutProtocolResponse,
     ScanTimeLimitWithEstimate,
     ScanTimeLimit,
     LldpNeighbourNotFound,
@@ -459,6 +565,8 @@ pub enum DiscoveryWarningCode {
     LldpPortNoStrategy,
     LldpPortNotFound,
     LldpPortAmbiguous,
+    ProvisionalSubnetInferred,
+    NeighbourResolutionIncomplete,
     WarningsTruncated,
     /// Absorbs a code from a newer binary. Fieldless, so `#[serde(other)]` applies — the text of
     /// an unrecognised warning rides on [`DiscoveryWarning::Unknown`] instead, where no metric
@@ -487,6 +595,9 @@ impl DiscoveryWarning {
             }
             Self::ClaimedCapabilityEmpty { .. } => DiscoveryWarningCode::ClaimedCapabilityEmpty,
             Self::LldpLocalPortDropped { .. } => DiscoveryWarningCode::LldpLocalPortDropped,
+            Self::LldpLocalPortDroppedReadCutShort { .. } => {
+                DiscoveryWarningCode::LldpLocalPortDroppedReadCutShort
+            }
             Self::LldpLocalPortMisplaced { .. } => DiscoveryWarningCode::LldpLocalPortMisplaced,
             Self::MalformedNeighboursWalkCutShort(_) => {
                 DiscoveryWarningCode::MalformedNeighboursWalkCutShort
@@ -522,6 +633,9 @@ impl DiscoveryWarning {
             }
             Self::CredentialUnreachable(_) => DiscoveryWarningCode::CredentialUnreachable,
             Self::CredentialTimedOut(_) => DiscoveryWarningCode::CredentialTimedOut,
+            Self::ConnectionsWithoutProtocolResponse { .. } => {
+                DiscoveryWarningCode::ConnectionsWithoutProtocolResponse
+            }
             Self::ScanTimeLimitWithEstimate { .. } => {
                 DiscoveryWarningCode::ScanTimeLimitWithEstimate
             }
@@ -531,6 +645,10 @@ impl DiscoveryWarning {
             Self::LldpPortNoStrategy(_) => DiscoveryWarningCode::LldpPortNoStrategy,
             Self::LldpPortNotFound(_) => DiscoveryWarningCode::LldpPortNotFound,
             Self::LldpPortAmbiguous(_) => DiscoveryWarningCode::LldpPortAmbiguous,
+            Self::ProvisionalSubnetInferred(_) => DiscoveryWarningCode::ProvisionalSubnetInferred,
+            Self::NeighbourResolutionIncomplete { .. } => {
+                DiscoveryWarningCode::NeighbourResolutionIncomplete
+            }
             Self::WarningsTruncated { .. } => DiscoveryWarningCode::WarningsTruncated,
             Self::Unknown { .. } => DiscoveryWarningCode::Unknown,
         }
@@ -558,6 +676,7 @@ impl DiscoveryWarning {
             | Self::ClaimedCapabilityReadCutShort { .. }
             | Self::ClaimedCapabilityEmpty { .. }
             | Self::LldpLocalPortDropped { .. }
+            | Self::LldpLocalPortDroppedReadCutShort { .. }
             | Self::LldpLocalPortMisplaced { .. }
             | Self::MalformedNeighboursWalkCutShort(_)
             | Self::MalformedNeighboursGhostRows(_)
@@ -580,13 +699,16 @@ impl DiscoveryWarning {
             | Self::CredentialUnreachable(a)
             | Self::CredentialTimedOut(a) => Some(a.integration),
 
-            Self::ScanTimeLimitWithEstimate { .. }
+            Self::ConnectionsWithoutProtocolResponse { .. }
+            | Self::ScanTimeLimitWithEstimate { .. }
             | Self::ScanTimeLimit { .. }
             | Self::LldpNeighbourNotFound(_)
             | Self::LldpNeighbourAmbiguous(_)
             | Self::LldpPortNoStrategy(_)
             | Self::LldpPortNotFound(_)
             | Self::LldpPortAmbiguous(_)
+            | Self::ProvisionalSubnetInferred(_)
+            | Self::NeighbourResolutionIncomplete { .. }
             | Self::WarningsTruncated { .. }
             | Self::Unknown { .. } => None,
         }
@@ -715,6 +837,77 @@ mod tests {
 
         assert_eq!(payload.warnings.len(), 1);
         assert_eq!(payload.warnings[0].code(), DiscoveryWarningCode::Unknown);
+    }
+
+    /// A coded credential warning recorded before `credential_id` existed keeps its code.
+    ///
+    /// The field is optional precisely so this stays true. Were it required, the element would
+    /// fail to parse and `warning_from_value` would fold it into `Unknown` — which loses the code,
+    /// the rung it is filed under, its sentence and its action, and renders the row as raw JSON.
+    /// That would hit every historical row *and* every warning from a daemon not yet on this
+    /// release, since the warning is built daemon-side.
+    #[test]
+    fn a_credential_warning_from_before_ids_keeps_its_code_and_carries_none() {
+        let warnings = warnings_of(serde_json::json!([
+            {
+                "code": "CredentialMalformed",
+                "address": "192.168.4.187",
+                "integration": "Snmp",
+                "detail": "Failed to read community from public: No such file or directory",
+            },
+            {
+                "code": "CredentialTargetNotResponding",
+                "address": "10.0.0.9",
+                "integration": "UnifiController",
+            },
+        ]));
+
+        assert_eq!(
+            warnings.iter().map(|w| w.code()).collect::<Vec<_>>(),
+            vec![
+                DiscoveryWarningCode::CredentialMalformed,
+                DiscoveryWarningCode::CredentialTargetNotResponding,
+            ],
+            "an old row must keep its code rather than degrading to Unknown: {warnings:?}"
+        );
+
+        match &warnings[0] {
+            DiscoveryWarning::CredentialMalformed(attempt) => {
+                assert_eq!(attempt.credential_id, None);
+                // The rest of the payload still reads, so the row renders as it always did.
+                assert_eq!(attempt.address.to_string(), "192.168.4.187");
+                assert!(attempt.detail.is_some());
+            }
+            other => panic!("expected CredentialMalformed, got {other:?}"),
+        }
+        assert!(matches!(
+            warnings[1],
+            DiscoveryWarning::CredentialTargetNotResponding {
+                credential_id: None,
+                ..
+            }
+        ));
+    }
+
+    /// The other direction: a warning that does carry an id round-trips it, so the field survives
+    /// the trip through `discovery.run_type` rather than being dropped on write or read.
+    #[test]
+    fn a_credential_id_survives_a_round_trip_through_the_persisted_shape() {
+        let credential_id = Uuid::from_u128(0x5ca0);
+        let warning = DiscoveryWarning::CredentialMalformed(CredentialAttempt {
+            address: "192.168.4.187".parse().unwrap(),
+            integration: CredentialQueryPayloadDiscriminants::Snmp,
+            detail: None,
+            credential_id: Some(credential_id),
+        });
+
+        let back = warnings_of(serde_json::json!([serde_json::to_value(&warning).unwrap()]));
+
+        assert_eq!(back, vec![warning]);
+        assert!(matches!(
+            &back[0],
+            DiscoveryWarning::CredentialMalformed(a) if a.credential_id == Some(credential_id)
+        ));
     }
 
     /// Every code round-trips through the tag it serializes as, which is also the metric label and

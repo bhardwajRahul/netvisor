@@ -37,15 +37,21 @@ use crate::{
         discovery::r#impl::types::{DiscoveryType, HostNamingFallback},
         hosts::r#impl::{
             api::{DiscoveryHostRequest, HostResponse},
+            attributes::{
+                HostChassisIdValue, HostFirmwareRevisionValue, HostManagementUrlValue,
+                HostManufacturerValue, HostModelValue, HostSerialNumberValue,
+                HostSoftwareRevisionValue, HostSysContactValue, HostSysDescrValue,
+                HostSysLocationValue, HostSysNameValue, HostSysObjectIdValue,
+            },
             base::{Host, HostBase},
-            name::HostName,
+            name::{HostName, HostNameSources},
             virtualization::HostVirtualization,
         },
         interfaces::{
             r#impl::base::{Interface, InterfaceDataComplete},
             service::match_existing_interface,
         },
-        ip_addresses::r#impl::base::IPAddress,
+        ip_addresses::r#impl::base::{IPAddress, MacEvidence, MacEvidenceValue},
         ports::r#impl::base::{Port, PortType},
         services::{
             definitions::{ServiceDefinitionRegistry, gateway::Gateway},
@@ -59,7 +65,10 @@ use crate::{
             },
         },
         shared::{
-            types::api::ApiErrorResponse, types::entities::EntitySource, types::metadata::HasId,
+            attribution::{AttributeSource, Attributed},
+            types::api::ApiErrorResponse,
+            types::entities::EntitySource,
+            types::metadata::HasId,
         },
         subnets::r#impl::base::Subnet,
     },
@@ -162,75 +171,106 @@ impl HostData {
         }
     }
 
-    // --- Field builders: first-write-wins (only set if currently None) ---
-
-    pub fn with_sys_descr(&mut self, v: String) -> &mut Self {
-        if self.host.base.sys_descr.is_none() {
-            self.host.base.sys_descr = Some(v);
-        }
+    // --- Field builders ---
+    //
+    // Each takes the source that read the value, and the applier decides whether it lands. These
+    // used to gate on `is_none()`, so within a single scan whichever integration ran first owned
+    // the field and a better reading arriving later was dropped — precedence was the order SNMP,
+    // the controllers and the app probes happen to run in, which nothing stated and nothing
+    // enforced.
+    pub fn with_sys_descr(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.sys_descr,
+            Attributed::new(HostSysDescrValue(v), source),
+        );
         self
     }
 
-    pub fn with_sys_name(&mut self, v: String) -> &mut Self {
-        if self.host.base.sys_name.is_none() {
-            self.host.base.sys_name = Some(v);
-        }
+    pub fn with_sys_name(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.sys_name,
+            Attributed::new(HostSysNameValue(v), source),
+        );
         self
     }
 
-    pub fn with_sys_object_id(&mut self, v: String) -> &mut Self {
-        if self.host.base.sys_object_id.is_none() {
-            self.host.base.sys_object_id = Some(v);
-        }
+    pub fn with_sys_object_id(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.sys_object_id,
+            Attributed::new(HostSysObjectIdValue(v), source),
+        );
         self
     }
 
-    pub fn with_sys_location(&mut self, v: String) -> &mut Self {
-        if self.host.base.sys_location.is_none() {
-            self.host.base.sys_location = Some(v);
-        }
+    pub fn with_sys_location(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.sys_location,
+            Attributed::new(HostSysLocationValue(v), source),
+        );
         self
     }
 
-    pub fn with_sys_contact(&mut self, v: String) -> &mut Self {
-        if self.host.base.sys_contact.is_none() {
-            self.host.base.sys_contact = Some(v);
-        }
+    pub fn with_sys_contact(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.sys_contact,
+            Attributed::new(HostSysContactValue(v), source),
+        );
         self
     }
 
-    pub fn with_chassis_id(&mut self, v: String) -> &mut Self {
-        if self.host.base.chassis_id.is_none() {
-            self.host.base.chassis_id = Some(v);
-        }
+    pub fn with_chassis_id(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.chassis_id,
+            Attributed::new(HostChassisIdValue(v), source),
+        );
         self
     }
 
-    pub fn with_manufacturer(&mut self, v: String) -> &mut Self {
-        if self.host.base.manufacturer.is_none() {
-            self.host.base.manufacturer = Some(v);
-        }
+    pub fn with_manufacturer(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.manufacturer,
+            Attributed::new(HostManufacturerValue(v), source),
+        );
         self
     }
 
-    pub fn with_model(&mut self, v: String) -> &mut Self {
-        if self.host.base.model.is_none() {
-            self.host.base.model = Some(v);
-        }
+    pub fn with_model(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.model,
+            Attributed::new(HostModelValue(v), source),
+        );
         self
     }
 
-    pub fn with_serial_number(&mut self, v: String) -> &mut Self {
-        if self.host.base.serial_number.is_none() {
-            self.host.base.serial_number = Some(v);
-        }
+    pub fn with_serial_number(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.serial_number,
+            Attributed::new(HostSerialNumberValue(v), source),
+        );
         self
     }
 
-    pub fn with_management_url(&mut self, v: String) -> &mut Self {
-        if self.host.base.management_url.is_none() {
-            self.host.base.management_url = Some(v);
-        }
+    pub fn with_firmware_revision(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.firmware_revision,
+            Attributed::new(HostFirmwareRevisionValue(v), source),
+        );
+        self
+    }
+
+    pub fn with_software_revision(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.software_revision,
+            Attributed::new(HostSoftwareRevisionValue(v), source),
+        );
+        self
+    }
+
+    pub fn with_management_url(&mut self, v: String, source: AttributeSource) -> &mut Self {
+        Attributed::apply(
+            &mut self.host.base.management_url,
+            Attributed::new(HostManagementUrlValue(v), source),
+        );
         self
     }
 
@@ -243,14 +283,21 @@ impl HostData {
 
     /// Set MAC on the interface matching the given IP address.
     /// Used by SNMP to enrich MAC from ipAddrTable when ARP didn't provide one.
-    pub fn with_mac_for_ip(&mut self, ip: IpAddr, mac: MacAddress) -> &mut Self {
+    pub fn with_mac_for_ip(
+        &mut self,
+        ip: IpAddr,
+        mac: MacAddress,
+        source: AttributeSource,
+    ) -> &mut Self {
         if let Some(ip_address) = self
             .ip_addresses
             .iter_mut()
             .find(|i| i.base.ip_address == ip)
-            && ip_address.base.mac_address.is_none()
         {
-            ip_address.base.mac_address = Some(mac);
+            Attributed::apply(
+                &mut ip_address.base.mac_address,
+                MacEvidence::new(MacEvidenceValue(mac), source),
+            );
         }
         self
     }
@@ -456,7 +503,7 @@ impl HostData {
         if self.host.base.hostname.is_none() {
             self.host
                 .base
-                .apply_name(HostName::Hostname(hostname.clone()));
+                .apply_name(HostName::from_hostname(hostname.clone()));
             self.host.base.hostname = Some(hostname);
         }
         self
@@ -840,10 +887,16 @@ impl DiscoveryOps {
         outcome: warnings::AttemptOutcome,
         message: String,
         user_assigned: bool,
+        credential_id: Option<uuid::Uuid>,
     ) {
-        let Some(issue) =
-            warnings::issue_for_attempt(integration, ip, outcome, message, user_assigned)
-        else {
+        let Some(issue) = warnings::issue_for_attempt(
+            integration,
+            ip,
+            outcome,
+            message,
+            user_assigned,
+            credential_id,
+        ) else {
             return;
         };
         if let Ok(session) = self.get_session().await
@@ -1340,7 +1393,7 @@ impl DiscoveryOps {
         let gateway_ips = session.gateway_ips.clone();
 
         let mut host = Host::new(HostBase {
-            name: HostName::default(),
+            name: HostName::unnamed(),
             hostname: hostname.clone(),
             tags: Vec::new(),
             network_id,
@@ -1359,6 +1412,8 @@ impl DiscoveryOps {
             manufacturer: None,
             model: None,
             serial_number: None,
+            firmware_revision: None,
+            software_revision: None,
             credential_assignments: vec![],
         });
 
@@ -1376,12 +1431,12 @@ impl DiscoveryOps {
         // Rungs the scan itself can reach. `host_naming_fallback` decides which of the two
         // bottom rungs the user prefers when there is no hostname; an integration that knows a
         // human-assigned name outranks all of them and applies later, during `execute()`.
-        let ip_name = HostName::Ip(ip_address.base.ip_address);
+        let ip_name = HostName::from_ip(ip_address.base.ip_address);
         let candidate = match (hostname, best_service_name, host_naming_fallback) {
-            (Some(hostname), _, _) => HostName::Hostname(hostname),
+            (Some(hostname), _, _) => HostName::from_hostname(hostname),
             (None, _, HostNamingFallback::Ip) => ip_name,
             (None, Some(service), HostNamingFallback::BestService) => {
-                HostName::DetectedService(service)
+                HostName::from_service(service)
             }
             (None, None, HostNamingFallback::BestService) => ip_name,
         };
@@ -1394,7 +1449,8 @@ impl DiscoveryOps {
         if let Some(dns_sd) = params.dns_sd
             && let Some(instance_name) = &dns_sd.instance_name
         {
-            host.base.apply_name(HostName::DnsSd(instance_name.clone()));
+            host.base
+                .apply_name(HostName::from_dns_sd(instance_name.clone()));
         }
 
         tracing::info!(
@@ -1426,6 +1482,8 @@ fn map_progress(raw: u8, start: u8, end: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::services::r#impl::patterns::ClientProbe;
+    use crate::server::shared::attribution;
     use tokio::sync::Mutex;
     use tokio::time::Instant;
 
@@ -1446,14 +1504,14 @@ mod tests {
         Interface::new(InterfaceBase {
             host_id: Uuid::new_v4(),
             network_id: Uuid::new_v4(),
-            if_index,
+            if_index: Some(if_index),
             if_descr: name.to_string(),
             if_name: Some(name.to_string()),
             if_alias: None,
-            if_type: 6,
+            if_type: Some(6),
             speed_bps: None,
-            admin_status: IfAdminStatus::Up,
-            oper_status: IfOperStatus::Up,
+            admin_status: Some(IfAdminStatus::Up),
+            oper_status: Some(IfOperStatus::Up),
             mac_address: None,
             ip_address_id: None,
             neighbor: None,
@@ -1484,6 +1542,70 @@ mod tests {
     const SNMP: CredentialQueryPayloadDiscriminants = CredentialQueryPayloadDiscriminants::Snmp;
     const UNIFI: CredentialQueryPayloadDiscriminants =
         CredentialQueryPayloadDiscriminants::UnifiController;
+
+    /// The positive control for the attribute path: what an integration read reaches the host.
+    ///
+    /// Worth pinning on its own because the failure it guards against is different in kind from
+    /// the one below — a scan that stops delivering a model at all is not the same bug as one
+    /// that delivers the wrong source's model.
+    #[test]
+    fn a_probes_model_reaches_the_host() {
+        let mut data = empty_host_data();
+        data.with_model(
+            "WS-C2960X-48FPD-L".to_string(),
+            AttributeSource::Probe(ClientProbe::Snmp),
+        );
+
+        assert_eq!(
+            attribution::text_of(&data.host.base.model).as_deref(),
+            Some("WS-C2960X-48FPD-L")
+        );
+    }
+
+    /// The behaviour this item was taken for, at the layer it used to be decided by accident.
+    ///
+    /// This test was written first against the old `is_none()` gate, where it asserted the
+    /// opposite: whichever integration ran first owned the value, so precedence was the order
+    /// SNMP, the controllers and the app probes happen to run in. A controller's "Cisco Switch"
+    /// beat SNMP's `WS-C2960X-48FPD-L` purely because controllers used to run first. Now the
+    /// better reading wins whenever it arrives.
+    #[test]
+    fn a_better_reading_displaces_the_one_that_arrived_first() {
+        let mut data = empty_host_data();
+        data.with_model(
+            "Cisco Switch".to_string(),
+            AttributeSource::Probe(ClientProbe::UnifiController),
+        );
+        data.with_model(
+            "WS-C2960X-48FPD-L".to_string(),
+            AttributeSource::Probe(ClientProbe::Snmp),
+        );
+
+        assert_eq!(
+            attribution::text_of(&data.host.base.model).as_deref(),
+            Some("WS-C2960X-48FPD-L")
+        );
+    }
+
+    /// The converse, and what makes the first test's ordering a decision rather than a race: a
+    /// weaker source arriving later cannot undo it.
+    #[test]
+    fn a_weaker_reading_arriving_later_is_ignored() {
+        let mut data = empty_host_data();
+        data.with_model(
+            "WS-C2960X-48FPD-L".to_string(),
+            AttributeSource::Probe(ClientProbe::Snmp),
+        );
+        data.with_model(
+            "Cisco Switch".to_string(),
+            AttributeSource::Probe(ClientProbe::UnifiController),
+        );
+
+        assert_eq!(
+            attribution::text_of(&data.host.base.model).as_deref(),
+            Some("WS-C2960X-48FPD-L")
+        );
+    }
 
     /// SNMP persists a bare interface set at its checkpoint and swaps in the enriched one once the
     /// neighbour and FDB queries return. That is one contributor revising itself, so the second

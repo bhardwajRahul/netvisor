@@ -1,5 +1,8 @@
 //! Host creation from API requests and the create-with-children path.
 use super::*;
+use crate::server::shared::attribution::AttributeSource;
+
+use crate::server::subnets::service::Placement;
 
 /// Decide whether the end-of-scan interface prune (delete interfaces no longer reported for a
 /// host) should run for this upsert. It runs only when ALL of these hold:
@@ -128,7 +131,7 @@ impl HostService {
         // Create host base with SNMP fields. The name is applied below rather than assigned
         // here: a person typed it, and that is the top of the ladder.
         let mut host_base = HostBase {
-            name: HostName::default(),
+            name: HostName::unnamed(),
             network_id,
             hostname,
             description,
@@ -137,19 +140,29 @@ impl HostService {
             virtualization_service_id,
             hidden,
             tags,
-            sys_descr,
-            sys_object_id,
-            sys_location,
-            sys_contact,
-            management_url,
-            chassis_id,
+            // A person filling in the create form is the definition of `Manual`: nothing discovery
+            // reads may displace what they typed.
+            sys_descr: sys_descr
+                .map(|v| Attributed::new(HostSysDescrValue(v), AttributeSource::Manual)),
+            sys_object_id: sys_object_id
+                .map(|v| Attributed::new(HostSysObjectIdValue(v), AttributeSource::Manual)),
+            sys_location: sys_location
+                .map(|v| Attributed::new(HostSysLocationValue(v), AttributeSource::Manual)),
+            sys_contact: sys_contact
+                .map(|v| Attributed::new(HostSysContactValue(v), AttributeSource::Manual)),
+            management_url: management_url
+                .map(|v| Attributed::new(HostManagementUrlValue(v), AttributeSource::Manual)),
+            chassis_id: chassis_id
+                .map(|v| Attributed::new(HostChassisIdValue(v), AttributeSource::Manual)),
             sys_name: None,
             manufacturer: None,
             model: None,
             serial_number: None,
+            firmware_revision: None,
+            software_revision: None,
             credential_assignments,
         };
-        host_base.apply_name(HostName::Manual(name.clone()));
+        host_base.apply_name(HostName::manual(name.clone()));
         let host = Host::new(host_base);
 
         // Build ip_addresses with client-provided IDs
@@ -365,7 +378,12 @@ impl HostService {
         // Stage 1: IP-address-based collision detection
         // Compares MAC addresses and subnet+IP to find hosts that represent the same physical machine
         let matching_result = self
-            .find_matching_host_by_ip_addresses(&host.base.network_id, &ip_addresses)
+            .find_matching_host_by_ip_addresses(
+                &host.base.network_id,
+                &ip_addresses,
+                &interfaces,
+                host.base.chassis_id.as_ref().map(|c| c.value().0.as_str()),
+            )
             .await?;
 
         let is_new_host = matching_result.is_none();
@@ -396,6 +414,28 @@ impl HostService {
                     }
                 }
             }
+        }
+
+        // A payload whose only identity is a MAC may not conjure a host on a weak claim.
+        //
+        // Everything with an address or a chassis id is untouched: those are the identities every
+        // existing path carries, and this gate never sees them. What it does see is a device known
+        // only at the link layer, where the two failure modes §6 separates both land on a row an
+        // operator then has to disprove — a weak *value* mints a fresh host on every MAC rotation,
+        // and a weak *provenance* mints a ghost for a device nothing has ever contacted, which is
+        // GH #668 from the LLDP side.
+        //
+        // Discovery only. A person creating a host with no addresses is asserting it themselves,
+        // which is the top of the ladder, not a claim to be graded.
+        if is_new_host
+            && host.base.source.is_from_discovery()
+            && !mac_identity::identity_permits_minting(&host, &ip_addresses, &interfaces)
+        {
+            return Err(anyhow!(
+                "Refusing to create a host identified only by a MAC address that cannot anchor \
+                 one. Minting needs a vendor-assigned unicast address read from the device \
+                 itself; this payload carries neither that nor an IP address or chassis id."
+            ));
         }
 
         // Check host limit for new hosts (not upserts)
@@ -658,7 +698,7 @@ impl HostService {
         // that may have moved subnets (e.g., Docker container with DHCP, subnet reconfiguration).
         let incoming_mac_counts: HashMap<MacAddress, usize> = ip_addresses
             .iter()
-            .filter_map(|i| i.base.mac_address)
+            .filter_map(|i| mac_of(&i.base.mac_address))
             .fold(HashMap::new(), |mut acc, mac| {
                 *acc.entry(mac).or_insert(0) += 1;
                 acc
@@ -709,18 +749,39 @@ impl HostService {
                     );
                 }
                 let live_subnets = network_live_subnets.as_ref().expect("loaded above");
-                if let Some(resolved) = resolve_dangling_subnet_id(
-                    live_subnets,
-                    ip_address.base.subnet_id,
-                    ip_address.base.ip_address,
-                ) {
-                    tracing::warn!(
-                        ip = %ip_address.base.ip_address,
-                        dangling_subnet_id = %ip_address.base.subnet_id,
-                        resolved_subnet_id = %resolved,
-                        "Repaired ip_address referencing a non-existent subnet via CIDR match"
-                    );
-                    ip_address.base.subnet_id = resolved;
+
+                // A daemon that has not upgraded yet still picks the subnet itself, and picks
+                // wrongly: its list includes the `0.0.0.0/0` organizational rows, which contain
+                // every IPv4 address, so it stamps whichever it saw first. Re-placing such a row
+                // is scoped to discovery payloads — a person filing a host under Internet or
+                // Remote through the API is making a deliberate choice and is never second-guessed.
+                let names_a_catch_all = matches!(conflict_behavior, ConflictBehavior::Upsert)
+                    && live_subnets
+                        .iter()
+                        .any(|s| s.id == ip_address.base.subnet_id && s.is_organizational_subnet());
+
+                if needs_placement(live_subnets, &ip_address) || names_a_catch_all {
+                    match self
+                        .subnet_service
+                        .place_address(created_host.base.network_id, ip_address.base.ip_address)
+                        .await?
+                    {
+                        Placement::Existing(subnet_id) | Placement::Inferred(subnet_id) => {
+                            tracing::debug!(
+                                ip = %ip_address.base.ip_address,
+                                from_subnet_id = %ip_address.base.subnet_id,
+                                subnet_id = %subnet_id,
+                                "Placed ip_address server-side"
+                            );
+                            ip_address.base.subnet_id = subnet_id;
+                        }
+                        // A public address, or IPv6 global unicast — not a segment of this network
+                        // to invent. Leave the reference as it came and let the FK insert say so.
+                        Placement::Unplaceable => tracing::warn!(
+                            ip = %ip_address.base.ip_address,
+                            "No subnet holds this address and none may be inferred for it"
+                        ),
+                    }
                 }
             }
 
@@ -763,16 +824,32 @@ impl HostService {
                 //   so it's a standalone ip_address, not a VLAN sub-interface
                 // - existing_by_mac.len() == 1: only one existing interface has this MAC,
                 //   so there's an unambiguous 1:1 match (not a N:1 VLAN consolidation)
-                if let Some(mac) = &ip_address.base.mac_address
-                    && incoming_mac_counts.get(mac).copied().unwrap_or(0) == 1
+                if let Some(mac) = mac_of(&ip_address.base.mac_address)
+                    && incoming_mac_counts.get(&mac).copied().unwrap_or(0) == 1
                 {
                     let mac_filter =
                         StorableFilter::<IPAddress>::new_from_host_ids(&[ip_address.base.host_id])
-                            .mac_address(mac)
+                            .mac_address(&mac)
                             .live();
                     let existing_by_mac: Vec<IPAddress> =
                         self.ip_address_service.get_all(mac_filter).await?;
                     if existing_by_mac.len() == 1 {
+                        // Needed to ask whether the old subnet still holds the new address.
+                        if network_live_subnets.is_none() {
+                            network_live_subnets = Some(
+                                self.subnet_service
+                                    .get_all(
+                                        StorableFilter::<Subnet>::new_from_network_ids(&[
+                                            created_host.base.network_id,
+                                        ])
+                                        .live(),
+                                    )
+                                    .await?,
+                            );
+                        }
+                        let live_subnets_for_move =
+                            network_live_subnets.as_ref().expect("loaded above");
+
                         let mut existing_iface = existing_by_mac.into_iter().next().unwrap();
                         tracing::debug!(
                             interface_ip = %ip_address.base.ip_address,
@@ -781,6 +858,19 @@ impl HostService {
                             incoming_subnet_id = %ip_address.base.subnet_id,
                             "Found existing ip_address by MAC address (subnet_id differs, 1:1 MAC match)"
                         );
+                        // The block was written for an interface that *moved*, and then only
+                        // refreshed the timestamp — so the reported address was discarded and the
+                        // row kept its old one, looking freshly confirmed. Carry the move through.
+                        if interface_moved(&existing_iface, &ip_address, live_subnets_for_move) {
+                            tracing::info!(
+                                host_id = %ip_address.base.host_id,
+                                from = %existing_iface.base.ip_address,
+                                to = %ip_address.base.ip_address,
+                                "Re-homed an interface that changed address"
+                            );
+                            existing_iface.base.ip_address = ip_address.base.ip_address;
+                            existing_iface.base.subnet_id = ip_address.base.subnet_id;
+                        }
                         existing_iface.set_last_seen_at(ip_address.last_seen_at);
                         ip_addresses_to_refresh.push(existing_iface.clone());
                         created_ip_addresses.push(existing_iface);
@@ -1420,27 +1510,43 @@ impl HostService {
     }
 }
 
-/// Resolve a dangling `subnet_id` — one that references no live subnet row — to
-/// the most-specific live subnet on the network whose CIDR contains `ip`.
+/// Whether a MAC-matched row is the *same* interface at a new address, or a second address on the
+/// same MAC.
 ///
-/// Returns `None` when `subnet_id` already matches a live subnet (no repair
-/// needed) or when no live subnet contains the IP (unresolvable — the caller
-/// leaves the reference untouched and lets the FK insert error surface). On
-/// overlapping CIDRs the longest prefix wins, so an IP is never mis-attributed
-/// to a broader subnet while a more-specific one also contains it.
-fn resolve_dangling_subnet_id(
-    live_subnets: &[Subnet],
-    subnet_id: Uuid,
-    ip: std::net::IpAddr,
-) -> Option<Uuid> {
-    if live_subnets.iter().any(|s| s.id == subnet_id) {
-        return None;
+/// The two are indistinguishable from the uniqueness guards alone — a host gaining a second address
+/// on one MAC still presents as exactly one existing row the first time it appears — so this asks
+/// the one question that separates them: has the interface left the range it used to be in? If the
+/// old subnet still contains the new address, nothing says the old address is gone, and collapsing
+/// them would silently discard a genuine second address (a VLAN sub-interface, an IP alias).
+///
+/// Deliberately conservative in the DHCP-within-one-subnet case, which stays exactly as it was:
+/// this fixes the case the block was written for and invents no new behaviour for the one it
+/// cannot tell apart.
+fn interface_moved(existing: &IPAddress, incoming: &IPAddress, live_subnets: &[Subnet]) -> bool {
+    if existing.base.subnet_id == incoming.base.subnet_id {
+        return false;
     }
     live_subnets
         .iter()
-        .filter(|s| s.base.cidr.contains(&ip))
-        .max_by_key(|s| s.base.cidr.network_length())
-        .map(|s| s.id)
+        .find(|s| s.id == existing.base.subnet_id)
+        .is_none_or(|s| !s.base.cidr.contains(&incoming.base.ip_address))
+}
+
+/// Whether this address needs the server to choose its subnet.
+///
+/// True when the id names no live subnet at all — nil, or a row this server never minted — which
+/// covers both an integration that deliberately leaves placement to the server and an old daemon
+/// reporting a stale id.
+///
+/// Also true when the named subnet no longer *contains* the address, which is the same test
+/// `interface_moved` makes below. That happens when a real netmask narrows a range Scanopy had only
+/// inferred: the correction re-files what it displaces, but an address it could not place keeps a
+/// subnet that no longer covers it, and identity alone would never notice.
+fn needs_placement(live_subnets: &[Subnet], ip_address: &IPAddress) -> bool {
+    live_subnets
+        .iter()
+        .find(|s| s.id == ip_address.base.subnet_id)
+        .is_none_or(|s| !s.base.cidr.contains(&ip_address.base.ip_address))
 }
 
 /// Rewrite a credential assignment's `ip_address_ids` from the daemon's own
@@ -1491,76 +1597,148 @@ pub(crate) fn remap_assignment_ip_ids(
 mod tests {
     use super::*;
     use crate::server::credentials::r#impl::types::CredentialAssignment;
+    use crate::server::ip_addresses::r#impl::base::IPAddressBase;
     use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
 
     fn subnet(id: Uuid, cidr: &str) -> Subnet {
         Subnet {
             id,
             base: SubnetBase {
-                cidr: cidr.parse().expect("valid test CIDR"),
+                cidr: SubnetCidr::new(
+                    SubnetCidrValue(cidr.parse().expect("valid test CIDR")),
+                    AttributeSource::DaemonSelfReport,
+                ),
                 ..Default::default()
             },
             ..Default::default()
         }
     }
 
+    /// An address that actually sits inside the `127.0.0.0/8` these tests use as their live subnet.
+    ///
+    /// The default is `0.0.0.0`, which is in no subnet at all — fine while `needs_placement` only
+    /// compared ids, and a false negative now that it also asks whether the subnet covers the
+    /// address.
+    fn ip_address_on(subnet_id: Uuid) -> IPAddress {
+        IPAddress {
+            base: IPAddressBase {
+                subnet_id,
+                ip_address: "127.0.0.1".parse().expect("valid test IP"),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[allow(dead_code)]
     fn ip(s: &str) -> std::net::IpAddr {
         s.parse().expect("valid test IP")
     }
 
-    #[test]
-    fn repairs_dangling_loopback_to_seeded_subnet() {
-        // The compat case: the daemon reports 127.0.0.1 under a loopback subnet id
-        // this server never minted; the live seeded loopback subnet is `seeded`.
-        let seeded = Uuid::new_v4();
-        let live = vec![
-            subnet(seeded, "127.0.0.0/8"),
-            subnet(Uuid::new_v4(), "172.25.0.0/28"),
-        ];
-        let dangling = Uuid::new_v4();
-        assert_eq!(
-            resolve_dangling_subnet_id(&live, dangling, ip("127.0.0.1")),
-            Some(seeded)
-        );
+    fn ip_address_at(subnet_id: Uuid, ip: &str) -> IPAddress {
+        IPAddress {
+            base: IPAddressBase {
+                subnet_id,
+                ip_address: ip.parse().expect("valid test IP"),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
     }
 
+    /// The case the block was written for and never carried out: the interface left the range it
+    /// was in, so the row must follow it rather than keep an address that is gone while its
+    /// `last_seen_at` advances and makes the stale value look current.
     #[test]
-    fn valid_subnet_id_is_left_untouched() {
+    fn an_interface_that_left_its_range_counts_as_moved() {
+        let old_subnet = Uuid::new_v4();
+        let live = vec![subnet(old_subnet, "10.0.0.0/24")];
+
+        let existing = ip_address_at(old_subnet, "10.0.0.5");
+        let incoming = ip_address_at(Uuid::new_v4(), "192.168.1.7");
+
+        assert!(interface_moved(&existing, &incoming, &live));
+    }
+
+    /// And the case the uniqueness guards cannot tell apart from it: a host gaining a *second*
+    /// address on one MAC presents as exactly one existing row the first time it appears. The old
+    /// subnet still holds the new address, so nothing says the old one is gone, and treating it as
+    /// a move would silently discard a genuine VLAN sub-interface or IP alias.
+    #[test]
+    fn a_second_address_inside_the_same_range_is_not_a_move() {
+        let old_subnet = Uuid::new_v4();
+        let live = vec![subnet(old_subnet, "10.0.0.0/24")];
+
+        let existing = ip_address_at(old_subnet, "10.0.0.5");
+        // A different subnet row covering the same range — the shape a re-created subnet takes.
+        let incoming = ip_address_at(Uuid::new_v4(), "10.0.0.9");
+
+        assert!(!interface_moved(&existing, &incoming, &live));
+    }
+
+    /// Re-reporting the same subnet is never a move, whatever the address does — that is the
+    /// DHCP-within-one-subnet case, left exactly as it was.
+    #[test]
+    fn the_same_subnet_is_never_a_move() {
+        let same = Uuid::new_v4();
+        let live = vec![subnet(same, "10.0.0.0/24")];
+
+        assert!(!interface_moved(
+            &ip_address_at(same, "10.0.0.5"),
+            &ip_address_at(same, "10.0.0.9"),
+            &live
+        ));
+    }
+
+    /// An existing row whose subnet no longer exists has nothing to say about where the interface
+    /// was, so the reported address is the better answer.
+    #[test]
+    fn a_vanished_old_subnet_counts_as_moved() {
+        assert!(interface_moved(
+            &ip_address_at(Uuid::new_v4(), "10.0.0.5"),
+            &ip_address_at(Uuid::new_v4(), "192.168.1.7"),
+            &[]
+        ));
+    }
+
+    /// The trigger, not the rule: an id naming no live subnet is the server's to choose — a nil
+    /// sentinel from an integration that leaves placement to us, or a stale id from a daemon
+    /// reporting a subnet this server never minted.
+    ///
+    /// The rule itself — longest prefix, never a `0.0.0.0/0` catch-all — lives with the subnets it
+    /// chooses among and is tested there.
+    #[test]
+    fn an_id_naming_no_live_subnet_needs_placement() {
+        let live = vec![subnet(Uuid::new_v4(), "127.0.0.0/8")];
+
+        assert!(needs_placement(&live, &ip_address_on(Uuid::new_v4())));
+        assert!(needs_placement(&live, &ip_address_on(Uuid::nil())));
+    }
+
+    /// And one that does name a live subnet is left alone, so an ordinary rescan re-places nothing.
+    #[test]
+    fn an_id_naming_a_live_subnet_is_left_alone() {
         let valid = Uuid::new_v4();
         let live = vec![subnet(valid, "127.0.0.0/8")];
-        // subnet_id already resolves to a live row -> no repair, no re-matching.
-        assert_eq!(
-            resolve_dangling_subnet_id(&live, valid, ip("127.0.0.1")),
-            None
-        );
+
+        assert!(!needs_placement(&live, &ip_address_on(valid)));
     }
 
+    /// A subnet that still exists but no longer covers the address needs re-placing.
+    ///
+    /// This is what a narrowed range leaves behind: a real netmask shrinks a range Scanopy had only
+    /// inferred, and an address the correction could not re-file keeps pointing at it. Asking only
+    /// whether the id names a live subnet would never notice.
     #[test]
-    fn overlapping_cidrs_resolve_to_most_specific() {
-        let broad = Uuid::new_v4();
-        let specific = Uuid::new_v4();
-        // Both contain 10.0.0.5; the /24 must win over the /16.
-        let live = vec![
-            subnet(broad, "10.0.0.0/16"),
-            subnet(specific, "10.0.0.0/24"),
-        ];
-        let dangling = Uuid::new_v4();
-        assert_eq!(
-            resolve_dangling_subnet_id(&live, dangling, ip("10.0.0.5")),
-            Some(specific)
-        );
-    }
+    fn an_address_its_subnet_no_longer_covers_needs_placement() {
+        let narrowed = Uuid::new_v4();
+        let live = vec![subnet(narrowed, "10.20.30.0/24")];
 
-    #[test]
-    fn unresolvable_ip_returns_none() {
-        // No live subnet contains the IP -> leave the reference so the insert
-        // error surfaces rather than silently mis-attributing the IP.
-        let live = vec![subnet(Uuid::new_v4(), "10.0.0.0/24")];
-        let dangling = Uuid::new_v4();
-        assert_eq!(
-            resolve_dangling_subnet_id(&live, dangling, ip("192.168.1.1")),
-            None
-        );
+        let mut stranded = ip_address_on(narrowed);
+        stranded.base.ip_address = "10.20.31.5".parse().unwrap();
+
+        assert!(needs_placement(&live, &stranded));
     }
 
     fn assignment(ip_address_ids: Option<Vec<Uuid>>) -> CredentialAssignment {

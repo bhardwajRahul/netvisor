@@ -52,7 +52,7 @@ impl HostService {
     pub(super) async fn build_neighbor_adjacency(
         &self,
         network_id: Uuid,
-        resolver: &LldpResolverImpl,
+        resolver: &impl LldpResolver,
         evidence_cutoff: DateTime<Utc>,
     ) -> Result<NeighborAdjacency> {
         let filter = StorableFilter::<Interface>::new_for_lldp_neighbors_in_network(network_id);
@@ -91,14 +91,19 @@ impl HostService {
                 None => {
                     if let Some(ref chassis_id) = interface.base.lldp_chassis_id {
                         chassis_id
-                            .resolve_host_id(
-                                resolver,
-                                network_id,
-                                interface.base.lldp_sys_name.as_deref(),
-                            )
+                            .resolve_host_id(resolver, network_id, interface.advertised_identity())
                             .await
-                    } else if let Some(ref device_id) = interface.base.cdp_device_id {
-                        resolver.find_host_by_sys_name(device_id, network_id).await
+                    } else if interface.base.cdp_device_id.is_some()
+                        || interface.base.cdp_address.is_some()
+                    {
+                        // CDP carries no chassis id, so there is no subtype tier to run — but the
+                        // device id is a `sysName` and `cdpCacheAddress` is a management address,
+                        // which are exactly the two tiers above. Running them here is what stops a
+                        // neighbour from being unresolvable purely for arriving over CDP.
+                        interface
+                            .advertised_identity()
+                            .resolve_host_id(resolver, network_id)
+                            .await
                     } else {
                         IdentityResolution::NoStrategy
                     }
@@ -154,7 +159,7 @@ impl HostService {
         interface: &Interface,
         bound_id: Uuid,
         reciprocal: &HashMap<Uuid, (Uuid, Uuid)>,
-        resolver: &LldpResolverImpl,
+        resolver: &impl LldpResolver,
     ) -> Result<PortBinding> {
         if let Some(&(paired_id, _)) = reciprocal.get(&interface.id) {
             return Ok(if paired_id == bound_id {

@@ -10,10 +10,12 @@ use scanopy::server::discovery::r#impl::types::{DiscoveryType, HostNamingFallbac
 use scanopy::server::hosts::r#impl::api::{CreateHostRequest, HostResponse, UpdateHostRequest};
 use scanopy::server::services::definitions::ServiceDefinitionRegistry;
 use scanopy::server::services::r#impl::base::{Service, ServiceBase};
+use scanopy::server::shared::attribution::AttributeSource;
 use scanopy::server::shared::storage::traits::Storable;
 use scanopy::server::shared::types::Color;
 use scanopy::server::shared::types::entities::EntitySource;
 use scanopy::server::subnets::r#impl::base::{Subnet, SubnetBase};
+use scanopy::server::subnets::r#impl::base::{SubnetCidr, SubnetCidrValue};
 use scanopy::server::subnets::r#impl::types::SubnetType;
 use scanopy::server::tags::r#impl::base::{Tag, TagBase};
 use scanopy::server::topology::types::edges::EdgeStyle;
@@ -53,7 +55,12 @@ async fn test_subnet_crud(ctx: &TestContext) -> Result<(), String> {
         name: "Test Subnet".to_string(),
         description: Some("Test description".to_string()),
         network_id: ctx.network_id,
-        cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap()),
+        cidr: SubnetCidr::new(
+            SubnetCidrValue(IpCidr::V4(
+                Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap(),
+            )),
+            AttributeSource::DaemonSelfReport,
+        ),
         subnet_type: SubnetType::Lan,
         source: EntitySource::System,
         tags: Vec::new(),
@@ -589,7 +596,12 @@ async fn test_user_api_key_authentication(ctx: &TestContext) -> Result<(), Strin
         name: "API Key Test Subnet".to_string(),
         description: None,
         network_id: ctx.network_id,
-        cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 100, 0), 24).unwrap()),
+        cidr: SubnetCidr::new(
+            SubnetCidrValue(IpCidr::V4(
+                Ipv4Cidr::new(Ipv4Addr::new(192, 168, 100, 0), 24).unwrap(),
+            )),
+            AttributeSource::DaemonSelfReport,
+        ),
         subnet_type: SubnetType::Lan,
         source: EntitySource::Manual,
         tags: Vec::new(),
@@ -895,7 +907,12 @@ async fn test_user_api_key_network_access(ctx: &TestContext) -> Result<(), Strin
         name: "Other Network Subnet".to_string(),
         description: None,
         network_id: other_network.id,
-        cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 24).unwrap()),
+        cidr: SubnetCidr::new(
+            SubnetCidrValue(IpCidr::V4(
+                Ipv4Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 24).unwrap(),
+            )),
+            AttributeSource::DaemonSelfReport,
+        ),
         subnet_type: SubnetType::Lan,
         source: EntitySource::System,
         tags: Vec::new(),
