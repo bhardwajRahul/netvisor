@@ -5,8 +5,10 @@
 //! database entity references.
 
 pub mod resolver;
+pub mod snapshot;
 
 pub use resolver::LldpResolver;
+pub use snapshot::LldpInventorySnapshot;
 
 use crate::server::shared::storage::pg_value::strip_nuls;
 use crate::server::shared::storage::traits::Unique;

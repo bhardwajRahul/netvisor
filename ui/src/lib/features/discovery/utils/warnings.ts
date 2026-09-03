@@ -316,6 +316,13 @@ const WARNING_PARAMS = {
 
 	ProvisionalSubnetInferred: (w) => ({ count: w.length }),
 
+	// One per session by construction — the pass runs once and is cut short at most once — so this
+	// reads the single occurrence rather than summing.
+	NeighbourResolutionIncomplete: (w) => ({
+		budget_seconds: w[0].budget_seconds,
+		neighbours: w[0].neighbours
+	}),
+
 	WarningsTruncated: (w) => ({ elided: sum(w.map((x) => x.elided)) }),
 	// The whole sentence *is* the detail: a warning from another version, or one written before
 	// warnings were coded at all. Rendered one per occurrence, so this only ever sees one.

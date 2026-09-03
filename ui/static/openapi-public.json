@@ -12238,19 +12238,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-08-28T17:38:51.810513Z",
+              "created_at": "2026-09-03T03:52:16.294450Z",
               "first_discovery_id": null,
-              "id": "87f8357f-f822-4878-9cc1-6021943da111",
+              "id": "11c150d7-5c23-4483-afbb-9b03402084c0",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-28T17:38:51.810513Z",
+              "last_seen_at": "2026-09-03T03:52:16.294450Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-28T17:38:51.810513Z",
-              "valid_from": "2026-08-28T17:38:51.810513Z",
+              "updated_at": "2026-09-03T03:52:16.294450Z",
+              "valid_from": "2026-09-03T03:52:16.294450Z",
               "valid_to": null
             }
           },
@@ -13662,19 +13662,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-08-28T17:38:51.790255Z",
+                      "created_at": "2026-09-03T03:52:16.274458Z",
                       "first_discovery_id": null,
-                      "id": "b22d4a8e-f821-42b1-b21a-14ece5da7ccb",
+                      "id": "7394a8f3-ca22-4e5b-be92-883f588b90df",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-08-28T17:38:51.790255Z",
+                      "last_seen_at": "2026-09-03T03:52:16.274458Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-08-28T17:38:51.790255Z",
-                      "valid_from": "2026-08-28T17:38:51.790255Z",
+                      "updated_at": "2026-09-03T03:52:16.274458Z",
+                      "valid_from": "2026-09-03T03:52:16.274458Z",
                       "valid_to": null
                     }
                   ],
@@ -13688,7 +13688,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Prometheus Node Exporter",
+                  "service_definition": "mailcow",
                   "source": {
                     "type": "Manual"
                   },
@@ -14899,19 +14899,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-08-28T17:38:51.805529Z",
+                  "created_at": "2026-09-03T03:52:16.289433Z",
                   "first_discovery_id": null,
-                  "id": "d3b99148-32f5-4303-b6cd-5ab10d221ff1",
+                  "id": "6fcf7473-d1ff-4923-a483-da09fe1437ac",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-28T17:38:51.805529Z",
+                  "last_seen_at": "2026-09-03T03:52:16.289433Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-28T17:38:51.805529Z",
-                  "valid_from": "2026-08-28T17:38:51.805529Z",
+                  "updated_at": "2026-09-03T03:52:16.289433Z",
+                  "valid_from": "2026-09-03T03:52:16.289433Z",
                   "valid_to": null
                 }
               ],
@@ -14925,7 +14925,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Prometheus Node Exporter",
+              "service_definition": "mailcow",
               "source": {
                 "type": "Manual"
               },
@@ -17101,19 +17101,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-08-28T17:38:51.790651Z",
+          "created_at": "2026-09-03T03:52:16.274854Z",
           "first_discovery_id": null,
-          "id": "d65589fa-e08c-4d01-b306-85947344f90b",
+          "id": "192dee10-4c5f-47ee-9c9d-043d37351333",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-08-28T17:38:51.790651Z",
+          "last_seen_at": "2026-09-03T03:52:16.274854Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-08-28T17:38:51.790651Z",
-          "valid_from": "2026-08-28T17:38:51.790651Z",
+          "updated_at": "2026-09-03T03:52:16.274854Z",
+          "valid_from": "2026-09-03T03:52:16.274854Z",
           "valid_to": null
         }
       },
@@ -17776,7 +17776,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Prometheus Node Exporter",
+              "service_definition": "mailcow",
               "tags": [],
               "virtualization_metadata": null,
               "virtualization_service_id": null
@@ -21038,6 +21038,36 @@
           },
           {
             "type": "object",
+            "title": "NeighbourResolutionIncomplete",
+            "description": "Link resolution ran out of its time budget, so this scan's links are incomplete.\n\nThe pass runs on the completion request, which the daemon will abandon at its own timeout —\nso it is bounded, and stopping has to be *said* rather than logged. Without this the\ndegraded result is indistinguishable from a network that genuinely has no neighbours.",
+            "required": [
+              "budget_seconds",
+              "neighbours",
+              "code"
+            ],
+            "properties": {
+              "budget_seconds": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Seconds the pass was allowed before it was stopped.",
+                "minimum": 0
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "NeighbourResolutionIncomplete"
+                ]
+              },
+              "neighbours": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Interfaces carrying neighbour data it was working through, so the reader can tell\n\"this network is large\" from \"something is wrong\".",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
             "title": "WarningsTruncated",
             "description": "The run produced more warnings than the scan record holds. Emitted rather than dropping\nthe tail silently — a list that simply stops reads as though that was all of them.",
             "required": [
@@ -22725,19 +22755,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-08-28T17:38:51.789802Z",
+                  "created_at": "2026-09-03T03:52:16.274020Z",
                   "first_discovery_id": null,
-                  "id": "562bc62d-c84a-4e0e-ad50-dfc7bd408313",
+                  "id": "6a8ce9bc-8cfe-4b49-b390-4e6460b74717",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-08-28T17:38:51.789802Z",
+                  "last_seen_at": "2026-09-03T03:52:16.274020Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-08-28T17:38:51.789802Z",
-                  "valid_from": "2026-08-28T17:38:51.789802Z",
+                  "updated_at": "2026-09-03T03:52:16.274020Z",
+                  "valid_from": "2026-09-03T03:52:16.274020Z",
                   "valid_to": null
                 }
               ],
@@ -22751,7 +22781,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Prometheus Node Exporter",
+              "service_definition": "mailcow",
               "source": {
                 "type": "Manual"
               },
@@ -26011,19 +26041,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-08-28T17:38:51.780864Z",
+                        "created_at": "2026-09-03T03:52:16.265676Z",
                         "first_discovery_id": null,
-                        "id": "570e3b97-8dbd-4866-82ca-4e2c48bd0e24",
+                        "id": "ce3baa93-ea0a-4c99-9a1f-fa88274de420",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-08-28T17:38:51.780864Z",
+                        "last_seen_at": "2026-09-03T03:52:16.265676Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-08-28T17:38:51.780864Z",
-                        "valid_from": "2026-08-28T17:38:51.780864Z",
+                        "updated_at": "2026-09-03T03:52:16.265676Z",
+                        "valid_from": "2026-09-03T03:52:16.265676Z",
                         "valid_to": null
                       }
                     ],
@@ -26037,7 +26067,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Prometheus Node Exporter",
+                    "service_definition": "mailcow",
                     "source": {
                       "type": "Manual"
                     },
@@ -26180,19 +26210,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-08-28T17:38:51.804661Z",
+                    "created_at": "2026-09-03T03:52:16.288586Z",
                     "first_discovery_id": null,
-                    "id": "e3d12bc8-546b-4c7e-9342-ac92a8795784",
+                    "id": "1000a0b1-8538-4224-8bb2-eed25e61c1a8",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-08-28T17:38:51.804661Z",
+                    "last_seen_at": "2026-09-03T03:52:16.288586Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-08-28T17:38:51.804661Z",
-                    "valid_from": "2026-08-28T17:38:51.804661Z",
+                    "updated_at": "2026-09-03T03:52:16.288586Z",
+                    "valid_from": "2026-09-03T03:52:16.288586Z",
                     "valid_to": null
                   }
                 ],
@@ -26206,7 +26236,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Prometheus Node Exporter",
+                "service_definition": "mailcow",
                 "source": {
                   "type": "Manual"
                 },
@@ -28237,19 +28267,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-08-28T17:38:51.790566Z",
+              "created_at": "2026-09-03T03:52:16.274766Z",
               "first_discovery_id": null,
-              "id": "0a32aed6-a86d-4b44-83ee-86a6a73a3206",
+              "id": "886a9934-e423-4b1d-8c73-c41a6808fa92",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-08-28T17:38:51.790566Z",
+              "last_seen_at": "2026-09-03T03:52:16.274766Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-08-28T17:38:51.790566Z",
-              "valid_from": "2026-08-28T17:38:51.790566Z",
+              "updated_at": "2026-09-03T03:52:16.274766Z",
+              "valid_from": "2026-09-03T03:52:16.274766Z",
               "valid_to": null
             }
           ],
@@ -28263,7 +28293,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Prometheus Node Exporter",
+          "service_definition": "mailcow",
           "source": {
             "type": "Manual"
           },
@@ -29500,7 +29530,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "a9606eb6-49a3-41ca-9ad1-d4452170d342",
+                  "id": "391db03d-e9c0-45c2-a3da-ae2442474b27",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -29510,23 +29540,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "822649c2-7e8b-4e04-a72d-72d29a59355f",
+                  "id": "892de471-b968-4720-8ed9-af74876c5416",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "2c5f6c95-6c9a-4473-b8f8-01f99bf17414",
+                  "id": "9cc8eff2-7ae6-4327-bb63-63da2c2c2d06",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "8ef45320-6193-458e-ad6d-8e4164f7a342",
+                  "id": "5da9be5e-816a-4e60-a7ba-17192c350f23",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "822649c2-7e8b-4e04-a72d-72d29a59355f",
+                  "id": "892de471-b968-4720-8ed9-af74876c5416",
                   "rule": "ByHost"
                 }
               ]
@@ -29556,19 +29586,19 @@
             "description": "Rules deciding how entities are placed and inlined within containers.",
             "default": [
               {
-                "id": "9552cdd1-1654-4eda-a58e-b7455e3ef5b3",
+                "id": "6a11dc5a-e65c-454e-9f30-b4dbafa6fdc2",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "9a1c4fb5-0b3d-4ff2-8d1e-7c338c34afea",
+                "id": "a6829c63-739e-4580-80cb-7f95afa40343",
                 "rule": "ByVLAN"
               },
               {
-                "id": "38b65b21-f943-408d-b0ef-90890751b72d",
+                "id": "4e32a88c-30a4-4dda-88c7-12c783565958",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "f68c15cb-5363-4465-a581-d186867a4ba5",
+                "id": "3c6eaf07-7f12-4beb-888a-e0473b6c076f",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -29586,7 +29616,7 @@
                 }
               },
               {
-                "id": "d83d83fb-b833-4fce-b13d-a750d3095783",
+                "id": "adbb2c12-7a73-4c62-9af7-a5009da80236",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -29595,15 +29625,15 @@
                 }
               },
               {
-                "id": "122a9ed2-28cb-4816-8a18-8c048c13eb33",
+                "id": "2b05ad3a-b521-444c-88ee-8149c9ff6d18",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "7be1c923-28c3-4cb9-aa98-7d21fe293e17",
+                "id": "ca3ac1a5-eb93-406c-a83f-1756742145be",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "0d80b781-fc54-4f70-98d9-dc54d77b203a",
+                "id": "fe360ffa-bc5d-4fff-a64a-e6ba268ffc80",
                 "rule": "ByStack"
               }
             ]

@@ -329,6 +329,19 @@ pub enum DiscoveryWarning {
     LldpPortAmbiguous(UnresolvedPort),
     /// A range was created from the addresses unplaceable far ends publish for themselves.
     ProvisionalSubnetInferred(ProvisionalSubnet),
+    /// Link resolution ran out of its time budget, so this scan's links are incomplete.
+    ///
+    /// The pass runs on the completion request, which the daemon will abandon at its own timeout —
+    /// so it is bounded, and stopping has to be *said* rather than logged. Without this the
+    /// degraded result is indistinguishable from a network that genuinely has no neighbours.
+    #[schema(title = "NeighbourResolutionIncomplete")]
+    NeighbourResolutionIncomplete {
+        /// Seconds the pass was allowed before it was stopped.
+        budget_seconds: u32,
+        /// Interfaces carrying neighbour data it was working through, so the reader can tell
+        /// "this network is large" from "something is wrong".
+        neighbours: u32,
+    },
 
     // ---- Meta ------------------------------------------------------------
     /// The run produced more warnings than the scan record holds. Emitted rather than dropping
@@ -536,6 +549,7 @@ pub enum DiscoveryWarningCode {
     LldpPortNotFound,
     LldpPortAmbiguous,
     ProvisionalSubnetInferred,
+    NeighbourResolutionIncomplete,
     WarningsTruncated,
     /// Absorbs a code from a newer binary. Fieldless, so `#[serde(other)]` applies — the text of
     /// an unrecognised warning rides on [`DiscoveryWarning::Unknown`] instead, where no metric
@@ -612,6 +626,9 @@ impl DiscoveryWarning {
             Self::LldpPortNotFound(_) => DiscoveryWarningCode::LldpPortNotFound,
             Self::LldpPortAmbiguous(_) => DiscoveryWarningCode::LldpPortAmbiguous,
             Self::ProvisionalSubnetInferred(_) => DiscoveryWarningCode::ProvisionalSubnetInferred,
+            Self::NeighbourResolutionIncomplete { .. } => {
+                DiscoveryWarningCode::NeighbourResolutionIncomplete
+            }
             Self::WarningsTruncated { .. } => DiscoveryWarningCode::WarningsTruncated,
             Self::Unknown { .. } => DiscoveryWarningCode::Unknown,
         }
@@ -670,6 +687,7 @@ impl DiscoveryWarning {
             | Self::LldpPortNotFound(_)
             | Self::LldpPortAmbiguous(_)
             | Self::ProvisionalSubnetInferred(_)
+            | Self::NeighbourResolutionIncomplete { .. }
             | Self::WarningsTruncated { .. }
             | Self::Unknown { .. } => None,
         }

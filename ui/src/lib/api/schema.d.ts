@@ -3205,19 +3205,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-08-28T17:38:51.810541Z",
+             *       "created_at": "2026-09-03T03:52:16.294453Z",
              *       "first_discovery_id": null,
-             *       "id": "d2110f2d-c81b-4126-8757-de5c9c0a10af",
+             *       "id": "a6d2e3cb-fe01-44ab-905d-44bfee11f1a7",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-08-28T17:38:51.810541Z",
+             *       "last_seen_at": "2026-09-03T03:52:16.294453Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-08-28T17:38:51.810541Z",
-             *       "valid_from": "2026-08-28T17:38:51.810541Z",
+             *       "updated_at": "2026-09-03T03:52:16.294453Z",
+             *       "valid_from": "2026-09-03T03:52:16.294453Z",
              *       "valid_to": null
              *     }
              */
@@ -3842,19 +3842,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-08-28T17:38:51.790264Z",
+             *               "created_at": "2026-09-03T03:52:16.274443Z",
              *               "first_discovery_id": null,
-             *               "id": "5fd7c97d-396e-4dc7-9e61-2a5bc4daf99c",
+             *               "id": "7f006e53-43da-4fb8-98ad-aa8bf250e5fb",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-08-28T17:38:51.790264Z",
+             *               "last_seen_at": "2026-09-03T03:52:16.274443Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-08-28T17:38:51.790264Z",
-             *               "valid_from": "2026-08-28T17:38:51.790264Z",
+             *               "updated_at": "2026-09-03T03:52:16.274443Z",
+             *               "valid_from": "2026-09-03T03:52:16.274443Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3868,7 +3868,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Prometheus Node Exporter",
+             *           "service_definition": "mailcow",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -4583,19 +4583,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-08-28T17:38:51.805539Z",
+             *           "created_at": "2026-09-03T03:52:16.289536Z",
              *           "first_discovery_id": null,
-             *           "id": "b0557de3-097f-417c-bfba-52bd0f064539",
+             *           "id": "af042291-b04e-4d04-a231-0d304b28481c",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-08-28T17:38:51.805539Z",
+             *           "last_seen_at": "2026-09-03T03:52:16.289536Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-08-28T17:38:51.805539Z",
-             *           "valid_from": "2026-08-28T17:38:51.805539Z",
+             *           "updated_at": "2026-09-03T03:52:16.289536Z",
+             *           "valid_from": "2026-09-03T03:52:16.289536Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -4609,7 +4609,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Prometheus Node Exporter",
+             *       "service_definition": "mailcow",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -5444,19 +5444,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-08-28T17:38:51.790674Z",
+         *       "created_at": "2026-09-03T03:52:16.274831Z",
          *       "first_discovery_id": null,
-         *       "id": "dc389743-3aee-45d2-a985-f2f55b72cdd8",
+         *       "id": "e6ecbd09-ace5-4a6f-be7f-94f09f93ec62",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-08-28T17:38:51.790674Z",
+         *       "last_seen_at": "2026-09-03T03:52:16.274831Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-08-28T17:38:51.790674Z",
-         *       "valid_from": "2026-08-28T17:38:51.790674Z",
+         *       "updated_at": "2026-09-03T03:52:16.274831Z",
+         *       "valid_from": "2026-09-03T03:52:16.274831Z",
          *       "valid_to": null
          *     }
          */
@@ -5770,7 +5770,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Prometheus Node Exporter",
+         *           "service_definition": "mailcow",
          *           "tags": [],
          *           "virtualization_metadata": null,
          *           "virtualization_service_id": null
@@ -7118,6 +7118,20 @@ export interface components {
             /** @enum {string} */
             code: "ProvisionalSubnetInferred";
         }) | {
+            /**
+             * Format: int32
+             * @description Seconds the pass was allowed before it was stopped.
+             */
+            budget_seconds: number;
+            /** @enum {string} */
+            code: "NeighbourResolutionIncomplete";
+            /**
+             * Format: int32
+             * @description Interfaces carrying neighbour data it was working through, so the reader can tell
+             *     "this network is large" from "something is wrong".
+             */
+            neighbours: number;
+        } | {
             /** @enum {string} */
             code: "WarningsTruncated";
             /**
@@ -7763,19 +7777,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-08-28T17:38:51.789808Z",
+         *               "created_at": "2026-09-03T03:52:16.274012Z",
          *               "first_discovery_id": null,
-         *               "id": "89348b37-eacd-4a8f-bb10-92a2498c48bc",
+         *               "id": "672a7f43-c5f2-4c01-92de-9271182c6264",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-08-28T17:38:51.789808Z",
+         *               "last_seen_at": "2026-09-03T03:52:16.274012Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-08-28T17:38:51.789808Z",
-         *               "valid_from": "2026-08-28T17:38:51.789808Z",
+         *               "updated_at": "2026-09-03T03:52:16.274012Z",
+         *               "valid_from": "2026-09-03T03:52:16.274012Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -7789,7 +7803,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Prometheus Node Exporter",
+         *           "service_definition": "mailcow",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -10446,19 +10460,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-08-28T17:38:51.790585Z",
+         *           "created_at": "2026-09-03T03:52:16.274745Z",
          *           "first_discovery_id": null,
-         *           "id": "233b96d5-c962-4305-b9d1-3f51e5011657",
+         *           "id": "17dde15a-a543-41f7-b609-49f39973fe69",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-08-28T17:38:51.790585Z",
+         *           "last_seen_at": "2026-09-03T03:52:16.274745Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-08-28T17:38:51.790585Z",
-         *           "valid_from": "2026-08-28T17:38:51.790585Z",
+         *           "updated_at": "2026-09-03T03:52:16.274745Z",
+         *           "valid_from": "2026-09-03T03:52:16.274745Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -10472,7 +10486,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Prometheus Node Exporter",
+         *       "service_definition": "mailcow",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -11119,7 +11133,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "c269c11e-b6d8-459e-b902-ee3d77b3800f",
+             *           "id": "002afb15-de92-4b81-90eb-06462a06223d",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -11129,23 +11143,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "ce4e2886-63c0-4342-b114-29d544a43b19",
+             *           "id": "619ed53f-d23f-4102-97e3-a464695781dc",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "5db5c34b-2e2f-4583-9422-eaaee0ed3f96",
+             *           "id": "c61704a9-d63d-4996-bdd9-b43bdd3f20a3",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "b427f0e4-1ff3-4a2f-8b93-f868a479c431",
+             *           "id": "8c434ae8-4f4b-4b72-a25a-49757ad5b731",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "ce4e2886-63c0-4342-b114-29d544a43b19",
+             *           "id": "619ed53f-d23f-4102-97e3-a464695781dc",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -11158,19 +11172,19 @@ export interface components {
              * @description Rules deciding how entities are placed and inlined within containers.
              * @default [
              *       {
-             *         "id": "c73983ba-d3e4-4f8d-9d16-409b688fe34e",
+             *         "id": "49fb33de-70b3-44a6-b37f-80e32c65aa7e",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "d0d8546b-d194-49ef-88dd-9e7509ec5cdc",
+             *         "id": "408eaef2-1179-4130-863e-77c10ba9fc08",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "cba495f4-902e-466d-8aa6-0c642820b81e",
+             *         "id": "1651e455-576e-4013-bdd8-2461c08d1126",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "ccd2bb97-72cd-41ba-a752-3ce5a5ccb3f3",
+             *         "id": "6cc36d99-5783-404e-8005-b0679e5b4b2e",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -11188,7 +11202,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "731aeebd-54e9-4d64-b76c-499d249c8956",
+             *         "id": "5d373f39-d5a9-43ba-98e9-6a84773cf559",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -11197,15 +11211,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "e9a441b2-3e01-4222-bb0f-047c9bc2d34f",
+             *         "id": "d2c281f1-cdd7-47ca-a98b-e9ee99edbd56",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "7b9eb7e2-4216-499f-8eab-3e4c737fb479",
+             *         "id": "eacefe9d-69c7-4386-b820-625371a9df6c",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "98daac46-673e-4762-8b37-c1719c957e76",
+             *         "id": "eb74286c-0d0e-477f-adc1-16732c9b6469",
              *         "rule": "ByStack"
              *       }
              *     ]
