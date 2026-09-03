@@ -3,12 +3,11 @@
 		type FieldConfig,
 		getFieldKey,
 		groupPageSlice,
-		type GroupPosition,
 		type GroupSlice,
 		type PageSizeOption,
 		type CardAction
 	} from './types';
-	import { getFieldValue, getUniqueValues as uniqueValuesOf } from './controls/fieldValues';
+	import { getUniqueValues as uniqueValuesOf } from './controls/fieldValues';
 	import {
 		sortItems,
 		nextSortState,
@@ -20,20 +19,36 @@
 		matchesSearch,
 		matchesFilters,
 		serverFilterViolations,
-		hasActiveFilters as hasActiveFiltersOf
+		blankFilterState,
+		booleanFilterValues,
+		toggleValue,
+		toggleBoolean,
+		restoredServerFilters,
+		hasActiveFilters as hasActiveFiltersOf,
+		type FilterState
 	} from './controls/filtering';
+	import { paginationView, pageSlice } from './controls/pagination';
+	import { createChangeTracker, sameOrder } from './controls/changeTracker';
+	import {
+		groupItems as groupItemsBy,
+		computeGroupOffsets,
+		serverGroupKey as serverGroupKeyOf
+	} from './controls/grouping';
 	import {
 		visibleItems,
 		isAllSelected,
 		isPartiallySelected,
-		visibleIds
+		visibleIds,
+		runBulkAction
 	} from './controls/selection';
+	import { observeStuck } from './controls/stickyHeader';
 	import {
 		parseStoredState,
 		serializeState,
+		reviveFilterState,
+		toStoredFilterState,
 		DEFAULT_VIEW_MODE,
-		type ViewMode,
-		type StoredState
+		type ViewMode
 	} from './controls/dataControlsStorage';
 	import ControlsBar from './controls/ControlsBar.svelte';
 	import FilterPanel from './controls/FilterPanel.svelte';
@@ -49,8 +64,8 @@
 		fieldsToColumns,
 		reconcileColumnState,
 		visibleColumns,
-		TAG_COLUMN_ID,
-		type EntityColumn
+		buildTagColumn,
+		withTagColumn
 	} from './table/columns';
 	import { onMount } from 'svelte';
 	import {
@@ -81,13 +96,6 @@
 
 	/** Debounce window for the search box, in ms. */
 	const SEARCH_THROTTLE_MS = 300;
-
-	/**
-	 * Stands in for a null group key, which has no string form of its own.
-	 * Prefixed with NUL because Postgres text values cannot contain one, so this
-	 * can never collide with a real group value.
-	 */
-	const UNGROUPED_KEY = '\u0000ungrouped';
 
 	let {
 		items = $bindable([]),
@@ -190,16 +198,8 @@
 	// Search state
 	let searchQuery = $state('');
 
-	// Filter state
-	interface FilterState {
-		[key: string]: {
-			type: 'string' | 'boolean' | 'array';
-			values: SvelteSet<string>;
-			showTrue?: boolean;
-			showFalse?: boolean;
-		};
-	}
-
+	// Filter state. The shape lives with the filtering logic that reads it, so
+	// there is one definition of what a filter selection is.
 	let filterState = $state<FilterState>({});
 	let showFilters = $state(false);
 	// Staleness lives outside `filterState`: it's a server-side constraint
@@ -240,13 +240,7 @@
 		if (!state) return null;
 
 		searchQuery = state.searchQuery;
-
-		const restoredFilterState: FilterState = {};
-		Object.entries(state.filterState).forEach(([key, saved]) => {
-			restoredFilterState[key] = { ...saved, values: new SvelteSet(saved.values) };
-		});
-		filterState = restoredFilterState;
-
+		filterState = reviveFilterState(state.filterState);
 		sortState = state.sortState;
 		if (state.selectedGroupField) selectedGroupField = state.selectedGroupField;
 		showFilters = state.showFilters;
@@ -272,16 +266,11 @@
 		if (!storageKey || typeof localStorage === 'undefined') return;
 
 		try {
-			const storedFilterState: StoredState['filterState'] = {};
-			Object.entries(filterState).forEach(([key, filter]) => {
-				storedFilterState[key] = { ...filter, values: Array.from(filter.values) };
-			});
-
 			localStorage.setItem(
 				storageKey,
 				serializeState({
 					searchQuery,
-					filterState: storedFilterState,
+					filterState: toStoredFilterState(filterState),
 					sortState,
 					selectedGroupField,
 					showFilters,
@@ -298,31 +287,12 @@
 		}
 	}
 
-	// Initialize filter state from fields
+	// Seed a filter for any field that lacks one, leaving restored state alone.
 	$effect(() => {
-		fields.forEach((field) => {
-			const key = getFieldKey(field);
-			if (field.filterable && !filterState[key]) {
-				if (field.type === 'boolean') {
-					filterState[key] = {
-						type: 'boolean',
-						values: new SvelteSet(),
-						showTrue: true,
-						showFalse: true
-					};
-				} else if (field.type === 'array') {
-					filterState[key] = {
-						type: 'array',
-						values: new SvelteSet()
-					};
-				} else {
-					filterState[key] = {
-						type: 'string',
-						values: new SvelteSet(field.filterDefaults)
-					};
-				}
-			}
-		});
+		const seeded = blankFilterState(fields, true);
+		for (const [key, filter] of Object.entries(seeded)) {
+			if (!filterState[key]) filterState[key] = filter;
+		}
 	});
 
 	// Load state on mount and set up auto-save
@@ -353,25 +323,8 @@
 
 		// Notify parent of restored server-side filter state
 		if (onFilterChange) {
-			for (const field of fields) {
-				if (field.filterable && field.serverFiltered) {
-					const key = getFieldKey(field);
-					const filter = filterState[key];
-					if (!filter) continue;
-
-					if (filter.type === 'boolean') {
-						// A restored boolean has to be replayed whenever it
-						// constrains, and "constrains" means a box is *un*checked
-						// — the opposite test from a value set being non-empty.
-						const showTrue = filter.showTrue ?? true;
-						const showFalse = filter.showFalse ?? true;
-						if (!showTrue || !showFalse) {
-							onFilterChange(key, booleanFilterValues(showTrue, showFalse));
-						}
-					} else if (filter.values.size > 0) {
-						onFilterChange(key, Array.from(filter.values));
-					}
-				}
+			for (const { key, values } of restoredServerFilters(fields, filterState)) {
+				onFilterChange(key, values);
 			}
 		}
 
@@ -444,52 +397,21 @@
 			return new SvelteMap([[common_all(), processedItems]]);
 		}
 
-		const groups = new SvelteMap<string, T[]>();
-
-		processedItems.forEach((item) => {
-			const value = getFieldValue(item, field);
-			const groupKey = value !== null && value !== undefined ? String(value) : common_ungrouped();
-
-			if (!groups.has(groupKey)) {
-				groups.set(groupKey, []);
-			}
-			groups.get(groupKey)!.push(item);
-		});
-
-		// With server-side group totals the rows already arrive in the server's
-		// group order; re-sorting here would desync the headers from the
-		// cumulative offsets those totals are indexed by.
-		if (serverGroupCounts) return groups;
-
-		// Sort groups by key
-		return new SvelteMap([...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])));
+		// `serverGroupCounts` non-null means the rows already arrive in the
+		// server's group order, which the cumulative offsets are indexed by.
+		return groupItemsBy(
+			processedItems,
+			fields,
+			selectedGroupField,
+			common_ungrouped(),
+			serverGroupCounts !== null
+		);
 	});
 
-	// Where each group starts in the full ordered result set. The server
-	// returns groups in the same order it orders rows, so a running sum of the
-	// counts gives every group's global offset — which is what turns "this page
-	// holds rows 100-199" into "this is rows 1-40 of that group".
-	let groupOffsets = $derived.by(() => {
-		const offsets = new SvelteMap<string, GroupPosition>();
-		let cursor = 0;
-		for (const group of serverGroupCounts ?? []) {
-			offsets.set(group.value ?? UNGROUPED_KEY, { start: cursor, count: group.count });
-			cursor += group.count;
-		}
-		return offsets;
-	});
+	let groupOffsets = $derived(computeGroupOffsets(serverGroupCounts));
 
-	// The value the server grouped these rows under, which is not always what
-	// the header displays (a network group reads as a name, but groups by id).
-	function serverGroupKey(groupItems: T[]): string {
-		const field = fields.find((f) => getFieldKey(f) === selectedGroupField);
-		if (!field || groupItems.length === 0) return UNGROUPED_KEY;
-
-		const raw = field.getGroupValue
-			? field.getGroupValue(groupItems[0])
-			: getFieldValue(groupItems[0], field);
-
-		return raw === null || raw === undefined ? UNGROUPED_KEY : String(raw);
+	function serverGroupKey(rows: T[]): string {
+		return serverGroupKeyOf(rows, fields, selectedGroupField);
 	}
 
 	/**
@@ -512,32 +434,21 @@
 	}
 
 	// Toggle string/array filter value
+	/** Whether the parent, not the client pass, acts on this field's filter. */
+	function isServerFiltered(fieldKey: string): boolean {
+		if (!onFilterChange) return false;
+		return fields.find((f) => getFieldKey(f) === fieldKey)?.serverFiltered === true;
+	}
+
 	function toggleStringFilter(fieldKey: string, value: string) {
-		const filter = filterState[fieldKey];
-		if (!filter || (filter.type !== 'string' && filter.type !== 'array')) return;
+		const next = toggleValue(filterState, fieldKey, value);
+		if (!next) return;
 
-		const newValues = new SvelteSet(filter.values);
-		if (newValues.has(value)) {
-			newValues.delete(value);
-		} else {
-			newValues.add(value);
-		}
+		filterState = next;
 
-		filterState = {
-			...filterState,
-			[fieldKey]: {
-				...filter,
-				values: newValues
-			}
-		};
-
-		// Notify parent of server-side filter changes
-		if (onFilterChange) {
-			const field = fields.find((f) => getFieldKey(f) === fieldKey);
-			if (field?.serverFiltered) {
-				onFilterChange(fieldKey, Array.from(newValues));
-				resetToFirstPage();
-			}
+		if (isServerFiltered(fieldKey)) {
+			onFilterChange!(fieldKey, Array.from(next[fieldKey].values));
+			resetToFirstPage();
 		}
 	}
 
@@ -553,94 +464,30 @@
 		}
 	}
 
-	// Toggle boolean filter
 	function toggleBooleanFilter(fieldKey: string, type: 'showTrue' | 'showFalse') {
-		const filter = filterState[fieldKey];
-		if (!filter || filter.type !== 'boolean') return;
+		const serverSide = isServerFiltered(fieldKey);
+		const next = toggleBoolean(filterState, fieldKey, type, serverSide);
+		if (!next) return;
 
-		let showTrue = type === 'showTrue' ? !filter.showTrue : (filter.showTrue ?? false);
-		let showFalse = type === 'showFalse' ? !filter.showFalse : (filter.showFalse ?? false);
-
-		const field = fields.find((f) => getFieldKey(f) === fieldKey);
-		const serverSide = onFilterChange !== null && field?.serverFiltered === true;
-
-		// Unchecking the last box asks for an empty set, which a query string
-		// cannot express and no one wants: it renders an empty table under a
-		// non-zero count. Server-side, fall back to no constraint instead.
-		if (serverSide && !showTrue && !showFalse) {
-			showTrue = true;
-			showFalse = true;
-		}
-
-		filterState = {
-			...filterState,
-			[fieldKey]: { ...filter, showTrue, showFalse }
-		};
+		filterState = next.state;
 
 		if (serverSide) {
-			onFilterChange!(fieldKey, booleanFilterValues(showTrue, showFalse));
+			onFilterChange!(fieldKey, booleanFilterValues(next.showTrue, next.showFalse));
 			resetToFirstPage();
 		}
 	}
 
-	/** The checked booleans as strings, for the `onFilterChange` payload. */
-	function booleanFilterValues(showTrue: boolean, showFalse: boolean): string[] {
-		const values: string[] = [];
-		if (showTrue) values.push('true');
-		if (showFalse) values.push('false');
-		return values;
-	}
-
 	// Toggle tag filter (uses tag ID for server-side filtering)
+	// The tag effect notifies the parent, so this only records the selection.
 	function toggleTagFilter(tagId: string) {
-		const filter = filterState['tags'];
-		if (!filter || filter.type !== 'array') return;
-
-		const newValues = new SvelteSet(filter.values);
-		if (newValues.has(tagId)) {
-			newValues.delete(tagId);
-		} else {
-			newValues.add(tagId);
-		}
-
-		filterState = {
-			...filterState,
-			tags: {
-				...filter,
-				values: newValues
-			}
-		};
+		const next = toggleValue(filterState, 'tags', tagId);
+		if (next) filterState = next;
 	}
 
 	// Clear all filters (restores defaults for exclude filters)
 	function clearFilters() {
-		const newFilterState: FilterState = {};
-
-		fields.forEach((field) => {
-			if (field.filterable) {
-				const key = getFieldKey(field);
-				if (field.type === 'boolean') {
-					newFilterState[key] = {
-						type: 'boolean',
-						values: new SvelteSet(),
-						showTrue: true,
-						showFalse: true
-					};
-				} else if (field.type === 'array') {
-					newFilterState[key] = {
-						type: 'array',
-						values: new SvelteSet()
-					};
-				} else {
-					newFilterState[key] = {
-						type: 'string',
-						values: new SvelteSet()
-					};
-				}
-			}
-		});
-
-		filterState = newFilterState;
+		// No defaults: clearing clears, including a default the product chose.
+		filterState = blankFilterState(fields, false);
 
 		if (staleOnly) {
 			staleOnly = false;
@@ -702,46 +549,26 @@
 
 	// Handle bulk delete
 	async function handleBulkDelete() {
-		if (!allowBulkDelete) return;
-		if (!onBulkDelete || selectedIds.size === 0) return;
-
-		try {
-			await onBulkDelete(Array.from(selectedIds));
-			selectedIds.clear();
-		} catch (error) {
-			console.error('Bulk delete failed:', error);
-		}
+		const deleted = await runBulkAction(
+			'Bulk delete',
+			selectedIds,
+			Boolean(allowBulkDelete && onBulkDelete),
+			(ids) => onBulkDelete!(ids)
+		);
+		// Only on success: a failed delete leaves the rows, so clearing here
+		// would drop the selection the user still needs to retry.
+		if (deleted) selectedIds.clear();
 	}
 
-	// Handle bulk tag add
-	async function handleBulkTagAdd(tagId: string) {
-		if (!entityType || selectedIds.size === 0) return;
-
-		try {
-			await bulkAddTagMutation.mutateAsync({
-				entity_ids: Array.from(selectedIds),
-				entity_type: entityType,
-				tag_id: tagId
-			});
-		} catch (error) {
-			console.error('Bulk tag add failed:', error);
-		}
+	function bulkTagAction(description: string, mutate: typeof bulkAddTagMutation) {
+		return (tagId: string) =>
+			runBulkAction(description, selectedIds, entityType !== null, (ids) =>
+				mutate.mutateAsync({ entity_ids: ids, entity_type: entityType!, tag_id: tagId })
+			);
 	}
 
-	// Handle bulk tag remove
-	async function handleBulkTagRemove(tagId: string) {
-		if (!entityType || selectedIds.size === 0) return;
-
-		try {
-			await bulkRemoveTagMutation.mutateAsync({
-				entity_ids: Array.from(selectedIds),
-				entity_type: entityType,
-				tag_id: tagId
-			});
-		} catch (error) {
-			console.error('Bulk tag remove failed:', error);
-		}
-	}
+	const handleBulkTagAdd = $derived(bulkTagAction('Bulk tag add', bulkAddTagMutation));
+	const handleBulkTagRemove = $derived(bulkTagAction('Bulk tag remove', bulkRemoveTagMutation));
 
 	// Compute common tags across selected items (intersection)
 	let commonTags = $derived.by(() => {
@@ -789,48 +616,24 @@
 		);
 	});
 
-	// Effective current page: derived from server offset when using server-side pagination
-	let effectiveCurrentPage = $derived(
-		useServerPagination && serverPagination
-			? Math.floor(serverPagination.offset / pageSize) + 1
-			: currentPage
+	// Every pagination number comes from one resolution of "who is paginating",
+	// so the count and the rows beneath it cannot fall out of step. The server's
+	// total already accounts for search and filters, so there is no
+	// filtered-vs-unfiltered discrepancy left to paper over here.
+	let page = $derived(
+		paginationView(
+			useServerPagination ? serverPagination : null,
+			currentPage,
+			pageSize,
+			processedItems.length
+		)
 	);
+	let effectiveCurrentPage = $derived(page.currentPage);
+	let totalPages = $derived(page.totalPages);
+	let totalCount = $derived(page.totalCount);
 
-	// Pagination derived values (server-side or client-side)
-	let totalPages = $derived(
-		useServerPagination && serverPagination
-			? Math.ceil(serverPagination.total_count / pageSize)
-			: Math.ceil(processedItems.length / pageSize)
-	);
-	let canGoPrev = $derived(effectiveCurrentPage > 1);
-	let canGoNext = $derived(
-		useServerPagination && serverPagination
-			? serverPagination.has_more
-			: effectiveCurrentPage < totalPages
-	);
-	// The server's total already accounts for the search, so there is no longer
-	// a filtered-vs-unfiltered discrepancy to paper over here.
-	let showingStart = $derived(
-		useServerPagination && serverPagination
-			? Math.min(serverPagination.offset + 1, serverPagination.total_count)
-			: Math.min((effectiveCurrentPage - 1) * pageSize + 1, processedItems.length)
-	);
-	let showingEnd = $derived(
-		useServerPagination && serverPagination
-			? Math.min(serverPagination.offset + processedItems.length, serverPagination.total_count)
-			: Math.min(effectiveCurrentPage * pageSize, processedItems.length)
-	);
-	let totalCount = $derived(
-		useServerPagination && serverPagination ? serverPagination.total_count : processedItems.length
-	);
-
-	// Paginated items for display
-	// Server-side: items are already paginated, just apply client-side filtering
-	// Client-side: slice the processed items
 	let paginatedItems = $derived(
-		useServerPagination
-			? processedItems
-			: processedItems.slice((effectiveCurrentPage - 1) * pageSize, effectiveCurrentPage * pageSize)
+		pageSlice(processedItems, effectiveCurrentPage, pageSize, useServerPagination)
 	);
 
 	/**
@@ -876,36 +679,11 @@
 	 * a tab cannot silently end up without it. It is editable only when the
 	 * parent supplied an `entityType`, which is also how it gates permission.
 	 */
-	let tagColumn = $derived.by<EntityColumn<T> | null>(() => {
-		if (!getItemTags) return null;
-		const resolve = getItemTags;
+	let tagColumn = $derived(
+		getItemTags ? buildTagColumn<T>(common_tags(), getItemTags, tagsCell) : null
+	);
 
-		return {
-			id: TAG_COLUMN_ID,
-			label: common_tags(),
-			field: {
-				key: TAG_COLUMN_ID,
-				label: common_tags(),
-				type: 'array',
-				getValue: (item: T) => resolve(item)
-			},
-			display: { cell: tagsCell },
-			sortable: false,
-			align: 'left',
-			primary: false
-		};
-	});
-
-	// Tags sit at the far end of the row, so they are appended rather than
-	// ordered — except for `display.trailing` fields, which sit beyond them.
-	let renderedColumns = $derived.by(() => {
-		const visible = visibleColumns(allColumns, columnState);
-		return [
-			...visible.filter((column) => !column.display.trailing),
-			...(tagColumn ? [tagColumn] : []),
-			...visible.filter((column) => column.display.trailing)
-		];
-	});
+	let renderedColumns = $derived(withTagColumn(visibleColumns(allColumns, columnState), tagColumn));
 	let showSelection = $derived(Boolean(onBulkDelete) || hasBulkTagging);
 
 	let tableCaptionText = $derived(
@@ -928,55 +706,27 @@
 	// Reset to page 1 when filters/search change and current page would be out of bounds
 	$effect(() => {
 		if (effectiveCurrentPage > totalPages && totalPages > 0) {
-			if (useServerPagination && onPageChange) {
-				onPageChange(1, pageSize);
-			} else {
-				currentPage = 1;
-			}
+			resetToFirstPage();
 		}
 	});
 
-	// Track previous ordering state to detect changes and reset pagination
-	let prevGroupBy: string | null = null;
-	let prevOrderBy: string | null = null;
-	let prevDirection: 'asc' | 'desc' = 'asc';
-	let orderChangeInitialized = false;
+	// Each of the three trackers below skips its first run, which only restores
+	// saved state: firing there would reset the restored page to 1 on every mount.
+	const orderTracker = createChangeTracker<[string | null, string | null, 'asc' | 'desc']>((a, b) =>
+		sameOrder(a, b)
+	);
 
 	// Notify parent of ordering changes and reset pagination
 	$effect(() => {
-		const groupBy = selectedGroupField;
-		const orderBy = sortState.field;
-		const direction = sortState.direction;
+		const ordering: [string | null, string | null, 'asc' | 'desc'] = [
+			selectedGroupField,
+			sortState.field,
+			sortState.direction
+		];
 
-		// Skip the initial run (state restoration)
-		if (!orderChangeInitialized) {
-			prevGroupBy = groupBy;
-			prevOrderBy = orderBy;
-			prevDirection = direction;
-			orderChangeInitialized = true;
-			return;
-		}
-
-		// Check if ordering actually changed
-		const orderChanged =
-			groupBy !== prevGroupBy || orderBy !== prevOrderBy || direction !== prevDirection;
-
-		if (orderChanged) {
-			prevGroupBy = groupBy;
-			prevOrderBy = orderBy;
-			prevDirection = direction;
-
-			// Reset to page 1 when ordering changes
-			if (useServerPagination && onPageChange) {
-				onPageChange(1, pageSize);
-			} else {
-				currentPage = 1;
-			}
-
-			// Notify parent of the change
-			if (onOrderChange) {
-				onOrderChange(groupBy, orderBy, direction);
-			}
+		if (orderTracker.changed(ordering)) {
+			resetToFirstPage();
+			onOrderChange?.(...ordering);
 		}
 	});
 
@@ -987,79 +737,38 @@
 		(query: string) => {
 			onSearchChange?.(query);
 			// Page 3 of the old result set is meaningless against the new one.
-			if (useServerPagination && onPageChange) {
-				onPageChange(1, pageSize);
-			} else {
-				currentPage = 1;
-			}
+			resetToFirstPage();
 		},
 		SEARCH_THROTTLE_MS,
 		{ leading: false, trailing: true }
 	);
 
-	// Track previous search to detect changes
-	let prevSearchQuery = '';
-	let searchInitialized = false;
+	const searchTracker = createChangeTracker<string>();
 
-	// Notify parent of search changes
+	// Notify parent of search changes. `notifySearchChange` resets the page
+	// itself, on the throttle's trailing edge rather than per keystroke.
 	$effect(() => {
-		const query = searchQuery;
-
-		// Skip the initial run (state restoration); onMount handles that, and
-		// firing here would reset the restored page on every mount.
-		if (!searchInitialized) {
-			prevSearchQuery = query;
-			searchInitialized = true;
-			return;
-		}
-
-		if (query !== prevSearchQuery) {
-			prevSearchQuery = query;
-			notifySearchChange(query);
+		if (searchTracker.changed(searchQuery)) {
+			notifySearchChange(searchQuery);
 		}
 	});
 
-	// Track previous tag filter state to detect changes
-	let prevTagFilterValues: string[] = [];
-	let tagFilterInitialized = false;
+	const tagFilterTracker = createChangeTracker<string[]>(sameOrder);
 
 	// Notify parent of tag filter changes
 	$effect(() => {
 		const tagFilter = filterState['tags'];
-		const currentTagIds = tagFilter ? Array.from(tagFilter.values).sort() : [];
+		const tagIds = tagFilter ? Array.from(tagFilter.values).sort() : [];
 
-		// Skip the initial run (state restoration)
-		if (!tagFilterInitialized) {
-			prevTagFilterValues = currentTagIds;
-			tagFilterInitialized = true;
-			return;
-		}
-
-		// Check if tag filter actually changed
-		const tagFilterChanged =
-			currentTagIds.length !== prevTagFilterValues.length ||
-			currentTagIds.some((id, i) => id !== prevTagFilterValues[i]);
-
-		if (tagFilterChanged) {
-			prevTagFilterValues = currentTagIds;
-
-			// Reset to page 1 when tag filter changes
-			if (useServerPagination && onPageChange) {
-				onPageChange(1, pageSize);
-			} else {
-				currentPage = 1;
-			}
-
-			// Notify parent of the change
-			if (onTagFilterChange) {
-				onTagFilterChange(currentTagIds);
-			}
+		if (tagFilterTracker.changed(tagIds)) {
+			resetToFirstPage();
+			onTagFilterChange?.(tagIds);
 		}
 	});
 
 	// Pagination handlers
 	function goToPrevPage() {
-		if (canGoPrev) {
+		if (page.canGoPrev) {
 			if (useServerPagination && onPageChange) {
 				onPageChange(effectiveCurrentPage - 1, pageSize);
 			} else {
@@ -1069,7 +778,7 @@
 	}
 
 	function goToNextPage() {
-		if (canGoNext) {
+		if (page.canGoNext) {
 			if (useServerPagination && onPageChange) {
 				onPageChange(effectiveCurrentPage + 1, pageSize);
 			} else {
@@ -1113,23 +822,8 @@
 	let sentinelRef: HTMLDivElement | null = $state(null);
 
 	$effect(() => {
-		const sentinel = sentinelRef;
-		if (!sentinel) return;
-
-		// Find the scroll container (the main element with overflow-auto)
-		const scrollContainer = sentinel.closest('main');
-
-		const observer = new IntersectionObserver(
-			([entry]) => {
-				// Only set stuck if actually scrolled down (prevents flash on tab switch)
-				const scrollTop = scrollContainer?.scrollTop ?? 0;
-				isStuck = !entry.isIntersecting && scrollTop > 0;
-			},
-			{ threshold: 0, root: scrollContainer }
-		);
-		observer.observe(sentinel);
-
-		return () => observer.disconnect();
+		if (!sentinelRef) return;
+		return observeStuck(sentinelRef, (stuck) => (isStuck = stuck));
 	});
 </script>
 
@@ -1215,10 +909,10 @@
 		{totalPages}
 		currentPage={effectiveCurrentPage}
 		{pageSize}
-		{showingStart}
-		{showingEnd}
-		{canGoPrev}
-		{canGoNext}
+		showingStart={page.showingStart}
+		showingEnd={page.showingEnd}
+		canGoPrev={page.canGoPrev}
+		canGoNext={page.canGoNext}
 		groupCount={hasActiveGrouping ? groupedItems.size : null}
 		{useServerPagination}
 		processedCount={processedItems.length}

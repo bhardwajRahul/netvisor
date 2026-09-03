@@ -152,3 +152,45 @@ export function visibleColumns<T>(
 		.map((id) => byId.get(id))
 		.filter((c): c is EntityColumn<T> => Boolean(c) && state.visibility[c!.id] !== false);
 }
+
+/**
+ * The tag column the list appends to every taggable entity.
+ *
+ * Built here rather than declared per tab so every taggable entity gets the
+ * same column in the same place — a tab cannot silently end up without one.
+ * `cell` is passed in because the snippet that renders it belongs to the
+ * component that owns the tag data.
+ */
+export function buildTagColumn<T>(
+	label: string,
+	getTags: (item: T) => string[],
+	cell: EntityColumn<T>['display']['cell']
+): EntityColumn<T> {
+	return {
+		id: TAG_COLUMN_ID,
+		label,
+		field: { key: TAG_COLUMN_ID, label, type: 'array', getValue: (item: T) => getTags(item) },
+		display: { cell },
+		sortable: false,
+		align: 'left',
+		primary: false
+	};
+}
+
+/**
+ * Row order: ordinary columns, then tags, then anything marked `trailing`.
+ *
+ * Tags sit at the far end rather than in the user's column order, so they are
+ * appended instead of ordered — except for trailing fields (actions), which
+ * stay beyond them.
+ */
+export function withTagColumn<T>(
+	visible: EntityColumn<T>[],
+	tagColumn: EntityColumn<T> | null
+): EntityColumn<T>[] {
+	return [
+		...visible.filter((column) => !column.display.trailing),
+		...(tagColumn ? [tagColumn] : []),
+		...visible.filter((column) => column.display.trailing)
+	];
+}

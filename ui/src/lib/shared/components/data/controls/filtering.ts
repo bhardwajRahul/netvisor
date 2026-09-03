@@ -1,3 +1,4 @@
+import { SvelteSet } from 'svelte/reactivity';
 import { getFieldKey, type FieldConfig } from '../types';
 import { getFieldValue } from './fieldValues';
 
@@ -82,6 +83,142 @@ export function serverFilterViolations<T>(
 	return fields
 		.filter((field) => field.filterable === true && !isHandledServerSide(field, server))
 		.map(getFieldKey);
+}
+
+/**
+ * A filter with nothing selected, shaped for the field's type.
+ *
+ * `applyDefaults` seeds a string field from `filterDefaults`, which is what a
+ * fresh mount wants and what "clear filters" deliberately does not: clearing
+ * means clearing, including a default the product chose.
+ */
+export function blankFilter<T>(field: FieldConfig<T>, applyDefaults: boolean): FieldFilter {
+	if (field.type === 'boolean') {
+		return { type: 'boolean', values: new SvelteSet(), showTrue: true, showFalse: true };
+	}
+	if (field.type === 'array') {
+		return { type: 'array', values: new SvelteSet() };
+	}
+	return {
+		type: 'string',
+		values: new SvelteSet(applyDefaults ? field.filterDefaults : undefined)
+	};
+}
+
+/** A blank filter for every filterable field. */
+export function blankFilterState<T>(fields: FieldConfig<T>[], applyDefaults: boolean): FilterState {
+	const state: FilterState = {};
+
+	for (const field of fields) {
+		if (!field.filterable) continue;
+		state[getFieldKey(field)] = blankFilter(field, applyDefaults);
+	}
+
+	return state;
+}
+
+/** The checked booleans as strings, the payload shape `onFilterChange` takes. */
+export function booleanFilterValues(showTrue: boolean, showFalse: boolean): string[] {
+	const values: string[] = [];
+	if (showTrue) values.push('true');
+	if (showFalse) values.push('false');
+	return values;
+}
+
+/**
+ * The server-side filters a restored `filterState` implies, as the calls the
+ * parent needs to replay.
+ *
+ * State restored from storage has to reach the parent's query, or the panel
+ * shows a filter the request never carried. A boolean counts as constraining
+ * when a box is *un*checked — the opposite test from a value set being
+ * non-empty, which is why the two cases cannot share one condition.
+ */
+export function restoredServerFilters<T>(
+	fields: FieldConfig<T>[],
+	filterState: FilterState
+): { key: string; values: string[] }[] {
+	const restored: { key: string; values: string[] }[] = [];
+
+	for (const field of fields) {
+		if (!field.filterable || !field.serverFiltered) continue;
+
+		const key = getFieldKey(field);
+		const filter = filterState[key];
+		if (!filter) continue;
+
+		if (filter.type === 'boolean') {
+			const showTrue = filter.showTrue ?? true;
+			const showFalse = filter.showFalse ?? true;
+			if (!showTrue || !showFalse) {
+				restored.push({ key, values: booleanFilterValues(showTrue, showFalse) });
+			}
+		} else if (filter.values.size > 0) {
+			restored.push({ key, values: Array.from(filter.values) });
+		}
+	}
+
+	return restored;
+}
+
+/**
+ * Toggle one value of a string or array filter, returning the new state.
+ *
+ * A pure transition returning fresh objects: the component reassigns rather
+ * than mutating, so `$derived` work downstream re-runs. Returns null when the
+ * key names no filter of a togglable type, which the caller reads as "nothing
+ * to do".
+ */
+export function toggleValue(
+	state: FilterState,
+	fieldKey: string,
+	value: string
+): FilterState | null {
+	const filter = state[fieldKey];
+	if (!filter || (filter.type !== 'string' && filter.type !== 'array')) return null;
+
+	const values = new SvelteSet(filter.values);
+	if (values.has(value)) {
+		values.delete(value);
+	} else {
+		values.add(value);
+	}
+
+	return { ...state, [fieldKey]: { ...filter, values } };
+}
+
+/**
+ * Toggle one box of a boolean filter, returning the new state and the boxes
+ * left checked.
+ *
+ * `normalizeEmpty` re-checks both boxes when the last one is unticked. That
+ * state asks for an empty set, which a query string cannot express and nobody
+ * wants — it renders an empty table under a non-zero count — so a filter the
+ * server applies falls back to no constraint instead. A client-side filter
+ * keeps the literal selection.
+ */
+export function toggleBoolean(
+	state: FilterState,
+	fieldKey: string,
+	box: 'showTrue' | 'showFalse',
+	normalizeEmpty: boolean
+): { state: FilterState; showTrue: boolean; showFalse: boolean } | null {
+	const filter = state[fieldKey];
+	if (!filter || filter.type !== 'boolean') return null;
+
+	let showTrue = box === 'showTrue' ? !filter.showTrue : (filter.showTrue ?? false);
+	let showFalse = box === 'showFalse' ? !filter.showFalse : (filter.showFalse ?? false);
+
+	if (normalizeEmpty && !showTrue && !showFalse) {
+		showTrue = true;
+		showFalse = true;
+	}
+
+	return {
+		state: { ...state, [fieldKey]: { ...filter, showTrue, showFalse } },
+		showTrue,
+		showFalse
+	};
 }
 
 /** Whether an item survives every active field filter. */

@@ -1,4 +1,6 @@
+import { SvelteSet } from 'svelte/reactivity';
 import { PAGE_SIZE_OPTIONS, type PageSizeOption } from '../types';
+import type { FilterState } from './filtering';
 import type { SortState } from './sorting';
 
 export type ViewMode = 'card' | 'table';
@@ -122,4 +124,31 @@ function isRecordOf(raw: unknown, type: 'boolean' | 'number'): boolean {
 
 export function serializeState(state: StoredState): string {
 	return JSON.stringify(state);
+}
+
+/**
+ * Rehydrate saved filter selections into the reactive sets the panel mutates.
+ *
+ * Stored as plain arrays because a Set has no JSON form; they have to come back
+ * as `SvelteSet` or a restored filter renders but never reacts.
+ */
+export function reviveFilterState(stored: StoredState['filterState']): FilterState {
+	const revived: FilterState = {};
+
+	for (const [key, saved] of Object.entries(stored)) {
+		revived[key] = { ...saved, values: new SvelteSet(saved.values) };
+	}
+
+	return revived;
+}
+
+/** The JSON-safe form of the live filter state. */
+export function toStoredFilterState(live: FilterState): StoredState['filterState'] {
+	const stored: StoredState['filterState'] = {};
+
+	for (const [key, filter] of Object.entries(live)) {
+		stored[key] = { ...filter, values: Array.from(filter.values) };
+	}
+
+	return stored;
 }
