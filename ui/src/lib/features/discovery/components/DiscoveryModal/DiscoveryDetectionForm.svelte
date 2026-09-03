@@ -1,14 +1,17 @@
 <script lang="ts">
 	import scanSettingsFields from '$lib/data/scan-settings.json';
-	import type { FieldDefinition } from '$lib/shared/stores/metadata';
+	import type { FieldDefinition, ServicedDefinitionMetadata } from '$lib/shared/stores/metadata';
 	import type { Discovery } from '../../types/base';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
+	import { translateFieldDefinitions } from '$lib/i18n/metadata';
 	import { tooltip } from '$lib/shared/actions/tooltip';
 	import {
+		discovery_affectsDetectionOf,
 		discovery_firstScanMustBeLight,
 		discovery_forceFullScan,
 		discovery_forceFullScanHelp,
 		discovery_fullPortScan,
+		discovery_requiredToDetect,
 		discovery_scanModeIntervalExplainer
 	} from '$lib/paraglide/messages';
 
@@ -20,7 +23,13 @@
 
 	let { formData = $bindable(), readOnly = false, isEditing = false }: Props = $props();
 
-	const fields = scanSettingsFields as FieldDefinition[];
+	// Labels/placeholders/help text resolved via meta_* i18n keys with fixture fallback, as
+	// DiscoveryScanSettingsForm does. Without it every Detection field renders raw English.
+	const fields = translateFieldDefinitions(
+		'scan_settings',
+		null,
+		scanSettingsFields as FieldDefinition[]
+	);
 	const detectionFields = fields.filter((f) => f.group === 'Detection');
 	// full_scan_interval is grouped with force_full_scan in its own card
 	const booleanFields = detectionFields.filter(
@@ -29,16 +38,27 @@
 	const fullScanIntervalField = detectionFields.find((f) => f.id === 'full_scan_interval');
 	const maxDiscoveryDurationField = detectionFields.find((f) => f.id === 'max_discovery_duration');
 
-	let rawSocketServiceNames = $derived(
-		(serviceDefinitions.getItems() ?? [])
-			.filter((s) => s.metadata?.has_raw_socket_endpoint)
+	function serviceNamesWhere(predicate: (metadata: ServicedDefinitionMetadata) => boolean): string {
+		return (serviceDefinitions.getItems() ?? [])
+			.filter((s) => s.metadata && predicate(s.metadata))
 			.map((s) => s.name)
-			.join(', ')
-	);
+			.filter((name): name is string => !!name)
+			.sort()
+			.join(', ');
+	}
 
+	let rawSocketServiceNames = $derived(serviceNamesWhere((m) => m.has_raw_socket_endpoint));
+	let connectOnlyServiceNames = $derived(serviceNamesWhere((m) => m.connect_only));
+
+	/** Which detections a setting governs, appended to its help text. Both lists come from service
+	 *  metadata rather than being written here, so they shrink on their own as detections stop
+	 *  being port-only. */
 	function getHelpText(field: FieldDefinition): string {
 		if (field.id === 'probe_raw_socket_ports' && rawSocketServiceNames) {
-			return `${field.help_text} Required to detect: ${rawSocketServiceNames}`;
+			return `${field.help_text} ${discovery_requiredToDetect({ services: rawSocketServiceNames })}`;
+		}
+		if (field.id === 'trust_port_only_detections' && connectOnlyServiceNames) {
+			return `${field.help_text} ${discovery_affectsDetectionOf({ services: connectOnlyServiceNames })}`;
 		}
 		return field.help_text ?? '';
 	}
@@ -50,14 +70,17 @@
 		return {};
 	}
 
-	let scanValues = $derived({
-		probe_raw_socket_ports: getScanSettings().probe_raw_socket_ports ?? false,
-		full_scan_interval: getScanSettings().full_scan_interval ?? '',
-		max_discovery_duration: getScanSettings().max_discovery_duration ?? ''
-	});
-
+	/** Read straight from the settings by field id rather than from a hand-written map. The map this
+	 *  replaces silently rendered any field missing from it as unchecked, and an unchecked box the
+	 *  user never touches is never written back — so a new boolean looked present and did nothing. */
 	function getScanValue(id: string): string | boolean | number {
-		return (scanValues as Record<string, string | boolean | number>)[id] ?? '';
+		const settings = getScanSettings() as Record<string, string | boolean | number | null>;
+		const value = settings[id];
+		if (value === null || value === undefined) {
+			// Booleans default off; the numeric fields render their placeholder when empty.
+			return fields.find((f) => f.id === id)?.field_type === 'boolean' ? false : '';
+		}
+		return value;
 	}
 
 	function updateScanSetting(id: string, value: string | boolean | number) {

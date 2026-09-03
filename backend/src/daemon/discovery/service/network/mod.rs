@@ -247,6 +247,20 @@ static PROBE_COVERED_PORTS: std::sync::LazyLock<
         .collect()
 });
 
+/// TCP ports claimed only by a definition that matches on the connect alone.
+///
+/// Derived from the definitions rather than listed, so it shrinks by itself as exceptions are
+/// retired and cannot drift from the guard that declares them. Six ports at the time of writing:
+/// jetdirect's 9100, veeam's 9392, denodo's four.
+pub(super) static CONNECT_ONLY_PORTS: std::sync::LazyLock<
+    HashSet<crate::server::ports::r#impl::base::PortType>,
+> = std::sync::LazyLock::new(|| {
+    crate::server::services::definitions::ServiceDefinitionRegistry::connect_only_definitions()
+        .into_iter()
+        .map(|(_, port)| port)
+        .collect()
+});
+
 /// Whether an address nothing answered for has any evidence of a host beyond a bare TCP connect.
 ///
 /// This is the check the FortiGate report turned on. A firewall session helper completes the
@@ -254,31 +268,39 @@ static PROBE_COVERED_PORTS: std::sync::LazyLock<
 /// no mDNS advert was promoted to a host on the strength of that alone — one phantom "SIP Server"
 /// per VLAN, none of them a device.
 ///
-/// Two things count as evidence:
+/// **Anything validated counts**, and by default nothing else does. A probe that spoke the protocol
+/// and got a protocol answer, an HTTP endpoint that replied, a credential that authenticated — a
+/// middlebox completing a handshake produces none of these.
 ///
-/// - **Anything validated.** A probe that spoke the protocol and got a protocol answer, an HTTP
-///   endpoint that returned a matching body, a credential that authenticated. A middlebox
-///   completing a handshake produces none of these.
-/// - **An open port nothing could have validated.** If no probe covers the port, its silence means
-///   only that we had nothing to ask — so the connect is the best evidence available and the host
-///   is recorded, exactly as before. This is what keeps the check from deleting hosts it merely
-///   cannot confirm, which would be a worse bug than the one it fixes.
+/// `trust_port_only_detections` governs the one case that is genuinely ambiguous: **an open port
+/// nothing could have validated.** If no probe covers the port, its silence means only that there
+/// was nothing to ask, so the bare connect is the best evidence available.
 ///
-/// So an address is dropped only when every open port is one we know how to interrogate and none of
-/// them answered. That is the false-positive shape and nothing else.
+/// - **Off (the default).** That is not enough. An address on a routed subnet is recorded only when
+///   something answered. This is fail-closed, and the cost is stated rather than hidden: a host
+///   whose every open port is one Scanopy cannot interrogate — a bespoke TCP service, and nothing
+///   else open — is not recorded on a routed subnet. That is a real class of host.
+/// - **On.** The uncovered open port counts, which is the behaviour before this setting existed.
+///
+/// The narrow framing "connect-only definitions" is not the rule, deliberately. 1720 showed why: a
+/// full scan sweeps every port, and a middlebox answering one that no definition claims manufactures
+/// a host just as readily as one that a connect-only definition claims. The rule has to be about
+/// what was *validated*, not about a list of ports.
 ///
 /// Confirmed-live addresses never reach this: ARP, ICMP and mDNS are evidence in their own right,
 /// and [`LivenessEvidence::is_confirmed_live`] gates the call.
 pub(super) fn enumerated_host_has_evidence(
     open_ports: &[crate::server::ports::r#impl::base::PortType],
     validated_ports: &HashSet<crate::server::ports::r#impl::base::PortType>,
+    trust_port_only_detections: bool,
 ) -> bool {
     if !validated_ports.is_empty() {
         return true;
     }
-    open_ports
-        .iter()
-        .any(|port| !PROBE_COVERED_PORTS.contains(port))
+    trust_port_only_detections
+        && open_ports
+            .iter()
+            .any(|port| !PROBE_COVERED_PORTS.contains(port))
 }
 
 /// TCP ports the liveness check probes before committing to a deep scan of an address that
@@ -559,6 +581,11 @@ mod enumerated_evidence {
     use crate::server::ports::r#impl::base::PortType;
     use std::collections::HashSet;
 
+    /// The default. Every assertion below that does not say otherwise is about this.
+    const STRICT: bool = false;
+    /// The opt-in, for operators who would rather have the host than the certainty.
+    const TRUSTING: bool = true;
+
     fn ports(numbers: &[u16]) -> Vec<PortType> {
         numbers.iter().map(|n| PortType::new_tcp(*n)).collect()
     }
@@ -574,7 +601,8 @@ mod enumerated_evidence {
     fn a_probe_backed_port_that_did_not_answer_is_not_a_host() {
         assert!(!enumerated_host_has_evidence(
             &ports(&[5060]),
-            &validated(&[])
+            &validated(&[]),
+            STRICT
         ));
     }
 
@@ -583,34 +611,48 @@ mod enumerated_evidence {
     fn a_probe_that_answered_is_a_host() {
         assert!(enumerated_host_has_evidence(
             &ports(&[5060]),
-            &validated(&[5060])
+            &validated(&[5060]),
+            STRICT
         ));
     }
 
-    /// A port no probe covers cannot be interrogated, so its silence says nothing and the connect
-    /// stands as the best evidence available. Failing open here is deliberate: deleting hosts we
-    /// merely cannot confirm would be a worse bug than the one this fixes.
+    /// The setting governs exactly one case: a port nothing could have interrogated. Off, its
+    /// silence is not evidence; on, the bare connect stands as the best available.
     #[test]
-    fn an_unprobeable_open_port_is_still_evidence() {
-        // 9100 is JetDirect, which is declared `ProbeUnsafe` — writing to it prints.
-        assert!(enumerated_host_has_evidence(
-            &ports(&[9100]),
-            &validated(&[])
-        ));
-        // A port no definition claims at all.
-        assert!(enumerated_host_has_evidence(
-            &ports(&[43219]),
-            &validated(&[])
+    fn the_setting_governs_only_the_unprobeable_port() {
+        // 9100 is JetDirect, declared `ProbeUnsafe` — writing to it prints. And a port no
+        // definition claims at all, which is what a full scan turns up.
+        for open in [ports(&[9100]), ports(&[43219])] {
+            assert!(
+                !enumerated_host_has_evidence(&open, &validated(&[]), STRICT),
+                "{open:?}"
+            );
+            assert!(
+                enumerated_host_has_evidence(&open, &validated(&[]), TRUSTING),
+                "{open:?}"
+            );
+        }
+    }
+
+    /// The opt-in does not resurrect the original bug: a probe-backed port that stayed silent is
+    /// still not evidence, however trusting the setting.
+    #[test]
+    fn the_setting_does_not_make_a_silent_probe_into_evidence() {
+        assert!(!enumerated_host_has_evidence(
+            &ports(&[5060]),
+            &validated(&[]),
+            TRUSTING
         ));
     }
 
     /// A real host on a poisoned VLAN: the middlebox answers 5060 for it too, but its own SSH
-    /// answered, so the host is kept.
+    /// answered, so the host is kept — with the setting off, which is the case that matters.
     #[test]
     fn one_validated_port_carries_an_address_whose_other_ports_did_not_answer() {
         assert!(enumerated_host_has_evidence(
             &ports(&[22, 5060]),
-            &validated(&[22])
+            &validated(&[22]),
+            STRICT
         ));
     }
 
@@ -620,14 +662,20 @@ mod enumerated_evidence {
     fn several_silent_probe_backed_ports_are_still_not_a_host() {
         assert!(!enumerated_host_has_evidence(
             &ports(&[21, 554, 5060]),
-            &validated(&[])
+            &validated(&[]),
+            STRICT
         ));
     }
 
-    /// Nothing open at all cannot be a host either, and the responsiveness check upstream would
-    /// have dropped it already.
+    /// Nothing open at all cannot be a host either, under either setting, and the responsiveness
+    /// check upstream would have dropped it already.
     #[test]
     fn no_open_ports_is_not_a_host() {
-        assert!(!enumerated_host_has_evidence(&[], &validated(&[])));
+        assert!(!enumerated_host_has_evidence(&[], &validated(&[]), STRICT));
+        assert!(!enumerated_host_has_evidence(
+            &[],
+            &validated(&[]),
+            TRUSTING
+        ));
     }
 }

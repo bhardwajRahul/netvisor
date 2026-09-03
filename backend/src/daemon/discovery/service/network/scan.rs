@@ -43,7 +43,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
-    DeepScanParams, DiscoveredHostData, DispatchedAddresses, FULL_SCAN_COST_CS,
+    CONNECT_ONLY_PORTS, DeepScanParams, DiscoveredHostData, DispatchedAddresses, FULL_SCAN_COST_CS,
     LATE_ARRIVAL_GRACE_PERIOD, LIGHT_SCAN_COST_CS, LivenessEvidence, MAX_PROGRESS_REPORT_INTERVAL,
     NetworkScan, PROGRESS_ARP_PHASE, PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE,
     RESPONSIVENESS_COST_CS, enumerated_host_has_evidence, integration_cost_for_ip, is_host_address,
@@ -1545,12 +1545,15 @@ impl NetworkScan {
                     .map(|response| response.endpoint.port_type),
             );
 
-            if !enumerated_host_has_evidence(&open_ports, &validated_ports) {
+            if !enumerated_host_has_evidence(
+                &open_ports,
+                &validated_ports,
+                self.scan_settings.trust_port_only_detections,
+            ) {
                 tracing::debug!(
                     ip = %ip,
                     open_ports = ?open_ports.iter().map(|p| p.number()).collect::<Vec<_>>(),
-                    "Every open port here is one we know how to interrogate and none answered; \
-                     recording no host"
+                    "Nothing answered on this enumerated address; recording no host"
                 );
                 return Ok(None);
             }
@@ -1602,6 +1605,24 @@ impl NetworkScan {
         // matching the same filtering applied in scan_endpoints() for endpoint probing.
         if !probe_raw_socket_ports {
             open_ports.retain(|p| !p.is_raw_socket());
+        }
+
+        // The second layer, and the one the gate above cannot cover. A *real* host on a poisoned
+        // subnet passes that gate on its own evidence — and the middlebox is still answering every
+        // other port on its behalf, so a connect-only definition would attach its service to a host
+        // that has nothing of the sort. Veeam on 9392 and Denodo on 9090 are the remaining cases.
+        //
+        // Only on an address nothing answered for: on-link hosts, and any host that ARP or ICMP
+        // confirmed, keep matching exactly as before.
+        if !evidence.is_confirmed_live() && !self.scan_settings.trust_port_only_detections {
+            let before = open_ports.len();
+            open_ports.retain(|port| !CONNECT_ONLY_PORTS.contains(port));
+            if open_ports.len() != before {
+                tracing::debug!(
+                    ip = %ip,
+                    "Withheld connect-only ports from service matching on an enumerated address"
+                );
+            }
         }
 
         if let Ok(Some(mut host_data)) = ops

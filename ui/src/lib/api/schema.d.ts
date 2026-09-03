@@ -10287,6 +10287,11 @@ export interface components {
              *     noisy IDS, and a rescan must respect that as much as a discovery does.
              */
             scan_rate_pps?: number | null;
+            /**
+             * @description Carried into a rescan: a rescan of a host on a routed subnet runs the same evidence check,
+             *     and it would be strange for a host to survive a scan and vanish on rescan, or the reverse.
+             */
+            trust_port_only_detections?: boolean;
             /** @description On Windows, use Npcap broadcast ARP instead of SendARP. */
             use_npcap_arp?: boolean;
         };
@@ -10428,6 +10433,22 @@ export interface components {
              * @description Port scan probes per second (default: 500)
              */
             scan_rate_pps?: number | null;
+            /**
+             * @description Whether an open TCP port alone is enough to record a host on a subnet the daemon reaches
+             *     *through* something (default: false).
+             *
+             *     On a subnet the daemon has an interface on, ARP answers first and this never applies. On a
+             *     routed one every address arrives enumerated, and a middlebox that completes the TCP handshake
+             *     for addresses with nothing behind them — a FortiGate session helper, a load balancer, a
+             *     scrubbing appliance — makes every address look open. With this off, such an address is
+             *     recorded only when something actually answered: a probe that spoke the protocol, an endpoint
+             *     that replied, a credential that authenticated.
+             *
+             *     Turning it on restores the older behaviour for hosts whose every open port is one Scanopy
+             *     cannot interrogate. That is a real class of host — a bespoke TCP service on a routed subnet —
+             *     which is why the escape hatch exists rather than the rule simply being absolute.
+             */
+            trust_port_only_detections?: boolean;
             /** @description On Windows, use Npcap broadcast ARP instead of SendARP (default: false) */
             use_npcap_arp?: boolean;
         };

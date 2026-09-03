@@ -30116,6 +30116,10 @@
             "description": "Port scan probes per second. Operators lower this for fragile devices or\nnoisy IDS, and a rescan must respect that as much as a discovery does.",
             "minimum": 0
           },
+          "trust_port_only_detections": {
+            "type": "boolean",
+            "description": "Carried into a rescan: a rescan of a host on a routed subnet runs the same evidence check,\nand it would be strange for a host to survive a scan and vanish on rescan, or the reverse."
+          },
           "use_npcap_arp": {
             "type": "boolean",
             "description": "On Windows, use Npcap broadcast ARP instead of SendARP."
@@ -30359,6 +30363,10 @@
             "format": "int32",
             "description": "Port scan probes per second (default: 500)",
             "minimum": 0
+          },
+          "trust_port_only_detections": {
+            "type": "boolean",
+            "description": "Whether an open TCP port alone is enough to record a host on a subnet the daemon reaches\n*through* something (default: false).\n\nOn a subnet the daemon has an interface on, ARP answers first and this never applies. On a\nrouted one every address arrives enumerated, and a middlebox that completes the TCP handshake\nfor addresses with nothing behind them — a FortiGate session helper, a load balancer, a\nscrubbing appliance — makes every address look open. With this off, such an address is\nrecorded only when something actually answered: a probe that spoke the protocol, an endpoint\nthat replied, a credential that authenticated.\n\nTurning it on restores the older behaviour for hosts whose every open port is one Scanopy\ncannot interrogate. That is a real class of host — a bespoke TCP service on a routed subnet —\nwhich is why the escape hatch exists rather than the rule simply being absolute."
           },
           "use_npcap_arp": {
             "type": "boolean",
