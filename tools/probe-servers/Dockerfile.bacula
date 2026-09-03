@@ -1,0 +1,13 @@
+# A Bacula Director, for the CRAM-MD5 challenge on 9101. The published images are amd64-only or
+# unmaintained; Debian's package is neither.
+FROM debian:bookworm-slim
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y bacula-director bacula-director-sqlite3 bacula-console && rm -rf /var/lib/apt/lists/*
+# The packaged config points at a catalog the postinst sets up interactively. Everything the probe
+# touches happens before any of that, so the Director is cut back to the resources it refuses to
+# start without — and it must actually start, or 9101 would simply be closed and the test would
+# report "no server listening" rather than a failure.
+RUN printf 'Director {\n Name = probe-dir\n QueryFile = "/usr/share/bacula-director/query.sql"\n WorkingDirectory = "/var/lib/bacula"\n PidDirectory = "/run/bacula"\n Maximum Concurrent Jobs = 1\n Password = "probepassword"\n Messages = Standard\n DirPort = 9101\n DirAddress = 0.0.0.0\n}\nCatalog {\n Name = probe-catalog\n dbname = "bacula"\n dbuser = "bacula"\n dbpassword = ""\n}\nMessages {\n Name = Standard\n console = all\n}\nConsole {\n Name = probe-console\n Password = "probepassword"\n CommandACL = status\n}\nPool {\n Name = Default\n Pool Type = Backup\n}\nStorage {\n Name = probe-sd\n Address = localhost\n SDPort = 9103\n Password = "probepassword"\n Device = FileStorage\n Media Type = File\n}\nFileSet {\n Name = probe-set\n Include {\n  Options {\n   signature = MD5\n  }\n  File = /etc/hostname\n }\n}\nClient {\n Name = probe-fd\n Address = localhost\n FDPort = 9102\n Catalog = probe-catalog\n Password = "probepassword"\n}\nJob {\n Name = probe-job\n Type = Backup\n Level = Full\n Client = probe-fd\n FileSet = probe-set\n Storage = probe-sd\n Messages = Standard\n Pool = Default\n}\n' > /etc/bacula/bacula-dir.conf
+RUN mkdir -p /run/bacula /var/lib/bacula && chown -R bacula:bacula /run/bacula /var/lib/bacula 2>/dev/null || true
+RUN sqlite3 /var/lib/bacula/bacula.db < /usr/share/bacula-director/make_sqlite3_tables 2>/dev/null || /usr/share/bacula-director/make_sqlite3_tables 2>/dev/null || true
+EXPOSE 9101
+CMD ["/usr/sbin/bacula-dir","-f","-c","/etc/bacula/bacula-dir.conf"]

@@ -56,6 +56,8 @@ BUILT_SERVERS=(
   "telnet     23:23        probe-telnet"
   "nfs        2049:2049    probe-nfs"
   "unbound    8953:8953    probe-unbound|-p|127.0.0.1:5353:53/udp"
+  "salt       4505:4505    probe-salt|-p|127.0.0.1:4506:4506"
+  "bacula     9101:9101    probe-bacula"
   "ldap       389:389      probe-ldap"
   "nut        3493:3493    probe-nut"
   "checkmk    6556:6556    probe-checkmk"
