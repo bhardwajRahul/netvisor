@@ -24,6 +24,7 @@ pub mod amqp;
 pub mod cassandra;
 pub mod checkmk;
 pub mod dns_tcp;
+pub mod docker_swarm;
 pub mod ethernet_ip;
 pub mod ftp;
 pub mod ike;
@@ -52,7 +53,9 @@ pub mod sip;
 pub mod smb;
 pub mod ssh;
 pub mod telnet;
+pub mod tls;
 pub mod udp;
+pub mod unbound_control;
 pub mod zabbix;
 
 use anyhow::Error;
