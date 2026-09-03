@@ -29,12 +29,14 @@ pub mod dns_tcp;
 pub mod docker_swarm;
 pub mod ethernet_ip;
 pub mod ftp;
+pub mod h323;
 pub mod ike;
 pub mod kafka;
 pub mod kerberos;
 pub mod ldap;
 #[cfg(test)]
 mod live_servers;
+pub mod mgcp;
 #[cfg(test)]
 mod middlebox;
 pub mod modbus;
@@ -55,6 +57,7 @@ pub mod sip;
 pub mod smb;
 pub mod ssh;
 pub mod telnet;
+pub mod tftp;
 pub mod tls;
 pub mod udp;
 pub mod unbound_control;
@@ -347,6 +350,40 @@ pub(crate) async fn request_exact(
     let _ = tokio::time::timeout(SCAN_TIMEOUT, read_all).await;
     received.truncate(want);
     received
+}
+
+/// Send one datagram to `port` and read one back.
+///
+/// The UDP sibling of [`request_response`]. Only the source *address* is checked, deliberately not
+/// the source port: TFTP answers a request to 69 from a freshly allocated ephemeral port, which is
+/// the protocol working correctly rather than a stray packet.
+pub(crate) async fn udp_request_response(
+    ctx: &ProbeContext,
+    port: PortType,
+    request: &[u8],
+    buf_len: usize,
+) -> Vec<u8> {
+    let target = std::net::SocketAddr::new(ctx.ip, port.number());
+    let bind = if ctx.ip.is_ipv6() {
+        "[::]:0"
+    } else {
+        "0.0.0.0:0"
+    };
+    let Ok(socket) = tokio::net::UdpSocket::bind(bind).await else {
+        return Vec::new();
+    };
+    if socket.send_to(request, target).await.is_err() {
+        return Vec::new();
+    }
+
+    let mut buf = vec![0u8; buf_len];
+    match tokio::time::timeout(SCAN_TIMEOUT, socket.recv_from(&mut buf)).await {
+        Ok(Ok((read, from))) if from.ip() == ctx.ip => {
+            buf.truncate(read);
+            buf
+        }
+        _ => Vec::new(),
+    }
 }
 
 /// `Answered` with no identity when `detected`, `NoAnswer` otherwise.
