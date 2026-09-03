@@ -25,7 +25,7 @@ use crate::server::{
         r#impl::base::{IPAddress, mac_of},
         service::IPAddressService,
     },
-    lldp::{IdentityResolution, LldpResolver, resolver::LldpResolverImpl},
+    lldp::{IdentityResolution, LldpInventorySnapshot, LldpResolver, resolver::LldpResolverImpl},
     networks::service::NetworkService,
     organizations::service::OrganizationService,
     ports::{r#impl::base::Port, service::PortService},

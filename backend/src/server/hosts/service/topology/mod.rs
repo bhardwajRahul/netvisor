@@ -193,11 +193,7 @@ impl HostService {
     /// re-running here is the difference between a link appearing now and appearing after the next
     /// scan.
     async fn resolve_neighbours_once(&self, network_id: Uuid) -> Result<NeighbourPass> {
-        let resolver = LldpResolverImpl::new(
-            self.interface_service.clone(),
-            self.ip_address_service.clone(),
-            self.storage.clone(),
-        );
+        let resolver = self.lldp_inventory_snapshot(network_id).await?;
 
         // The instant before which neighbour evidence counts as stale, from the network's own
         // window — the same helper the `?stale=` list filter uses, so a link and a host cannot
@@ -652,6 +648,46 @@ impl HostService {
             .update(interface, AuthenticatedEntity::System)
             .await?;
         Ok(())
+    }
+
+    /// Read this network's identity columns once, for the pass to resolve against.
+    ///
+    /// The pass asks the same few questions per neighbour-bearing interface, and answering each
+    /// with its own query made it scale with round-trips: ~330 ms on 145 interfaces, and the
+    /// completion request is what waits for it. Three loads replace thousands of round-trips.
+    ///
+    /// Safe to hold across the whole pass because every lookup keys on an identity column and none
+    /// reads the `neighbor_*` columns the pass writes as it goes — see `lldp::snapshot`.
+    async fn lldp_inventory_snapshot(&self, network_id: Uuid) -> Result<LldpInventorySnapshot> {
+        let network = [network_id];
+        let hosts = self
+            .get_all(StorableFilter::<Host>::new_from_network_ids(&network).live())
+            .await?;
+        let interfaces = self
+            .interface_service
+            .get_all(StorableFilter::<Interface>::new_from_network_ids(&network).live())
+            .await?;
+        let addresses = self
+            .ip_address_service
+            .get_all(StorableFilter::<IPAddress>::new_from_network_ids(&network).live())
+            .await?;
+
+        Ok(LldpInventorySnapshot::new(&hosts, &interfaces, &addresses))
+    }
+
+    /// How many interfaces on this network advertise a neighbour.
+    ///
+    /// Only for the warning raised when resolution is cut short, which is why it costs a query
+    /// rather than being threaded out of the pass: on every other completion the pass returns
+    /// normally and nothing asks. Best-effort — a warning that cannot say "how many" is still
+    /// worth raising, so a failure here reports zero rather than suppressing the warning.
+    pub async fn neighbour_bearing_interface_count(&self, network_id: Uuid) -> u32 {
+        let filter = StorableFilter::<Interface>::new_for_lldp_neighbors_in_network(network_id);
+        self.interface_service
+            .get_all(filter)
+            .await
+            .map(|found| found.len() as u32)
+            .unwrap_or(0)
     }
 
     /// Resolve FDB (bridge forwarding database) single-MAC ports to neighbor links.

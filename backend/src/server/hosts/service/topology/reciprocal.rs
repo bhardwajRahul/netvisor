@@ -52,7 +52,7 @@ impl HostService {
     pub(super) async fn build_neighbor_adjacency(
         &self,
         network_id: Uuid,
-        resolver: &LldpResolverImpl,
+        resolver: &impl LldpResolver,
         evidence_cutoff: DateTime<Utc>,
     ) -> Result<NeighborAdjacency> {
         let filter = StorableFilter::<Interface>::new_for_lldp_neighbors_in_network(network_id);
@@ -159,7 +159,7 @@ impl HostService {
         interface: &Interface,
         bound_id: Uuid,
         reciprocal: &HashMap<Uuid, (Uuid, Uuid)>,
-        resolver: &LldpResolverImpl,
+        resolver: &impl LldpResolver,
     ) -> Result<PortBinding> {
         if let Some(&(paired_id, _)) = reciprocal.get(&interface.id) {
             return Ok(if paired_id == bound_id {

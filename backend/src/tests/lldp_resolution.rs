@@ -7,6 +7,7 @@
 //! test that never touches a query plan proves the resolver agrees with itself.
 
 use crate::server::ip_addresses::r#impl::base::{MacEvidence, MacEvidenceValue};
+use crate::server::lldp::LldpInventorySnapshot;
 use crate::server::shared::attribution::{AttributeSource, Attributed};
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -675,4 +676,171 @@ async fn interface_lookups_do_not_cross_a_host_boundary() {
             .await,
         IdentityResolution::NotFound
     );
+}
+
+// ---------------------------------------------------------------------------
+// The snapshot resolver must answer exactly as the queries do
+// ---------------------------------------------------------------------------
+
+/// `LldpInventorySnapshot` serves the same lookups from a preloaded network instead of a query
+/// apiece, so that the resolution pass stops scaling with round-trips. That is only safe if it is
+/// *indistinguishable* from the queries, and every interesting case here is one where the honest
+/// answer is "this identifies nothing": a name two ports share, a MAC two hosts carry, a virtual
+/// row that must not contest a physical lookup.
+///
+/// Asserting the two implementations against each other rather than against expected values is
+/// deliberate. Restating the verdicts would fossilise today's ladder into a second place that has
+/// to be edited whenever the real one changes; comparing them keeps the query implementation as
+/// the specification and fails only when they disagree.
+#[tokio::test]
+async fn the_snapshot_resolver_answers_exactly_as_the_queries_do() {
+    let lab = Lab::new().await;
+
+    // A device identified every way the ladder knows, with a port named across all three columns.
+    let switch = lab
+        .host_with("switch-a", Some("00:11:22:33:44:00"), Some("switch-a"))
+        .await;
+    lab.interface(
+        switch.id,
+        1,
+        "GigabitEthernet1/0/1",
+        Some("Gi1/0/1"),
+        Some("uplink"),
+        Some("00:11:22:33:44:01"),
+        if_type::ETHERNET_CSMA_CD,
+    )
+    .await;
+    // A virtual row carrying the chassis MAC: excluded from the physical-only port lookup, but it
+    // still contributes its host to the network-wide MAC tier.
+    lab.interface(
+        switch.id,
+        2,
+        "Vlan10",
+        Some("Vl10"),
+        None,
+        Some("00:11:22:33:44:00"),
+        if_type::PROP_VIRTUAL,
+    )
+    .await;
+    // Two ports of one host sharing a MAC: ambiguous for the per-host port lookup.
+    lab.port(switch.id, 3, "Gi1/0/3", Some("00:11:22:33:44:09"))
+        .await;
+    lab.port(switch.id, 4, "Gi1/0/4", Some("00:11:22:33:44:09"))
+        .await;
+    lab.ip(
+        switch.id,
+        Ipv4Addr::new(10, 9, 0, 1),
+        Some("00:11:22:33:44:0a"),
+    )
+    .await;
+
+    // A second device sharing the first's sys_name, so that tier identifies neither.
+    let twin = lab.host_with("switch-b", None, Some("switch-a")).await;
+    lab.port(twin.id, 1, "GigabitEthernet1/0/1", None).await;
+
+    // A MikroTik-style bridged port, reached only by the suffix fallback.
+    let mikrotik = lab.host_with("mikrotik", None, Some("mikrotik")).await;
+    lab.port(mikrotik.id, 1, "ether4-Center", None).await;
+
+    let snapshot = LldpInventorySnapshot::new(
+        &lab.storage.hosts.get_all(Default::default()).await.unwrap(),
+        &lab.storage
+            .interfaces
+            .get_all(Default::default())
+            .await
+            .unwrap(),
+        &lab.storage
+            .ip_addresses
+            .get_all(Default::default())
+            .await
+            .unwrap(),
+    );
+
+    let net = lab.network_id;
+    for chassis in ["00:11:22:33:44:00", "does-not-exist"] {
+        assert_eq!(
+            snapshot.find_host_by_chassis_id(chassis, net).await,
+            lab.resolver.find_host_by_chassis_id(chassis, net).await,
+            "find_host_by_chassis_id({chassis})"
+        );
+    }
+    for sys_name in ["switch-a", "mikrotik", "nobody"] {
+        assert_eq!(
+            snapshot.find_host_by_sys_name(sys_name, net).await,
+            lab.resolver.find_host_by_sys_name(sys_name, net).await,
+            "find_host_by_sys_name({sys_name})"
+        );
+    }
+    for mac in [
+        "00:11:22:33:44:00", // on a virtual row, still names its host
+        "00:11:22:33:44:0a", // on an address row
+        "00:11:22:33:44:09", // two ports, one host
+        "00:00:00:00:00:99", // nothing
+        "not-a-mac",
+    ] {
+        assert_eq!(
+            snapshot.find_host_by_mac(mac, net).await,
+            lab.resolver.find_host_by_mac(mac, net).await,
+            "find_host_by_mac({mac})"
+        );
+    }
+    for name in ["GigabitEthernet1/0/1", "Vlan10", "absent"] {
+        assert_eq!(
+            snapshot.find_host_by_if_name(name, net).await,
+            lab.resolver.find_host_by_if_name(name, net).await,
+            "find_host_by_if_name({name})"
+        );
+    }
+    for addr in [Ipv4Addr::new(10, 9, 0, 1), Ipv4Addr::new(10, 9, 0, 254)] {
+        let ip = IpAddr::V4(addr);
+        assert_eq!(
+            snapshot.find_host_by_ip(&ip, net).await,
+            lab.resolver.find_host_by_ip(&ip, net).await,
+            "find_host_by_ip({ip})"
+        );
+    }
+
+    for (host_id, mac) in [
+        (switch.id, "00:11:22:33:44:01"), // one physical port
+        (switch.id, "00:11:22:33:44:00"), // virtual only, so invisible here
+        (switch.id, "00:11:22:33:44:09"), // two physical ports
+        (switch.id, "00:00:00:00:00:99"),
+    ] {
+        assert_eq!(
+            snapshot.find_if_entry_by_mac(mac, host_id).await,
+            lab.resolver.find_if_entry_by_mac(mac, host_id).await,
+            "find_if_entry_by_mac({mac})"
+        );
+    }
+    for (host_id, name) in [
+        (switch.id, "GigabitEthernet1/0/1"),       // if_descr
+        (switch.id, "Gi1/0/1"),                    // if_name
+        (switch.id, "uplink"),                     // if_alias
+        (mikrotik.id, "bridge-LAN/ether4-Center"), // suffix fallback
+        (mikrotik.id, "bridge-LAN/"),              // empty suffix
+        (switch.id, "no-such-port"),
+    ] {
+        assert_eq!(
+            snapshot.find_if_entry_by_name(name, host_id).await,
+            lab.resolver.find_if_entry_by_name(name, host_id).await,
+            "find_if_entry_by_name({name})"
+        );
+    }
+    for (host_id, if_index) in [(switch.id, 1), (switch.id, 99)] {
+        assert_eq!(
+            snapshot.find_if_entry_by_if_index(if_index, host_id).await,
+            lab.resolver
+                .find_if_entry_by_if_index(if_index, host_id)
+                .await,
+            "find_if_entry_by_if_index({if_index})"
+        );
+    }
+    for addr in [Ipv4Addr::new(10, 9, 0, 1), Ipv4Addr::new(10, 9, 0, 254)] {
+        let ip = IpAddr::V4(addr);
+        assert_eq!(
+            snapshot.find_if_entry_by_ip(&ip, switch.id).await,
+            lab.resolver.find_if_entry_by_ip(&ip, switch.id).await,
+            "find_if_entry_by_ip({ip})"
+        );
+    }
 }

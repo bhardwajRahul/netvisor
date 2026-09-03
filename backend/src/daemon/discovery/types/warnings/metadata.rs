@@ -197,6 +197,8 @@ impl DiscoveryWarningCode {
 
             Self::ProvisionalSubnetInferred => &["count"],
 
+            Self::NeighbourResolutionIncomplete => &["budget_seconds", "neighbours"],
+
             Self::WarningsTruncated => &["elided"],
             Self::Unknown => &["detail"],
         }
@@ -255,6 +257,9 @@ impl DiscoveryWarningCode {
             // is being asked to confirm it, which is a different thing from something going wrong.
             | Self::ProvisionalSubnetInferred
             | Self::Unknown => Severity::Informational,
+            // Links are missing that the device did advertise, which is data loss for this scan
+            // rather than something for the operator to confirm.
+            Self::NeighbourResolutionIncomplete => Severity::Degraded,
         }
     }
 
@@ -290,7 +295,9 @@ impl DiscoveryWarningCode {
             | Self::ProvisionalSubnetInferred
             // Duplicate host records are a Scanopy-side data problem, and consolidating them is a
             // shipped action.
-            | Self::LldpNeighbourAmbiguous => WarningRemedy::FixInScanopy,
+            | Self::LldpNeighbourAmbiguous
+            // Narrowing what one scan covers is the lever that brings the pass back inside budget.
+            | Self::NeighbourResolutionIncomplete => WarningRemedy::FixInScanopy,
 
             // The device says one thing and serves another. No Scanopy setting reaches these:
             // what has to change is the agent's view of its own tables.
@@ -401,6 +408,7 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
             Self::LldpPortNotFound => "Advertised port not found",
             Self::LldpPortAmbiguous => "Advertised port not unique",
             Self::ProvisionalSubnetInferred => "Address range assumed, please confirm",
+            Self::NeighbourResolutionIncomplete => "Link resolution did not finish",
             Self::WarningsTruncated => "Some warnings not recorded",
             Self::Unknown => "Warning from another version",
         }
@@ -535,6 +543,9 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
             }
             Self::ProvisionalSubnetInferred => {
                 "{count} subnet(s) on this network have a range Scanopy assumed rather than read, because devices reported addresses in them that nothing scanned holds. Nothing advertises a netmask, so the range around an address is a convention — confirm or correct it on the subnet. No daemon has an interface on these ranges, and they are reported on every scan until confirmed."
+            }
+            Self::NeighbourResolutionIncomplete => {
+                "Matching LLDP/CDP neighbours to the devices and ports they name was stopped after {budget_seconds}s, with {neighbours} interface(s) advertising a neighbour on this network. Physical Topology is missing links this scan would otherwise have drawn; the next scan retries from scratch. Narrow what the scan covers, or split the network across daemons, if it keeps happening."
             }
             Self::WarningsTruncated => {
                 "{elided} further warnings from this scan were not recorded, because it produced more than the scan record holds. Narrow what the scan covers to see the rest."
