@@ -7069,6 +7069,18 @@ export interface components {
             /** @enum {string} */
             code: "CredentialTimedOut";
         }) | {
+            /**
+             * Format: int32
+             * @description How many addresses in it answered a connect and nothing else.
+             */
+            declined: number;
+            /** @description The subnet the addresses are in. */
+            cidr: string;
+            /** @enum {string} */
+            code: "ConnectionsWithoutProtocolResponse";
+            /** @description The ports that completed a handshake, most frequent first. */
+            ports: number[];
+        } | {
             /** @enum {string} */
             code: "ScanTimeLimitWithEstimate";
             /**

@@ -1715,6 +1715,8 @@
 	"meta_warning_codes_ClaimedCountReadCutShort_name": "Claimed count, read cut short",
 	"meta_warning_codes_ClaimedCountUnderRead_description": "{addresses} reported {source} as {expected}, but only {observed} could be read. What was read is recorded; a device may be misreporting its own count, or may be declining to serve the rest of the table to this credential.",
 	"meta_warning_codes_ClaimedCountUnderRead_name": "Fewer rows than the device claims",
+	"meta_warning_codes_ConnectionsWithoutProtocolResponse_description": "{declined} address(es) in {cidr} completed a TCP connection on {ports} and then answered nothing, so no host was recorded at any of them. Something in the path — a firewall session helper, a load balancer, a scrubbing appliance — answers for addresses that hold no device, and a bare handshake cannot tell one from the other. If those addresses really do hold devices, scan the subnet from a daemon with an interface on it; if they are empty, nothing here needs fixing.",
+	"meta_warning_codes_ConnectionsWithoutProtocolResponse_name": "Handshakes with nothing behind them",
 	"meta_warning_codes_CredentialCollectionFailed_description": "The {credential} credential for {addresses} authenticated and then failed while collecting, so that data is missing rather than out of date. ({detail})",
 	"meta_warning_codes_CredentialCollectionFailed_name": "Collection failed after authenticating",
 	"meta_warning_codes_CredentialCollectionTimedOut_description": "The {credential} credential for {addresses} authenticated and then ran out of time before it finished collecting — rescan separately, or narrow what the scan covers. ({detail})",

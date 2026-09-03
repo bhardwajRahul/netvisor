@@ -297,6 +297,22 @@ pub enum DiscoveryWarning {
     CredentialTimedOut(CredentialAttempt),
 
     // ---- Scan-level ------------------------------------------------------
+    /// Addresses on a routed subnet completed a TCP handshake and then answered nothing, so no
+    /// host was recorded at any of them.
+    ///
+    /// The shape a middlebox in the path produces: a firewall session helper, a load balancer or a
+    /// scrubbing appliance answering on behalf of addresses with nothing behind them. One warning
+    /// per subnet rather than per address — the case that raises it raises it for every address in
+    /// the range, and 254 copies of a sentence is not 254 findings.
+    #[schema(title = "ConnectionsWithoutProtocolResponse")]
+    ConnectionsWithoutProtocolResponse {
+        /// The subnet the addresses are in.
+        cidr: String,
+        /// How many addresses in it answered a connect and nothing else.
+        declined: u32,
+        /// The ports that completed a handshake, most frequent first.
+        ports: Vec<u16>,
+    },
     /// The run hit its global time limit, with an estimate of the work left.
     #[schema(title = "ScanTimeLimitWithEstimate")]
     ScanTimeLimitWithEstimate {
@@ -528,6 +544,7 @@ pub enum DiscoveryWarningCode {
     CredentialCollectionTimedOut,
     CredentialUnreachable,
     CredentialTimedOut,
+    ConnectionsWithoutProtocolResponse,
     ScanTimeLimitWithEstimate,
     ScanTimeLimit,
     LldpNeighbourNotFound,
@@ -602,6 +619,9 @@ impl DiscoveryWarning {
             }
             Self::CredentialUnreachable(_) => DiscoveryWarningCode::CredentialUnreachable,
             Self::CredentialTimedOut(_) => DiscoveryWarningCode::CredentialTimedOut,
+            Self::ConnectionsWithoutProtocolResponse { .. } => {
+                DiscoveryWarningCode::ConnectionsWithoutProtocolResponse
+            }
             Self::ScanTimeLimitWithEstimate { .. } => {
                 DiscoveryWarningCode::ScanTimeLimitWithEstimate
             }
@@ -662,7 +682,8 @@ impl DiscoveryWarning {
             | Self::CredentialUnreachable(a)
             | Self::CredentialTimedOut(a) => Some(a.integration),
 
-            Self::ScanTimeLimitWithEstimate { .. }
+            Self::ConnectionsWithoutProtocolResponse { .. }
+            | Self::ScanTimeLimitWithEstimate { .. }
             | Self::ScanTimeLimit { .. }
             | Self::LldpNeighbourNotFound(_)
             | Self::LldpNeighbourAmbiguous(_)

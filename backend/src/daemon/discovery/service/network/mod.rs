@@ -5,7 +5,7 @@ pub mod mdns;
 mod scan;
 mod subnets;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 
 use cidr::IpCidr;
@@ -17,11 +17,13 @@ use mac_address::MacAddress;
 use uuid::Uuid;
 
 use crate::daemon::discovery::integration::IntegrationRegistry;
+use crate::daemon::discovery::types::warnings::DiscoveryWarning;
 use crate::daemon::utils::scanner::ScanConcurrencyController;
 use crate::server::credentials::r#impl::mapping::CredentialQueryPayloadDiscriminants;
 use crate::server::discovery::r#impl::scan_settings::ScanSettings;
 use crate::server::discovery::r#impl::types::HostNamingFallback;
 use crate::server::ip_addresses::r#impl::base::IPAddress;
+use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::base::Service;
 use crate::server::subnets::r#impl::base::Subnet;
 
@@ -76,6 +78,22 @@ pub struct NetworkScan {
     /// Precomputed TCP port set: discovery ports, credential-required ports, and
     /// for a rescan the ports already known on the target.
     light_scan_ports: HashSet<u16>,
+    /// Addresses declined for lack of evidence, by subnet.
+    ///
+    /// Aggregated rather than warned per address: a middlebox fronting a /24 declines 254 of them
+    /// for one reason, and 254 copies of a sentence is not 254 findings. Emitted as one warning per
+    /// subnet when the run finishes.
+    declined: std::sync::Arc<std::sync::Mutex<HashMap<String, DeclinedAddresses>>>,
+}
+
+/// What one subnet's declined addresses had in common.
+#[derive(Default)]
+pub(super) struct DeclinedAddresses {
+    /// How many addresses in the subnet answered a connect and nothing else.
+    pub(super) count: u32,
+    /// How often each port completed a handshake. A middlebox answers the same set at every
+    /// address, so the frequency is what distinguishes its ports from a real host's.
+    pub(super) ports: std::collections::BTreeMap<u16, u32>,
 }
 
 impl NetworkScan {
@@ -120,6 +138,27 @@ impl NetworkScan {
             credential_mappings,
             target_ips,
             light_scan_ports,
+            declined: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Record an address declined for want of evidence, for the end-of-run warning.
+    pub(super) fn note_declined_address(&self, subnet: &IpCidr, open_ports: &[PortType]) {
+        let Ok(mut declined) = self.declined.lock() else {
+            return;
+        };
+        let entry = declined.entry(subnet.to_string()).or_default();
+        entry.count = entry.count.saturating_add(1);
+        for port in open_ports {
+            *entry.ports.entry(port.number()).or_default() += 1;
+        }
+    }
+
+    /// One warning per subnet that declined anything, most-declined first.
+    pub(super) fn declined_warnings(&self) -> Vec<DiscoveryWarning> {
+        match self.declined.lock() {
+            Ok(declined) => declined_warnings(&declined),
+            Err(_) => Vec::new(),
         }
     }
 
@@ -246,6 +285,45 @@ static PROBE_COVERED_PORTS: std::sync::LazyLock<
         .map(|probe| probe.port())
         .collect()
 });
+
+/// One warning per subnet that declined an address, most-declined first.
+///
+/// Free function rather than a method so the aggregation is testable without standing up a whole
+/// [`NetworkScan`], which is what the shape of this needs checking for: the grouping, the counts and
+/// the port ordering.
+pub(super) fn declined_warnings(
+    declined: &HashMap<String, DeclinedAddresses>,
+) -> Vec<DiscoveryWarning> {
+    let mut warnings: Vec<(u32, DiscoveryWarning)> = declined
+        .iter()
+        .map(|(subnet, addresses)| {
+            // Most-answered port first: a middlebox answers the same set at every address, so
+            // frequency is what tells its ports apart from one real host's.
+            let mut ports: Vec<(u16, u32)> =
+                addresses.ports.iter().map(|(p, n)| (*p, *n)).collect();
+            ports.sort_by_key(|(port, seen)| (std::cmp::Reverse(*seen), *port));
+            (
+                addresses.count,
+                DiscoveryWarning::ConnectionsWithoutProtocolResponse {
+                    cidr: subnet.clone(),
+                    declined: addresses.count,
+                    ports: ports.into_iter().map(|(port, _)| port).collect(),
+                },
+            )
+        })
+        .collect();
+    // Most-declined subnet first, then by name so the order is stable across runs.
+    warnings.sort_by(|(a_count, a), (b_count, b)| {
+        b_count.cmp(a_count).then_with(|| match (a, b) {
+            (
+                DiscoveryWarning::ConnectionsWithoutProtocolResponse { cidr: a, .. },
+                DiscoveryWarning::ConnectionsWithoutProtocolResponse { cidr: b, .. },
+            ) => a.cmp(b),
+            _ => std::cmp::Ordering::Equal,
+        })
+    });
+    warnings.into_iter().map(|(_, warning)| warning).collect()
+}
 
 /// TCP ports claimed only by a definition that matches on the connect alone.
 ///
@@ -677,5 +755,85 @@ mod enumerated_evidence {
             &validated(&[]),
             TRUSTING
         ));
+    }
+}
+
+#[cfg(test)]
+mod declined_warning {
+    use super::{DeclinedAddresses, declined_warnings};
+    use crate::daemon::discovery::types::warnings::DiscoveryWarning;
+    use std::collections::{BTreeMap, HashMap};
+
+    fn declined(count: u32, ports: &[(u16, u32)]) -> DeclinedAddresses {
+        DeclinedAddresses {
+            count,
+            ports: ports.iter().copied().collect::<BTreeMap<_, _>>(),
+        }
+    }
+
+    /// The reported shape: a FortiGate fronting a /24 answers the same helper ports at every
+    /// address. One warning for the subnet, not 254 for the addresses.
+    #[test]
+    fn a_whole_range_of_declined_addresses_is_one_warning() {
+        let mut map = HashMap::new();
+        map.insert(
+            "10.77.0.0/24".to_owned(),
+            declined(254, &[(5060, 254), (21, 254), (554, 254)]),
+        );
+
+        let warnings = declined_warnings(&map);
+        assert_eq!(warnings.len(), 1);
+        let DiscoveryWarning::ConnectionsWithoutProtocolResponse { cidr, declined, .. } =
+            &warnings[0]
+        else {
+            panic!("the only warning this raises");
+        };
+        assert_eq!(cidr, "10.77.0.0/24");
+        assert_eq!(*declined, 254);
+    }
+
+    /// Ports the middlebox answers everywhere come first. The ones a single real host happened to
+    /// have open are the tail, and reading the sentence top-down should describe the middlebox.
+    #[test]
+    fn the_ports_the_middlebox_answers_lead() {
+        let mut map = HashMap::new();
+        map.insert(
+            "10.77.0.0/24".to_owned(),
+            declined(254, &[(8080, 1), (5060, 254), (9999, 2), (21, 254)]),
+        );
+
+        let DiscoveryWarning::ConnectionsWithoutProtocolResponse { ports, .. } =
+            &declined_warnings(&map)[0]
+        else {
+            panic!("the only warning this raises");
+        };
+        // 21 and 5060 answered at every address; between equal counts, the lower port first.
+        assert_eq!(ports, &[21, 5060, 9999, 8080]);
+    }
+
+    /// Several routed subnets behind one appliance. The worst-affected leads, and the order is
+    /// stable so a rerun does not reshuffle the list.
+    #[test]
+    fn subnets_are_ordered_by_how_many_addresses_each_declined() {
+        let mut map = HashMap::new();
+        map.insert("10.77.1.0/24".to_owned(), declined(12, &[(5060, 12)]));
+        map.insert("10.77.2.0/24".to_owned(), declined(254, &[(5060, 254)]));
+        map.insert("10.77.3.0/24".to_owned(), declined(12, &[(5060, 12)]));
+
+        let subnets: Vec<String> = declined_warnings(&map)
+            .into_iter()
+            .map(|w| match w {
+                DiscoveryWarning::ConnectionsWithoutProtocolResponse { cidr, .. } => cidr,
+                _ => unreachable!("only this warning is produced here"),
+            })
+            .collect();
+        assert_eq!(subnets, ["10.77.2.0/24", "10.77.1.0/24", "10.77.3.0/24"]);
+    }
+
+    /// A clean run raises nothing, which is what keeps this out of the way of networks it has
+    /// nothing to say about.
+    #[test]
+    fn a_run_that_declined_nothing_warns_about_nothing() {
+        assert!(declined_warnings(&HashMap::new()).is_empty());
     }
 }

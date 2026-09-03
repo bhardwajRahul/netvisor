@@ -1256,6 +1256,16 @@ impl NetworkScan {
             issues.extend(unanswered);
         }
 
+        // Addresses that completed a handshake and then answered nothing. Raised per subnet, at the
+        // end, because the middlebox that causes it causes it for the whole range at once.
+        let declined = self.declined_warnings();
+        if !declined.is_empty()
+            && let Ok(session_state) = ops.get_session().await
+            && let Ok(mut warnings) = session_state.warnings.lock()
+        {
+            warnings.extend(declined);
+        }
+
         let discovered = hosts_discovered.load(Ordering::Relaxed);
         tracing::info!(
             hosts_discovered = discovered,
@@ -1555,6 +1565,9 @@ impl NetworkScan {
                     open_ports = ?open_ports.iter().map(|p| p.number()).collect::<Vec<_>>(),
                     "Nothing answered on this enumerated address; recording no host"
                 );
+                // Recorded rather than warned here: the same reason applies to every address in
+                // the range, and the run raises one warning per subnet at the end.
+                self.note_declined_address(&subnet.base.cidr, &open_ports);
                 return Ok(None);
             }
         }

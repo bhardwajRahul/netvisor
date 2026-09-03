@@ -23084,6 +23084,44 @@
           },
           {
             "type": "object",
+            "title": "ConnectionsWithoutProtocolResponse",
+            "description": "Addresses on a routed subnet completed a TCP handshake and then answered nothing, so no\nhost was recorded at any of them.\n\nThe shape a middlebox in the path produces: a firewall session helper, a load balancer or a\nscrubbing appliance answering on behalf of addresses with nothing behind them. One warning\nper subnet rather than per address — the case that raises it raises it for every address in\nthe range, and 254 copies of a sentence is not 254 findings.",
+            "required": [
+              "cidr",
+              "declined",
+              "ports",
+              "code"
+            ],
+            "properties": {
+              "cidr": {
+                "type": "string",
+                "description": "The subnet the addresses are in."
+              },
+              "declined": {
+                "type": "integer",
+                "format": "int32",
+                "description": "How many addresses in it answered a connect and nothing else.",
+                "minimum": 0
+              },
+              "code": {
+                "type": "string",
+                "enum": [
+                  "ConnectionsWithoutProtocolResponse"
+                ]
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                },
+                "description": "The ports that completed a handshake, most frequent first."
+              }
+            }
+          },
+          {
+            "type": "object",
             "title": "ScanTimeLimitWithEstimate",
             "description": "The run hit its global time limit, with an estimate of the work left.",
             "required": [
