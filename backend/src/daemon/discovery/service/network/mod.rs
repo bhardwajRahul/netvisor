@@ -252,6 +252,23 @@ impl LivenessEvidence {
             Self::Enumerated => false,
         }
     }
+
+    /// Whether the daemon shares a broadcast domain with the address.
+    ///
+    /// A different question from [`Self::is_confirmed_live`], and the middlebox lab showed what
+    /// conflating them costs. ARP and mDNS are link-local, so an answer means the daemon is on the
+    /// segment and a TCP connect reaches the device itself. **ICMP is routed.** An echo reply proves
+    /// something is alive at that address and says nothing about what answers its TCP ports — on a
+    /// subnet fronted by a session helper that is the appliance, for live and empty addresses alike.
+    ///
+    /// So "a host is here" and "this port is really open on it" need different evidence, and only
+    /// the second one governs whether a connect-only definition may name a service.
+    pub(super) fn reached_on_link(&self) -> bool {
+        match self {
+            Self::Arp(_) | Self::Mdns => true,
+            Self::Icmp | Self::Enumerated => false,
+        }
+    }
 }
 
 /// Whether `addr` can be a host address within `cidr`.
@@ -755,6 +772,39 @@ mod enumerated_evidence {
             &validated(&[]),
             TRUSTING
         ));
+    }
+}
+
+#[cfg(test)]
+mod link_local_evidence {
+    use super::LivenessEvidence;
+    use mac_address::MacAddress;
+
+    /// The case the middlebox lab produced. 10.77.0.50 is a real host behind an appliance that
+    /// answers TCP for the whole range; it replies to ICMP, so it is unambiguously live — and the
+    /// scan still came back with a Veeam server on it, because the appliance answered 9392 on its
+    /// behalf. Being alive is not evidence that its own ports were reached.
+    #[test]
+    fn an_icmp_reply_does_not_mean_we_reached_the_host_itself() {
+        assert!(LivenessEvidence::Icmp.is_confirmed_live());
+        assert!(!LivenessEvidence::Icmp.reached_on_link());
+    }
+
+    /// ARP and mDNS do not cross a router, so an answer places the daemon on the segment and a TCP
+    /// connect goes to the device rather than to whatever fronts it. A printer's JetDirect on an
+    /// on-link subnet must keep matching.
+    #[test]
+    fn arp_and_mdns_place_us_on_the_segment() {
+        let evidence = LivenessEvidence::Arp(MacAddress::new([0, 0x1a, 0x2b, 0x3c, 0x4d, 0x5e]));
+        assert!(evidence.reached_on_link());
+        assert!(LivenessEvidence::Mdns.reached_on_link());
+    }
+
+    /// An enumerated address is neither, which is where this began.
+    #[test]
+    fn an_enumerated_address_is_neither_live_nor_on_link() {
+        assert!(!LivenessEvidence::Enumerated.is_confirmed_live());
+        assert!(!LivenessEvidence::Enumerated.reached_on_link());
     }
 }
 

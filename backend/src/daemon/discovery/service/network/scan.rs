@@ -1625,9 +1625,12 @@ impl NetworkScan {
         // other port on its behalf, so a connect-only definition would attach its service to a host
         // that has nothing of the sort. Veeam on 9392 and Denodo on 9090 are the remaining cases.
         //
-        // Only on an address nothing answered for: on-link hosts, and any host that ARP or ICMP
-        // confirmed, keep matching exactly as before.
-        if !evidence.is_confirmed_live() && !self.scan_settings.trust_port_only_detections {
+        // Keyed on `reached_on_link` rather than `is_confirmed_live`, which is the distinction the
+        // lab caught: 10.77.0.50 is a real host that answers ICMP, so it was confirmed live, and the
+        // middlebox answered 9392 on its behalf anyway. It came back carrying a Veeam server it does
+        // not run. ICMP proves the host is there; only ARP or mDNS proves we are on its segment and
+        // reaching its ports rather than the appliance in front of them.
+        if !evidence.reached_on_link() && !self.scan_settings.trust_port_only_detections {
             let before = open_ports.len();
             open_ports.retain(|port| !CONNECT_ONLY_PORTS.contains(port));
             if open_ports.len() != before {
