@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:000245e5-b127-4faa-8822-11b8969a38b3",
+  "serialNumber": "urn:uuid:c38fe83d-2321-43ba-be0f-24a115fb9a4f",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-08-25T04:03:34Z",
+    "timestamp": "2026-09-01T12:55:59Z",
     "tools": {
       "components": [
         {
@@ -40782,12 +40782,12 @@
       ]
     },
     {
-      "bom-ref": "pkg:cargo/scanopy-server@0.17.12?package-id=19819c3df150ac23",
+      "bom-ref": "pkg:cargo/scanopy-server@0.17.13?package-id=7769c33418873880",
       "type": "library",
       "name": "scanopy-server",
-      "version": "0.17.12",
-      "cpe": "cpe:2.3:a:scanopy-server:scanopy-server:0.17.12:*:*:*:*:*:*:*",
-      "purl": "pkg:cargo/scanopy-server@0.17.12",
+      "version": "0.17.13",
+      "cpe": "cpe:2.3:a:scanopy-server:scanopy-server:0.17.13:*:*:*:*:*:*:*",
+      "purl": "pkg:cargo/scanopy-server@0.17.13",
       "properties": [
         {
           "name": "syft:package:foundBy",
@@ -40807,23 +40807,23 @@
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy-server:scanopy_server:0.17.12:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy-server:scanopy_server:0.17.13:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_server:scanopy-server:0.17.12:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_server:scanopy-server:0.17.13:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_server:scanopy_server:0.17.12:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_server:scanopy_server:0.17.13:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy-server:0.17.12:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy-server:0.17.13:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy_server:0.17.12:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy_server:0.17.13:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -40832,12 +40832,12 @@
       ]
     },
     {
-      "bom-ref": "pkg:npm/scanopy-ui@0.17.12?package-id=9fcb51869643c9fa",
+      "bom-ref": "pkg:npm/scanopy-ui@0.17.13?package-id=934405fadab0be12",
       "type": "library",
       "name": "scanopy-ui",
-      "version": "0.17.12",
-      "cpe": "cpe:2.3:a:scanopy-ui:scanopy-ui:0.17.12:*:*:*:*:*:*:*",
-      "purl": "pkg:npm/scanopy-ui@0.17.12",
+      "version": "0.17.13",
+      "cpe": "cpe:2.3:a:scanopy-ui:scanopy-ui:0.17.13:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/scanopy-ui@0.17.13",
       "properties": [
         {
           "name": "syft:package:foundBy",
@@ -40857,23 +40857,23 @@
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy-ui:scanopy_ui:0.17.12:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy-ui:scanopy_ui:0.17.13:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_ui:scanopy-ui:0.17.12:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_ui:scanopy-ui:0.17.13:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_ui:scanopy_ui:0.17.12:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_ui:scanopy_ui:0.17.13:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy-ui:0.17.12:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy-ui:0.17.13:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy_ui:0.17.12:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy_ui:0.17.13:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -56494,11 +56494,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "f307b16f6c483c2777119eaab40c026bd8c8df3f"
+          "content": "1876a564823067719265cb9e203759ce4a4eac9b"
         },
         {
           "alg": "SHA-256",
-          "content": "89be8d28bd075bfd36e3eec7a94c896f3fe0a0e87129be79854f653086ff304b"
+          "content": "69eb01977b05f2b6b9c026dcf0376395a606636cfa3bbf8ee80ee5cfa4d4d48f"
         }
       ]
     },
@@ -56554,11 +56554,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "b6b2f84a8ed68fe17b512f72fc8dfbce98328d0e"
+          "content": "fd15d74fe1b6e73d66cf28e639a8ec96175cd5b9"
         },
         {
           "alg": "SHA-256",
-          "content": "8eb32cd7b084ac84cacbc8945cbe09ba6e19b1dd4ba7222d026e16caf788f409"
+          "content": "3d5555d4976e7dfaad0c049d44a99b0dd2a95d9efc993d4f871a724b5e20e7d4"
         }
       ]
     },
@@ -56614,11 +56614,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "d2e78729638f2c1ee89028e008ba597d5a5fa6d6"
+          "content": "42fe1b34d5628575a819e191bfb45c78f83d92b3"
         },
         {
           "alg": "SHA-256",
-          "content": "073247db713c3506766b5464f3b5bb406ddec672fa04570fd136e934a49afeaf"
+          "content": "0fddd0454fd013ff99552541cc589055eba6c1b41cba19a603bebaf86c61c06f"
         }
       ]
     },
@@ -56644,11 +56644,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "0c0a8be7e287506e4a8e794ee8c26a37140b3f5b"
+          "content": "69245c7baa928a5b44d6fa1d0875313965298e1f"
         },
         {
           "alg": "SHA-256",
-          "content": "7cffb8cac78bf379b90aae7cb390487515d41704ecac6f97ae5b5a64adfe3b5b"
+          "content": "51694fbca8ef597b3653ea8b85be57ebb4d98f424e92dc9494b39de4206b8642"
         }
       ]
     }
@@ -60412,7 +60412,7 @@
       ]
     },
     {
-      "ref": "pkg:cargo/scanopy-server@0.17.12?package-id=19819c3df150ac23",
+      "ref": "pkg:cargo/scanopy-server@0.17.13?package-id=7769c33418873880",
       "dependsOn": [
         "pkg:cargo/anstyle-query@1.1.5?package-id=3eb3e92be11ef569",
         "pkg:cargo/anyhow@1.0.103?package-id=cc88ccfde1e2cc6a",
@@ -60511,6 +60511,7 @@
         "pkg:cargo/serial_test@3.2.0?package-id=354b4edb1420c4fe",
         "pkg:cargo/sha2@0.10.9?package-id=927e05652d1a75e6",
         "pkg:cargo/snmp2@0.5.0?package-id=445d29c1037c1387",
+        "pkg:cargo/socket2@0.6.1?package-id=571ad36f01c2c44c",
         "pkg:cargo/sqlx@0.8.6?package-id=238ae5835b3e0071",
         "pkg:cargo/strum@0.27.2?package-id=9d7f1526d877686a",
         "pkg:cargo/strum_macros@0.27.2?package-id=32a3bed38b5c72dc",
@@ -62850,7 +62851,7 @@
       ]
     },
     {
-      "ref": "pkg:npm/scanopy-ui@0.17.12?package-id=9fcb51869643c9fa",
+      "ref": "pkg:npm/scanopy-ui@0.17.13?package-id=934405fadab0be12",
       "dependsOn": [
         "pkg:npm/%40beyonk/gdpr-cookie-consent-banner@16.0.2?package-id=cd6aef3707be3a0f",
         "pkg:npm/%40peculiar/x509@1.14.3?package-id=f9f09aa6bd0dd2b7",
