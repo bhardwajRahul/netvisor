@@ -1,17 +1,28 @@
 //! MySQL and MariaDB detection by the handshake packet the server sends first.
 //!
-//! The server opens the conversation: a 4-byte packet header, then either protocol version `10`
-//! (the initial handshake) or `0xFF` (an error packet). The error is worth accepting as readily as
-//! the handshake, because the most common one is `Host '…' is not allowed to connect to this MySQL
-//! server` — a server refusing our address by name, which identifies it beyond doubt. So does
-//! `Too many connections`.
+//! The server opens the conversation with either an initial handshake or an error packet. The error
+//! is worth accepting as readily as the handshake, because the most common one is `Host '…' is not
+//! allowed to connect to this MySQL server` — a server refusing our address by name, which
+//! identifies it beyond doubt. So does `Too many connections`.
 //!
-//! The packet header is what makes this a protocol match rather than a coincidence: the first three
-//! bytes are a little-endian payload length that has to agree with how much followed, and the
-//! fourth is a sequence number that is 0 on the first packet of an exchange.
+//! [`mysql_common`] supplies both halves: `PacketCodec` reads the 4-byte header, checks the sequence
+//! id and reassembles a payload split across packets, and `HandshakePacket` / `ErrPacket` decode the
+//! payload. The check this replaced compared two bytes at fixed offsets and a declared length, which
+//! accepted any stream opening with a plausible header followed by `0x0A`.
+//!
+//! `mysql_common` is declared `default-features = false` and that is load bearing rather than tidy:
+//! its default features pull `flate2/zlib`, the **C** zlib backend via `libz-sys`, which on the
+//! static musl release build is a link failure. There is no `libz-sys` in this tree and this must
+//! not be what introduces one.
 
 use anyhow::Error;
 use async_trait::async_trait;
+use bytes::BytesMut;
+use mysql_common::constants::CapabilityFlags;
+use mysql_common::io::ParseBuf;
+use mysql_common::packets::{ErrPacket, HandshakePacket};
+use mysql_common::proto::MyDeserialize;
+use mysql_common::proto::codec::PacketCodec;
 
 use crate::daemon::utils::app_probe::{
     AppProbe, AppProbeOutcome, ProbeContext, presence, read_greeting,
@@ -19,12 +30,8 @@ use crate::daemon::utils::app_probe::{
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::patterns::ClientProbe;
 
-/// The only protocol version any current server sends.
-const PROTOCOL_VERSION_10: u8 = 0x0A;
-/// First byte of an error packet.
-const ERROR_PACKET: u8 = 0xFF;
-/// Payload length (3) plus sequence id (1).
-const HEADER_LEN: usize = 4;
+/// A handshake with a long plugin-auth section still fits comfortably.
+const READ_LIMIT: usize = 1024;
 
 pub struct MySqlProbe;
 
@@ -40,82 +47,138 @@ impl AppProbe for MySqlProbe {
 
     async fn run(&self, ctx: &ProbeContext) -> Result<AppProbeOutcome, Error> {
         Ok(parse_handshake(
-            &read_greeting(ctx, self.port(), 1024).await,
+            &read_greeting(ctx, self.port(), READ_LIMIT).await,
         ))
     }
 }
 
+/// What the server said first.
+#[derive(Debug, PartialEq, Eq)]
+enum Greeting {
+    /// The initial handshake, carrying the server's version string.
+    Handshake { server_version: String },
+    /// An error packet, carrying the code that says why. A refusal is still a MySQL server.
+    Refusal { code: u16 },
+}
+
 /// Whether the opening bytes are a MySQL packet.
 fn parse_handshake(bytes: &[u8]) -> AppProbeOutcome {
-    let Some(header) = bytes.get(..HEADER_LEN) else {
-        return AppProbeOutcome::NoAnswer;
-    };
+    presence(decode_greeting(bytes).is_some())
+}
 
-    let payload_len = u32::from(header[0]) | u32::from(header[1]) << 8 | u32::from(header[2]) << 16;
-    let sequence = header[3];
+fn decode_greeting(bytes: &[u8]) -> Option<Greeting> {
+    // The codec owns the framing: the little-endian payload length, the sequence id (0, since the
+    // server speaks first), and reassembly if the payload spans packets.
+    let mut src = BytesMut::from(bytes);
+    let mut payload = Vec::new();
+    if !PacketCodec::default()
+        .decode(&mut src, &mut payload)
+        .ok()
+        .unwrap_or(false)
+    {
+        return None;
+    }
 
-    // The server speaks first, so this is packet 0 of the exchange. A non-empty payload whose
-    // declared length is not longer than what arrived: the read is capped, so a large handshake can
-    // legitimately be truncated, but a length *shorter* than the bytes received is not this
-    // protocol.
-    let framed =
-        sequence == 0 && payload_len > 0 && payload_len as usize >= bytes.len() - HEADER_LEN;
+    if let Ok(handshake) = HandshakePacket::deserialize((), &mut ParseBuf(&payload)) {
+        return Some(Greeting::Handshake {
+            server_version: String::from_utf8_lossy(handshake.server_version_ref()).into_owned(),
+        });
+    }
 
-    let kind = bytes.get(HEADER_LEN);
-    presence(framed && matches!(kind, Some(&PROTOCOL_VERSION_10) | Some(&ERROR_PACKET)))
+    // No capabilities have been negotiated at this point, which is exactly the context an error
+    // packet arriving before the handshake is sent in.
+    match ErrPacket::deserialize(CapabilityFlags::empty(), &mut ParseBuf(&payload)) {
+        Ok(ErrPacket::Error(error)) => Some(Greeting::Refusal {
+            code: error.error_code(),
+        }),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mysql_common::constants::StatusFlags;
+    use mysql_common::proto::MySerialize;
 
-    /// A real 8.0 handshake: version 10, then a NUL-terminated server version string.
+    fn packet(payload: &[u8]) -> Vec<u8> {
+        let len = payload.len();
+        let mut out = vec![len as u8, (len >> 8) as u8, (len >> 16) as u8, 0x00];
+        out.extend_from_slice(payload);
+        out
+    }
+
+    /// A handshake as a server sends it, built with the same crate that reads it — a hand-laid
+    /// payload is exactly the thing this refactor removed, and getting it subtly wrong here would
+    /// test the fixture rather than the probe.
+    fn handshake_payload() -> Vec<u8> {
+        let packet = HandshakePacket::new(
+            0x0A,
+            &b"8.0.36"[..],
+            1,
+            *b"12345678",
+            Some(&b"9abcdefghijk"[..]),
+            CapabilityFlags::CLIENT_PROTOCOL_41 | CapabilityFlags::CLIENT_PLUGIN_AUTH,
+            0x21,
+            StatusFlags::SERVER_STATUS_AUTOCOMMIT,
+            Some(&b"mysql_native_password"[..]),
+        );
+        let mut out = Vec::new();
+        packet.serialize(&mut out);
+        out
+    }
+
     #[test]
-    fn a_handshake_packet_is_mysql() {
-        let mut packet = vec![0x0B, 0x00, 0x00, 0x00, PROTOCOL_VERSION_10];
-        packet.extend_from_slice(b"8.0.36\0\0\0\0");
+    fn a_handshake_packet_is_mysql_and_names_its_version() {
+        let bytes = packet(&handshake_payload());
         assert_eq!(
-            parse_handshake(&packet),
+            parse_handshake(&bytes),
             AppProbeOutcome::Answered { identity: None }
+        );
+        assert_eq!(
+            decode_greeting(&bytes),
+            Some(Greeting::Handshake {
+                server_version: "8.0.36".to_owned()
+            })
         );
     }
 
-    /// The refusal that identifies a server as surely as the handshake does.
+    /// The refusal that identifies a server as surely as the handshake does — and the case a client
+    /// crate would have collapsed into an opaque connection error.
     #[test]
     fn a_host_not_allowed_error_is_mysql() {
-        let body = b"\xFF\x6A\x04Host '10.1.2.3' is not allowed to connect";
-        let mut packet = vec![body.len() as u8, 0x00, 0x00, 0x00];
-        packet.extend_from_slice(body);
+        // 0xFF, error code 1130 (ER_HOST_NOT_PRIVILEGED), then the message.
+        let mut payload = vec![0xFF];
+        payload.extend_from_slice(&1130u16.to_le_bytes());
+        payload.extend_from_slice(b"Host '10.1.2.3' is not allowed to connect");
+        let bytes = packet(&payload);
         assert_eq!(
-            parse_handshake(&packet),
+            parse_handshake(&bytes),
             AppProbeOutcome::Answered { identity: None }
+        );
+        assert_eq!(
+            decode_greeting(&bytes),
+            Some(Greeting::Refusal { code: 1130 })
         );
     }
 
     #[test]
-    fn silence_or_an_unframed_stream_is_not_mysql() {
+    fn silence_or_another_protocol_is_not_mysql() {
+        let full = packet(&handshake_payload());
         for reply in [
             &b""[..],
             &b"SSH-2.0-OpenSSH_9.6\r\n"[..],
-            &b"\x00\x00\x00"[..],
-            // Correct framing, wrong packet type.
-            &[0x05, 0x00, 0x00, 0x00, 0x42, 0, 0, 0, 0][..],
-            // Right first byte, but the sequence number says this is mid-exchange.
-            &[0x05, 0x00, 0x00, 0x07, PROTOCOL_VERSION_10, 0, 0, 0, 0][..],
-            // A declared length shorter than what arrived is not this framing.
-            &[
-                0x01,
-                0x00,
-                0x00,
-                0x00,
-                PROTOCOL_VERSION_10,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-            ][..],
+            &b"\x0B\x00\x00\x00"[..],
+            // A header whose sequence id is not 0, so it is not the first packet of an exchange.
+            &{
+                let mut wrong = full.clone();
+                wrong[3] = 7;
+                wrong
+            }[..],
+            // A well-formed header followed by a byte that is neither a handshake nor an error.
+            &packet(b"\x99not mysql")[..],
+            // Truncated mid-payload: the length check this replaced accepted it.
+            &full[..full.len() - 12],
         ] {
             assert_eq!(
                 parse_handshake(reply),

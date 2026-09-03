@@ -8,9 +8,20 @@
 //! Correlation is what makes the reply evidence: the correlation id we send comes back in the
 //! response header, so a stream that merely opens with a plausible length is not mistaken for an
 //! answer.
+//!
+//! [`kafka_protocol`] owns the wire format on both sides. Encoding a `RequestHeader` and decoding a
+//! `ResponseHeader` at the right *header version* for the API version is the part that was fiddly
+//! and easy to get subtly wrong; the crate derives it from the message type. The check this replaced
+//! read the correlation id at a fixed offset, which happens to be right for header v0 alone.
+//!
+//! The judgement stays here: a broker answering `UNSUPPORTED_VERSION` is a broker. That is the
+//! positive result, and it is the one a client crate would have raised as an error.
 
 use anyhow::Error;
 use async_trait::async_trait;
+use bytes::BytesMut;
+use kafka_protocol::messages::{ApiKey, ApiVersionsRequest, RequestHeader, ResponseHeader};
+use kafka_protocol::protocol::{Decodable, Encodable, HeaderVersion};
 
 use crate::daemon::utils::app_probe::{
     AppProbe, AppProbeOutcome, ProbeContext, presence, request_response,
@@ -18,21 +29,29 @@ use crate::daemon::utils::app_probe::{
 use crate::server::ports::r#impl::base::PortType;
 use crate::server::services::r#impl::patterns::ClientProbe;
 
-/// `ApiVersions`.
-const API_KEY_API_VERSIONS: i16 = 18;
 /// Version 0, whose request body is empty and whose response header is just the correlation id.
+/// Every broker still answers it, which is the point of asking at the floor of the range.
 const API_VERSION: i16 = 0;
 /// Echoed back by the broker.
 const CORRELATION_ID: i32 = 0x5CA1_0BA1u32 as i32;
 
 /// A v0 `ApiVersions` request with a null client id.
 fn api_versions_request() -> Vec<u8> {
-    let mut body = Vec::new();
-    body.extend_from_slice(&API_KEY_API_VERSIONS.to_be_bytes());
-    body.extend_from_slice(&API_VERSION.to_be_bytes());
-    body.extend_from_slice(&CORRELATION_ID.to_be_bytes());
-    // client_id is a nullable string; -1 is null, which every broker accepts here.
-    body.extend_from_slice(&(-1i16).to_be_bytes());
+    let header = RequestHeader::default()
+        .with_request_api_key(ApiKey::ApiVersions as i16)
+        .with_request_api_version(API_VERSION)
+        .with_correlation_id(CORRELATION_ID)
+        // A nullable string; null is what a client with no configured id sends.
+        .with_client_id(None);
+
+    let mut body = BytesMut::new();
+    let header_version = ApiVersionsRequest::header_version(API_VERSION);
+    header
+        .encode(&mut body, header_version)
+        .expect("the header is built from constants");
+    ApiVersionsRequest::default()
+        .encode(&mut body, API_VERSION)
+        .expect("a v0 ApiVersions body is empty");
 
     let mut request = (body.len() as i32).to_be_bytes().to_vec();
     request.extend_from_slice(&body);
@@ -62,15 +81,23 @@ impl AppProbe for KafkaProbe {
 /// The declared size is checked as well, because a four-byte correlation id on its own is a weak
 /// coincidence guard: the framing plus the echo together are what identify a broker.
 fn parse_reply(bytes: &[u8], correlation_id: i32) -> AppProbeOutcome {
-    let Some(header) = bytes.get(..8) else {
-        return AppProbeOutcome::NoAnswer;
-    };
-    let size = i32::from_be_bytes(header[0..4].try_into().unwrap_or_default());
-    let echoed = i32::from_be_bytes(header[4..8].try_into().unwrap_or_default());
+    presence(echoed_correlation_id(bytes) == Some(correlation_id))
+}
 
-    // The size counts everything after itself, and the read is capped, so it may exceed what
-    // arrived but must account for at least the correlation id.
-    presence(size >= 4 && size as usize >= bytes.len() - 4 && echoed == correlation_id)
+fn echoed_correlation_id(bytes: &[u8]) -> Option<i32> {
+    let size = i32::from_be_bytes(bytes.get(..4)?.try_into().ok()?);
+    let body = bytes.get(4..)?;
+    // The read is capped, so the declared size may exceed what arrived — but a size that does not
+    // account for the bytes received is not this framing.
+    if size < 4 || (size as usize) < body.len() {
+        return None;
+    }
+
+    let mut cursor = BytesMut::from(body);
+    let header_version = kafka_protocol::messages::ApiVersionsResponse::header_version(API_VERSION);
+    ResponseHeader::decode(&mut cursor, header_version)
+        .ok()
+        .map(|header| header.correlation_id)
 }
 
 #[cfg(test)]
@@ -78,10 +105,17 @@ mod tests {
     use super::*;
 
     fn response(correlation_id: i32, body: &[u8]) -> Vec<u8> {
-        let size = (4 + body.len()) as i32;
-        let mut reply = size.to_be_bytes().to_vec();
-        reply.extend_from_slice(&correlation_id.to_be_bytes());
-        reply.extend_from_slice(body);
+        let mut encoded = BytesMut::new();
+        let header_version =
+            kafka_protocol::messages::ApiVersionsResponse::header_version(API_VERSION);
+        ResponseHeader::default()
+            .with_correlation_id(correlation_id)
+            .encode(&mut encoded, header_version)
+            .unwrap();
+        encoded.extend_from_slice(body);
+
+        let mut reply = (encoded.len() as i32).to_be_bytes().to_vec();
+        reply.extend_from_slice(&encoded);
         reply
     }
 
@@ -116,22 +150,34 @@ mod tests {
 
     #[test]
     fn silence_or_another_protocol_is_not_kafka() {
-        for reply in [&b""[..], &b"SSH-2.0-OpenSSH_9.6\r\n"[..], &[0, 0, 0, 4][..]] {
+        for reply in [
+            &b""[..],
+            &b"SSH-2.0-OpenSSH_9.6\r\n"[..],
+            &[0, 0, 0, 4][..],
+            // A size that claims less than what arrived.
+            &[0, 0, 0, 4, 0x5C, 0xA1, 0x0B, 0xA1, 0xFF, 0xFF][..],
+        ] {
             assert_eq!(
                 parse_reply(reply, CORRELATION_ID),
-                AppProbeOutcome::NoAnswer
+                AppProbeOutcome::NoAnswer,
+                "{reply:?}"
             );
         }
     }
 
+    /// The request has to be one a broker will answer, which means the header decodes back to the
+    /// API and correlation id we meant to send.
     #[test]
     fn the_request_is_size_prefixed_and_asks_for_api_versions() {
         let request = api_versions_request();
         let size = i32::from_be_bytes(request[0..4].try_into().unwrap());
         assert_eq!(size as usize, request.len() - 4);
-        assert_eq!(
-            i16::from_be_bytes(request[4..6].try_into().unwrap()),
-            API_KEY_API_VERSIONS
-        );
+
+        let mut body = BytesMut::from(&request[4..]);
+        let header_version = ApiVersionsRequest::header_version(API_VERSION);
+        let header = RequestHeader::decode(&mut body, header_version).unwrap();
+        assert_eq!(header.request_api_key, ApiKey::ApiVersions as i16);
+        assert_eq!(header.correlation_id, CORRELATION_ID);
+        assert_eq!(header.client_id, None, "no client id is sent");
     }
 }
