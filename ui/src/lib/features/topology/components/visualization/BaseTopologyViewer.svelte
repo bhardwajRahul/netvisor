@@ -22,7 +22,6 @@
 		common_rendering
 	} from '$lib/paraglide/messages';
 	import { type Node, type Edge } from '@xyflow/svelte';
-	import { Loader2 } from 'lucide-svelte';
 	import { getViewportForBounds, type Rect } from '@xyflow/system';
 	import { shouldSimplify } from '../../pipeline/render-mode';
 	import {
@@ -685,13 +684,17 @@
 		noteRunStart(source);
 		setLoadInProgress(true);
 		pendingReload = false;
-		// Give the browser one frame to actually draw the indicator before the run starts.
+		// Give the browser one frame to draw the indicator before the run starts.
 		//
 		// Svelte flushes the DOM on a microtask, but painting needs a frame, and a run reaches its
-		// synchronous ELK without yielding one — so the spinner was being added and removed without
-		// ever appearing on screen. Measured: zero renders across a full collapse run. One frame is
-		// ~16ms against eighteen to twenty-two seconds of layout, which is the whole reason there is
-		// something to indicate.
+		// synchronous ELK without yielding one. ~16ms against the eighteen to twenty-two seconds of
+		// layout that are the reason for having an indicator at all.
+		//
+		// Not the fix for the spinner sitting still — that was the icon being an inline SVG, which
+		// the compositor will not drive, so the animation depended on the very thread ELK was
+		// holding. An earlier version of this comment claimed the indicator "never rendered", from a
+		// sampler that ran in-page and was therefore blocked alongside everything else: it recorded
+		// an absence it could not tell apart from the element not existing. It rendered fine.
 		requestAnimationFrame(() => {
 			void runPipeline();
 		});
@@ -1678,13 +1681,13 @@
 			<div class="detail-hidden-badge">
 				{#if $isRenderingTopology}
 					<span class="detail-hidden-row">
-						<Loader2 class="h-3 w-3 flex-shrink-0 animate-spin" />
+						<span class="lod-spinner" aria-hidden="true"></span>
 						{common_rendering()}
 					</span>
 				{/if}
 				{#if detailHidden}
 					<span class="detail-hidden-row">
-						{topology_detailSimplified({ count: $nodes.length })}
+						{topology_detailSimplified()}
 					</span>
 				{/if}
 			</div>
@@ -1743,15 +1746,37 @@
 	}
 
 	/*
-	 * Hint the spin onto the compositor.
+	 * A ring drawn in CSS, not an icon.
 	 *
-	 * The whole point of this indicator is to be alive while the main thread is not — ELK is the
-	 * bundled build and runs in-process, so during a layout no frame callback fires. A transform
-	 * animation can keep running off the main thread, but only if it was promoted, and a small SVG
-	 * is not promoted by default. `will-change` asks for it explicitly.
+	 * The whole point of this indicator is to stay alive while the main thread is not: ELK is the
+	 * bundled build and runs in-process, so for the eighteen to twenty-two seconds of a layout on a
+	 * large estate, no frame callback fires and nothing scripted can advance. A transform animation
+	 * can still run, but only from the compositor, and only if the element was promoted — and an
+	 * inline SVG generally is not, which is why the lucide spinner rendered and then sat there.
+	 *
+	 * A single element with a border and a radius is the shape most reliably promoted, so the ring
+	 * is borders rather than an icon. `will-change` asks for the layer explicitly; the animation is
+	 * pure `transform`, which is the one property the compositor can drive on its own.
+	 *
+	 * This also matches what the caret did for the same reason — see `ContainerHeader` — and costs
+	 * one element instead of the five a lucide icon brings.
 	 */
-	.detail-hidden-row :global(svg) {
+	.lod-spinner {
+		display: block;
+		width: 11px;
+		height: 11px;
+		flex-shrink: 0;
+		border-radius: 9999px;
+		border: 1.5px solid var(--color-topology-lod-stroke);
+		border-top-color: transparent;
 		will-change: transform;
+		animation: lod-spin 0.7s linear infinite;
+	}
+
+	@keyframes lod-spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	.branding-badge {
