@@ -4,6 +4,10 @@ import {
 	matchesSearch,
 	hasActiveFilters,
 	serverFilterViolations,
+	blankFilterState,
+	toggleValue,
+	toggleBoolean,
+	restoredServerFilters,
 	type FilterState,
 	type ServerFilterMode
 } from '$lib/shared/components/data/controls/filtering';
@@ -279,5 +283,123 @@ describe('getUniqueValues', () => {
 		const items = [row({ name: 'a' }), row({ name: null }), row({ name: '' })];
 
 		expect(getUniqueValues(items, nameField)).toEqual(['a']);
+	});
+});
+
+describe('filter state transitions', () => {
+	const category: FieldConfig<Row> = {
+		key: 'category',
+		label: 'Category',
+		type: 'string',
+		filterable: true,
+		filterDefaults: ['OpenPorts'],
+		getValue: (r) => r.category
+	};
+
+	it('seeds a fresh mount from the field defaults but a clear from nothing', () => {
+		// The two callers differ only here, and the difference is deliberate:
+		// opening the list applies the product's default, while "clear filters"
+		// clears that default too rather than reinstating it.
+		expect([...blankFilterState([category], true).category.values]).toEqual(['OpenPorts']);
+		expect([...blankFilterState([category], false).category.values]).toEqual([]);
+	});
+
+	it('gives a boolean field both boxes checked, which is no constraint', () => {
+		const state = blankFilterState([hiddenField], true);
+
+		expect(state.hidden.showTrue).toBe(true);
+		expect(state.hidden.showFalse).toBe(true);
+	});
+
+	it('skips fields that are not filterable', () => {
+		const plain: FieldConfig<Row> = { ...nameField, filterable: false };
+
+		expect(Object.keys(blankFilterState([plain, category], true))).toEqual(['category']);
+	});
+
+	it('adds and removes a value without mutating the state it was given', () => {
+		// The component reassigns rather than mutates so downstream $derived work
+		// re-runs; a transition that edited in place would render stale.
+		const before = blankFilterState([category], false);
+
+		const added = toggleValue(before, 'category', 'Web')!;
+		expect([...added.category.values]).toEqual(['Web']);
+		expect([...before.category.values]).toEqual([]);
+
+		const removed = toggleValue(added, 'category', 'Web')!;
+		expect([...removed.category.values]).toEqual([]);
+		expect([...added.category.values]).toEqual(['Web']);
+	});
+
+	it('declines a key that names no togglable filter', () => {
+		expect(toggleValue(blankFilterState([category], false), 'nonexistent', 'x')).toBeNull();
+		expect(toggleValue(blankFilterState([hiddenField], true), 'hidden', 'x')).toBeNull();
+	});
+
+	it('lets a client-side boolean select nothing, but never a server-side one', () => {
+		// Unticking the last box asks for an empty set. A query string cannot
+		// express that, and it renders an empty table under a non-zero count — so
+		// a server-side filter falls back to no constraint instead.
+		const state = blankFilterState([hiddenField], true);
+		const onlyTrue = toggleBoolean(state, 'hidden', 'showFalse', false)!;
+
+		const client = toggleBoolean(onlyTrue.state, 'hidden', 'showTrue', false)!;
+		expect([client.showTrue, client.showFalse]).toEqual([false, false]);
+
+		const server = toggleBoolean(onlyTrue.state, 'hidden', 'showTrue', true)!;
+		expect([server.showTrue, server.showFalse]).toEqual([true, true]);
+	});
+
+	it('narrows to one value when a box is unticked', () => {
+		const state = blankFilterState([hiddenField], true);
+		const next = toggleBoolean(state, 'hidden', 'showFalse', true)!;
+
+		expect([next.showTrue, next.showFalse]).toEqual([true, false]);
+	});
+});
+
+describe('restoredServerFilters', () => {
+	const serverString: FieldConfig<Row> = {
+		...nameField,
+		key: 'network_id',
+		filterable: true,
+		serverFiltered: true
+	};
+	const serverBoolean: FieldConfig<Row> = { ...hiddenField, serverFiltered: true };
+
+	it('replays a restored selection so the request matches the panel', () => {
+		const state: FilterState = { network_id: stringFilter(['alpha']) };
+
+		expect(restoredServerFilters([serverString], state)).toEqual([
+			{ key: 'network_id', values: ['alpha'] }
+		]);
+	});
+
+	it('says nothing about a filter that selects nothing', () => {
+		expect(restoredServerFilters([serverString], { network_id: stringFilter([]) })).toEqual([]);
+	});
+
+	it('replays a boolean only while it constrains', () => {
+		// A boolean constrains when a box is *un*checked — the opposite test from
+		// a value set being non-empty, which is why they cannot share a branch.
+		const unconstrained: FilterState = {
+			hidden: { type: 'boolean', values: new Set(), showTrue: true, showFalse: true }
+		};
+		const constrained: FilterState = {
+			hidden: { type: 'boolean', values: new Set(), showTrue: true, showFalse: false }
+		};
+
+		expect(restoredServerFilters([serverBoolean], unconstrained)).toEqual([]);
+		expect(restoredServerFilters([serverBoolean], constrained)).toEqual([
+			{ key: 'hidden', values: ['true'] }
+		]);
+	});
+
+	it('ignores fields the parent does not handle server-side', () => {
+		const clientOnly: FieldConfig<Row> = { ...nameField, key: 'network_id', filterable: true };
+
+		expect(restoredServerFilters([clientOnly], { network_id: stringFilter(['alpha']) })).toEqual(
+			[]
+		);
 	});
 });

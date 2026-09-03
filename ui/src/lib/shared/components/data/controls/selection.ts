@@ -64,3 +64,28 @@ export function rangeSelect<T>(
 	const [start, end] = from <= to ? [from, to] : [to, from];
 	return ids.slice(start, end + 1);
 }
+
+/**
+ * Run a bulk action over the current selection, reporting whether it ran.
+ *
+ * Delete, tag-add and tag-remove all need the same three things: refuse when
+ * the action is unavailable or nothing is selected, await the call, and survive
+ * a failure without taking the list down with it. Writing that out three times
+ * is how one of them ends up missing its guard.
+ */
+export async function runBulkAction(
+	description: string,
+	selected: ReadonlySet<string>,
+	enabled: boolean,
+	run: (ids: string[]) => Promise<unknown>
+): Promise<boolean> {
+	if (!enabled || selected.size === 0) return false;
+
+	try {
+		await run(Array.from(selected));
+		return true;
+	} catch (error) {
+		console.error(`${description} failed:`, error);
+		return false;
+	}
+}

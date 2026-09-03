@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { groupPageSlice } from '$lib/shared/components/data/types';
+import { paginationView, pageSlice } from '$lib/shared/components/data/controls/pagination';
 
 /**
  * Tests for DataControls pagination logic.
@@ -315,5 +316,85 @@ describe('groupPageSlice', () => {
 		const slice = groupPageSlice({ start: 0, count: 45 }, 40, 5);
 
 		expect(slice).toEqual({ total: 45, start: 41, end: 45 });
+	});
+});
+
+describe('paginationView', () => {
+	const server = (offset: number, total: number, hasMore: boolean) => ({
+		offset,
+		total_count: total,
+		has_more: hasMore,
+		limit: 20
+	});
+
+	it('reports the server total, not the page in hand', () => {
+		// The bug this whole area exists to prevent: a filtered list showing the
+		// unfiltered total. The server counts what it filtered; the 20 rows it
+		// sent say nothing about how many matched.
+		const view = paginationView(server(0, 62, true), 1, 20, 20);
+
+		expect(view.totalCount).toBe(62);
+		expect(view.totalPages).toBe(4);
+	});
+
+	it('derives the current page from the server offset', () => {
+		expect(paginationView(server(40, 62, true), 999, 20, 20).currentPage).toBe(3);
+	});
+
+	it('trusts has_more rather than re-deriving it from the total', () => {
+		// A server that knows there is another page is more authoritative than
+		// arithmetic over a total it also supplied.
+		expect(paginationView(server(40, 62, true), 3, 20, 20).canGoNext).toBe(true);
+		expect(paginationView(server(60, 62, false), 4, 20, 2).canGoNext).toBe(false);
+	});
+
+	it('never shows a range running past the total', () => {
+		// The last page is short, so an unclamped end would read "showing 61-80
+		// of 62".
+		const view = paginationView(server(60, 62, false), 4, 20, 2);
+
+		expect(view.showingStart).toBe(61);
+		expect(view.showingEnd).toBe(62);
+	});
+
+	it('reports an empty result as a zero range rather than "1 of 0"', () => {
+		const view = paginationView(server(0, 0, false), 1, 20, 0);
+
+		expect(view.showingStart).toBe(0);
+		expect(view.showingEnd).toBe(0);
+		expect(view.totalCount).toBe(0);
+	});
+
+	it('counts what the client holds when the client paginates', () => {
+		const view = paginationView(null, 2, 20, 45);
+
+		expect(view.totalCount).toBe(45);
+		expect(view.totalPages).toBe(3);
+		expect(view.currentPage).toBe(2);
+		expect(view.canGoPrev).toBe(true);
+		expect(view.canGoNext).toBe(true);
+		expect(view.showingStart).toBe(21);
+		expect(view.showingEnd).toBe(40);
+	});
+
+	it('cannot page past the end in either mode', () => {
+		expect(paginationView(null, 3, 20, 45).canGoNext).toBe(false);
+		expect(paginationView(null, 1, 20, 45).canGoPrev).toBe(false);
+	});
+});
+
+describe('pageSlice', () => {
+	const rows = Array.from({ length: 45 }, (_, i) => i);
+
+	it('leaves a server-paginated response alone', () => {
+		// The server already chose these rows; slicing again would drop the ones
+		// it deliberately sent.
+		expect(pageSlice(rows.slice(20, 40), 2, 20, true)).toHaveLength(20);
+		expect(pageSlice(rows.slice(40), 3, 20, true)).toEqual([40, 41, 42, 43, 44]);
+	});
+
+	it('slices the page the client is on', () => {
+		expect(pageSlice(rows, 2, 20, false)).toEqual(rows.slice(20, 40));
+		expect(pageSlice(rows, 3, 20, false)).toEqual([40, 41, 42, 43, 44]);
 	});
 });
