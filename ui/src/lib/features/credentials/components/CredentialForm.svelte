@@ -226,7 +226,7 @@
 			}
 		}
 		fieldValues = values;
-		syncFieldsToForm(raw.type as string);
+		syncFieldsToForm(raw.type as string, 'all');
 	}
 
 	function initDefaultFieldValues(typeId: string) {
@@ -241,20 +241,27 @@
 			}
 		}
 		fieldValues = values;
-		syncFieldsToForm(typeId);
+		syncFieldsToForm(typeId, 'selects');
 	}
 
-	// Every field renders from `fieldValues` and only pushes into the TanStack form on change,
-	// so a form opened on an existing credential has no TanStack value until the user types in
-	// the field. Its validators still run on submit and see `undefined`, which reads as empty:
-	// a required field the user never touched fails with "This field is required" and the save
-	// is blocked until they retype the value that is already on screen. Seeding every field
-	// here is what makes an unchanged edit saveable. (Secret and path fields dodged this because
-	// their validators read the display value instead of the TanStack one, and optional fields
-	// dodged it because empty is legal — which is why only required plain fields broke.)
-	function syncFieldsToForm(typeId: string) {
+	// Fields render from `fieldValues` and only push into the TanStack form on change, so a
+	// field the user never touches has no form value at all. Its submit validator still runs
+	// and reads `undefined` as empty, so seeding is what lets a value already on screen count
+	// as present.
+	//
+	// `'selects'` covers a new credential: a manually-rendered select must not force the user
+	// to re-pick a default it is already showing, but every other field legitimately starts
+	// empty and must still fail its required check.
+	//
+	// `'all'` is for editing an existing credential, where every field arrives pre-filled and a
+	// required one the user never touched would otherwise block the save until they retyped the
+	// value in front of them (Instant On's Portal Account). Seeding every field is safe only
+	// here: the type selector is disabled while editing, so no other credential type's fields
+	// can be left behind in the form to fail validation for a field that is no longer on screen.
+	function syncFieldsToForm(typeId: string, which: 'all' | 'selects') {
 		const fields = credentialTypes.getMetadata(typeId)?.fields ?? [];
 		for (const field of fields) {
+			if (which === 'selects' && field.field_type !== 'select') continue;
 			form.setFieldValue?.(fieldName(field.id), fieldValues[field.id] ?? field.default_value ?? '');
 		}
 	}
