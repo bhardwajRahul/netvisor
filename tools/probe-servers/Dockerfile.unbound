@@ -1,0 +1,14 @@
+# unbound with its remote-control channel on. `unbound-control-setup` generates the self-signed
+# pair; the probe never authenticates, it only reads the certificate the server sends first.
+# `openssl` is a separate package from `unbound` on Debian and the setup script exits 1 without it.
+FROM debian:bookworm-slim
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y unbound openssl && rm -rf /var/lib/apt/lists/*
+RUN printf 'server:\n interface: 0.0.0.0\n access-control: 0.0.0.0/0 allow\n verbosity: 1\nremote-control:\n control-enable: yes\n control-interface: 0.0.0.0\n control-port: 8953\n' > /etc/unbound/unbound.conf.d/probe.conf
+# The Debian package ships a drop-in setting `auto-trust-anchor-file` to a root.key it does not
+# create, and unbound refuses to start without it. Nothing resolves through this server — the probe
+# only reads the certificate on the control channel — so the DNSSEC anchor is dropped rather than
+# fetched, which would also need network at build time.
+RUN rm -f /etc/unbound/unbound.conf.d/root-auto-trust-anchor-file.conf
+RUN unbound-control-setup
+EXPOSE 8953
+CMD ["unbound","-d","-c","/etc/unbound/unbound.conf"]

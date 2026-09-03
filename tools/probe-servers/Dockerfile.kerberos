@@ -1,7 +1,9 @@
 FROM debian:bookworm-slim
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y krb5-kdc krb5-admin-server && rm -rf /var/lib/apt/lists/*
 RUN printf '[libdefaults]\n default_realm = PROBE.LOCAL\n[realms]\n PROBE.LOCAL = { kdc = localhost:88 admin_server = localhost:749 }\n' > /etc/krb5.conf
-RUN printf '[kdcdefaults]\n kdc_ports = 88\n kdc_tcp_ports = 88\n[realms]\n PROBE.LOCAL = { database_name = /var/lib/krb5kdc/principal }\n' > /etc/krb5kdc/kdc.conf
+# `kdc_tcp_listen` rather than the deprecated `kdc_tcp_ports`: krb5 1.20 ignores the latter, so the
+# KDC bound UDP only and every TCP connection was accepted by docker-proxy and then reset.
+RUN printf '[kdcdefaults]\n kdc_listen = 88\n kdc_tcp_listen = 88\n[realms]\n PROBE.LOCAL = { database_name = /var/lib/krb5kdc/principal }\n' > /etc/krb5kdc/kdc.conf
 RUN kdb5_util create -s -r PROBE.LOCAL -P probepassword && kadmin.local -q "addprinc -pw probepw probeuser@PROBE.LOCAL"
 EXPOSE 88
 CMD ["krb5kdc","-n"]

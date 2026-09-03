@@ -1,0 +1,12 @@
+# NFS-Ganesha: a userspace NFS server, so it needs no kernel modules and runs in a plain container.
+# The kernel server (`nfs-kernel-server`) cannot, which is why there is no public image that works.
+# Nothing is actually exported: the probe calls procedure NULL, which is answered before any mount.
+FROM debian:bookworm-slim
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y nfs-ganesha nfs-ganesha-vfs && rm -rf /var/lib/apt/lists/*
+# /var/run/ganesha is a tmpfs path the package expects to exist; the daemon exits without it.
+# NFSv4 over TCP only. v3 needs rpcbind to register MOUNT/NLM and there is none in the container,
+# which is what made ganesha abort at startup. The probe asks v3 first and a v4-only server answers
+# it with a program-mismatch reply — still an RPC reply carrying our xid, which is what it checks.
+RUN mkdir -p /export /var/run/ganesha && printf 'NFS_CORE_PARAM { NFS_Port = 2049; Enable_NLM = false; Enable_RQUOTA = false; Enable_UDP = false; Protocols = 4; }\nEXPORT { Export_Id = 1; Path = /export; Pseudo = /export; Access_Type = RO; Squash = All_Squash; FSAL { Name = VFS; } Protocols = 4; Transports = TCP; }\n' > /etc/ganesha/ganesha.conf
+EXPOSE 2049
+CMD ["ganesha.nfsd","-F","-L","STDOUT","-f","/etc/ganesha/ganesha.conf"]

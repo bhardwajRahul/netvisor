@@ -30,7 +30,6 @@ STATE="${TMPDIR:-/tmp}/scanopy-probe-servers.cids"
 PUBLIC_SERVERS=(
   "ssh        22:2222      lscr.io/linuxserver/openssh-server|-e|USER_NAME=probe"
   "ftp        21:21        delfer/alpine-ftp-server"
-  "telnet     23:23        busybox|sh|-c|telnetd -F -p 23 -l /bin/sh"
   "dns        53:53        ubuntu/bind9"
   "smb        445:445      dperson/samba"
   "rtsp       554:8554     bluenviron/mediamtx:latest"
@@ -49,9 +48,14 @@ PUBLIC_SERVERS=(
   "mongodb    27017:27017  mongo:7"
 )
 
-# The ones built here. RDP and the two VPNs need extra privileges.
+# The ones built here. RDP and the two VPNs need extra privileges. The list grew because the runner
+# passes docker *flags* rather than a container command, so anything needing a custom command (the
+# busybox telnetd) has to be an image too.
 BUILT_SERVERS=(
   "kerberos   88:88        probe-kerberos"
+  "telnet     23:23        probe-telnet"
+  "nfs        2049:2049    probe-nfs"
+  "unbound    8953:8953    probe-unbound|-p|127.0.0.1:5353:53/udp"
   "ldap       389:389      probe-ldap"
   "nut        3493:3493    probe-nut"
   "checkmk    6556:6556    probe-checkmk"
@@ -69,7 +73,9 @@ start_one() {
     local publish="127.0.0.1:${host}:${rest}"
 
     local cid
-    cid=$(docker run -d --rm -p "$publish" "${extra[@]}" "$image" 2>&1 | tail -1)
+    # `${extra[@]+...}` rather than a bare `"${extra[@]}"`: under `set -u` bash 3.2 treats an
+    # empty array as unset and aborts, which silently failed every server taking no extra args.
+    cid=$(docker run -d --rm -p "$publish" ${extra[@]+"${extra[@]}"} "$image" 2>&1 | tail -1)
     if docker inspect "$cid" >/dev/null 2>&1; then
         echo "$cid" >> "$STATE"
         printf '  %-10s %s\n' "$name" "started"
@@ -95,8 +101,8 @@ case "${1:-up}" in
     done
 
     echo
-    echo "Databases take a minute or two to accept connections. `live_servers` reports"
-    echo "which ports had nothing listening, so re-run it rather than guessing."
+    echo 'Databases take a minute or two to accept connections. `live_servers` reports'
+    echo 'which ports had nothing listening, so re-run it rather than guessing.'
     ;;
   down)
     [ -f "$STATE" ] || { echo "nothing recorded as started"; exit 0; }
