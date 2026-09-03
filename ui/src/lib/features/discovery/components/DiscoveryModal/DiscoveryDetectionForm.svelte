@@ -6,12 +6,12 @@
 	import { translateFieldDefinitions } from '$lib/i18n/metadata';
 	import { tooltip } from '$lib/shared/actions/tooltip';
 	import {
-		discovery_affectsDetectionOf,
 		discovery_firstScanMustBeLight,
 		discovery_forceFullScan,
 		discovery_forceFullScanHelp,
 		discovery_fullPortScan,
 		discovery_requiredToDetect,
+		discovery_requiredToDetectRouted,
 		discovery_scanModeIntervalExplainer
 	} from '$lib/paraglide/messages';
 
@@ -47,18 +47,21 @@
 			.join(', ');
 	}
 
-	let rawSocketServiceNames = $derived(serviceNamesWhere((m) => m.has_raw_socket_endpoint));
+	let rawSocketServiceNames = $derived(serviceNamesWhere((m) => m.gated_by_raw_socket_scanning));
 	let connectOnlyServiceNames = $derived(serviceNamesWhere((m) => m.connect_only));
 
-	/** Which detections a setting governs, appended to its help text. Both lists come from service
-	 *  metadata rather than being written here, so they shrink on their own as detections stop
-	 *  being port-only. */
+	/** Which detections a setting is required for, appended to its help text.
+	 *
+	 *  Both lists come from service metadata rather than being written here, so they shrink on their
+	 *  own as detections stop being port-only. A service appearing in both needs both settings —
+	 *  JetDirect on a routed subnet is the case, since 9100 is a raw-socket port *and* the only
+	 *  evidence the definition has. */
 	function getHelpText(field: FieldDefinition): string {
 		if (field.id === 'probe_raw_socket_ports' && rawSocketServiceNames) {
 			return `${field.help_text} ${discovery_requiredToDetect({ services: rawSocketServiceNames })}`;
 		}
 		if (field.id === 'trust_port_only_detections' && connectOnlyServiceNames) {
-			return `${field.help_text} ${discovery_affectsDetectionOf({ services: connectOnlyServiceNames })}`;
+			return `${field.help_text} ${discovery_requiredToDetectRouted({ services: connectOnlyServiceNames })}`;
 		}
 		return field.help_text ?? '';
 	}

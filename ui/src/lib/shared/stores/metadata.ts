@@ -175,11 +175,13 @@ export interface ServicedDefinitionMetadata {
 	has_logo: boolean;
 	logo_ext: string;
 	logo_needs_white_background: boolean;
-	has_raw_socket_endpoint: boolean;
+	/** Whether `probe_raw_socket_ports` being off would stop this service being detected — it drops
+	 *  9100-9107 from the scan entirely, so it governs any definition referencing one, endpoint or
+	 *  bare port alike. */
+	gated_by_raw_socket_scanning: boolean;
 	/** Whether this service is only ever matched by a port being open, with no protocol exchange
-	 *  behind it. A middlebox that completes TCP handshakes can manufacture one of these, which is
-	 *  what `trust_port_only_detections` governs — the detection form lists these by name so the
-	 *  setting says which detections it affects. */
+	 *  behind it. A middlebox that completes TCP handshakes can manufacture one of these, so on a
+	 *  subnet reached through a router these need `trust_port_only_detections`. */
 	connect_only: boolean;
 	is_gateway: boolean;
 	is_generic: boolean;
