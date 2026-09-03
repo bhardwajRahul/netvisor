@@ -934,3 +934,102 @@ fn test_merge_db_enum_baseline_preserves_alias_entries() {
     );
     assert_eq!(merged.len(), 2, "expected exactly EntitySource + NewEnum");
 }
+
+/// Every filter the server-side field filters build must be SQL Postgres will
+/// accept against the real schema.
+///
+/// The sibling tests in `storage/filter` assert on the generated string, which
+/// cannot tell a valid predicate from one naming a column that does not exist
+/// or mis-punctuating a JSON accessor — both of those only fail when a user
+/// ticks the filter. Preparing each statement server-side checks syntax,
+/// column existence and placeholder typing without needing a single seeded row.
+#[tokio::test]
+async fn server_side_field_filters_are_valid_sql_against_the_live_schema() {
+    use crate::server::shared::storage::filter::StorableFilter;
+    use crate::server::shared::storage::traits::Storable;
+    use crate::tests::setup_test_db;
+    use sqlx::Executor;
+    use uuid::Uuid;
+
+    let (pool, _database_url, _container) = setup_test_db().await;
+    crate::server::shared::storage::migration_runner::apply_embedded_migrations(&pool)
+        .await
+        .expect("Failed to run migrations");
+
+    let id = Uuid::new_v4();
+    let named = || vec!["ssh".to_string()];
+
+    // (label, table, WHERE clause) for each filter these tabs can send.
+    let cases: Vec<(&str, &str, String)> = vec![
+        (
+            "hosts.hidden",
+            Host::table_name(),
+            StorableFilter::<Host>::new_unfiltered()
+                .hidden_in(&[true])
+                .to_where_clause(),
+        ),
+        (
+            "hosts.virtualized_by",
+            Host::table_name(),
+            StorableFilter::<Host>::new_unfiltered()
+                .virtualization_service_in(&[id], true)
+                .to_where_clause(),
+        ),
+        (
+            "hosts.virtualized_by (absence only)",
+            Host::table_name(),
+            StorableFilter::<Host>::new_unfiltered()
+                .virtualization_service_in(&[], true)
+                .to_where_clause(),
+        ),
+        (
+            "hosts.services",
+            Host::table_name(),
+            StorableFilter::<Host>::new_unfiltered()
+                .has_service_named(&named())
+                .to_where_clause(),
+        ),
+        (
+            "services.service_definition",
+            Service::table_name(),
+            StorableFilter::<Service>::new_unfiltered()
+                .service_definition_in(&named())
+                .to_where_clause(),
+        ),
+        (
+            "services.containerized_by",
+            Service::table_name(),
+            StorableFilter::<Service>::new_unfiltered()
+                .virtualization_service_in(&[id], true)
+                .to_where_clause(),
+        ),
+        (
+            "discovery.daemon_id",
+            Discovery::table_name(),
+            StorableFilter::<Discovery>::new_unfiltered()
+                .daemon_ids(&[id])
+                .to_where_clause(),
+        ),
+        (
+            "discovery.discovery_type",
+            Discovery::table_name(),
+            StorableFilter::<Discovery>::new_unfiltered()
+                .discovery_type_in(&named())
+                .to_where_clause(),
+        ),
+    ];
+
+    let mut failures = Vec::new();
+    for (label, table, where_clause) in cases {
+        let sql = format!("SELECT 1 FROM {} {}", table, where_clause);
+        if let Err(e) = pool.describe(sql.as_str()).await {
+            failures.push(format!("{label}: {e}\n  sql: {sql}"));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "Postgres rejected a filter the UI can send:\n{}",
+        failures.join("\n")
+    );
+}

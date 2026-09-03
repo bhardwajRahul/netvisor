@@ -117,10 +117,21 @@ impl OrderField for HostOrderField {
 /// Query parameters for filtering and ordering hosts.
 #[derive(Deserialize, Default, Debug, Clone, IntoParams)]
 pub struct HostFilterQuery {
-    /// Filter by network ID
-    pub network_id: Option<Uuid>,
+    /// Filter by network ID. Repeat the parameter to pass several.
+    #[serde(alias = "network_id")]
+    pub network_ids: Option<Vec<Uuid>>,
     /// Filter by specific entity IDs (for selective loading)
     pub ids: Option<Vec<Uuid>>,
+    /// Filter by the `hidden` flag. Repeat the parameter to accept both values;
+    /// omit it for no constraint.
+    pub hidden: Option<Vec<bool>>,
+    /// Filter by the service virtualizing the host. Repeat for several.
+    pub virtualization_service_ids: Option<Vec<Uuid>>,
+    /// `true` also returns hosts nothing virtualizes. Set on its own it returns
+    /// only those — the "Not Virtualized" choice in the UI's filter.
+    pub include_unvirtualized: Option<bool>,
+    /// Filter to hosts running a service with one of these names.
+    pub service_names: Option<Vec<String>>,
     /// Filter by tag IDs (returns hosts that have ANY of the specified tags)
     pub tag_ids: Option<Vec<Uuid>>,
     /// Free-text search. Case-insensitive substring match against the host's
@@ -169,6 +180,35 @@ impl HostFilterQuery {
             "hosts.created_at ASC",
         )
     }
+
+    /// Apply the field filters the Hosts tab offers.
+    ///
+    /// Shared by the list and the exports, for the same reason the staleness
+    /// filter is: an export should mirror exactly what the user was looking at.
+    /// Every one of these is applied server-side because the list is paginated —
+    /// filtering the loaded page instead would hide matches on every other page
+    /// and leave the total count describing a different set of rows.
+    pub fn apply_field_filters(&self, filter: StorableFilter<Host>) -> StorableFilter<Host> {
+        let filter = match &self.hidden {
+            Some(values) if !values.is_empty() => filter.hidden_in(values),
+            _ => filter,
+        };
+
+        // "Not Virtualized" is a choice about absence, so it can arrive without
+        // any service ids beside it.
+        let include_unvirtualized = self.include_unvirtualized.unwrap_or(false);
+        let virtualization_ids = self.virtualization_service_ids.as_deref().unwrap_or(&[]);
+        let filter = if include_unvirtualized || !virtualization_ids.is_empty() {
+            filter.virtualization_service_in(virtualization_ids, include_unvirtualized)
+        } else {
+            filter
+        };
+
+        match &self.service_names {
+            Some(names) if !names.is_empty() => filter.has_service_named(names),
+            _ => filter,
+        }
+    }
 }
 
 impl FilterQueryExtractor for HostFilterQuery {
@@ -183,10 +223,18 @@ impl FilterQueryExtractor for HostFilterQuery {
             Some(ids) if !ids.is_empty() => filter.entity_ids(ids),
             _ => filter,
         };
-        // Then apply network filter
-        match self.network_id {
-            Some(id) if user_network_ids.contains(&id) => filter.network_ids(&[id]),
-            Some(_) => filter.network_ids(&[]), // User doesn't have access - return empty
+        // Then apply network filter. Intersect with what the caller can see —
+        // a requested network they have no access to must narrow the result to
+        // nothing, never widen it.
+        match &self.network_ids {
+            Some(requested) => {
+                let accessible: Vec<Uuid> = requested
+                    .iter()
+                    .copied()
+                    .filter(|id| user_network_ids.contains(id))
+                    .collect();
+                filter.network_ids(&accessible)
+            }
             None => filter.network_ids(user_network_ids),
         }
     }
@@ -266,6 +314,8 @@ async fn get_all_hosts(
         Some(search) if !search.trim().is_empty() => filter.text_search(search),
         _ => filter,
     };
+
+    let filter = query.apply_field_filters(filter);
 
     // Staleness is per-network, so resolve each accessible network's cutoff and
     // let the filter compare every row against its own.
@@ -1271,6 +1321,8 @@ async fn export_hosts_zip(
         }
         None => filter,
     };
+
+    let filter = query.apply_field_filters(filter);
 
     // Get all hosts (no pagination for export)
     let hosts = state.services.host_service.get_all(filter).await?;

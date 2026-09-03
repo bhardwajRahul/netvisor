@@ -57,6 +57,12 @@ export interface DiscoveryHistoryQueryParams {
 	order_direction?: components['schemas']['OrderDirection'];
 	/** Free-text search across the run's name and its daemon's name. */
 	search?: string;
+	/** Filter by network ID. Several narrows to the union of them. */
+	network_ids?: string[];
+	/** Filter by daemon ID. Several narrows to the union of them. */
+	daemon_ids?: string[];
+	/** Only runs of one of these discovery types (raw discriminants). */
+	discovery_types?: string[];
 }
 
 /** Pagination metadata, derived from the generated schema. */
@@ -79,13 +85,33 @@ export function useDiscoveryHistoryQuery(
 ) {
 	return createQuery(() => {
 		const params = typeof paramsOrGetter === 'function' ? paramsOrGetter() : paramsOrGetter;
-		const { limit, offset, group_by, order_by, order_direction, search } = params;
+		const {
+			limit,
+			offset,
+			group_by,
+			order_by,
+			order_direction,
+			search,
+			network_ids,
+			daemon_ids,
+			discovery_types
+		} = params;
 
 		return {
 			queryKey: [
 				...queryKeys.discovery.all,
 				'history',
-				{ limit, offset, group_by, order_by, order_direction, search }
+				{
+					limit,
+					offset,
+					group_by,
+					order_by,
+					order_direction,
+					search,
+					network_ids,
+					daemon_ids,
+					discovery_types
+				}
 			],
 			enabled: enabled(),
 			queryFn: async (): Promise<{ items: Discovery[]; pagination: PaginationMeta | null }> => {
@@ -98,6 +124,9 @@ export function useDiscoveryHistoryQuery(
 							order_by,
 							order_direction,
 							search,
+							network_ids,
+							daemon_ids,
+							discovery_types,
 							historical: true
 						}
 					}

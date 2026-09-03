@@ -159,8 +159,16 @@ function toCreateHostRequest(formData: HostFormData): CreateHostRequest {
 export interface HostQueryOptions {
 	limit?: number;
 	offset?: number;
-	/** Filter by network ID. */
-	network_id?: string;
+	/** Filter by network ID. Several narrows to the union of them. */
+	network_ids?: string[];
+	/** Filter by the `hidden` flag. Omit for no constraint. */
+	hidden?: boolean[];
+	/** Filter by the service virtualizing the host. */
+	virtualization_service_ids?: string[];
+	/** Also return hosts nothing virtualizes; on its own, only those. */
+	include_unvirtualized?: boolean;
+	/** Filter to hosts running a service with one of these names. */
+	service_names?: string[];
 	/** Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
 	group_by?: components['schemas']['HostOrderField'];
 	/** Secondary ordering field (sorting within groups or standalone sort). */
@@ -217,14 +225,18 @@ export function useHostsQuery(optionsOrGetter: HostQueryOptions | (() => HostQue
 						query: {
 							limit: options.limit,
 							offset: options.offset,
-							network_id: options.network_id,
+							network_ids: options.network_ids,
 							group_by: options.group_by,
 							order_by: options.order_by,
 							order_direction: options.order_direction,
 							tag_ids: options.tag_ids,
 							stale: options.stale,
 							search: options.search,
-							at: options.at
+							at: options.at,
+							hidden: options.hidden,
+							virtualization_service_ids: options.virtualization_service_ids,
+							include_unvirtualized: options.include_unvirtualized,
+							service_names: options.service_names
 						}
 					}
 				});
@@ -344,7 +356,9 @@ export function useHostSummariesQuery(
 				const { data } = await apiClient.GET('/api/v1/hosts', {
 					params: {
 						query: {
-							network_id: options.network_id,
+							// One network stays the ergonomic shape for a picker; the
+							// wire param takes a list.
+							network_ids: options.network_id ? [options.network_id] : undefined,
 							ids: options.ids,
 							tag_ids: options.tag_ids,
 							limit: options.limit ?? 0,

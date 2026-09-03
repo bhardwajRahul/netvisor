@@ -19,6 +19,7 @@
 	import {
 		matchesSearch,
 		matchesFilters,
+		serverFilterViolations,
 		hasActiveFilters as hasActiveFiltersOf
 	} from './controls/filtering';
 	import {
@@ -356,7 +357,18 @@
 				if (field.filterable && field.serverFiltered) {
 					const key = getFieldKey(field);
 					const filter = filterState[key];
-					if (filter && filter.values.size > 0) {
+					if (!filter) continue;
+
+					if (filter.type === 'boolean') {
+						// A restored boolean has to be replayed whenever it
+						// constrains, and "constrains" means a box is *un*checked
+						// — the opposite test from a value set being non-empty.
+						const showTrue = filter.showTrue ?? true;
+						const showFalse = filter.showFalse ?? true;
+						if (!showTrue || !showFalse) {
+							onFilterChange(key, booleanFilterValues(showTrue, showFalse));
+						}
+					} else if (filter.values.size > 0) {
 						onFilterChange(key, Array.from(filter.values));
 					}
 				}
@@ -524,13 +536,20 @@
 			const field = fields.find((f) => getFieldKey(f) === fieldKey);
 			if (field?.serverFiltered) {
 				onFilterChange(fieldKey, Array.from(newValues));
-				// Reset pagination
-				if (useServerPagination && onPageChange) {
-					onPageChange(1, pageSize);
-				} else {
-					currentPage = 1;
-				}
+				resetToFirstPage();
 			}
+		}
+	}
+
+	/**
+	 * A narrowed filter invalidates the current offset — page 7 of the old
+	 * result set is not page 7 of the new one, and is often past its end.
+	 */
+	function resetToFirstPage() {
+		if (useServerPagination && onPageChange) {
+			onPageChange(1, pageSize);
+		} else {
+			currentPage = 1;
 		}
 	}
 
@@ -539,13 +558,37 @@
 		const filter = filterState[fieldKey];
 		if (!filter || filter.type !== 'boolean') return;
 
+		let showTrue = type === 'showTrue' ? !filter.showTrue : (filter.showTrue ?? false);
+		let showFalse = type === 'showFalse' ? !filter.showFalse : (filter.showFalse ?? false);
+
+		const field = fields.find((f) => getFieldKey(f) === fieldKey);
+		const serverSide = onFilterChange !== null && field?.serverFiltered === true;
+
+		// Unchecking the last box asks for an empty set, which a query string
+		// cannot express and no one wants: it renders an empty table under a
+		// non-zero count. Server-side, fall back to no constraint instead.
+		if (serverSide && !showTrue && !showFalse) {
+			showTrue = true;
+			showFalse = true;
+		}
+
 		filterState = {
 			...filterState,
-			[fieldKey]: {
-				...filter,
-				[type]: !filter[type]
-			}
+			[fieldKey]: { ...filter, showTrue, showFalse }
 		};
+
+		if (serverSide) {
+			onFilterChange!(fieldKey, booleanFilterValues(showTrue, showFalse));
+			resetToFirstPage();
+		}
+	}
+
+	/** The checked booleans as strings, for the `onFilterChange` payload. */
+	function booleanFilterValues(showTrue: boolean, showFalse: boolean): string[] {
+		const values: string[] = [];
+		if (showTrue) values.push('true');
+		if (showFalse) values.push('false');
+		return values;
 	}
 
 	// Toggle tag filter (uses tag ID for server-side filtering)
@@ -604,11 +647,16 @@
 			onStaleFilterChange?.(null);
 		}
 
-		// Notify parent that server-side filters were cleared
+		// Notify parent that server-side filters were cleared. A cleared boolean
+		// is both boxes checked, not an empty selection — an empty one would
+		// read as "show neither" to a parent that maps the values literally.
 		if (onFilterChange) {
 			fields.forEach((field) => {
 				if (field.filterable && field.serverFiltered) {
-					onFilterChange(getFieldKey(field), []);
+					onFilterChange(
+						getFieldKey(field),
+						field.type === 'boolean' ? booleanFilterValues(true, true) : []
+					);
 				}
 			});
 		}
@@ -716,6 +764,30 @@
 
 	// Check if using server-side pagination
 	let useServerPagination = $derived(serverPagination !== null && onPageChange !== null);
+
+	// A filterable field nobody handles server-side is always a bug on a
+	// server-paginated list: the client holds one page, so filtering here
+	// narrows that page while `total_count` keeps describing the whole match
+	// set — the list reads "62 of 1550" and pages through the wrong rows. The
+	// rule is documented on `FieldConfig.serverFiltered`; this makes it fail
+	// loudly instead of silently, at the one place that sees every field's
+	// resolved config. Dev/test only, so it never reaches a user.
+	$effect(() => {
+		if (!import.meta.env.DEV) return;
+
+		const offenders = serverFilterViolations(fields, useServerPagination, {
+			tags: onTagFilterChange !== null,
+			fields: onFilterChange !== null
+		});
+		if (offenders.length === 0) return;
+
+		throw new Error(
+			`DataControls: ${offenders.join(', ')} ${offenders.length === 1 ? 'is' : 'are'} ` +
+				`filterable on a server-paginated list but filtered client-side, which narrows ` +
+				`only the loaded page while the count describes every match. Mark the field ` +
+				`serverFiltered and handle it in onFilterChange, or drop its filterable flag.`
+		);
+	});
 
 	// Effective current page: derived from server offset when using server-side pagination
 	let effectiveCurrentPage = $derived(

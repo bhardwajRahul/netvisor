@@ -47,6 +47,43 @@ export function matchesSearch<T>(item: T, fields: FieldConfig<T>[], query: strin
 		});
 }
 
+/**
+ * Whether the parent, rather than the client pass, applies this field's filter.
+ *
+ * The single definition of the handover, read both by `matchesFilters` — which
+ * skips what the parent owns — and by `serverFilterViolations`, which reports
+ * what nobody owns. Keeping them on one predicate is what stops the guard and
+ * the filter drifting apart.
+ */
+export function isHandledServerSide<T>(field: FieldConfig<T>, server: ServerFilterMode): boolean {
+	if (getFieldKey(field) === 'tags' && server.tags) return true;
+	return field.serverFiltered === true && server.fields;
+}
+
+/**
+ * Filterable fields a server-paginated list would wrongly filter client-side.
+ *
+ * Under server pagination the client holds one page while the count describes
+ * the whole match set, so a filter applied here narrows the page and leaves the
+ * count describing different rows — the list says "62 of 1550" and pages
+ * through the wrong hosts. Every filter therefore has to be handled by the
+ * server that produced the count, or not offered at all.
+ *
+ * Returns the offending field keys so a caller can name them; empty when the
+ * list is not server-paginated, where client-side filtering is correct.
+ */
+export function serverFilterViolations<T>(
+	fields: FieldConfig<T>[],
+	serverPaginated: boolean,
+	server: ServerFilterMode
+): string[] {
+	if (!serverPaginated) return [];
+
+	return fields
+		.filter((field) => field.filterable === true && !isHandledServerSide(field, server))
+		.map(getFieldKey);
+}
+
 /** Whether an item survives every active field filter. */
 export function matchesFilters<T>(
 	item: T,
@@ -61,8 +98,7 @@ export function matchesFilters<T>(
 		const filterConfig = filterState[fieldKey];
 		if (!filterConfig) return true;
 
-		if (fieldKey === 'tags' && server.tags) return true;
-		if (field.serverFiltered && server.fields) return true;
+		if (isHandledServerSide(field, server)) return true;
 
 		const value = getFieldValue(item, field);
 

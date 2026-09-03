@@ -3599,29 +3599,50 @@
         "operationId": "get_all_discoveries",
         "parameters": [
           {
-            "name": "network_id",
+            "name": "network_ids",
             "in": "query",
-            "description": "Filter by network ID",
+            "description": "Filter by network ID. Repeat the parameter to pass several.",
             "required": false,
             "schema": {
               "type": [
-                "string",
+                "array",
                 "null"
               ],
-              "format": "uuid"
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
             }
           },
           {
-            "name": "daemon_id",
+            "name": "daemon_ids",
             "in": "query",
-            "description": "Filter by daemon ID",
+            "description": "Filter by daemon ID. Repeat the parameter to pass several.",
             "required": false,
             "schema": {
               "type": [
-                "string",
+                "array",
                 "null"
               ],
-              "format": "uuid"
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "discovery_types",
+            "in": "query",
+            "description": "Only runs of one of these discovery types.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
             }
           },
           {
@@ -3888,29 +3909,50 @@
         "operationId": "export_discoveries_csv",
         "parameters": [
           {
-            "name": "network_id",
+            "name": "network_ids",
             "in": "query",
-            "description": "Filter by network ID",
+            "description": "Filter by network ID. Repeat the parameter to pass several.",
             "required": false,
             "schema": {
               "type": [
-                "string",
+                "array",
                 "null"
               ],
-              "format": "uuid"
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
             }
           },
           {
-            "name": "daemon_id",
+            "name": "daemon_ids",
             "in": "query",
-            "description": "Filter by daemon ID",
+            "description": "Filter by daemon ID. Repeat the parameter to pass several.",
             "required": false,
             "schema": {
               "type": [
-                "string",
+                "array",
                 "null"
               ],
-              "format": "uuid"
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "discovery_types",
+            "in": "query",
+            "description": "Only runs of one of these discovery types.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
             }
           },
           {
@@ -4317,16 +4359,19 @@
         "operationId": "get_all_hosts",
         "parameters": [
           {
-            "name": "network_id",
+            "name": "network_ids",
             "in": "query",
-            "description": "Filter by network ID",
+            "description": "Filter by network ID. Repeat the parameter to pass several.",
             "required": false,
             "schema": {
               "type": [
-                "string",
+                "array",
                 "null"
               ],
-              "format": "uuid"
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
             }
           },
           {
@@ -4342,6 +4387,64 @@
               "items": {
                 "type": "string",
                 "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "hidden",
+            "in": "query",
+            "description": "Filter by the `hidden` flag. Repeat the parameter to accept both values;\nomit it for no constraint.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "name": "virtualization_service_ids",
+            "in": "query",
+            "description": "Filter by the service virtualizing the host. Repeat for several.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "include_unvirtualized",
+            "in": "query",
+            "description": "`true` also returns hosts nothing virtualizes. Set on its own it returns\nonly those — the \"Not Virtualized\" choice in the UI's filter.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "service_names",
+            "in": "query",
+            "description": "Filter to hosts running a service with one of these names.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
               }
             }
           },
@@ -4636,16 +4739,19 @@
         "operationId": "export_hosts_csv",
         "parameters": [
           {
-            "name": "network_id",
+            "name": "network_ids",
             "in": "query",
-            "description": "Filter by network ID",
+            "description": "Filter by network ID. Repeat the parameter to pass several.",
             "required": false,
             "schema": {
               "type": [
-                "string",
+                "array",
                 "null"
               ],
-              "format": "uuid"
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
             }
           },
           {
@@ -4661,6 +4767,64 @@
               "items": {
                 "type": "string",
                 "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "hidden",
+            "in": "query",
+            "description": "Filter by the `hidden` flag. Repeat the parameter to accept both values;\nomit it for no constraint.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "name": "virtualization_service_ids",
+            "in": "query",
+            "description": "Filter by the service virtualizing the host. Repeat for several.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "include_unvirtualized",
+            "in": "query",
+            "description": "`true` also returns hosts nothing virtualizes. Set on its own it returns\nonly those — the \"Not Virtualized\" choice in the UI's filter.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "service_names",
+            "in": "query",
+            "description": "Filter to hosts running a service with one of these names.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
               }
             }
           },
@@ -4839,16 +5003,19 @@
         "operationId": "export_hosts_zip",
         "parameters": [
           {
-            "name": "network_id",
+            "name": "network_ids",
             "in": "query",
-            "description": "Filter by network ID",
+            "description": "Filter by network ID. Repeat the parameter to pass several.",
             "required": false,
             "schema": {
               "type": [
-                "string",
+                "array",
                 "null"
               ],
-              "format": "uuid"
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
             }
           },
           {
@@ -4864,6 +5031,64 @@
               "items": {
                 "type": "string",
                 "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "hidden",
+            "in": "query",
+            "description": "Filter by the `hidden` flag. Repeat the parameter to accept both values;\nomit it for no constraint.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "name": "virtualization_service_ids",
+            "in": "query",
+            "description": "Filter by the service virtualizing the host. Repeat for several.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "include_unvirtualized",
+            "in": "query",
+            "description": "`true` also returns hosts nothing virtualizes. Set on its own it returns\nonly those — the \"Not Virtualized\" choice in the UI's filter.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "service_names",
+            "in": "query",
+            "description": "Filter to hosts running a service with one of these names.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
               }
             }
           },
@@ -7860,29 +8085,35 @@
         "operationId": "get_all_services",
         "parameters": [
           {
-            "name": "network_id",
+            "name": "network_ids",
             "in": "query",
-            "description": "Filter by network ID",
+            "description": "Filter by network ID. Repeat the parameter to pass several.",
             "required": false,
             "schema": {
               "type": [
-                "string",
+                "array",
                 "null"
               ],
-              "format": "uuid"
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
             }
           },
           {
-            "name": "host_id",
+            "name": "host_ids",
             "in": "query",
-            "description": "Filter by host ID",
+            "description": "Filter by host ID. Repeat the parameter to pass several.",
             "required": false,
             "schema": {
               "type": [
-                "string",
+                "array",
                 "null"
               ],
-              "format": "uuid"
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
             }
           },
           {
@@ -7899,6 +8130,49 @@
                 "type": "string",
                 "format": "uuid"
               }
+            }
+          },
+          {
+            "name": "service_definitions",
+            "in": "query",
+            "description": "Only services with one of these definitions.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "virtualization_service_ids",
+            "in": "query",
+            "description": "Filter by the service containerizing this one. Repeat for several.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "include_uncontainerized",
+            "in": "query",
+            "description": "`true` also returns services nothing containerizes. Set on its own it\nreturns only those — the \"Not Containerized\" choice in the UI's filter.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           },
           {
@@ -8188,29 +8462,35 @@
         "operationId": "export_services_csv",
         "parameters": [
           {
-            "name": "network_id",
+            "name": "network_ids",
             "in": "query",
-            "description": "Filter by network ID",
+            "description": "Filter by network ID. Repeat the parameter to pass several.",
             "required": false,
             "schema": {
               "type": [
-                "string",
+                "array",
                 "null"
               ],
-              "format": "uuid"
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
             }
           },
           {
-            "name": "host_id",
+            "name": "host_ids",
             "in": "query",
-            "description": "Filter by host ID",
+            "description": "Filter by host ID. Repeat the parameter to pass several.",
             "required": false,
             "schema": {
               "type": [
-                "string",
+                "array",
                 "null"
               ],
-              "format": "uuid"
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
             }
           },
           {
@@ -8227,6 +8507,49 @@
                 "type": "string",
                 "format": "uuid"
               }
+            }
+          },
+          {
+            "name": "service_definitions",
+            "in": "query",
+            "description": "Only services with one of these definitions.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "virtualization_service_ids",
+            "in": "query",
+            "description": "Filter by the service containerizing this one. Repeat for several.",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "include_uncontainerized",
+            "in": "query",
+            "description": "`true` also returns services nothing containerizes. Set on its own it\nreturns only those — the \"Not Containerized\" choice in the UI's filter.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           },
           {
