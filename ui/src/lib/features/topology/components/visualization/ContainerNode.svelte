@@ -443,12 +443,15 @@
 		<!--
 			A collapsed container draws its own box through `ContainerHeader`, so unlike the expanded
 			case there is no separate body div to fall back on — dropping the header would leave
-			nothing at all. This is that box: the same rounded surface and top rule, with the name
-			supplied by the shell label above.
+			nothing at all. This is that box.
+
+			Outlined rather than filled with the usual surface: `--color-topology-node-bg` is #ffffff
+			against a #f8fafc canvas, which is 1.03:1 — at this size the box simply is not there. The
+			outline carries the shape and the type colour still marks the top edge.
 		-->
 		<div
-			class="rounded-lg"
-			style="background: var(--color-topology-node-bg); width: 100%; height: 100%; border-top: 2px solid {colorHelper.rgb};"
+			class="lod-box rounded-lg"
+			style="width: 100%; height: 100%; border-top: 2px solid {colorHelper.rgb};"
 		></div>
 	{:else if isCollapsed}
 		{#if isSubcontainer}
@@ -495,12 +498,14 @@
 			{#if hasBorder}
 				<div
 					class="rounded-lg border border-dashed border-gray-300 transition-all duration-200 dark:border-gray-600"
+					class:lod-box={simplified}
 					style="background: var(--color-topology-subgroup-bg); width: 100%; height: 100%; position: relative; overflow: hidden;"
 				></div>
 			{/if}
 		{:else}
 			<div
 				class="rounded-xl text-center text-sm font-semibold shadow-lg transition-all duration-200"
+				class:lod-box={simplified}
 				style="background: var(--color-topology-node-bg); width: 100%; height: 100%; position: relative; overflow: hidden; transition: box-shadow 0.15s ease-in-out; border-top: 2px solid {colorHelper.rgb}; {tagHoverRingStyle}"
 			></div>
 
@@ -611,6 +616,22 @@
 {/if}
 
 <style>
+	/*
+	 * A container's box at reduced detail.
+	 *
+	 * The full-detail surfaces are chosen to sit under text, so they are a hair off the canvas:
+	 * #ffffff on #f8fafc is 1.03:1, and the dark pair is no better. That is fine behind a card and
+	 * useless when the box *is* the node. This overrides the fill with a faint tint and, more
+	 * importantly, an outline — a shape with an edge reads at three pixels where a fill does not.
+	 * Both values are theme tokens; see `app.css`.
+	 */
+	.lod-box {
+		background: var(--color-topology-lod-container) !important;
+		outline: 1px solid var(--color-topology-lod-stroke);
+		outline-offset: -1px;
+		box-shadow: none !important;
+	}
+
 	div {
 		word-wrap: break-word;
 		overflow-wrap: break-word;

@@ -685,7 +685,20 @@
 		noteRunStart(source);
 		setLoadInProgress(true);
 		pendingReload = false;
-		void loadTopologyData()
+		// Give the browser one frame to actually draw the indicator before the run starts.
+		//
+		// Svelte flushes the DOM on a microtask, but painting needs a frame, and a run reaches its
+		// synchronous ELK without yielding one — so the spinner was being added and removed without
+		// ever appearing on screen. Measured: zero renders across a full collapse run. One frame is
+		// ~16ms against eighteen to twenty-two seconds of layout, which is the whole reason there is
+		// something to indicate.
+		requestAnimationFrame(() => {
+			void runPipeline();
+		});
+	}
+
+	function runPipeline(): Promise<void> {
+		return loadTopologyData()
 			.catch((err) => {
 				endMeasurePass();
 				pushError(topology_parseFailed({ error: String(err) }));
@@ -1727,6 +1740,18 @@
 		display: flex;
 		align-items: center;
 		gap: 5px;
+	}
+
+	/*
+	 * Hint the spin onto the compositor.
+	 *
+	 * The whole point of this indicator is to be alive while the main thread is not — ELK is the
+	 * bundled build and runs in-process, so during a layout no frame callback fires. A transform
+	 * animation can keep running off the main thread, but only if it was promoted, and a small SVG
+	 * is not promoted by default. `will-change` asks for it explicitly.
+	 */
+	.detail-hidden-row :global(svg) {
+		will-change: transform;
 	}
 
 	.branding-badge {

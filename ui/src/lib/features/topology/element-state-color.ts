@@ -21,17 +21,21 @@
 export type ElementState = 'down' | 'stale' | 'nominal' | 'unknown';
 
 /**
- * Fills for each state.
+ * Fill per state, as a CSS variable rather than a literal.
  *
- * Muted rather than saturated: at a few pixels these tile into large fields of flat colour, and a
- * full-strength red field reads as an emergency covering half the estate. The dot on a full-size
- * card can afford `#ef4444` because there is one of it surrounded by white.
+ * Tokens because these have to differ by theme and a literal cannot: the first cut hard-coded
+ * light-theme hexes, which made a field of pastel cards glare on the dark canvas and left the
+ * neutral one — a light grey on a #f8fafc ground, 1.13:1 — effectively invisible in the light one.
+ * The values live beside the other topology colours in `app.css`.
+ *
+ * Chosen for contrast against the *canvas*, not for sitting beside text. At a few pixels the fill
+ * is the entire node, so if it does not separate from the background there is nothing on screen.
  */
 export const ELEMENT_STATE_FILL: Record<ElementState, string> = {
-	down: '#fca5a5',
-	stale: '#fcd34d',
-	nominal: '#86efac',
-	unknown: '#e5e7eb'
+	down: 'var(--color-topology-lod-down)',
+	stale: 'var(--color-topology-lod-stale)',
+	nominal: 'var(--color-topology-lod-nominal)',
+	unknown: 'var(--color-topology-lod-unknown)'
 };
 
 export interface ElementStateInputs {
