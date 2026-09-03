@@ -1278,8 +1278,15 @@ impl Pattern<'_> {
 
     /// Whether the pattern includes HTTP endpoint probes on raw-socket ports.
     /// Used to flag services whose detection depends on the `probe_raw_socket_ports` toggle.
-    pub fn has_raw_socket_endpoint(&self) -> bool {
-        self.endpoints().iter().any(|e| e.port_type.is_raw_socket())
+    /// Whether `probe_raw_socket_ports` being off would stop this pattern matching.
+    ///
+    /// That setting drops 9100-9107 from the scan results entirely, so it governs any reference to
+    /// one of those ports — a bare `Pattern::Port`, as JetDirect uses, as much as an `Endpoint`.
+    /// Reading only the endpoints under-reported it: the setting exists because writing to 9100
+    /// prints, and JetDirect was missing from the list of what it gates.
+    pub fn gated_by_raw_socket_scanning(&self) -> bool {
+        self.ports().iter().any(PortType::is_raw_socket)
+            || self.endpoints().iter().any(|e| e.port_type.is_raw_socket())
     }
 
     /// Whether service uses IsGateway as a positive match signal -> service is_gateway = trues

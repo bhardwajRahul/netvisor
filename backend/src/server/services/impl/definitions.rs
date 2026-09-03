@@ -197,7 +197,7 @@ pub trait ServiceDefinitionExt {
     fn is_gateway(&self) -> bool;
     fn is_open_ports(&self) -> bool;
     fn has_logo(&self) -> bool;
-    fn has_raw_socket_endpoint(&self) -> bool;
+    fn gated_by_raw_socket_scanning(&self) -> bool;
 }
 
 impl ServiceDefinitionExt for Box<dyn ServiceDefinition> {
@@ -231,8 +231,8 @@ impl ServiceDefinitionExt for Box<dyn ServiceDefinition> {
         !self.logo_url().is_empty()
     }
 
-    fn has_raw_socket_endpoint(&self) -> bool {
-        self.discovery_pattern().has_raw_socket_endpoint()
+    fn gated_by_raw_socket_scanning(&self) -> bool {
+        self.discovery_pattern().gated_by_raw_socket_scanning()
     }
 
     /// Single source of truth mapping a manager service definition to the
@@ -303,7 +303,7 @@ impl TypeMetadataProvider for Box<dyn ServiceDefinition> {
             "has_logo": self.has_logo(),
             "logo_ext": logo_ext,
             "logo_needs_white_background": self.logo_needs_white_background(),
-            "has_raw_socket_endpoint": self.has_raw_socket_endpoint(),
+            "gated_by_raw_socket_scanning": self.gated_by_raw_socket_scanning(),
             // Derived from the rationale rather than listed, so the set the `trust_port_only_
             // detections` setting governs shrinks by itself as exceptions are retired and cannot
             // drift from `connect_only_definitions_are_declared`.
