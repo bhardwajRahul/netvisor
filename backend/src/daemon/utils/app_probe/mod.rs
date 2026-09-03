@@ -22,6 +22,7 @@
 
 pub mod amqp;
 pub mod bacula;
+pub mod beszel_agent;
 pub mod cassandra;
 pub mod checkmk;
 pub mod dns_tcp;
