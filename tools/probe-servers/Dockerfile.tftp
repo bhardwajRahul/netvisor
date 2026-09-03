@@ -1,0 +1,13 @@
+# tftpd-hpa, for the ERROR a Read Request draws. Nothing is served: the probe asks for a name that
+# does not exist and the refusal is the answer it wants.
+#
+# `--port-range 69:69` is here for Docker, not for TFTP. RFC 1350 has the server answer from a fresh
+# ephemeral port, and Docker'"'"'s userland UDP proxy forwards only the mapped port, so the reply is
+# dropped before it leaves the container. Pinning the reply to 69 is the only part of this that is
+# unlike a real server, and the probe cannot tell: it matches on the source *address* precisely
+# because a real TFTP server answers from a port it just allocated.
+FROM debian:bookworm-slim
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y tftpd-hpa && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /srv/tftp
+EXPOSE 69/udp
+CMD ["/usr/sbin/in.tftpd","--foreground","--listen","--address","0.0.0.0:69","--port-range","69:69","--secure","/srv/tftp"]

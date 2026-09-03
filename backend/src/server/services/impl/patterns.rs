@@ -259,6 +259,8 @@ pub enum ClientProbe {
     Bacula,
     /// An SSH identification string whose software name is Beszel's.
     BeszelAgent,
+    /// A Q.931 `SETUP` was answered with a Q.931 message carrying our call reference.
+    H323,
 }
 
 impl ClientProbe {
@@ -312,7 +314,8 @@ impl ClientProbe {
             | Self::OpenVpn
             | Self::Zmtp
             | Self::Bacula
-            | Self::BeszelAgent => M::Native,
+            | Self::BeszelAgent
+            | Self::H323 => M::Native,
         }
     }
 }

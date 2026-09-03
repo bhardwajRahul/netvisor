@@ -84,6 +84,8 @@ impl ServiceDefinitionRegistry {
 pub mod dhcp_server;
 pub mod gateway;
 pub mod gnmi;
+pub mod h323;
+pub mod mgcp;
 pub mod ntp;
 pub mod rdp;
 pub mod rustdesk;
@@ -94,6 +96,7 @@ pub mod ssh;
 pub mod switch;
 pub mod telnet;
 pub mod termix;
+pub mod tftp;
 pub mod unifi_gateway;
 pub mod unifi_switch;
 

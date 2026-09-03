@@ -304,6 +304,10 @@ impl TypeMetadataProvider for Box<dyn ServiceDefinition> {
             "logo_ext": logo_ext,
             "logo_needs_white_background": self.logo_needs_white_background(),
             "has_raw_socket_endpoint": self.has_raw_socket_endpoint(),
+            // Derived from the rationale rather than listed, so the set the `trust_port_only_
+            // detections` setting governs shrinks by itself as exceptions are retired and cannot
+            // drift from `connect_only_definitions_are_declared`.
+            "connect_only": self.connect_only_rationale().is_some(),
         })
     }
 }

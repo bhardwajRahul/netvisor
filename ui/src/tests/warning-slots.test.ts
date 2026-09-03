@@ -52,6 +52,7 @@ describe('discovery warning rendering', () => {
 			port_id: 'MacAddress("00:ad:24:af:4e:00")',
 			port_desc: 'Port 9',
 			cidr: '10.20.30.0/24',
+			declined: 254,
 			subnet_id: '00000000-0000-0000-0000-000000000003',
 			addresses: ['10.20.30.11'],
 			sys_names: ['offsite-core-01'],

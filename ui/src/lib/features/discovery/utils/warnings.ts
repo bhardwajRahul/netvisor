@@ -301,6 +301,14 @@ const WARNING_PARAMS = {
 	CredentialUnreachable: attemptParams,
 	CredentialTimedOut: attemptParams,
 
+	// One warning per subnet, so the first is the only one — unlike the address-scoped codes above,
+	// which the daemon raises per host and the UI folds together here.
+	ConnectionsWithoutProtocolResponse: (w) => ({
+		cidr: w[0].cidr,
+		declined: w[0].declined,
+		ports: joinList(w[0].ports.map(String), 'conjunction')
+	}),
+
 	ScanTimeLimitWithEstimate: (w) => ({
 		hours: w[0].hours,
 		hosts_not_scanned: w[0].hosts_not_scanned,

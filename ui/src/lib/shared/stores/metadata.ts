@@ -176,6 +176,13 @@ export interface ServicedDefinitionMetadata {
 	logo_ext: string;
 	logo_needs_white_background: boolean;
 	has_raw_socket_endpoint: boolean;
+	/** Whether this service is only ever matched by a port being open, with no protocol exchange
+	 *  behind it. A middlebox that completes TCP handshakes can manufacture one of these, which is
+	 *  what `trust_port_only_detections` governs — the detection form lists these by name so the
+	 *  setting says which detections it affects. */
+	connect_only: boolean;
+	is_gateway: boolean;
+	is_generic: boolean;
 }
 
 export interface PermissionsMetadata {

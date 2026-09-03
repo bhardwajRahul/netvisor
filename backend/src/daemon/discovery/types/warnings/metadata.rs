@@ -184,6 +184,8 @@ impl DiscoveryWarningCode {
             | Self::CredentialUnreachable
             | Self::CredentialTimedOut => &["credential", "addresses", "detail"],
 
+            Self::ConnectionsWithoutProtocolResponse => &["cidr", "declined", "ports"],
+
             Self::ScanTimeLimitWithEstimate => &["hours", "hosts_not_scanned", "minutes_remaining"],
             Self::ScanTimeLimit => &["hours", "hosts_not_scanned"],
 
@@ -229,6 +231,11 @@ impl DiscoveryWarningCode {
             | Self::CredentialTimedOut
             | Self::ScanTimeLimitWithEstimate
             | Self::ScanTimeLimit => Severity::Lost,
+
+            // Not `Lost`: nothing was lost. Addresses that answered a handshake and nothing else
+            // were declined, and on the evidence they hold nothing. What the reader has to decide
+            // is whether that is true of their network — which is a decision, not a shortfall.
+            Self::ConnectionsWithoutProtocolResponse => Severity::Degraded,
 
             // Incomplete, or resolved to less than it could have been.
             Self::InterfaceSetCutShort
@@ -286,7 +293,10 @@ impl DiscoveryWarningCode {
             | Self::CredentialCollectionTimedOut
             | Self::CredentialUnreachable
             | Self::CredentialTimedOut
-            // Scan settings: the duration to raise, or the coverage to narrow.
+            // Scan settings: the duration to raise, or the coverage to narrow, or — for the
+            // middlebox case — the "Trust Port-Only Detections" opt-in, once the reader has
+            // decided the addresses really are empty.
+            | Self::ConnectionsWithoutProtocolResponse
             | Self::ScanTimeLimitWithEstimate
             | Self::ScanTimeLimit
             | Self::WarningsTruncated
@@ -400,6 +410,7 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
             Self::CredentialCollectionTimedOut => "Collection timed out after authenticating",
             Self::CredentialUnreachable => "Credential target unreachable",
             Self::CredentialTimedOut => "Credential attempt timed out",
+            Self::ConnectionsWithoutProtocolResponse => "Handshakes with nothing behind them",
             Self::ScanTimeLimitWithEstimate => "Scan hit its time limit",
             Self::ScanTimeLimit => "Scan hit its time limit",
             Self::LldpNeighbourNotFound => "Neighbour device not discovered",
@@ -519,6 +530,9 @@ impl TypeMetadataProvider for DiscoveryWarningCode {
             }
             Self::CredentialTimedOut => {
                 "The {credential} credential for {addresses} timed out before anything answered — check the address and port, and that the service is listening rather than dropping the connection. ({detail})"
+            }
+            Self::ConnectionsWithoutProtocolResponse => {
+                "{declined} address(es) in {cidr} completed a TCP connection on {ports} and then answered nothing, so no host was recorded at any of them. Something in the path — a firewall session helper, a load balancer, a scrubbing appliance — answers for addresses that hold no device, and a bare handshake cannot tell one from the other. If those addresses really do hold devices, scan the subnet from a daemon with an interface on it; if they are empty, nothing here needs fixing."
             }
             Self::ScanTimeLimitWithEstimate => {
                 "Scan hit its time limit ({hours}h) — {hosts_not_scanned} host(s) not scanned (~{minutes_remaining} min of estimated work remaining). Raise Max Discovery Duration or rescan."

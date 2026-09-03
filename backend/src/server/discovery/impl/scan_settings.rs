@@ -49,6 +49,22 @@ pub struct ScanSettings {
     #[serde(default)]
     pub arp_scan_cutoff: Option<u8>,
 
+    /// Whether an open TCP port alone is enough to record a host on a subnet the daemon reaches
+    /// *through* something (default: false).
+    ///
+    /// On a subnet the daemon has an interface on, ARP answers first and this never applies. On a
+    /// routed one every address arrives enumerated, and a middlebox that completes the TCP handshake
+    /// for addresses with nothing behind them — a FortiGate session helper, a load balancer, a
+    /// scrubbing appliance — makes every address look open. With this off, such an address is
+    /// recorded only when something actually answered: a probe that spoke the protocol, an endpoint
+    /// that replied, a credential that authenticated.
+    ///
+    /// Turning it on restores the older behaviour for hosts whose every open port is one Scanopy
+    /// cannot interrogate. That is a real class of host — a bespoke TCP service on a routed subnet —
+    /// which is why the escape hatch exists rather than the rule simply being absolute.
+    #[serde(default)]
+    pub trust_port_only_detections: bool,
+
     /// Hard ceiling on how long a single discovery run may take, in seconds
     /// (default: 21600 = 6h). When hit, the run force-completes and any hosts
     /// still queued are left un-scanned until the next run. Raise this for very
@@ -122,6 +138,11 @@ impl ScanSettings {
                 self.probe_raw_socket_ports,
             ),
             (
+                "Trust port-only detections:",
+                self.trust_port_only_detections.to_string(),
+                self.trust_port_only_detections,
+            ),
+            (
                 "Npcap ARP:",
                 self.use_npcap_arp.to_string(),
                 self.use_npcap_arp,
@@ -183,6 +204,7 @@ impl ScanSettings {
             is_full_scan: _, // Server-set, not a UI field
             arp_scan_cutoff: _,
             max_discovery_duration: _,
+            trust_port_only_detections: _,
         } = Self::default();
 
         vec![
@@ -243,6 +265,23 @@ impl ScanSettings {
                 default_value: Some("200"),
                 inline_format: None,
                 group: Some("Port Scanning"),
+            },
+            FieldDefinition {
+                id: "trust_port_only_detections",
+                label: "Trust Port-Only Detections",
+                field_type: FieldType::Boolean,
+                placeholder: None,
+                secret: false,
+                optional: false,
+                help_text: Some(
+                    "On subnets reached through a router, record a host when a port is open even if \
+                     nothing answered. Off by default: a firewall that completes TCP handshakes on \
+                     behalf of empty addresses would otherwise create a host at every one.",
+                ),
+                options: None,
+                default_value: Some("false"),
+                inline_format: None,
+                group: Some("Detection"),
             },
             FieldDefinition {
                 id: "probe_raw_socket_ports",
@@ -353,6 +392,11 @@ pub struct RescanSettings {
     /// On Windows, use Npcap broadcast ARP instead of SendARP.
     #[serde(default)]
     pub use_npcap_arp: bool,
+
+    /// Carried into a rescan: a rescan of a host on a routed subnet runs the same evidence check,
+    /// and it would be strange for a host to survive a scan and vanish on rescan, or the reverse.
+    #[serde(default)]
+    pub trust_port_only_detections: bool,
 }
 
 impl From<&ScanSettings> for RescanSettings {
@@ -366,6 +410,7 @@ impl From<&ScanSettings> for RescanSettings {
             port_scan_batch_size,
             probe_raw_socket_ports,
             use_npcap_arp,
+            trust_port_only_detections,
             arp_rate_pps: _,           // inert: can't bind on a 1-2 address list
             arp_scan_cutoff: _,        // inert: an explicit IP list can't hit the cap
             max_discovery_duration: _, // inert: the 6h ceiling never fires on one host
@@ -379,6 +424,7 @@ impl From<&ScanSettings> for RescanSettings {
             port_scan_batch_size: *port_scan_batch_size,
             probe_raw_socket_ports: *probe_raw_socket_ports,
             use_npcap_arp: *use_npcap_arp,
+            trust_port_only_detections: *trust_port_only_detections,
         }
     }
 }
@@ -393,6 +439,7 @@ impl From<&RescanSettings> for ScanSettings {
             port_scan_batch_size,
             probe_raw_socket_ports,
             use_npcap_arp,
+            trust_port_only_detections,
         } = settings;
 
         Self {
@@ -401,6 +448,7 @@ impl From<&RescanSettings> for ScanSettings {
             port_scan_batch_size: *port_scan_batch_size,
             probe_raw_socket_ports: *probe_raw_socket_ports,
             use_npcap_arp: *use_npcap_arp,
+            trust_port_only_detections: *trust_port_only_detections,
             // A rescan is never a full scan — that is the point of the narrower type.
             is_full_scan: false,
             full_scan_interval: None,

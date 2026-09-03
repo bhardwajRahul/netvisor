@@ -13,6 +13,11 @@ set -uo pipefail
 #   ./run.sh up      start everything on its real port on loopback
 #   ./run.sh down    stop only what this script started
 #
+# TFTP is deliberately absent. RFC 1350 has the server answer from a freshly allocated port, and
+# neither Docker'"'"'s UDP proxy nor a NAT between hosts returns a datagram whose source port is not the
+# one the flow was opened to — which is the very reason firewalls ship TFTP session helpers. Verify
+# that probe against a TFTP server on the same segment as the daemon instead.
+#
 # Then:
 #   cd backend && cargo test --lib -- --ignored live_servers
 #   cd backend && SCANOPY_LIVE_UDP_PORTS=500,1194 cargo test --lib -- --ignored named_udp
@@ -60,6 +65,8 @@ BUILT_SERVERS=(
   "unbound    8953:8953    probe-unbound|-p|127.0.0.1:5353:53/udp"
   "salt       4505:4505    probe-salt|-p|127.0.0.1:4506:4506"
   "bacula     9101:9101    probe-bacula"
+  "h323       1720:1720    probe-h323"
+  "mgcp       2427:2427/udp probe-mgcp"
   "ldap       389:389      probe-ldap"
   "nut        3493:3493    probe-nut"
   "checkmk    6556:6556    probe-checkmk"
